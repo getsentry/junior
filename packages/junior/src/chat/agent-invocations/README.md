@@ -149,7 +149,9 @@ valid targets.
   with `deferred: true`, so the messages keep `defer` mailbox delivery and
   never start an attempt ahead of a paused child. The running Turn saves each
   message first. Then its agent invocation ends as `completed` with
-  `parentMailboxStatus: "steered"`, and the mailbox entry is acknowledged. The
+  `parentMailboxStatus: "steered"`, and the mailbox entry is acknowledged. If a
+  drain fails after the save, the next drain finds the message in the Turn
+  checkpoint and only marks it, so the child never reads it twice. The
   running agent invocation reports for both. A message with another Actor or
   other credentials cannot join the running Turn. It and every later parent
   message wait. When the child finishes without another model call, the

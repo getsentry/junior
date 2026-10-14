@@ -247,6 +247,33 @@ describe("agent invocation worker", () => {
           parentToolCallId: "call-steer-message",
         });
       expect(queued).toBe(true);
+      // An earlier drain saved this message in the Turn, then failed before
+      // it marked the agent invocation read.
+      const { invocation: savedMessage } =
+        await createAgentInvocationForMessage({
+          ...INVOCATION_INPUT,
+          childConversationId: created.childConversationId,
+          idempotencyKey: "steer-saved-message",
+          input: "Skip the cache path.",
+          parentToolCallId: "call-steer-saved-message",
+        });
+      await upsertTurnRecord({
+        actor: INVOCATION_INPUT.actor,
+        conversationId: created.childConversationId,
+        destination: DESTINATION,
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "Skip the cache path." }],
+            timestamp: savedMessage.createdAtMs,
+          },
+        ] as PiMessage[],
+        turnId: getAgentInvocationTurnId(created.invocationId),
+        sliceId: 1,
+        source: { kind: "agent_invocation" },
+        state: "paused",
+        surface: "internal",
+      });
 
       // The runner drains steering messages at a step boundary, as the
       // agent does before its next model call.
@@ -293,6 +320,7 @@ describe("agent invocation worker", () => {
                 await handle([
                   ownMessage,
                   buildAgentInvocationInboundMessage(message),
+                  buildAgentInvocationInboundMessage(savedMessage),
                 ]),
               );
               return [];
@@ -316,11 +344,18 @@ describe("agent invocation worker", () => {
       expect(steered).toEqual([
         [expect.objectContaining({ text: "Also check the retry path." })],
       ]);
-      // Only the parent message is acknowledged. The running agent
-      // invocation acknowledges its own input when the Turn commits it.
+      // The saved message is not read twice. Only the parent messages are
+      // acknowledged. The running agent invocation acknowledges its own input
+      // when the Turn commits it.
       expect(acknowledged).toEqual([
-        [getAgentInvocationMessageId(message.invocationId)],
+        [
+          getAgentInvocationMessageId(message.invocationId),
+          getAgentInvocationMessageId(savedMessage.invocationId),
+        ],
       ]);
+      await expect(
+        getAgentInvocation(savedMessage.invocationId),
+      ).resolves.toMatchObject({ parentMailboxStatus: "steered" });
       // The running agent invocation reports for both.
       await expect(
         getAgentInvocation(message.invocationId),
@@ -343,7 +378,7 @@ describe("agent invocation worker", () => {
             last_result: "completed",
             name: "researcher",
             status: "idle",
-            task: "Also check the retry path.",
+            task: "Skip the cache path.",
           },
         ],
       });

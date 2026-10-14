@@ -225,6 +225,22 @@ function canSteerRunningInvocation(
   );
 }
 
+/** Return whether a saved message is the steering message of one agent invocation. */
+function isSteeringMessageFor(
+  message: PiMessage,
+  candidate: AgentInvocation,
+): boolean {
+  if (message.role !== "user" || message.timestamp !== candidate.createdAtMs) {
+    return false;
+  }
+  const content = message.content;
+  return typeof content === "string"
+    ? content.includes(candidate.input)
+    : content.some(
+        (part) => part.type === "text" && part.text.includes(candidate.input),
+      );
+}
+
 /**
  * Give pending parent messages to the running agent invocation of a child.
  * The child reads each one as a steering message at its next step boundary.
@@ -275,15 +291,29 @@ function createAgentMessageSteeringDrain(
           steered.push(candidate);
         }
         if (steered.length > 0) {
-          const messages = steered.map(
+          // The running Turn saves the messages before they are marked read.
+          // If marking failed after an earlier save, the Turn checkpoint
+          // already has the message, so only mark it now.
+          const saved = await getTurnRecord(
+            running.childConversationId,
+            getAgentInvocationTurnId(running.invocationId),
+          );
+          const unread = steered.filter(
+            (candidate) =>
+              !saved?.piMessages.some((message) =>
+                isSteeringMessageFor(message, candidate),
+              ),
+          );
+          const messages = unread.map(
             (candidate): AgentSteeringMessage => ({
               provenance: instructionProvenanceFor(candidate.actor),
               text: candidate.input,
               timestampMs: candidate.createdAtMs,
             }),
           );
-          // The running Turn saves the messages before they are marked read.
-          await accept(messages);
+          if (messages.length > 0) {
+            await accept(messages);
+          }
           for (const candidate of steered) {
             const terminal = await markAgentInvocationSteered(
               candidate.invocationId,
