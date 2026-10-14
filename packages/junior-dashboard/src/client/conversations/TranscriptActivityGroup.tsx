@@ -20,7 +20,7 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // A child agent start is a main-view event, like its result event.
+  // Child agent rows stay in the main view, like their result events.
   if (entry.kind === "subagent") return false;
   if (entry.kind === "message") return false;
   return true;
@@ -131,10 +131,9 @@ export function activityGroupSummary(
 }
 
 function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
-  return entries.some((entry) => {
-    if (entry.kind === "tool") return entry.part.status === "running";
-    return false;
-  });
+  return entries.some(
+    (entry) => entry.kind === "tool" && entry.part.status === "running",
+  );
 }
 
 /** Keep activity collapsed until the reader explicitly opens it. */

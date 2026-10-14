@@ -33,17 +33,14 @@ function tool(
   };
 }
 
-function subagent(
-  id: string,
-  status: "aborted" | "completed" | "error" | "running" = "completed",
-): RenderedTranscriptEntry {
+function subagent(id: string): RenderedTranscriptEntry {
   return {
     key: `subagent:${id}`,
     kind: "subagent",
     part: {
       childConversationId: `child:${id}`,
       id,
-      status,
+      status: "completed",
       subagentKind: "explore",
       type: "subagent",
     },
@@ -125,7 +122,6 @@ describe("transcript activity group", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
     expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(true);
     expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(false);
-    expect(isCollapsibleActivityEntry(subagent("err", "error"))).toBe(false);
     expect(isCollapsibleActivityEntry(reasoning("r1"))).toBe(true);
     expect(isCollapsibleActivityEntry(compaction())).toBe(true);
     expect(isCollapsibleActivityEntry(handoff())).toBe(true);

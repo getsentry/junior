@@ -557,13 +557,7 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Subagents live inside the collapsed activity chip between turns.
-  const activityChip = page
-    .locator("details")
-    .filter({ hasText: /\d+ events?/ })
-    .first();
-  await expect(activityChip).toBeVisible();
-  await activityChip.locator("> summary").click();
+  // Subagent rows show in the main view, outside collapsed activity groups.
   const planner = page.getByRole("button", {
     name: "Open planner transcript",
   });
