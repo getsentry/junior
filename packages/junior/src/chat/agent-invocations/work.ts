@@ -13,6 +13,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import {
+  abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
   saveTurnCheckpoint,
@@ -45,16 +46,20 @@ import {
   getAgentInvocation,
   getAgentInvocationMessageId,
   getAgentInvocationTurnId,
+  getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
+  reportReplacedAgentInvocation,
 } from "./store";
 import type {
   AgentInvocation,
   CreateAgentInvocationInput,
   TerminalAgentInvocation,
 } from "./types";
+import { recordSubagentEnded, recordSubagentStarted } from "./markers";
+import { stopChildAgentsOf } from "./stop";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -69,64 +74,6 @@ type EnqueueOptions = {
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 };
-
-// The dashboard labels each child row with this kind.
-const SUBAGENT_KIND = "agent";
-
-/**
- * Record in the parent Conversation that one agent invocation started. The
- * dashboard pairs this event with `subagent_ended` to show the child and its
- * status. It must be written before the child mailbox append, so the child
- * cannot end first.
- */
-async function recordSubagentStarted(
-  invocation: AgentInvocation,
-): Promise<void> {
-  await getConversationEventStore().append(invocation.parentConversationId, [
-    {
-      idempotencyKey: `subagent_started:${invocation.invocationId}`,
-      data: {
-        type: "subagent_started",
-        subagentInvocationId: invocation.invocationId,
-        subagentKind: SUBAGENT_KIND,
-        childConversationId: invocation.childConversationId,
-        ...(invocation.parentToolCallId
-          ? { parentToolCallId: invocation.parentToolCallId }
-          : undefined),
-        ...(invocation.reasoningLevel
-          ? { reasoningLevel: invocation.reasoningLevel }
-          : undefined),
-      },
-      createdAtMs: invocation.createdAtMs,
-    },
-  ]);
-}
-
-/**
- * Record in the parent Conversation how one agent invocation ended. The
- * heartbeat result repair also calls this, because the child work can be
- * acknowledged before the worker reports the result.
- */
-export async function recordSubagentEnded(
-  invocation: TerminalAgentInvocation,
-): Promise<void> {
-  await getConversationEventStore().append(invocation.parentConversationId, [
-    {
-      idempotencyKey: `subagent_ended:${invocation.invocationId}`,
-      data: {
-        type: "subagent_ended",
-        subagentInvocationId: invocation.invocationId,
-        outcome:
-          invocation.status === "completed"
-            ? "success"
-            : invocation.status === "blocked"
-              ? "blocked"
-              : "error",
-      },
-      createdAtMs: invocation.terminalAtMs,
-    },
-  ]);
-}
 
 /** Build destinationless mailbox work that references one durable invocation. */
 export function buildAgentInvocationInboundMessage(
@@ -156,7 +103,11 @@ export async function enqueueAgentInvocation(
   invocation: AgentInvocation,
   options: EnqueueOptions,
 ): Promise<void> {
-  if (invocation.mailboxStatus === "appended") {
+  // A stop can end an agent invocation before its mailbox append.
+  if (
+    invocation.mailboxStatus === "appended" ||
+    isTerminalAgentInvocation(invocation)
+  ) {
     return;
   }
   await recordSubagentStarted(invocation);
@@ -228,8 +179,18 @@ export async function resolveAgentInvocationId(
   if (context.attempt.messages.length > 0) {
     return undefined;
   }
-  return (await getActiveAgentInvocationForConversation(context.conversationId))
-    ?.invocationId;
+  const active = await getActiveAgentInvocationForConversation(
+    context.conversationId,
+  );
+  if (active) {
+    return active.invocationId;
+  }
+  // A stop request can outlive the run that it stopped and wake the child
+  // again. The stopped agent invocation handles that wake.
+  const latest = await getLatestAgentInvocationForConversation(
+    context.conversationId,
+  );
+  return latest?.status === "stopped" ? latest.invocationId : undefined;
 }
 
 /** Project the terminal invocation into the idempotent turn lifecycle. */
@@ -252,6 +213,15 @@ async function persistTerminalLifecycle(
       ...common,
       outcome: invocation.result?.trim() ? "success" : "no_reply",
     });
+  } else if (invocation.status === "stopped") {
+    // A child stopped between slices has a paused Turn record. Nothing may
+    // resume it.
+    await abandonTurnRecord({
+      conversationId: common.conversationId,
+      errorMessage: "Turn cancelled",
+      turnId: common.turnId,
+    });
+    await lifecycle.complete({ ...common, outcome: "cancelled" });
   } else if (
     invocation.status === "blocked" ||
     invocation.status === "failed"
@@ -372,18 +342,26 @@ async function saveAgentInvocationResult(args: {
       `Agent invocation did not finish for ${args.invocation.invocationId}`,
     );
   }
-  return terminal.status === "completed"
-    ? {
-        finishedAtMs: terminal.terminalAtMs,
-        outcome: terminal.result.trim()
-          ? ("success" as const)
-          : ("no_reply" as const),
-      }
-    : {
-        finishedAtMs: terminal.terminalAtMs,
-        failureCode: "model_execution_failed" as const,
-        outcome: "failed" as const,
-      };
+  if (terminal.status === "completed") {
+    return {
+      finishedAtMs: terminal.terminalAtMs,
+      outcome: terminal.result.trim()
+        ? ("success" as const)
+        : ("no_reply" as const),
+    };
+  }
+  // The child was stopped while it saved its result.
+  if (terminal.status === "stopped") {
+    return {
+      finishedAtMs: terminal.terminalAtMs,
+      outcome: "cancelled" as const,
+    };
+  }
+  return {
+    finishedAtMs: terminal.terminalAtMs,
+    failureCode: "model_execution_failed" as const,
+    outcome: "failed" as const,
+  };
 }
 
 /**
@@ -458,6 +436,26 @@ export function createAgentInvocationWorker(
       acknowledged = true;
     };
 
+    // Read the signal before any early return, so the worker clears a stop
+    // request that this wake handles.
+    const stopSignal = context.stopSignal?.();
+    // `stopChildAgent` already marked its work `stopped`. Any other stop is
+    // recorded here and reported to the parent.
+    // The stop also stops the child agents of this child, so no result of
+    // theirs starts this child again.
+    const finishStopped = async (): Promise<ConversationWorkerResult> => {
+      await finish(
+        await completeAgentInvocation({
+          invocationId,
+          errorMessage: "Agent invocation was stopped",
+          status: "stopped",
+        }),
+      );
+      await stopChildAgentsOf(context.conversationId);
+      await acknowledge();
+      return { status: "completed" };
+    };
+
     const turnId = getAgentInvocationTurnId(invocation.invocationId);
     const lifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
@@ -491,6 +489,12 @@ export function createAgentInvocationWorker(
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;
+      // A stop can land between the read above and this write.
+      if (isTerminalAgentInvocation(invocation)) {
+        await finish(invocation);
+        await acknowledge();
+        return { status: "completed" };
+      }
       await lifecycle.start({
         conversationId: invocation.childConversationId,
         createdAtMs: invocation.createdAtMs,
@@ -545,6 +549,7 @@ export function createAgentInvocationWorker(
           source: invocation.source,
           ...(location ? { location } : undefined),
           surface: "internal",
+          ...(stopSignal ? { signal: stopSignal } : undefined),
           // TODO(dcramer): Issues #881 and #883 track a path for child runs to
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
@@ -583,6 +588,9 @@ export function createAgentInvocationWorker(
       if (isInvocationInputCommitLost(runError)) {
         return { status: "lost_lease" };
       }
+      if (stopSignal?.aborted) {
+        return await finishStopped();
+      }
       const blocking = blockingInvocationError(runError);
       if (blocking) {
         const terminal = await completeAgentInvocation({
@@ -610,6 +618,9 @@ export function createAgentInvocationWorker(
       return { status: "completed" };
     }
 
+    if (outcome.status !== "completed" && stopSignal?.aborted) {
+      return await finishStopped();
+    }
     if (outcome.status === "suspended") {
       await markAgentInvocationPaused(invocation.invocationId);
       return { status: "yielded" };
@@ -626,7 +637,20 @@ export function createAgentInvocationWorker(
     }
 
     // executeTurn already recorded the terminal Turn; only report the result.
-    const terminal = await getAgentInvocation(invocation.invocationId);
+    let terminal = await getAgentInvocation(invocation.invocationId);
+    // A stop that comes after the save still stops the child agents of this
+    // child. Then they cannot report for a `replaced` result, so this result
+    // reports now.
+    if (stopSignal?.aborted) {
+      if (
+        terminal &&
+        isTerminalAgentInvocation(terminal) &&
+        terminal.parentMailboxStatus === "replaced"
+      ) {
+        terminal = await reportReplacedAgentInvocation(terminal.invocationId);
+      }
+      await stopChildAgentsOf(context.conversationId);
+    }
     if (terminal && isTerminalAgentInvocation(terminal)) {
       await report(terminal);
     }

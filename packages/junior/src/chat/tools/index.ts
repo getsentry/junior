@@ -17,6 +17,7 @@ import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
@@ -206,6 +207,7 @@ export function createTools(
   if (context.spawnAgent) {
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
     tools.listAgents = createListAgentsTool(context.conversationId);
+    tools.stopAgent = createStopAgentTool(context.conversationId);
   }
 
   if (context.automation) {

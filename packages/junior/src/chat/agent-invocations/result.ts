@@ -67,6 +67,8 @@ function trustedSummary(
       return `${agent} is blocked.`;
     case "failed":
       return `${agent} failed.`;
+    case "stopped":
+      return `${agent} was stopped.`;
   }
 }
 
@@ -108,7 +110,7 @@ function buildResultInboundMessage(
       text: renderTaskInput({
         about: agent,
         instructions:
-          "A child agent that you started has stopped. Use its result to continue the work in this conversation. Do not repeat work that the child agent already did.",
+          "A child agent that you started has ended. Its status tells how it ended. Use its result to continue the work in this conversation. Do not repeat work that the child agent already did.",
         trustedSummary: summary,
         verifiedDetails: {
           conversation_id: invocation.childConversationId,
@@ -211,8 +213,18 @@ export async function startAgentInvocationsForChildResults(
   if (!latest) {
     return undefined;
   }
+  // A stopped child takes no new work, even from a result sent before the
+  // stop.
+  if (latest.status === "stopped") {
+    await context.attempt.ack();
+    return { status: "completed" };
+  }
   for (const [index, message] of messages.entries()) {
     const result = await getResultInvocation(message, invocationIds[index]!);
+    // The child was stopped after this result was sent.
+    if (result.parentMailboxStatus === "skipped") {
+      continue;
+    }
     const invocation = await createAgentInvocationForResult({
       input: message.input.text.trim(),
       latest,

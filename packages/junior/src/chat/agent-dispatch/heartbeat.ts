@@ -11,10 +11,8 @@ import {
   listPendingAgentInvocationResults,
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
-import {
-  enqueueAgentInvocation,
-  recordSubagentEnded,
-} from "@/chat/agent-invocations/work";
+import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
+import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,

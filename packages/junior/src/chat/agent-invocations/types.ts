@@ -67,7 +67,7 @@ export const agentInvocationSchema = z.discriminatedUnion("status", [
   agentInvocationBaseSchema.extend({
     errorMessage: z.string(),
     parentMailboxStatus: agentInvocationParentMailboxStatusSchema,
-    status: z.enum(["blocked", "failed"]),
+    status: z.enum(["blocked", "failed", "stopped"]),
     terminalAtMs: z.number().finite(),
   }),
 ]);
@@ -91,7 +91,7 @@ export type AgentInvocation = z.output<typeof agentInvocationSchema>;
 export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type TerminalAgentInvocation = Extract<
   AgentInvocation,
-  { status: "blocked" | "completed" | "failed" }
+  { status: "blocked" | "completed" | "failed" | "stopped" }
 >;
 export type CreateAgentInvocationInput = z.input<
   typeof createAgentInvocationSchema
@@ -101,7 +101,7 @@ export type CreateAgentInvocationInput = z.input<
 export type ChildAgent = {
   agentName?: string;
   childConversationId: string;
-  /** Error of the latest agent invocation when the child is blocked or failed. */
+  /** Error of the latest agent invocation when the child is blocked, failed, or stopped. */
   errorMessage?: string;
   status: AgentInvocationStatus;
   /** Input of the latest agent invocation that the parent started. */

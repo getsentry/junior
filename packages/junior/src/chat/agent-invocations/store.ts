@@ -16,12 +16,17 @@ import {
 import { AgentInvocationBusyError, AgentInvocationLimitError } from "./errors";
 
 const CREATE_LOCK_PREFIX = "junior:agent_invocation:create";
+
+function createLockName(parentConversationId: string): string {
+  return `${CREATE_LOCK_PREFIX}:${parentConversationId}`;
+}
 /** Cap concurrent non-terminal children one parent can keep in flight. */
 export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
 const TERMINAL_AGENT_INVOCATION_STATUSES = [
   "blocked",
   "completed",
   "failed",
+  "stopped",
 ] as const satisfies readonly AgentInvocationStatus[];
 const NON_TERMINAL_AGENT_INVOCATION_STATUSES = [
   "pending",
@@ -249,9 +254,14 @@ function childAgentFromInvocations(
       ? { errorMessage: terminal.errorMessage }
       : undefined),
     // A `replaced` result means open child work starts a later agent
-    // invocation on this child, so the child has not finished.
+    // invocation on this child, so the child has not finished. Only a stop
+    // skips a result.
     status:
-      terminal?.parentMailboxStatus === "replaced" ? "pending" : current.status,
+      terminal?.parentMailboxStatus === "replaced"
+        ? "pending"
+        : terminal?.parentMailboxStatus === "skipped"
+          ? "stopped"
+          : current.status,
     task: task.input,
     updatedAtMs: Math.max(
       ...invocations.map((invocation) => invocation.updatedAtMs),
@@ -358,7 +368,8 @@ export async function createAgentInvocation(
     ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
     : getUnnamedAgentConversationId(invocationId);
   // Parent-scoped lock so concurrent creates share one active-count check.
-  const lockName = `${CREATE_LOCK_PREFIX}:${input.parentConversationId}`;
+  // A stop of the parent's tree takes the same lock.
+  const lockName = createLockName(input.parentConversationId);
   return await getSqlExecutor().withLock(lockName, async () => {
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
@@ -368,6 +379,20 @@ export async function createAgentInvocation(
         );
       }
       return existing;
+    }
+    // A child agent can only start child agents while it has open work. A
+    // stopped child has none.
+    if (
+      (await getLatestAgentInvocationForConversation(
+        input.parentConversationId,
+      )) &&
+      !(await getNonTerminalAgentInvocationForConversation(
+        input.parentConversationId,
+      ))
+    ) {
+      throw new Error(
+        `Agent conversation ${input.parentConversationId} has no open work and cannot start child agents`,
+      );
     }
 
     const activeCount = await countNonTerminalAgentInvocationsForParent(
@@ -553,7 +578,15 @@ export async function listPendingAgentInvocationMailboxAppends(
     .db()
     .select()
     .from(juniorAgentInvocations)
-    .where(eq(juniorAgentInvocations.mailboxStatus, "pending"))
+    .where(
+      and(
+        eq(juniorAgentInvocations.mailboxStatus, "pending"),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    )
     .orderBy(asc(juniorAgentInvocations.createdAt))
     .limit(limit);
   return rows.map(invocationFromRow);
@@ -571,6 +604,27 @@ export async function listPendingAgentInvocationResults(
     .orderBy(asc(juniorAgentInvocations.terminalAt))
     .limit(limit);
   return rows.map(invocationFromRow).filter(isTerminalAgentInvocation);
+}
+
+/**
+ * Send a `replaced` result to the parent now. A stop ended the open work of
+ * the child, so no later agent invocation sends the report.
+ */
+export async function reportReplacedAgentInvocation(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<AgentInvocation | undefined> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({ parentMailboxStatus: "pending", updatedAt: new Date(nowMs) })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
+      ),
+    );
+  return await getAgentInvocation(invocationId);
 }
 
 /** Record that one terminal result is in its parent mailbox. */
@@ -660,7 +714,7 @@ export async function completeAgentInvocation(
     | {
         errorMessage: string;
         invocationId: string;
-        status: "blocked" | "failed";
+        status: "blocked" | "failed" | "stopped";
         nowMs?: number;
       },
 ): Promise<AgentInvocation | undefined> {
@@ -670,10 +724,12 @@ export async function completeAgentInvocation(
     return current;
   }
   // Open child work only moves forward, so a read before the write is safe:
-  // each `replaced` result has open work that starts a later invocation.
-  const parentMailboxStatus = (await hasOpenChildWork(current))
-    ? "replaced"
-    : "pending";
+  // each `replaced` result has open work that starts a later invocation. A
+  // stop is always reported, because the stop also stops that open work.
+  const parentMailboxStatus =
+    args.status !== "stopped" && (await hasOpenChildWork(current))
+      ? "replaced"
+      : "pending";
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
@@ -695,6 +751,147 @@ export async function completeAgentInvocation(
       ),
     );
   return await getAgentInvocation(args.invocationId);
+}
+
+/**
+ * List one child Conversation and every Conversation below it, child first.
+ * It takes the create lock of each Conversation before it reads that
+ * Conversation's children, so no child agent can start in the tree until the
+ * caller's transaction ends.
+ */
+async function lockAgentConversationTree(
+  childConversationId: string,
+): Promise<string[]> {
+  const executor = getSqlExecutor();
+  const conversationIds = [childConversationId];
+  let parents = conversationIds;
+  while (parents.length > 0) {
+    for (const parent of parents) {
+      await executor.withLock(createLockName(parent), async () => undefined);
+    }
+    const rows = await executor
+      .db()
+      .selectDistinct({
+        childConversationId: juniorAgentInvocations.childConversationId,
+      })
+      .from(juniorAgentInvocations)
+      .where(inArray(juniorAgentInvocations.parentConversationId, parents));
+    parents = rows
+      .map((row) => row.childConversationId)
+      .filter((id) => !conversationIds.includes(id));
+    conversationIds.push(...parents);
+  }
+  return conversationIds;
+}
+
+/**
+ * Stop the agent invocations of one direct child agent and of every child
+ * agent below it. Returns undefined when the child does not belong to the
+ * parent.
+ */
+export async function stopChildAgentInvocations(args: {
+  childConversationId: string;
+  nowMs?: number;
+  parentConversationId: string;
+}): Promise<StoppedAgentTree | undefined> {
+  const owned = await getSqlExecutor()
+    .db()
+    .select({ invocationId: juniorAgentInvocations.invocationId })
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(
+          juniorAgentInvocations.parentConversationId,
+          args.parentConversationId,
+        ),
+        eq(
+          juniorAgentInvocations.childConversationId,
+          args.childConversationId,
+        ),
+      ),
+    )
+    .limit(1);
+  if (owned.length === 0) {
+    return undefined;
+  }
+  return await stopAgentInvocationTree(args.childConversationId, args.nowMs);
+}
+
+/** The Conversations of a stopped tree and the agent invocations it stopped. */
+export type StoppedAgentTree = {
+  conversationIds: string[];
+  stopped: TerminalAgentInvocation[];
+};
+
+/**
+ * Stop the agent invocations of one agent Conversation and of every child
+ * agent below it. Open agent invocations become `stopped`. Results that would
+ * still start or report work in the tree become `skipped`.
+ */
+export async function stopAgentInvocationTree(
+  conversationId: string,
+  nowMs = Date.now(),
+): Promise<StoppedAgentTree> {
+  // One transaction holds the create locks of the tree until every write is
+  // done. A child agent that starts later finds its parent stopped.
+  return await getSqlExecutor().withLock(createLockName(conversationId), () =>
+    stopLockedAgentInvocationTree(conversationId, nowMs),
+  );
+}
+
+async function stopLockedAgentInvocationTree(
+  conversationId: string,
+  nowMs: number,
+): Promise<StoppedAgentTree> {
+  const db = getSqlExecutor().db();
+  const now = new Date(nowMs);
+  const conversationIds = await lockAgentConversationTree(conversationId);
+  // Stop open work first. After this write no agent invocation in the tree
+  // can finish, so no new result can appear.
+  const stopped = await db
+    .update(juniorAgentInvocations)
+    .set({
+      errorMessage: "Stopped by the parent conversation",
+      parentMailboxStatus: "skipped",
+      result: null,
+      status: "stopped",
+      terminalAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        inArray(juniorAgentInvocations.childConversationId, conversationIds),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    )
+    .returning();
+  await db
+    .update(juniorAgentInvocations)
+    .set({ parentMailboxStatus: "skipped", updatedAt: now })
+    .where(
+      or(
+        // A result sent to the tree would start new work there.
+        and(
+          inArray(juniorAgentInvocations.parentConversationId, conversationIds),
+          inArray(juniorAgentInvocations.parentMailboxStatus, [
+            "pending",
+            "appended",
+          ]),
+        ),
+        // No later agent invocation in the tree sends a `replaced` report.
+        and(
+          inArray(juniorAgentInvocations.childConversationId, conversationIds),
+          eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
+        ),
+      ),
+    );
+  return {
+    conversationIds,
+    stopped: stopped.map(invocationFromRow).filter(isTerminalAgentInvocation),
+  };
 }
 
 /** Return whether an agent invocation has finished. */
