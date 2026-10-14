@@ -1,14 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-
-const { completeText } = vi.hoisted(() => ({
-  completeText: vi.fn(async () => ({ text: "Failing check review" })),
-}));
-
-vi.mock("@/chat/pi/client", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/pi/client")>()),
-  completeText,
-}));
-
 import {
   AgentInvocationBusyError,
   AgentInvocationLimitError,
@@ -17,7 +7,7 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 describe("spawnAgent", () => {
-  it("normalizes nullable optional fields and generates a missing title", async () => {
+  it("normalizes nullable optional fields before invoking the runtime control", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
@@ -27,9 +17,9 @@ describe("spawnAgent", () => {
       tool.execute!(
         tool.prepareArguments!({
           task: "Investigate the failing checks.",
+          title: " Failing checks ",
           name: null,
           reasoning_level: null,
-          title: null,
         }),
         { toolCallId: "call-1" },
       ),
@@ -37,10 +27,7 @@ describe("spawnAgent", () => {
       conversation_id: "agent:one",
     });
     expect(spawnAgent).toHaveBeenCalledWith(
-      {
-        task: "Investigate the failing checks.",
-        title: "Failing check review",
-      },
+      { task: "Investigate the failing checks.", title: "Failing checks" },
       { toolCallId: "call-1" },
     );
   });
@@ -65,6 +52,7 @@ describe("spawnAgent", () => {
       tool.execute!(
         tool.prepareArguments!({
           task: "Investigate the failing checks.",
+          title: "Failing checks",
           name: "researcher",
         }),
         { toolCallId: "call-busy" },
@@ -85,7 +73,10 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({ task: "Investigate the failing checks." }),
+        tool.prepareArguments!({
+          task: "Investigate the failing checks.",
+          title: "Failing checks",
+        }),
         { toolCallId: "call-limit" },
       ),
     ).rejects.toSatisfy(
