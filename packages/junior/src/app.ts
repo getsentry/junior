@@ -85,6 +85,7 @@ import type {
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
@@ -486,6 +487,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const attachmentStorage = createVercelAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
+    bindMessageAgent: (request) =>
+      bindMessageAgent(request, { queue: conversationWorkQueue }),
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: conversationWorkQueue }),
     tracePropagation,

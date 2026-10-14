@@ -3,11 +3,13 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AgentRun } from "@/chat/agent/types";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
+  createAgentInvocationForMessage,
   getAgentInvocation,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
 } from "@/chat/agent-invocations/store";
 import {
   createAgentInvocationWorker,
+  enqueueAgentInvocation,
   routeAgentInvocationWork,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
@@ -99,6 +101,24 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
         }),
       );
     },
+    /** Send one parent message to an existing child, as messageAgent does. */
+    message: async (args: {
+      childConversationId: string;
+      idempotencyKey: string;
+      input: string;
+    }) => {
+      const { invocation } = await createAgentInvocationForMessage({
+        ...baseInput,
+        ...args,
+        parentToolCallId: args.idempotencyKey,
+      });
+      await enqueueAgentInvocation(invocation, {
+        conversationStore,
+        queue,
+        state,
+      });
+      return invocation;
+    },
     queue,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
     spawn: async (
@@ -154,7 +174,7 @@ describe("agent invocation identity and concurrency", () => {
     }
   });
 
-  it("reuses one named child and supplies its completed history", async () => {
+  it("continues a named child with a message and supplies its completed history", async () => {
     const harness = await createHarness(taskModel);
     try {
       const first = await harness.spawn({
@@ -164,16 +184,16 @@ describe("agent invocation identity and concurrency", () => {
         reasoningLevel: "high",
       });
       await harness.drainQueuedWork();
-      const second = await harness.spawn({
-        agentName: "researcher",
+      const second = await harness.message({
+        childConversationId: first.childConversationId,
         idempotencyKey: "named-2",
         input: "second named task",
-        reasoningLevel: "medium",
       });
       await expect(listAgents()).resolves.toEqual({
         agents: [
           {
             conversation_id: first.childConversationId,
+            last_result: "completed",
             name: "researcher",
             status: "pending",
             task: "second named task",
@@ -193,7 +213,8 @@ describe("agent invocation identity and concurrency", () => {
         "interactive-auth",
         "subagents",
       ]);
-      expect(requests[1]?.reasoning).toBe("medium");
+      // A message keeps the reasoning level of the child.
+      expect(requests[1]?.reasoning).toBe("high");
       expect(requests[1]?.disabledFeatures).toEqual([
         "handoff",
         "interactive-auth",
@@ -211,7 +232,8 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         getAgentInvocation(second.invocationId),
       ).resolves.toMatchObject({
-        reasoningLevel: "medium",
+        agentName: "researcher",
+        reasoningLevel: "high",
         result: "result:second named task",
         status: "completed",
       });
@@ -286,7 +308,7 @@ describe("agent invocation identity and concurrency", () => {
     }
   });
 
-  it("coalesces concurrent replay and rejects overlapping work for one name", async () => {
+  it("coalesces concurrent replay and rejects a second child with the same name", async () => {
     const harness = await createHarness(taskModel);
     try {
       const replayInput = {
@@ -304,14 +326,14 @@ describe("agent invocation identity and concurrency", () => {
 
       const contention = await Promise.allSettled([
         harness.spawn({
-          agentName: "busy",
-          idempotencyKey: "busy-1",
-          input: "first busy task",
+          agentName: "taken",
+          idempotencyKey: "taken-1",
+          input: "first task",
         }),
         harness.spawn({
-          agentName: "busy",
-          idempotencyKey: "busy-2",
-          input: "second busy task",
+          agentName: "taken",
+          idempotencyKey: "taken-2",
+          input: "second task",
         }),
       ]);
       expect(
@@ -322,7 +344,7 @@ describe("agent invocation identity and concurrency", () => {
       );
       expect(rejected).toMatchObject({
         reason: expect.objectContaining({
-          name: "AgentInvocationBusyError",
+          name: "AgentNameInUseError",
         }),
         status: "rejected",
       });
@@ -427,14 +449,16 @@ describe("agent invocation identity and concurrency", () => {
         expect.arrayContaining([
           {
             conversation_id: successful.childConversationId,
-            status: "completed",
+            last_result: "completed",
+            status: "idle",
             task: "successful sibling",
             updated_at: expect.any(String),
           },
           {
             conversation_id: failing.childConversationId,
             error: "sibling failed",
-            status: "failed",
+            last_result: "failed",
+            status: "idle",
             task: "failing sibling",
             updated_at: expect.any(String),
           },

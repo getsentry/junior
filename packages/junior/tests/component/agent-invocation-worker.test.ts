@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   createAgentInvocation,
+  createAgentInvocationForMessage,
   getAgentInvocation,
   getAgentInvocationTurnId,
   markAgentInvocationRunning,
@@ -133,15 +134,20 @@ describe("agent invocation worker", () => {
         errorMessage: expect.stringContaining("lost its worker"),
         status: "failed",
       });
+      // A failed child takes new work from a parent message.
       await expect(
-        createAgentInvocation({
+        createAgentInvocationForMessage({
           ...INVOCATION_INPUT,
-          agentName: "researcher",
+          childConversationId: created.childConversationId,
           idempotencyKey: "running-no-boundary-2",
+          parentToolCallId: "call-running-no-boundary-2",
         }),
       ).resolves.toMatchObject({
-        childConversationId: created.childConversationId,
-        status: "pending",
+        invocation: {
+          childConversationId: created.childConversationId,
+          status: "pending",
+        },
+        queued: false,
       });
     } finally {
       await fixture.close();
@@ -311,15 +317,20 @@ describe("agent invocation worker", () => {
         ),
         status: "failed",
       });
+      // A failed child takes new work from a parent message.
       await expect(
-        createAgentInvocation({
+        createAgentInvocationForMessage({
           ...INVOCATION_INPUT,
-          agentName: "researcher",
+          childConversationId: created.childConversationId,
           idempotencyKey: "invalid-child-2",
+          parentToolCallId: "call-invalid-child-2",
         }),
       ).resolves.toMatchObject({
-        childConversationId: created.childConversationId,
-        status: "pending",
+        invocation: {
+          childConversationId: created.childConversationId,
+          status: "pending",
+        },
+        queued: false,
       });
     } finally {
       await fixture.close();

@@ -26,7 +26,7 @@ import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
-import type { SpawnAgent } from "@/chat/agent/types";
+import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -94,6 +94,7 @@ interface BaseToolRuntimeContext {
     sendsMessage: boolean;
   };
   handoff?: HandoffControl;
+  messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
   /**
    * Opaque Junior conversation/session identity for this turn.

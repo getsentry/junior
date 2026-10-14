@@ -2,6 +2,7 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   isAgentRunFeatureDisabled,
   type AgentRun,
+  type MessageAgent,
   type SpawnAgent,
 } from "@/chat/agent/types";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
@@ -19,6 +20,7 @@ export function createAgentRunner(
   execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
   options?: {
     attachmentStorage?: AttachmentStorage;
+    bindMessageAgent?: (run: AgentRun) => MessageAgent | undefined;
     bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -28,6 +30,7 @@ export function createAgentRunner(
   const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
+  const bindMessageAgent = options?.bindMessageAgent;
   const canBindSpawn =
     Boolean(bindSpawnAgent) && isExperimentalFeatureEnabled("subagents");
   return {
@@ -38,6 +41,14 @@ export function createAgentRunner(
         !isAgentRunFeatureDisabled(run.disabledFeatures, "subagents")
           ? bindSpawnAgent(run)
           : undefined;
+      // A child agent can always message its parent, even when it is too deep
+      // to start child agents of its own.
+      const messageAgent =
+        bindMessageAgent &&
+        canBindSpawn &&
+        (spawnAgent || run.source.kind === "agent_invocation")
+          ? bindMessageAgent(run)
+          : undefined;
       const nextRun: AgentRun = {
         ...run,
         environment: {
@@ -47,11 +58,12 @@ export function createAgentRunner(
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
         },
-        ...(spawnAgent
+        ...(spawnAgent || messageAgent
           ? {
               durability: {
                 ...run.durability,
-                spawnAgent,
+                ...(spawnAgent ? { spawnAgent } : undefined),
+                ...(messageAgent ? { messageAgent } : undefined),
               },
             }
           : undefined),

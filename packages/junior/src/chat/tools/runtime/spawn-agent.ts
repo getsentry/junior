@@ -1,9 +1,12 @@
 import { z } from "zod";
 import {
-  AgentInvocationBusyError,
   AgentInvocationLimitError,
+  AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
-import { agentNameSchema } from "@/chat/agent-invocations/types";
+import {
+  agentNameSchema,
+  PARENT_AGENT_TARGET,
+} from "@/chat/agent-invocations/types";
 import { completeText } from "@/chat/pi/client";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
@@ -32,7 +35,7 @@ export function createSpawnAgentTool(
 ) {
   return zodTool({
     description:
-      "Start an asynchronous child agent on a delegated task. Give it a name to reuse the same child agent and its history on later calls; omit the name for a one-off agent. This call confirms durable scheduling, not task completion. The result arrives later as a new task in this conversation; do not wait or poll for it.",
+      "Start a new asynchronous child agent on a delegated task. Give it a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead. This call confirms durable scheduling, not task completion. The result arrives later as a new task in this conversation; do not wait or poll for it.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -53,9 +56,14 @@ export function createSpawnAgentTool(
             "Optional short display title for the task. Omit to generate one from the task.",
           ),
         name: agentNameSchema
+          .refine((name) => name !== PARENT_AGENT_TARGET, {
+            message: `"${PARENT_AGENT_TARGET}" is reserved`,
+          })
           .nullable()
           .optional()
-          .describe("Stable child-agent name, or omit for a one-off agent"),
+          .describe(
+            "New child-agent name that messageAgent can address, or omit for a one-off agent",
+          ),
         reasoning_level: z
           .enum(TURN_REASONING_LEVELS)
           .nullable()
@@ -91,9 +99,9 @@ export function createSpawnAgentTool(
           },
         );
       } catch (error) {
-        if (error instanceof AgentInvocationBusyError) {
+        if (error instanceof AgentNameInUseError) {
           throw new ToolInputError(
-            `${error.message}. Wait for it to finish or use a different name.`,
+            `${error.message}. Use messageAgent to give it more work, or choose a different name.`,
             { cause: error },
           );
         }

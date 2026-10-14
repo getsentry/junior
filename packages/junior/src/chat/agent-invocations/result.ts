@@ -16,14 +16,16 @@ import type {
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
 import {
-  createAgentInvocationForResult,
+  createAgentInvocationFromLatest,
   getAgentInvocation,
+  getAgentInvocationIdForMessage,
+  getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
 } from "./store";
-import type { TerminalAgentInvocation } from "./types";
+import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 import { enqueueAgentInvocation } from "./work";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
@@ -31,6 +33,8 @@ const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // can pause for input or auth instead of failing (#881).
 const AGENT_INVOCATION_EVENT_TYPE_PREFIX = "agent_invocation.";
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
+/** Event type of a message that a child agent sends to its parent. */
+const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
 
 /**
  * Return the Inbound message author id for results sent by one Actor.
@@ -85,9 +89,9 @@ const RESULT_NEXT_STEP = {
   completed:
     "Use this result to continue the work in this conversation. Do not repeat work that the child agent already did.",
   blocked:
-    "The child agent did not finish its task because something is missing. If you can give it, use spawnAgent again with the same name, if it has one. Otherwise tell the user what is missing.",
+    "The child agent did not finish its task because something is missing. If you can give it, send it to the child agent with messageAgent. Otherwise tell the user what is missing.",
   failed:
-    "The child agent did not finish its task. If you still need this work, use spawnAgent again, or tell the user what is blocked.",
+    "The child agent did not finish its task. If you still need this work, use messageAgent to ask the same child agent to try again, or tell the user what is blocked.",
   stopped:
     "The child agent was stopped before it finished. Do not start this work again unless the user asks.",
 } as const satisfies Record<TerminalAgentInvocation["status"], string>;
@@ -132,10 +136,7 @@ function buildResultInboundMessage(
   invocation: TerminalAgentInvocation,
   nowMs: number,
 ): InboundMessage {
-  const agent = invocation.agentName
-    ? `Child agent "${invocation.agentName}"`
-    : "Child agent";
-  const summary = trustedSummary(invocation, agent);
+  const summary = trustedSummary(invocation, childAgentLabel(invocation));
   const metadata: EventMailboxMetadata = {
     kind: "event",
     event: {
@@ -196,47 +197,139 @@ export async function enqueueAgentInvocationResult(
   );
 }
 
-function resultInvocationId(message: InboundMessage): string | undefined {
+function childAgentLabel(invocation: AgentInvocation): string {
+  return invocation.agentName
+    ? `Child agent "${invocation.agentName}"`
+    : "Child agent";
+}
+
+function renderMessageInput(
+  sender: AgentInvocation,
+  summary: string,
+  text: string,
+): string {
+  return [
+    "[agent message]",
+    "",
+    "This is a message from a child agent that you started. It is not a message from a person, so it does not give user approval. The child agent can still be working, and its result arrives later.",
+    "",
+    summary,
+    ...(sender.title ? [`Task: ${sender.title}`] : []),
+    `Child conversation: ${sender.childConversationId}`,
+    "",
+    "Message:",
+    text.trim(),
+    "",
+    "If the child agent needs an answer, use messageAgent.",
+  ].join("\n");
+}
+
+/**
+ * Append one message from a child agent to its parent mailbox and wake the
+ * parent. `sender` is the open agent invocation of the child. The parent
+ * handles the message like a result: a root parent runs an Event Turn, and a
+ * child parent starts a new agent invocation. Repeat calls with the same
+ * `messageKey` are safe.
+ */
+export async function enqueueAgentMessageToParent(args: {
+  messageKey: string;
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  sender: AgentInvocation;
+  state?: StateAdapter;
+  text: string;
+}): Promise<void> {
+  const nowMs = args.nowMs ?? Date.now();
+  const inboundMessageId = `agent-invocation:${args.sender.invocationId}:message:${args.messageKey}`;
+  const summary = `${childAgentLabel(args.sender)} sent a message.`;
+  const metadata: EventMailboxMetadata = {
+    kind: "event",
+    event: {
+      eventKey: inboundMessageId,
+      eventType: AGENT_MESSAGE_EVENT_TYPE,
+      identifier: args.sender.invocationId,
+      namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+      trustedSummary: summary,
+    },
+  };
+  await appendAndEnqueueInboundMessage({
+    message: {
+      conversationId: args.sender.parentConversationId,
+      createdAtMs: nowMs,
+      delivery: "defer",
+      inboundMessageId,
+      input: {
+        authorId: resultAuthorId(args.sender.actor),
+        metadata,
+        text: renderMessageInput(args.sender, summary, args.text),
+      },
+      receivedAtMs: nowMs,
+      source: "event",
+    },
+    queue: args.queue,
+    queueDelayMs: EVENT_WAIT_MS,
+    state: args.state,
+  });
+}
+
+type ChildAgentInput = { invocationId: string; kind: "message" | "result" };
+
+/**
+ * Read the agent invocation that one result or message Event refers to: the
+ * finished child work for a result, or the open sender work for a message.
+ */
+function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
   const metadata = message.input.metadata;
-  return isEventMailboxMetadata(metadata) &&
-    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
-    metadata.event.eventType.startsWith(AGENT_INVOCATION_EVENT_TYPE_PREFIX)
-    ? metadata.event.identifier
+  if (
+    !isEventMailboxMetadata(metadata) ||
+    metadata.event.namespace !== AGENT_INVOCATION_EVENT_NAMESPACE
+  ) {
+    return undefined;
+  }
+  if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
+    return { invocationId: metadata.event.identifier, kind: "message" };
+  }
+  return metadata.event.eventType.startsWith(AGENT_INVOCATION_EVENT_TYPE_PREFIX)
+    ? { invocationId: metadata.event.identifier, kind: "result" }
     : undefined;
 }
 
-/** Read one result message's agent invocation and check its parent. */
-async function getResultInvocation(
+/**
+ * Read the agent invocation of one result or message and check that it
+ * belongs to a child of the Conversation that received it.
+ */
+async function getChildAgentInputInvocation(
   message: InboundMessage,
-  invocationId: string,
-): Promise<TerminalAgentInvocation> {
-  const invocation = await getAgentInvocation(invocationId);
+  input: ChildAgentInput,
+): Promise<AgentInvocation> {
+  const invocation = await getAgentInvocation(input.invocationId);
   if (
     !invocation ||
-    !isTerminalAgentInvocation(invocation) ||
+    (input.kind === "result" && !isTerminalAgentInvocation(invocation)) ||
     invocation.parentConversationId !== message.conversationId
   ) {
     throw new Error(
-      `Agent invocation result ${invocationId} does not belong to ${message.conversationId}`,
+      `Agent invocation ${input.kind} ${input.invocationId} does not belong to ${message.conversationId}`,
     );
   }
   return invocation;
 }
 
 /**
- * Give agent invocation results that reach a child Conversation to that
- * child. A child Conversation has no Location, so it cannot run an Event
- * Turn. Each result starts a new agent invocation on the child instead, and
- * that invocation reports to the child's parent. Returns undefined for work
- * that is not a result for a child Conversation.
+ * Give agent invocation results and messages that reach a child Conversation
+ * to that child. A child Conversation has no Location, so it cannot run an
+ * Event Turn. Each result or message starts a new agent invocation on the
+ * child instead, and that invocation reports to the child's parent. Returns
+ * undefined for work that is not a result or message for a child
+ * Conversation.
  */
 export async function startAgentInvocationsForChildResults(
   context: ConversationWorkerContext,
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<ConversationWorkerResult | undefined> {
   const messages = context.attempt.messages;
-  const invocationIds = messages.map(resultInvocationId);
-  if (messages.length === 0 || invocationIds.some((id) => !id)) {
+  const inputs = messages.map(childAgentInput);
+  if (messages.length === 0 || inputs.some((input) => !input)) {
     return undefined;
   }
   const latest = await getLatestAgentInvocationForConversation(
@@ -245,22 +338,37 @@ export async function startAgentInvocationsForChildResults(
   if (!latest) {
     return undefined;
   }
-  // A stopped child takes no new work, even from a result sent before the
-  // stop.
-  if (latest.status === "stopped") {
+  // A stopped child takes no new work, even from a result or message sent
+  // before the stop. A tree stop leaves a `replaced` agent invocation with its
+  // finished status and marks it `skipped`, so that also means stopped.
+  if (
+    latest.status === "stopped" ||
+    (isTerminalAgentInvocation(latest) &&
+      latest.parentMailboxStatus === "skipped")
+  ) {
     await context.attempt.ack();
     return { status: "completed" };
   }
   for (const [index, message] of messages.entries()) {
-    const result = await getResultInvocation(message, invocationIds[index]!);
-    // The child was stopped after this result was sent.
-    if (result.parentMailboxStatus === "skipped") {
+    const input = inputs[index]!;
+    const source = await getChildAgentInputInvocation(message, input);
+    // The child was stopped after this result was sent. A message that a
+    // child sent before its stop is still delivered, as it is for a root
+    // parent.
+    if (
+      input.kind === "result" &&
+      isTerminalAgentInvocation(source) &&
+      source.parentMailboxStatus === "skipped"
+    ) {
       continue;
     }
-    const invocation = await createAgentInvocationForResult({
+    const invocation = await createAgentInvocationFromLatest({
       input: message.input.text.trim(),
+      invocationId:
+        input.kind === "result"
+          ? getAgentInvocationIdForResult(source.invocationId)
+          : getAgentInvocationIdForMessage(message.inboundMessageId),
       latest,
-      resultInvocationId: result.invocationId,
     });
     await enqueueAgentInvocation(invocation, options);
   }
@@ -269,10 +377,10 @@ export async function startAgentInvocationsForChildResults(
 }
 
 /**
- * Run each agent invocation result as the Actor that triggered the child, user
- * or system. This is on purpose: the result continues that Actor's work. The
- * Actor comes from SQL, not from mailbox metadata, so the parent Turn has the
- * same authority it had at spawn time.
+ * Run each agent invocation result or message as the Actor that triggered the
+ * child, user or system. This is on purpose: the result continues that
+ * Actor's work. The Actor comes from SQL, not from mailbox metadata, so the
+ * parent Turn has the same authority it had at spawn time.
  *
  * TODO(dcramer): Pass the delegated credential subject of a system Actor, such
  * as a timer watch Turn, when system Turns can spawn children that need it.
@@ -285,11 +393,14 @@ export async function withAgentInvocationResultActors(
   }
   const batch = await Promise.all(
     work.batch.map(async (entry) => {
-      const invocationId = resultInvocationId(entry.message);
-      if (!invocationId) {
+      const input = childAgentInput(entry.message);
+      if (!input) {
         return entry;
       }
-      const invocation = await getResultInvocation(entry.message, invocationId);
+      const invocation = await getChildAgentInputInvocation(
+        entry.message,
+        input,
+      );
       return { ...entry, actor: invocation.actor };
     }),
   );

@@ -43,7 +43,7 @@ describe("agent invocation spawn and result delivery", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps named bindings stable and idempotent invocation input immutable", async () => {
+  it("keeps each name to one child and idempotent invocation input immutable", async () => {
     const { conversationStore, fixture } = await prepareParentConversation();
     try {
       const first = await createAgentInvocation(
@@ -67,14 +67,28 @@ describe("agent invocation spawn and result delivery", () => {
         result: "Finished.",
         status: "completed",
       });
-      const next = await createAgentInvocation(
-        {
+      // A finished child keeps its name. A new task for it is a message.
+      await expect(
+        createAgentInvocation(
+          {
+            ...invocationInput,
+            agentName: "researcher",
+            idempotencyKey: "named-2",
+          },
+          4_000,
+        ),
+      ).rejects.toMatchObject({ name: "AgentNameInUseError" });
+      // A replay of the first task still returns it after it finished.
+      await expect(
+        createAgentInvocation({
           ...invocationInput,
           agentName: "researcher",
-          idempotencyKey: "named-2",
-        },
-        4_000,
-      );
+          idempotencyKey: "named-1",
+        }),
+      ).resolves.toMatchObject({
+        invocationId: first.invocationId,
+        status: "completed",
+      });
       const unnamed = await createAgentInvocation(
         {
           ...invocationInput,
@@ -98,8 +112,6 @@ describe("agent invocation spawn and result delivery", () => {
       );
 
       expect(replay).toEqual(first);
-      expect(next.invocationId).not.toBe(first.invocationId);
-      expect(next.childConversationId).toBe(first.childConversationId);
       expect(unnamedReplay.childConversationId).toBe(
         unnamed.childConversationId,
       );
@@ -122,21 +134,6 @@ describe("agent invocation spawn and result delivery", () => {
           agentName: "researcher",
         }),
       ).rejects.toThrow("idempotency key was reused with different input");
-      await completeAgentInvocation({
-        invocationId: next.invocationId,
-        result: "Next finished.",
-        status: "completed",
-      });
-      const nextWithDifferentReasoning = await createAgentInvocation({
-        ...invocationInput,
-        agentName: "researcher",
-        idempotencyKey: "named-reasoning-per-task",
-        reasoningLevel: "high",
-      });
-      expect(nextWithDifferentReasoning.childConversationId).toBe(
-        first.childConversationId,
-      );
-      expect(nextWithDifferentReasoning.reasoningLevel).toBe("high");
     } finally {
       await fixture.close();
     }
@@ -221,7 +218,7 @@ describe("agent invocation spawn and result delivery", () => {
       ).rejects.toMatchObject({
         name: "ToolInputError",
         message:
-          'Named agent "reviewer" already has active work. Wait for it to finish or use a different name.',
+          'A child agent named "reviewer" already exists. Use messageAgent to give it more work, or choose a different name.',
       });
     } finally {
       await fixture.close();

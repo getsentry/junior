@@ -7,6 +7,7 @@ import {
 import {
   completeAgentInvocation,
   createAgentInvocation,
+  createAgentInvocationForMessage,
   getAgentInvocation,
   getAgentInvocationIdForResult,
   getAgentInvocationTurnId,
@@ -126,7 +127,7 @@ describe("stopping child agents", () => {
     vi.restoreAllMocks();
   });
 
-  it("stops a running child without a result and lets its name take new work", async () => {
+  it("stops a running child without a result and lets a message start new work", async () => {
     const harness = await createHarness();
     try {
       const running = await harness.spawn({
@@ -210,16 +211,22 @@ describe("stopping child agents", () => {
         conversation_id: running.childConversationId,
         stopped: false,
       });
-      // The stop frees the busy name.
+      // A message from the parent starts new work on the stopped child.
       await expect(
-        harness.spawn({
-          agentName: "researcher",
+        createAgentInvocationForMessage({
+          ...invocationInput,
+          childConversationId: running.childConversationId,
           idempotencyKey: "after-stop",
           input: "short task",
+          parentToolCallId: "call-after-stop",
         }),
       ).resolves.toMatchObject({
-        childConversationId: running.childConversationId,
-        status: "pending",
+        invocation: {
+          agentName: "researcher",
+          childConversationId: running.childConversationId,
+          status: "pending",
+        },
+        queued: false,
       });
     } finally {
       await harness.close();
