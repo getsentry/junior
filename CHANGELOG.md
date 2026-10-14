@@ -1,4 +1,22 @@
 # Changelog
+## 0.246.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Name browser tabs after the current page by @sentry-junior in [#2137](https://github.com/getsentry/junior/pull/2137)
+- Stop the active Turn from the composer by @sentry-junior in [#2136](https://github.com/getsentry/junior/pull/2136)
+
+#### Subagents
+
+- Add messageAgent and drop spawnAgent name reuse by @sentry-junior in [#2135](https://github.com/getsentry/junior/pull/2135)
+- Let a child agent report that it is blocked by @sentry-junior in [#2133](https://github.com/getsentry/junior/pull/2133)
+
+### Bug Fixes 🐛
+
+- (dashboard) Show subagent starts in the main transcript view by @sentry-junior in [#2132](https://github.com/getsentry/junior/pull/2132)
+
 ## 0.245.0
 
 ### New Features ✨
