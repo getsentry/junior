@@ -82,23 +82,8 @@ export async function recordSubagentEnded(
   invocation: TerminalAgentInvocation,
 ): Promise<void> {
   const eventStore = getConversationEventStore();
-  const result =
-    invocation.status === "completed" ? invocation.result.trim() : "";
-  if (result) {
-    const messageId = `agent-invocation:${invocation.invocationId}:reply`;
-    await eventStore.append(invocation.childConversationId, [
-      {
-        idempotencyKey: `message:${messageId}`,
-        data: {
-          type: "message",
-          messageId,
-          role: "assistant",
-          text: result,
-        },
-        createdAtMs: invocation.terminalAtMs,
-      },
-    ]);
-  }
+  // Write the parent outcome first. The child message only feeds the child
+  // transcript, so it must not hold back how the parent sees the child end.
   await eventStore.append(invocation.parentConversationId, [
     {
       idempotencyKey: `subagent_ended:${invocation.invocationId}`,
@@ -106,6 +91,22 @@ export async function recordSubagentEnded(
         type: "subagent_ended",
         subagentInvocationId: invocation.invocationId,
         outcome: SUBAGENT_OUTCOMES[invocation.status],
+      },
+      createdAtMs: invocation.terminalAtMs,
+    },
+  ]);
+  const result =
+    invocation.status === "completed" ? invocation.result.trim() : "";
+  if (!result) return;
+  const messageId = `agent-invocation:${invocation.invocationId}:reply`;
+  await eventStore.append(invocation.childConversationId, [
+    {
+      idempotencyKey: `message:${messageId}`,
+      data: {
+        type: "message",
+        messageId,
+        role: "assistant",
+        text: result,
       },
       createdAtMs: invocation.terminalAtMs,
     },
