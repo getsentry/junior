@@ -11,7 +11,7 @@ export function SegmentedTabsFixture() {
       <SegmentedTabs
         items={[
           { label: "Details", value: "details" },
-          { label: "Memories", value: "memories" },
+          { count: 3, label: "Memories", value: "memories" },
           { label: "Usage", value: "usage" },
         ]}
         label="Conversation panels"

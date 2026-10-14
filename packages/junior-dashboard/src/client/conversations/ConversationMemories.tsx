@@ -21,18 +21,23 @@ const conversationMemoryListSchema = z
   })
   .strict();
 
-/** Load and show the memories captured from one Conversation. */
-export function ConversationMemories(props: { conversationId: string }) {
-  const query = useQuery({
+/** Load the memories captured from one Conversation. */
+export function useConversationMemories(conversationId: string) {
+  return useQuery({
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationMemoryListSchema,
-        `/api/plugins/memory/conversations/${encodeURIComponent(props.conversationId)}/memories`,
+        `/api/plugins/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
         signal,
       ),
-    queryKey: ["conversation", props.conversationId, "memories"],
+    queryKey: ["conversation", conversationId, "memories"],
     retry: false,
   });
+}
+
+/** Show the memories captured from one Conversation. */
+export function ConversationMemories(props: { conversationId: string }) {
+  const query = useConversationMemories(props.conversationId);
 
   if (query.isPending) {
     return (

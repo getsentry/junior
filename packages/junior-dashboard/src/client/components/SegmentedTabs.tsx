@@ -23,7 +23,8 @@ export function segmentedTabClass(selected: boolean): string {
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
-  items: readonly { label: string; value: Value }[];
+  /** `count` is the number of entries in the panel, when known. */
+  items: readonly { count?: number; label: string; value: Value }[];
   onChange(value: NoInfer<Value>): void;
   value: NoInfer<Value>;
 }) {
@@ -45,7 +46,7 @@ export function SegmentedTabs<const Value extends string>(props: {
             aria-controls={`${id}-panel`}
             aria-selected={props.value === item.value}
             className={cn(
-              "min-w-0",
+              "inline-flex min-w-0 items-center justify-center gap-1.5",
               segmentedTabClass(props.value === item.value),
             )}
             id={`${id}-${item.value}`}
@@ -80,7 +81,12 @@ export function SegmentedTabs<const Value extends string>(props: {
             tabIndex={props.value === item.value ? 0 : -1}
             type="button"
           >
-            {item.label}
+            <span className="truncate">{item.label}</span>
+            {item.count !== undefined ? (
+              <span className="shrink-0 font-mono text-xs tabular-nums text-dashboard-text-muted">
+                {item.count.toLocaleString("en-US")}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>

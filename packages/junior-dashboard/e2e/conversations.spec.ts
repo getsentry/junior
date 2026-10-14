@@ -577,7 +577,9 @@ test("inspects and copies a child agent transcript", async ({
   // The Details drawer lists child agents with the runtime status.
   await page.getByRole("button", { name: "Conversation details" }).click();
   const details = page.getByRole("dialog", { name: "Dashboard QA edge cases" });
-  await details.getByRole("tab", { name: "Subagents" }).click();
+  const subagentsTab = details.getByRole("tab", { name: "Subagents" });
+  await expect(subagentsTab).toHaveAccessibleName("Subagents 2");
+  await subagentsTab.click();
   const subagents = details.getByRole("list", { name: "Subagents" });
   await expect(subagents.getByRole("listitem")).toHaveCount(2);
   await expect(subagents.getByRole("listitem").first()).toContainText(

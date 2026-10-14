@@ -21,22 +21,27 @@ const statusTone: Record<ConversationChildAgent["status"], StatusChipTone> = {
   stopped: "neutral",
 };
 
-/** Load and show the child agents of one Conversation with runtime status. */
+/** Load the child agents of one Conversation with runtime status. */
+export function useConversationChildAgents(conversationId: string) {
+  return useQuery({
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        conversationChildAgentsReportSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
+        signal,
+      ),
+    queryKey: ["conversation", conversationId, "agents"],
+    retry: false,
+  });
+}
+
+/** Show the child agents of one Conversation with runtime status. */
 export function ConversationChildAgents(props: {
   conversationId: string;
   /** Called before a child link leaves the current Conversation. */
   onNavigate(): void;
 }) {
-  const query = useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationChildAgentsReportSchema,
-        `/api/conversations/${encodeURIComponent(props.conversationId)}/agents`,
-        signal,
-      ),
-    queryKey: ["conversation", props.conversationId, "agents"],
-    retry: false,
-  });
+  const query = useConversationChildAgents(props.conversationId);
 
   if (query.isPending) {
     return (
