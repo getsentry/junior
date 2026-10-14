@@ -2,7 +2,6 @@ import { inArray } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import { listChildAgents } from "@/chat/agent-invocations/store";
 import { getConversationStore, getDb } from "@/chat/db";
-import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { throwApiError } from "../http";
@@ -13,33 +12,30 @@ import {
 import { readConversationAccessFromSql } from "./access";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 
-interface ChildConversationMetrics {
-  durationMs: number;
-  usage?: AgentTurnUsage;
-}
-
-/** Read the runtime and usage that each child Conversation saved itself. */
+/** Read the runtime and usage saved on each child Conversation row. */
 async function readChildConversationMetrics(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-): Promise<Map<string, ChildConversationMetrics>> {
-  if (conversationIds.length === 0) return new Map();
-  const rows = await db
-    .select({
-      conversationId: juniorConversations.conversationId,
-      durationMs: juniorConversations.durationMs,
-      usage: juniorConversations.usage,
-    })
-    .from(juniorConversations)
-    .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+) {
+  const rows =
+    conversationIds.length === 0
+      ? []
+      : await db
+          .select({
+            conversationId: juniorConversations.conversationId,
+            durationMs: juniorConversations.durationMs,
+            usage: juniorConversations.usage,
+          })
+          .from(juniorConversations)
+          .where(
+            inArray(juniorConversations.conversationId, [...conversationIds]),
+          );
   return new Map(
     rows.map((row) => [
       row.conversationId,
       {
-        durationMs: row.durationMs,
-        ...(hasAgentTurnUsage(row.usage ?? undefined)
-          ? { usage: row.usage! }
-          : undefined),
+        cumulativeDurationMs: row.durationMs,
+        ...(row.usage ? { cumulativeUsage: row.usage } : undefined),
       },
     ]),
   );
@@ -74,12 +70,11 @@ export async function requireConversationChildAgents(
   ]);
 
   const agents = children.map((agent) => {
-    const metrics = metricsByChild.get(agent.childConversationId);
     const auxiliaryCosts = auxiliaryCostsByChild.get(agent.childConversationId);
     return {
       conversationId: agent.childConversationId,
-      cumulativeDurationMs: metrics?.durationMs ?? 0,
-      ...(metrics?.usage ? { cumulativeUsage: metrics.usage } : undefined),
+      cumulativeDurationMs: 0,
+      ...metricsByChild.get(agent.childConversationId),
       ...(auxiliaryCosts ? { auxiliaryCosts } : undefined),
       status: agent.status,
       updatedAt: new Date(agent.updatedAtMs).toISOString(),

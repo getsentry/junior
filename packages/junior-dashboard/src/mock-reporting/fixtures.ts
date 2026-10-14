@@ -1850,7 +1850,8 @@ export function readMockConversationPendingMessages(
 export function readMockConversationChildAgents(
   conversationId: string,
 ): ConversationChildAgentsReport | undefined {
-  const conversation = mockConversations(NOW_MS).find(
+  const conversations = mockConversations(NOW_MS);
+  const conversation = conversations.find(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
@@ -1860,14 +1861,12 @@ export function readMockConversationChildAgents(
   const startedAtMs = NOW_MS - 5 * 60 * 60_000;
   // Match the API: each row has the usage of its own child Conversation.
   const childMetrics = (childConversationId: string) => {
-    const child = mockConversations(NOW_MS).find(
+    const child = conversations.find(
       (candidate) => candidate.conversationId === childConversationId,
-    );
+    )!;
     return {
-      cumulativeDurationMs: child?.cumulativeDurationMs ?? 0,
-      ...(child?.cumulativeUsage
-        ? { cumulativeUsage: child.cumulativeUsage }
-        : undefined),
+      cumulativeDurationMs: child.cumulativeDurationMs,
+      cumulativeUsage: child.cumulativeUsage,
     };
   };
   return {

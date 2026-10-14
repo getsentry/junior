@@ -89,10 +89,7 @@ export function ConversationChildAgents(props: {
   );
 }
 
-/**
- * Lead with what the child agent was asked to do, then its state, then what
- * it cost. The stats use the same terms as Conversation rows.
- */
+/** Show who ran, what it was asked to do, and what it cost. */
 function ChildAgentRow(props: {
   agent: ConversationChildAgent;
   onNavigate(): void;
