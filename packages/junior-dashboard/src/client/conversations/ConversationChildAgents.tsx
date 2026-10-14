@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot } from "lucide-react";
+import { Bot, CircleAlert, LockKeyhole } from "lucide-react";
 import { Link } from "react-router";
 import {
   conversationChildAgentsReportSchema,
@@ -7,8 +7,15 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { StatusChip, type StatusChipTone } from "../components/StatusChip";
-import { formatMessageTimestamp } from "../format";
+import {
+  formatConversationCostTotal,
+  formatRelativeTime,
+  formatRuntime,
+  formatTime,
+  formatUsageTotal,
+} from "../format";
 import { fetchDashboardJson } from "../http";
+import { cn } from "../styles";
 import { conversationPath } from "./conversationRoutes";
 
 const statusTone: Record<ConversationChildAgent["status"], StatusChipTone> = {
@@ -19,6 +26,11 @@ const statusTone: Record<ConversationChildAgent["status"], StatusChipTone> = {
   pending: "neutral",
   running: "info",
   stopped: "neutral",
+};
+
+const errorToneClass: Partial<Record<StatusChipTone, string>> = {
+  danger: "text-rose-200/85",
+  warning: "text-amber-200/85",
 };
 
 /** Load the child agents of one Conversation with runtime status. */
@@ -67,51 +79,96 @@ export function ConversationChildAgents(props: {
   }
 
   return (
-    <ol aria-label="Subagents" className="m-0 grid list-none gap-3 p-0">
+    <ol aria-label="Subagents" className="m-0 grid list-none gap-2 p-0">
       {query.data.agents.map((agent) => (
-        <li
-          className="grid gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-3"
-          key={agent.conversationId}
-        >
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Link
-              className="min-w-0 truncate font-mono text-xs font-semibold text-dashboard-text no-underline hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-              onClick={props.onNavigate}
-              to={conversationPath(agent.conversationId)}
-            >
-              {agent.redacted ? "Private subagent" : (agent.name ?? "agent")}
-            </Link>
-            <StatusChip
-              className="ml-auto"
-              size="compact"
-              tone={statusTone[agent.status]}
-            >
-              {agent.status}
-            </StatusChip>
-          </div>
-          {agent.title ? (
-            <p className="m-0 break-words text-sm font-semibold text-dashboard-text">
-              {agent.title}
-            </p>
-          ) : null}
-          {agent.task ? (
-            <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
-              {agent.task}
-            </p>
-          ) : null}
-          {agent.error ? (
-            <p className="m-0 whitespace-pre-wrap break-words text-xs leading-relaxed text-dashboard-text-muted">
-              {agent.error}
-            </p>
-          ) : null}
-          <time
-            className="font-mono text-xs text-dashboard-text-muted"
-            dateTime={agent.updatedAt}
-          >
-            {formatMessageTimestamp(Date.parse(agent.updatedAt), true)}
-          </time>
+        <li key={agent.conversationId}>
+          <ChildAgentRow agent={agent} onNavigate={props.onNavigate} />
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * Lead with what the child agent was asked to do, then its state, then what
+ * it cost. The stats use the same terms as Conversation rows.
+ */
+function ChildAgentRow(props: {
+  agent: ConversationChildAgent;
+  onNavigate(): void;
+}) {
+  const { agent } = props;
+  const tone = statusTone[agent.status];
+  const task = agent.task?.trim();
+  const headline = agent.title ?? task;
+  // A title is often a short form of the task. Skip the task when it adds nothing.
+  const detail = agent.title && task && task !== agent.title ? task : undefined;
+  const runtime = formatRuntime(agent.cumulativeDurationMs);
+  const stats = [
+    formatUsageTotal(agent.cumulativeUsage),
+    formatConversationCostTotal(agent.cumulativeUsage, agent.auxiliaryCosts),
+    runtime ? `${runtime} runtime` : "",
+  ].filter(Boolean);
+
+  return (
+    <Link
+      className="grid min-w-0 gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-2.5 text-inherit no-underline transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      onClick={props.onNavigate}
+      to={conversationPath(agent.conversationId)}
+    >
+      <div className="flex min-w-0 items-center gap-2 text-xs">
+        {agent.redacted ? (
+          <span className="flex min-w-0 items-center gap-1.5 text-dashboard-text-muted">
+            <LockKeyhole aria-hidden="true" className="size-3 shrink-0" />
+            Private subagent
+          </span>
+        ) : (
+          <span className="min-w-0 truncate font-mono text-dashboard-text-muted">
+            {agent.name ?? "subagent"}
+          </span>
+        )}
+        <StatusChip className="ml-auto shrink-0" size="compact" tone={tone}>
+          {agent.status}
+        </StatusChip>
+        <time
+          className="shrink-0 text-dashboard-text-faint"
+          dateTime={agent.updatedAt}
+          title={`Updated ${formatTime(agent.updatedAt, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}`}
+        >
+          {formatRelativeTime(agent.updatedAt)}
+        </time>
+      </div>
+      {headline ? (
+        <p className="m-0 line-clamp-2 break-words text-sm font-semibold leading-snug text-dashboard-text">
+          {headline}
+        </p>
+      ) : null}
+      {detail ? (
+        <p className="m-0 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-muted">
+          {detail}
+        </p>
+      ) : null}
+      {agent.error ? (
+        <p
+          className={cn(
+            "m-0 flex min-w-0 items-start gap-1.5 text-xs leading-relaxed",
+            errorToneClass[tone] ?? "text-dashboard-text-muted",
+          )}
+        >
+          <CircleAlert aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+          <span className="line-clamp-3 min-w-0 whitespace-pre-wrap break-words">
+            {agent.error}
+          </span>
+        </p>
+      ) : null}
+      {stats.length > 0 ? (
+        <p className="m-0 font-mono text-xs tabular-nums text-dashboard-text-muted">
+          {stats.join(" · ")}
+        </p>
+      ) : null}
+    </Link>
   );
 }

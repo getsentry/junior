@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import { conversationChildAgentsReportSchema } from "@/api/schema";
@@ -5,7 +6,8 @@ import {
   completeAgentInvocation,
   createAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { closeDb } from "@/chat/db";
+import { closeDb, getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import {
   invocationInput,
   parentConversationId,
@@ -53,6 +55,16 @@ describe("conversation child agents API", () => {
       status: "blocked",
     });
 
+    await getDb()
+      .update(juniorConversations)
+      .set({
+        durationMs: 42_000,
+        usage: { cost: { total: 0.02 }, inputTokens: 900, outputTokens: 100 },
+      })
+      .where(
+        eq(juniorConversations.conversationId, reviewer.childConversationId),
+      );
+
     const response = await requestChildAgents(slackParentConversationId);
 
     expect(response.status).toBe(200);
@@ -62,6 +74,7 @@ describe("conversation child agents API", () => {
       agents: [
         {
           conversationId: blocked.childConversationId,
+          cumulativeDurationMs: 0,
           error: "GitHub access is missing.",
           status: "blocked",
           task: "Read the private repo.",
@@ -69,6 +82,12 @@ describe("conversation child agents API", () => {
         },
         {
           conversationId: reviewer.childConversationId,
+          cumulativeDurationMs: 42_000,
+          cumulativeUsage: {
+            cost: { total: 0.02 },
+            inputTokens: 900,
+            outputTokens: 100,
+          },
           name: "reviewer",
           status: "pending",
           task: "Review the plan.",
@@ -99,6 +118,7 @@ describe("conversation child agents API", () => {
       agents: [
         {
           conversationId: child.childConversationId,
+          cumulativeDurationMs: 0,
           redacted: true,
           status: "pending",
           updatedAt: new Date(1_000).toISOString(),

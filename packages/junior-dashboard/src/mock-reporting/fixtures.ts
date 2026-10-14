@@ -971,6 +971,10 @@ function advisorConversation(
   nowMs: number,
   conversationId: string,
   text: string,
+  metrics: Pick<
+    ConversationDetailReport,
+    "cumulativeDurationMs" | "cumulativeUsage"
+  >,
 ): MockConversation {
   const startedAt = iso(nowMs, -10 * 60_000);
   const conversation = detail(nowMs, {
@@ -979,7 +983,7 @@ function advisorConversation(
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 18_000),
     lastProgressAt: iso(Date.parse(startedAt), 18_000),
-    cumulativeDurationMs: 18_000,
+    ...metrics,
     events: [
       reportEvent(0, startedAt, {
         type: "message",
@@ -1399,11 +1403,28 @@ function mockConversations(nowMs: number): MockConversation[] {
       nowMs,
       DASHBOARD_QA_PLAN_ID,
       "Review the dashboard plan before editing.",
+      {
+        cumulativeDurationMs: 72_400,
+        cumulativeUsage: {
+          inputTokens: 38_400,
+          outputTokens: 2_150,
+          cachedInputTokens: 21_600,
+          cost: { input: 0.094, output: 0.048, total: 0.142 },
+        },
+      },
     ),
     advisorConversation(
       nowMs,
       DASHBOARD_QA_REVIEW_ID,
       "Review the implementation after the first advisor pass.",
+      {
+        cumulativeDurationMs: 9_800,
+        cumulativeUsage: {
+          inputTokens: 6_200,
+          outputTokens: 310,
+          cost: { input: 0.015, output: 0.004, total: 0.019 },
+        },
+      },
     ),
     longConversation(nowMs),
     incidentConversation(nowMs),
@@ -1837,9 +1858,22 @@ export function readMockConversationChildAgents(
     return { agents: [], conversationId };
   }
   const startedAtMs = NOW_MS - 5 * 60 * 60_000;
+  // Match the API: each row has the usage of its own child Conversation.
+  const childMetrics = (childConversationId: string) => {
+    const child = mockConversations(NOW_MS).find(
+      (candidate) => candidate.conversationId === childConversationId,
+    );
+    return {
+      cumulativeDurationMs: child?.cumulativeDurationMs ?? 0,
+      ...(child?.cumulativeUsage
+        ? { cumulativeUsage: child.cumulativeUsage }
+        : undefined),
+    };
+  };
   return {
     agents: [
       {
+        ...childMetrics(DASHBOARD_QA_REVIEW_ID),
         conversationId: DASHBOARD_QA_REVIEW_ID,
         error: "GitHub access is needed to read the pull request.",
         name: "reviewer",
@@ -1848,6 +1882,7 @@ export function readMockConversationChildAgents(
         updatedAt: iso(startedAtMs, 44_000),
       },
       {
+        ...childMetrics(DASHBOARD_QA_PLAN_ID),
         conversationId: DASHBOARD_QA_PLAN_ID,
         status: "completed",
         task: "Review the dashboard plan before editing.",
