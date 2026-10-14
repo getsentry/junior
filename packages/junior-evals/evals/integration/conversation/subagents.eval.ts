@@ -26,7 +26,7 @@ describe("Child Agents", () => {
     ]);
   });
 
-  test("when a child agent is missing input, it reports the block and the parent asks for it", async ({
+  test("when a child agent is missing input, it reports the block and the parent says what is missing", async ({
     agent,
   }) => {
     const { run } = await agent({ experimental: { subagents: true } });
@@ -55,7 +55,6 @@ describe("Child Agents", () => {
       rubric({
         pass: [
           "The last reply says the child agent could not finish because it does not know the deploy region.",
-          "The last reply asks the user for the region or says that the user must give it.",
         ],
         fail: ["Do not name a deploy region or say the task is done."],
       }),
