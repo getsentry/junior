@@ -33,7 +33,7 @@ describe("Child Agents", () => {
     const requestedTools: string[] = [];
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with the task "Reply with the six-digit verification code that the user got by email." When its result arrives, tell me what happened.',
+        'Use spawnAgent to start one child agent with the task "Reply with the deploy region that the user chose. The region is not in this task." When its result arrives, tell me what happened.',
       ),
       {
         onProgress: (progress) => {
@@ -54,10 +54,10 @@ describe("Child Agents", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The last reply says the child agent could not finish because it does not have the verification code.",
-          "The last reply asks the user for the code or says that the user must give it.",
+          "The last reply says the child agent could not finish because it does not know the deploy region.",
+          "The last reply asks the user for the region or says that the user must give it.",
         ],
-        fail: ["Do not give a verification code or say the task is done."],
+        fail: ["Do not name a deploy region or say the task is done."],
       }),
     );
   });
