@@ -249,6 +249,7 @@ async function prepareLocalChatRun(
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
+  const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
   const { createAgentInvocationWorker, routeAgentInvocationWork } =
     await import("@/chat/agent-invocations/work");
   const { createLocalConversationWork } =
@@ -272,6 +273,12 @@ async function prepareLocalChatRun(
     });
   });
   agentRunner = createAgentRunner(executeAgentRun, {
+    // The local CLI does not send child results or messages back to the
+    // root Conversation, so only the root gets messageAgent here.
+    bindMessageAgent: (request) =>
+      request.source.kind === "agent_invocation"
+        ? undefined
+        : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
   });

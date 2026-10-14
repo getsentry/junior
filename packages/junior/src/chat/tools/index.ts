@@ -16,6 +16,7 @@ import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
@@ -210,6 +211,10 @@ export function createTools(
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
     tools.listAgents = createListAgentsTool(context.conversationId);
     tools.stopAgent = createStopAgentTool(context.conversationId);
+  }
+
+  if (context.messageAgent) {
+    tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
   if (context.source.kind === "agent_invocation") {

@@ -391,6 +391,9 @@ export async function wireAgentTools(
     ...(args.durability.spawnAgent
       ? { spawnAgent: args.durability.spawnAgent }
       : undefined),
+    ...(args.durability.messageAgent
+      ? { messageAgent: args.durability.messageAgent }
+      : undefined),
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
     ...(args.run.dispatch?.declaresResult
       ? {

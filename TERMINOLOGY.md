@@ -116,10 +116,18 @@ Canonical words used across Junior's code and documentation.
   is not complete.
 - **Assigned work**: plugin-owned work associated with a conversation, whether
   finished or unfinished.
-- **Agent binding**: a named reference, scoped to one parent agent
-  conversation, that reuses one child conversation and its history.
+- **Agent binding**: a name, scoped to one parent agent conversation, for one
+  child conversation. Each name belongs to one child. Later work for that child
+  is an agent message, not a new binding.
 - **Agent invocation**: one retry-safe delegated task sent from a parent agent
   conversation to a child conversation, including its durable terminal result.
+  The first task comes from `spawnAgent`. Each later task comes from an agent
+  message or from a result of the child's own child agents.
+- **Agent message**: text that one agent sends with `messageAgent` to its
+  parent agent or to one of its child agents. A message to a child starts an
+  agent invocation on that child. A message to the parent is an Event Inbound
+  message, the same as a child result. An agent message is not from a person,
+  so it does not give user approval.
 - **Reasoning level**: the configured or selected amount of model reasoning for
   a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Reply**: a destination-visible message owned by delivery or reply-policy

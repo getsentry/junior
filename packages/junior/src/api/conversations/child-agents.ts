@@ -1,6 +1,6 @@
 import { inArray } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
-import { listChildAgents } from "@/chat/agent-invocations/store";
+import { listChildAgents } from "@/chat/agent-invocations/list";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";

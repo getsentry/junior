@@ -83,6 +83,29 @@ export type SpawnAgent = (
   options: { signal?: AbortSignal; toolCallId: string },
 ) => Promise<SpawnAgentResult>;
 
+/** Model-safe input for one message to the parent or a child agent. */
+export type MessageAgentInput = {
+  /** `parent`, or the name or Conversation id of a child agent. */
+  to: string;
+  text: string;
+};
+
+/** How one message reached its target agent. */
+export type MessageAgentResult = {
+  conversationId: string;
+  /**
+   * `started`: the target child agent starts work on the message now.
+   * `queued`: the target reads it after its current work.
+   */
+  delivery: "queued" | "started";
+};
+
+/** Runtime-bound capability to message the parent or a child agent. */
+export type MessageAgent = (
+  input: MessageAgentInput,
+  options: { signal?: AbortSignal; toolCallId: string },
+) => Promise<MessageAgentResult>;
+
 /** Current user instruction for one agent-run slice. */
 export type AgentInstruction = {
   text: string;
@@ -158,6 +181,8 @@ export class RetryableDeliveryError extends Error {
 export type AgentDurability = {
   /** Schedule delegated work with authority bound by the active parent run. */
   spawnAgent?: SpawnAgent;
+  /** Message the parent or a child agent with the authority of this run. */
+  messageAgent?: MessageAgent;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;

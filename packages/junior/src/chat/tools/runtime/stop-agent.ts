@@ -17,7 +17,7 @@ const stopAgentOutputSchema = juniorToolOutputSchema.extend({
 export function createStopAgentTool(conversationId: string) {
   return zodTool({
     description:
-      "Stop a child agent that this conversation started, and every child agent it started. Use it when the child agent's work is no longer needed or goes in the wrong direction. A stopped child agent sends no result. To give a named child agent new work later, call spawnAgent with its name.",
+      "Stop a child agent that this conversation started, and every child agent it started. Use it when the child agent's work is no longer needed or goes in the wrong direction. A stopped child agent sends no result. To give it new work later, use messageAgent.",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

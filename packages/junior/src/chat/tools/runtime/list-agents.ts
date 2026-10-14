@@ -1,12 +1,43 @@
 import { z } from "zod";
-import { listChildAgents } from "@/chat/agent-invocations/store";
-import { agentNameSchema } from "@/chat/agent-invocations/types";
+import { listChildAgents } from "@/chat/agent-invocations/list";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { AGENT_INVOCATION_STATUSES } from "@/db/schema/agent-invocations";
+import {
+  agentNameSchema,
+  CHILD_AGENT_RESULTS,
+  type ChildAgent,
+} from "@/chat/agent-invocations/types";
 
 const TASK_MAX_LENGTH = 1_000;
 const ERROR_MAX_LENGTH = 500;
+
+/**
+ * What a child agent does now. The words match the Conversation execution
+ * status, plus `stopped` after stopAgent.
+ */
+const CHILD_AGENT_STATUSES = [
+  "pending",
+  "running",
+  "paused",
+  "idle",
+  "stopped",
+] as const;
+
+function childAgentStatus(
+  agent: ChildAgent,
+): (typeof CHILD_AGENT_STATUSES)[number] {
+  switch (agent.status) {
+    case "pending":
+    case "running":
+    case "paused":
+    case "stopped":
+      return agent.status;
+    case "blocked":
+    case "completed":
+    case "failed":
+      return "idle";
+  }
+}
 
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
@@ -25,12 +56,16 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
             ),
           name: agentNameSchema
             .optional()
-            .describe("Child-agent name. Pass it to spawnAgent to reuse it."),
+            .describe("Child-agent name. Pass it to messageAgent."),
           status: z
-            .enum(AGENT_INVOCATION_STATUSES)
+            .enum(CHILD_AGENT_STATUSES)
             .describe(
-              "pending: waiting to run. running or paused: working. completed, blocked, failed, or stopped: not working.",
+              "What the child agent does now. pending: waiting to run. running or paused: working. idle: finished its work and waits for a message. stopped: stopAgent stopped it.",
             ),
+          last_result: z
+            .enum(CHILD_AGENT_RESULTS)
+            .optional()
+            .describe("How the latest finished task of the child agent ended"),
           task: z.string().describe("Latest task given to the child agent"),
           title: z
             .string()
@@ -51,7 +86,7 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
 export function createListAgentsTool(conversationId: string) {
   return zodTool({
     description:
-      "List the child agents that this conversation started, with the state recorded by the runtime. Use it to check which child agents are still working, or to find a named child agent before you give it more work with spawnAgent. Results still arrive as new tasks; do not poll with this tool.",
+      "List the child agents that this conversation started, with the state recorded by the runtime. Use it to check which child agents are still working, or to find a child agent before you give it more work with messageAgent. Results still arrive as new tasks; do not poll with this tool.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -64,7 +99,8 @@ export function createListAgentsTool(conversationId: string) {
       agents: (await listChildAgents(conversationId)).map((agent) => ({
         conversation_id: agent.childConversationId,
         ...(agent.agentName ? { name: agent.agentName } : undefined),
-        status: agent.status,
+        status: childAgentStatus(agent),
+        ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
         task: truncate(agent.task, TASK_MAX_LENGTH),
         ...(agent.title ? { title: agent.title } : undefined),
         ...(agent.errorMessage

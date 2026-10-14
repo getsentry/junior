@@ -19,6 +19,9 @@ const exactStringSchema = z
 
 export const agentNameSchema = exactStringSchema.max(64);
 
+/** `messageAgent` target for the parent of a child agent. */
+export const PARENT_AGENT_TARGET = "parent";
+
 const agentInvocationMailboxStatusSchema = z.enum(
   AGENT_INVOCATION_MAILBOX_STATUSES,
 );
@@ -99,12 +102,18 @@ export type CreateAgentInvocationInput = z.input<
   typeof createAgentInvocationSchema
 >;
 
+/** How a finished task of a child agent ended. A stop is not a result. */
+export const CHILD_AGENT_RESULTS = ["completed", "blocked", "failed"] as const;
+export type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
+
 /** Current state of one child agent, read from its agent invocations. */
 export type ChildAgent = {
   agentName?: string;
   childConversationId: string;
   /** Error of the latest agent invocation when the child is blocked, failed, or stopped. */
   errorMessage?: string;
+  /** Result of the newest agent invocation that finished without a stop. */
+  lastResult?: ChildAgentResult;
   status: AgentInvocationStatus;
   /** Input of the latest agent invocation that the parent started. */
   task: string;

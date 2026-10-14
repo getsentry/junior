@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  AgentInvocationBusyError,
   AgentInvocationLimitError,
+  AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -43,9 +43,9 @@ describe("spawnAgent", () => {
     ).rejects.toBeInstanceOf(ToolInputError);
   });
 
-  it("maps named-agent busy errors to tool input errors", async () => {
+  it("points a used name to messageAgent", async () => {
     const tool = createSpawnAgentTool(
-      vi.fn().mockRejectedValue(new AgentInvocationBusyError("researcher")),
+      vi.fn().mockRejectedValue(new AgentNameInUseError("researcher")),
     );
 
     await expect(
@@ -61,8 +61,9 @@ describe("spawnAgent", () => {
       (error) =>
         error instanceof ToolInputError &&
         error.message.includes(
-          'Named agent "researcher" already has active work',
-        ),
+          'A child agent named "researcher" already exists',
+        ) &&
+        error.message.includes("Use messageAgent"),
     );
   });
 

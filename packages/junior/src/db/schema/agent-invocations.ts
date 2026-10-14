@@ -90,7 +90,8 @@ export const juniorAgentInvocations = pgTable(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
-    // The parent `spawnAgent` tool call. Null for runtime-started invocations.
+    // The parent `spawnAgent` or `messageAgent` tool call. Null for
+    // runtime-started invocations.
     parentToolCallId: text("parent_tool_call_id"),
     status: text("status")
       .$type<(typeof AGENT_INVOCATION_STATUSES)[number]>()
