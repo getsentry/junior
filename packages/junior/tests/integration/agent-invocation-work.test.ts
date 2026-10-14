@@ -477,80 +477,115 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("recovers a completed child turn through production routing", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const created = await createAndEnqueueAgentInvocation(
+  const missing = "Write access to getsentry/junior. Ask the user.";
+  it.each([
+    {
+      name: "a reply",
+      tail: [
         {
-          ...invocationInput,
-          idempotencyKey: "completed-recovery-1",
+          role: "assistant",
+          content: [{ type: "text", text: "Recovered visible result" }],
         },
-        { conversationStore, queue, state },
-      );
-      await upsertTurnRecord({
-        actor: invocationInput.actor,
-        conversationId: created.childConversationId,
-        destination,
-        piMessages: [
+      ],
+      expected: { result: "Recovered visible result", status: "completed" },
+    },
+    {
+      name: "a blocked report",
+      tail: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-2",
+              name: "reportBlocked",
+              arguments: { missing },
+            },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolCallId: "tool-2",
+          toolName: "reportBlocked",
+          content: [{ type: "text", text: missing }],
+          details: { missing },
+          isError: false,
+        },
+      ],
+      expected: { errorMessage: missing, status: "blocked" },
+    },
+  ])(
+    "recovers a completed child turn that ends with $name through production routing",
+    async ({ expected, tail }) => {
+      const { conversationStore, fixture } = await prepareParentConversation();
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      try {
+        const created = await createAndEnqueueAgentInvocation(
           {
-            role: "user",
-            content: [{ type: "text", text: invocationInput.input }],
+            ...invocationInput,
+            idempotencyKey: "completed-recovery-1",
           },
-          {
-            role: "assistant",
-            content: [
-              { type: "text", text: "Calling a tool" },
-              {
-                type: "toolCall",
-                id: "tool-1",
-                name: "lookup",
-                arguments: {},
-              },
-            ],
-          },
-          {
-            role: "toolResult",
-            toolCallId: "tool-1",
-            toolName: "lookup",
-            content: [{ type: "text", text: "tool output" }],
-            isError: false,
-          },
-          {
-            role: "assistant",
-            content: [{ type: "text", text: "Recovered visible result" }],
-          },
-        ] as PiMessage[],
-        turnId: getAgentInvocationTurnId(created.invocationId),
-        sliceId: 1,
-        source: { kind: "agent_invocation" },
-        state: "completed",
-        surface: "internal",
-      });
-      const route = routeAgentInvocationWork({
-        fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker: createAgentInvocationWorker(neverRunAgentRunner()),
-      });
+          { conversationStore, queue, state },
+        );
+        await upsertTurnRecord({
+          actor: invocationInput.actor,
+          conversationId: created.childConversationId,
+          destination,
+          piMessages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: invocationInput.input }],
+            },
+            {
+              role: "assistant",
+              content: [
+                { type: "text", text: "Calling a tool" },
+                {
+                  type: "toolCall",
+                  id: "tool-1",
+                  name: "lookup",
+                  arguments: {},
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              toolCallId: "tool-1",
+              toolName: "lookup",
+              content: [{ type: "text", text: "tool output" }],
+              isError: false,
+            },
+            ...tail,
+          ] as PiMessage[],
+          turnId: getAgentInvocationTurnId(created.invocationId),
+          turnStartMessageIndex: 0,
+          sliceId: 1,
+          source: { kind: "agent_invocation" },
+          state: "completed",
+          surface: "internal",
+        });
+        const route = routeAgentInvocationWork({
+          fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
+          invocationWorker: createAgentInvocationWorker(neverRunAgentRunner()),
+        });
 
-      await expect(
-        processConversationQueueMessage(queue.takeMessage(), {
-          conversationStore,
-          queue,
-          run: route,
-          state,
-        }),
-      ).resolves.toMatchObject({ status: "completed" });
+        await expect(
+          processConversationQueueMessage(queue.takeMessage(), {
+            conversationStore,
+            queue,
+            run: route,
+            state,
+          }),
+        ).resolves.toMatchObject({ status: "completed" });
 
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({
-        result: "Recovered visible result",
-        status: "completed",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
+        await expect(
+          getAgentInvocation(created.invocationId),
+        ).resolves.toMatchObject(expected);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 });
