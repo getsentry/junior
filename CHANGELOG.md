@@ -1,4 +1,33 @@
 # Changelog
+## 0.243.0
+
+### New Features ✨
+
+#### Subagents
+
+- Stop child agents with stopAgent by @sentry-junior in [#2114](https://github.com/getsentry/junior/pull/2114)
+- Show child agents in the dashboard transcript by @sentry-junior in [#2112](https://github.com/getsentry/junior/pull/2112)
+- List child agents from agent invocation state by @sentry-junior in [#2109](https://github.com/getsentry/junior/pull/2109)
+- Send agent invocation results to the parent conversation by @sentry-junior in [#2106](https://github.com/getsentry/junior/pull/2106)
+
+#### Other
+
+- (dashboard) Show child agents in the conversation Details drawer by @sentry-junior in [#2122](https://github.com/getsentry/junior/pull/2122)
+- (google) Read Google Docs and their comments by @sentry-junior in [#2113](https://github.com/getsentry/junior/pull/2113)
+- (router) Route from the current profile by @sentry-junior in [#2116](https://github.com/getsentry/junior/pull/2116)
+- (sentry) Publish metric alert webhooks as events by @sentry-junior in [#2120](https://github.com/getsentry/junior/pull/2120)
+
+### Bug Fixes 🐛
+
+#### Agent
+
+- Commit new AGENTS.md context when it is added by @sentry-junior in [#2118](https://github.com/getsentry/junior/pull/2118)
+- Commit steering after new AGENTS.md context by @sentry-junior in [#2115](https://github.com/getsentry/junior/pull/2115)
+
+#### Other
+
+- (slack) Keep Slack mentions typed and tell Junior its own user ID by @sentry-junior in [#2108](https://github.com/getsentry/junior/pull/2108)
+
 ## 0.242.0
 
 ### New Features ✨
