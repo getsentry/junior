@@ -429,9 +429,8 @@ export async function setEventAutomationStatus(
   status: "active" | "paused",
   revision: string,
 ): Promise<StoredEventAutomation> {
-  // Clear before activation. A blocked or paused row does not match Events, so
-  // no admission can refill the count before the row is active again. An
-  // already active row keeps its count.
+  // Clear before activation, while the row does not match Events. An already
+  // active row keeps its count.
   if (
     status === "active" &&
     (await getEventAutomation(db, id))?.status !== "active"

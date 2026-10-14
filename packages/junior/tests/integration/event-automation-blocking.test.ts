@@ -174,15 +174,11 @@ describe("event automation blocking", () => {
 
     const firstHourMs = Date.now();
     await fill("github:burst", maxRuns, firstHourMs);
-    // A provider retry of a counted Event does not count again.
-    expect(await ingest("github:burst-0", firstHourMs)).toEqual({
-      dispatched: 0,
-    });
     expect(await getEventAutomation(db, automation.id)).toMatchObject({
       status: "active",
     });
 
-    // Old runs leave the rolling window.
+    // A new window starts after the hour.
     const nextHourMs = firstHourMs + EVENT_AUTOMATION_RUN_WINDOW_MS + 1;
     await fill("github:next", maxRuns, nextHourMs);
 

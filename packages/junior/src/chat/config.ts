@@ -37,7 +37,7 @@ const MAX_TOOL_CALLS_PER_TURN = 250;
  */
 const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
 /**
- * Max runs one Event automation can start in a rolling hour. Each run is a
+ * Max runs one Event automation can start in one hour. Each run is a
  * full agent turn, and Event automations skip the consecutive automated-turn
  * limit. Kept low so a broad trigger, such as every message in a channel,
  * blocks quickly instead of starting a turn for each Event.
@@ -633,7 +633,7 @@ export interface RuntimeLimits {
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
   maxConsecutiveAutomatedTurns?: number;
-  /** Runs one Event automation can start in a rolling hour. */
+  /** Runs one Event automation can start in one hour. */
   maxEventAutomationRunsPerHour?: number;
   /** Run slices one turn may use. */
   maxSlicesPerTurn?: number;
