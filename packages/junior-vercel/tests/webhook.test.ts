@@ -174,30 +174,28 @@ Deployment: dpl_123abc`,
     ]);
   });
 
-  it("rejects undocumented fields at each routing boundary", () => {
+  it("ignores unknown fields at each level", () => {
     const body = webhookBody();
-    const payloads = [
-      { ...body, unexpected: true },
-      { ...body, payload: { ...body.payload, unexpected: true } },
-      {
-        ...body,
-        payload: {
-          ...body.payload,
-          deployment: { ...body.payload.deployment, unexpected: true },
-        },
+    const withUnknownFields = {
+      ...body,
+      unknown: true,
+      payload: {
+        ...body.payload,
+        unknown: true,
+        deployment: { ...body.payload.deployment, unknown: true },
+        project: { ...body.payload.project, unknown: true },
       },
-      {
-        ...body,
-        payload: {
-          ...body.payload,
-          project: { ...body.payload.project, unexpected: true },
-        },
-      },
-    ];
+    };
 
-    for (const payload of payloads) {
-      expect(normalizeVercelEvents({ body: payload })).toEqual([]);
-    }
+    expect(
+      normalizeVercelEvents({ body: withUnknownFields }).map(
+        (event) => event.identifier,
+      ),
+    ).toEqual([
+      "prj_junior",
+      "prj_junior:production",
+      `prj_junior:production:${COMMIT_SHA}`,
+    ]);
   });
 
   it("rejects a non-numeric event timestamp", () => {
