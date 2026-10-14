@@ -12,12 +12,30 @@ import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
 import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
+import type { InputImageType } from "@/chat/attachments/media";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 // AI Gateway rejects request bodies over 4.5 MB with HTTP 413. Base64 makes
 // images a third larger, so 3 MB of images keeps the body under that limit.
 const MAX_REQUEST_IMAGE_BYTES = 3 * 1024 * 1024;
+// Bigger images are resized to fit the request, so this limit only bounds the
+// memory that one read can use.
+const MAX_SOURCE_IMAGE_BYTES = 25 * 1024 * 1024;
+// Longest edges to try when an image must be resized, largest first.
+const RESIZE_LONGEST_EDGES = [2048, 1536, 1024, 768];
+
+type InputImage = { path: string; data: Buffer; mimeType: InputImageType };
+
+const resizedImageSchema = z
+  .object({
+    path: z.string(),
+    original_bytes: z.number().int().positive(),
+    bytes: z.number().int().positive(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+  })
+  .strict();
 
 const imageGenerateOutputSchema = juniorToolOutputSchema
   .extend({
@@ -27,6 +45,8 @@ const imageGenerateOutputSchema = juniorToolOutputSchema
     image_count: z.number().int().nonnegative(),
     images: z.array(generatedArtifactFileRefSchema),
     delivery: z.string(),
+    resized_images: z.array(resizedImageSchema).optional(),
+    resize_notice: z.string().optional(),
   })
   .strict();
 
@@ -60,6 +80,73 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
     });
     return rawPrompt;
   }
+}
+
+/** Resize and re-encode one image until it fits in `maxBytes`. */
+async function shrinkImage(
+  image: InputImage,
+  maxBytes: number,
+): Promise<{ image: InputImage; width: number; height: number }> {
+  // sharp loads a native library, so load it only when an image is too big.
+  const { default: sharp } = await import("sharp");
+  const { hasAlpha } = await sharp(image.data).metadata();
+  // JPEG is smallest for photos. WebP keeps transparency.
+  const mimeType = hasAlpha ? "image/webp" : "image/jpeg";
+  for (const edge of RESIZE_LONGEST_EDGES) {
+    const resized = sharp(image.data).rotate().resize({
+      width: edge,
+      height: edge,
+      fit: "inside",
+      withoutEnlargement: true,
+    });
+    const { data, info } = await (
+      hasAlpha ? resized.webp({ quality: 90 }) : resized.jpeg({ quality: 90 })
+    ).toBuffer({ resolveWithObject: true });
+    if (data.byteLength <= maxBytes) {
+      return {
+        image: { path: image.path, data, mimeType },
+        width: info.width,
+        height: info.height,
+      };
+    }
+  }
+  throw new ToolInputError(
+    `could not resize ${image.path} below ${maxBytes} bytes. Use a smaller image.`,
+  );
+}
+
+/** Resize input images that would push the request over the gateway limit. */
+async function fitImagesToRequest(images: InputImage[]): Promise<{
+  images: InputImage[];
+  resized: z.infer<typeof resizedImageSchema>[];
+}> {
+  const totalBytes = images.reduce(
+    (sum, image) => sum + image.data.byteLength,
+    0,
+  );
+  if (totalBytes <= MAX_REQUEST_IMAGE_BYTES) {
+    return { images, resized: [] };
+  }
+  // With an equal share for each image, the fitted images stay under the limit.
+  const share = Math.floor(MAX_REQUEST_IMAGE_BYTES / images.length);
+  const fitted: InputImage[] = [];
+  const resized: z.infer<typeof resizedImageSchema>[] = [];
+  for (const image of images) {
+    if (image.data.byteLength <= share) {
+      fitted.push(image);
+      continue;
+    }
+    const smaller = await shrinkImage(image, share);
+    fitted.push(smaller.image);
+    resized.push({
+      path: image.path,
+      original_bytes: image.data.byteLength,
+      bytes: smaller.image.data.byteLength,
+      width: smaller.width,
+      height: smaller.height,
+    });
+  }
+  return { images: fitted, resized };
 }
 
 function extensionForMediaType(mediaType: string): string {
@@ -122,7 +209,7 @@ export function createImageGenerateTool(
         .max(4)
         .optional()
         .describe(
-          "Sandbox paths of PNG, JPEG, GIF, or WebP images to edit or use as references, up to 3 MB in total. Use paths from loadAttachment or from an earlier imageGenerate result.",
+          "Sandbox paths of PNG, JPEG, GIF, or WebP images to edit or use as references. Use paths from loadAttachment or from an earlier imageGenerate result. Images over 3 MB in total are resized.",
         ),
     }),
     outputSchema: imageGenerateOutputSchema,
@@ -135,25 +222,27 @@ export function createImageGenerateTool(
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
       const model = options.modelId;
-      const inputImages = await Promise.all(
-        images.map((path) =>
-          readSandboxImage(
+      const sourceImages = await Promise.all(
+        images.map(async (path) => ({
+          path,
+          ...(await readSandboxImage(
             path,
             (targetPath) =>
               options.sandbox.readFileToBuffer({ path: targetPath }),
-            MAX_REQUEST_IMAGE_BYTES,
-          ),
-        ),
+            MAX_SOURCE_IMAGE_BYTES,
+          )),
+        })),
       );
-      const inputBytes = inputImages.reduce(
-        (sum, image) => sum + image.data.byteLength,
-        0,
-      );
-      if (inputBytes > MAX_REQUEST_IMAGE_BYTES) {
-        throw new ToolInputError(
-          `input images total ${inputBytes} bytes; imageGenerate accepts ${MAX_REQUEST_IMAGE_BYTES} bytes. Make the images smaller first.`,
-        );
-      }
+      const { images: inputImages, resized } =
+        await fitImagesToRequest(sourceImages);
+      const resizeResult =
+        resized.length > 0
+          ? {
+              resized_images: resized,
+              resize_notice:
+                "Some input images were too large for the image model, so they were resized first. Tell the user which images were resized.",
+            }
+          : {};
       // Enrichment restyles the whole image, so it would undo an edit.
       const enrichedPrompt =
         inputImages.length > 0 ? prompt : await enrichImagePrompt(prompt);
@@ -244,6 +333,7 @@ export function createImageGenerateTool(
           enrichedPrompt,
           image_count: artifactRefs.length,
           images: artifactRefs,
+          ...resizeResult,
           delivery: options.canSendFilesToActiveConversation
             ? "Generated images were written to sandbox paths. To share them, pass the returned image objects unchanged as sendFiles files."
             : "Generated images were written to sandbox paths, but this runtime has no file-send tool for the active conversation.",
@@ -256,6 +346,7 @@ export function createImageGenerateTool(
         enrichedPrompt,
         image_count: 0,
         images: [],
+        ...resizeResult,
         delivery: "No images were generated.",
       };
     },

@@ -1,4 +1,5 @@
 import type { FileUpload } from "chat";
+import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/pi/client", () => ({
@@ -325,22 +326,77 @@ describe("createImageGenerateTool", () => {
     });
   });
 
-  it("rejects input images over the request size limit before calling the gateway", async () => {
+  it("resizes input images over the request size limit", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    const fetchMock = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
-    const largePng = Buffer.concat([PNG_BYTES, Buffer.alloc(2 * 1024 * 1024)]);
+    // Random pixels do not compress, so this PNG is about 9 MB.
+    const largePng = await sharp({
+      create: {
+        width: 3000,
+        height: 1000,
+        channels: 3,
+        background: "#808080",
+        noise: { type: "gaussian", mean: 128, sigma: 60 },
+      },
+    })
+      .png()
+      .toBuffer();
+    expect(largePng.byteLength).toBeGreaterThan(3 * 1024 * 1024);
 
     const tool = createImageGenerateTool(
       { writeGeneratedArtifacts },
       {
         ...defaultImageOptions,
         sandbox: sandbox({
-          "/vercel/sandbox/a.png": largePng,
-          "/vercel/sandbox/b.png": largePng,
+          "/vercel/sandbox/photo.png": largePng,
+          "/vercel/sandbox/logo.png": PNG_BYTES,
+        }),
+      },
+    );
+    const result = await tool.execute!(
+      { prompt: "change the sign", images: ["photo.png", "logo.png"] },
+      {} as any,
+    );
+
+    const [, sentPhoto, sentLogo] =
+      getRequestBody(fetchMock).messages[0].content;
+    const photoBytes = Buffer.from(
+      sentPhoto.image_url.url.replace("data:image/jpeg;base64,", ""),
+      "base64",
+    );
+    expect(photoBytes.byteLength).toBeLessThanOrEqual(1.5 * 1024 * 1024);
+    expect((await sharp(photoBytes).metadata()).format).toBe("jpeg");
+    expect(sentLogo.image_url.url).toBe(
+      `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+    );
+    expect(result).toMatchObject({
+      resized_images: [
+        {
+          path: "photo.png",
+          original_bytes: largePng.byteLength,
+          bytes: photoBytes.byteLength,
+        },
+      ],
+      resize_notice: expect.stringContaining("Tell the user"),
+    });
+  });
+
+  it("rejects input images too large to read before calling the gateway", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts },
+      {
+        ...defaultImageOptions,
+        sandbox: sandbox({
           "/vercel/sandbox/photo.png": Buffer.concat([
             PNG_BYTES,
-            Buffer.alloc(4 * 1024 * 1024),
+            Buffer.alloc(25 * 1024 * 1024),
           ]),
         }),
       },
@@ -348,16 +404,10 @@ describe("createImageGenerateTool", () => {
 
     await expect(
       tool.execute!(
-        { prompt: "merge these", images: ["a.png", "b.png"] },
-        {} as any,
-      ),
-    ).rejects.toThrow("Make the images smaller first");
-    await expect(
-      tool.execute!(
         { prompt: "change the sign", images: ["photo.png"] },
         {} as any,
       ),
-    ).rejects.toThrow("exceeds 3145728 bytes");
+    ).rejects.toThrow("exceeds 26214400 bytes");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
