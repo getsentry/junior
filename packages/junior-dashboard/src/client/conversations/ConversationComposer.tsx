@@ -348,20 +348,12 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {!online || props.error || imageError ? (
+      {props.error || imageError ? (
         <div
           aria-live="polite"
-          className={
-            !online
-              ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
-              : "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
-          }
+          className="min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
         >
-          {!online
-            ? images.length
-              ? "Connect to send. Image drafts stay here until you leave."
-              : "Connect to send. Your draft is saved."
-            : (imageError ?? props.error)}
+          {imageError ?? props.error}
         </div>
       ) : null}
       <form
@@ -489,7 +481,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 className="rounded-lg font-sans"
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
-                title={!online ? "Connect to stop" : "Stop Junior"}
+                title="Stop Junior"
               >
                 <Square aria-hidden="true" fill="currentColor" size={12} />
                 <span className="hidden md:inline">
@@ -506,13 +498,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 sendLocked ||
                 readingImages
               }
-              title={
-                !online
-                  ? "Connect to send"
-                  : sendLocked
-                    ? "Sending message"
-                    : props.submitLabel
-              }
+              title={sendLocked ? "Sending message" : props.submitLabel}
               type="submit"
             >
               <Send aria-hidden="true" size={14} />

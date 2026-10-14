@@ -175,9 +175,7 @@ test("keeps cached conversation and draft available through reconnect", async ({
 
   const composer = page.getByLabel("Continue this conversation");
   await composer.fill("Keep this draft through reconnect");
-  await expect(
-    page.getByText("Connect to send. Your draft is saved."),
-  ).toBeVisible();
+  await expect(page.getByText(/Connect to send/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
 
   await context.setOffline(false);
