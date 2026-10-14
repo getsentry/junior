@@ -129,7 +129,7 @@ function elementText(element: PageElement): string[] {
  * Read the text and speaker notes of each slide in one Google Slides file.
  *
  * This uses the Slides API to keep slide numbers and speaker notes. It
- * accepts the same `drive` scope as the Drive tools.
+ * accepts the same `drive.readonly` scope as the Drive tools.
  */
 export function createReadGoogleSlidesTool(ctx: GoogleToolContext) {
   return definePluginTool({

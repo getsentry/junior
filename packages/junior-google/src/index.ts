@@ -28,7 +28,6 @@ import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
 import { createCancelCalendarEventTool } from "./tools/cancel-event";
 import { createCreateCalendarEventTool } from "./tools/create-event";
-import { createCreateGoogleFileCommentTool } from "./tools/create-file-comment";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
 import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
 import { createListCalendarEventsTool } from "./tools/list-events";
@@ -46,7 +45,7 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling, and reading and commenting on Google Docs, Sheets, and Slides, as Junior's own Google Workspace account",
+        "Google Calendar scheduling and Google Docs, Sheets, and Slides reading as Junior's own Google Workspace account",
       domains: GOOGLE_API_DOMAINS,
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
@@ -82,8 +81,6 @@ export function googlePlugin(): PluginRegistration {
         return {
           cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
-          createGoogleFileComment:
-            createCreateGoogleFileCommentTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),
           listGoogleFileComments: createListGoogleFileCommentsTool(toolContext),

@@ -87,20 +87,11 @@ export function parseFileReference(value: string): FileReference {
   return { fileId, ...(resourceKey ? { resourceKey } : undefined) };
 }
 
-const driveErrorSchema = z.object({
-  error: z
-    .object({
-      errors: z.array(z.object({ reason: z.string().optional() })).optional(),
-    })
-    .optional(),
-});
-
 /** Call one Google operation on a file, with its resource key when known. */
 export async function googleFileRequest(
   ctx: GoogleToolContext,
   file: FileReference,
   input: {
-    body?: unknown;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -124,19 +115,6 @@ export async function googleFileRequest(
       `Junior's Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
     );
   }
-  // Drive returns this when the account can open the file but not comment.
-  if (
-    response.status === 403 &&
-    driveErrorSchema
-      .safeParse(response.body)
-      .data?.error?.errors?.some(
-        (error) => error.reason === "insufficientFilePermissions",
-      )
-  ) {
-    throw new PluginToolInputError(
-      `Junior's Google account (${ctx.accountEmail}) can open this file but cannot comment on it. Ask the owner to give that account comment access.`,
-    );
-  }
   if (response.status !== 200) {
     throw googleApiError(input.operation, response);
   }
@@ -154,8 +132,8 @@ const driveFileSchema = z.object({
 /**
  * Read the Drive metadata of one file, and require one of the given types.
  *
- * The `drive` scope reaches every Drive file, so each tool checks the type
- * before it reads or comments.
+ * `drive.readonly` can read any Drive file, so each tool checks the type
+ * before it reads content or comments.
  */
 export async function readGoogleFile(
   ctx: GoogleToolContext,

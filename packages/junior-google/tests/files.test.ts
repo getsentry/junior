@@ -42,7 +42,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
   beforeEach(() => stubGoogleEnv());
   afterEach(() => vi.unstubAllEnvs());
 
-  it("finds a Doc, reads it from a shared link, lists its comments, and comments on it", async () => {
+  it("finds a Doc, reads it from a shared link, and lists its comments", async () => {
     const { fetch, tools } = docsTools(
       Response.json({
         files: [
@@ -89,12 +89,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
         ],
         nextPageToken: "page-2",
       }),
-      Response.json({
-        id: DOC_ID,
-        mimeType: "application/vnd.google-apps.document",
-        name: "Q4 plan",
-      }),
-      Response.json({ id: "c2" }),
     );
 
     const search = await run(tools, "searchGoogleFiles", {
@@ -157,25 +151,9 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       fileId: DOC_ID,
       nextPageToken: "page-2",
     });
-
-    const created = await run(tools, "createGoogleFileComment", {
-      content: "Q4 is confirmed.",
-      file: DOC_ID,
-    });
-    const create = fetch.mock.calls[6]![0];
-    expect(create.operation).toBe("google.drive.comment.create");
-    expect(create.request.method).toBe("POST");
-    expect(await create.request.json()).toEqual({
-      content: "Q4 is confirmed.",
-    });
-    expect(created).toMatchObject({
-      commentId: "c2",
-      fileId: DOC_ID,
-      title: "Q4 plan",
-    });
   });
 
-  it("explains a file Junior cannot open, a file of the wrong type, a grant without Drive access, and a file Junior cannot comment on", async () => {
+  it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {
     const { tools } = docsTools(
       Response.json({ error: { message: "File not found" } }, { status: 404 }),
       Response.json({
@@ -188,20 +166,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           error: {
             details: [{ reason: "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }],
             message: "Request had insufficient authentication scopes.",
-          },
-        },
-        { status: 403 },
-      ),
-      Response.json({
-        id: DOC_ID,
-        mimeType: "application/vnd.google-apps.spreadsheet",
-        name: "Budget",
-      }),
-      Response.json(
-        {
-          error: {
-            errors: [{ reason: "insufficientFilePermissions" }],
-            message: "The user does not have sufficient permissions.",
           },
         },
         { status: 403 },
@@ -219,9 +183,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
     ).rejects.toThrow("A Junior admin must reconnect it");
-    await expect(
-      run(tools, "createGoogleFileComment", { content: "Hi", file: DOC_ID }),
-    ).rejects.toThrow("can open this file but cannot comment on it");
   });
 
   it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {

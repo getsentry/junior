@@ -91,7 +91,7 @@ function csvCell(value: unknown): string {
  * Read the cells of one Google Sheet as CSV, one entry per range.
  *
  * A Drive CSV export has only the first tab, so this uses the Sheets API. It
- * accepts the same `drive` scope as the Drive tools.
+ * accepts the same `drive.readonly` scope as the Drive tools.
  */
 export function createReadGoogleSheetTool(ctx: GoogleToolContext) {
   return definePluginTool({

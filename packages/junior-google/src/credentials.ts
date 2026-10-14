@@ -72,12 +72,6 @@ export const GOOGLE_OPERATIONS = {
     method: "POST",
     path: /^\/calendar\/v3\/freeBusy$/,
   },
-  "google.drive.comment.create": {
-    access: "write",
-    host: GOOGLE_API_DOMAIN,
-    method: "POST",
-    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/comments$/,
-  },
   "google.drive.comments.list": {
     access: "read",
     host: GOOGLE_API_DOMAIN,
