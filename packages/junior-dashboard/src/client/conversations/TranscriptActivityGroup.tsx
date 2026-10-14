@@ -20,6 +20,8 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
+  // A child agent start is a main-view event, like its result event.
+  if (entry.kind === "subagent") return false;
   if (entry.kind === "message") return false;
   return true;
 }
@@ -91,9 +93,6 @@ export function activityGroupSummary(
       ? [entry.part.event]
       : [],
   );
-  const subagentCount = entries.filter(
-    (entry) => entry.kind === "subagent",
-  ).length;
   const structuredCount = entries.filter(
     (entry) => entry.kind === "structured_event",
   ).length;
@@ -115,9 +114,6 @@ export function activityGroupSummary(
     reasoningCount > 0
       ? countLabel(reasoningCount, "1 reasoning entry", "reasoning entries")
       : undefined,
-    subagentCount > 0
-      ? countLabel(subagentCount, "1 subagent", "subagents")
-      : undefined,
     compactionCount > 0
       ? countLabel(compactionCount, "context compacted", "context compacted")
       : undefined,
@@ -137,7 +133,6 @@ export function activityGroupSummary(
 function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   return entries.some((entry) => {
     if (entry.kind === "tool") return entry.part.status === "running";
-    if (entry.kind === "subagent") return entry.part.status === "running";
     return false;
   });
 }

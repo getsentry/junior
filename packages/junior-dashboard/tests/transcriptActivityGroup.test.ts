@@ -121,12 +121,11 @@ describe("transcript activity group", () => {
     expect(activityGroupOpen(false)).toBe(false);
   });
 
-  it("collapses non-message activity including tool errors, and keeps failures and chat messages open", () => {
+  it("collapses non-message activity including tool errors, and keeps failures, subagents, and chat messages open", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
     expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(true);
-    expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(true);
-    expect(isCollapsibleActivityEntry(subagent("err", "error"))).toBe(true);
-    expect(isCollapsibleActivityEntry(subagent("stop", "aborted"))).toBe(true);
+    expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(false);
+    expect(isCollapsibleActivityEntry(subagent("err", "error"))).toBe(false);
     expect(isCollapsibleActivityEntry(reasoning("r1"))).toBe(true);
     expect(isCollapsibleActivityEntry(compaction())).toBe(true);
     expect(isCollapsibleActivityEntry(handoff())).toBe(true);
