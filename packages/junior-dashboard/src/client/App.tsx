@@ -22,6 +22,7 @@ import { DashboardHeader } from "./components/layout/DashboardHeader";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
+  conversationDetailTitle,
   conversationDisplayTitle,
   setDashboardTimeZone,
 } from "./format";
@@ -105,8 +106,8 @@ export function DashboardShell() {
   // Create mode is a landing page (normal app chrome), not a thread destination.
   // Only open conversations use the mobile back chevron + title row.
   const mobileConversationTitle = conversationId
-    ? conversationDetail.data?.displayTitle?.trim() ||
-      conversationDisplayTitle(mobileConversation)
+    ? (conversationDetailTitle(conversationDetail.data) ??
+      conversationDisplayTitle(mobileConversation))
     : undefined;
   const primaryNavItems = buildPrimaryNavItems({
     loading,

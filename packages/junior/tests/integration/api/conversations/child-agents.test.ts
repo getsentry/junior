@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
-import { conversationChildAgentsReportSchema } from "@/api/schema";
+import {
+  conversationChildAgentsReportSchema,
+  conversationDetailReportSchema,
+} from "@/api/schema";
 import {
   completeAgentInvocation,
   createAgentInvocation,
@@ -16,6 +19,12 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../../../fixtures/agent-invocations";
+
+async function requestDetail(conversationId: string) {
+  return await createJuniorApi().request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+  );
+}
 
 async function requestChildAgents(conversationId: string) {
   return await createJuniorApi().request(
@@ -99,6 +108,44 @@ describe("conversation child agents API", () => {
     });
   });
 
+  it("returns the agent tree of a nested child Conversation", async () => {
+    await prepareSlackParentConversation();
+    const reviewer = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        agentName: "reviewer",
+        idempotencyKey: "agent-tree-reviewer",
+        title: "Plan review",
+      },
+      1_000,
+    );
+    const helper = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        idempotencyKey: "agent-tree-helper",
+        input: "Check one claim.",
+        parentConversationId: reviewer.childConversationId,
+        title: "Claim check",
+      },
+      2_000,
+    );
+
+    const root = conversationDetailReportSchema.parse(
+      await (await requestDetail(slackParentConversationId)).json(),
+    );
+    const response = await requestDetail(helper.childConversationId);
+
+    expect(root.agentTree).toBeUndefined();
+    expect(response.status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(await response.json()).agentTree,
+    ).toEqual([
+      { conversationId: slackParentConversationId, label: root.displayTitle },
+      { conversationId: reviewer.childConversationId, label: "reviewer" },
+      { conversationId: helper.childConversationId, label: "Claim check" },
+    ]);
+  });
+
   it("redacts child agent content from viewers without private access", async () => {
     await prepareParentConversation();
     const child = await createAgentInvocation(
@@ -112,7 +159,11 @@ describe("conversation child agents API", () => {
     );
 
     const response = await requestChildAgents(parentConversationId);
+    const detail = await requestDetail(child.childConversationId);
 
+    expect(
+      conversationDetailReportSchema.parse(await detail.json()).agentTree?.[1],
+    ).toEqual({ conversationId: child.childConversationId, label: "Subagent" });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       agents: [

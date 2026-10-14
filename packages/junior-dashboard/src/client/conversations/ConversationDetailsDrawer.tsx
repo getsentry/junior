@@ -14,6 +14,7 @@ import {
   useConversationMemories,
 } from "./ConversationMemories";
 import { ShareConversationButton } from "./ShareConversationButton";
+import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
 type DetailsTab = "agents" | "details" | "memories";
 
@@ -25,6 +26,8 @@ export function ConversationDetailsDrawer(props: {
   identity: ReactNode;
   lastActivityAt?: string;
   onClose(): void;
+  /** Open one child agent transcript. The details drawer closes first. */
+  onOpenSubagent(target: SubagentTranscriptTarget): void;
   sentryConversationUrl?: string;
   privacy: ReactNode;
   stats: ReactNode;
@@ -84,7 +87,10 @@ export function ConversationDetailsDrawer(props: {
         ) : tab === "agents" ? (
           <ConversationChildAgents
             conversationId={props.conversationId}
-            onNavigate={props.onClose}
+            onOpenAgent={(target) => {
+              props.onClose();
+              props.onOpenSubagent(target);
+            }}
           />
         ) : sections.length > 0 ? (
           <div className="grid min-w-0 gap-5">

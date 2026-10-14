@@ -26,6 +26,7 @@ import {
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationForkLinks } from "./ConversationForkLinks";
+import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
@@ -38,6 +39,7 @@ import {
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
+  conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
   visualStatusForConversation,
@@ -103,6 +105,7 @@ export function ConversationPage(props: {
       <ParticipantAvatarStack participants={participants} size="detail" />
     ) : null;
   const conversationDetail = detail.data;
+  const agentTree = detail.data?.agentTree;
   useEffect(() => {
     if (!conversation) return;
     onRead?.(conversation.id, conversation.lastSeenAt);
@@ -177,7 +180,8 @@ export function ConversationPage(props: {
     }) => {
       setSubagentTarget({
         conversationId: part.childConversationId,
-        part,
+        label: part.title ?? part.agentName,
+        status: part.status,
       });
     },
     [],
@@ -192,6 +196,9 @@ export function ConversationPage(props: {
         scroll={
           <section className="min-w-0">
             <ConversationHeader
+              agentTree={
+                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+              }
               conversationId={conversationId}
               forks={
                 detail.data?.forkedFromConversationId ||
@@ -273,6 +280,7 @@ export function ConversationPage(props: {
                   }
                 />
               }
+              onOpenSubagent={setSubagentTarget}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
               privacy={
@@ -292,7 +300,10 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              title={conversationDisplayTitle(conversation)}
+              title={
+                conversationDetailTitle(detail.data) ??
+                conversationDisplayTitle(conversation)
+              }
               view={view}
             />
 
@@ -341,7 +352,8 @@ export function ConversationPage(props: {
           </section>
         }
         dock={
-          view === "rich" && detail.data?.isParticipant ? (
+          // A child Conversation takes input only from its parent agent.
+          view === "rich" && detail.data?.isParticipant && !agentTree ? (
             <ConversationReplyFooter
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is

@@ -42,6 +42,7 @@ import {
   slackParentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
+  loadMessageEvents,
   loadTurnEvents,
   loadSubagentEvents,
 } from "../fixtures/agent-invocations";
@@ -152,7 +153,9 @@ describe("agent invocation conversation work", () => {
                 namespace: "junior",
               }),
             },
-            text: expect.stringContaining("Durable child result"),
+            text: expect.stringMatching(
+              /^\[agent result\][\s\S]*Durable child result/,
+            ),
           }),
           source: "event",
         }),
@@ -238,6 +241,24 @@ describe("agent invocation conversation work", () => {
           }),
         ]),
       );
+      // A child has no Location, so the dashboard reads its input and result
+      // from these message events.
+      await expect(
+        loadMessageEvents(created.childConversationId),
+      ).resolves.toEqual([
+        {
+          type: "message",
+          messageId: getAgentInvocationMessageId(created.invocationId),
+          role: "user",
+          text: slackInvocationInput.input,
+        },
+        {
+          type: "message",
+          messageId: `agent-invocation:${created.invocationId}:reply`,
+          role: "assistant",
+          text: "Durable child result",
+        },
+      ]);
       await expect(
         loadTurnEvents(created.childConversationId),
       ).resolves.toEqual([

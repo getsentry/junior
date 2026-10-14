@@ -84,3 +84,9 @@ export async function loadSubagentEvents(conversationId: string) {
         data.type === "subagent_started" || data.type === "subagent_ended",
     );
 }
+
+export async function loadMessageEvents(conversationId: string) {
+  return (await getConversationEventStore().loadHistory(conversationId))
+    .map((event) => event.data)
+    .filter((data) => data.type === "message");
+}

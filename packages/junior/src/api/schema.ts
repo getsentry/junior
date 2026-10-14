@@ -95,6 +95,7 @@ export type {
   ConversationSurface,
   ConversationUsage,
   CreateConversationBody,
+  ConversationAgentTreeNode,
   CreateConversationMessageBody,
   GuardianMetricDay,
   GuardianStats,

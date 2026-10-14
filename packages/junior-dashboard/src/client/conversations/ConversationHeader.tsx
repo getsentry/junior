@@ -24,9 +24,12 @@ import {
 } from "./ConversationHeaderActions";
 import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
 /** Show the conversation title, search, and details. */
 export function ConversationHeader(props: {
+  /** Parent chain of a child Conversation. Root Conversations omit it. */
+  agentTree?: ReactNode;
   copyAction?: ReactNode;
   annotations: ReactNode;
   archive: ConversationArchiveAction;
@@ -40,6 +43,7 @@ export function ConversationHeader(props: {
   sentryConversationUrl?: string;
   live: boolean;
   meta?: ReactNode;
+  onOpenSubagent(target: SubagentTranscriptTarget): void;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
@@ -154,7 +158,8 @@ export function ConversationHeader(props: {
     searchOpenVisible ||
     props.archive.error ||
     Boolean(props.linkedWork) ||
-    Boolean(props.forks);
+    Boolean(props.forks) ||
+    Boolean(props.agentTree);
 
   const liveIndicator = props.live ? (
     <span
@@ -176,6 +181,9 @@ export function ConversationHeader(props: {
       >
         <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
           <div className="min-w-0">
+            {props.agentTree ? (
+              <div className="mb-1.5 min-w-0">{props.agentTree}</div>
+            ) : null}
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
                 {props.title}
@@ -204,6 +212,9 @@ export function ConversationHeader(props: {
             view={props.view}
           />
         </div>
+        {props.agentTree ? (
+          <div className="px-4 py-2 md:hidden">{props.agentTree}</div>
+        ) : null}
         {props.forks ? (
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
         ) : null}
@@ -251,6 +262,7 @@ export function ConversationHeader(props: {
           lastActivityAt={props.lastActivityAt}
           sentryConversationUrl={props.sentryConversationUrl}
           onClose={() => setDetailsOpen(false)}
+          onOpenSubagent={props.onOpenSubagent}
           privacy={props.privacy}
           stats={props.stats}
           title={props.title}

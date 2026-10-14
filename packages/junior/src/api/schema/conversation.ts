@@ -766,8 +766,25 @@ export const forkConversationResponseSchema = z
   .object({ conversationId: z.string() })
   .strict();
 
+/** One Conversation in the agent tree of a child Conversation. */
+export const conversationAgentTreeNodeSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    label: z.string().min(1),
+  })
+  .strict();
+
+export type ConversationAgentTreeNode = z.infer<
+  typeof conversationAgentTreeNodeSchema
+>;
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
+    /**
+     * The parent chain of a child Conversation, root first, with this
+     * Conversation last. Root Conversations omit it.
+     */
+    agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
     forkedFromConversationId: z.string().optional(),

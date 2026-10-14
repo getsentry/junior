@@ -1893,6 +1893,36 @@ export function readMockConversationChildAgents(
   };
 }
 
+/** Build the agent tree of a mock child Conversation, like the API. */
+function mockAgentTree(
+  conversation: MockConversation,
+): ConversationDetailReport["agentTree"] {
+  if (!conversation.parentConversationId) return undefined;
+  const conversations = mockConversations(NOW_MS);
+  const chain = [conversation];
+  let current = conversation;
+  while (current.parentConversationId) {
+    const parent = conversations.find(
+      (candidate) => candidate.conversationId === current.parentConversationId,
+    );
+    if (!parent) break;
+    chain.unshift(parent);
+    current = parent;
+  }
+  return chain.map((item) => {
+    if (!item.parentConversationId) {
+      return { conversationId: item.conversationId, label: item.displayTitle };
+    }
+    const agent = readMockConversationChildAgents(
+      item.parentConversationId,
+    )?.agents.find((child) => child.conversationId === item.conversationId);
+    return {
+      conversationId: item.conversationId,
+      label: agent?.name ?? agent?.title ?? "Subagent",
+    };
+  });
+}
+
 /** Return one canonical-event visual-QA conversation detail fixture. */
 export function readMockConversationDetail(
   conversationId: string,
@@ -1903,9 +1933,11 @@ export function readMockConversationDetail(
   );
   if (!conversation) return undefined;
   const { parentConversationId, ...conversationDetail } = conversation;
+  const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
   const detail = {
     ...conversationDetail,
+    ...(agentTree ? { agentTree } : undefined),
     canFork:
       !parentConversationId &&
       conversationDetail.eventHistory.status !== "redacted",

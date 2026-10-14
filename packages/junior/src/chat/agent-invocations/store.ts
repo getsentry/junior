@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, ne, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import {
@@ -226,6 +226,30 @@ export async function getLatestAgentInvocationForConversation(
     .orderBy(desc(juniorAgentInvocations.createdAt))
     .limit(1);
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
+}
+
+/**
+ * Read the name and the newest task title of one child Conversation, for
+ * labels. Agent invocations that give a nested result to the child have no
+ * title, so an agent invocation with a title comes first.
+ */
+export async function getChildAgentLabel(
+  childConversationId: string,
+): Promise<{ agentName: string | null; title: string | null } | undefined> {
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({
+      agentName: juniorAgentInvocations.agentName,
+      title: juniorAgentInvocations.title,
+    })
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.childConversationId, childConversationId))
+    .orderBy(
+      sql`${juniorAgentInvocations.title} is null`,
+      desc(juniorAgentInvocations.createdAt),
+    )
+    .limit(1);
+  return row;
 }
 
 /** Bound the agent invocations that one child agent listing reads. */
