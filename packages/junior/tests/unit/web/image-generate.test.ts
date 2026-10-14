@@ -353,11 +353,16 @@ describe("createImageGenerateTool", () => {
         sandbox: sandbox({
           "/vercel/sandbox/photo.png": largePng,
           "/vercel/sandbox/logo.png": PNG_BYTES,
+          "/vercel/sandbox/icon.png": PNG_BYTES,
+          "/vercel/sandbox/badge.png": PNG_BYTES,
         }),
       },
     );
     const result = await tool.execute!(
-      { prompt: "change the sign", images: ["photo.png", "logo.png"] },
+      {
+        prompt: "change the sign",
+        images: ["photo.png", "logo.png", "icon.png", "badge.png"],
+      },
       {} as any,
     );
 
@@ -367,8 +372,12 @@ describe("createImageGenerateTool", () => {
       sentPhoto.image_url.url.replace("data:image/jpeg;base64,", ""),
       "base64",
     );
-    expect(photoBytes.byteLength).toBeLessThanOrEqual(1.5 * 1024 * 1024);
-    expect((await sharp(photoBytes).metadata()).format).toBe("jpeg");
+    // The small images leave their unused bytes to the photo, so it keeps
+    // the largest size. An equal share would shrink it further.
+    expect(await sharp(photoBytes).metadata()).toMatchObject({
+      format: "jpeg",
+      width: 2048,
+    });
     expect(sentLogo.image_url.url).toBe(
       `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
     );

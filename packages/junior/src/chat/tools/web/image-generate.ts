@@ -127,17 +127,23 @@ async function fitImagesToRequest(images: InputImage[]): Promise<{
   if (totalBytes <= MAX_REQUEST_IMAGE_BYTES) {
     return { images, resized: [] };
   }
-  // With an equal share for each image, the fitted images stay under the limit.
-  const share = Math.floor(MAX_REQUEST_IMAGE_BYTES / images.length);
-  const fitted: InputImage[] = [];
+  // Fit the smallest images first. Bytes that small images do not use go to
+  // the larger images, and the total never exceeds the limit.
+  const fitted = [...images];
   const resized: z.infer<typeof resizedImageSchema>[] = [];
-  for (const image of images) {
+  let remainingBytes = MAX_REQUEST_IMAGE_BYTES;
+  const bySize = images
+    .map((image, index) => ({ image, index }))
+    .sort((a, b) => a.image.data.byteLength - b.image.data.byteLength);
+  for (const [position, { image, index }] of bySize.entries()) {
+    const share = Math.floor(remainingBytes / (bySize.length - position));
     if (image.data.byteLength <= share) {
-      fitted.push(image);
+      remainingBytes -= image.data.byteLength;
       continue;
     }
     const smaller = await shrinkImage(image, share);
-    fitted.push(smaller.image);
+    fitted[index] = smaller.image;
+    remainingBytes -= smaller.image.data.byteLength;
     resized.push({
       path: image.path,
       original_bytes: image.data.byteLength,
