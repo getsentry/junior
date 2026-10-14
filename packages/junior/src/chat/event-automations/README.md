@@ -13,6 +13,12 @@ private channel text stays in that channel. Runs always use system credentials,
 because anyone in the channel writes the Event text. Each run replies in the
 thread of the source message.
 
+Later, we may let a Watch select these events. For example, a person opens an
+incident and wants Junior to record every message in the incident channel. A
+Watch delivers into the Conversation that created it, so this needs a decision
+about which credentials those Turns use. The consecutive automated-turn limit
+also stops a Watch on a busy channel.
+
 One selector has one Slack workspace, namespace, identifier, and one or more
 event types. Multiple automations can use the same selector.
 `resourceType` and `label` are presentation metadata, not match keys.
