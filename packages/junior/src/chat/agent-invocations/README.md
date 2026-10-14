@@ -14,6 +14,11 @@ stores the terminal result for its parent to read later.
   `invocationId` is derived from the parent conversation and caller-supplied
   idempotency key. Optional reasoning level is per-invocation policy, not
   binding state.
+- A `spawnAgent` invocation stores a short `title` of its task. The parent can
+  give the title. If it does not, the tool makes one from the task with the
+  fast model, the same way Automations get their titles. A replayed call keeps
+  the stored title. An agent invocation that receives a nested result has no
+  title.
 - An invocation without a name gets an invocation-scoped child conversation.
 - `parentConversationId` is immutable. Bindings and invocation content are
   purged with their root Conversation tree. Children cannot hand off model
@@ -58,9 +63,12 @@ Each agent invocation writes two events to its parent Conversation. The
 dashboard pairs them to show the child and its status.
 
 - `subagent_started` is written before the child mailbox append, so the child
-  cannot end first. It has the child `conversation_id` and, for a `spawnAgent`
-  call, the parent tool call id. The agent invocation stores that id, so a
-  repaired mailbox append writes the same event.
+  cannot end first. It has the child `conversation_id` and the child name, if
+  there is one. For a `spawnAgent` call, it also has the parent tool call id,
+  the task, and the title. The agent invocation stores them, so a repaired
+  mailbox append writes the same event. The dashboard labels the row with the
+  name and the title, or the task when there is no title. It shows them only
+  to viewers who can see private content.
 - `subagent_ended` is written when the agent invocation is terminal, before the
   parent result is sent. Its outcome is `success`, `blocked`, `error`, or
   `aborted` for a stopped child. The heartbeat result repair also writes it,
@@ -146,7 +154,7 @@ of its latest one. Two more rules apply to nested child agents:
 
 - A child whose latest result is `replaced` shows `pending`. Its open child
   work starts another agent invocation on it.
-- The task is the input of the latest agent invocation that the parent
+- The task and title come from the latest agent invocation that the parent
   started. An agent invocation that gives a grandchild result to the child is
   not a task.
 

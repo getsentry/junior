@@ -74,6 +74,8 @@ export const juniorAgentInvocations = pgTable(
       .references(() => juniorConversations.conversationId),
     agentName: text("agent_name"),
     input: text("input").notNull(),
+    // Short display title of the task. Null for runtime-started invocations.
+    title: text("title"),
     actor: jsonb("actor_json").$type<Actor>().notNull(),
     credentialContext: jsonb(
       "credential_context_json",

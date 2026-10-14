@@ -134,11 +134,16 @@ function invocationFromRow(
     ...(row.terminalAt
       ? { terminalAtMs: row.terminalAt.getTime() }
       : undefined),
+    ...(row.title ? { title: row.title } : undefined),
     updatedAtMs: row.updatedAt.getTime(),
   });
 }
 
-/** Require every durable creation input to match before replaying one key. */
+/**
+ * Require every durable creation input to match before replaying one key.
+ * The title is not compared: a retry can generate a different one, and the
+ * stored title wins.
+ */
 function sameCreateInput(
   invocation: AgentInvocation,
   input: ReturnType<typeof createAgentInvocationSchema.parse>,
@@ -263,6 +268,7 @@ function childAgentFromInvocations(
           ? "stopped"
           : current.status,
     task: task.input,
+    ...(task.title ? { title: task.title } : undefined),
     updatedAtMs: Math.max(
       ...invocations.map((invocation) => invocation.updatedAtMs),
     ),
@@ -446,6 +452,7 @@ export async function createAgentInvocation(
         childConversationId,
         agentName: input.agentName ?? null,
         input: input.input,
+        title: input.title ?? null,
         actor: input.actor,
         credentialContext: input.credentialContext ?? null,
         source: { kind: "agent_invocation" },

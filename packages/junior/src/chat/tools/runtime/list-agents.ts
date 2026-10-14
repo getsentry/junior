@@ -32,6 +32,10 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
               "pending: waiting to run. running or paused: working. completed, blocked, failed, or stopped: not working.",
             ),
           task: z.string().describe("Latest task given to the child agent"),
+          title: z
+            .string()
+            .optional()
+            .describe("Short display title of the latest task"),
           error: z
             .string()
             .optional()
@@ -62,6 +66,7 @@ export function createListAgentsTool(conversationId: string) {
         ...(agent.agentName ? { name: agent.agentName } : undefined),
         status: agent.status,
         task: truncate(agent.task, TASK_MAX_LENGTH),
+        ...(agent.title ? { title: agent.title } : undefined),
         ...(agent.errorMessage
           ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
           : undefined),

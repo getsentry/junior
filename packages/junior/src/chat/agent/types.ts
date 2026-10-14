@@ -69,6 +69,7 @@ export type SpawnAgentInput = {
   name?: string;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
+  title?: string;
 };
 
 /** Handle returned after a child-agent task is durably scheduled. */

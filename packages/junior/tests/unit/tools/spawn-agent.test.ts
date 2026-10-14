@@ -17,6 +17,7 @@ describe("spawnAgent", () => {
       tool.execute!(
         tool.prepareArguments!({
           task: "Investigate the failing checks.",
+          title: " Failing checks ",
           name: null,
           reasoning_level: null,
         }),
@@ -26,7 +27,7 @@ describe("spawnAgent", () => {
       conversation_id: "agent:one",
     });
     expect(spawnAgent).toHaveBeenCalledWith(
-      { task: "Investigate the failing checks." },
+      { task: "Investigate the failing checks.", title: "Failing checks" },
       { toolCallId: "call-1" },
     );
   });
@@ -51,6 +52,7 @@ describe("spawnAgent", () => {
       tool.execute!(
         tool.prepareArguments!({
           task: "Investigate the failing checks.",
+          title: "Failing checks",
           name: "researcher",
         }),
         { toolCallId: "call-busy" },
@@ -71,7 +73,10 @@ describe("spawnAgent", () => {
 
     await expect(
       tool.execute!(
-        tool.prepareArguments!({ task: "Investigate the failing checks." }),
+        tool.prepareArguments!({
+          task: "Investigate the failing checks.",
+          title: "Failing checks",
+        }),
         { toolCallId: "call-limit" },
       ),
     ).rejects.toSatisfy(

@@ -5,7 +5,7 @@ import { AGENT_INVOCATION_STATUSES } from "@/db/schema/agent-invocations";
  * One direct child agent of a Conversation, from agent invocation records.
  *
  * Viewers who cannot see private content get the status and time, but not the
- * name, task, or error.
+ * name, task, title, or error.
  */
 export const conversationChildAgentSchema = z
   .object({
@@ -15,6 +15,7 @@ export const conversationChildAgentSchema = z
     redacted: z.literal(true).optional(),
     status: z.enum(AGENT_INVOCATION_STATUSES),
     task: z.string().optional(),
+    title: z.string().min(1).optional(),
     updatedAt: z.string().datetime(),
   })
   .strict()
@@ -25,10 +26,11 @@ export const conversationChildAgentSchema = z
         message: "child agent task must be text or explicitly redacted",
       });
     }
-    if (data.redacted && (data.name || data.error)) {
+    if (data.redacted && (data.name || data.title || data.error)) {
       context.addIssue({
         code: "custom",
-        message: "redacted child agents must not expose a name or error",
+        message:
+          "redacted child agents must not expose a name, title, or error",
       });
     }
   });

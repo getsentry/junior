@@ -4,7 +4,12 @@ import {
   AgentInvocationLimitError,
 } from "@/chat/agent-invocations/errors";
 import { agentNameSchema } from "@/chat/agent-invocations/types";
+import { completeText } from "@/chat/pi/client";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
+import {
+  resolveTaskTitle,
+  SHORT_TITLE_MAX_LENGTH,
+} from "@/chat/services/short-title";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -37,6 +42,16 @@ export function createSpawnAgentTool(
     inputSchema: z
       .object({
         task: z.string().trim().min(1).describe("Task for the child agent"),
+        title: z
+          .string()
+          .trim()
+          .min(1)
+          .max(SHORT_TITLE_MAX_LENGTH)
+          .nullable()
+          .optional()
+          .describe(
+            "Optional short display title for the task. Omit to generate one from the task.",
+          ),
         name: agentNameSchema
           .nullable()
           .optional()
@@ -53,11 +68,18 @@ export function createSpawnAgentTool(
       if (!options.toolCallId) {
         throw new ToolInputError("spawnAgent requires an active tool call ID");
       }
+      const title = await resolveTaskTitle({
+        completeText,
+        instruction: input.task,
+        signal: options.signal,
+        title: input.title,
+      });
       let result;
       try {
         result = await spawnAgent(
           {
             task: input.task,
+            ...(title ? { title } : undefined),
             ...(input.name ? { name: input.name } : undefined),
             ...(input.reasoning_level
               ? { reasoningLevel: input.reasoning_level }
