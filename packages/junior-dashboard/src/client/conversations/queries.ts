@@ -26,6 +26,7 @@ import {
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
   forkConversationResponseSchema,
+  stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import type { DashboardCoreData } from "../types";
@@ -391,6 +392,30 @@ export function useCancelConversationPendingMessages(conversationId: string) {
           queryKey: conversationDetailQueryKey(conversationId),
         }),
       ]);
+    },
+  });
+}
+
+/**
+ * Stop the active Turn for the open conversation.
+ *
+ * The response lists the queued messages the stop removes. The worker removes
+ * them when it observes the stop, so callers hide them until polls catch up.
+ */
+export function useStopConversationTurn(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      post(
+        stopConversationTurnResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/stop`,
+        {},
+      ),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }

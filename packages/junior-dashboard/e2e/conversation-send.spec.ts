@@ -554,3 +554,85 @@ test("hands web and external messages from queue to history without gaps", async
     .click();
   await expect(pending).toBeHidden();
 });
+
+test("stops the active Turn and returns queued text to the composer", async ({
+  page,
+  dashboard,
+}) => {
+  const conversationId = "slack:CQA123:1770000000.000100";
+  const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
+  const createdAt = "2026-06-12T00:00:00.000Z";
+  const queuedMessage: ConversationPendingMessage = {
+    createdAt,
+    receivedAt: createdAt,
+    delivery: "defer",
+    inboundMessageId: "queued-before-stop",
+    messageId: "queued-before-stop",
+    role: "user",
+    source: "web",
+    text: "Queued follow-up",
+  };
+  let active = true;
+  let queued = [queuedMessage];
+  let stopRequests = 0;
+  await page.route(`${path}/pending-messages`, async (route) => {
+    await route.fulfill({
+      json: { conversationId, generatedAt: createdAt, messages: queued },
+    });
+  });
+  await page.route(`${path}/stop`, async (route) => {
+    stopRequests += 1;
+    // The worker removes stopped rows later. Keep serving the stale row so
+    // the dashboard must hide it on its own.
+    await route.fulfill({
+      json: {
+        conversationId,
+        status: "requested",
+        stoppedInboundMessageIds: [queuedMessage.inboundMessageId],
+        stoppedMessages: [
+          {
+            inboundMessageId: queuedMessage.inboundMessageId,
+            text: queuedMessage.text,
+          },
+        ],
+      },
+    });
+  });
+  await page.route(path, async (route) => {
+    const response = await route.fetch({
+      headers: { ...route.request().headers(), "if-none-match": "" },
+    });
+    const detail = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...detail,
+        isParticipant: true,
+        status: active ? "active" : "completed",
+      },
+    });
+  });
+
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  const composer = page.getByLabel("Continue this conversation");
+  const pending = page.getByLabel("Pending messages");
+  const stop = page.getByRole("button", { name: "Stop", exact: true });
+  await expect(pending.getByText(queuedMessage.text!)).toBeVisible();
+  await expect(stop).toBeVisible();
+  await screenshot(page, "conversation-stop-active");
+
+  // Queued text goes back ahead of the draft.
+  await composer.fill("Draft in progress");
+  await stop.click();
+  await expect(composer).toHaveValue(
+    `${queuedMessage.text}\nDraft in progress`,
+  );
+  await expect(pending).toBeHidden();
+  expect(stopRequests).toBe(1);
+
+  queued = [];
+  active = false;
+  await expect(stop).toBeHidden({ timeout: 15_000 });
+});
