@@ -49,6 +49,12 @@ agent invocation records as the `listAgents` tool, so each status comes from
 the runtime, not from model output. Viewers who cannot see private content get
 only the status and time of each child agent.
 
+The detail of a child Conversation has `agentTree`: its parent chain, root
+first, with the child last. A child label is its task title or agent name. The
+root label is its display title. Each Conversation has its own access check, so
+a viewer who cannot see private content gets a generic child label. A root
+Conversation has no `agentTree`.
+
 Message attachments can appear after the source file finishes storing. Clients
 must compare attachment metadata as well as event sequence on refresh.
 

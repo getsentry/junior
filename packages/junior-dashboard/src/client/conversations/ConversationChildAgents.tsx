@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Bot, CircleAlert, LockKeyhole } from "lucide-react";
-import { Link } from "react-router";
 import {
   conversationChildAgentsReportSchema,
   type ConversationChildAgent,
@@ -16,17 +15,22 @@ import {
 } from "../format";
 import { fetchDashboardJson } from "../http";
 import { cn } from "../styles";
-import { conversationPath } from "./conversationRoutes";
+import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
-const statusTone: Record<ConversationChildAgent["status"], StatusChipTone> = {
+const statusTones: Partial<Record<string, StatusChipTone>> = {
+  active: "info",
   blocked: "warning",
   completed: "success",
+  error: "danger",
   failed: "danger",
   paused: "info",
-  pending: "neutral",
   running: "info",
-  stopped: "neutral",
 };
+
+/** Pick the status tone for a child agent, its transcript row, or its detail. */
+export function subagentStatusTone(status: string): StatusChipTone {
+  return statusTones[status] ?? "neutral";
+}
 
 const errorToneClass: Partial<Record<StatusChipTone, string>> = {
   danger: "text-rose-200/85",
@@ -47,11 +51,13 @@ export function useConversationChildAgents(conversationId: string) {
   });
 }
 
-/** Show the child agents of one Conversation with runtime status. */
+/**
+ * Show the child agents of one Conversation with runtime status. A row opens
+ * that child's transcript.
+ */
 export function ConversationChildAgents(props: {
   conversationId: string;
-  /** Called before a child link leaves the current Conversation. */
-  onNavigate(): void;
+  onOpenAgent(target: SubagentTranscriptTarget): void;
 }) {
   const query = useConversationChildAgents(props.conversationId);
 
@@ -82,20 +88,23 @@ export function ConversationChildAgents(props: {
     <ol aria-label="Subagents" className="m-0 grid list-none gap-2 p-0">
       {query.data.agents.map((agent) => (
         <li key={agent.conversationId}>
-          <ChildAgentRow agent={agent} onNavigate={props.onNavigate} />
+          <ChildAgentRow agent={agent} onOpen={props.onOpenAgent} />
         </li>
       ))}
     </ol>
   );
 }
 
-/** Show who ran, what it was asked to do, and what it cost. */
+/**
+ * Show who ran, what it was asked to do, and what it cost. The row text is the
+ * accessible name, so status, title, task, and error stay audible.
+ */
 function ChildAgentRow(props: {
   agent: ConversationChildAgent;
-  onNavigate(): void;
+  onOpen(target: SubagentTranscriptTarget): void;
 }) {
   const { agent } = props;
-  const tone = statusTone[agent.status];
+  const tone = subagentStatusTone(agent.status);
   const task = agent.task?.trim();
   const headline = agent.title ?? task;
   // A title is often a short form of the task. Skip the task when it adds nothing.
@@ -108,12 +117,20 @@ function ChildAgentRow(props: {
   ].filter(Boolean);
 
   return (
-    <Link
-      className="grid min-w-0 gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-2.5 text-inherit no-underline transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-      onClick={props.onNavigate}
-      to={conversationPath(agent.conversationId)}
+    <button
+      className="grid w-full min-w-0 cursor-pointer gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-2.5 text-left text-inherit transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      onClick={() =>
+        props.onOpen({
+          conversationId: agent.conversationId,
+          ...(agent.redacted
+            ? undefined
+            : { label: agent.title ?? agent.name }),
+          status: agent.status,
+        })
+      }
+      type="button"
     >
-      <div className="flex min-w-0 items-center gap-2 text-xs">
+      <span className="flex min-w-0 items-center gap-2 text-xs">
         {agent.redacted ? (
           <span className="flex min-w-0 items-center gap-1.5 text-dashboard-text-muted">
             <LockKeyhole aria-hidden="true" className="size-3 shrink-0" />
@@ -137,21 +154,21 @@ function ChildAgentRow(props: {
         >
           {formatRelativeTime(agent.updatedAt)}
         </time>
-      </div>
+      </span>
       {headline ? (
-        <p className="m-0 line-clamp-2 break-words text-sm font-semibold leading-snug text-dashboard-text">
+        <span className="line-clamp-2 break-words text-sm font-semibold leading-snug text-dashboard-text">
           {headline}
-        </p>
+        </span>
       ) : null}
       {detail ? (
-        <p className="m-0 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-muted">
+        <span className="line-clamp-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-muted">
           {detail}
-        </p>
+        </span>
       ) : null}
       {agent.error ? (
-        <p
+        <span
           className={cn(
-            "m-0 flex min-w-0 items-start gap-1.5 text-xs leading-relaxed",
+            "flex min-w-0 items-start gap-1.5 text-xs leading-relaxed",
             errorToneClass[tone] ?? "text-dashboard-text-muted",
           )}
         >
@@ -159,13 +176,13 @@ function ChildAgentRow(props: {
           <span className="line-clamp-3 min-w-0 whitespace-pre-wrap break-words">
             {agent.error}
           </span>
-        </p>
+        </span>
       ) : null}
       {stats.length > 0 ? (
-        <p className="m-0 font-mono text-xs tabular-nums text-dashboard-text-muted">
+        <span className="block font-mono text-xs tabular-nums text-dashboard-text-muted">
           {stats.join(" · ")}
-        </p>
+        </span>
       ) : null}
-    </Link>
+    </button>
   );
 }

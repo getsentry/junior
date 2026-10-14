@@ -296,6 +296,10 @@ and status rules.
 watch). Call sites pass facts only. Unit snapshots in
 `tests/unit/chat/task-input.test.ts` are authoritative for exact prose.
 
+A child agent result is not a task. It answers work that the parent gave away,
+so it has no instructions of its own. `agent-invocations/result.ts` owns its
+`[agent result]` input.
+
 **Goals**
 
 - Mark the turn as a **task**, not a person message.

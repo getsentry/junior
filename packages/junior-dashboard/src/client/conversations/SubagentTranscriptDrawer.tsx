@@ -4,11 +4,12 @@ import { Link } from "react-router";
 
 import { useConversationData } from "./queries";
 import { conversationPath } from "./conversationRoutes";
-import { formatMessageTimestamp } from "../format";
+import { conversationDetailTitle, formatMessageTimestamp } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
-import type { TranscriptViewSubagentPart } from "../types";
 import { Drawer } from "../components/Drawer";
 import { SearchInput } from "../components/SearchInput";
+import { StatusChip } from "../components/StatusChip";
+import { subagentStatusTone } from "./ConversationChildAgents";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import {
   TranscriptSearchToggle,
@@ -19,9 +20,13 @@ import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 
+/** One child Conversation to show, with what its parent already knows. */
 export interface SubagentTranscriptTarget {
   conversationId: string;
-  part: TranscriptViewSubagentPart;
+  /** Task title or agent name, shown before the child loads. */
+  label?: string;
+  /** Child status from the parent, which knows how the child ended. */
+  status?: string;
 }
 
 /** Show a child conversation through the ordinary authorized detail API. */
@@ -51,13 +56,8 @@ function SubagentTranscriptDrawerContent(props: {
 
   const detail = query.data;
   const label =
-    props.target.part.title ||
-    detail?.displayTitle ||
-    props.target.part.subagentKind;
-  const meta = [
-    statusLabel(props.target.part, detail?.status),
-    detail ? formatMessageTimestamp(Date.parse(detail.startedAt)) : undefined,
-  ].filter(isString);
+    props.target.label ?? conversationDetailTitle(detail) ?? "Subagent";
+  const status = statusLabel(props.target.status, detail?.status);
   const searchOpenVisible = searchOpen || search.length > 0;
 
   const titleId = "subagent-transcript-drawer-title";
@@ -122,9 +122,20 @@ function SubagentTranscriptDrawerContent(props: {
               <ExternalLink aria-hidden="true" size={12} strokeWidth={2.25} />
             </Link>
           </div>
-          <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted">
-            {meta.join(" · ")}
-          </div>
+          {status || detail ? (
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-snug text-dashboard-text-muted">
+              {status ? (
+                <StatusChip size="compact" tone={subagentStatusTone(status)}>
+                  {status}
+                </StatusChip>
+              ) : null}
+              {detail ? (
+                <time className="font-mono" dateTime={detail.startedAt}>
+                  {formatMessageTimestamp(Date.parse(detail.startedAt))}
+                </time>
+              ) : null}
+            </div>
+          ) : null}
           {searchOpenVisible ? (
             <div className="mt-3 min-w-0">
               <SearchInput
@@ -169,13 +180,13 @@ function SubagentTranscriptDrawerContent(props: {
 }
 
 function statusLabel(
-  part: TranscriptViewSubagentPart,
-  detailStatus?: string,
-): string {
-  if (part.status !== "running" && part.status !== "completed") {
-    return part.status;
+  status: string | undefined,
+  detailStatus: string | undefined,
+): string | undefined {
+  if (status && status !== "running" && status !== "completed") {
+    return status;
   }
-  return detailStatus ?? part.status;
+  return detailStatus ?? status;
 }
 
 function DrawerEmptyState(props: {
@@ -192,8 +203,4 @@ function DrawerEmptyState(props: {
       {props.children}
     </div>
   );
-}
-
-function isString(value: string | undefined): value is string {
-  return typeof value === "string" && value.length > 0;
 }

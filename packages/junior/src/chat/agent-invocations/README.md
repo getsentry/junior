@@ -79,6 +79,15 @@ dashboard pairs them to show the child and its status.
 - An agent invocation that receives a nested result has no tool call, but it
   writes the same two events. A `replaced` result still ends its own row.
 
+A child Conversation has no Location, so no Delivery records its visible
+messages. The same two writes also add `message` events to the child
+Conversation, so the dashboard can show the child transcript:
+
+- The input is a user message. Its id is the mailbox input id, so the child
+  Turn links to it.
+- A completed result that is not empty is an assistant message. A failed,
+  blocked, or stopped child has no reply. Its Turn shows how it ended.
+
 ## Parent Results
 
 A terminal result wakes the parent Conversation as a core Event without a
@@ -96,8 +105,9 @@ mailbox metadata and wait window as Watch Events, but it has no
   Conversation. A delegated credential subject of a system Actor is not passed
   to the result Turn yet.
 - Results from different Actors never share one Turn.
-- The child result is model output. The parent gets it as information, not
-  instructions.
+- The parent gets the child output as-is. The child runs as the same Actor
+  with the same tools, so a label on its output adds no protection. The result
+  says that it is not from a person, because a child cannot give user approval.
 - The automated-turn limit does not drop results.
 - `spawnAgent` returns the child `conversation_id`. The parent reads child
   history with `searchConversationEvents`.

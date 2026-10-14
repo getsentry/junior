@@ -341,6 +341,7 @@ describe("dashboard canonical-event components", () => {
         conversationId="conversation-1"
         identity={null}
         live={false}
+        onOpenSubagent={() => {}}
         onSearchChange={() => {}}
         onViewChange={() => {}}
         privacy={null}
@@ -1005,13 +1006,7 @@ describe("dashboard canonical-event components", () => {
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: SubagentTranscriptTarget = {
       conversationId: "child-1",
-      part: {
-        type: "subagent",
-        id: "child-1",
-        childConversationId: "child-1",
-        status: "completed",
-        subagentKind: "advisor",
-      },
+      status: "completed",
     };
 
     const html = renderToStaticMarkup(
@@ -1039,13 +1034,7 @@ describe("dashboard canonical-event components", () => {
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: SubagentTranscriptTarget = {
       conversationId: "child-1",
-      part: {
-        type: "subagent",
-        id: "child-1",
-        childConversationId: "child-1",
-        status: "error",
-        subagentKind: "advisor",
-      },
+      status: "error",
     };
 
     const html = renderToStaticMarkup(
@@ -1055,8 +1044,8 @@ describe("dashboard canonical-event components", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(html).toContain("error ·");
-    expect(html).not.toContain("completed ·");
+    expect(html).toContain(">error</span>");
+    expect(html).not.toContain(">completed</span>");
   });
 
   it("keeps a child transcript openable when its end event is missing", () => {
@@ -1094,21 +1083,15 @@ describe("dashboard canonical-event components", () => {
           <SubagentTranscriptDrawer
             target={{
               conversationId: "child-1",
-              part: {
-                type: "subagent",
-                id: "invocation-1",
-                childConversationId: "child-1",
-                status: "running",
-                subagentKind: "advisor",
-              },
+              status: "running",
             }}
             onClose={() => {}}
           />
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(drawerHtml).toContain("completed ·");
-    expect(drawerHtml).not.toContain("running ·");
+    expect(drawerHtml).toContain(">completed</span>");
+    expect(drawerHtml).not.toContain(">running</span>");
     expect(drawerHtml).toContain("Open conversation");
   });
 
@@ -1139,13 +1122,7 @@ describe("dashboard canonical-event components", () => {
     );
     const target: SubagentTranscriptTarget = {
       conversationId: "child-error",
-      part: {
-        type: "subagent",
-        id: "child-error",
-        childConversationId: "child-error",
-        status: "error",
-        subagentKind: "advisor",
-      },
+      status: "error",
     };
 
     const html = renderToStaticMarkup(
@@ -1189,13 +1166,7 @@ describe("dashboard canonical-event components", () => {
     });
     const target: SubagentTranscriptTarget = {
       conversationId: "child-stale",
-      part: {
-        type: "subagent",
-        id: "child-stale",
-        childConversationId: "child-stale",
-        status: "running",
-        subagentKind: "advisor",
-      },
+      status: "running",
     };
 
     const html = renderToStaticMarkup(

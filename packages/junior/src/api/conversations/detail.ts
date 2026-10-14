@@ -26,6 +26,7 @@ import { readConversationSourceTask } from "@/chat/automations/read";
 import { readConversationArchivedAt } from "./archive";
 import { readConversationParticipants } from "./participants";
 import { readConversationForks } from "./fork";
+import { readConversationAgentTree } from "./agent-tree";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -209,6 +210,13 @@ export async function readConversationDetail(
     limit: options.limit ?? 500,
   });
   if (!report) return undefined;
-  const forks = await readConversationForks(conversationId, options.viewer);
-  return conversationDetailReportSchema.parse({ ...report, ...forks });
+  const [forks, agentTree] = await Promise.all([
+    readConversationForks(conversationId, options.viewer),
+    readConversationAgentTree(conversationId, options.viewer),
+  ]);
+  return conversationDetailReportSchema.parse({
+    ...report,
+    ...forks,
+    ...(agentTree ? { agentTree } : undefined),
+  });
 }

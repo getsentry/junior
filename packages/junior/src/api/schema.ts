@@ -71,6 +71,7 @@ export type {
   CancelConversationPendingMessagesResponse,
   ActorIdentity,
   ConversationActivityPreview,
+  ConversationAgentTreeNode,
   ConversationAuxiliaryCosts,
   ConversationCost,
   ConversationDetailReport,
