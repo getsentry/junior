@@ -18,6 +18,7 @@ const statusTone: Record<ConversationChildAgent["status"], StatusChipTone> = {
   paused: "info",
   pending: "neutral",
   running: "info",
+  stopped: "neutral",
 };
 
 /** Load and show the child agents of one Conversation with runtime status. */
