@@ -919,6 +919,7 @@ export function buildConversations(
       channel: summary.channel,
       channelName: summary.channelName,
       channelNameRedacted: summary.channelNameRedacted,
+      childAgentTotals: summary.childAgentTotals,
       cumulativeDurationMs: summary.cumulativeDurationMs,
       cumulativeUsage: summary.cumulativeUsage,
       displayTitle: summary.displayTitle,

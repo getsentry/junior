@@ -30,7 +30,7 @@ import {
 import type { ActorIdentity } from "../schema/conversation";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { summaryFromRow } from "../conversations/reporting";
-import { readRootConversationMetricsFromSql } from "../conversations/usage";
+import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -602,7 +602,7 @@ export async function readLocationDetailFromSql(
       recentConversationIds,
       options.viewer,
     ),
-    readRootConversationMetricsFromSql(getDb(), recentConversationIds),
+    readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
   ]);
   return {
     ...location,

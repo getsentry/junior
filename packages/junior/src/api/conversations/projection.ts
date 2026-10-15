@@ -209,6 +209,7 @@ export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
   archivedAtMs?: number;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
+  childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   conversation: ConversationProjectionSource;
   durationMs: number;
   locationId?: string;
@@ -266,6 +267,9 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { auxiliaryCosts: args.auxiliaryCosts }
       : undefined),
     ...(usage ? { cumulativeUsage: usage } : undefined),
+    ...(args.childAgentTotals
+      ? { childAgentTotals: args.childAgentTotals }
+      : undefined),
     ...(actorIdentity ? { actorIdentity } : undefined),
     ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:

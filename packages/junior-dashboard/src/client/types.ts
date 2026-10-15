@@ -156,6 +156,7 @@ export type Conversation = {
   channel?: string;
   channelName?: string;
   channelNameRedacted?: boolean;
+  childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   cumulativeDurationMs: number;
   cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
   displayTitle: string;

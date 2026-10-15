@@ -1,8 +1,12 @@
 /** SQL reporting adapter for usage stored on assistant history events. */
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { notCopiedByFork } from "@/chat/conversations/fork";
+import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { juniorConversationEvents } from "@/db/schema";
 import {
   agentTurnUsageSchema,
   hasAgentTurnUsage,
@@ -120,12 +124,13 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
 }
 
 /**
- * Aggregate real assistant calls by provider/model in SQL. Replayed history is
- * not another call; its tokens appear in the next call's input usage.
+ * Aggregate real assistant calls by provider/model in SQL, for one
+ * Conversation and all its child agents at any depth. Replayed history is not
+ * another call; its tokens appear in the next call's input usage.
  */
 export async function readConversationModelUsageFromSql(
   executor: JuniorSqlDatabase,
-  options: { conversationId: string; includeDescendants?: boolean },
+  options: { conversationId: string },
 ): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
   // Prefer the model field when it already carries a vendor prefix so usage keys
   // match turn_routed/handoff model ids (openai/gpt-5.6-sol), not the transport
@@ -164,17 +169,14 @@ export async function readConversationModelUsageFromSql(
     })
     .from(juniorConversationEvents)
     .innerJoin(
-      juniorConversations,
+      conversationSubtree([options.conversationId]),
       eq(
-        juniorConversations.conversationId,
+        conversationSubtreeColumns.conversationId,
         juniorConversationEvents.conversationId,
       ),
     )
     .where(
       and(
-        options.includeDescendants
-          ? eq(juniorConversations.rootConversationId, options.conversationId)
-          : eq(juniorConversationEvents.conversationId, options.conversationId),
         eq(juniorConversationEvents.type, "assistant_message"),
         // Copied fork history is model context, not another model call.
         notCopiedByFork(),

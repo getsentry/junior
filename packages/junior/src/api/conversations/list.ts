@@ -29,7 +29,10 @@ import {
 } from "./membership";
 import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
-import { readRootConversationMetricsFromSql } from "./usage";
+import {
+  childAgentTotalsReport,
+  readConversationTreeMetricsFromSql,
+} from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
@@ -376,10 +379,8 @@ export async function readConversationFeedFromSql(
           : undefined,
     ),
     listConversationAnnotationsById(db, conversationIds),
-    readConversationAuxiliaryCostsFromSql(db, conversationIds, {
-      includeDescendants: true,
-    }),
-    readRootConversationMetricsFromSql(db, conversationIds),
+    readConversationAuxiliaryCostsFromSql(db, conversationIds),
+    readConversationTreeMetricsFromSql(db, conversationIds),
     readConversationParticipants(db, conversationIds),
     resolveSlackTeamDomains(
       conversations.flatMap((conversation) =>
@@ -412,6 +413,10 @@ export async function readConversationFeedFromSql(
       const row = rows[index]!;
       const access = accessByConversation.get(conversation.conversationId);
       const metrics = metricsByRoot.get(conversation.conversationId);
+      const auxiliaryCosts = auxiliaryCostsByRoot.get(
+        conversation.conversationId,
+      );
+      const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const archivedAtMs = archiveTimesByConversation.get(
         conversation.conversationId,
       );
@@ -419,7 +424,8 @@ export async function readConversationFeedFromSql(
         ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
         conversation,
         access,
-        auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
+        auxiliaryCosts: auxiliaryCosts?.total,
+        ...(childAgentTotals ? { childAgentTotals } : undefined),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
         teamDomainByTeamId,
         ...(row.location?.visibility === "public"

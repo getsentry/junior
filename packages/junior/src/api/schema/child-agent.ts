@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AGENT_INVOCATION_STATUSES } from "@/db/schema/agent-invocations";
+import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
   conversationAuxiliaryCostsSchema,
   conversationUsageSchema,
@@ -9,12 +10,13 @@ import {
  * One direct child agent of a Conversation, from agent invocation records.
  *
  * Viewers who cannot see private content get the status, time, and usage, but
- * not the name, task, title, or error. Usage covers the child Conversation
- * only, like the detail of that child Conversation.
+ * not the name, task, title, or error. Usage covers the child Conversation and
+ * all its own child agents, like the detail of that child Conversation.
  */
 export const conversationChildAgentSchema = z
   .object({
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
+    childAgentTotals: conversationChildAgentTotalsSchema.optional(),
     conversationId: z.string().min(1),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
