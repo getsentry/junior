@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/github.eval.ts > GitHub Skill Workflows > when asked about PR auth sequencing, explain automatic installation credentials",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "1ed4aa81324c",
+      "maxOutputTokens": "26d228663f13",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "287b494141e8",
+      "prompt[1]": "a29af514e988",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_09c93b8f875eca01016ad04cfcfbb487d186d673baee529047\",\"reasoningEncryptedContent\":\"gAAAAABq0Ez9gZMN5XA04es9_dOh6vHHHj4SZuRT4D1ZgMLwlD8se1_i6Ydv-uKF0K-dK_DXYbsAXATdh8d41zsnlLubBWXvptHSmX6wbWWRxg4g4dmueVou620dfNCKdu6IbcPAWyyPY38dhsJwuL_aVuyr1DUs1FwGfk1ppUwaH6pNpQBpQTgz2apE4PgIKBNySRe3sgiTgMv8dYzD09vobckLLACR5c0r1UiTahPufkkl2HwgT_QE5MhVygZFekM_y8RQL4bFQlK89GBRx2LCyYV6YTxE0mCJWjm1mVvvmSXm0k4eGZqVUQdTxtOf3a-V0x5EWyhKY7YzoYs0UwvjUPuvaMa5onR8ccFW3N6r-gUNVdfNK6NYVcx_H0byL_BCIjFVNn2F_KR-ilJX__6Z75RJgMKLtr-4ZEvTf6eUpp_5X9RjCatEltoPTiTGpe3yjA_u5oBDxVqNkKSvMbB8wuM-YxVbX5bUymOhADH06k1MCowQ7TkUZs5TNVml8MtkpLeNJlIizN_lx72aF59wUcoT2OI9SwE3LFfwg6rXcZpR1J2YVrwBokNCv1ej8dXhGi_Rg0f5t0ZclmTo5CYBAX4234OpDZZv9LRZCZtvD_izqfetpfDiDTNu-VodLOki-vZbKdpjJBok5ZG7I68dWtEpPbV5e5K7kwfwkPLWYXdIhb-9_9z4cvb_Lr3eqqI5GV6-qh5JG5yEo1IBddjMgbnlknNUFKig2PT4NjCRWBp84zVitEQImmYShXZzGbMRJPcR7COkDnkTgBIxhnxpZhAeb-ejzDChcCHamrMc1-s2XnJAT-enpCR7_I1MM4BHy2C6gKOzAsRy2MHow5jffZ7WXKxpRaa6pKEyB3sHKAA7JLKgYzR0eS4yN3oPsYJYmBb6sFySHcxMBT_-5yMNXMOKmen3wcVLeGIntByhxtMAugIZtXpsVOJyniZ1tDKaNl_RiRPWa-6JS8HgPYXdtyMexkP46XggQ7b-e1XiUHWdoifMICeiSjhwpS3OgvMG9sJ9cdyaMjnYIS9_kBb32zs45_hehCAdLLMCNDo2OfWwDo0T1dsXrFmeBjUizlB40JHV0C7uvHQHU9Vfj31-mUIEXMHUmzM9z9wgwMMr79xQ_ftK_qZZCrQOJGs8X6Oan_RPvxqgcb7sQkcAZEjCNB6_3iogzvqlkAUKR5TASkkocge-cmdbQ5GAMjNh_hwu4rT8Jnzla64a4UBqCLuHVXP6-HD55On9osYjPBA_CcV18yr_4LpZlDhz8U7GX9haT8t95ff_ZRlBB0FdxxceeK15rVHQLHoR63UD_ZkNLKmAwW-kMK6sh-YLqXBjdN3rvy3mhLx-j4FBfmnzYCt1AAt2io-HBHgjvoAcQL4Vu6UvZSiA_EbqTIpvQCoXKxirbQfgj3wWMcNajOSSN-anUGMtGh0-2hmvFGm7SHp0AV4sInlAFy9LDFxRr50Q7nbHlfVOrduOaM6_Z5UFXdfktirpFyR4jBYJNJiKgPOFlkaom5vq6fePllDTq5B2hx5w7iev20Ut5DyuyK5KAESfBLnXrh33GRZSbFos19QJZDUDVK4Dbk6T2Z8f8cYVS3l17aBfo1mck7geAbOr_3UsNPds_B1E1TAb9J8pTD9QUDy6KUSYHwmYeACAgr_OhgHvJJjPSqvNzKvetCLB_6DOUyhNAjO74OCiEZu4HyBjihSJd5Dvvu72mIHEhmAO9LQn5I2k9RFr8k49CkxEMQavaojADf98YV0DcMvqv8tw-kla5VZYQLlueKKwor1_qgMn0ug84i9UWdwxODQqoH6kvO02exjl4U5tBx6NvvDQgj-FT8DuN_998b654sokniPcvY6BUKK-MkncHqmH9yilMKeUElHEYXgBycwcbcHkQ-x8C34xkmM=\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"distinct\\\",\\\"duplicateId\\\":null,\\\"supersededIds\\\":null}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_09c93b8f875eca01016ad04cfd70e887d1a79c0aecb1679e95\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":558,\"noCache\":558,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":56,\"text\":26,\"reasoning\":30},\"raw\":{\"input_tokens\":558,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":56,\"output_tokens_details\":{\"reasoning_tokens\":30},\"total_tokens\":614}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_09c93b8f875eca01016ad04cfac0d887d1a2863870b13899c7\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792036090657,\"endTime\":1792036093892,\"providerRequestId\":\"req_60de19ec760740e6a1c7eec1dffd6001\",\"statusCode\":200,\"providerResponseId\":\"resp_09c93b8f875eca01016ad04cfac0d887d1a2863870b13899c7\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"50e151b41bcb6e6be2e50e9cab645c89\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000838\",\"marketCost\":\"0.0000838\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000838\",\"inferenceCost\":\"0.0000838\",\"inputInferenceCost\":\"0.0000558\",\"outputInferenceCost\":\"0.000028\",\"generationId\":\"gen_01M4YTSCQN32F69JRS35GDKM1D\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

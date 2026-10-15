@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/subagents.eval.ts > Child Agents > when a child agent is missing input, it reports the block and the parent says what is missing",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "67ffd2f2a658",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0008ddec0a718d0e016ad04da2530487d1a2553dd16107fe77\",\"reasoningEncryptedContent\":\"gAAAAABq0E2jJ6krLqrZj5AsR-H_ClcTegTsJQccuwxoqbUP7TwcQXT_7wmVtXc7CTHIhVOGyKQ_ssKcsYPrWoX7c32keYT9P5DUl8nMZAyZua5XmsI1HMiQMUq44xFD1nwK84UpqANgE9Am-uKYYeNls2iqFdX5bD0NeiHLXtcwZ-JfGQLTT23zfYSBC3VhUZTpFYHidsKD3Oog1-nPNI8DvnMTgKMm7h_gb9xaxNBSCZK3wB2qQ3obXiLofDJyTbn60S32dhQYXeT5UDOtJp3zFScJt9ic6FGYpAFtnQrYo-jqwpbStF7JGGoqP2GIdKoc5dSC0H5wptKyct0JRiP3pKyw3bqFiu87egVIXEA-VU-uwxEzEVJWNjx09fjlDufLHHJGUi9JHO_t_ufwQnVlNYEqc25ZyzD1MtsGI-Bu2xPWI3iUqqQZHh8NhhBnExLvSrwSMnfPUqr0nDFX8bwBFw5Uku2eccT01x7tYGKMDUBqLovLVVRJ76m4OfPmBmN1yrqIsZjo7C0cXwwXKi4es6mLQxZVUE8f41XK47b2cf_qkFTZdoYrxUJjcn7i37bLoLxRYVgJm5wFzZKeApiUcyB5TTFqIUjuwPgJ3NyF1Y9K9SzzzrwRdNVGKXkmJKcVQPHZwu3jkf_iXRrp7FBT-jGTha9Zq9RFlEGAo-HlQmL-5NBXQK_YQikACpLMiMCTqBj1xnoBcfF4G5Vwad9sYUsmwnAqOi3fE0_P_rhxatUF44hxv_1ibjyJYEwITrWvCIPMpyfl7W-8ZARyQwZG9sSFkLF4HxNklHmBzMDVB5TigV7dTmA153E4aTiNAzxRuBXfHUa5Euy2fcs85Zl49ycXxQj-VB2sNrNlnkye_wx4SratQuGkGByvAIrUyk1C8j9tnZznU6lkM3vFD0r9Xnn7hGCoU6DxDawzhz3_ZwFMyA4MvS9NUACpZE1rgVvKGaet-reGoWmkryeOfKShjbrioxHNnQVtUiz603YWmUrDjcII7XE-a124ikpcWKOLLgtcWxwA4fDWx_kzO_PtoClCOxAWG0HO1G4UUo6E8f5pJZWvUX3t5asZz36sdOSqshdWrLTastyU8LZ3ZLtRbP7eByD0xl8LhFu_nJaiSkCJ-xxYwqNu2PYzVhXI9PCN_5Awkek8Pi8GhHAI3spN1a741AMyVq9zSys17kznRwT-ObooGpNLtjxac031p2POKqf2y2oHmMGkMt-yiLJ-qkfVchN1rbfFsJFJfRz17LBXiauhdpW9jdJxW3sg65pePd4sve6P4sBdTBZBgXp-o_HhgBNHVBLZiUi0YE0RyTVmCCwzKFQNCbRey7E60PYdqI_kPvqtPp2mAj18_S2NNHJADxnMrNlzyNCZOJRiEPfNT-UjCXF97lwCb4X7jdh9-EXxQj4Iv51DjUiQPgpmXpwbJIuApWwNEOuiZMOiiJX9hxThYDBLs70b9EkFZy8CIr3Rqbce0Ja7CZfJj6ipTjg42RcpoLBjrCkh3Q1Uwal0Q3jwCSW_ssA5-q6uD3EqQux7WW1zHEEMeTiKD1CqHcfg50parF6WlA0aCnVNfkTsxbzDHdFexc1wMADQpalfyZ4OAWCXbU50JbRBWCoZ_bSvcVtov3sCSLfVW0a8L5dVeT1eF1lblfjPbKjT8tcYwWzpkzBlbtQ72cObi4rCDNRPu36CtK5UKCdqvA0l8aAFqNQ_gnbY8cmyYTHtF5t35Z_tBj_P0KTA-jOSbSaZLOtHW4PFUogSYpgVO_yx1SBtZTbC56UdyBMEjp1kkD_0H9v-MV6z31O_-m-cZSzViYpoUTdZ3v2iyj6xzckXHTzywp9YxKGc9uEdmQdpGarceWqaNkJZ8yPPIoIydIwfL2h8easSuR0FCmthCOwubCh2ubHh0c-pFIr0fiMwpu0GRr1NVYfQ_oUzdOP2cD0TzVAHYlNGpg==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a follow-up about an unfinished child-agent task. The result says the chosen deploy region is absent from the available context, so the assistant should report that missing information rather than guess.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0008ddec0a718d0e016ad04da2dfd487d18fd5f0fa7862916a\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":926,\"noCache\":926,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":100,\"text\":67,\"reasoning\":33},\"raw\":{\"input_tokens\":926,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":100,\"output_tokens_details\":{\"reasoning_tokens\":33},\"total_tokens\":1026}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0008ddec0a718d0e016ad04da1896c87d19d5fc9c1fd9da1d7\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792036257455,\"endTime\":1792036259764,\"providerRequestId\":\"req_9459f534dbd440e497007d4b9ebb1e84\",\"statusCode\":200,\"providerResponseId\":\"resp_0008ddec0a718d0e016ad04da1896c87d19d5fc9c1fd9da1d7\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"833221d3b078ebcf43fb19635ad5137e\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001426\",\"marketCost\":\"0.0001426\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001426\",\"inferenceCost\":\"0.0001426\",\"inputInferenceCost\":\"0.0000926\",\"outputInferenceCost\":\"0.00005\",\"generationId\":\"gen_01M4YTYFM5GRNPCP5ZKVB4C3JR\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

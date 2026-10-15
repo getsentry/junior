@@ -167,6 +167,7 @@ export function createTools(
       {
         modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
+        sandbox: context.workspace,
       },
       hooks.toolOverrides?.imageGenerate,
     );
