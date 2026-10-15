@@ -236,6 +236,11 @@ stored.
   with no special case.
 - The read is bounded: the newest 16 messages and 24,000 characters. A cut
   adds an explicit notice.
+- The instruction of an Automation run root is always in the read. It is
+  loaded by its message id and comes first. It is not one of the 16 messages.
+- A message keeps the position of its original event. An edit changes only
+  its text. An edit of a message older than the read is left out, so an edit
+  never moves a message after a newer one, such as a revocation.
 
 Guardian renders the projection outside the untrusted proposal JSON, in a
 `<root_user_instructions key="...">` section with a new random key for each

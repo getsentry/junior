@@ -132,6 +132,33 @@ function truncate(text: string, maxChars: number): string {
 }
 
 /**
+ * Read the instruction of an Automation run root: its dispatch input
+ * message, loaded by id. Returns nothing for another root. `seq` is set only
+ * when the instruction is older than the read page.
+ */
+async function readAutomationInstruction(
+  root: Conversation,
+  page: ReadonlyMap<string, MessageData>,
+): Promise<{ data: MessageData; seq?: number } | undefined> {
+  if (!root.conversationId.startsWith(DISPATCH_CONVERSATION_PREFIX)) {
+    return undefined;
+  }
+  // The read page has the newest edit when the message is in it.
+  const inPage = page.get(root.conversationId);
+  if (inPage) {
+    return { data: inPage };
+  }
+  // Each message event uses this key, as written by conversation ingress.
+  const event = await getConversationEventStore().loadByIdempotencyKey(
+    root.conversationId,
+    `message:${root.conversationId}`,
+  );
+  return event?.data.type === "message"
+    ? { data: event.data, seq: event.seq }
+    : undefined;
+}
+
+/**
  * Read a bounded projection of the root Conversation for Guardian review of
  * one child agent action. `actor` is the child's Actor. Only messages that
  * the same Actor wrote, or the Automation run's own instruction for a system
@@ -150,27 +177,56 @@ export async function readRootConversation(args: {
     limit: MAX_ROOT_MESSAGE_EVENTS,
     types: ["message", "message_updated"],
   });
-  // Keep the newest version of each message in its first position.
+  // Each message keeps the position of its original event. An edit changes
+  // only the text, never the author. An edit of a message older than the page
+  // has no position, so it is left out like the original.
   const byId = new Map<string, MessageData>();
+  let orphanEdits = false;
   for (const event of page.events) {
     const data = event.data as MessageData;
-    byId.set(data.messageId, data);
+    if (data.type === "message") {
+      byId.set(data.messageId, data);
+      continue;
+    }
+    const original = byId.get(data.messageId);
+    if (original) {
+      byId.set(data.messageId, { ...original, text: data.text });
+    } else {
+      orphanEdits = true;
+    }
   }
-  const all: RootConversationMessage[] = [];
+  // The instruction of an Automation run is its authority, so it stays in
+  // the projection when newer messages push it out of the window.
+  const pinnedRead = await readAutomationInstruction(root, byId);
+  const instruction = pinnedRead?.data;
+  const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {
     const text = data.text.trim();
     // A message that Junior did not answer still counts. It can hold a
     // restriction or a revocation.
-    if (!text) {
+    if (!text || data.messageId === instruction?.messageId) {
       continue;
     }
     all.push({
       author: messageLabel(root, data, args.actor),
+      messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
   }
+  // The pinned instruction is not one of the newest messages, so it does
+  // not count toward their number. Its characters do count.
+  const instructionText = instruction?.text.trim();
+  const pinned: RootConversationMessage[] =
+    instruction && instructionText
+      ? [
+          {
+            author: messageLabel(root, instruction, args.actor),
+            text: truncate(instructionText, MAX_ROOT_MESSAGE_CHARS),
+          },
+        ]
+      : [];
   const messages: RootConversationMessage[] = [];
-  let chars = 0;
+  let chars = pinned[0]?.text.length ?? 0;
   for (const message of [...all].reverse()) {
     if (
       messages.length >= MAX_ROOT_MESSAGES ||
@@ -178,11 +234,25 @@ export async function readRootConversation(args: {
     ) {
       break;
     }
-    messages.unshift(message);
+    messages.unshift({ author: message.author, text: message.text });
     chars += message.text.length;
   }
+  // When the instruction is older than the page, only messages between it
+  // and the page are missing.
+  const firstSeq = page.events[0]?.seq;
+  const hasOlder =
+    pinnedRead?.seq === undefined || firstSeq === undefined
+      ? page.hasOlder
+      : (
+          await getConversationEventStore().query(root.conversationId, {
+            afterSeq: pinnedRead.seq,
+            beforeSeq: firstSeq,
+            limit: 1,
+            types: ["message", "message_updated"],
+          })
+        ).events.length > 0;
   return {
-    messages,
-    truncated: page.hasOlder || messages.length < all.length,
+    messages: [...pinned, ...messages],
+    truncated: hasOlder || orphanEdits || messages.length < all.length,
   };
 }

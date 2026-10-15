@@ -167,6 +167,74 @@ describe("user approval for child agents", () => {
     }
   });
 
+  it("keeps a later revocation last when an old root message is edited", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        messageId: "old-approval",
+        role: "user",
+        text: "Unpublish abc.png.",
+      });
+      // More than one read page of events comes after the approval.
+      for (let step = 1; step <= 70; step += 1) {
+        await recordRootMessage(slackParentConversationId, {
+          role: "assistant",
+          text: `Step ${step}.`,
+        });
+      }
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Stop. Don't unpublish anything.",
+      });
+      // The user edits the old approval after the revocation.
+      await getConversationEventStore().append(slackParentConversationId, [
+        {
+          idempotencyKey: "message:old-approval:update:1",
+          data: {
+            type: "message_updated",
+            messageId: "old-approval",
+            role: "user",
+            text: "Unpublish abc.png and def.png.",
+            meta: { author: { userId: user.userId } },
+          },
+          createdAtMs: 9_000,
+        },
+      ]);
+      const child = await createAndEnqueueAgentInvocation(
+        {
+          ...slackInvocationInput,
+          idempotencyKey: "spawn-after-edit",
+          input: "Unpublish abc.png.",
+          parentToolCallId: "call-after-edit",
+        },
+        { conversationStore, nowMs: 10_000, queue, state },
+      );
+
+      const read = await readRootConversation({
+        actor: user,
+        conversationId: child.childConversationId,
+      });
+      expect(read.messages).toHaveLength(16);
+      expect(read.messages.at(-1)).toEqual({
+        author: "user",
+        text: "Stop. Don't unpublish anything.",
+      });
+      // The edit does not bring the old approval in after the revocation.
+      expect(read.messages.map((message) => message.text)).not.toContain(
+        "Unpublish abc.png and def.png.",
+      );
+      expect(read.truncated).toBe(true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("gives a child of an Automation run only that run's own instruction", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
@@ -220,6 +288,31 @@ describe("user approval for child agents", () => {
       ).resolves.toMatchObject({
         messages: [{ author: "event", text: instruction }],
       });
+
+      // A long run keeps its instruction, pinned first, after more than a
+      // page of later events.
+      for (let step = 1; step <= 70; step += 1) {
+        await recordRootMessage(dispatchConversationId, {
+          role: "assistant",
+          text: `Step ${step}.`,
+        });
+      }
+      const long = await readRootConversation({
+        actor: eventActor,
+        conversationId: child.childConversationId,
+      });
+      expect(long.messages[0]).toEqual({
+        author: "automation",
+        text: instruction,
+      });
+      expect(long.messages.slice(1)).toEqual(
+        Array.from({ length: 16 }, (_, index) => ({
+          author: "assistant",
+          text: `Step ${55 + index}.`,
+        })),
+      );
+      // Steps 1 to 54 are not shown.
+      expect(long.truncated).toBe(true);
     } finally {
       await fixture.close();
     }
