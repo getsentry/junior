@@ -91,21 +91,6 @@ async function untilPreempted<T>(
   }
 }
 
-/**
- * Reject a call to a disabled tool.
- *
- * A disabled tool stays in the tool list so the provider cache stays valid.
- * Check before input validation, hooks, action review, and the tool run, so
- * the model gets one clear error and no tool code runs.
- */
-function rejectDisabledTool(toolName: string, toolDef: AnyToolDefinition) {
-  if (toolDef.disabledReason) {
-    throw new ToolInputError(
-      `${toolName} is disabled in this Turn. ${toolDef.disabledReason} Do not call it again in this Turn.`,
-    );
-  }
-}
-
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createPiAgentTools(
   tools: Record<string, AnyToolDefinition>,
@@ -191,7 +176,13 @@ export function createPiAgentTools(
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
     }
-    rejectDisabledTool(toolName, toolDef);
+    // Disabled tools stay in the tool list. Reject them before hooks, action
+    // review, and the executor run.
+    if (toolDef.disabledReason) {
+      throw new ToolInputError(
+        `${toolName} is disabled in this Turn. ${toolDef.disabledReason} Do not call it again in this Turn.`,
+      );
+    }
 
     const beforeTool = agentHooks
       ? await agentHooks.beforeToolExecute({
@@ -357,9 +348,7 @@ export function createPiAgentTools(
     label: toolName,
     description: toolDef.description,
     parameters: toolDef.inputSchema as AgentTool["parameters"],
-    prepareArguments: toolDef.disabledReason
-      ? () => rejectDisabledTool(toolName, toolDef)
-      : toolDef.prepareArguments,
+    prepareArguments: toolDef.prepareArguments,
     executionMode:
       toolDef.approvalMode === "auto" || toolDef.approvalMode === "review"
         ? "sequential"
@@ -404,10 +393,6 @@ export function createPiAgentTools(
                   resolvedCatalogCall.definition.description,
                 "gen_ai.tool.name": resolvedCatalogCall.toolName,
               });
-              rejectDisabledTool(
-                resolvedCatalogCall.toolName,
-                resolvedCatalogCall.definition,
-              );
               const catalogCall = prepareCatalogToolCall(resolvedCatalogCall);
               executionParams = catalogCall.arguments;
               await reportStatus(executionToolName, executionParams);

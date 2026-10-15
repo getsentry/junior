@@ -2021,10 +2021,9 @@ describe("Slack schedule tool wiring via createTools", () => {
   });
 
   it("rejects automation writes from a Turn not started by a Slack message", async () => {
-    // A child agent result reaches the Slack thread with the person's Actor
-    // but an Agent invocation Source. The runtime disables these tools for
-    // that Turn. This calls them directly to check that the tools also refuse
-    // to use the person's authority.
+    // A child agent result has the person's Slack Actor but an Agent
+    // invocation Source. Call the tools directly to check that they refuse it
+    // even without the adapter's disabled check.
     const fixture = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TORIGIN${Date.now()}`;
@@ -2076,12 +2075,12 @@ describe("Slack schedule tool wiring via createTools", () => {
             timezone: "America/Los_Angeles",
           },
         }),
-      ).rejects.toThrow("started by a person's Slack message");
+      ).rejects.toThrow("No active Slack conversation is available.");
       await expect(
         executeRegisteredTool(tools.slackScheduleDeleteAutomation, {
           automationId: "sched_missing",
         }),
-      ).rejects.toThrow("started by a person's Slack message");
+      ).rejects.toThrow("No active Slack conversation is available.");
       await expect(
         executeRegisteredTool(tools.createEventAutomation, {
           instruction: "Summarize new channel messages.",
@@ -2093,14 +2092,15 @@ describe("Slack schedule tool wiring via createTools", () => {
             events: ["message.posted"],
           },
         }),
-      ).rejects.toThrow("started by a person's Slack message");
+      ).rejects.toThrow(
+        "Event automations require an active Slack channel or DM and actor.",
+      );
       expect(resolveActorIdentity).not.toHaveBeenCalled();
       await expect(
         listStoredTasksForTeam(fixture.sql.db(), TEAM_ID),
       ).resolves.toEqual([]);
     } finally {
       await fixture.close();
-      vi.restoreAllMocks();
     }
   });
 });

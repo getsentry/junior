@@ -189,9 +189,9 @@ same way.
   the Source or Actor of one Turn. Do not remove a tool for one Turn; the next
   request then writes the whole Conversation to the cache again. When a Turn
   cannot use a tool, set `disabledReason` with `disableTools`. The tool adapter
-  rejects calls to a disabled tool before input validation, and the Turn
-  context lists disabled tools. Do not put Turn-specific text in a tool
-  description or schema.
+  rejects calls to a disabled tool before hooks, action review, and the tool
+  executor, and the Turn context lists disabled tools. Do not put
+  Turn-specific text in a tool description or schema.
 - Repo-owned tools declare `readOnlyHint`, `destructiveHint`, `openWorldHint`,
   and `idempotentHint`. External plugin and MCP tools with missing hints are
   logged and enter action review conservatively.

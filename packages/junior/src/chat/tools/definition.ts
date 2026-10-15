@@ -50,13 +50,7 @@ interface BaseToolDefinition<
     description: string;
     id: string;
   };
-  /**
-   * Why this tool cannot run in the current Turn. Unset means it can run.
-   *
-   * A disabled tool stays in the model tool list, so the provider cache stays
-   * valid. The runtime rejects its calls and lists it in the Turn context.
-   * Never put Turn-specific text in `description` or the schema.
-   */
+  /** Why the current Turn cannot run this tool. Set it with `disableTools`. */
   disabledReason?: string;
   description: string;
   exposure?: ToolExposure;
@@ -115,13 +109,7 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
     description: string;
     id: string;
   };
-  /**
-   * Why this tool cannot run in the current Turn. Unset means it can run.
-   *
-   * A disabled tool stays in the model tool list, so the provider cache stays
-   * valid. The runtime rejects its calls and lists it in the Turn context.
-   * Never put Turn-specific text in `description` or the schema.
-   */
+  /** Why the current Turn cannot run this tool. Set it with `disableTools`. */
   disabledReason?: string;
   description: string;
   exposure?: ToolExposure;
@@ -179,10 +167,10 @@ export function tool<TInputSchema extends TSchema>(
 }
 
 /**
- * Disable every tool in a registry for this Turn without removing it.
+ * Disable tools for this Turn without removing them from the tool list.
  *
- * Use this instead of leaving a tool out of the registry when a Turn cannot
- * use it. An unset reason keeps the tools enabled.
+ * The tool adapter rejects their calls, and the Turn context lists them. An
+ * unset reason keeps the tools enabled.
  */
 export function disableTools(
   tools: ToolRegistry,

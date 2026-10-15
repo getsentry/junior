@@ -121,15 +121,7 @@ export function throwToolInputError(error: string): never {
   throw new ToolInputError(error);
 }
 
-const SLACK_MESSAGE_TURN_REQUIRED =
-  "Scheduled automations can only be managed in a Turn started by a person's Slack message. Do not retry in this Turn.";
-
-/**
- * Resolve the active Slack channel for scheduled automation operations.
- *
- * The tools stay registered on every Turn in a Slack Conversation. Other Turns
- * have no Slack Source, so this rejects them before any task state changes.
- */
+/** Resolve the active Slack channel for scheduled automation operations. */
 export function requireActiveChannel(
   context: SchedulerToolContext,
 ): SlackDestination {
@@ -138,7 +130,7 @@ export function requireActiveChannel(
     const source = context.source as Partial<SlackSource> | undefined;
     const issues = parsed.error.issues as readonly SchemaIssue[];
     if (!source || source.kind !== "slack") {
-      throwToolInputError(SLACK_MESSAGE_TURN_REQUIRED);
+      throwToolInputError("No active Slack conversation is available.");
     }
     if (issues.some((issue) => issue.code === "unrecognized_keys")) {
       throwToolInputError(
@@ -155,7 +147,7 @@ export function requireActiveChannel(
   }
 
   if (parsed.data.kind !== "slack") {
-    throwToolInputError(SLACK_MESSAGE_TURN_REQUIRED);
+    throwToolInputError("No active Slack conversation is available.");
   }
 
   return {
@@ -235,11 +227,6 @@ export async function getWritableTask(args: {
   taskId: string;
 }): Promise<ScheduledAutomation> {
   const destination = requireActiveChannel(args.context);
-  // A person must start the Turn. Slack Turns without a Slack Actor cannot
-  // change tasks.
-  if (!args.context.actor) {
-    throwToolInputError("No active Slack actor context is available.");
-  }
 
   const task = await readScheduledAutomation(getDb(), args.taskId);
   if (!task || task.status === "deleted") {

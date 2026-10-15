@@ -10,13 +10,7 @@ import { createListEventAutomationsTool } from "@/chat/tools/list-event-automati
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 
-/**
- * Build event automation tools for a Conversation with a Slack Location.
- *
- * Registration depends only on the Location, so every Turn in the
- * Conversation sends the same tool list and keeps the prompt cache. Other
- * Turns get the tools disabled.
- */
+/** Build event automation tools for a Conversation with a Slack Location. */
 export function createEventAutomationTools(
   context: ToolRuntimeContext,
   catalog: EventCatalog,

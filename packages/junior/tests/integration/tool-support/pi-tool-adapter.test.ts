@@ -286,17 +286,15 @@ describe("Pi tool adapter integration", () => {
 
     // The provider caches the tool list, so disabling must not change it.
     expect(modelView(disabled)).toBe(modelView(enabled));
-    // Reject before input validation, so bad arguments get the same error.
-    expect(() => agentTool(disabled, "notify").prepareArguments?.({})).toThrow(
+    await expect(
+      agentTool(disabled, "notify").execute("disabled-direct", { text: "hi" }),
+    ).rejects.toThrow(
       "notify is disabled in this Turn. It needs a person's message.",
     );
     await expect(
-      agentTool(disabled, "notify").execute("disabled-direct", { text: "hi" }),
-    ).rejects.toThrow("notify is disabled in this Turn.");
-    await expect(
       agentTool(disabled, "executeTool").execute("disabled-catalog", {
         tool_name: "catalogNotify",
-        arguments: {},
+        arguments: { text: "hi" },
       }),
     ).rejects.toThrow("catalogNotify is disabled in this Turn.");
     expect(execute).not.toHaveBeenCalled();

@@ -234,7 +234,6 @@ describe("Slack tool registration", () => {
       {
         ...ctx("C12345"),
         actor: slackActor,
-        resolveActorIdentity: async () => undefined,
       },
     );
     // The provider caches tools first. Every origin must send the same list,

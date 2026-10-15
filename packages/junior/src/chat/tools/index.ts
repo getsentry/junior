@@ -89,11 +89,8 @@ export interface CreateToolsOptions {
 /**
  * Build the model-facing tool registry from runtime-owned context and capabilities.
  *
- * The provider caches tools before the system prompt and messages. Choose
- * tools from the Conversation, such as its Location, not from the Source or
- * Actor of one Turn. Otherwise a Turn from another origin removes tools and
- * the provider writes the whole Conversation to its cache again. When a Turn
- * cannot use a tool, keep it and set `disabledReason` with `disableTools`.
+ * Choose tools from the Conversation, not from one Turn, so the cached tool
+ * list stays the same. Use `disableTools` when a Turn cannot use a tool.
  */
 export function createTools(
   availableSkills: SkillMetadata[],
@@ -271,14 +268,15 @@ export function createTools(
           context.conversationId,
         );
     }
-    // Slack issues an action token only for a new message or mention.
-    const slackActionToken =
-      context.source.kind === "slack" ? context.slackActionToken : undefined;
     Object.assign(
       tools,
       disableTools(
-        { slackPublicSearch: createSlackPublicSearchTool(slackActionToken) },
-        slackActionToken
+        {
+          slackPublicSearch: createSlackPublicSearchTool(
+            context.slackActionToken,
+          ),
+        },
+        context.slackActionToken
           ? undefined
           : "Slack gives a search token only for a new message or mention.",
       ),
