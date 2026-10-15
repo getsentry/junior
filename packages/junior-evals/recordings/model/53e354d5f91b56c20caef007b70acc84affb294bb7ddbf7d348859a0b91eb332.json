@@ -1,0 +1,32 @@
+{
+  "session": "evals/integration/scheduler/credentials.eval.ts > Scheduled Credentials > when the creator confirms connected credential use, enable creator mode",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "726504ac49a5",
+      "messages[1]": "c9fb95ce554a",
+      "messages[2]": "b38bdc9e0910",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M50ABCQPWEMEW12ZWB4HHTPF\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"### Handoff summary\\n\\n- **User request:** “prepare to update that scheduled automation so it can use my account if needed, but ask me before applying the change.”\\n- **Progress:** No automation has been identified or changed. A handoff attempt to switch to the `standard` profile returned no result.\\n- **Key constraint:** The user explicitly requires confirmation before applying any change.\\n- **Next steps:**\\n  1. Identify which scheduled automation the user means; it is ambiguous. Ask them which one, or list available scheduled automations if tools allow.\\n  2. Determine whether the automation supports a `credentialMode` setting. The prior assistant considered setting it to `creator` to let it use the user’s account.\\n  3. Verify the user is the automation’s creator if creator mode requires that.\\n  4. Explain the proposed change and ask for explicit approval. **Do not apply it until the user confirms.**\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":284,\"output_tokens\":196},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_034924f4725ffcbc016ad10fcb9bdc87d297df3eba2086ce8a\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792085963537,\"endTime\":1792085965833,\"providerRequestId\":\"req_177afaabf60c41ff852c50f8673a3003\",\"statusCode\":200,\"providerResponseId\":\"resp_034924f4725ffcbc016ad10fcb9bdc87d297df3eba2086ce8a\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"924ea9d8b21bcc54ad2ee6741bdc1948\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001264\",\"marketCost\":\"0.0001264\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001264\",\"inferenceCost\":\"0.0001264\",\"inputInferenceCost\":\"0.0000284\",\"outputInferenceCost\":\"0.000098\",\"generationId\":\"gen_01M50ABCQPWEMEW12ZWB4HHTPF\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "session": "evals/integration/scheduler/creation.eval.ts > Schedule Creation > when asked for nightly fix PRs, omit success notifications by default",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "04280492c606",
+      "messages[1]": "78376ef08f08",
+      "messages[2]": "7ff306f35b7e",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M50AEB9CA0M0DJWKT1J4AN57\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **User request:** “every night at 2am Pacific, open PRs to fix failing CI checks in getsentry/junior.”\\n- **Progress:** Attempted a standard handoff via `functions.handoff`, but the tool returned **“No result provided.”** No confirmed automation or schedule was created.\\n- **Decision/context:** The prior assistant interpreted this as a recurring daily automation at **2:00 AM Pacific** that should directly open PRs, not merely send notifications. No additional user preferences or constraints were established.\\n- **Next steps:** Check whether any scheduled task or automation was created despite the empty tool response. If not, set up a daily job for `getsentry/junior` at 2:00 AM Pacific, with instructions to investigate failing CI checks and open PRs with fixes. If the available tooling cannot create or run that automation, explain the limitation and ask how the user would like to proceed.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":238,\"output_tokens\":199},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0e1989a4789a1f1c016ad1102c748c87d29801ae2b32630154\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792086060353,\"endTime\":1792086062994,\"providerRequestId\":\"req_6cd3fe5fa81e4db6badc9938a8c4c4e6\",\"statusCode\":200,\"providerResponseId\":\"resp_0e1989a4789a1f1c016ad1102c748c87d29801ae2b32630154\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"ded5f3233a2ef5c1069945d9320f0b87\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001233\",\"marketCost\":\"0.0001233\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001233\",\"inferenceCost\":\"0.0001233\",\"inputInferenceCost\":\"0.0000238\",\"outputInferenceCost\":\"0.0000995\",\"generationId\":\"gen_01M50AEB9CA0M0DJWKT1J4AN57\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

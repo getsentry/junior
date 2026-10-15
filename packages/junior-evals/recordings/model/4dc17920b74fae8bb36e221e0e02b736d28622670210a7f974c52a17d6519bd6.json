@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/scheduler/creation.eval.ts > Schedule Creation > when asked for a terse one-off reminder, create it without recurrence",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "27b6b23a37e3",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_030c48af7dde8980016ad11011112c87d29f22af1695132e46\",\"reasoningEncryptedContent\":\"gAAAAABq0RASRRnOwHTXmtOHl4qNSoHDWQxCCnmEB2E6bCwKRWMQq-SXtj2ALH5yPPs8HI2gSPM9vkwvtRAjiqV0QdL3XprKHBGpYULw2HXrwFAPIBtiztMiuKyJD12lh9I_hbAfnvI4nphlom6wvhbhyOsSULBIXSpDrgnyw942LZ2HkqMX81T2X7TZOpbbgnBlzI5eHfmtdC5NxxU6l9dnOUklhRR2r4og8AyDFYlPW5R6T-04wCrv42w0hcE7IYbwS9w0qed0ZKpRBVWe_SAK5CqR0QZV1WJ0vuZRgifoGYIkCdKQpEO0vF5Ut7jwHJDlG6RdRY2io4gboa26cHvRyy6Pb-lTFvBsgSTYt8Jqq-ELDzEOYZQ5g233_6YsYkrO4XYCRcopxUxfWO9h-BrfjGsRe9EGij82aeEBj9jFwIQLhX23b4zaR4Vwpjlz8gFBEjJ02vtuhiIp70Qtdwol9nOnoxXFQvZPkIzp5a25rsE0JgmQQprjPqRoiRUTXaz32GU-OpOaJ0rD12u3u7g0CQ_3eY1ODI0tyNpvii5xwuPCFIyJW6qceNcmP0BN2g4PBt9negTFDcW6vy69VeYlAg-V85xL8xpEvdkl3VCTUJM7R9-VIZtknV2brZKHj5yE6z7kqcHWHCMAlKQETx5NZMAkFkZjftqYe5cRiDXGfPy6Qyc79CIh0ENveh-etxncSXgyCRHvevHUuI5XU7BR2kLwPRVwzwRBE_3hOdwuSpv7Jtlbd6wZMkmqfoLl2mZsWyHMcB43Ya5e08utNEiR3koTlEHLdcFb2jMn8p93Ho1ST9bZkxA6d54Cwy_kTYSQgn6XWcgxwPjHI7fFGGM-RxUvq5ICR9Rr91sldpYDQJ3GtjEjakN8qyHOZ7A1akIjb88ytEH1Fz03z8StXpdxrb3GhEEiMhaqpqbiOjydT5JuHssi0Xg-USA2YcpjTWk-1RCTfu_Ma_9CXaIvMvEkVKbxe70P9pchCUBmW4H_m2-1j0Dgl0j4pwVQBUYrKOE4ipdeEj8V5lK2lKsGjBb-EKt9nRauthJOBJQwq9PZmTQZQNbG6OFRUXOBtwDRrMjHxgNU137QK0U_nPJZikzgFqTHh0ZURsJ7Mhsr4w9tQX1UQaZRqtVhHI9-FIDf5gCux2JkZb_qFIYrctKmmK5WtEqclYaHlC62QXrpwqU6KcJAM2spBjNPC0998zT82wduZgRHFeqo9cLXX15jOgRRrcN62BlZxU9mmgBkeTJd3clSXh46YMQaT-55p_ZeIAXyBn1SiM7-bb5a5vdOgHSOPwE556KX2jBZkvv_g1trXskNKciWorNq3u5l-TJwXkTpxLh48n745belBGbR0EvTyPzfGDIEx4pRQIvrD4-0gP1qa-ojxCiRa6fyAU9aFLEVZm2h1yv94UcXRjEux1EhK7EaESpuXlOk-Jw4ao8XvE43-FMiRBbtxdoEkB-wyM5Xe3MiWV5G-iuAKwyQy6II5E81JAPoUcD-FySL2ti9HcJLj0EOI4ueelTTCxf50S0H2fHM13EFz1ZgU_ZXQYNiRtXw7ixfeqFLb5WoBAQDLocxpzR6jfikUzPer7qqz1ArrfubtzRNPZvlwm_z7aaDhGV_2ocVTgLcXvHmX9Qv2FIm7srrDFmymQ76hpLCW1RsJ-955wxhYgUQSAaH2tuhLPMw506gGn_jqT7hq5JcvRNihhVXKcORWjNXeJGWoauAZTtLohTTw2QC3Nbqsk5MCina7Y7ScqM1olpPmhRLhRFZ-uC5mdRV5mOi1Su5UmRvM1dD-Y-kHR8YKqvHii-qJZrmKuL7UmjyZbr66t5yHb5Tr6RzuWiAeSqgCGOsPU0HAa-FX5C5-VyrBmLLLsP_z4wU2UvwMP8ertD1SmHqZxLs8yYBu2cXFI6BMZ65ROHgwLloGFPfmWPyKbaG_ffmt8sa6lsMFhMvq0V285SPOxYY2GHO54Zstc_KOpjrFz0phrzkCCw1e7ZnVC2-Kn3HEAJ6wn2KaR0me9kozB2OCjPLe9V-iH5Y4r6kURVzFj6TCkpBzCEvhDiNa4aeS740DDIIRH_HCii-2x6bcmbFqbDo4eFHGcfIGrfCqAtnz0WsxDL7ulIZ3Zay4vj5DE6dIk3pcKOjXqq4EzXdUijNl6erdr1x84ypEnyybA3N0dCCaW6kpQpNvF0PkAibWGhZ23NNKHIBYc1AjoBJJBFLnyHY3Squ3frvMsxc05UtrhT-iwbYyDQI7BTQRkNtbpWvjE6l75yPxijSAyJ1dzXgI9GquXRBphjlsXbj9Vf__0PghjFbD_Lm2E5hGjej5IrdBQ9xTcXOL9dbqNJhxIAQ9mGnIHkNt6JPFH1QEWsL2H17qTVP2AxR\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested a one-time water reminder in one minute, and the scheduled message to the task creator is within that scope.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_030c48af7dde8980016ad11011bc4c87d2808589298c39a6f4\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2719,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":895},\"outputTokens\":{\"total\":113,\"text\":52,\"reasoning\":61},\"raw\":{\"input_tokens\":2719,\"input_tokens_details\":{\"cache_write_tokens\":895,\"cached_tokens\":1821},\"output_tokens\":113,\"output_tokens_details\":{\"reasoning_tokens\":61},\"total_tokens\":2832}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_030c48af7dde8980016ad1100f484087d2ae8dd4b7c2cd91fa\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792086031206,\"endTime\":1792086034301,\"providerRequestId\":\"req_cd5c90826c9c45328c534c122afb187c\",\"statusCode\":200,\"providerResponseId\":\"resp_030c48af7dde8980016ad1100f484087d2ae8dd4b7c2cd91fa\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"281a59f1c2d52c2ff4d87a9f6d3206b1\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000186885\",\"marketCost\":\"0.000186885\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000186885\",\"inferenceCost\":\"0.000186885\",\"inputInferenceCost\":\"0.000130385\",\"outputInferenceCost\":\"0.0000565\",\"generationId\":\"gen_01M50ADET7MH1CJD10BCVK92R8\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
