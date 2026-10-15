@@ -18,7 +18,7 @@ const messageAgentOutputSchema = juniorToolOutputSchema.extend({
   delivery: z
     .enum(["started", "queued"])
     .describe(
-      "started: the child agent starts work on the message now. queued: the target reads the message after its current work.",
+      "started: the child agent starts work on the message now. queued: the target reads the message at its next step or after its current work.",
     ),
 });
 
@@ -27,7 +27,7 @@ export function createMessageAgentTool(
   messageAgent: NonNullable<ToolRuntimeContext["messageAgent"]>,
 ) {
   return zodTool({
-    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message after its current work, and one result covers both. The result arrives later as a new task in this conversation; do not wait or poll for it. A message to your parent does not end your task. Use spawnAgent only to start a new child agent.`,
+    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work, and one result covers both. The result arrives later as a new task in this conversation; do not wait or poll for it. A message to your parent does not end your task. Use spawnAgent only to start a new child agent.`,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

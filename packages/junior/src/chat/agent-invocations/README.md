@@ -80,7 +80,8 @@ dashboard pairs them to show the child and its status.
 - Both events have an idempotency key from the agent invocation id, so retries
   and repairs do not add a second row.
 - An agent invocation that receives a nested result has no tool call, but it
-  writes the same two events. A `replaced` result still ends its own row.
+  writes the same two events. A `replaced` result still ends its own row. A
+  `steered` agent invocation ends its row when the running Turn reads it.
 
 A child Conversation has no Location, so no Delivery records its visible
 messages. The same two writes also add `message` events to the child
@@ -141,9 +142,16 @@ valid targets.
   the parent Run. If the child is idle or stopped, the agent invocation starts
   now (`delivery: "started"`). If the child has open work, the agent
   invocation waits in the child mailbox and runs after that work
-  (`delivery: "queued"`). The earlier work then ends as `replaced`, so the
-  parent gets one result for both. A running child does not read the message
-  in its current Turn. The idempotency key comes from the parent tool call.
+  (`delivery: "queued"`). The idempotency key comes from the parent tool call.
+- **Steering a running child.** A running child reads a queued parent message
+  as a steering message before its next model call. A running tool is never
+  interrupted. The message keeps `defer` mailbox delivery, so it never starts
+  an attempt ahead of a paused child. The Turn saves the message, and then its
+  agent invocation ends as `completed` with `parentMailboxStatus: "steered"`.
+  The running agent invocation reports for both. A message joins only with the
+  Actor and credentials of the running Turn. Otherwise it and every later
+  parent message wait. If the child finishes without another model call, the
+  message runs after that work, and the earlier work ends as `replaced`.
 - **Child to parent.** The message wakes the parent as an Event with
   namespace `junior` and type `agent.message`. It uses the same mailbox path
   and Actor rules as a child result: the Actor comes from the sender's agent
@@ -224,7 +232,8 @@ of its latest one. The tool shows two fields:
   `idle`, or `stopped`. A child whose latest agent invocation is `completed`,
   `blocked`, or `failed` is `idle`: it waits for an agent message.
 - `last_result` is how the newest finished task ended: `completed`, `blocked`,
-  or `failed`. A stop and a `replaced` result are not results.
+  or `failed`. A stop, a `replaced` result, and a
+  `steered` agent invocation are not results.
 
 Two more rules apply to nested child agents:
 

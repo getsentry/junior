@@ -1,6 +1,16 @@
+import { isDeepStrictEqual } from "node:util";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
+import {
+  buildSteeringPiMessage,
+  withoutSavedSteeringMessages,
+} from "@/chat/agent/prompt";
+import type { AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
+import {
+  instructionProvenanceFor,
+  sameActorIdentity,
+} from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -57,6 +67,7 @@ import {
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
+  markAgentInvocationSteered,
   reportReplacedAgentInvocation,
 } from "./store";
 import type {
@@ -198,6 +209,104 @@ export async function resolveAgentInvocationId(
     context.conversationId,
   );
   return latest?.status === "stopped" ? latest.invocationId : undefined;
+}
+
+/**
+ * Give queued parent messages to the running agent invocation of a child as
+ * steering messages. A message joins only with the Actor and credentials of
+ * the running Turn. The first message that does not match stops the scan, so
+ * it and every later message wait for the current work. Each message that
+ * joins ends as `steered`, and the running agent invocation reports for it.
+ */
+function createAgentMessageSteeringDrain(
+  context: ConversationWorkerContext,
+  running: AgentInvocation,
+) {
+  const turnId = getAgentInvocationTurnId(running.invocationId);
+  return async (
+    accept: (messages: AgentSteeringMessage[]) => Promise<void>,
+  ): Promise<AgentSteeringMessage[]> => {
+    const accepted: AgentSteeringMessage[] = [];
+    await context.attempt.drain(
+      async (pending) => {
+        const readIds: string[] = [];
+        const joining: AgentInvocation[] = [];
+        for (const message of pending) {
+          const metadata = agentInvocationMailboxMetadataSchema.safeParse(
+            message.input.metadata,
+          );
+          if (!metadata.success) {
+            continue;
+          }
+          const candidate = await getAgentInvocation(
+            metadata.data.agentInvocationId,
+          );
+          // Only a parent task or message steers. A grandchild result or a
+          // watch event starts its own agent invocation.
+          if (
+            !candidate?.parentToolCallId ||
+            candidate.invocationId === running.invocationId
+          ) {
+            continue;
+          }
+          if (isTerminalAgentInvocation(candidate)) {
+            // An earlier drain marked this message but did not acknowledge it.
+            if (candidate.parentMailboxStatus === "steered") {
+              readIds.push(message.inboundMessageId);
+            }
+            continue;
+          }
+          if (
+            !sameActorIdentity(candidate.actor, running.actor) ||
+            !isDeepStrictEqual(
+              candidate.credentialContext,
+              running.credentialContext,
+            )
+          ) {
+            break;
+          }
+          joining.push(candidate);
+          readIds.push(message.inboundMessageId);
+        }
+        if (joining.length === 0) {
+          return readIds;
+        }
+        // An earlier drain can save a message in the Turn and then fail
+        // before it marks the agent invocation. Do not give it to the Turn
+        // again.
+        const saved =
+          (await getTurnRecord(running.childConversationId, turnId))
+            ?.piMessages ?? [];
+        const messages = withoutSavedSteeringMessages(
+          saved,
+          joining.map(
+            (candidate): AgentSteeringMessage => ({
+              provenance: instructionProvenanceFor(candidate.actor),
+              text: candidate.input,
+              timestampMs: candidate.createdAtMs,
+            }),
+          ),
+          buildSteeringPiMessage,
+        );
+        // The Turn saves the messages before they are marked.
+        if (messages.length > 0) {
+          await accept(messages);
+          accepted.push(...messages);
+        }
+        for (const candidate of joining) {
+          const terminal = await markAgentInvocationSteered(
+            candidate.invocationId,
+          );
+          if (terminal && isTerminalAgentInvocation(terminal)) {
+            await recordSubagentEnded(terminal);
+          }
+        }
+        return readIds;
+      },
+      { deferred: true },
+    );
+    return accepted;
+  };
 }
 
 /** Project the terminal invocation into the idempotent turn lifecycle. */
@@ -459,7 +568,10 @@ export function createAgentInvocationWorker(
       if (!terminal || !isTerminalAgentInvocation(terminal)) {
         return;
       }
-      await persistTerminalLifecycle(terminal);
+      // A `steered` agent invocation never started a Turn.
+      if (terminal.parentMailboxStatus !== "steered") {
+        await persistTerminalLifecycle(terminal);
+      }
       await report(terminal);
     };
 
@@ -605,6 +717,10 @@ export function createAgentInvocationWorker(
             sandboxRef,
           },
           durability: {
+            drainSteeringMessages: createAgentMessageSteeringDrain(
+              context,
+              invocation,
+            ),
             onInputCommitted: acknowledge,
             shouldYield: context.shouldYield,
             onSandboxRefChanged: async (nextSandboxRef) => {
