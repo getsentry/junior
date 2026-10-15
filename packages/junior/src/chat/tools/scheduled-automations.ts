@@ -16,16 +16,22 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 function scheduledAutomationToolContext(
   context: ToolRuntimeContext,
 ): SchedulerToolContext {
-  // Pass the Slack Source and Actor only when this Turn has them. Other Turns
-  // get the tools disabled, and the tools also check these values.
+  // A Scheduled automation stores a Slack user as its creator and a Slack
+  // channel as its Destination. The tools take these values from the Slack
+  // Actor and Slack Source of the Turn. Only a Turn that a person started with
+  // a Slack message has both. Scheduler, event automation, and Agent
+  // invocation Turns do not act for that person, so they get no Actor or
+  // Source here. The runtime disables the tools for those Turns, and the
+  // tools also reject the call when they execute.
+  const slackMessageTurn =
+    context.actor?.platform === "slack" &&
+    context.source.kind === "slack" &&
+    !slackMessageTurnDisabledReason(context)
+      ? { actor: context.actor, source: context.source }
+      : undefined;
   return {
     conversationId: context.conversationId,
-    ...(context.actor?.platform === "slack"
-      ? { actor: context.actor }
-      : undefined),
-    ...(context.source.kind === "slack"
-      ? { source: context.source }
-      : undefined),
+    ...slackMessageTurn,
     users: {
       resolveActor: context.resolveActorIdentity ?? (async () => undefined),
     },
