@@ -233,10 +233,18 @@ auth when a delegated tool requires credentials the parent can already request.
 `messageAgent` is exposed with `spawnAgent`. A child run always gets it, so it
 can message its parent even when it is too deep to start child agents.
 
-`listAgents` is exposed with `spawnAgent`. It lists the direct child agents of
-the current Conversation from SQL agent invocation records, not from model
-output. Each child shows the state of its oldest open agent invocation, else
-of its latest one. The tool shows two fields:
+`listAgents` is exposed with `spawnAgent` or `messageAgent`, so a child run
+always gets it. It lists the agents that the current Conversation can see,
+from SQL records, not from model output. Each agent has a `relation`:
+
+- `child`: a direct child agent of the current Conversation.
+- `self`, `parent`, and `sibling` appear only for a child agent. `self` and
+  each `sibling` are child agents of its parent.
+- `parent` has no task. It shows the Conversation execution status of the
+  parent, and a failed Turn shows as `idle`.
+
+Each child agent shows the state of its oldest open agent invocation, else of
+its latest one. The tool shows two fields:
 
 - `status` is what the child does now: `pending`, `running`, `paused`,
   `idle`, or `stopped`. A child whose latest agent invocation is `completed`,

@@ -65,7 +65,8 @@ async function prepareSlackParentConversation() {
 }
 
 async function listAgents(conversationId: string) {
-  return (await createListAgentsTool(conversationId).execute!({}, {})).agents;
+  return (await createListAgentsTool({ conversationId }).execute!({}, {}))
+    .agents;
 }
 
 describe("nested agent invocations", () => {
@@ -195,6 +196,7 @@ describe("nested agent invocations", () => {
       // has work, and an agent invocation that receives a result is not a task.
       const listedChild = (childConversationId: string) => ({
         conversation_id: childConversationId,
+        relation: "child",
         status: "pending",
         task: slackInvocationInput.input,
         updated_at: expect.any(String),

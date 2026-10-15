@@ -366,7 +366,8 @@ describe("agent invocation worker", () => {
         status: "completed",
       });
       await expect(
-        createListAgentsTool(PARENT_CONVERSATION_ID).execute!({}, {}),
+        createListAgentsTool({ conversationId: PARENT_CONVERSATION_ID })
+          .execute!({}, {}),
       ).resolves.toMatchObject({
         agents: [
           {

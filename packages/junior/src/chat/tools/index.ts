@@ -216,8 +216,16 @@ export function createTools(
       context.spawnAgent,
       context.spawnAgentProfiles,
     );
-    tools.listAgents = createListAgentsTool(context.conversationId);
     tools.stopAgent = createStopAgentTool(context.conversationId);
+  }
+
+  // A child agent that is too deep to start child agents can still list its
+  // parent and siblings.
+  if (context.spawnAgent || context.messageAgent) {
+    tools.listAgents = createListAgentsTool({
+      conversationId: context.conversationId,
+      parentConversationId: context.parentConversationId,
+    });
   }
 
   if (context.messageAgent) {
