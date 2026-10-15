@@ -118,6 +118,7 @@ test("uploads shards with scores, usage, failures, and PR metadata", async (t) =
       pull_request: {
         number: 42,
         html_url: "https://github.com/getsentry/junior/pull/42",
+        user: { login: "author" },
         head: { sha: "head-sha", ref: "feature" },
         base: { sha: "base-sha" },
       },
@@ -155,6 +156,7 @@ test("uploads shards with scores, usage, failures, and PR metadata", async (t) =
     base_sha: "base-sha",
     pr_number: 42,
     pr_url: "https://github.com/getsentry/junior/pull/42",
+    pr_author: "author",
     commit_url: "https://github.com/getsentry/junior/commit/head-sha",
     run_url: "https://github.com/getsentry/junior/actions/runs/123/attempts/2",
   });
