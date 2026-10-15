@@ -224,7 +224,10 @@ stored.
   either Actor is not known, the message does not count.
 - When the root is an Automation run, the dispatch input message is that
   run's own instruction. It is labeled `automation` for the run's system
-  Actor. This is the authority that the run already has.
+  Actor. This is the authority that the run already has. Guardian reviews the
+  child's action as if the run proposed it: the instruction allows what it
+  names. No person can answer in the run, so an action outside the
+  instruction is denied, not sent to the user.
 - Root assistant text, Event Turn inputs such as child results, and messages
   from other people are labeled as context.
 - The read happens for each action. A later user message, such as a
