@@ -142,7 +142,13 @@ export function requireSupportedEventAutomationTrigger(
   });
 }
 
-/** Require the active Slack authority used for event-automation management. */
+/**
+ * Require the active Slack authority used for event-automation management.
+ *
+ * The tools stay registered on every Turn in a Slack Conversation. Only a Turn
+ * started by a person's Slack message has this authority. Event, automation,
+ * and Agent invocation Turns must not act with that person's credentials.
+ */
 export function requireEventAutomationSlackContext(
   context: ToolRuntimeContext,
 ) {
@@ -153,7 +159,7 @@ export function requireEventAutomationSlackContext(
     context.actor.teamId !== context.source.teamId
   ) {
     throw new ToolInputError(
-      "Event automations require an active Slack channel or DM and actor.",
+      "Event automations can only be managed in a Turn started by a person's Slack message. Do not retry in this Turn.",
     );
   }
   return {

@@ -1,4 +1,5 @@
 import type { EventCatalog } from "@/chat/events/catalog";
+import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import type { ToolRegistry } from "@/chat/tools/definition";
@@ -6,19 +7,21 @@ import { createListEventAutomationsTool } from "@/chat/tools/list-event-automati
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 
-/** Build event automation tools for an interactive Slack actor. */
+/**
+ * Build event automation tools for a Conversation with a Slack Location.
+ *
+ * Registration depends only on the Location, so every Turn in the
+ * Conversation sends the same tool list and keeps the prompt cache. Each tool
+ * checks at execution that a person's Slack message started the Turn.
+ */
 export function createEventAutomationTools(
   context: ToolRuntimeContext,
   catalog: EventCatalog,
 ): ToolRegistry {
   // TODO(dcramer): Let users manage Event automations from web and other
-  // Conversations. Remove these checks when Event automations no longer require a
+  // Conversations. Remove this check when Event automations no longer require a
   // Slack Destination or Slack creator.
-  if (
-    context.source.kind !== "slack" ||
-    context.destination.platform !== "slack" ||
-    context.actor?.platform !== "slack"
-  ) {
+  if (!getSlackToolContext(context)) {
     return {};
   }
   return {

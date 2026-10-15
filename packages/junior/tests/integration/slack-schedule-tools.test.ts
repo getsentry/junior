@@ -2019,6 +2019,91 @@ describe("Slack schedule tool wiring via createTools", () => {
       setPlugins(previous);
     }
   });
+
+  it("rejects automation writes from a Turn not started by a Slack message", async () => {
+    // A child agent result reaches the Slack thread with the person's Actor
+    // but an Agent invocation Source. The tools stay registered so the tool
+    // list does not change, but they must not use the person's authority.
+    const previous = setPlugins([]);
+    const fixture = await useSchedulerSqlPlugin();
+    try {
+      const TEAM_ID = `TORIGIN${Date.now()}`;
+      const resolveActorIdentity = vi.fn(async () => ({
+        identity: {
+          id: `identity:${TEAM_ID}:U123`,
+          provider: "slack",
+          providerSubjectId: "U123",
+          providerTenantId: TEAM_ID,
+        },
+      }));
+      const tools = createTools(
+        [],
+        {},
+        {
+          conversationId: "slack:C123:1700000000.100000",
+          location: {
+            id: `location:${TEAM_ID}:C123`,
+            provider: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+            threadTs: "1700000000.100000",
+          },
+          source: { kind: "agent_invocation" },
+          destination: {
+            platform: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+          },
+          actor: { platform: "slack", teamId: TEAM_ID, userId: "U123" },
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
+          },
+          resolveActorIdentity,
+          workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+        },
+      );
+
+      await expect(
+        executeRegisteredTool(tools.slackScheduleCreateAutomation, {
+          instruction: "Post a weekly digest.",
+          schedule: {
+            kind: "recurring",
+            frequency: "weekly",
+            time: "09:00",
+            weekdays: ["monday"],
+            timezone: "America/Los_Angeles",
+          },
+        }),
+      ).rejects.toThrow("started by a person's Slack message");
+      await expect(
+        executeRegisteredTool(tools.slackScheduleDeleteAutomation, {
+          automationId: "sched_missing",
+        }),
+      ).rejects.toThrow("started by a person's Slack message");
+      await expect(
+        executeRegisteredTool(tools.createEventAutomation, {
+          instruction: "Summarize new channel messages.",
+          trigger: {
+            namespace: "slack",
+            identifier: "C123",
+            resourceType: "channel",
+            label: "#general",
+            events: ["message.posted"],
+          },
+        }),
+      ).rejects.toThrow("started by a person's Slack message");
+      expect(resolveActorIdentity).not.toHaveBeenCalled();
+      await expect(
+        listStoredTasksForTeam(fixture.sql.db(), TEAM_ID),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+      vi.restoreAllMocks();
+      setPlugins(previous);
+    }
+  });
 });
 
 describe("Slack schedule tool execution modes", () => {

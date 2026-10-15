@@ -83,11 +83,18 @@ function createToolState(): ToolState {
 export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
-  includeLoadSkill?: boolean;
   pluginSandbox?: PluginSandbox;
 }
 
-/** Build the model-facing tool registry from runtime-owned context and capabilities. */
+/**
+ * Build the model-facing tool registry from runtime-owned context and capabilities.
+ *
+ * The provider caches tools before the system prompt and messages. Choose
+ * tools from the Conversation, such as its Location, not from the Source or
+ * Actor of one Turn. Otherwise a Turn from another origin removes tools and
+ * the provider writes the whole Conversation to its cache again. Tools that
+ * need a Slack message or a person check that when they execute.
+ */
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -106,13 +113,9 @@ export function createTools(
   );
   const eventCatalog = getEventCatalog();
   const tools: ToolRegistry = {
-    ...(options.includeLoadSkill === false
-      ? undefined
-      : {
-          loadSkill: createLoadSkillTool(availableSkills, {
-            onSkillLoaded: hooks.onSkillLoaded,
-          }),
-        }),
+    loadSkill: createLoadSkillTool(availableSkills, {
+      onSkillLoaded: hooks.onSkillLoaded,
+    }),
     updatePlan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
@@ -268,13 +271,11 @@ export function createTools(
           context.conversationId,
         );
     }
-    // Always register public search in Slack turns. Without an action token the
-    // tool stays visible and returns an honest interactive-turn limit.
-    if (context.source.kind === "slack") {
-      tools.slackPublicSearch = createSlackPublicSearchTool(
-        context.slackActionToken,
-      );
-    }
+    // Only a Slack message Turn has an action token. Other Turns keep the tool
+    // and get an honest interactive-turn limit when they call it.
+    tools.slackPublicSearch = createSlackPublicSearchTool(
+      context.source.kind === "slack" ? context.slackActionToken : undefined,
+    );
     const identityProviders = [
       "slack",
       ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
@@ -322,10 +323,9 @@ export function createTools(
     tools.slackChannelListMessages =
       createSlackChannelListMessagesTool(slackContext);
 
-    if (
-      context.source.kind === "slack" &&
-      locationCapabilities.canAddReactions
-    ) {
+    // Only a Slack message Turn has a message to react to. Other Turns keep the
+    // tool and get an error when they call it.
+    if (locationCapabilities.canAddReactions) {
       tools.addReaction = createSlackMessageAddReactionTool(
         slackContext,
         state,

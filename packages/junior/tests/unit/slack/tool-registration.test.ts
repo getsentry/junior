@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createEventSource,
   createLocalSource,
   createSlackSource,
   defineJuniorPlugin,
@@ -117,14 +118,6 @@ describe("Slack tool registration", () => {
     });
   });
 
-  it("omits loadSkill when an explicit skill is already loaded", () => {
-    const tools = createTools([], {}, ctx("D12345"), {
-      includeLoadSkill: false,
-    });
-
-    expect(tools).not.toHaveProperty("loadSkill");
-  });
-
   it("registers thread sendFiles and channel history in DM context", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
@@ -228,23 +221,57 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackThreadRead");
   });
 
-  it("registers Slack tools for system work in a Slack Conversation", () => {
-    const tools = createTools(
+  it("registers the same tools for every Turn origin in a Slack Conversation", () => {
+    setPlugins([eventPlugin()]);
+    const slackActor = {
+      platform: "slack" as const,
+      teamId: "T123",
+      userId: "U123",
+    };
+    const messageTurn = createTools(
       [],
       {},
       {
         ...ctx("C12345"),
-        actor: { platform: "system", name: "scheduler" },
-        source: { kind: "scheduled_automation" },
-        slackActionToken: undefined,
+        actor: slackActor,
+        resolveActorIdentity: async () => undefined,
       },
     );
+    // The provider caches tools first. Every origin must send the same list,
+    // or the next Turn writes the whole Conversation to the cache again.
+    const otherTurns = [
+      {
+        actor: { platform: "system" as const, name: "scheduler" },
+        source: { kind: "scheduled_automation" as const },
+      },
+      {
+        actor: { platform: "system" as const, name: "event" },
+        source: createEventSource({
+          eventKey: "event-1",
+          eventType: "issue.closed",
+          identifier: "issue-1",
+          namespace: "events-test",
+        }),
+      },
+      {
+        actor: slackActor,
+        source: { kind: "agent_invocation" as const },
+      },
+    ];
 
-    expect(tools).toHaveProperty("slackThreadRead");
-    expect(tools).toHaveProperty("slackChannelListMessages");
-    expect(tools).toHaveProperty("sendFiles");
-    expect(tools).not.toHaveProperty("slackPublicSearch");
-    expect(tools).not.toHaveProperty("addReaction");
+    for (const turn of otherTurns) {
+      const tools = createTools([], {}, {
+        ...ctx("C12345"),
+        ...turn,
+        slackActionToken: undefined,
+      } as ToolRuntimeContext);
+      expect(Object.keys(tools)).toEqual(Object.keys(messageTurn));
+    }
+    expect(messageTurn).toHaveProperty("loadSkill");
+    expect(messageTurn).toHaveProperty("slackPublicSearch");
+    expect(messageTurn).toHaveProperty("addReaction");
+    expect(messageTurn).toHaveProperty("createEventAutomation");
+    expect(messageTurn).toHaveProperty("slackScheduleCreateAutomation");
   });
 
   it("registers delivery tools from assistant context channel in DM turns", () => {
@@ -265,69 +292,6 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
-  });
-
-  it("registers schedule tools only with complete Slack turn context", () => {
-    setPlugins([eventPlugin()]);
-    const incomplete = createTools([], {}, ctx("C12345"));
-    const complete = createTools(
-      [],
-      {},
-      {
-        ...ctx("C12345"),
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C12345",
-        },
-        actor: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-        },
-        resolveActorIdentity: async () => ({
-          identity: {
-            id: "identity:T123:U123",
-            provider: "slack",
-            providerSubjectId: "U123",
-            providerTenantId: "T123",
-          },
-        }),
-      },
-    );
-
-    expect(incomplete).not.toHaveProperty("slackScheduleCreateAutomation");
-    expect(incomplete).not.toHaveProperty("createEventAutomation");
-    expect(incomplete).toHaveProperty("searchEventTypes");
-    expect(incomplete).toHaveProperty("watchEvents");
-    expect(complete).toHaveProperty("slackScheduleCreateAutomation");
-    expect(complete).toHaveProperty("slackScheduleListAutomations");
-    expect(complete).toHaveProperty("slackScheduleUpdateAutomation");
-    expect(complete).toHaveProperty("slackScheduleDeleteAutomation");
-    expect(complete).toHaveProperty("slackScheduleRunAutomationNow");
-    expect(complete).toHaveProperty("createEventAutomation");
-    expect(complete).toHaveProperty("searchEventTypes");
-    expect(complete).toHaveProperty("watchEvents");
-    expect(complete).toHaveProperty("listEventAutomations");
-    expect(complete).toHaveProperty("updateEventAutomation");
-    expect(complete).toHaveProperty("deleteEventAutomation");
-  });
-
-  it("does not register schedule tools without a actor", () => {
-    const tools = createTools(
-      [],
-      {},
-      {
-        ...ctx("C12345"),
-      },
-    );
-
-    expect(tools).not.toHaveProperty("slackScheduleCreateAutomation");
-    expect(tools).not.toHaveProperty("slackScheduleListAutomations");
-    expect(tools).not.toHaveProperty("slackScheduleUpdateAutomation");
-    expect(tools).not.toHaveProperty("slackScheduleDeleteAutomation");
-    expect(tools).not.toHaveProperty("slackScheduleRunAutomationNow");
-    expect(tools).not.toHaveProperty("createEventAutomation");
   });
 
   it("does not register canvas create when channel context is unavailable", () => {
@@ -359,6 +323,7 @@ describe("Slack tool registration", () => {
     expect(
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
+    expect(tools).not.toHaveProperty("createEventAutomation");
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");

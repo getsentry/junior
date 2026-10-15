@@ -184,6 +184,12 @@ same way.
 - Retry continuations retain an exact transcript prefix. Usage from discarded
   assistant tails is carried forward separately so retained messages are
   counted once.
+- The provider caches tools before the system prompt and messages. Core tool
+  registration depends on the Conversation, such as its Location, and not on
+  the Source or Actor of one Turn. A tool that needs a person's Slack message
+  stays registered and rejects other Turns when it executes. Do not remove a
+  tool for one Turn; the next request then writes the whole Conversation to
+  the cache again.
 - Repo-owned tools declare `readOnlyHint`, `destructiveHint`, `openWorldHint`,
   and `idempotentHint`. External plugin and MCP tools with missing hints are
   logged and enter action review conservatively.

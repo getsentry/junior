@@ -345,10 +345,6 @@ export async function wireAgentTools(
       skill.disableModelInvocation !== true ||
       skill.name === args.invokedSkill?.name,
   );
-  const explicitSkillLoaded = Boolean(
-    args.invokedSkill &&
-    args.activeSkills.some((skill) => skill.name === args.invokedSkill?.name),
-  );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     ...(args.run.parentConversationId
@@ -480,7 +476,6 @@ export async function wireAgentTools(
     },
     toolRuntimeContext,
     {
-      includeLoadSkill: !explicitSkillLoaded,
       pluginSandbox: createPluginToolSandbox(agentSandbox, {
         handleAuthSignal: pluginAuth.maybeHandleAuthSignal,
       }),
