@@ -6,15 +6,18 @@ import {
   createSlackScheduleUpdateAutomationTool,
   type SchedulerToolContext,
 } from "@/chat/scheduled-automations/tools";
-import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import {
+  getSlackToolContext,
+  slackMessageTurnDisabledReason,
+} from "@/chat/slack/tool-support/context";
+import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 function scheduledAutomationToolContext(
   context: ToolRuntimeContext,
 ): SchedulerToolContext {
-  // Pass the Slack Source and Actor only when this Turn has them. The tools
-  // reject other Turns when they execute.
+  // Pass the Slack Source and Actor only when this Turn has them. Other Turns
+  // get the tools disabled, and the tools also check these values.
   return {
     conversationId: context.conversationId,
     ...(context.actor?.platform === "slack"
@@ -34,8 +37,8 @@ function scheduledAutomationToolContext(
  * Build scheduled-automation tools for a Conversation with a Slack Location.
  *
  * Registration depends only on the Location, so every Turn in the
- * Conversation sends the same tool list and keeps the prompt cache. Each tool
- * checks at execution that a person's Slack message started the Turn.
+ * Conversation sends the same tool list and keeps the prompt cache. Other
+ * Turns get the tools disabled.
  */
 export function createScheduledAutomationTools(
   context: ToolRuntimeContext,
@@ -45,16 +48,19 @@ export function createScheduledAutomationTools(
   // require a Slack Destination or Slack creator.
   if (!getSlackToolContext(context)) return {};
   const taskContext = scheduledAutomationToolContext(context);
-  return {
-    slackScheduleCreateAutomation:
-      createSlackScheduleCreateAutomationTool(taskContext),
-    slackScheduleListAutomations:
-      createSlackScheduleListAutomationsTool(taskContext),
-    slackScheduleUpdateAutomation:
-      createSlackScheduleUpdateAutomationTool(taskContext),
-    slackScheduleDeleteAutomation:
-      createSlackScheduleDeleteAutomationTool(taskContext),
-    slackScheduleRunAutomationNow:
-      createSlackScheduleRunAutomationNowTool(taskContext),
-  };
+  return disableTools(
+    {
+      slackScheduleCreateAutomation:
+        createSlackScheduleCreateAutomationTool(taskContext),
+      slackScheduleListAutomations:
+        createSlackScheduleListAutomationsTool(taskContext),
+      slackScheduleUpdateAutomation:
+        createSlackScheduleUpdateAutomationTool(taskContext),
+      slackScheduleDeleteAutomation:
+        createSlackScheduleDeleteAutomationTool(taskContext),
+      slackScheduleRunAutomationNow:
+        createSlackScheduleRunAutomationNowTool(taskContext),
+    },
+    slackMessageTurnDisabledReason(context),
+  );
 }

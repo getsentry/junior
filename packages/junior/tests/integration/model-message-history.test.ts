@@ -120,6 +120,23 @@ describe("model message history", () => {
     });
     const requests = mockAnthropicStream("openai/gpt-6-astra", [
       [{ type: "text", text: "Deploy checked." }],
+      [
+        {
+          type: "tool_use",
+          id: "disabled-call",
+          name: "createEventAutomation",
+          input: {
+            instruction: "Fix failed checks.",
+            trigger: {
+              namespace: "github",
+              identifier: "getsentry/junior#1563",
+              resourceType: "pull_request",
+              label: "PR #1563",
+              events: ["pull_request.checks.failed"],
+            },
+          },
+        },
+      ],
       [{ type: "text", text: "Check failure noted." }],
     ]);
     const slack = await createConversationWorkSlackHarness({
@@ -156,8 +173,9 @@ describe("model message history", () => {
       "Deploy checked.",
       "Check failure noted.",
     ]);
-    expect(requests).toHaveLength(2);
-    const [slackTurn, eventTurn] = requests as [
+    expect(requests).toHaveLength(3);
+    const [slackTurn, eventTurn, afterDisabledCall] = requests as [
+      AnthropicRequest,
       AnthropicRequest,
       AnthropicRequest,
     ];
@@ -177,5 +195,19 @@ describe("model message history", () => {
         ),
       ),
     ).toBe(JSON.stringify(withoutCacheMarkers(slackTurn.messages)));
+    // The event Turn cannot act for the person, so the runtime disables the
+    // automation tools instead of removing them. The request tells the model,
+    // and a call returns an error without running the tool.
+    const eventTurnText = JSON.stringify(
+      eventTurn.messages.slice(slackTurn.messages.length),
+    );
+    expect(eventTurnText).toContain("<disabled-tools>");
+    expect(eventTurnText).toContain("createEventAutomation");
+    expect(JSON.stringify(slackTurn.messages)).not.toContain(
+      "createEventAutomation",
+    );
+    expect(JSON.stringify(afterDisabledCall.messages.at(-1))).toContain(
+      "createEventAutomation is disabled in this Turn.",
+    );
   });
 });

@@ -34,6 +34,7 @@ import {
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   createExecuteToolTool,
@@ -87,6 +88,21 @@ async function untilPreempted<T>(
     signal.removeEventListener("abort", onAbort);
     // The attempt is already reported; a late failure has no reader.
     work.catch(() => undefined);
+  }
+}
+
+/**
+ * Reject a call to a disabled tool.
+ *
+ * A disabled tool stays in the tool list so the provider cache stays valid.
+ * Check before input validation, hooks, action review, and the tool run, so
+ * the model gets one clear error and no tool code runs.
+ */
+function rejectDisabledTool(toolName: string, toolDef: AnyToolDefinition) {
+  if (toolDef.disabledReason) {
+    throw new ToolInputError(
+      `${toolName} is disabled in this Turn. ${toolDef.disabledReason} Do not call it again in this Turn.`,
+    );
   }
 }
 
@@ -175,6 +191,7 @@ export function createPiAgentTools(
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
     }
+    rejectDisabledTool(toolName, toolDef);
 
     const beforeTool = agentHooks
       ? await agentHooks.beforeToolExecute({
@@ -340,7 +357,9 @@ export function createPiAgentTools(
     label: toolName,
     description: toolDef.description,
     parameters: toolDef.inputSchema as AgentTool["parameters"],
-    prepareArguments: toolDef.prepareArguments,
+    prepareArguments: toolDef.disabledReason
+      ? () => rejectDisabledTool(toolName, toolDef)
+      : toolDef.prepareArguments,
     executionMode:
       toolDef.approvalMode === "auto" || toolDef.approvalMode === "review"
         ? "sequential"
@@ -385,6 +404,10 @@ export function createPiAgentTools(
                   resolvedCatalogCall.definition.description,
                 "gen_ai.tool.name": resolvedCatalogCall.toolName,
               });
+              rejectDisabledTool(
+                resolvedCatalogCall.toolName,
+                resolvedCatalogCall.definition,
+              );
               const catalogCall = prepareCatalogToolCall(resolvedCatalogCall);
               executionParams = catalogCall.arguments;
               await reportStatus(executionToolName, executionParams);

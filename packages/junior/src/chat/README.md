@@ -186,10 +186,12 @@ same way.
   counted once.
 - The provider caches tools before the system prompt and messages. Core tool
   registration depends on the Conversation, such as its Location, and not on
-  the Source or Actor of one Turn. A tool that needs a person's Slack message
-  stays registered and rejects other Turns when it executes. Do not remove a
-  tool for one Turn; the next request then writes the whole Conversation to
-  the cache again.
+  the Source or Actor of one Turn. Do not remove a tool for one Turn; the next
+  request then writes the whole Conversation to the cache again. When a Turn
+  cannot use a tool, set `disabledReason` with `disableTools`. The tool adapter
+  rejects calls to a disabled tool before input validation, and the Turn
+  context lists disabled tools. Do not put Turn-specific text in a tool
+  description or schema.
 - Repo-owned tools declare `readOnlyHint`, `destructiveHint`, `openWorldHint`,
   and `idempotentHint`. External plugin and MCP tools with missing hints are
   logged and enter action review conservatively.

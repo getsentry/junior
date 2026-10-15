@@ -266,7 +266,10 @@ describe("Slack tool registration", () => {
         slackActionToken: undefined,
       } as ToolRuntimeContext);
       expect(Object.keys(tools)).toEqual(Object.keys(messageTurn));
+      expect(tools.createEventAutomation?.disabledReason).toBeDefined();
+      expect(tools.addReaction?.disabledReason).toBeDefined();
     }
+    expect(messageTurn.createEventAutomation?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
     expect(messageTurn).toHaveProperty("addReaction");

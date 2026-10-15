@@ -55,7 +55,7 @@ import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -92,8 +92,8 @@ export interface CreateToolsOptions {
  * The provider caches tools before the system prompt and messages. Choose
  * tools from the Conversation, such as its Location, not from the Source or
  * Actor of one Turn. Otherwise a Turn from another origin removes tools and
- * the provider writes the whole Conversation to its cache again. Tools that
- * need a Slack message or a person check that when they execute.
+ * the provider writes the whole Conversation to its cache again. When a Turn
+ * cannot use a tool, keep it and set `disabledReason` with `disableTools`.
  */
 export function createTools(
   availableSkills: SkillMetadata[],
@@ -271,10 +271,17 @@ export function createTools(
           context.conversationId,
         );
     }
-    // Only a Slack message Turn has an action token. Other Turns keep the tool
-    // and get an honest interactive-turn limit when they call it.
-    tools.slackPublicSearch = createSlackPublicSearchTool(
-      context.source.kind === "slack" ? context.slackActionToken : undefined,
+    // Slack issues an action token only for a new message or mention.
+    const slackActionToken =
+      context.source.kind === "slack" ? context.slackActionToken : undefined;
+    Object.assign(
+      tools,
+      disableTools(
+        { slackPublicSearch: createSlackPublicSearchTool(slackActionToken) },
+        slackActionToken
+          ? undefined
+          : "Slack gives a search token only for a new message or mention.",
+      ),
     );
     const identityProviders = [
       "slack",
@@ -323,12 +330,17 @@ export function createTools(
     tools.slackChannelListMessages =
       createSlackChannelListMessagesTool(slackContext);
 
-    // Only a Slack message Turn has a message to react to. Other Turns keep the
-    // tool and get an error when they call it.
     if (locationCapabilities.canAddReactions) {
-      tools.addReaction = createSlackMessageAddReactionTool(
-        slackContext,
-        state,
+      Object.assign(
+        tools,
+        disableTools(
+          {
+            addReaction: createSlackMessageAddReactionTool(slackContext, state),
+          },
+          slackContext.messageTs
+            ? undefined
+            : "It needs a Slack message in this Turn to react to.",
+        ),
       );
     }
   }

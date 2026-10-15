@@ -66,3 +66,24 @@ export function getSlackToolContext(
     threadTs: parseSlackMessageTs(location.threadTs),
   };
 }
+
+/**
+ * Return why this Turn cannot act for a person in Slack.
+ *
+ * Only a Turn started by a person's Slack message has that person's authority.
+ * Event, automation, Agent invocation, and dashboard Turns in the same
+ * Conversation do not. Returns undefined when the Turn has the authority.
+ */
+export function slackMessageTurnDisabledReason(
+  context: ToolRuntimeContext,
+): string | undefined {
+  if (
+    context.source.kind === "slack" &&
+    context.destination.platform === "slack" &&
+    context.actor?.platform === "slack" &&
+    context.actor.teamId === context.source.teamId
+  ) {
+    return undefined;
+  }
+  return "It needs a Turn that a person started with a Slack message.";
+}

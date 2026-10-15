@@ -2022,8 +2022,9 @@ describe("Slack schedule tool wiring via createTools", () => {
 
   it("rejects automation writes from a Turn not started by a Slack message", async () => {
     // A child agent result reaches the Slack thread with the person's Actor
-    // but an Agent invocation Source. The tools stay registered so the tool
-    // list does not change, but they must not use the person's authority.
+    // but an Agent invocation Source. The runtime disables these tools for
+    // that Turn. This calls them directly to check that the tools also refuse
+    // to use the person's authority.
     const previous = setPlugins([]);
     const fixture = await useSchedulerSqlPlugin();
     try {
