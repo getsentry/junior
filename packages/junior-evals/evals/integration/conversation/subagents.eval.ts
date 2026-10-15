@@ -26,6 +26,27 @@ describe("Child Agents", () => {
     ]);
   });
 
+  test("when the parent delegates, the brief carries the target repo, verified facts, and done criteria", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ experimental: { subagents: true } });
+    const conversation = await run(
+      slackMention(
+        'We work on getsentry/junior. I already checked that README.md has the typo "recieve" on line 12. Delegate this to a child agent: it should write a one-paragraph plan to fix the typo, with no repo changes. The work is done when the plan names the file and the correct word "receive". Then post the plan here.',
+      ),
+    );
+
+    const tasks = completedToolCalls("spawnAgent", conversation).map(
+      (call) => (call.input as { task?: string } | undefined)?.task ?? "",
+    );
+    expect(tasks).toHaveLength(1);
+    // The child gets no thread history, so the brief must name the repo,
+    // the verified fact, and the done criteria itself.
+    expect(tasks[0]).toContain("getsentry/junior");
+    expect(tasks[0]).toContain("README.md");
+    expect(tasks[0]).toContain("receive");
+  });
+
   test("when a child agent is missing input, it reports the block and the parent says what is missing", async ({
     agent,
   }) => {

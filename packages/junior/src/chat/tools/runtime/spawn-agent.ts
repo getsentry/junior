@@ -9,10 +9,7 @@ import {
 } from "@/chat/agent-invocations/types";
 import { completeText } from "@/chat/pi/client";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
-import {
-  formatModelProfiles,
-  type ModelProfile,
-} from "@/chat/model-profile";
+import { formatModelProfiles, type ModelProfile } from "@/chat/model-profile";
 import {
   resolveTaskTitle,
   SHORT_TITLE_MAX_LENGTH,
@@ -48,7 +45,10 @@ export function createSpawnAgentTool(
       .sort(),
   ] as [ModelProfile, ...ModelProfile[]];
   const profileSchema = z.enum(profileNames);
-  const profileList = formatModelProfiles(profileControl.profiles, profileNames);
+  const profileList = formatModelProfiles(
+    profileControl.profiles,
+    profileNames,
+  );
   return zodTool({
     description: [
       "Start a new asynchronous child agent on a delegated task. Give it a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
@@ -64,7 +64,13 @@ export function createSpawnAgentTool(
     },
     inputSchema: z
       .object({
-        task: z.string().trim().min(1).describe("Task for the child agent"),
+        task: z
+          .string()
+          .trim()
+          .min(1)
+          .describe(
+            "Self-contained brief. The child gets no thread history and has its own sandbox, so this is its only context from you. Include: the goal and concrete output; target repos, refs, paths, and URLs; facts you already verified; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and what evidence to return. State rules the child must follow. Do not paste thread history or claim user approval.",
+          ),
         title: z
           .string()
           .trim()
