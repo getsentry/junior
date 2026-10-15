@@ -918,12 +918,18 @@ export function createSandboxRuntime(
       }
 
       const previous = activeSandbox;
+      // The new sandbox outlives this call. Its requests follow the call
+      // signal only until the switch is done.
+      signal?.throwIfAborted();
+      const switching = new AbortController();
+      const stopSwitching = () => switching.abort(signal?.reason);
+      signal?.addEventListener("abort", stopSwitching, { once: true });
       let candidate: SandboxCandidate | undefined;
       try {
         candidate = await createSandboxCandidate(
           workspace,
           nextProfileHash,
-          signal,
+          switching.signal,
         );
         await probeSession(candidate.session);
         signal?.throwIfAborted();
@@ -933,6 +939,8 @@ export function createSandboxRuntime(
       } catch (error) {
         await stopSession(candidate?.session);
         throw error;
+      } finally {
+        signal?.removeEventListener("abort", stopSwitching);
       }
 
       if (keepAliveTimer) {

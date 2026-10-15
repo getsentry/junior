@@ -261,7 +261,8 @@ same way.
   AGENTS.md context, then pass through the normal capacity check. Pi appends
   steering after the hook returns, so this order keeps committed history in Pi
   order. New AGENTS.md context is committed as context when it is added, before
-  a reply can follow it.
+  a reply can follow it. After an abort, such as an auth pause, the hook only
+  applies a pending handoff. Steering stays queued for the next slice.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt

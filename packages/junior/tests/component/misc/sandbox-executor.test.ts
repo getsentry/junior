@@ -1046,6 +1046,54 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_refreshed");
   });
 
+  it("keeps a workspace sandbox usable after the tool call that switched to it ends", async () => {
+    let sandboxFetch: typeof globalThis.fetch | undefined;
+    sandboxCreateMock
+      .mockResolvedValueOnce(makeSandbox("sbx_workspace_initial"))
+      .mockImplementationOnce(
+        async (params: { fetch?: typeof globalThis.fetch }) => {
+          sandboxFetch = params.fetch;
+          return makeSandbox("sbx_workspace_next");
+        },
+      );
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = createSandboxRuntime({
+      workspace: {
+        id: "workspace-1",
+        name: "sentry",
+        setupScript: "",
+        snapshot: null,
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+    });
+    await runtime.acquire();
+    const toolCall = new AbortController();
+
+    await runtime.switchWorkspace(
+      {
+        id: "workspace-2",
+        name: "junior",
+        setupScript: "",
+        snapshot: null,
+        repos: [],
+      },
+      toolCall.signal,
+    );
+    // The run ends, for example to wait for an authorization.
+    toolCall.abort(new Error("run aborted"));
+
+    await sandboxFetch!("https://api.vercel.test/sandboxes/sbx_workspace_next");
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.signal?.aborted).not.toBe(true);
+  });
+
   it("keeps the live sandbox when workspace switch is cancelled mid-boot", async () => {
     const initialSandbox = makeSandbox("sbx_workspace_initial");
     const nextSandbox = makeSandbox("sbx_workspace_next");
