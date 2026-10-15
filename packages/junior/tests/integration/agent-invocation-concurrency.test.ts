@@ -251,7 +251,10 @@ describe("agent invocation identity and concurrency", () => {
       ).resolves.toMatchObject({
         agentName: "researcher",
         reasoningLevel: "high",
-        result: "result:second named task",
+        // The child sees the parent's message labeled as agent-written.
+        result: expect.stringMatching(
+          /^result:\[parent agent task\][\s\S]*\nsecond named task$/,
+        ),
         status: "completed",
       });
     } finally {

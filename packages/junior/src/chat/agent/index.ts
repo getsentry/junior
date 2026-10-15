@@ -50,6 +50,7 @@ import {
   recordTurnRoute,
 } from "@/chat/conversations/projection";
 import {
+  agentInstructionProvenance,
   contextProvenance,
   instructionActors,
   instructionProvenanceFor,
@@ -136,6 +137,7 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
+import { CHILD_AGENT_USER_INTENT } from "@/chat/tool-support/action-review";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {
@@ -488,10 +490,16 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
+    // A child agent's input is a parent agent task or another agent's
+    // output. An agent wrote it, so it has no Actor.
+    const childAgent = Boolean(run.parentConversationId);
+    const turnStartProvenance = childAgent
+      ? agentInstructionProvenance
+      : instructionProvenanceFor(actor);
     const committedInstructionProvenance: ConversationMessageProvenance[] = [
       ...(existingSessionRecord?.piMessageProvenance ?? []),
       ...(existingSessionRecord?.actors ?? []).map(instructionProvenanceFor),
-      ...(resumedFromSessionRecord ? [] : [instructionProvenanceFor(actor)]),
+      ...(resumedFromSessionRecord ? [] : [turnStartProvenance]),
     ];
     const runActors = (): Actor[] =>
       instructionActors(committedInstructionProvenance);
@@ -524,7 +532,10 @@ async function executeAgentRunInPrivacyContext(
       // action review can still run against thread evidence.
       guardianIntentParts.push(userInput.trim() || "[empty]");
     }
-    const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
+    // No person writes in a child, so no text of the child, on any slice, is
+    // user intent. Action review reads the root Conversation instead.
+    const currentUserIntent = (): string =>
+      childAgent ? CHILD_AGENT_USER_INTENT : guardianIntentParts.join("\n\n");
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       ...(routing.credentialContext &&
@@ -1338,7 +1349,7 @@ async function executeAgentRunInPrivacyContext(
                   ...(contextMessage ? [contextMessage] : []),
                   freshPromptMessage,
                 ],
-                [instructionProvenanceFor(actor)],
+                [turnStartProvenance],
               );
             if (promptPersisted) {
               await runResume.commitInput();
@@ -1498,7 +1509,7 @@ async function executeAgentRunInPrivacyContext(
                 ? [
                     {
                       message: freshPromptMessage,
-                      provenance: instructionProvenanceFor(actor),
+                      provenance: turnStartProvenance,
                     },
                   ]
                 : undefined,

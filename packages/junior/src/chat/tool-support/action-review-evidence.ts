@@ -136,9 +136,15 @@ function collectEvidenceEntries(
   return entries;
 }
 
-/** Project the Codex Guardian transcript selection into structured evidence. */
+/**
+ * Project the Codex Guardian transcript selection into structured evidence.
+ * In a child agent, no person writes a message: each user-role message is a
+ * parent agent task or another agent's output, so it gets the `parent agent`
+ * role.
+ */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],
+  options: { childAgent?: boolean } = {},
 ): ToolActionEvidence {
   const candidates = collectEvidenceEntries(messages).map((entry) => {
     const text = truncateText(
@@ -210,7 +216,13 @@ export function buildToolActionEvidence(
 
   return {
     entries: candidates.flatMap(({ entry }, index) =>
-      included[index] ? [entry] : [],
+      included[index]
+        ? [
+            options.childAgent && entry.role === "user"
+              ? { ...entry, role: "parent agent" as const }
+              : entry,
+          ]
+        : [],
     ),
     omittedEntries: included.filter((value) => !value).length,
   };

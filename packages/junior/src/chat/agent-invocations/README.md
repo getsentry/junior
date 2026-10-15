@@ -204,6 +204,48 @@ inside Junior. Agent invocation fields still carry the Actor, credentials,
 Source, and Destination until the final Run interface removes Destination. The
 final Run carries the root Location once, separate from Source and Delivery.
 
+## User Approval
+
+A child agent never has a message from a person. Its task and each later
+message come from its parent agent. The child Turn saves that text with
+instruction provenance that has no Actor, and the model reads it under a
+`[parent agent task]` label. The text never becomes Guardian user intent, also
+not on a resumed slice. A child action uses the fixed
+`CHILD_AGENT_USER_INTENT` instead.
+
+When Guardian reviews an action of a child, `root-conversation.ts` walks
+`parentConversationId` up to the root Conversation. It reads the root's
+`message` events, the durable visible transcript. Compaction and handoff never
+rewrite these events. Nothing is copied into the child, and nothing new is
+stored.
+
+- Only a root message whose author has the same Actor identity as the child
+  is labeled `user`. It is compared by platform, team, and user id. When
+  either Actor is not known, the message does not count.
+- When the root is an Automation run, the dispatch input message is that
+  run's own instruction. It is labeled `automation` for the run's system
+  Actor. This is the authority that the run already has.
+- Root assistant text, Event Turn inputs such as child results, and messages
+  from other people are labeled as context.
+- The read happens for each action. A later user message, such as a
+  revocation, counts.
+- Grandchildren and children started by a result Turn read the same root,
+  with no special case.
+- The read is bounded: the newest 16 messages and 24,000 characters. A cut
+  adds an explicit notice.
+
+Guardian renders the projection outside the untrusted proposal JSON, in a
+`<root_user_instructions key="...">` section with a new random key for each
+request. Each line has its real author as a prefix. The rules for a child
+action are in `services/guardian-action-review.ts`. They are adapted from
+Codex multi_agent_v2 (`openai/codex` at `f0c5077`,
+`guardian-context/src/authorization.rs`) and the Claude Code auto-mode
+classifier.
+
+When Guardian asks or denies, the child reports the missing approval with
+`reportBlocked` and names the exact action. The parent asks the user one
+question and then tells the child to try again.
+
 ## Current Boundary
 
 `spawnAgent` exposes durable creation to a parent agent when the experimental
