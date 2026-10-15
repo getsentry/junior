@@ -120,18 +120,24 @@ describe("MCP Authorization", () => {
     expect(resumed.replies).toHaveLength(1);
   });
 
-  test("when Junior used the sandbox before the provider needs authorization, the authorization resumes the turn", async ({
+  test("when Junior used the sandbox earlier in the thread, the authorization resumes the turn and the answer uses that work", async ({
     run,
   }) => {
-    const paused = await run(
-      slackMention(
-        "/eval-auth Here is our Q3 vendor spend export. Total it up, then look up the budget so I can compare.",
-        { author: ALICE, files: [Q3_SPEND] },
-      ),
+    const totaled = await run(
+      slackMention("Total up this Q3 vendor spend export.", {
+        author: ALICE,
+        files: [Q3_SPEND],
+      }),
+    );
+    expect(turnStates(totaled)).toEqual(["succeeded"]);
+    expect(completedToolCalls("loadAttachment", totaled)).not.toEqual([]);
+
+    const paused = await totaled.continue(
+      slackMention("/eval-auth Now look up the budget so I can compare.", {
+        author: ALICE,
+      }),
     );
     expect(turnStates(paused)).toEqual(["started"]);
-    expect(completedToolCalls("loadAttachment", paused)).not.toEqual([]);
-    expect(completedMcpToolCalls(BUDGET_ECHO, paused)).toEqual([]);
 
     // A teammate posts in the thread before Alice opens her link.
     await paused.continue(
