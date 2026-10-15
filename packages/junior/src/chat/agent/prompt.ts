@@ -339,6 +339,43 @@ export function buildSteeringPiMessage(
   } as PiMessage;
 }
 
+/**
+ * Return a stable key for one steering message. Resolved attachments may change
+ * when Junior retries a mailbox delivery, so only the message time and text
+ * form the key.
+ */
+function steeringMessageKey(message: PiMessage): string | undefined {
+  if (message.role !== "user") {
+    return undefined;
+  }
+  const first = Array.isArray(message.content) ? message.content[0] : undefined;
+  const text =
+    first && typeof first === "object" && "text" in first
+      ? String((first as { text?: unknown }).text ?? "")
+      : "";
+  return `${message.timestamp}:${text}`;
+}
+
+/**
+ * Remove steering messages that saved history already holds. A repeated
+ * mailbox delivery can contain saved and unsaved messages.
+ */
+export function withoutSavedSteeringMessages<T>(
+  saved: readonly PiMessage[],
+  entries: readonly T[],
+  toMessage: (entry: T) => PiMessage,
+): T[] {
+  const savedKeys = new Set(
+    saved
+      .map(steeringMessageKey)
+      .filter((key): key is string => key !== undefined),
+  );
+  return entries.filter((entry) => {
+    const key = steeringMessageKey(toMessage(entry));
+    return key === undefined || !savedKeys.has(key);
+  });
+}
+
 function withoutTrailingUncheckpointedUserPrompt(
   messages: PiMessage[] | undefined,
   userContentParts: UserContentPart[],

@@ -1,7 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
-import { buildSteeringPiMessage } from "@/chat/agent/prompt";
+import {
+  buildSteeringPiMessage,
+  withoutSavedSteeringMessages,
+} from "@/chat/agent/prompt";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
@@ -208,16 +211,6 @@ export async function resolveAgentInvocationId(
   return latest?.status === "stopped" ? latest.invocationId : undefined;
 }
 
-/** Return whether the Turn already saved this steering message. */
-function isSavedSteeringMessage(
-  saved: readonly PiMessage[],
-  message: AgentSteeringMessage,
-): boolean {
-  // Compare the stored shape: the Turn saves escaped, wrapped text.
-  const built = buildSteeringPiMessage(message);
-  return saved.some((candidate) => isDeepStrictEqual(candidate, built));
-}
-
 /**
  * Give queued parent messages to the running agent invocation of a child as
  * steering messages. A message joins only with the Actor and credentials of
@@ -284,15 +277,17 @@ function createAgentMessageSteeringDrain(
         const saved =
           (await getTurnRecord(running.childConversationId, turnId))
             ?.piMessages ?? [];
-        const messages = joining
-          .map(
+        const messages = withoutSavedSteeringMessages(
+          saved,
+          joining.map(
             (candidate): AgentSteeringMessage => ({
               provenance: instructionProvenanceFor(candidate.actor),
               text: candidate.input,
               timestampMs: candidate.createdAtMs,
             }),
-          )
-          .filter((message) => !isSavedSteeringMessage(saved, message));
+          ),
+          buildSteeringPiMessage,
+        );
         // The Turn saves the messages before they are marked.
         if (messages.length > 0) {
           await accept(messages);

@@ -32,7 +32,10 @@ import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
 } from "@/chat/slack/errors";
-import { buildSteeringPiMessage } from "@/chat/agent/prompt";
+import {
+  buildSteeringPiMessage,
+  withoutSavedSteeringMessages,
+} from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
   type AgentRun,
@@ -164,7 +167,6 @@ import {
   resolveChannelName,
   resolveSlackChannelType,
   saveSteeringMessages,
-  steeringMessageKey,
 } from "@/chat/providers/slack/input";
 
 /**
@@ -1016,17 +1018,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (batchedSteeringMessages.length > 0) {
             // A repeated mailbox delivery may reload saved steering messages.
             // Add only messages that are not already in agent history.
-            const presentKeys = new Set(
-              (piMessages ?? [])
-                .map(steeringMessageKey)
-                .filter((key): key is string => key !== undefined),
+            const newSteeringMessages = withoutSavedSteeringMessages(
+              piMessages ?? [],
+              batchedSteeringMessages.map((entry) => entry.message),
+              (message) => message,
             );
-            const newSteeringMessages = batchedSteeringMessages
-              .map((entry) => entry.message)
-              .filter((batchedMessage) => {
-                const key = steeringMessageKey(batchedMessage);
-                return key === undefined || !presentKeys.has(key);
-              });
             if (newSteeringMessages.length > 0) {
               piMessages = [...(piMessages ?? []), ...newSteeringMessages];
             }
