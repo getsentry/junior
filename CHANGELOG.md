@@ -1,4 +1,23 @@
 # Changelog
+## 0.248.0
+
+### New Features ✨
+
+- (chat) Limit turns by spend and wrap up at the limit by @sentry-junior in [#2152](https://github.com/getsentry/junior/pull/2152)
+- (dashboard) Count child agents at any depth in Conversation totals by @sentry-junior in [#2142](https://github.com/getsentry/junior/pull/2142)
+- (evals) Report PR author to Sentry Evals by @NicoHinderling in [#2150](https://github.com/getsentry/junior/pull/2150)
+- (subagents) Let listAgents show a child's parent and siblings by @sentry-junior in [#2140](https://github.com/getsentry/junior/pull/2140)
+
+### Bug Fixes 🐛
+
+- (agent) Do not prepare another model call after an abort by @sentry-junior in [#2153](https://github.com/getsentry/junior/pull/2153)
+- (chat) Keep the tool list stable across Turn origins by @sentry-junior in [#2148](https://github.com/getsentry/junior/pull/2148)
+- (memory) Hide memory write tools in child agent runs by @sentry-junior in [#2145](https://github.com/getsentry/junior/pull/2145)
+
+### Internal Changes 🔧
+
+- (dashboard) Use Frameshift v0.2.0 by @sentry-junior in [#2144](https://github.com/getsentry/junior/pull/2144)
+
 ## 0.247.0
 
 ### New Features ✨
