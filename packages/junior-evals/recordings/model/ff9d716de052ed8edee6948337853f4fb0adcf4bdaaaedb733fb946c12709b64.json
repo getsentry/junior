@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/steering.eval.ts > Slack Turn Steering > when a thread message needs no reply, Junior consumes it without a turn",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4dd21bda7dd0",
+      "maxOutputTokens": "26d228663f13",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "f735154caadc",
+      "prompt[1]": "b21421faa720",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_048b499555d8291a016ad04e2ab11487d19a6f20a46a82d1ff\",\"reasoningEncryptedContent\":\"gAAAAABq0E4rP58jr-Iuke6RG0OpmcpqCUras0jTgbEITWt4vQjZB3x55Om7wM2kHKJ9wDLyZeLxYDW3Uxv4R_6rFOKfrk6CwPbzLpmvxDVhAdfqGD1zH7rmgmtBIX4twkbGUpScai8bQg8m-ogvFi6RSASlwsg5DKdjyCnZSZSu6Ilv2DIVP4nX6uwZ4NJ1hoW_N9UJudh7bueg3DKcWQtJEWXu33DTM_b7CIAB5Ytel3O3JzGMqc-MEz3LeRkeWTTiw7IwfiSaSfvDjAXayCrO5O2Z0ln47fgQmNZIoGaw0l9PhM1GcocUEbn3owjh7eHjyZ6lfrRDOFMdtU2Lo_taD_V05qTB9yLOds8ttoSY7JuZJO32We8xMwu3iMRaRYrOI1ZPZR6gRmsHHUUZGCVw-5TWNjkDyEIIqXxG7-WC9kJZjI19VXz7WAm7CustWY-bMsMZmhLCajQL6oiGCYec1Od71HJSqjc8jzk42aiu-IDNyBmPoW0WHp2TBsyrwsWpBynOwvHVMWRvn0yD2LowG2av8K4wwmPSWnx5jSHduVZ8CuR8ArrbarEEhppeepQna4mDSgs08FKX1I2RmkQOuDTBq1Eo2wW2zXnHQqjEkHriZS6Sq1WIlaBnizCGATleiumaI_GrUkgpBfvRlt4rrv4AP5xubWPnr9IjXQ1l-hmO2sWot0b6pFrpwtybaFj3PFkdk-gThwqiXUobY0FKCQGnObk36sTDmJWhKiYoDRaG_qt_K_eFPr-CF1jCn1S-X9n5PPCg2mykAoccQv2al3i_GYt5WrrznMVFSwoYt2Ixzai-uxCWYKi6gVy5dwg1qCuM_gAwbtqTdVjkiPsyKW7EkvebGZYOqMroWNdAd08wJsuI9r_Oe9bfTzBKsrvgxwdC_If2D4GTTvGb9jEKvAs-GTklWXLbSJn8xIaqgyS-p1FfD9gsEprprn1L4k2cYhcBirdT3ZUQCG9BawSMLi9ZHJQfILEuHdAzXkDtppJQLysAyaNqxuygbhspMhIfaxvpLX9R9wcGAZsloUVG5o2O7-akJwtmlOTevW6C9gQGe_DmkdxvEnlMZL-awSR8G8pyNgYlQfw8CnrBONFKb6VbGAUskzae07f3JpjG-ZotOYQ1Uex7KrrZ2SZR5nChT0e_N5B0xFOrC5SSFMhL6H7obW0VaYPLTx-6gbeupR5kBDft6iwPNevbgNorcgkinTAGV2axsY2Ryeqbe5t9I9spAvOQOTtigQahurAWUE_EZ2NjO7gSEccfUSMSS6YQZza-MDZ8GkB7ihIoPWTgh9vTDfOzfP5TdjdzXhYHlSxtRbUiDq2UU5y7fYatfsRFUW0KVNZv9UcAakPc2i_04euZODRU-fF7CrTlTKpB14AtOQWcmx6qGJApeGZ83DIRvpfVWLBb1b98UxUQvTz7llvRUf6710WfB2BTGoLO6UEv2C08GH_9FEm_dLaABuvHfUUOTGW3g2qLxyaVR8p3JOx5ZByf4LhMdlW2AsYDUfBVgfAfplItJ8NopTy6ohrZ-qJEG4zRS7sGFHWA0q_DWN_HjIEo8XoO2pATOqtM4HLl0RMM9xP-w1OOI2dYylZK3vKIosTngyYvSYZ0qK0Dk3Y9K728Hctc3cAruRgchFhfjeOzampEEg-UUDyMcKDIoym5ck2yVLJmHY6-TWXEUVDxoYBtEz9ZdUJwZzwnlPRQQc-xwIlgjE4_s2lZHWeCjvoY87QwGa8Q-PDmkHS8VRClsyalJuULj1cUwaH8Xc_SbQwuR73rtZZ_tsWg2MaGKD_yT_IngB0iuPcJk2V6RjhbRs1kDwK1JtZtImBPRJhFRXdTpgQk7DiuKjWXh-DKdRW3cIcE\"}}},{\"type\":\"text\",\"text\":\"{\\\"should_reply\\\":false,\\\"should_unsubscribe\\\":false,\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is an acknowledgment of junior-example’s summary, not a request to continue.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_048b499555d8291a016ad04e2af9ec87d191411f2cfcbe58b9\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1051,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1048},\"outputTokens\":{\"total\":72,\"text\":46,\"reasoning\":26},\"raw\":{\"input_tokens\":1051,\"input_tokens_details\":{\"cache_write_tokens\":1048,\"cached_tokens\":0},\"output_tokens\":72,\"output_tokens_details\":{\"reasoning_tokens\":26},\"total_tokens\":1123}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_048b499555d8291a016ad04e2a30c087d18dfd707f8053bd52\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792036394082,\"endTime\":1792036395547,\"providerRequestId\":\"req_265d7e6346394dafa41dcd57ca89539b\",\"statusCode\":200,\"providerResponseId\":\"resp_048b499555d8291a016ad04e2a30c087d18dfd707f8053bd52\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"268fc61a08c74a6d9d2e2f907e33f833\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001673\",\"marketCost\":\"0.0001673\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001673\",\"inferenceCost\":\"0.0001673\",\"inputInferenceCost\":\"0.0001313\",\"outputInferenceCost\":\"0.000036\",\"generationId\":\"gen_01M4YV2N2BYNM4K6JT3V2V4J5H\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
