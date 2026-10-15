@@ -1,4 +1,17 @@
 # Changelog
+## 0.247.0
+
+### New Features ✨
+
+- (agent-invocations) Select child model profile by @sentry-junior in [#2141](https://github.com/getsentry/junior/pull/2141)
+- (images) Edit sandbox images with imageGenerate by @sentry-junior in [#2123](https://github.com/getsentry/junior/pull/2123)
+- (subagents) Let a running child read parent messages by @sentry-junior in [#2139](https://github.com/getsentry/junior/pull/2139)
+
+### Bug Fixes 🐛
+
+- (subagents) Run child watch events as agent invocations by @sentry-junior in [#2134](https://github.com/getsentry/junior/pull/2134)
+- (vercel) Ignore unknown fields in Vercel webhooks by @sentry-junior in [#2138](https://github.com/getsentry/junior/pull/2138)
+
 ## 0.246.0
 
 ### New Features ✨
