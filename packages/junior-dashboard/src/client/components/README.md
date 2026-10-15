@@ -29,7 +29,7 @@ instead of copying Tailwind blocks.
    paths. Do not replace it with a provider logo or a status-only icon.
    Structural colors live
    as slim `dashboard-*` tokens in `src/tailwind.css` (canvas, surface, text,
-   border, fill, overlay, focus). Prefer those roles over `white/*`, `black/*`,
+   border, fill, overlay, accent, focus). Prefer those roles over `white/*`, `black/*`,
    or hex literals. Status accents stay as Tailwind palette utilities.
 2. **Patterns** — layout, filters, directory tables, charts, metrics.
    Activity time-series charts own bucket labels in
@@ -60,8 +60,16 @@ instead of copying Tailwind blocks.
 - **Radius.** Controls and chips inside rows use `rounded-md`. Cards, list
   rows, and panels use `rounded-lg`. The composer, menus, and transcript
   cards use `rounded-xl`. Avatars and count badges use `rounded-full`.
+- **Accent.** Lavender is the one brand accent. Use `dashboard-accent` for
+  icons, active markers, and tinted fills, such as `bg-dashboard-accent/10`.
+  Use `dashboard-accent-text` for links and accent text. Keep Tailwind palette
+  colors for status (info, success, warning, error) and for categorical chart
+  or event colors.
 - **Focus.** Use `outline-dashboard-focus` for keyboard focus. Do not use
-  other accent colors for focus rings.
+  other colors for focus rings.
+- **Labels.** Section, card, field, and column labels use
+  `font-sans text-xs font-medium text-dashboard-text-muted` in sentence case.
+  Do not use uppercase or letter spacing for labels.
 - **Surfaces.** Use the surface ladder in `src/tailwind.css`. Do not add
   `white/*` or `black/*` fills or borders.
 

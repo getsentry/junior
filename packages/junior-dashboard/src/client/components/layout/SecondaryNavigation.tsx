@@ -27,9 +27,9 @@ export function SecondaryNavigation(props: {
 }) {
   const menuLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "rounded-lg px-3 py-3 pl-6 font-mono text-sm font-medium no-underline transition-colors",
+      "rounded-lg px-3 py-3 pl-6 font-sans text-sm font-medium no-underline transition-colors",
       isActive
-        ? "bg-cyan-300/[0.1] text-cyan-50"
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
         : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
     );
 

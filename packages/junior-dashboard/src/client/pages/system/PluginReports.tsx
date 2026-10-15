@@ -39,10 +39,7 @@ export function PluginReports(props: {
 
   return (
     <div className="grid gap-3">
-      <SectionIntro
-        className="px-1"
-        title="Operational reports"
-      />
+      <SectionIntro className="px-1" title="Operational reports" />
       {props.reports.map((report) => (
         <PluginReportView
           fallbackTitle={props.fallbackTitle}
@@ -111,7 +108,7 @@ function PluginReportView(props: {
               <div className="truncate font-display text-2xl font-light leading-none text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <div className="mt-2 font-sans font-medium text-xs text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>
@@ -146,4 +143,3 @@ function summaryToneClass(tone: string | undefined): string {
   if (tone === "good") return "shadow-[inset_0_2px_0_rgba(110,231,183,0.55)]";
   return "";
 }
-

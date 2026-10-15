@@ -74,14 +74,14 @@ export function DashboardHeader(props: {
     cn(
       "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal no-underline transition-colors",
       isActive
-        ? "bg-cyan-300/[0.1] text-cyan-50"
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
         : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
     );
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "rounded-lg px-3 py-3 font-mono text-sm font-medium tracking-normal no-underline transition-colors",
+      "rounded-lg px-3 py-3 font-sans text-sm font-medium no-underline transition-colors",
       isActive
-        ? "bg-cyan-300/[0.1] text-cyan-50"
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
         : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
     );
 
@@ -200,7 +200,7 @@ export function DashboardHeader(props: {
           )}
           to="/"
         >
-          <span className="truncate font-mono text-sm font-semibold md:hidden">
+          <span className="truncate font-sans text-sm font-semibold md:hidden">
             {getDashboardAgentName()}
           </span>
           <span className="hidden md:block">
@@ -252,7 +252,7 @@ export function DashboardHeader(props: {
           <div className="flex items-center justify-between gap-3 border-b border-dashboard-border-subtle bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <Link
               aria-label={`${getDashboardAgentName()} home`}
-              className="min-w-0 truncate font-mono text-sm font-semibold text-inherit no-underline"
+              className="min-w-0 truncate font-sans text-sm font-semibold text-inherit no-underline"
               to="/"
             >
               {getDashboardAgentName()}
@@ -307,7 +307,7 @@ export function DashboardHeader(props: {
                   </div>
                 ) : null}
                 {props.version ? (
-                  <p className="m-0 font-mono text-xs text-dashboard-text-muted">
+                  <p className="m-0 font-sans text-xs text-dashboard-text-muted">
                     junior version {props.version}
                   </p>
                 ) : null}

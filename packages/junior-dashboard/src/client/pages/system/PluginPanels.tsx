@@ -31,12 +31,12 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
   );
   return (
     <Link
-      className="group grid min-w-0 gap-4 rounded-lg border border-white/[0.07] bg-dashboard-surface-panel/85 p-4 no-underline transition-colors hover:border-cyan-300/20 hover:bg-cyan-300/[0.025] sm:p-5"
+      className="group grid min-w-0 gap-4 rounded-lg border border-white/[0.07] bg-dashboard-surface-panel/85 p-4 no-underline transition-colors hover:border-dashboard-accent/20 hover:bg-dashboard-accent/[0.025] sm:p-5"
       to={systemPluginPath(props.plugin.name)}
     >
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="grid size-9 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">
+          <div className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-accent/15 bg-dashboard-accent/[0.075] text-dashboard-accent-text">
             <Boxes aria-hidden="true" size={16} strokeWidth={1.8} />
           </div>
           <div className="min-w-0">
@@ -50,7 +50,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         </div>
         <ArrowRight
           aria-hidden="true"
-          className="mt-1 shrink-0 text-dashboard-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-cyan-200/70"
+          className="mt-1 shrink-0 text-dashboard-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-dashboard-accent-text/70"
           size={16}
         />
       </div>
@@ -69,7 +69,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
               <div className="truncate font-display text-lg font-light text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-1 truncate font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <div className="mt-1 truncate font-sans font-medium text-xs text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>
@@ -90,7 +90,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
 function PanelFact(props: { icon: typeof Sparkles; label: string }) {
   const Icon = props.icon;
   return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
+    <span className="inline-flex items-center gap-1.5 font-sans font-medium text-xs text-dashboard-text-muted">
       <Icon aria-hidden="true" size={11} />
       {props.label}
     </span>

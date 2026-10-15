@@ -85,7 +85,10 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                       rows={[
                         ["conversations", day.conversations],
                         ["runtime", activityRuntime(day)],
-                        ["spend", formatCostSummary({ total: day.costUsd ?? 0 })],
+                        [
+                          "spend",
+                          formatCostSummary({ total: day.costUsd ?? 0 }),
+                        ],
                         ["tokens", formatCompactNumber(day.tokens ?? 0)],
                       ]}
                     />
@@ -113,7 +116,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
             ),
           )}
         </div>
-        <div className="mt-3 flex items-center gap-1 text-xs font-semibold uppercase leading-none text-dashboard-text-muted">
+        <div className="mt-3 flex items-center gap-1 text-xs font-semibold leading-none text-dashboard-text-muted">
           <span>Less</span>
           {[0, 1, 2, 3, 4].map((level) => (
             <span

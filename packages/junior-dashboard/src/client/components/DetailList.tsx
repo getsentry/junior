@@ -24,7 +24,7 @@ export function Detail(props: {
 }) {
   return (
     <div className="min-w-0 bg-[#09090b] px-3 py-3">
-      <dt className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <dt className="font-sans font-medium text-xs text-dashboard-text-muted">
         {props.label}
       </dt>
       <dd

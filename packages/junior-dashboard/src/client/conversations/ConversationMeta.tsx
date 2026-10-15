@@ -49,9 +49,9 @@ export function PendingAuthorization(props: {
   };
 }) {
   return (
-    <div className="mb-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
+    <div className="mb-2 rounded-lg border border-dashboard-accent/20 bg-dashboard-accent/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
       <a
-        className="font-medium text-cyan-200 underline decoration-cyan-300/40 underline-offset-2 hover:text-cyan-100"
+        className="font-medium text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-accent-text"
         href={props.authorization.authorizationUrl}
         rel="noreferrer"
         target="_blank"
@@ -420,7 +420,7 @@ export function ConversationAnnotations(props: {
           className={cn(
             "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
             props.layout === "strip"
-              ? "px-1 py-0.5 text-xs hover:text-cyan-100"
+              ? "px-1 py-0.5 text-xs hover:text-dashboard-accent-text"
               : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
           )}
           href={link.url ?? undefined}

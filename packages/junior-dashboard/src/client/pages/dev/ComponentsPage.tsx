@@ -808,7 +808,9 @@ function TranscriptsGalleryPage() {
       <Fixture title="Automation in a reply">
         <div className="max-w-[52.5rem]">
           <TranscriptMessageShell actor="Junior" role="assistant">
-            <span className="text-sm font-semibold text-cyan-100">Junior</span>
+            <span className="text-sm font-semibold text-dashboard-accent-text">
+              Junior
+            </span>
             <TranscriptText
               role="assistant"
               text={
@@ -892,7 +894,7 @@ export function ToolCallGallery() {
       <div className="grid min-w-0 gap-1 px-2 py-1.5">
         {TOOL_CALL_FIXTURES.map((fixture) => (
           <div className="grid min-w-0 gap-1" key={fixture.part.id}>
-            <div className="font-mono text-2xs uppercase tracking-[0.08em] text-dashboard-text-muted">
+            <div className="font-sans font-medium text-2xs text-dashboard-text-muted">
               {fixture.description}
             </div>
             <TranscriptToolView
@@ -938,7 +940,7 @@ function GalleryShell(props: {
 function Fixture(props: { children: ReactNode; title: string }) {
   return (
     <Card className="grid min-w-0 gap-3 p-4 sm:p-5" padding="none">
-      <div className="border-b border-dashboard-border-subtle pb-3 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+      <div className="border-b border-dashboard-border-subtle pb-3 font-sans text-xs font-medium text-dashboard-text-muted">
         {props.title}
       </div>
       <div className="min-w-0">{props.children}</div>
@@ -952,7 +954,7 @@ function TokenSwatchRow(props: {
 }) {
   return (
     <div className="grid gap-2">
-      <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <div className="font-sans font-medium text-xs text-dashboard-text-muted">
         {props.label}
       </div>
       <div className="flex flex-wrap gap-3">

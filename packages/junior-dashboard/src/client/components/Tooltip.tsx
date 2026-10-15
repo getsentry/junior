@@ -176,7 +176,7 @@ export function Tooltip({
           sideOffset={ANCHOR_GAP}
         >
           {label ? (
-            <div className="mb-1 font-semibold uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="mb-1 font-semibold text-dashboard-text-muted">
               {label}
             </div>
           ) : null}

@@ -96,7 +96,7 @@ function CodeOverview(props: {
                 <col className="w-28" />
                 <col className="w-28" />
               </colgroup>
-              <thead className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <thead className="font-sans font-medium text-xs text-dashboard-text-muted">
                 <tr className="border-b border-dashboard-border-subtle">
                   <th className="px-4 py-2.5 font-medium">Repository</th>
                   <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
@@ -119,7 +119,7 @@ function CodeOverview(props: {
                     <td className="min-w-0 px-4 py-3">
                       <div className="truncate font-display text-sm text-dashboard-text">
                         <Link
-                          className="text-inherit no-underline hover:text-cyan-100"
+                          className="text-inherit no-underline hover:text-dashboard-accent-text"
                           to={codeRepositoryPath(repository.id)}
                         >
                           {repository.name}

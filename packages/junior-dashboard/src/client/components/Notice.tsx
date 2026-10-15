@@ -42,7 +42,7 @@ export function Notice({
               "grid size-8 shrink-0 place-items-center rounded-lg",
               isError
                 ? "bg-rose-300/15 text-rose-100"
-                : "bg-cyan-300/10 text-cyan-100/80",
+                : "bg-dashboard-accent/10 text-dashboard-accent-text/80",
             )}
           >
             <Icon aria-hidden="true" size={16} />
@@ -61,7 +61,7 @@ export function Notice({
           {detail ? (
             <div
               className={cn(
-                "mt-0.5 truncate font-mono text-xs",
+                "mt-0.5 truncate font-sans text-xs",
                 isError ? "text-rose-100/70" : "text-dashboard-text-muted",
               )}
             >
@@ -89,10 +89,10 @@ export function NoticeAction({
       {...props}
       className={cn(
         "shrink-0 cursor-pointer px-3 py-1.5 text-xs transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
-        isError ? "focus:ring-rose-300/40" : "focus:ring-cyan-300/35",
+        isError ? "focus:ring-rose-300/40" : "focus:ring-dashboard-focus/35",
         isError
           ? "rounded-lg bg-rose-200/15 font-display font-medium text-rose-50 hover:bg-rose-200/25"
-          : "rounded-lg bg-cyan-200/10 font-display font-medium text-cyan-100 hover:bg-cyan-200/20",
+          : "rounded-lg bg-dashboard-accent/10 font-display font-medium text-dashboard-accent-text hover:bg-dashboard-accent/20",
         className,
       )}
       type={type}

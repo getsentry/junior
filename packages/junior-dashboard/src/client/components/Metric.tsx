@@ -28,7 +28,7 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
               : cn(
                   "col-span-2 block min-w-0 break-words text-dashboard-text",
                   line.valueStyle === "heading" &&
-                    "font-mono font-semibold text-dashboard-text",
+                    "font-sans tabular-nums font-semibold text-dashboard-text",
                   line.valueStyle === "heading" &&
                     index > 0 &&
                     "mt-1 border-t border-white/10 pt-2",

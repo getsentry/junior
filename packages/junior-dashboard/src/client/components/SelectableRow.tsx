@@ -27,7 +27,7 @@ export function SelectableRow(props: {
       className={cn(
         "group cursor-pointer transition-colors",
         props.selected
-          ? "bg-cyan-300/[0.045]"
+          ? "bg-dashboard-accent/[0.045]"
           : "hover:bg-white/[0.035] focus-within:bg-white/[0.035]",
         props.className,
       )}

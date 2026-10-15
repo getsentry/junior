@@ -176,7 +176,7 @@ function transcriptRoleLabelClass(role: string): string {
 
   return cn(
     "inline-block max-w-full truncate font-sans text-sm font-semibold leading-6",
-    kind === "assistant" && "text-cyan-100",
+    kind === "assistant" && "text-dashboard-accent-text",
     kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",
     kind === "tool" && "text-dashboard-text-muted",

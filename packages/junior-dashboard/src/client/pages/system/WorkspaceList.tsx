@@ -62,7 +62,7 @@ function WorkspaceListItem(props: {
           onClick={openWorkspace}
           type="button"
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.03] text-[#beaaff] transition-colors group-hover:border-cyan-300/20 group-hover:bg-cyan-300/[0.06] group-hover:text-cyan-200">
+          <span className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.03] text-[#beaaff] transition-colors group-hover:border-dashboard-accent/20 group-hover:bg-dashboard-accent/[0.06] group-hover:text-dashboard-accent-text">
             <FolderGit2 aria-hidden="true" size={16} />
           </span>
           <span className="min-w-0 flex-1">

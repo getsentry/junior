@@ -19,7 +19,7 @@ export function ChartLegend(props: {
     <ul
       aria-label={props.ariaLabel}
       className={cn(
-        "m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 font-mono text-2xs text-dashboard-text-muted",
+        "m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 font-sans text-2xs text-dashboard-text-muted",
         !props.inline && "mt-4",
       )}
     >

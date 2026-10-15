@@ -80,13 +80,13 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
           {memory ? (
             <Brain
               aria-hidden="true"
-              className="shrink-0 text-cyan-100/60"
+              className="shrink-0 text-dashboard-accent-text/60"
               size={15}
             />
           ) : (
             <Braces
               aria-hidden="true"
-              className="shrink-0 text-cyan-100/60"
+              className="shrink-0 text-dashboard-accent-text/60"
               size={15}
             />
           )}

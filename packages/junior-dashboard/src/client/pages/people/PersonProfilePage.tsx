@@ -112,10 +112,7 @@ export function Profile(props: {
       />
 
       <section className="grid gap-4" aria-labelledby="profile-metrics-title">
-        <SectionIntro
-          id="profile-metrics-title"
-          title="Usage over time"
-        />
+        <SectionIntro id="profile-metrics-title" title="Usage over time" />
         <SystemMetricCharts
           bucketUnit={timeRangeBucketUnit(range)}
           days={selectTimeSeries({
@@ -184,7 +181,7 @@ export function Profile(props: {
           <Card as="section" className="mb-0" variant="section">
             <SectionHeader
               actions={
-                <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                   52 weeks
                 </div>
               }

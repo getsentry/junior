@@ -101,7 +101,7 @@ export function ConversationBrief(props: {
                       key={`${link.kind}:${link.url}`}
                     >
                       <a
-                        className="min-w-0 break-all font-medium text-cyan-200 underline decoration-cyan-300/30 underline-offset-2 hover:text-cyan-100"
+                        className="min-w-0 break-all font-medium text-dashboard-accent-text underline decoration-dashboard-accent/30 underline-offset-2 hover:text-dashboard-accent-text"
                         href={link.url}
                         rel="noopener noreferrer"
                         target="_blank"

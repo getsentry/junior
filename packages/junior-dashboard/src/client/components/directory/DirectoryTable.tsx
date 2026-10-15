@@ -43,7 +43,7 @@ export function DirectoryTable(props: {
       <div
         aria-hidden="true"
         className={cn(
-          "grid items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden",
+          "grid items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted max-md:hidden",
           directoryGridClass,
         )}
       >
@@ -95,7 +95,7 @@ export function DirectoryIdentity(props: {
           {props.title}
         </div>
         {props.description ? (
-          <div className="mt-1 truncate font-mono text-xs leading-tight text-dashboard-text-muted">
+          <div className="mt-1 truncate font-sans text-xs leading-tight text-dashboard-text-muted">
             {props.description}
           </div>
         ) : null}

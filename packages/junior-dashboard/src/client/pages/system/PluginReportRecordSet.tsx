@@ -24,7 +24,7 @@ export function PluginReportRecordSet(props: {
       )}
     >
       <div className="flex items-center justify-between gap-4 px-5 py-3">
-        <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+        <div className="font-sans font-medium text-xs text-dashboard-text-muted">
           {props.recordSet.title}
         </div>
         <div className="hidden font-mono text-xs text-dashboard-text-muted sm:block">
@@ -52,7 +52,7 @@ export function PluginReportRecordSet(props: {
               >
                 {fields.map((field) => (
                   <div key={field.key}>
-                    <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+                    <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                       {field.label}
                     </div>
                     <div className="mt-1 break-words font-mono text-xs leading-relaxed text-dashboard-text-muted">
@@ -65,7 +65,7 @@ export function PluginReportRecordSet(props: {
           </div>
           <div className="hidden overflow-x-auto border-t border-white/[0.05] sm:block">
             <table className="w-full min-w-[36rem] border-collapse text-left">
-              <thead className="bg-black/15 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <thead className="bg-black/15 font-sans font-medium text-xs text-dashboard-text-muted">
                 <tr>
                   {fields.map((field) => (
                     <th

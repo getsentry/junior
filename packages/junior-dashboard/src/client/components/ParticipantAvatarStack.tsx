@@ -45,7 +45,7 @@ function ParticipantTooltipContent(props: { participant: ActorIdentity }) {
     <span className="grid gap-0.5 font-sans">
       <span className="font-semibold text-dashboard-text">{name}</span>
       {email && email !== name ? (
-        <span className="font-mono text-dashboard-text-muted">{email}</span>
+        <span className="font-sans text-dashboard-text-muted">{email}</span>
       ) : null}
     </span>
   );

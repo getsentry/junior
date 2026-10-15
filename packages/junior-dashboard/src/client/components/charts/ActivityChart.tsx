@@ -65,9 +65,7 @@ export function isActivityHourBucket(date: string): boolean {
 /** UTC start of a day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) bucket key. */
 export function activityBucketStartMs(date: string): number {
   return Date.parse(
-    isActivityHourBucket(date)
-      ? `${date}:00:00.000Z`
-      : `${date}T00:00:00.000Z`,
+    isActivityHourBucket(date) ? `${date}:00:00.000Z` : `${date}T00:00:00.000Z`,
   );
 }
 
@@ -134,7 +132,7 @@ const ChartSvgScaleContext = createContext(1);
 
 /** Shared visual style for SVG chart axis labels. */
 export const chartAxisLabelClassName =
-  "fill-white/50 font-mono leading-none text-dashboard-text-muted";
+  "fill-white/50 font-sans tabular-nums leading-none text-dashboard-text-muted";
 
 type ChartAxisLabelProps = Omit<
   SVGProps<SVGTextElement>,
@@ -167,7 +165,7 @@ export function ChartAxisHtmlLabel(props: {
   return (
     <span
       className={cn(
-        "font-mono text-2xs leading-none text-dashboard-text-muted",
+        "font-sans tabular-nums text-2xs leading-none text-dashboard-text-muted",
         props.className,
       )}
       style={props.style}
@@ -331,7 +329,8 @@ export function activityChartAverage(values: readonly number[]): number {
 }
 
 /** Shared visual style for average-line labels. */
-export const chartAverageLabelClassName = "fill-white font-mono leading-none";
+export const chartAverageLabelClassName =
+  "fill-white font-sans tabular-nums leading-none";
 
 /** Solid chip behind average labels so series colors never wash out the text. */
 const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";

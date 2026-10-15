@@ -167,7 +167,7 @@ export function TranscriptActivityGroup(props: {
         flush
         className={cn(
           "flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
-          live && "text-cyan-100/80",
+          live && "text-dashboard-accent-text/80",
         )}
         onClick={(event) => {
           event.preventDefault();

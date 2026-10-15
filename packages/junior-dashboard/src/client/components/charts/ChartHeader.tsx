@@ -4,11 +4,11 @@ import { cn } from "../../styles";
 
 /** Shared title style for chart headers and period-total values. */
 export const chartHeaderPrimaryClassName =
-  "m-0 font-mono text-sm font-medium text-dashboard-text";
+  "m-0 font-sans text-sm font-medium text-dashboard-text";
 
 /** Shared supporting copy style for chart descriptions and total captions. */
 export const chartHeaderSecondaryClassName =
-  "mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted";
+  "mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted";
 
 /**
  * Card header used by metric charts.
@@ -42,7 +42,7 @@ export function ChartHeader(props: {
           <div className={chartHeaderSecondaryClassName}>{totalLabel}</div>
         </div>
       ) : props.trailing ? (
-        <div className="font-mono text-xs text-dashboard-text-muted">
+        <div className="font-sans text-xs text-dashboard-text-muted">
           {props.trailing}
         </div>
       ) : null}

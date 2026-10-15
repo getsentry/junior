@@ -362,7 +362,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           // only for the bare reply dock.
           props.footerStart
             ? "block overflow-hidden focus-within:border-dashboard-focus/45 focus-within:ring-1 focus-within:ring-dashboard-focus/25"
-            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
+            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-dashboard-accent/35 focus-within:ring-1 focus-within:ring-dashboard-focus/35 md:block",
           dashboardComposerSurfaceClass,
           dragging && "ring-2 ring-dashboard-focus",
         )}

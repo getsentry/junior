@@ -50,7 +50,7 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
                 <Card padding="md">
                   <div className="flex items-center gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                      <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                         {page.pluginDisplayName}
                       </div>
                       <h2 className="mt-1 mb-0 font-display text-base font-medium text-dashboard-text">

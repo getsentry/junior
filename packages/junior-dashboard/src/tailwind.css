@@ -72,7 +72,15 @@
   --color-dashboard-text-solid: #ffffff;
   --color-dashboard-text-inverse: #000000;
 
-  /* Brand focus used for rings and avatar chips */
+  /*
+   * Brand accent (lavender). Use accent for icons, active markers, and tinted
+   * fills (with an opacity suffix). Use accent-text for links and accent text
+   * on the dark canvas. Focus rings use focus, which is the same hue.
+   * Status colors (info, success, warning, error) and categorical chart or
+   * event colors stay as Tailwind palette utilities.
+   */
+  --color-dashboard-accent: #beaaff;
+  --color-dashboard-accent-text: #ddd3ff;
   --color-dashboard-focus: #beaaff;
 
   /* Hairline borders (pre-multiplied so themes can flip without white/black literals) */

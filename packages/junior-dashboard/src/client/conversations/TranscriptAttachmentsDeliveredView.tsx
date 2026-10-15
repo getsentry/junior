@@ -20,7 +20,7 @@ export function TranscriptAttachmentsDeliveredView(props: {
   return (
     <TranscriptMessageShell role="assistant" actor={getDashboardAgentName()}>
       <TranscriptMessageHeading>
-        <span className="max-w-full truncate font-sans text-sm font-semibold leading-6 text-cyan-100">
+        <span className="max-w-full truncate font-sans text-sm font-semibold leading-6 text-dashboard-accent-text">
           {getDashboardAgentName()}
         </span>
         {timestamp ? (

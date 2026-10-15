@@ -41,7 +41,7 @@ export function FilterGroup(props: {
 }) {
   return (
     <div className={cn("min-w-0", props.className)}>
-      <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <div className="mb-2 font-sans font-medium text-xs text-dashboard-text-muted">
         {props.label}
       </div>
       <div
@@ -80,9 +80,9 @@ export function FilterTabList(props: {
           <button
             aria-selected={selected}
             className={cn(
-              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
+              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-sans font-medium text-xs transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
               selected
-                ? "text-cyan-100 after:bg-cyan-300"
+                ? "text-dashboard-accent-text after:bg-dashboard-accent"
                 : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
             )}
             key={item.value || "all"}
@@ -96,7 +96,7 @@ export function FilterTabList(props: {
                 className={cn(
                   "rounded-sm border px-1.5 py-0.5 text-xs",
                   selected
-                    ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
+                    ? "border-dashboard-accent/20 bg-dashboard-accent/10 text-dashboard-accent-text"
                     : "border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted",
                 )}
               >

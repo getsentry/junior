@@ -87,7 +87,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
           >
             {content.metrics.map((metric) => (
               <Card className="p-4" key={metric.label}>
-                <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                   {metric.label}
                 </div>
                 <div className="mt-3 font-display text-2xl font-light text-dashboard-text">
@@ -180,7 +180,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                   <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
                     {record.metadata.map((item) => (
                       <div key={item.label}>
-                        <dt className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                        <dt className="font-sans font-medium text-xs text-dashboard-text-muted">
                           {item.label}
                         </dt>
                         <dd className="mt-1 ml-0 font-mono text-xs text-dashboard-text-muted">

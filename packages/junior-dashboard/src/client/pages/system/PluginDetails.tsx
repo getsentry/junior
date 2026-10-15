@@ -52,12 +52,16 @@ function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
   const Icon = props.icon;
   return (
     <div className="flex items-center gap-3 bg-dashboard-surface-panel px-4 py-3.5">
-      <Icon aria-hidden="true" className="text-cyan-200/60" size={15} />
+      <Icon
+        aria-hidden="true"
+        className="text-dashboard-accent-text/60"
+        size={15}
+      />
       <div className="min-w-0">
         <div className="truncate font-display text-base font-medium text-dashboard-text">
           {props.value}
         </div>
-        <div className="mt-0.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+        <div className="mt-0.5 font-sans font-medium text-xs text-dashboard-text-muted">
           {props.label}
         </div>
       </div>
@@ -72,7 +76,7 @@ function CapabilityList(props: {
 }) {
   return (
     <div>
-      <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
         {props.title}
       </h3>
       {props.items.length ? (

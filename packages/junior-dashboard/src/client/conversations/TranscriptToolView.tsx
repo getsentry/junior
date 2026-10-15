@@ -110,7 +110,7 @@ function ToolPayload(props: { label: string; value: unknown }) {
   const code = useMemo(() => stringifyPartValue(props.value), [props.value]);
   return (
     <div className="min-w-0 max-w-full overflow-hidden bg-black/20 px-2.5 py-2">
-      <div className="pb-1.5 font-mono text-2xs font-bold uppercase leading-none tracking-[0.08em] text-dashboard-text-muted">
+      <div className="pb-1.5 font-sans text-2xs font-bold leading-none text-dashboard-text-muted">
         {props.label}
       </div>
       <HighlightedCode code={code} language="json" />

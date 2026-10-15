@@ -57,7 +57,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
     <article className="rounded-lg border border-white/[0.065] bg-white/[0.025] p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="grid size-8 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">
+          <div className="grid size-8 shrink-0 place-items-center rounded border border-dashboard-accent/15 bg-dashboard-accent/[0.075] text-dashboard-accent-text">
             {props.group.pluginProvider ? (
               <Boxes aria-hidden="true" size={15} strokeWidth={1.8} />
             ) : (
@@ -68,7 +68,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
             <h3 className="m-0 truncate font-display text-base font-medium text-dashboard-text">
               {label}
             </h3>
-            <div className="mt-0.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="mt-0.5 font-sans font-medium text-xs text-dashboard-text-muted">
               {props.group.pluginProvider ? "plugin provider" : "core or local"}
             </div>
           </div>
@@ -98,7 +98,7 @@ function InventoryMetric(props: { label: string; value: number }) {
       <div className="font-display text-xl font-light leading-none text-dashboard-text">
         {formatCompactNumber(props.value)}
       </div>
-      <div className="mt-1.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+      <div className="mt-1.5 font-sans font-medium text-xs text-dashboard-text-muted">
         {props.label}
       </div>
     </div>

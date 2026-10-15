@@ -315,7 +315,7 @@ function MemoryListHeader() {
   return (
     <div
       className={cn(
-        "hidden items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid",
+        "hidden items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-sans font-medium text-xs text-dashboard-text-muted sm:grid",
         MEMORY_GRID,
       )}
       role="row"
@@ -344,7 +344,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
     {
       detail: "workspace shareable",
       label: "Public",
-      tone: "text-cyan-100",
+      tone: "text-dashboard-accent-text",
       value: stats.public.toLocaleString("en-US"),
     },
     {
@@ -360,7 +360,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
     >
       {items.map((item) => (
         <div className="bg-[#050507] px-4 py-4 sm:px-5" key={item.label}>
-          <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+          <div className="font-sans font-medium text-xs text-dashboard-text-muted">
             {item.label}
           </div>
           <div
