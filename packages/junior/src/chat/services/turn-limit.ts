@@ -40,11 +40,15 @@ export function isTurnExecutionLimitExceededError(error: unknown): boolean {
   return error instanceof Error && isDirectTurnExecutionLimitError(error.cause);
 }
 
-/** Tool result text that tells the model to finish once the turn is out of budget. */
+/**
+ * Tool result text that tells the model to finish once the turn is out of
+ * budget. It matches the disabled-tool rejection of the tool adapter. The tool
+ * list stays the same, so the provider cache stays valid.
+ */
 export const TURN_LIMIT_WRAP_UP_REASON =
-  "This turn used its execution budget, so this tool call did not run. " +
-  "Do not call more tools. Reply now with what you finished, what is left, " +
-  "and how to continue.";
+  "All tools are disabled in this Turn. It used its execution budget, so " +
+  "this call did not run. Do not call a tool again in this Turn. Reply now " +
+  "with what you finished, what is left, and how to continue.";
 
 /** What one tool call may do after the turn limits are checked. */
 export type TurnLimitDecision = "allow" | "wrap_up" | "stop";
