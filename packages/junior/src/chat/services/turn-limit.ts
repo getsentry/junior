@@ -16,10 +16,19 @@ export class TurnToolCallLimitExceededError extends Error {
   }
 }
 
+/** Terminal failure when one turn spends past its cost budget. */
+export class TurnBudgetExceededError extends Error {
+  constructor(maxCostUsd: number) {
+    super(`Agent turn exceeded execution limit ($${maxCostUsd} budget)`);
+    this.name = "TurnBudgetExceededError";
+  }
+}
+
 function isDirectTurnExecutionLimitError(error: unknown): boolean {
   return (
     error instanceof TurnSliceLimitExceededError ||
-    error instanceof TurnToolCallLimitExceededError
+    error instanceof TurnToolCallLimitExceededError ||
+    error instanceof TurnBudgetExceededError
   );
 }
 
@@ -31,15 +40,34 @@ export function isTurnExecutionLimitExceededError(error: unknown): boolean {
   return error instanceof Error && isDirectTurnExecutionLimitError(error.cause);
 }
 
-/** Stop the turn when its tool-call count is past the limit. */
-export function assertTurnToolCallLimit(
-  toolCallCount: number,
-  maxToolCalls: number,
-): void {
-  if (toolCallCount <= maxToolCalls) {
-    return;
-  }
-  throw new TurnToolCallLimitExceededError(maxToolCalls);
+/** Tool result text that tells the model to finish once the turn is out of budget. */
+export const TURN_LIMIT_WRAP_UP_REASON =
+  "This turn used its execution budget, so this tool call did not run. " +
+  "Do not call more tools. Reply now with what you finished, what is left, " +
+  "and how to continue.";
+
+/** What one tool call may do after the turn limits are checked. */
+export type TurnLimitDecision = "allow" | "wrap_up" | "stop";
+
+/**
+ * Check tool calls against the turn limits for one slice.
+ *
+ * The first model step past a limit gets `wrap_up`: its tool calls are blocked
+ * and the model can reply with its progress. A later step that still calls
+ * tools gets `stop`, which ends the turn with an execution-limit error.
+ */
+export function createTurnLimitGate(): (args: {
+  assistantMessage: object;
+  overLimit: boolean;
+}) => TurnLimitDecision {
+  let wrapUpStep: object | undefined;
+  return ({ assistantMessage, overLimit }) => {
+    if (!overLimit) {
+      return "allow";
+    }
+    wrapUpStep ??= assistantMessage;
+    return wrapUpStep === assistantMessage ? "wrap_up" : "stop";
+  };
 }
 
 /** Explain a terminal turn execution limit with actionable recovery guidance. */

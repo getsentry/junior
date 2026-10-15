@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  TurnBudgetExceededError,
   TurnSliceLimitExceededError,
   TurnToolCallLimitExceededError,
-  assertTurnToolCallLimit,
   buildTurnErrorResponse,
+  createTurnLimitGate,
   buildTurnLimitResponse,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
@@ -27,6 +28,15 @@ describe("turn execution limit", () => {
     expect(isTurnExecutionLimitExceededError(error)).toBe(true);
   });
 
+  it("keeps the internal budget limit in diagnostics", () => {
+    const error = new TurnBudgetExceededError(100);
+    expect(error).toMatchObject({
+      name: "TurnBudgetExceededError",
+      message: "Agent turn exceeded execution limit ($100 budget)",
+    });
+    expect(isTurnExecutionLimitExceededError(error)).toBe(true);
+  });
+
   it("gives users an actionable response without internal implementation details", () => {
     const response = buildTurnLimitResponse("abc123");
 
@@ -36,12 +46,17 @@ describe("turn execution limit", () => {
     expect(response).not.toContain("continuation");
   });
 
-  it("allows tool calls at the limit and stops past it", () => {
-    expect(() => assertTurnToolCallLimit(250, 250)).not.toThrow();
-    expect(() => assertTurnToolCallLimit(251, 250)).toThrow(
-      TurnToolCallLimitExceededError,
-    );
-    expect(() => assertTurnToolCallLimit(251, 250)).toThrow(/250 tool calls/);
+  it("asks one model step to wrap up past a limit and stops the next one", () => {
+    const gate = createTurnLimitGate();
+    const first = {};
+    const wrapUp = {};
+    const ignored = {};
+
+    expect(gate({ assistantMessage: first, overLimit: false })).toBe("allow");
+    expect(gate({ assistantMessage: wrapUp, overLimit: true })).toBe("wrap_up");
+    // Parallel tool calls in the same step get the same answer.
+    expect(gate({ assistantMessage: wrapUp, overLimit: true })).toBe("wrap_up");
+    expect(gate({ assistantMessage: ignored, overLimit: true })).toBe("stop");
   });
 
   it("uses the limit reply for thrown execution-limit errors", () => {

@@ -102,6 +102,7 @@ import {
 } from "@/chat/services/turn-router";
 import {
   addAgentTurnUsage,
+  agentTurnCostUsd,
   hasAgentTurnUsage,
   type AgentTurnUsage,
 } from "@/chat/usage";
@@ -110,7 +111,13 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  TURN_LIMIT_WRAP_UP_REASON,
+  TurnBudgetExceededError,
+  TurnToolCallLimitExceededError,
+  createTurnLimitGate,
+  isTurnExecutionLimitExceededError,
+} from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -716,6 +723,7 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    const turnLimitGate = createTurnLimitGate();
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
     const usageSinceCurrentBoundary = (
@@ -1114,21 +1122,44 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // Charge the durable turn total here. Exceptions become tool errors,
-        // so block + terminate and rethrow after the step settles.
-        try {
-          runResume.admitToolCall();
-        } catch (error) {
-          const limitError =
-            error instanceof Error ? error : new Error(String(error));
-          pendingPiHookError ??= limitError;
-          return {
-            block: true,
-            reason: limitError.message,
-            terminate: true,
-          };
+        // Charge the durable turn totals here. Past a limit, the first step
+        // gets a wrap-up reply so its progress is not lost. A later step that
+        // still calls tools ends the turn: Pi turns exceptions into tool
+        // errors, so block + terminate and rethrow after the step settles.
+        const toolCallCount = runResume.countToolCall();
+        const turnCostUsd =
+          agentTurnCostUsd(
+            addAgentTurnUsage(
+              runResume.priorSliceUsage,
+              priorPhaseUsage,
+              usageSinceCurrentBoundary(currentAgentMessages()),
+            ),
+          ) ?? 0;
+        const overBudget = turnCostUsd >= botConfig.maxTurnCostUsd;
+        const decision = turnLimitGate({
+          assistantMessage,
+          overLimit:
+            overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
+        });
+        if (decision === "allow") {
+          return undefined;
         }
-        return undefined;
+        if (decision === "wrap_up") {
+          logWarn("agent.turn.limit.wrap_up", {
+            "app.ai.cost.total_usd": turnCostUsd,
+            "app.ai.tool_call_count": toolCallCount,
+          });
+          return { block: true, reason: TURN_LIMIT_WRAP_UP_REASON };
+        }
+        const limitError = overBudget
+          ? new TurnBudgetExceededError(botConfig.maxTurnCostUsd)
+          : new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn);
+        pendingPiHookError ??= limitError;
+        return {
+          block: true,
+          reason: limitError.message,
+          terminate: true,
+        };
       },
       afterToolCall: async ({ isError, result, toolCall }, signal) => {
         // Host continuity is session-owned (`resumeReason: "timeout"` + auto

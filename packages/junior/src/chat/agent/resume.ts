@@ -36,7 +36,6 @@ import {
 } from "@/chat/agent/types";
 import {
   TurnSliceLimitExceededError,
-  assertTurnToolCallLimit,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -150,11 +149,14 @@ export function createResumeState(args: ResumeStateArgs) {
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
     },
-    /** Admit one tool call against the durable turn total, or throw the limit. */
-    admitToolCall(): void {
-      const next = cumulativeToolCallCount + 1;
-      assertTurnToolCallLimit(next, botConfig.maxToolCallsPerTurn);
-      cumulativeToolCallCount = next;
+    /** Usage that earlier slices of this turn saved. */
+    get priorSliceUsage(): AgentTurnUsage | undefined {
+      return args.checkpoint.record?.cumulativeUsage;
+    },
+    /** Charge one tool call to the durable turn total and return the total. */
+    countToolCall(): number {
+      cumulativeToolCallCount += 1;
+      return cumulativeToolCallCount;
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
