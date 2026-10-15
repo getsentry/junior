@@ -66,6 +66,9 @@ describe("turn execution limit", () => {
     expect(
       gate({ assistantMessage: ignored, overLimit: true, wrappedUpBefore }),
     ).toBe("stop");
+    expect(
+      gate({ assistantMessage: {}, overLimit: false, wrappedUpBefore }),
+    ).toBe("stop");
   });
 
   it("stops instead of wrapping up again after an earlier slice wrapped up", () => {
@@ -73,10 +76,11 @@ describe("turn execution limit", () => {
     const step = {};
 
     expect(
-      gate({ assistantMessage: step, overLimit: false, wrappedUpBefore: true }),
-    ).toBe("allow");
-    expect(
       gate({ assistantMessage: step, overLimit: true, wrappedUpBefore: true }),
+    ).toBe("stop");
+    // Live totals can miss usage that a paused slice did not save.
+    expect(
+      gate({ assistantMessage: {}, overLimit: false, wrappedUpBefore: true }),
     ).toBe("stop");
   });
 

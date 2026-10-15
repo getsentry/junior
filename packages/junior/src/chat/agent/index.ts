@@ -1163,9 +1163,12 @@ async function executeAgentRunInPrivacyContext(
             ),
           };
         }
-        const limitError = overBudget
-          ? new TurnBudgetExceededError(botConfig.maxTurnCostUsd)
-          : new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn);
+        // The tool-call total is durable and only grows, so a stop that is
+        // not over it came from the spend limit.
+        const limitError =
+          toolCallCount > botConfig.maxToolCallsPerTurn && !overBudget
+            ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
+            : new TurnBudgetExceededError(botConfig.maxTurnCostUsd);
         pendingPiHookError ??= limitError;
         return {
           block: true,
