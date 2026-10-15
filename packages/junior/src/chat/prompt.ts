@@ -766,6 +766,37 @@ function buildPluginPromptContributionsSection(
   return renderTagBlock("plugin-context", lines.join("\n"));
 }
 
+/** One tool that the current Turn cannot run. */
+export interface DisabledToolPromptContext {
+  name: string;
+  reason: string;
+}
+
+function buildDisabledToolsSection(
+  tools: DisabledToolPromptContext[] | undefined,
+): string | null {
+  if (!tools || tools.length === 0) {
+    return null;
+  }
+  // Disabled tools stay in the cached tool list. Tell the model here, in the
+  // request, so it does not call them.
+  const namesByReason = new Map<string, string[]>();
+  for (const tool of tools) {
+    namesByReason.set(tool.reason, [
+      ...(namesByReason.get(tool.reason) ?? []),
+      tool.name,
+    ]);
+  }
+  const lines = [
+    "These tools are disabled in this Turn. Do not call them.",
+    ...[...namesByReason].map(
+      ([reason, names]) =>
+        `- ${names.map((name) => `\`${name}\``).join(", ")}: ${reason}`,
+    ),
+  ];
+  return renderTagBlock("disabled-tools", escapeXml(lines.join("\n")));
+}
+
 /** Render plugin system prompt additions under a core-owned wrapper. */
 export function buildPluginSystemPromptContributions(
   contributions: PluginPromptContributionContext[],
@@ -791,6 +822,7 @@ type TurnContextPromptInput = {
   availableSkills: SkillMetadata[];
   activeMcpCatalogs?: ActiveMcpCatalogSummary[];
   includeSessionContext?: boolean;
+  disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   toolGuidance?: ToolPromptContext[];
   runtime?: {
@@ -871,10 +903,11 @@ export function buildTurnContextPrompt(
   const pluginPromptContributions = buildPluginPromptContributionsSection(
     params.pluginPromptContributions,
   );
+  const disabledTools = buildDisabledToolsSection(params.disabledTools);
   // Session context, including Slack conversation facts, is bootstrap material.
   // Once recorded in Pi history, follow-up and resumed user messages should
-  // carry only the user's input and request-scoped plugin contributions.
-  if (!includeSessionContext && !pluginPromptContributions) {
+  // carry only the user's input and request-scoped context.
+  if (!includeSessionContext && !pluginPromptContributions && !disabledTools) {
     return null;
   }
 
@@ -891,6 +924,7 @@ export function buildTurnContextPrompt(
         })
       : null,
     pluginPromptContributions,
+    disabledTools,
     includeSessionContext
       ? buildContextSection({
           actor: params.actor,

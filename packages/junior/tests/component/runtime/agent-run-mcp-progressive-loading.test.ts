@@ -1487,7 +1487,11 @@ describe("executeAgentRun progressive MCP loading", () => {
     );
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
-    expect(turnContextInputs).toHaveLength(0);
+    // Request-scoped context, such as disabled tools, may still build a Turn
+    // context. Session context must not repeat.
+    expect(
+      turnContextInputs.filter((input) => input.includeSessionContext),
+    ).toHaveLength(0);
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<runtime-turn-context>",
     );

@@ -55,7 +55,7 @@ import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -83,11 +83,15 @@ function createToolState(): ToolState {
 export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
-  includeLoadSkill?: boolean;
   pluginSandbox?: PluginSandbox;
 }
 
-/** Build the model-facing tool registry from runtime-owned context and capabilities. */
+/**
+ * Build the model-facing tool registry from runtime-owned context and capabilities.
+ *
+ * Choose tools from the Conversation, not from one Turn, so the cached tool
+ * list stays the same. Use `disableTools` when a Turn cannot use a tool.
+ */
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -106,13 +110,9 @@ export function createTools(
   );
   const eventCatalog = getEventCatalog();
   const tools: ToolRegistry = {
-    ...(options.includeLoadSkill === false
-      ? undefined
-      : {
-          loadSkill: createLoadSkillTool(availableSkills, {
-            onSkillLoaded: hooks.onSkillLoaded,
-          }),
-        }),
+    loadSkill: createLoadSkillTool(availableSkills, {
+      onSkillLoaded: hooks.onSkillLoaded,
+    }),
     updatePlan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
@@ -268,13 +268,19 @@ export function createTools(
           context.conversationId,
         );
     }
-    // Always register public search in Slack turns. Without an action token the
-    // tool stays visible and returns an honest interactive-turn limit.
-    if (context.source.kind === "slack") {
-      tools.slackPublicSearch = createSlackPublicSearchTool(
-        context.slackActionToken,
-      );
-    }
+    Object.assign(
+      tools,
+      disableTools(
+        {
+          slackPublicSearch: createSlackPublicSearchTool(
+            context.slackActionToken,
+          ),
+        },
+        context.slackActionToken
+          ? undefined
+          : "Slack gives a search token only for a new message or mention.",
+      ),
+    );
     const identityProviders = [
       "slack",
       ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
@@ -322,13 +328,17 @@ export function createTools(
     tools.slackChannelListMessages =
       createSlackChannelListMessagesTool(slackContext);
 
-    if (
-      context.source.kind === "slack" &&
-      locationCapabilities.canAddReactions
-    ) {
-      tools.addReaction = createSlackMessageAddReactionTool(
-        slackContext,
-        state,
+    if (locationCapabilities.canAddReactions) {
+      Object.assign(
+        tools,
+        disableTools(
+          {
+            addReaction: createSlackMessageAddReactionTool(slackContext, state),
+          },
+          slackContext.messageTs
+            ? undefined
+            : "It needs a Slack message in this Turn to react to.",
+        ),
       );
     }
   }

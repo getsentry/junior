@@ -914,6 +914,7 @@ async function executeAgentRunInPrivacyContext(
       run,
       spanContext,
       turnId,
+      disabledTools: wiring.disabledTools,
       toolGuidance: wiring.toolGuidance,
       toolRuntimeContext: wiring.toolRuntimeContext,
       userContentParts,

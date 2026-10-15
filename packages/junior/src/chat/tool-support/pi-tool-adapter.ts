@@ -34,6 +34,7 @@ import {
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   createExecuteToolTool,
@@ -174,6 +175,13 @@ export function createPiAgentTools(
       args;
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
+    }
+    // Disabled tools stay in the tool list. Reject them before hooks, action
+    // review, and the executor run.
+    if (toolDef.disabledReason) {
+      throw new ToolInputError(
+        `${toolName} is disabled in this Turn. ${toolDef.disabledReason} Do not call it again in this Turn.`,
+      );
     }
 
     const beforeTool = agentHooks

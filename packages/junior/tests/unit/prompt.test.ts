@@ -12,6 +12,25 @@ describe("prompt builders", () => {
     expect(prompt).toContain("- sandbox.workspace_root: /vercel/sandbox");
   });
 
+  it("lists disabled tools in follow-up Turn context", () => {
+    const prompt = buildTurnContextPrompt({
+      availableSkills: [],
+      includeSessionContext: false,
+      disabledTools: [
+        { name: "createEventAutomation", reason: "Needs a Slack message." },
+        { name: "listEventAutomations", reason: "Needs a Slack message." },
+        { name: "addReaction", reason: "No message to react to." },
+      ],
+    });
+
+    expect(prompt).toContain("<disabled-tools>");
+    expect(prompt).toContain(
+      "- `createEventAutomation`, `listEventAutomations`: Needs a Slack message.",
+    );
+    expect(prompt).toContain("- `addReaction`: No message to react to.");
+    expect(prompt).not.toContain("sandbox.workspace_root");
+  });
+
   it("renders Slack conversation facts in runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],

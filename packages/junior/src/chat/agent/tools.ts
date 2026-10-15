@@ -37,6 +37,7 @@ import {
 } from "@/chat/mcp/errors";
 import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { DisabledToolPromptContext } from "@/chat/prompt";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import {
@@ -231,6 +232,8 @@ export interface ToolWiring {
     RepositoryInstructions | undefined
   >;
   close(): Promise<void>;
+  /** Tools this Turn cannot run. They stay in the tool list. */
+  disabledTools: DisabledToolPromptContext[];
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -344,10 +347,6 @@ export async function wireAgentTools(
     (skill) =>
       skill.disableModelInvocation !== true ||
       skill.name === args.invokedSkill?.name,
-  );
-  const explicitSkillLoaded = Boolean(
-    args.invokedSkill &&
-    args.activeSkills.some((skill) => skill.name === args.invokedSkill?.name),
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
@@ -480,7 +479,6 @@ export async function wireAgentTools(
     },
     toolRuntimeContext,
     {
-      includeLoadSkill: !explicitSkillLoaded,
       pluginSandbox: createPluginToolSandbox(agentSandbox, {
         handleAuthSignal: pluginAuth.maybeHandleAuthSignal,
       }),
@@ -489,6 +487,13 @@ export async function wireAgentTools(
 
   const plannedToolExposure = planToolExposure(
     tools as Record<string, AnyToolDefinition>,
+  );
+  const disabledTools = Object.entries(
+    tools as Record<string, AnyToolDefinition>,
+  ).flatMap(([name, definition]) =>
+    definition.disabledReason
+      ? [{ name, reason: definition.disabledReason }]
+      : [],
   );
   const toolGuidance = Object.entries(plannedToolExposure.directTools).map(
     ([name, definition]) => ({
@@ -612,6 +617,7 @@ export async function wireAgentTools(
         });
       }
     },
+    disabledTools,
     toolGuidance,
     toolRuntimeContext,
   };

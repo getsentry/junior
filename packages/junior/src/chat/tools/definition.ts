@@ -50,6 +50,8 @@ interface BaseToolDefinition<
     description: string;
     id: string;
   };
+  /** Why the current Turn cannot run this tool. Set it with `disableTools`. */
+  disabledReason?: string;
   description: string;
   exposure?: ToolExposure;
   inputSchema: TInputSchema;
@@ -107,6 +109,8 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
     description: string;
     id: string;
   };
+  /** Why the current Turn cannot run this tool. Set it with `disableTools`. */
+  disabledReason?: string;
   description: string;
   exposure?: ToolExposure;
   inputSchema: ToolInputSchema;
@@ -160,4 +164,23 @@ export function tool<TInputSchema extends TSchema>(
   definition: ToolDefinition<TInputSchema>,
 ): ToolDefinition<TInputSchema> {
   return definition;
+}
+
+/**
+ * Disable tools for this Turn without removing them from the tool list.
+ *
+ * The tool adapter rejects their calls, and the Turn context lists them. An
+ * unset reason keeps the tools enabled.
+ */
+export function disableTools(
+  tools: ToolRegistry,
+  reason: string | undefined,
+): ToolRegistry {
+  if (!reason) return tools;
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, tool]) => [
+      name,
+      { ...tool, disabledReason: reason },
+    ]),
+  );
 }

@@ -2019,6 +2019,90 @@ describe("Slack schedule tool wiring via createTools", () => {
       setPlugins(previous);
     }
   });
+
+  it("rejects automation writes from a Turn not started by a Slack message", async () => {
+    // A child agent result has the person's Slack Actor but an Agent
+    // invocation Source. Call the tools directly to check that they refuse it
+    // even without the adapter's disabled check.
+    const fixture = await useSchedulerSqlPlugin();
+    try {
+      const TEAM_ID = `TORIGIN${Date.now()}`;
+      const resolveActorIdentity = vi.fn(async () => ({
+        identity: {
+          id: `identity:${TEAM_ID}:U123`,
+          provider: "slack",
+          providerSubjectId: "U123",
+          providerTenantId: TEAM_ID,
+        },
+      }));
+      const tools = createTools(
+        [],
+        {},
+        {
+          conversationId: "slack:C123:1700000000.100000",
+          location: {
+            id: `location:${TEAM_ID}:C123`,
+            provider: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+            threadTs: "1700000000.100000",
+          },
+          source: { kind: "agent_invocation" },
+          destination: {
+            platform: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+          },
+          actor: { platform: "slack", teamId: TEAM_ID, userId: "U123" },
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
+          },
+          resolveActorIdentity,
+          workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+        },
+      );
+
+      await expect(
+        executeRegisteredTool(tools.slackScheduleCreateAutomation, {
+          instruction: "Post a weekly digest.",
+          schedule: {
+            kind: "recurring",
+            frequency: "weekly",
+            time: "09:00",
+            weekdays: ["monday"],
+            timezone: "America/Los_Angeles",
+          },
+        }),
+      ).rejects.toThrow("No active Slack conversation is available.");
+      await expect(
+        executeRegisteredTool(tools.slackScheduleDeleteAutomation, {
+          automationId: "sched_missing",
+        }),
+      ).rejects.toThrow("No active Slack conversation is available.");
+      await expect(
+        executeRegisteredTool(tools.createEventAutomation, {
+          instruction: "Summarize new channel messages.",
+          trigger: {
+            namespace: "slack",
+            identifier: "C123",
+            resourceType: "channel",
+            label: "#general",
+            events: ["message.posted"],
+          },
+        }),
+      ).rejects.toThrow(
+        "Event automations require an active Slack channel or DM and actor.",
+      );
+      expect(resolveActorIdentity).not.toHaveBeenCalled();
+      await expect(
+        listStoredTasksForTeam(fixture.sql.db(), TEAM_ID),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });
 
 describe("Slack schedule tool execution modes", () => {

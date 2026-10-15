@@ -17,6 +17,7 @@ import {
   buildPluginSystemPromptContributions,
   buildSystemPrompt,
   buildTurnContextPrompt,
+  type DisabledToolPromptContext,
 } from "@/chat/prompt";
 import {
   getPluginSystemPromptContributions,
@@ -514,6 +515,7 @@ export async function assemblePrompt(args: {
   >;
   spanContext: LogContext;
   turnId: string;
+  disabledTools: DisabledToolPromptContext[];
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -582,11 +584,16 @@ export async function assemblePrompt(args: {
           context: args.toolRuntimeContext,
           turnId: args.turnId,
         });
+  const disabledTools =
+    !shouldPromptAgent || replayedPrompt ? [] : args.disabledTools;
   const turnContextPrompt =
-    needsBootstrapContextForPrompt || pluginUserPromptContributions.length > 0
+    needsBootstrapContextForPrompt ||
+    pluginUserPromptContributions.length > 0 ||
+    disabledTools.length > 0
       ? buildTurnContextPrompt({
           availableSkills: args.availableSkills,
           activeMcpCatalogs: args.activeMcpCatalogs,
+          disabledTools,
           includeSessionContext: needsBootstrapContextForPrompt,
           pluginPromptContributions: pluginUserPromptContributions,
           toolGuidance: args.toolGuidance,
