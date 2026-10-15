@@ -25,7 +25,12 @@ import {
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn } from "../styles";
-import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
+import {
+  CostMetric,
+  DurationMetric,
+  SubagentsMetric,
+  TokenMetric,
+} from "./TelemetryMetrics";
 import type { Conversation } from "../types";
 import {
   projectSidebarAnnotationBadges,
@@ -598,6 +603,8 @@ function conversationStatItems(props: {
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
+  const childAgentTotals =
+    props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -615,6 +622,8 @@ function conversationStatItems(props: {
       ? {
           content: (
             <DurationMetric
+              childAgentTotals={childAgentTotals}
+              durationMs={props.conversation.cumulativeDurationMs}
               endedAt={props.conversation.lastSeenAt}
               label={durationLabel}
               startedAt={props.conversation.startedAt}
@@ -627,6 +636,8 @@ function conversationStatItems(props: {
       ? {
           content: (
             <TokenMetric
+              detailsHint={variant === "compact"}
+              childAgentTotals={childAgentTotals}
               compactionCount={
                 completeDetail
                   ? completeDetail.events.filter(
@@ -650,10 +661,12 @@ function conversationStatItems(props: {
       ? {
           content: (
             <CostMetric
+              detailsHint={variant === "compact"}
               auxiliaryCosts={
                 props.detail?.auxiliaryCosts ??
                 props.conversation.auxiliaryCosts
               }
+              childAgentTotals={childAgentTotals}
               live={live}
               liveModelId={activeModelId}
               modelUsage={props.detail?.modelUsage}
@@ -661,6 +674,12 @@ function conversationStatItems(props: {
             />
           ),
           key: "cost",
+        }
+      : undefined,
+    childAgentTotals
+      ? {
+          content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
+          key: "subagents",
         }
       : undefined,
   ];

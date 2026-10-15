@@ -14,7 +14,7 @@ import {
   surfaceLabel,
 } from "../conversations/reporting";
 import { readConversationAccessFromSql } from "../conversations/access";
-import { readRootConversationMetricsFromSql } from "../conversations/usage";
+import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
   ConversationStatsItem,
   ActorActivityDayReport,
@@ -288,7 +288,7 @@ export async function readPeopleProfileFromSql(
       recentConversationIds,
       options.viewer,
     ),
-    readRootConversationMetricsFromSql(getDb(), recentConversationIds),
+    readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
   ]);
 
   return {

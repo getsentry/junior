@@ -13,6 +13,7 @@ import {
 } from "@/chat/conversations/history";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
+import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
   conversationAnnotationInputSchema,
   conversationSidebarAnnotationSchema,
@@ -262,6 +263,7 @@ export const conversationSummaryReportSchema = z
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
+    childAgentTotals: conversationChildAgentTotalsSchema.optional(),
     conversationId: z.string(),
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),

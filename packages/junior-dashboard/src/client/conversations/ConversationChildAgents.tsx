@@ -110,10 +110,16 @@ function ChildAgentRow(props: {
   // A title is often a short form of the task. Skip the task when it adds nothing.
   const detail = agent.title && task && task !== agent.title ? task : undefined;
   const runtime = formatRuntime(agent.cumulativeDurationMs);
+  // Totals include this subagent's own subagents. Say so, so the row does not
+  // read as the work of this subagent alone.
+  const nested = agent.childAgentTotals?.count;
   const stats = [
     formatUsageTotal(agent.cumulativeUsage),
     formatConversationCostTotal(agent.cumulativeUsage, agent.auxiliaryCosts),
     runtime ? `${runtime} runtime` : "",
+    nested
+      ? `incl. ${nested} nested ${nested === 1 ? "subagent" : "subagents"}`
+      : "",
   ].filter(Boolean);
 
   return (

@@ -512,8 +512,8 @@ test("groups the signed-in profile and session actions in the header", async ({
     name: "Open profile menu for Dashboard User",
   });
   await expect(trigger).toBeVisible();
-  await expect(trigger).toContainText("7d$0.07");
-  await expect(trigger).toContainText("30d$0.07");
+  await expect(trigger).toContainText("7d$0.46");
+  await expect(trigger).toContainText("30d$0.46");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
 

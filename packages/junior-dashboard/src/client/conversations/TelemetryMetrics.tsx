@@ -1,11 +1,12 @@
 import type {
   ConversationAuxiliaryCosts,
+  ConversationChildAgentTotals,
   ConversationModelUsage,
 } from "@sentry/junior/api/schema";
 import {
-  formatCostBreakdown,
   formatCostSummary,
   formatCompactNumber,
+  formatRuntime,
   formatTime,
   formatTokenSummary,
   summarizeCost,
@@ -19,6 +20,13 @@ import {
 } from "../format";
 import { MetricValue, type MetricTooltipLine } from "../components/Metric";
 import { ShimmerText } from "../components/ShimmerText";
+import {
+  UsageCard,
+  type UsageCardProps,
+  type UsageCardRow,
+  type UsageCardSection,
+  type UsageCardSplit,
+} from "./UsageCard";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
@@ -30,44 +38,56 @@ function isMetricTooltipLine(
   return Boolean(line);
 }
 
-function usageTooltipLines(
-  summary: TokenUsageSummary,
-): Array<MetricTooltipLine | undefined> {
+/** List the recorded token types, such as input and output. */
+export function tokenTypeRows(summary: TokenUsageSummary): UsageCardRow[] {
+  return (
+    [
+      ["input", summary.inputTokens],
+      ["output", summary.outputTokens],
+      ["cached", summary.cachedInputTokens],
+      ["cache write", summary.cacheCreationTokens],
+      ["reasoning", summary.reasoningTokens],
+    ] as const
+  ).flatMap(([label, value]) =>
+    value ? [{ label, value: formatCompactNumber(value) }] : [],
+  );
+}
+
+/** Add up the tokens and cost of all subagents, including auxiliary cost. */
+export function subagentUsage(
+  childAgentTotals: ConversationChildAgentTotals | undefined,
+): { cost: number; tokens: number } {
+  return {
+    cost:
+      (summarizeCost(childAgentTotals?.cumulativeUsage)?.total ?? 0) +
+      (childAgentTotals?.auxiliaryCostUsd ?? 0),
+    tokens: summarizeUsage(childAgentTotals?.cumulativeUsage)?.totalTokens ?? 0,
+  };
+}
+
+/**
+ * Split a total that includes child agents into the part of this agent and the
+ * part of its subagents. Return no lines when there are no subagents.
+ */
+function agentSplitLines(
+  childAgentTotals: ConversationChildAgentTotals | undefined,
+  total: number,
+  subagentPart: number,
+  format: (value: number) => string,
+): MetricTooltipLine[] {
+  if (!childAgentTotals) return [];
   return [
-    summary.inputTokens !== undefined
-      ? { label: "input", value: formatCompactNumber(summary.inputTokens) }
-      : undefined,
-    summary.outputTokens !== undefined
-      ? { label: "output", value: formatCompactNumber(summary.outputTokens) }
-      : undefined,
-    summary.cachedInputTokens !== undefined
-      ? {
-          label: "cached",
-          value: formatCompactNumber(summary.cachedInputTokens),
-        }
-      : undefined,
-    summary.cacheCreationTokens !== undefined
-      ? {
-          label: "cache write",
-          value: formatCompactNumber(summary.cacheCreationTokens),
-        }
-      : undefined,
-    summary.reasoningTokens !== undefined
-      ? {
-          label: "reasoning",
-          value: formatCompactNumber(summary.reasoningTokens),
-        }
-      : undefined,
-    summary.providerTotalTokens !== undefined
-      ? {
-          label: "provider",
-          value: formatCompactNumber(summary.providerTotalTokens),
-        }
-      : undefined,
+    { value: "By agent", valueStyle: "heading" },
+    { label: "this agent", value: format(Math.max(0, total - subagentPart)) },
+    {
+      label: plural("subagent", childAgentTotals.count),
+      value: format(subagentPart),
+    },
   ];
 }
 
-function modelLabel(modelId: string): string {
+/** Drop the provider prefix from a model id, such as `openai/gpt-5`. */
+export function modelLabel(modelId: string): string {
   return modelId.split("/").at(-1) ?? modelId;
 }
 
@@ -82,158 +102,218 @@ function modelHeading(
   };
 }
 
-function tokenTooltip(
+/** Rows shown before the rest of a list rolls into one "N more" line. */
+const MODEL_LIMIT = 4;
+const AUXILIARY_LIMIT = 3;
+const DETAILS_FOOTER = "Full breakdown in Details";
+
+type RankedRow = UsageCardRow & { amount: number };
+
+/**
+ * Keep the largest rows and roll the rest into one "N more" line. A single
+ * extra row shows as itself, since "1 more" saves no space.
+ */
+function capRows(
+  rows: RankedRow[],
+  limit: number,
+  format: (value: number) => string,
+): Pick<UsageCardSection, "more" | "rows"> {
+  if (rows.length <= limit + 1) return { rows };
+  const rest = rows.slice(limit);
+  return {
+    more: {
+      count: rest.length,
+      value: format(rest.reduce((sum, row) => sum + row.amount, 0)),
+    },
+    rows: rows.slice(0, limit),
+  };
+}
+
+/**
+ * One row per model, largest first. The live model leads the list before it
+ * reports usage.
+ */
+function modelRows<Summary>(
+  modelUsage: ConversationModelUsage[] | undefined,
+  liveModelId: string | undefined,
+  summarize: (usage: ConversationModelUsage["usage"]) => Summary | undefined,
+  size: (summary: Summary) => number,
+  format: (value: number) => string,
+): RankedRow[] {
+  const rows = (modelUsage ?? [])
+    .flatMap((item) => {
+      const summary = summarize(item.usage);
+      return summary ? [{ amount: size(summary), modelId: item.modelId }] : [];
+    })
+    .sort((a, b) => b.amount - a.amount)
+    .map((item) => ({
+      amount: item.amount,
+      code: true,
+      label: modelLabel(item.modelId),
+      live: item.modelId === liveModelId,
+      value: format(item.amount),
+    }));
+  if (liveModelId && !rows.some((row) => row.live)) {
+    rows.unshift({
+      amount: 0,
+      code: true,
+      label: modelLabel(liveModelId),
+      live: true,
+      value: "…",
+    });
+  }
+  return rows;
+}
+
+/** Split a total that includes subagents into this agent's part and theirs. */
+function agentSplit(
+  childAgentTotals: ConversationChildAgentTotals | undefined,
+  total: number,
+  subagentPart: number,
+  format: (value: number) => string,
+): UsageCardSplit | undefined {
+  if (!childAgentTotals) return undefined;
+  const subagents = Math.min(Math.max(0, subagentPart), total);
+  return {
+    count: childAgentTotals.count,
+    self: format(total - subagents),
+    selfShare: total > 0 ? (total - subagents) / total : 1,
+    subagents: format(subagents),
+  };
+}
+
+/**
+ * Format every amount on one cost card with the same precision, so the
+ * decimal points line up down the column.
+ */
+export function costFormatter(total: number): (value: number) => string {
+  const digits = total >= 10 ? 2 : total >= 1 ? 3 : 4;
+  const format = new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+    style: "currency",
+  });
+  return (value) => format.format(value);
+}
+
+function tokenCard(
   summary: TokenUsageSummary,
   modelUsage: ConversationModelUsage[] | undefined,
   compactionCount: number | undefined,
   liveModelId: string | undefined,
-): MetricTooltipLine[] {
-  const lines: Array<MetricTooltipLine | undefined> = [
-    compactionCount
-      ? { label: "compactions", value: formatCompactNumber(compactionCount) }
-      : undefined,
-  ];
-  if (!modelUsage?.length) {
-    lines.push(...usageTooltipLines(summary));
-  }
-  let includesLiveModel = false;
-  for (const item of modelUsage ?? []) {
-    const modelSummary = summarizeUsage(item.usage);
-    if (!modelSummary) continue;
-    includesLiveModel ||= item.modelId === liveModelId;
-    lines.push(
-      modelHeading(item.modelId, liveModelId),
-      ...usageTooltipLines(modelSummary).map((line) =>
-        line?.label ? { ...line, label: `• ${line.label}` } : line,
-      ),
-    );
-  }
-  if (liveModelId && !includesLiveModel) {
-    lines.push(modelHeading(liveModelId, liveModelId));
-  }
-  return lines.filter(isMetricTooltipLine);
+  childAgentTotals: ConversationChildAgentTotals | undefined,
+  detailsHint: boolean,
+): UsageCardProps {
+  const models = modelRows(
+    modelUsage,
+    liveModelId,
+    summarizeUsage,
+    (model) => model.totalTokens,
+    formatCompactNumber,
+  );
+  return {
+    footer: detailsHint && models.length ? DETAILS_FOOTER : undefined,
+    note: compactionCount ? plural("compaction", compactionCount) : undefined,
+    sections: models.length
+      ? [
+          {
+            title: "By model",
+            ...capRows(models, MODEL_LIMIT, formatCompactNumber),
+          },
+        ]
+      : [{ rows: tokenTypeRows(summary), title: "By type" }].filter(
+          (section) => section.rows.length,
+        ),
+    split: agentSplit(
+      childAgentTotals,
+      summary.totalTokens,
+      subagentUsage(childAgentTotals).tokens,
+      formatCompactNumber,
+    ),
+    title: "Tokens",
+    total: formatCompactNumber(summary.totalTokens),
+  };
 }
 
-function costTooltipLines(summary: CostUsageSummary): MetricTooltipLine[] {
-  const lines: Array<MetricTooltipLine | undefined> = [
-    { label: "total", value: formatCostBreakdown(summary) },
-    summary.input !== undefined
-      ? {
-          label: "input",
-          value: formatCostBreakdown({ total: summary.input }),
-        }
-      : undefined,
-    summary.output !== undefined
-      ? {
-          label: "output",
-          value: formatCostBreakdown({ total: summary.output }),
-        }
-      : undefined,
-    summary.cacheRead !== undefined
-      ? {
-          label: "cache read",
-          value: formatCostBreakdown({ total: summary.cacheRead }),
-        }
-      : undefined,
-    summary.cacheWrite !== undefined
-      ? {
-          label: "cache write",
-          value: formatCostBreakdown({ total: summary.cacheWrite }),
-        }
-      : undefined,
-  ];
-  return lines.filter(isMetricTooltipLine);
+function costTypeRows(
+  summary: CostUsageSummary,
+  format: (value: number) => string,
+): UsageCardRow[] {
+  return (
+    [
+      ["input", summary.input],
+      ["output", summary.output],
+      ["cache read", summary.cacheRead],
+      ["cache write", summary.cacheWrite],
+    ] as const
+  ).flatMap(([label, value]) =>
+    value === undefined ? [] : [{ label, value: format(value) }],
+  );
 }
 
-function costTooltip(
+/** Summarize cost. Return nothing until there is a cost to show. */
+function costCard(
   summary: CostUsageSummary | undefined,
   modelUsage: ConversationModelUsage[] | undefined,
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
   liveModelId: string | undefined,
-): {
-  tooltip?: MetricTooltipLine[];
-  tooltipColumns?: MetricTooltipLine[][];
-} {
+  childAgentTotals: ConversationChildAgentTotals | undefined,
+  detailsHint: boolean,
+): UsageCardProps | undefined {
   const total = totalConversationCost(summary, auxiliaryCosts);
-  const modelSummaries = (modelUsage ?? []).flatMap((item) => {
-    const modelSummary = summarizeCost(item.usage);
-    return modelSummary
-      ? [{ modelId: item.modelId, summary: modelSummary }]
-      : [];
-  });
-  const pendingLines: MetricTooltipLine[] =
-    liveModelId && !modelSummaries.some((item) => item.modelId === liveModelId)
-      ? [modelHeading(liveModelId, liveModelId)]
-      : [];
-  if (!total) return { tooltip: pendingLines };
-  if (!auxiliaryCosts) {
-    if (!modelSummaries.length) {
-      return {
-        tooltip: [
-          ...(summary ? costTooltipLines(summary) : []),
-          ...pendingLines,
-        ],
-      };
-    }
-    return {
-      tooltip: [
-        ...modelSummaries.flatMap((item) => [
-          modelHeading(item.modelId, liveModelId),
-          ...costTooltipLines(item.summary).map((line) => ({
-            ...line,
-            label: `• ${line.label}`,
-          })),
-        ]),
-        ...pendingLines,
-      ],
-    };
-  }
-
-  const conversationLines: MetricTooltipLine[] = [
-    { value: "Conversation", valueStyle: "heading" },
-    { label: "total", value: formatCostBreakdown(total) },
-  ];
-  if (summary) {
-    conversationLines.push({
-      label: "agent",
-      value: formatCostBreakdown(summary),
+  if (!total) return undefined;
+  const format = costFormatter(total.total);
+  const models = modelRows(
+    modelUsage,
+    liveModelId,
+    summarizeCost,
+    (model) => model.total,
+    format,
+  );
+  const operations: RankedRow[] = [...(auxiliaryCosts?.operations ?? [])]
+    .sort((a, b) => b.costUsd - a.costUsd)
+    .map((operation) => ({
+      amount: operation.costUsd,
+      label: auxiliaryOperationLabel(operation),
+      value: format(operation.costUsd),
+    }));
+  const sections: UsageCardSection[] = [];
+  if (models.length) {
+    sections.push({
+      title: "By model",
+      ...capRows(models, MODEL_LIMIT, format),
     });
-    if (!modelSummaries.length) {
-      conversationLines.push(
-        ...costTooltipLines(summary)
-          .filter((line) => line.label !== "total")
-          .map((line) => ({ ...line, label: `• ${line.label}` })),
-      );
-    } else {
-      for (const item of modelSummaries) {
-        conversationLines.push(
-          modelHeading(item.modelId, liveModelId),
-          ...costTooltipLines(item.summary).map((line) => ({
-            ...line,
-            label: `• ${line.label}`,
-          })),
-        );
-      }
-    }
+  } else if (summary) {
+    const rows = costTypeRows(summary, format);
+    if (rows.length) sections.push({ rows, title: "By type" });
   }
-  conversationLines.push(...pendingLines);
-  const auxiliaryLines: MetricTooltipLine[] = [
-    { value: "Auxiliary", valueStyle: "heading" },
-    {
-      label: "total",
-      value: formatCostBreakdown({ total: auxiliaryCosts.costUsd }),
-    },
-  ];
-  for (const operation of auxiliaryCosts.operations) {
-    auxiliaryLines.push({
-      label: `${auxiliaryOperationLabel(operation)} (${formatCompactNumber(operation.events)})`,
-      value: formatCostBreakdown({ total: operation.costUsd }),
+  if (auxiliaryCosts && operations.length) {
+    sections.push({
+      title: "Auxiliary",
+      total: format(auxiliaryCosts.costUsd),
+      ...capRows(operations, AUXILIARY_LIMIT, format),
     });
   }
-  return { tooltipColumns: [conversationLines, auxiliaryLines] };
+  return {
+    footer:
+      detailsHint && (models.length || operations.length)
+        ? DETAILS_FOOTER
+        : undefined,
+    sections,
+    split: agentSplit(
+      childAgentTotals,
+      total.total,
+      subagentUsage(childAgentTotals).cost,
+      format,
+    ),
+    title: "Estimated cost",
+    total: format(total.total),
+  };
 }
 
-function auxiliaryOperationLabel(
+/** Name an auxiliary operation, such as memory recall or turn routing. */
+export function auxiliaryOperationLabel(
   operation: ConversationAuxiliaryCosts["operations"][number],
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
@@ -254,6 +334,9 @@ function auxiliaryOperationLabel(
 export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
+  childAgentTotals?: ConversationChildAgentTotals;
+  /** Point to the Details drawer, which has the full breakdown. */
+  detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
@@ -267,16 +350,24 @@ export function CostMetric(props: {
   const label = total
     ? `${formatCostSummary(total)}${pending ? "+" : ""}`
     : "$…";
+  const card = costCard(
+    summary,
+    props.modelUsage,
+    props.auxiliaryCosts,
+    props.liveModelId,
+    props.childAgentTotals,
+    Boolean(props.detailsHint),
+  );
   return (
     <MetricValue
       align={props.align}
       tooltipPlacement="above"
-      {...costTooltip(
-        summary,
-        props.modelUsage,
-        props.auxiliaryCosts,
-        props.liveModelId,
-      )}
+      tooltip={
+        !card && props.liveModelId
+          ? [modelHeading(props.liveModelId, props.liveModelId)]
+          : undefined
+      }
+      tooltipCard={card ? <UsageCard {...card} /> : undefined}
     >
       <ShimmerText active={pending}>{label}</ShimmerText>
     </MetricValue>
@@ -286,7 +377,10 @@ export function CostMetric(props: {
 /** Render total token usage with a hoverable breakdown. */
 export function TokenMetric(props: {
   align?: "left" | "right";
+  childAgentTotals?: ConversationChildAgentTotals;
   compactionCount?: number;
+  /** Point to the Details drawer, which has the full breakdown. */
+  detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
@@ -296,12 +390,18 @@ export function TokenMetric(props: {
   return (
     <MetricValue
       align={props.align}
-      tooltip={tokenTooltip(
-        props.summary,
-        props.modelUsage,
-        props.compactionCount,
-        props.liveModelId,
-      )}
+      tooltipCard={
+        <UsageCard
+          {...tokenCard(
+            props.summary,
+            props.modelUsage,
+            props.compactionCount,
+            props.liveModelId,
+            props.childAgentTotals,
+            Boolean(props.detailsHint),
+          )}
+        />
+      }
     >
       <ShimmerText active={props.live}>
         {formatTokenSummary(props.summary)}
@@ -313,6 +413,8 @@ export function TokenMetric(props: {
 /** Render a duration value with start/end timestamps in the tooltip. */
 export function DurationMetric(props: {
   align?: "left" | "right";
+  childAgentTotals?: ConversationChildAgentTotals;
+  durationMs?: number;
   endedAt?: string;
   label: string;
   startedAt?: string;
@@ -325,11 +427,37 @@ export function DurationMetric(props: {
     props.endedAt
       ? { label: "ended", value: formatTime(props.endedAt) }
       : undefined,
+    ...agentSplitLines(
+      props.childAgentTotals,
+      props.durationMs ?? 0,
+      props.childAgentTotals?.cumulativeDurationMs ?? 0,
+      (value) => formatRuntime(value) || "0s",
+    ),
   ];
   const tooltip = lines.filter(isMetricTooltipLine);
   return (
     <MetricValue align={props.align} tooltip={tooltip}>
       {props.label}
+    </MetricValue>
+  );
+}
+
+/**
+ * Say how many subagents the tokens, cost, and runtime of a Conversation
+ * include. Render nothing for a Conversation without subagents.
+ */
+export function SubagentsMetric(props: {
+  childAgentTotals: ConversationChildAgentTotals | undefined;
+}) {
+  if (!props.childAgentTotals) return null;
+  const label = plural("subagent", props.childAgentTotals.count);
+  return (
+    <MetricValue
+      tooltip={[
+        { value: `Tokens, cost, and runtime include ${label} at any depth.` },
+      ]}
+    >
+      {label}
     </MetricValue>
   );
 }

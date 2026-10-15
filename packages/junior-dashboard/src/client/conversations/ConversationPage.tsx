@@ -37,6 +37,7 @@ import {
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
+import { ConversationUsageBreakdown } from "./ConversationUsageBreakdown";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
@@ -300,10 +301,16 @@ export function ConversationPage(props: {
                   conversation,
                   detail: detail.data,
                 }) ? (
-                  <ConversationStats
-                    conversation={conversation}
-                    detail={detail.data}
-                  />
+                  <div className="grid min-w-0 gap-5">
+                    <ConversationStats
+                      conversation={conversation}
+                      detail={detail.data}
+                    />
+                    <ConversationUsageBreakdown
+                      conversation={conversation}
+                      detail={detail.data}
+                    />
+                  </div>
                 ) : null
               }
               title={title}

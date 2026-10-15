@@ -13,6 +13,8 @@ export {
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
 export { dailyConversationActivitySchema } from "./activity";
+export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
+export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
 export type { DailyConversationActivity } from "./activity";
 export {
   codeActivityDaySchema,

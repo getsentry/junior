@@ -77,6 +77,12 @@ describe("conversation list API usage rollup", () => {
         inputTokens: 10,
         outputTokens: 5,
       });
+      expect(feed.conversations[0]?.childAgentTotals).toEqual({
+        auxiliaryCostUsd: 0.0003,
+        count: 1,
+        cumulativeDurationMs: 0,
+        cumulativeUsage: { outputTokens: 5 },
+      });
       expect(feed.conversations[0]?.auxiliaryCosts).toEqual({
         costUsd: 0.0005,
         operations: [

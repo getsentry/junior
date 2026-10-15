@@ -73,8 +73,30 @@ describe("conversation child agents API", () => {
       .where(
         eq(juniorConversations.conversationId, reviewer.childConversationId),
       );
+    // A nested child agent counts toward the reviewer, not only the root.
+    const helper = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        idempotencyKey: "child-agents-reviewer-helper",
+        input: "Check one claim.",
+        parentConversationId: reviewer.childConversationId,
+      },
+      1_500,
+    );
+    await getDb()
+      .update(juniorConversations)
+      .set({
+        durationMs: 8_000,
+        usage: { cost: { total: 0.01 }, inputTokens: 300, outputTokens: 50 },
+      })
+      .where(
+        eq(juniorConversations.conversationId, helper.childConversationId),
+      );
 
     const response = await requestChildAgents(slackParentConversationId);
+    const reviewerDetail = conversationDetailReportSchema.parse(
+      await (await requestDetail(reviewer.childConversationId)).json(),
+    );
 
     expect(response.status).toBe(200);
     expect(
@@ -90,12 +112,21 @@ describe("conversation child agents API", () => {
           updatedAt: new Date(3_000).toISOString(),
         },
         {
+          childAgentTotals: {
+            count: 1,
+            cumulativeDurationMs: 8_000,
+            cumulativeUsage: {
+              cost: { total: 0.01 },
+              inputTokens: 300,
+              outputTokens: 50,
+            },
+          },
           conversationId: reviewer.childConversationId,
-          cumulativeDurationMs: 42_000,
+          cumulativeDurationMs: 50_000,
           cumulativeUsage: {
-            cost: { total: 0.02 },
-            inputTokens: 900,
-            outputTokens: 100,
+            cost: { total: 0.03 },
+            inputTokens: 1_200,
+            outputTokens: 150,
           },
           name: "reviewer",
           status: "pending",
@@ -105,6 +136,15 @@ describe("conversation child agents API", () => {
         },
       ],
       conversationId: slackParentConversationId,
+    });
+    expect(reviewerDetail).toMatchObject({
+      childAgentTotals: { count: 1, cumulativeDurationMs: 8_000 },
+      cumulativeDurationMs: 50_000,
+      cumulativeUsage: {
+        cost: { total: 0.03 },
+        inputTokens: 1_200,
+        outputTokens: 150,
+      },
     });
   });
 

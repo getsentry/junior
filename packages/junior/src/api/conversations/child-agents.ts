@@ -1,9 +1,6 @@
-import { inArray } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import { getConversationStore, getDb } from "@/chat/db";
-import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations } from "@/db/schema";
 import { throwApiError } from "../http";
 import {
   conversationChildAgentsReportSchema,
@@ -11,35 +8,10 @@ import {
 } from "../schema/child-agent";
 import { readConversationAccessFromSql } from "./access";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-
-/** Read the runtime and usage saved on each child Conversation row. */
-async function readChildConversationMetrics(
-  db: JuniorDatabase,
-  conversationIds: readonly string[],
-) {
-  const rows =
-    conversationIds.length === 0
-      ? []
-      : await db
-          .select({
-            conversationId: juniorConversations.conversationId,
-            durationMs: juniorConversations.durationMs,
-            usage: juniorConversations.usage,
-          })
-          .from(juniorConversations)
-          .where(
-            inArray(juniorConversations.conversationId, [...conversationIds]),
-          );
-  return new Map(
-    rows.map((row) => [
-      row.conversationId,
-      {
-        cumulativeDurationMs: row.durationMs,
-        ...(row.usage ? { cumulativeUsage: row.usage } : undefined),
-      },
-    ]),
-  );
-}
+import {
+  childAgentTotalsReport,
+  readConversationTreeMetricsFromSql,
+} from "./usage";
 
 /**
  * Load the direct child agents of one Conversation, or throw a standard API
@@ -60,22 +32,26 @@ export async function requireConversationChildAgents(
   ]);
   const canExposePayload =
     accessByConversation.get(conversationId)?.canViewPrivateContent ?? false;
-  // Match the child Conversation detail: count only the child's own work.
+  // Match the child Conversation detail: count the child and its own child
+  // agents at any depth.
   const childIds = children.map((agent) => agent.childConversationId);
   const [metricsByChild, auxiliaryCostsByChild] = await Promise.all([
-    readChildConversationMetrics(db, childIds),
-    readConversationAuxiliaryCostsFromSql(db, childIds, {
-      includeDescendants: false,
-    }),
+    readConversationTreeMetricsFromSql(db, childIds),
+    readConversationAuxiliaryCostsFromSql(db, childIds),
   ]);
 
   const agents = children.map((agent) => {
+    const metrics = metricsByChild.get(agent.childConversationId);
     const auxiliaryCosts = auxiliaryCostsByChild.get(agent.childConversationId);
+    const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
     return {
       conversationId: agent.childConversationId,
-      cumulativeDurationMs: 0,
-      ...metricsByChild.get(agent.childConversationId),
-      ...(auxiliaryCosts ? { auxiliaryCosts } : undefined),
+      cumulativeDurationMs: metrics?.durationMs ?? 0,
+      ...(metrics?.usage ? { cumulativeUsage: metrics.usage } : undefined),
+      ...(auxiliaryCosts
+        ? { auxiliaryCosts: auxiliaryCosts.total }
+        : undefined),
+      ...(childAgentTotals ? { childAgentTotals } : undefined),
       status: agent.status,
       updatedAt: new Date(agent.updatedAtMs).toISOString(),
       ...(canExposePayload

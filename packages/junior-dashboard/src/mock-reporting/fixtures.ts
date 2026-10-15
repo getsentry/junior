@@ -129,6 +129,8 @@ export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
 const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
+const DASHBOARD_QA_PLAN_CHECK_ID =
+  "junior:internal:dashboard-qa:advisor-plan:claim-check";
 /** Process-local archive state so mock restore can be exercised in visual QA. */
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 
@@ -672,7 +674,24 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 20_000),
       },
     ],
-    cumulativeDurationMs: 98_000,
+    // Totals include all three subagents, like the API.
+    childAgentTotals: {
+      count: 3,
+      cumulativeDurationMs: 88_400,
+      cumulativeUsage: {
+        inputTokens: 48_700,
+        outputTokens: 2_680,
+        cachedInputTokens: 21_600,
+        cost: { total: 0.172 },
+      },
+    },
+    cumulativeDurationMs: 186_400,
+    cumulativeUsage: {
+      inputTokens: 100_700,
+      outputTokens: 6_080,
+      cachedInputTokens: 51_600,
+      cost: { total: 0.382 },
+    },
     events: [
       reportEvent(0, startedAt, {
         type: "message",
@@ -973,8 +992,9 @@ function advisorConversation(
   text: string,
   metrics: Pick<
     ConversationDetailReport,
-    "cumulativeDurationMs" | "cumulativeUsage"
+    "childAgentTotals" | "cumulativeDurationMs" | "cumulativeUsage"
   >,
+  parentConversationId = DASHBOARD_QA_CONVERSATION_ID,
 ): MockConversation {
   const startedAt = iso(nowMs, -10 * 60_000);
   const conversation = detail(nowMs, {
@@ -999,10 +1019,7 @@ function advisorConversation(
       }),
     ],
   });
-  return {
-    ...conversation,
-    parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
-  };
+  return { ...conversation, parentConversationId };
 }
 
 function longConversation(nowMs: number): ConversationDetailReport {
@@ -1404,14 +1421,37 @@ function mockConversations(nowMs: number): MockConversation[] {
       DASHBOARD_QA_PLAN_ID,
       "Review the dashboard plan before editing.",
       {
-        cumulativeDurationMs: 72_400,
+        childAgentTotals: {
+          count: 1,
+          cumulativeDurationMs: 6_200,
+          cumulativeUsage: {
+            inputTokens: 4_100,
+            outputTokens: 220,
+            cost: { total: 0.011 },
+          },
+        },
+        cumulativeDurationMs: 78_600,
         cumulativeUsage: {
-          inputTokens: 38_400,
-          outputTokens: 2_150,
+          inputTokens: 42_500,
+          outputTokens: 2_370,
           cachedInputTokens: 21_600,
-          cost: { input: 0.094, output: 0.048, total: 0.142 },
+          cost: { input: 0.1, output: 0.053, total: 0.153 },
         },
       },
+    ),
+    advisorConversation(
+      nowMs,
+      DASHBOARD_QA_PLAN_CHECK_ID,
+      "Check one claim in the dashboard plan.",
+      {
+        cumulativeDurationMs: 6_200,
+        cumulativeUsage: {
+          inputTokens: 4_100,
+          outputTokens: 220,
+          cost: { total: 0.011 },
+        },
+      },
+      DASHBOARD_QA_PLAN_ID,
     ),
     advisorConversation(
       nowMs,
@@ -1855,20 +1895,39 @@ export function readMockConversationChildAgents(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
-    return { agents: [], conversationId };
-  }
   const startedAtMs = NOW_MS - 5 * 60 * 60_000;
-  // Match the API: each row has the usage of its own child Conversation.
+  // Match the API: each row has the usage of its child Conversation and of
+  // that child's own subagents.
   const childMetrics = (childConversationId: string) => {
     const child = conversations.find(
       (candidate) => candidate.conversationId === childConversationId,
     )!;
     return {
+      ...(child.childAgentTotals
+        ? { childAgentTotals: child.childAgentTotals }
+        : undefined),
       cumulativeDurationMs: child.cumulativeDurationMs,
       cumulativeUsage: child.cumulativeUsage,
     };
   };
+  if (conversationId === DASHBOARD_QA_PLAN_ID) {
+    return {
+      agents: [
+        {
+          ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
+          conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
+          status: "completed",
+          task: "Check one claim in the dashboard plan.",
+          title: "Check one plan claim",
+          updatedAt: iso(startedAtMs, 16_000),
+        },
+      ],
+      conversationId,
+    };
+  }
+  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
+    return { agents: [], conversationId };
+  }
   return {
     agents: [
       {
