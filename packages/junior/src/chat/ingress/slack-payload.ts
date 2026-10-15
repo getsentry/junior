@@ -161,7 +161,6 @@ export const slackInteractivePayloadSchema = z.object({
         action_id: z.string().optional(),
         action_ts: z.string().optional(),
         selected_option: z.object({ value: z.string().optional() }).optional(),
-        text: z.object({ text: z.string().optional() }).optional(),
         value: z.string().optional(),
       }),
     )

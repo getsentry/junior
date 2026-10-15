@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSlackMessagePostButtonsTool } from "@/chat/slack/tools/message-post-buttons";
+import { createSlackUserInputShow } from "@/chat/slack/tools/user-input";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { createRequestUserInputTool } from "@/chat/tools/runtime/request-user-input";
 
 const postSlackMessage = vi.fn();
 
@@ -37,51 +38,60 @@ function createState() {
   };
 }
 
-describe("slackButtonsPost tool", () => {
-  it("posts one row of buttons into the active thread once", async () => {
+function slackTool() {
+  const tool = createRequestUserInputTool(
+    createSlackUserInputShow(CONTEXT, createState()),
+  );
+  if (!tool.execute) throw new Error("Expected executable tool");
+  return tool.execute;
+}
+
+describe("requestUserInput in Slack", () => {
+  it("posts the question with one button per choice into the thread once", async () => {
     postSlackMessage.mockReset();
     postSlackMessage.mockResolvedValue({ ts: "1700000000.200" });
-    const tool = createSlackMessagePostButtonsTool(CONTEXT, createState());
-    if (!tool.execute) throw new Error("Expected executable tool");
+    const execute = slackTool();
     const input = {
-      text: "Ship this release?",
-      buttons: [
-        { label: "Ship it", value: "ship 1.2.3", style: "primary" as const },
-        { label: "Hold", value: "hold 1.2.3" },
+      question: "The merge has a conflict in `config.ts`. Use my fix?",
+      options: [
+        { label: "Accept", description: "Push my fix to the branch." },
+        { label: "Decline" },
       ],
     };
 
-    await expect(tool.execute(input, {} as any)).resolves.toEqual({
+    await expect(execute(input, {} as any)).resolves.toEqual({
       channel_id: "C123",
       message_ts: "1700000000.200",
+      status: "waiting_for_answer",
     });
-    await expect(tool.execute(input, {} as any)).resolves.toMatchObject({
+    await expect(execute(input, {} as any)).resolves.toMatchObject({
       deduplicated: true,
     });
 
     expect(postSlackMessage).toHaveBeenCalledTimes(1);
+    const text =
+      "The merge has a conflict in `config.ts`. Use my fix?\n\n- **Accept**: Push my fix to the branch.";
     expect(postSlackMessage).toHaveBeenCalledWith({
       channelId: "C123",
       threadTs: "1700000000.100",
-      text: "Ship this release?",
+      text,
       blocks: [
-        { type: "markdown", text: "Ship this release?" },
+        { type: "markdown", text },
         {
           type: "actions",
-          block_id: "junior_buttons",
+          block_id: "junior_user_input",
           elements: [
             {
               type: "button",
-              action_id: "junior_button:0",
-              text: { type: "plain_text", text: "Ship it", emoji: true },
-              value: "ship 1.2.3",
-              style: "primary",
+              action_id: "junior_user_input:0",
+              text: { type: "plain_text", text: "Accept", emoji: true },
+              value: "Accept",
             },
             {
               type: "button",
-              action_id: "junior_button:1",
-              text: { type: "plain_text", text: "Hold", emoji: true },
-              value: "hold 1.2.3",
+              action_id: "junior_user_input:1",
+              text: { type: "plain_text", text: "Decline", emoji: true },
+              value: "Decline",
             },
           ],
         },
@@ -89,19 +99,15 @@ describe("slackButtonsPost tool", () => {
     });
   });
 
-  it("rejects buttons that people cannot tell apart", async () => {
+  it("rejects choices that people cannot tell apart", async () => {
     postSlackMessage.mockReset();
-    const tool = createSlackMessagePostButtonsTool(CONTEXT, createState());
-    if (!tool.execute) throw new Error("Expected executable tool");
+    const execute = slackTool();
 
     await expect(
-      tool.execute(
+      execute(
         {
-          text: "Pick one",
-          buttons: [
-            { label: "Yes", value: "a" },
-            { label: "Yes", value: "b" },
-          ],
+          question: "Pick one",
+          options: [{ label: "Yes" }, { label: "yes" }],
         },
         {} as any,
       ),

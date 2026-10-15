@@ -17,13 +17,14 @@ formatting, and Slack API error mapping. The Slack provider layer in
   completed reaction. This optional UI gets one one-second attempt; failure
   must not reject the input. The worker retries and owns completion. Passive
   messages wait for the reply decision. Thread stops clear queued reactions.
-- A click on a Junior button (`buttons.ts`) is Slack input from the person who
-  clicked. It enters the mailbox as a mention in the thread of the button
-  message. Only the first click on a button message is accepted, also when
-  only the queue wake fails after the click is saved. The click has no Slack
-  message of its own, so its Slack timestamp is the button message. Its id is
-  `slack-button-click:<action_ts>`, which is not a Slack timestamp, and its
-  time is the click `action_ts`.
+- `requestUserInput` shows its question in Slack as one message with a button
+  for each choice (`user-input.ts`). A click is Slack input from the person
+  who clicked, and its text is the choice label. It enters the mailbox as a
+  mention in the thread of the question. Only the first click on a question is
+  accepted, also when only the queue wake fails after the click is saved. The
+  click has no Slack message of its own, so its Slack timestamp is the
+  question message. Its id is `slack-user-input-click:<action_ts>`, which is
+  not a Slack timestamp, and its time is the click `action_ts`.
 
 ## Messages
 

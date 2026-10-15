@@ -6,21 +6,20 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { logException, withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import {
-  buildAnsweredSlackButtonBlocks,
-  formatSlackButtonClickText,
-  isSlackButtonActionId,
-} from "@/chat/slack/buttons";
 import { getSlackClient } from "@/chat/slack/client";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import { updateSlackMessage } from "@/chat/slack/outbound";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+import {
+  buildAnsweredSlackUserInputBlocks,
+  isSlackUserInputActionId,
+} from "@/chat/slack/user-input";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import type { SlackInteractivePayload } from "./slack-payload";
 
-// One answer per button message. Keep the claim longer than people are
-// likely to come back to an old thread.
-const BUTTON_CLAIM_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// One answer per question. Keep the claim longer than people are likely to
+// come back to an old thread.
+const USER_INPUT_CLAIM_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function requireSlackPayloadUserId(
   value: string | null | undefined,
@@ -72,10 +71,11 @@ async function handleAppHomeDisconnect(args: {
 }
 
 /**
- * Turn the first click on a Junior button into Slack input from the person
- * who clicked. Later clicks on the same message do nothing.
+ * Turn the first click on a choice of a user input request into Slack input
+ * from the person who clicked. The input text is the choice label, the same
+ * answer as typing it. Later clicks on the same question do nothing.
  */
-async function handleButtonClick(args: {
+async function handleUserInputClick(args: {
   action: NonNullable<SlackInteractivePayload["actions"]>[number];
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
@@ -84,15 +84,14 @@ async function handleButtonClick(args: {
 }): Promise<void> {
   const userId = requireSlackPayloadUserId(
     args.payload.user?.id,
-    "Slack button click payload",
+    "Slack user input click payload",
   );
   const channelId = parseSlackChannelId(args.payload.channel?.id);
   const messageTs = parseSlackMessageTs(args.payload.message?.ts);
   const actionTs = parseSlackMessageTs(args.action.action_ts);
-  const label = args.action.text?.text?.trim();
-  const value = args.action.value;
-  if (!channelId || !messageTs || !actionTs || !label || !value) {
-    throw new Error("Slack button click payload is incomplete");
+  const answer = args.action.value?.trim();
+  if (!channelId || !messageTs || !actionTs || !answer) {
+    throw new Error("Slack user input click payload is incomplete");
   }
   const userTeam = args.payload.user?.team_id;
   if (
@@ -104,9 +103,13 @@ async function handleButtonClick(args: {
     return;
   }
 
-  const claimKey = `slack:button-click:${channelId}:${messageTs}`;
+  const claimKey = `slack:user-input-click:${channelId}:${messageTs}`;
   if (
-    !(await args.state.setIfNotExists(claimKey, userId, BUTTON_CLAIM_TTL_MS))
+    !(await args.state.setIfNotExists(
+      claimKey,
+      userId,
+      USER_INPUT_CLAIM_TTL_MS,
+    ))
   ) {
     return;
   }
@@ -117,11 +120,7 @@ async function handleButtonClick(args: {
     type: "message",
     channel: channelId,
     team: args.payload.team?.id,
-    text: formatSlackButtonClickText({
-      label,
-      messageText: args.payload.message?.text,
-      value,
-    }),
+    text: answer,
     thread_ts: threadTs,
     ts: actionTs,
     user: userId,
@@ -130,13 +129,13 @@ async function handleButtonClick(args: {
   const parsed = args.adapter.parseMessage(event);
   // The click has no Slack message of its own. Give it a non-timestamp id so
   // every Slack timestamp reader, such as reactions, the actor `slack_ts`, and
-  // attachment lookup, resolves `raw.ts`: the button message. `action_ts`
+  // attachment lookup, resolves `raw.ts`: the question message. `action_ts`
   // keeps the id unique per click and sets the time of the input.
   const message = new Message({
     attachments: parsed.attachments,
     author: parsed.author,
     formatted: parsed.formatted,
-    id: `slack-button-click:${actionTs}`,
+    id: `slack-user-input-click:${actionTs}`,
     isMention: true,
     links: parsed.links,
     metadata: parsed.metadata,
@@ -155,25 +154,25 @@ async function handleButtonClick(args: {
 
   try {
     await updateSlackMessage({
-      blocks: buildAnsweredSlackButtonBlocks({
+      blocks: buildAnsweredSlackUserInputBlocks({
+        answer,
         blocks: args.payload.message?.blocks ?? [],
-        label,
         userId,
       }),
       channelId,
-      text: args.payload.message?.text?.trim() || label,
+      text: args.payload.message?.text?.trim() || answer,
       timestamp: messageTs,
     });
   } catch (error) {
     // The click is already saved. A stale button row is only cosmetic.
-    logException(error, "slack.buttons.answer_update.failed", {
+    logException(error, "slack.user_input.answer_update.failed", {
       "app.slack.channel_id": channelId,
       "app.slack.message_ts": messageTs,
     });
   }
 }
 
-/** Handle Slack block actions from App Home and from Junior's buttons. */
+/** Handle Slack block actions from App Home and from user input requests. */
 export async function handleSlackInteractivePayload(args: {
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
@@ -185,17 +184,17 @@ export async function handleSlackInteractivePayload(args: {
     return;
   }
 
-  const buttonAction = args.payload.actions?.find((candidate) =>
-    isSlackButtonActionId(candidate.action_id),
+  const userInputAction = args.payload.actions?.find((candidate) =>
+    isSlackUserInputActionId(candidate.action_id),
   );
-  if (buttonAction) {
+  if (userInputAction) {
     await withSpan(
-      "chat.slack_button_click",
-      "chat.slack_button_click",
+      "chat.slack_user_input_click",
+      "chat.slack_user_input_click",
       { userId: args.payload.user?.id?.trim() || undefined },
       () =>
-        handleButtonClick({
-          action: buttonAction,
+        handleUserInputClick({
+          action: userInputAction,
           adapter: args.adapter,
           payload: args.payload,
           persistMessage: args.persistMessage,

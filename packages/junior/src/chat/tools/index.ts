@@ -21,6 +21,10 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
+import {
+  createRequestUserInputTool,
+  REQUEST_USER_INPUT_TOOL_NAME,
+} from "@/chat/tools/runtime/request-user-input";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
@@ -34,7 +38,7 @@ import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/con
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSlackMessagePostButtonsTool } from "@/chat/slack/tools/message-post-buttons";
+import { createSlackUserInputShow } from "@/chat/slack/tools/user-input";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
@@ -343,14 +347,19 @@ export function createTools(
       );
     }
 
-    // A click comes back as Slack input in the thread of the button message,
-    // so only offer buttons when this Turn has a Slack thread to answer in.
+    // A click comes back as Slack input in the thread of the question, so
+    // only ask in Slack when a person in this Slack thread started the Turn.
     if (context.source.kind === "slack") {
-      tools.slackButtonsPost = createSlackMessagePostButtonsTool(
-        slackContext,
-        state,
+      tools[REQUEST_USER_INPUT_TOOL_NAME] = createRequestUserInputTool(
+        createSlackUserInputShow(slackContext, state),
       );
     }
+  }
+
+  // The dashboard renders the question and its choices from the transcript,
+  // so a web Turn has nothing more to show.
+  if (context.source.kind === "web") {
+    tools[REQUEST_USER_INPUT_TOOL_NAME] = createRequestUserInputTool();
   }
 
   for (const [name, pluginTool] of Object.entries(
