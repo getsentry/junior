@@ -8,10 +8,14 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const profileControl = {
   activeProfile: () => "standard" as const,
-  profiles: [
-    { name: "standard" as const, description: "Routine work." },
-    { name: "handoff" as const, description: "Implementation work." },
-  ],
+  defaultProfile: "standard" as const,
+  profiles: {
+    standard: { modelId: "test/standard", description: "Routine work." },
+    handoff: {
+      modelId: "test/handoff",
+      description: "Implementation work.",
+    },
+  },
 } as const;
 
 describe("spawnAgent", () => {
@@ -77,6 +81,9 @@ describe("spawnAgent", () => {
       childConversationId: "agent:one",
     });
     const tool = createSpawnAgentTool(spawnAgent, profileControl);
+    expect(tool.description).toContain('"standard": Routine work.');
+    expect(tool.description).toContain('"handoff": Implementation work.');
+    expect(tool.description).toContain("The parent should normally choose");
     const input = tool.prepareArguments!({
       task: "Implement the feature.",
       title: "Feature implementation",

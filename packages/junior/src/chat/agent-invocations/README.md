@@ -212,11 +212,13 @@ final Run carries the root Location once, separate from Source and Delivery.
 `junior chat`, the local createApp-equivalent entrypoint). It is off by default
 so deployments can ship the runtime without advertising the model-facing tool.
 The tool receives the delegated task, optional child name, optional model
-profile, and optional per-task reasoning level. Profile names must match the
-configured profiles. If the parent omits the profile, the child uses the
-profile active for the spawning Turn. The invocation stores this profile, so
-retries and later `messageAgent` invocations use the same one. A profile's
-reasoning level applies unless the parent sets `reasoning_level`.
+profile, and optional per-task reasoning level. The parent should normally
+choose a profile that fits the task, using the configured profile descriptions.
+Profile names must match the configured profiles. If the parent omits the
+profile, the child uses the profile active for the spawning Turn. The invocation
+stores this profile, so retries and later `messageAgent` invocations use the
+same one. A profile's reasoning level applies unless the parent sets
+`reasoning_level`.
 
 The runtime derives actor, credentials, destination, visibility, source, parent
 conversation, and idempotency from the active tool call. Child runs set

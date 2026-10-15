@@ -161,10 +161,14 @@ describe("agent invocation spawn and result delivery", () => {
       expect(spawnAgent).toBeDefined();
       const tool = createSpawnAgentTool(spawnAgent!, {
         activeProfile: () => "standard",
-        profiles: [
-          { name: "standard" },
-          { name: "handoff", description: "Implementation work." },
-        ],
+        defaultProfile: "standard",
+        profiles: {
+          standard: { modelId: "test/standard" },
+          handoff: {
+            modelId: "test/handoff",
+            description: "Implementation work.",
+          },
+        },
       });
       const input = tool.prepareArguments!({
         task: "Inspect the failing checks.",

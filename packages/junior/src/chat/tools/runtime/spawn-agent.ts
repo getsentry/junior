@@ -10,7 +10,7 @@ import {
 import { completeText } from "@/chat/pi/client";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
-  formatModelProfile,
+  formatModelProfiles,
   type ModelProfile,
 } from "@/chat/model-profile";
 import {
@@ -41,18 +41,18 @@ export function createSpawnAgentTool(
   spawnAgent: NonNullable<ToolRuntimeContext["spawnAgent"]>,
   profileControl: SpawnAgentProfileControl,
 ) {
-  const profileNames = profileControl.profiles.map((profile) => profile.name);
-  const profileSchema = z.enum(profileNames as [
-    ModelProfile,
-    ...ModelProfile[],
-  ]);
-  const profileList = profileControl.profiles
-    .map((profile) => `- ${formatModelProfile(profile.name, profile.description)}`)
-    .join("\n");
+  const profileNames = [
+    profileControl.defaultProfile,
+    ...Object.keys(profileControl.profiles)
+      .filter((profile) => profile !== profileControl.defaultProfile)
+      .sort(),
+  ] as [ModelProfile, ...ModelProfile[]];
+  const profileSchema = z.enum(profileNames);
+  const profileList = formatModelProfiles(profileControl.profiles, profileNames);
   return zodTool({
     description: [
       "Start a new asynchronous child agent on a delegated task. Give it a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
-      "The optional profile must be one of the configured profiles below. When omitted, the child uses the active profile for this turn. A child keeps its original profile when it receives more work through messageAgent.",
+      "The parent should normally choose the child's profile to fit the delegated task. Use the profile descriptions below to choose; do not choose by profile name alone. When omitted, the child uses the profile active for this turn. A child keeps its original profile when it receives more work through messageAgent.",
       "This call confirms durable scheduling, not task completion. The result arrives later as a new task in this conversation; do not wait or poll for it.",
       `Configured profiles:\n${profileList}`,
     ].join(" "),
@@ -86,7 +86,9 @@ export function createSpawnAgentTool(
           ),
         profile: profileSchema
           .optional()
-          .describe("Optional exact configured model profile for the child agent"),
+          .describe(
+            "Exact configured profile whose task-fit description matches the delegated task. The parent should normally set this; omit to use the active profile for this turn.",
+          ),
         reasoning_level: z
           .enum(TURN_REASONING_LEVELS)
           .nullable()

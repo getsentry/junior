@@ -24,7 +24,10 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type { ModelProfile } from "@/chat/model-profile";
+import type {
+  ModelProfile,
+  ModelProfileConfig,
+} from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -38,8 +41,8 @@ interface HandoffProfile {
 
 export interface SpawnAgentProfileControl {
   activeProfile: () => ModelProfile;
-  /** All configured profiles, including the active one. */
-  profiles: readonly [HandoffProfile, ...HandoffProfile[]];
+  defaultProfile: ModelProfile;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
 }
 
 interface HandoffControl {
