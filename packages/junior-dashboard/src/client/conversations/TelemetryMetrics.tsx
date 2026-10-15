@@ -66,6 +66,15 @@ export function subagentUsage(
 }
 
 /**
+ * Cap the subagent part of a total to the total. Saved subagent usage can
+ * run ahead of a total built from model calls, such as when a child's
+ * transcript is gone.
+ */
+export function subagentShare(part: number, total: number): number {
+  return Math.min(Math.max(0, part), Math.max(0, total));
+}
+
+/**
  * Split a total that includes child agents into the part of this agent and the
  * part of its subagents. Return no lines when there are no subagents.
  */
@@ -76,12 +85,13 @@ function agentSplitLines(
   format: (value: number) => string,
 ): MetricTooltipLine[] {
   if (!childAgentTotals) return [];
+  const subagents = subagentShare(subagentPart, total);
   return [
     { value: "By agent", valueStyle: "heading" },
-    { label: "this agent", value: format(Math.max(0, total - subagentPart)) },
+    { label: "this agent", value: format(total - subagents) },
     {
       label: plural("subagent", childAgentTotals.count),
-      value: format(subagentPart),
+      value: format(subagents),
     },
   ];
 }
@@ -173,7 +183,7 @@ function agentSplit(
   format: (value: number) => string,
 ): UsageCardSplit | undefined {
   if (!childAgentTotals) return undefined;
-  const subagents = Math.min(Math.max(0, subagentPart), total);
+  const subagents = subagentShare(subagentPart, total);
   return {
     count: childAgentTotals.count,
     self: format(total - subagents),
@@ -182,19 +192,28 @@ function agentSplit(
   };
 }
 
-/**
- * Format every amount on one cost card with the same precision, so the
- * decimal points line up down the column.
- */
-export function costFormatter(total: number): (value: number) => string {
-  const digits = total >= 10 ? 2 : total >= 1 ? 3 : 4;
-  const format = new Intl.NumberFormat("en-US", {
+function usdFormat(digits: number): Intl.NumberFormat {
+  return new Intl.NumberFormat("en-US", {
     currency: "USD",
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
     style: "currency",
   });
-  return (value) => format.format(value);
+}
+
+/**
+ * Format every amount on one cost card with the same precision, so the
+ * decimal points line up down the column. An amount too small for that
+ * precision keeps 4 digits instead of showing as zero.
+ */
+export function costFormatter(total: number): (value: number) => string {
+  const digits = total >= 10 ? 2 : total >= 1 ? 3 : 4;
+  const format = usdFormat(digits);
+  const smallFormat = usdFormat(4);
+  return (value) =>
+    value > 0 && value < 0.5 * 10 ** -digits
+      ? smallFormat.format(value)
+      : format.format(value);
 }
 
 function tokenCard(

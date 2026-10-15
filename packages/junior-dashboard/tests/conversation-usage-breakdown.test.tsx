@@ -114,6 +114,52 @@ describe("ConversationUsageBreakdown", () => {
     expect(html).toContain("Totals include subagents at any depth.");
   });
 
+  it("caps the subagent rows to the total", () => {
+    const html = render(
+      detail({
+        childAgentTotals: {
+          count: 1,
+          cumulativeDurationMs: 0,
+          cumulativeUsage: { inputTokens: 5_000, cost: { total: 0.08 } },
+        },
+        modelUsage: [
+          {
+            modelId: "openai/gpt-5",
+            usage: { inputTokens: 3_000, cost: { total: 0.04 } },
+          },
+        ],
+      }),
+    );
+
+    expect(html).toContain(
+      "This agent 0 $0.0000 1 subagent 3k $0.0400 Total 3k $0.0400",
+    );
+  });
+
+  it("keeps sub-cent costs visible in a large total", () => {
+    const html = render(
+      detail({
+        auxiliaryCosts: {
+          costUsd: 0.0004,
+          operations: [
+            {
+              costUsd: 0.0004,
+              events: 1,
+              name: "turn_routed",
+              namespace: "junior",
+            },
+          ],
+        },
+        modelUsage: [
+          { modelId: "openai/gpt-5", usage: { cost: { total: 12 } } },
+        ],
+      }),
+    );
+
+    expect(html).toContain("gpt-5 — $12.00");
+    expect(html).toContain("Thinking routing 1 $0.0004");
+  });
+
   it("renders nothing without model or auxiliary usage", () => {
     expect(render(detail())).toBe("");
   });

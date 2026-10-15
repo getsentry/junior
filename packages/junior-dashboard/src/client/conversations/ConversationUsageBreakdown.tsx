@@ -19,6 +19,7 @@ import {
   auxiliaryOperationLabel,
   costFormatter,
   modelLabel,
+  subagentShare,
   subagentUsage,
   tokenTypeRows,
 } from "./TelemetryMetrics";
@@ -172,6 +173,11 @@ export function ConversationUsageBreakdown(props: {
     );
 
   const subagents = subagentUsage(childAgentTotals);
+  const subagentCost = subagentShare(subagents.cost, cost ?? subagents.cost);
+  const subagentTokens = subagentShare(
+    subagents.tokens,
+    tokens ?? subagents.tokens,
+  );
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -182,21 +188,17 @@ export function ConversationUsageBreakdown(props: {
           rows={[
             {
               cost: formatMaybeCost(
-                cost === undefined
-                  ? undefined
-                  : Math.max(0, cost - subagents.cost),
+                cost === undefined ? undefined : cost - subagentCost,
               ),
               count: formatTokens(
-                tokens === undefined
-                  ? undefined
-                  : Math.max(0, tokens - subagents.tokens),
+                tokens === undefined ? undefined : tokens - subagentTokens,
               ),
               key: "self",
               label: "This agent",
             },
             {
-              cost: formatCost(subagents.cost),
-              count: formatTokens(subagents.tokens),
+              cost: formatCost(subagentCost),
+              count: formatTokens(subagentTokens),
               key: "subagents",
               label: `${formatCompactNumber(childAgentTotals.count)} subagent${childAgentTotals.count === 1 ? "" : "s"}`,
             },
