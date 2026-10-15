@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
+import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
@@ -257,7 +259,8 @@ describe("agent invocation worker", () => {
           ...INVOCATION_INPUT,
           childConversationId: created.childConversationId,
           idempotencyKey: "steer-saved-message",
-          input: "Skip the cache path.",
+          // The Turn saves escaped text, so use characters that change.
+          input: `Skip the "cache" path & <retry>.`,
           parentToolCallId: "call-steer-saved-message",
         });
       await upsertTurnRecord({
@@ -265,12 +268,12 @@ describe("agent invocation worker", () => {
         conversationId: created.childConversationId,
         destination: DESTINATION,
         piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "Skip the cache path." }],
-            timestamp: savedMessage.createdAtMs,
-          },
-        ] as PiMessage[],
+          buildSteeringPiMessage({
+            provenance: instructionProvenanceFor(INVOCATION_INPUT.actor),
+            text: savedMessage.input,
+            timestampMs: savedMessage.createdAtMs,
+          }),
+        ],
         turnId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
         source: { kind: "agent_invocation" },
@@ -370,7 +373,7 @@ describe("agent invocation worker", () => {
             last_result: "completed",
             name: "researcher",
             status: "idle",
-            task: "Skip the cache path.",
+            task: `Skip the "cache" path & <retry>.`,
           },
         ],
       });

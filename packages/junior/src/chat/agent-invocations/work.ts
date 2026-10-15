@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
+import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
@@ -207,20 +208,14 @@ export async function resolveAgentInvocationId(
   return latest?.status === "stopped" ? latest.invocationId : undefined;
 }
 
-/** Return whether a saved message is the steering message of one agent invocation. */
-function isSteeringMessageFor(
-  message: PiMessage,
-  candidate: AgentInvocation,
+/** Return whether the Turn already saved this steering message. */
+function isSavedSteeringMessage(
+  saved: readonly PiMessage[],
+  message: AgentSteeringMessage,
 ): boolean {
-  if (message.role !== "user" || message.timestamp !== candidate.createdAtMs) {
-    return false;
-  }
-  const content = message.content;
-  return typeof content === "string"
-    ? content.includes(candidate.input)
-    : content.some(
-        (part) => part.type === "text" && part.text.includes(candidate.input),
-      );
+  // Compare the stored shape: the Turn saves escaped, wrapped text.
+  const built = buildSteeringPiMessage(message);
+  return saved.some((candidate) => isDeepStrictEqual(candidate, built));
 }
 
 /**
@@ -290,19 +285,14 @@ function createAgentMessageSteeringDrain(
           (await getTurnRecord(running.childConversationId, turnId))
             ?.piMessages ?? [];
         const messages = joining
-          .filter(
-            (candidate) =>
-              !saved.some((message) =>
-                isSteeringMessageFor(message, candidate),
-              ),
-          )
           .map(
             (candidate): AgentSteeringMessage => ({
               provenance: instructionProvenanceFor(candidate.actor),
               text: candidate.input,
               timestampMs: candidate.createdAtMs,
             }),
-          );
+          )
+          .filter((message) => !isSavedSteeringMessage(saved, message));
         // The Turn saves the messages before they are marked.
         if (messages.length > 0) {
           await accept(messages);
