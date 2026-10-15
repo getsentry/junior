@@ -24,7 +24,10 @@ import {
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import {
+  disabledToolMessage,
+  type AnyToolDefinition,
+} from "@/chat/tools/definition";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
@@ -180,7 +183,7 @@ export function createPiAgentTools(
     // review, and the executor run.
     if (toolDef.disabledReason) {
       throw new ToolInputError(
-        `${toolName} is disabled in this Turn. ${toolDef.disabledReason} Do not call it again in this Turn.`,
+        disabledToolMessage(toolName, toolDef.disabledReason),
       );
     }
 

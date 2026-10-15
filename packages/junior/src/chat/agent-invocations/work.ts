@@ -41,6 +41,7 @@ import {
 } from "@/chat/services/automated-turn-limit";
 import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
+import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -776,7 +777,12 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
-      if (!context.attempt.isFinalAttempt) {
+      // A retry cannot pass an execution limit, and its Turn record would
+      // hide the limit as a lost worker.
+      if (
+        !context.attempt.isFinalAttempt &&
+        !isTurnExecutionLimitExceededError(runError)
+      ) {
         throw runError;
       }
       const terminal = await completeAgentInvocation({

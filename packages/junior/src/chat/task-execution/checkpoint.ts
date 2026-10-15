@@ -87,6 +87,8 @@ interface TurnCheckpointWrite {
   turnStartMessageIndex?: number;
   /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number;
+  /** The turn limit already blocked one step; survives history replacement. */
+  turnLimitWrappedUp?: boolean;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];
   durationMs?: number;
@@ -200,6 +202,7 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
         args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
+      turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
     }),
   };
 }

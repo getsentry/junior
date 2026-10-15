@@ -184,6 +184,14 @@ Each event automation can start at most 10 runs in a rolling hour. Set
 always one hour. When an automation reaches the limit, Junior blocks it, sends
 its creator a direct message, and reports a warning issue to Sentry.
 
+Each turn can spend at most $100 of model cost and make at most 1,000 tool
+calls, including later execution slices of the turn. Set
+`limits.maxTurnCostUsd` (whole USD) or `limits.maxToolCallsPerTurn` to change
+these numbers. When a turn reaches a limit, Junior blocks its next tool call
+and tells the model to reply with what it finished and what is left. A child
+agent sends that reply to its parent as its result. If the model calls more
+tools after that, the turn fails with an execution-limit error.
+
 ## Remote ACP
 
 Every Junior app mounts `GET`, `POST`, and `DELETE /api/acp`. No app option

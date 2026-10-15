@@ -102,6 +102,7 @@ import {
 } from "@/chat/services/turn-router";
 import {
   addAgentTurnUsage,
+  agentTurnCostUsd,
   hasAgentTurnUsage,
   type AgentTurnUsage,
 } from "@/chat/usage";
@@ -110,7 +111,14 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  TURN_LIMIT_DISABLED_REASON,
+  TurnBudgetExceededError,
+  TurnToolCallLimitExceededError,
+  createTurnLimitGate,
+  isTurnExecutionLimitExceededError,
+} from "@/chat/services/turn-limit";
+import { disabledToolMessage } from "@/chat/tools/definition";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -716,6 +724,9 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    // Model calls that a retry discarded. They still cost money.
+    let discardedRetryUsage: AgentTurnUsage | undefined;
+    const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
     const usageSinceCurrentBoundary = (
@@ -1103,7 +1114,7 @@ async function executeAgentRunInPrivacyContext(
         ...(streamFn ? { base: streamFn } : undefined),
       }),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage }) => {
+      beforeToolCall: async ({ assistantMessage, toolCall }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
@@ -1114,21 +1125,53 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // Charge the durable turn total here. Exceptions become tool errors,
-        // so block + terminate and rethrow after the step settles.
-        try {
-          runResume.admitToolCall();
-        } catch (error) {
-          const limitError =
-            error instanceof Error ? error : new Error(String(error));
-          pendingPiHookError ??= limitError;
+        // Past a limit, the first step is blocked so the model replies with
+        // its progress. A later tool call ends the turn: Pi turns exceptions
+        // into tool errors, so block + terminate and rethrow after the step.
+        const toolCallCount = runResume.countToolCall();
+        const turnCostUsd =
+          agentTurnCostUsd(
+            addAgentTurnUsage(
+              runResume.priorSliceUsage,
+              priorPhaseUsage,
+              discardedRetryUsage,
+              usageSinceCurrentBoundary(currentAgentMessages()),
+            ),
+          ) ?? 0;
+        const overBudget = turnCostUsd >= botConfig.maxTurnCostUsd;
+        const decision = turnLimitGate({
+          assistantMessage,
+          overLimit:
+            overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
+        });
+        if (decision === "allow") {
+          return undefined;
+        }
+        if (decision === "wrap_up") {
+          runResume.markTurnLimitWrappedUp();
+          logWarn("agent.turn.limit.wrap_up", {
+            "app.ai.cost.total_usd": turnCostUsd,
+            "app.ai.tool_call_count": toolCallCount,
+          });
           return {
             block: true,
-            reason: limitError.message,
-            terminate: true,
+            reason: disabledToolMessage(
+              toolCall.name,
+              TURN_LIMIT_DISABLED_REASON,
+            ),
           };
         }
-        return undefined;
+        // The tool-call total only grows, so a stop under it came from spend.
+        const limitError =
+          toolCallCount > botConfig.maxToolCallsPerTurn && !overBudget
+            ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
+            : new TurnBudgetExceededError(botConfig.maxTurnCostUsd);
+        pendingPiHookError ??= limitError;
+        return {
+          block: true,
+          reason: limitError.message,
+          terminate: true,
+        };
       },
       afterToolCall: async ({ isError, result, toolCall }, signal) => {
         // Host continuity is session-owned (`resumeReason: "timeout"` + auto
@@ -1468,7 +1511,7 @@ async function executeAgentRunInPrivacyContext(
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
-          let discardedRetryUsage: AgentTurnUsage | undefined;
+          discardedRetryUsage = undefined;
           let actionConfirmationRetryUsed = false;
           let automationResultReminderUsed = !requireAutomationResult;
           let providerRetryAttempt = 0;

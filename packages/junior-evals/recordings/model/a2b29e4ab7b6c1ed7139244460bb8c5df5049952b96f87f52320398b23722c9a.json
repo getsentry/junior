@@ -1,0 +1,31 @@
+{
+  "session": "evals/integration/auth/oauth.eval.ts > OAuth Workflows > when generic OAuth pauses a turn, resume and reuse the stored credential on the next turn",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "8b4a77f8aef4",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M509XAPN0T6JSTRMYHE5PD7S\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant explicitly states that the earlier budget deadline was Friday and does not ask the user to repeat it, act as if context was lost, or claim OAuth is unavailable.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":432,\"output_tokens\":47},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_078422f32364a7cc016ad10dfedb2087d2981257b7f4884db2\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792085502789,\"endTime\":1792085504538,\"providerRequestId\":\"req_32225cd449524a66944a34233da2f4b7\",\"statusCode\":200,\"providerResponseId\":\"resp_078422f32364a7cc016ad10dfedb2087d2981257b7f4884db2\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"5a1ebf3f8c5d2ca45cf7001f4da45b13\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.001785\",\"marketCost\":\"0.001785\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.001785\",\"inferenceCost\":\"0.001785\",\"inputInferenceCost\":\"0.00108\",\"outputInferenceCost\":\"0.000705\",\"generationId\":\"gen_01M509XAPN0T6JSTRMYHE5PD7S\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

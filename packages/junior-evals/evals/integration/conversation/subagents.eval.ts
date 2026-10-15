@@ -113,6 +113,47 @@ describe("Child Agents", () => {
     ]);
   });
 
+  test("when a child agent uses its turn budget, it reports its progress instead of failing", async ({
+    agent,
+  }) => {
+    // Three tool calls stand in for a spent budget. Past the limit, Junior
+    // blocks the next tool call and asks the child to reply with its progress.
+    const { run } = await agent({
+      experimental: { subagents: true },
+      limits: { maxToolCallsPerTurn: 3 },
+    });
+    let systemTimeRequests = 0;
+    const conversation = await run(
+      slackMention(
+        'Use spawnAgent to start one child agent with the task "Call systemTime five times, one call per step. Then reply with how many of the calls returned a time." When its result arrives, tell me what the child agent reported.',
+      ),
+      {
+        onProgress: (progress) => {
+          if (
+            progress.type === "tool_request" &&
+            progress.name === "systemTime"
+          ) {
+            systemTimeRequests += 1;
+          }
+        },
+      },
+    );
+
+    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    expect(systemTimeRequests).toBeGreaterThan(3);
+    expect(conversation.turns).toHaveLength(2);
+    expect(conversation.turns[1]?.status).toBe("succeeded");
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The last reply says the child agent stopped before all five calls ran, and it gives the number of calls that ran.",
+        ],
+        fail: ["The last reply says the child agent failed with an error."],
+      }),
+    );
+  });
+
   test("when a child agent starts its own child agent, report once after both finish", async ({
     agent,
   }) => {

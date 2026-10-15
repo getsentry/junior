@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/actors.eval.ts > Actor Attribution > when ambient chat offers a ticket and the actor asks only for a lookup, do not create tickets",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "22c6a26a3d87",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_066a1967c0e4fe38016ad11886abec87d2b0a8eb0616e628b4\",\"reasoningEncryptedContent\":\"gAAAAABq0RiIMQNJ2yPhcE53JogrgHoh1L2HueaigUiAzgS6GNJ8R6uvSX2Tq1bzZgY6hgVRb6IYNVgZEfhDdSPEHpioWlFGBTdf8dTfO8EezDH6DVqAWBujJJTN316bEV9KnVm52OEKJH_gacuHgsqNkCLvl3rEUkTnU0oYMtT5vYl9VfvkdoutI_8PN1AqAvzzVeNYHWDLF0b0oy-60aq-qVvTUds7sotadA5U7K-1If5Mbw4UuYJnvnhp41QLGLmQlb839Ijrh5Ywfg1H9YI6yW5-_EwUM2OMpRdG1YZXM6g83p5fAGOJOUwspu-5m5mF4Ri8SW4DIGyt8c5JybCWKFqBKR5SajKOTIfiJsZ_rcmcJE7ZRD6naMP5ANuKfRaUbhrUowtJ2ao693N0m_qln70s4OIgRN5aofW8xq2x_U1-tLqhiYI6zTlECVWoZ_Djy0lWHy-GzwdS2Q4KMW7q08GNL77qklXQWd4n3UMLtZqUNBv-HXspsJDDBYOUW-9etmWRvuArSFNuzLfLHyMoh3No57HwpwiPAisoY7Jk0wQbkkpZeI_jGRhIfAguB4Y_dC1w0dhlAyQLmeinbKcR68pe8OMIMkRE3jOEAblq2KhoW3JsVZIrEEUeVUoFN8w_pZUCme_5IEirEjbQQO-NptBPZ3-rIfAB_oqTntUZ4QMN7JqcIcrnckrKy9upQs_0MixZVcxiAn5oCxk5ue3ulnbEHhDKmtbKzArIA0RCPpMkSejR1_qxKKN-YZnNo-J8Cg2hRUlfi6tOYXAgvG_PSdTFK0PQDdX6GFaGh2iSY1yDmumbaJFAR6LJxfQCIqb8ukNMGfztAVk-BUaPlcnqidJ9F0gBef7e4EYdS5QJmRwImc0gdBVJflrGLy0y9aDEfwtLLtnKKVETWQmqda5hxS8iYAM3ZJWqAU-dLlikKuyKABzXmrnTFv53VqDdqG94XWeyKAoWRoocN4g9MjhBE6XSqp5DESwuAOyDpVoItdMMt29CZv6nikX6s11OybRxqHuDZX9q5VpxhvbMUx_M965gCyhDKxT-ZMXidd-FG3FRcucfT5WeglbAtbOfdgKXExtSzmitRrx2wn5j08DGoP27b95s86HOtGLZDGjD2wQf2jjKwTFQ-oyddvOTV8j69FRdgrmLmiNMlHbJtafur3Uo03Exdlh21trGeCiZJ9TECvniNownk6nSVyHFuQGWUnbaf08c20MugJIDeAI-Hf8vMfOnHN0wSB4T5G6B6-MGgi1eqXrt2TjG8eCQfHoJCf0_ijk32fkBb3um3-JGPjdcBw8ZUtK8uO0EdYGXY98ek1DGLb1UahyDazEKvLqpgMLfLMW2cae6WKCwce10my9PY9gYif41SrxJFSqTrbhXZLzMeVheuDu3DAKWfLvuBYrmjdpJFAzmQgVIQRNiT-8spv9rCF-bRT6ym59VdNUE8ucxd75lEOVGBVNHoZXKQKTEwb31ClKhlHTLA8FPCXvU39iDB4IVhhVLeWC83A1-kB2FB3DR42_oYXIWyFegsX9ePJFYyCmQOqstaWLsJH8xNhbCaBfHGnCkJPDV_377QT01LcEjlMW7V_VM9iDUZ4Zk_nbEUrDyBDYsNKW8LQefJ7BQ0LmpZPjFaiwnGfLIvf1JzaKRq2UiqQGNq3XwjUopPAMpDDxLR2HX6D_WcWr7XPDhTrBW4tiMGLuUJDzH_38uy3gjL89DbtvWJtNNT1Pv9YJYD78VjIgqSyne436I6sJv9nUs2lSnT5LS3Z7V9HUgdtU2dJmoOxmS0xVITVfxAAO3Y9qmAjA5S72X7fkwUhEPAQaB3X9LFfYM-R3TPvS4jpcij06tB54gngnLp6QoVPb7tKeoy3vocTKSVnMk6duW2xlWHi5Re4XHxxhP6bfwWSyFxHtTZxUmX3BtYfepwc_mx5R5sI6C7wYwgYDPKjK81VeaK89FysKGY-NS_uRzULjHFd7w4iZsrSSa7NZcY9VLtcbBIyRBr8LkoRF_ueK-cwu8hOFJgD5OWp8czBbN5mA6iSwA3IK0raG5uTZGmwGFbisPus0NApKDjiDGIiA0yPUquz5pwhpKJ7Fh5mORXJBwIcI-4EbO4QVIxYdOuSzK3xuLJCu_Td2V2cr3mRWPdJ0vG7uWSoRcewFE0aV1h358lg2ClBWFmwOApRnBXlJr\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly asked whether matching Linear or GitHub tickets exist and share a root cause, and this read-only search directly supports answering that question.\\\",\\\"riskLevel\\\":\\\"low\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_066a1967c0e4fe38016ad11887416c87d2914b52f9555caec8\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":3363,\"noCache\":3,\"cacheRead\":3360,\"cacheWrite\":0},\"outputTokens\":{\"total\":106,\"text\":55,\"reasoning\":51},\"raw\":{\"input_tokens\":3363,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":3360},\"output_tokens\":106,\"output_tokens_details\":{\"reasoning_tokens\":51},\"total_tokens\":3469}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_066a1967c0e4fe38016ad11885836087d2b8899702fb925b4b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792088197430,\"endTime\":1792088200100,\"providerRequestId\":\"req_edd7b2db243a4f73a632eb047a5170a6\",\"statusCode\":200,\"providerResponseId\":\"resp_066a1967c0e4fe38016ad11885836087d2b8899702fb925b4b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"02e2284a037f8262eab3ac8ee086cf87\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000869\",\"marketCost\":\"0.0000869\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000869\",\"inferenceCost\":\"0.0000869\",\"inputInferenceCost\":\"0.0000339\",\"outputInferenceCost\":\"0.000053\",\"generationId\":\"gen_01M50CFJ9650065DT3HPQZCY8S\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

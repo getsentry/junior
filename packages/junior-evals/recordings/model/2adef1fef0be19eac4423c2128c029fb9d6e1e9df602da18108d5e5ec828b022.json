@@ -1,0 +1,31 @@
+{
+  "session": "evals/sentry/skills.eval.ts > Sentry Skill Workflows > when creator-bound scheduled Sentry work becomes due, use the creator's account",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "37cf5f207430",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M50CKGNP3HP352RZP8WR4KVY\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"B\\\",\\\"rationale\\\":\\\"The assistant reports the latest unresolved Sentry issue for the getsentry organization and includes the issue key, title, and permalink without asking for reauthorization or a token. However, it does not include the required ending `finishAutomationRun`, so there is a minor gap.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":508,\"output_tokens\":67},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0815f09ea67277dd016ad11906eb1487d2a2a632b6ff5c3ddb\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1792088326859,\"endTime\":1792088328311,\"providerRequestId\":\"req_e2dd17cca1c947f685a4ab8b57e61992\",\"statusCode\":200,\"providerResponseId\":\"resp_0815f09ea67277dd016ad11906eb1487d2a2a632b6ff5c3ddb\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"cf1558ea0510c90107dbd6281580bad7\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.002275\",\"marketCost\":\"0.002275\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.002275\",\"inferenceCost\":\"0.002275\",\"inputInferenceCost\":\"0.00127\",\"outputInferenceCost\":\"0.001005\",\"generationId\":\"gen_01M50CKGNP3HP352RZP8WR4KVY\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

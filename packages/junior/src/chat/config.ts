@@ -19,21 +19,26 @@ const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_SLICES_PER_TURN = 100;
 /**
- * Max tool calls for one turn, including later execution slices of that turn.
- * Chosen from production dispatch traces: healthy runs cluster well under 50;
- * runaway CI-watch loops land in the hundreds. Raised from 150 after that cap
- * fired on legitimate long-form human turns, not just runaway automation.
+ * Max model spend in USD for one turn, including later execution slices of
+ * that turn. Sentry span estimates put a child agent that made 250 tool calls
+ * of real work at about $50.
  */
-const MAX_TOOL_CALLS_PER_TURN = 250;
+const MAX_TURN_COST_USD = 100;
+/**
+ * Max tool calls for one turn, including later execution slices of that turn.
+ * A backstop for models without cost data. The spend limit should stop a turn
+ * first. 250 calls stopped child agents that were still doing real work.
+ */
+const MAX_TOOL_CALLS_PER_TURN = 1000;
 /**
  * Max consecutive automated turns before event wakes stop until a user message.
  * Resource-event CI watches and event-automation loops are the common runaway paths.
  * Sentry telemetry has no direct instrumentation for how long real automated
  * chains run (only failure paths on the notice are logged, and those show zero
  * hits in the last 30d), so this is sized qualitatively: it stays well under
- * the runaway CI-watch-loop range noted for maxToolCallsPerTurn (hundreds of
- * tool calls) while giving multi-phase event-automation/scheduled-automation work enough
- * headroom to avoid pausing on legitimate longer-running automation.
+ * the runaway CI-watch-loop range (hundreds of tool calls) while giving
+ * multi-phase event-automation/scheduled-automation work enough headroom to
+ * avoid pausing on legitimate longer-running automation.
  */
 const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
 /**
@@ -101,6 +106,7 @@ export interface BotConfig {
   maxAgentDepth: number;
   maxSlicesPerTurn: number;
   maxToolCallsPerTurn: number;
+  maxTurnCostUsd: number;
   maxConsecutiveAutomatedTurns: number;
   maxEventAutomationRunsPerHour: number;
   turnTimeoutMs: number;
@@ -512,6 +518,7 @@ function readBotConfig(
     maxAgentDepth: 0,
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
+    maxTurnCostUsd: MAX_TURN_COST_USD,
     maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
     maxEventAutomationRunsPerHour: MAX_EVENT_AUTOMATION_RUNS_PER_HOUR,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
@@ -639,6 +646,8 @@ export interface RuntimeLimits {
   maxSlicesPerTurn?: number;
   /** Tool calls one turn may make. */
   maxToolCallsPerTurn?: number;
+  /** Model spend in whole USD one turn may use. */
+  maxTurnCostUsd?: number;
   /** Agent turn deadline in ms. The function duration still caps it. */
   turnTimeoutMs?: number;
 }
@@ -745,6 +754,12 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
     bot.maxToolCallsPerTurn = requirePositiveLimit(
       "maxToolCallsPerTurn",
       limits.maxToolCallsPerTurn,
+    );
+  }
+  if (limits?.maxTurnCostUsd !== undefined) {
+    bot.maxTurnCostUsd = requirePositiveLimit(
+      "maxTurnCostUsd",
+      limits.maxTurnCostUsd,
     );
   }
   if (limits?.turnTimeoutMs !== undefined) {
