@@ -166,6 +166,11 @@ export function tool<TInputSchema extends TSchema>(
   return definition;
 }
 
+/** Tool error text for a call to a tool that is disabled in this Turn. */
+export function disabledToolMessage(toolName: string, reason: string): string {
+  return `${toolName} is disabled in this Turn. ${reason} Do not call it again in this Turn.`;
+}
+
 /**
  * Disable tools for this Turn without removing them from the tool list.
  *
