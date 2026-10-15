@@ -8,7 +8,9 @@ exported types, tools, and tests are authoritative.
 
 - `createMemory`, `archiveMemory`, `listMemories`, and `searchMemories` are
   model-visible tools registered by `src/plugin.ts`. `archiveMemory` can forget
-  public memory or private memory owned by the current User.
+  public memory or private memory owned by the current User. Child agent runs
+  (`agent_invocation` Source) get only `listMemories` and `searchMemories`.
+  Only the main agent writes memory.
 - `userPrompt` recall contributes bounded memory context before a run.
 - `processSession` reviews completed sessions asynchronously for passive
   learning.

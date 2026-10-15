@@ -144,6 +144,15 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
+        const readTools = {
+          listMemories: createMemoryListTool(context),
+          searchMemories: createMemorySearchTool(context),
+        };
+        // Only the main agent writes memory. Child agent runs can read memory
+        // and suggest memories in their result.
+        if (ctx.source.kind === "agent_invocation") {
+          return readTools;
+        }
         return {
           createMemory: createMemoryCreateTool(
             memoryCreateToolContext({
@@ -155,8 +164,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
             }),
           ),
           archiveMemory: createMemoryArchiveTool(context),
-          listMemories: createMemoryListTool(context),
-          searchMemories: createMemorySearchTool(context),
+          ...readTools,
         };
       },
       ...(!options.disableRecall

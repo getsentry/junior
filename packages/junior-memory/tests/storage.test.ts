@@ -661,6 +661,38 @@ describe("memory plugin storage", () => {
     expect(withoutEither.tasks?.processSession).toBeUndefined();
   });
 
+  it("registers only read memory tools in child agent runs", () => {
+    const plugin = memoryPlugin();
+    const toolNames = (source: PluginTaskContext["source"]) =>
+      Object.keys(
+        plugin.hooks?.tools?.({
+          db: {},
+          model: {},
+          source,
+          users: {},
+        } as any) ?? {},
+      ).sort();
+
+    expect(toolNames({ kind: "agent_invocation" })).toEqual([
+      "listMemories",
+      "searchMemories",
+    ]);
+    expect(
+      toolNames(
+        createSlackSource({
+          channelId: "C123",
+          teamId: "T123",
+          visibility: "public",
+        }),
+      ),
+    ).toEqual([
+      "archiveMemory",
+      "createMemory",
+      "listMemories",
+      "searchMemories",
+    ]);
+  });
+
   it("parses canonical actor extraction into stored memory text", async () => {
     const model: PluginModel = {
       async completeObject() {
