@@ -2025,7 +2025,6 @@ describe("Slack schedule tool wiring via createTools", () => {
     // but an Agent invocation Source. The runtime disables these tools for
     // that Turn. This calls them directly to check that the tools also refuse
     // to use the person's authority.
-    const previous = setPlugins([]);
     const fixture = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TORIGIN${Date.now()}`;
@@ -2102,7 +2101,6 @@ describe("Slack schedule tool wiring via createTools", () => {
     } finally {
       await fixture.close();
       vi.restoreAllMocks();
-      setPlugins(previous);
     }
   });
 });

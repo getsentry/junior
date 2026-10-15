@@ -239,6 +239,14 @@ describe("Slack tool registration", () => {
     );
     // The provider caches tools first. Every origin must send the same list,
     // or the next Turn writes the whole Conversation to the cache again.
+    const modelView = (tools: ReturnType<typeof createTools>) =>
+      JSON.stringify(
+        Object.entries(tools).map(([name, tool]) => [
+          name,
+          tool.description,
+          tool.inputSchema,
+        ]),
+      );
     const otherTurns = [
       {
         actor: { platform: "system" as const, name: "scheduler" },
@@ -265,7 +273,7 @@ describe("Slack tool registration", () => {
         ...turn,
         slackActionToken: undefined,
       } as ToolRuntimeContext);
-      expect(Object.keys(tools)).toEqual(Object.keys(messageTurn));
+      expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools.createEventAutomation?.disabledReason).toBeDefined();
       expect(tools.addReaction?.disabledReason).toBeDefined();
     }
