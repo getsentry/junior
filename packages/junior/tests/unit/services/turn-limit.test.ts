@@ -47,54 +47,22 @@ describe("turn execution limit", () => {
   });
 
   it("asks one model step to wrap up past a limit and stops the next one", () => {
-    const gate = createTurnLimitGate();
+    const gate = createTurnLimitGate(false);
     const first = {};
     const wrapUp = {};
-    const ignored = {};
-    const wrappedUpBefore = false;
 
-    expect(
-      gate({ assistantMessage: first, overLimit: false, wrappedUpBefore }),
-    ).toBe("allow");
-    expect(
-      gate({ assistantMessage: wrapUp, overLimit: true, wrappedUpBefore }),
-    ).toBe("wrap_up");
+    expect(gate({ assistantMessage: first, overLimit: false })).toBe("allow");
+    expect(gate({ assistantMessage: wrapUp, overLimit: true })).toBe("wrap_up");
     // Parallel tool calls in the same step get the same answer.
-    expect(
-      gate({ assistantMessage: wrapUp, overLimit: true, wrappedUpBefore }),
-    ).toBe("wrap_up");
-    expect(
-      gate({ assistantMessage: ignored, overLimit: true, wrappedUpBefore }),
-    ).toBe("stop");
-    expect(
-      gate({ assistantMessage: {}, overLimit: false, wrappedUpBefore }),
-    ).toBe("stop");
+    expect(gate({ assistantMessage: wrapUp, overLimit: true })).toBe("wrap_up");
+    // Live totals can miss usage, so a wrap-up stops later steps either way.
+    expect(gate({ assistantMessage: {}, overLimit: false })).toBe("stop");
   });
 
-  it("stops instead of wrapping up again after an earlier slice wrapped up", () => {
-    const gate = createTurnLimitGate();
-    const step = {};
+  it("stops the first tool call after an earlier slice wrapped up", () => {
+    const gate = createTurnLimitGate(true);
 
-    expect(
-      gate({ assistantMessage: step, overLimit: true, wrappedUpBefore: true }),
-    ).toBe("stop");
-    // Live totals can miss usage that a paused slice did not save.
-    expect(
-      gate({ assistantMessage: {}, overLimit: false, wrappedUpBefore: true }),
-    ).toBe("stop");
-  });
-
-  it("keeps sibling calls of the wrap-up step on wrap-up once it is recorded", () => {
-    const gate = createTurnLimitGate();
-    const step = {};
-
-    expect(
-      gate({ assistantMessage: step, overLimit: true, wrappedUpBefore: false }),
-    ).toBe("wrap_up");
-    // The agent records the wrap-up durably before the sibling call checks.
-    expect(
-      gate({ assistantMessage: step, overLimit: true, wrappedUpBefore: true }),
-    ).toBe("wrap_up");
+    expect(gate({ assistantMessage: {}, overLimit: false })).toBe("stop");
   });
 
   it("uses the limit reply for thrown execution-limit errors", () => {

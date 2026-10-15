@@ -155,11 +155,11 @@ export function createResumeState(args: ResumeStateArgs) {
     get priorSliceUsage(): AgentTurnUsage | undefined {
       return args.checkpoint.record?.cumulativeUsage;
     },
-    /** True when an earlier step of this turn was blocked by the turn limit. */
+    /** True once a step of this turn hit a limit and wrapped up. */
     get turnLimitWrappedUp(): boolean {
       return turnLimitWrappedUp;
     },
-    /** Record the turn-limit wrap-up so later slices stop instead. */
+    /** Save the wrap-up so later slices stop instead of wrapping up again. */
     markTurnLimitWrappedUp(): void {
       turnLimitWrappedUp = true;
     },

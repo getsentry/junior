@@ -20,10 +20,8 @@ const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_SLICES_PER_TURN = 100;
 /**
  * Max model spend in USD for one turn, including later execution slices of
- * that turn. This is the main runaway-turn limit. It measures spend, which is
- * the real cost of a runaway loop, not the number of steps. Runaway CI-watch
- * loops used billions of input tokens. Sentry span estimates show a child
- * agent that made 250 tool calls of real work cost about $50.
+ * that turn. Sentry span estimates put a child agent that made 250 tool calls
+ * of real work at about $50.
  */
 const MAX_TURN_COST_USD = 100;
 /**

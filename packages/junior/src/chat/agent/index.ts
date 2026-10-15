@@ -726,7 +726,7 @@ async function executeAgentRunInPrivacyContext(
     let pendingPiHookError: Error | undefined;
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
-    const turnLimitGate = createTurnLimitGate();
+    const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
     const usageSinceCurrentBoundary = (
@@ -1125,10 +1125,9 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // Charge the durable turn totals here. Past a limit, the first step
-        // gets a wrap-up reply so its progress is not lost. A later step that
-        // still calls tools ends the turn: Pi turns exceptions into tool
-        // errors, so block + terminate and rethrow after the step settles.
+        // Past a limit, the first step is blocked so the model replies with
+        // its progress. A later tool call ends the turn: Pi turns exceptions
+        // into tool errors, so block + terminate and rethrow after the step.
         const toolCallCount = runResume.countToolCall();
         const turnCostUsd =
           agentTurnCostUsd(
@@ -1144,7 +1143,6 @@ async function executeAgentRunInPrivacyContext(
           assistantMessage,
           overLimit:
             overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
-          wrappedUpBefore: runResume.turnLimitWrappedUp,
         });
         if (decision === "allow") {
           return undefined;
@@ -1163,8 +1161,7 @@ async function executeAgentRunInPrivacyContext(
             ),
           };
         }
-        // The tool-call total is durable and only grows, so a stop that is
-        // not over it came from the spend limit.
+        // The tool-call total only grows, so a stop under it came from spend.
         const limitError =
           toolCallCount > botConfig.maxToolCallsPerTurn && !overBudget
             ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
