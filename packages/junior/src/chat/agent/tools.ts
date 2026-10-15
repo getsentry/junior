@@ -107,6 +107,7 @@ interface ToolWiringArgs {
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   requestHandoff?: ToolRuntimeContext["handoff"];
+  spawnAgentProfiles?: ToolRuntimeContext["spawnAgentProfiles"];
   resume: ResumeState;
   run: AgentRun;
   skillSandbox: SkillSandbox;
@@ -392,7 +393,12 @@ export async function wireAgentTools(
         }
       : undefined),
     ...(args.durability.spawnAgent
-      ? { spawnAgent: args.durability.spawnAgent }
+      ? {
+          spawnAgent: args.durability.spawnAgent,
+          ...(args.spawnAgentProfiles
+            ? { spawnAgentProfiles: args.spawnAgentProfiles }
+            : undefined),
+        }
       : undefined),
     ...(args.durability.messageAgent
       ? { messageAgent: args.durability.messageAgent }

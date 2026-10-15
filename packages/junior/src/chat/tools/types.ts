@@ -24,7 +24,10 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type { ModelProfile } from "@/chat/model-profile";
+import type {
+  ModelProfile,
+  ModelProfileConfig,
+} from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -34,6 +37,12 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 interface HandoffProfile {
   description?: string;
   name: ModelProfile;
+}
+
+export interface SpawnAgentProfileControl {
+  activeProfile: () => ModelProfile;
+  defaultProfile: ModelProfile;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
 }
 
 interface HandoffControl {
@@ -96,6 +105,7 @@ interface BaseToolRuntimeContext {
   handoff?: HandoffControl;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
+  spawnAgentProfiles?: SpawnAgentProfileControl;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.

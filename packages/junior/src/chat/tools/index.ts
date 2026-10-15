@@ -209,7 +209,13 @@ export function createTools(
   }
 
   if (context.spawnAgent) {
-    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+    if (!context.spawnAgentProfiles) {
+      throw new Error("spawnAgent is missing its configured model profiles");
+    }
+    tools.spawnAgent = createSpawnAgentTool(
+      context.spawnAgent,
+      context.spawnAgentProfiles,
+    );
     tools.listAgents = createListAgentsTool(context.conversationId);
     tools.stopAgent = createStopAgentTool(context.conversationId);
   }
