@@ -126,11 +126,14 @@ const IGNORED_MESSAGE_SUBTYPES = new Set([
 
 class SlackEventPersistenceError extends Error {
   readonly cause: unknown;
+  /** True when the mailbox kept the input and only the queue send failed. */
+  readonly saved: boolean;
 
-  constructor(cause: unknown) {
+  constructor(cause: unknown, saved: boolean) {
     super("Slack event durable persistence failed");
     this.name = "SlackEventPersistenceError";
     this.cause = cause;
+    this.saved = saved;
   }
 }
 
@@ -309,12 +312,13 @@ async function persistSlackMessage(args: {
       conversationId,
       state: args.state,
     });
-    if (
-      !saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
-    ) {
+    const kept =
+      saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId) ===
+      true;
+    if (!kept) {
       await receipt?.stop();
     }
-    throw new SlackEventPersistenceError(error);
+    throw new SlackEventPersistenceError(error, kept);
   });
 }
 
@@ -748,7 +752,11 @@ async function handleSlashCommandForm(args: {
   );
 }
 
-/** Persist one Slack input as a mention under the thread's ingress lock. */
+/**
+ * Persist one Slack input as a mention under the thread's ingress lock.
+ * Slack does not retry interactions. Saved input still runs through heartbeat
+ * recovery, so a failed queue send after the append does not reject it.
+ */
 async function persistSlackMentionWithLock(args: {
   adapter: SlackAdapter;
   installation: SlackInstallationContext;
@@ -757,22 +765,31 @@ async function persistSlackMentionWithLock(args: {
   state: StateAdapter;
 }): Promise<void> {
   const { message, threadId } = normalizeMessageThreadId(args.message);
-  const routed = await withLock(
-    args.state,
-    `slack:ingress:${threadId}`,
-    () =>
-      persistSlackMessage({
-        adapter: args.adapter,
-        installation: args.installation,
-        message,
-        conversationStore: args.services.conversationStore,
-        queue: args.services.queue,
-        receivedAtMs: Date.now(),
-        route: "mention",
-        state: args.state,
-      }),
-    { keepAlive: true, waitMs: 10_000 },
-  );
+  let routed: Awaited<ReturnType<typeof withLock<void>>>;
+  try {
+    routed = await withLock(
+      args.state,
+      `slack:ingress:${threadId}`,
+      () =>
+        persistSlackMessage({
+          adapter: args.adapter,
+          installation: args.installation,
+          message,
+          conversationStore: args.services.conversationStore,
+          queue: args.services.queue,
+          receivedAtMs: Date.now(),
+          route: "mention",
+          state: args.state,
+        }),
+      { keepAlive: true, waitMs: 10_000 },
+    );
+  } catch (error) {
+    if (error instanceof SlackEventPersistenceError && error.saved) {
+      logException(error.cause, "slack.event.wake.failed");
+      return;
+    }
+    throw error;
+  }
   if (!routed.acquired) {
     throw new Error("Could not acquire Slack ingress lock");
   }

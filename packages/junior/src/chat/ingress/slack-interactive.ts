@@ -128,16 +128,15 @@ async function handleButtonClick(args: {
     user_team: userTeam,
   };
   const parsed = args.adapter.parseMessage(event);
-  // The click has no Slack message of its own. Its id uses action_ts, so it
-  // sorts after earlier thread messages and stays apart from the button
-  // message in history. Slack API calls for this input, such as the
-  // processing reaction, need a real message, so `raw.ts` names the button
-  // message.
+  // The click has no Slack message of its own. Give it a non-timestamp id so
+  // every Slack timestamp reader, such as reactions, the actor `slack_ts`, and
+  // attachment lookup, resolves `raw.ts`: the button message. `action_ts`
+  // keeps the id unique per click and sets the time of the input.
   const message = new Message({
     attachments: parsed.attachments,
     author: parsed.author,
     formatted: parsed.formatted,
-    id: parsed.id,
+    id: `slack-button-click:${actionTs}`,
     isMention: true,
     links: parsed.links,
     metadata: parsed.metadata,
@@ -149,7 +148,7 @@ async function handleButtonClick(args: {
   try {
     await args.persistMessage(message);
   } catch (error) {
-    // Let the person click again when Junior did not accept the click.
+    // Junior did not save the click, so let the person click again.
     await args.state.delete(claimKey);
     throw error;
   }

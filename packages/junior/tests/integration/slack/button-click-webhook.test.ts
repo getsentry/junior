@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
+import { Message, type SerializedMessage } from "chat";
 import { closeDb } from "@/chat/db";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { buildSlackButtonMessage } from "@/chat/slack/buttons";
+import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
@@ -67,7 +69,7 @@ describe("Slack webhook: Junior button clicks", () => {
     await closeDb();
   });
 
-  it("starts one turn from the first click and answers the button message", async () => {
+  function clickHarness() {
     const state = createMemoryState();
     const queue = createConversationWorkQueueTestAdapter();
     const slackAdapter = createSlackAdapterFixture();
@@ -95,6 +97,12 @@ describe("Slack webhook: Junior button clicks", () => {
       await waitUntil.flush();
     }
 
+    return { click, queue, state };
+  }
+
+  it("starts one turn from the first click and answers the button message", async () => {
+    const { click, queue, state } = clickHarness();
+
     await click("U123", "1712345.0003");
     await click("U456", "1712345.0004");
 
@@ -114,6 +122,14 @@ describe("Slack webhook: Junior button clicks", () => {
       "Button value: ship release 1.2.3",
     );
     expect(queue.queuedMessages()).toHaveLength(1);
+    // Every Slack timestamp reader resolves the button message.
+    const saved = work?.messages[0]?.input.metadata as
+      | { message?: SerializedMessage }
+      | undefined;
+    if (!saved?.message) throw new Error("missing saved Slack message");
+    expect(getMessageTimestamp(Message.fromJSON(saved.message))).toBe(
+      BUTTON_MESSAGE_TS,
+    );
 
     // The processing reaction marks the button message, not a missing one.
     expect(slackApiOutbox.reactionAdds()[0]?.params).toMatchObject({
@@ -137,5 +153,23 @@ describe("Slack webhook: Junior button clicks", () => {
       channel: "C123",
       ts: BUTTON_MESSAGE_TS,
     });
+  });
+
+  it("keeps the first click when only the queue wake fails", async () => {
+    const { click, queue, state } = clickHarness();
+    queue.rejectSends();
+
+    await click("U123", "1712345.0003");
+    await click("U456", "1712345.0004");
+
+    const work = await getConversationWorkState({
+      conversationId: `slack:C123:${THREAD_TS}`,
+      state,
+    });
+    // Heartbeat recovery runs the saved click. A later click must not add a
+    // second Turn for the same button message.
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input.authorId).toBe("U123");
+    expect(slackApiOutbox.calls("chat.update")).toHaveLength(1);
   });
 });
