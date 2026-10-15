@@ -148,6 +148,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
+    expect(tools).toHaveProperty("slackButtonsPost");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
     expect(tools).toHaveProperty("searchConversationBriefs");

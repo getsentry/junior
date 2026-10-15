@@ -34,6 +34,7 @@ import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/con
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
+import { createSlackMessagePostButtonsTool } from "@/chat/slack/tools/message-post-buttons";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
@@ -339,6 +340,15 @@ export function createTools(
             ? undefined
             : "It needs a Slack message in this Turn to react to.",
         ),
+      );
+    }
+
+    // A click comes back as Slack input in the thread of the button message,
+    // so only offer buttons when this Turn has a Slack thread to answer in.
+    if (context.source.kind === "slack") {
+      tools.slackButtonsPost = createSlackMessagePostButtonsTool(
+        slackContext,
+        state,
       );
     }
   }

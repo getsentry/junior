@@ -211,6 +211,43 @@ export async function deleteSlackMessage(input: {
   );
 }
 
+/** Replace the text and blocks of a message that Junior posted. */
+export async function updateSlackMessage(input: {
+  blocks: KnownBlock[];
+  channelId: string;
+  text: string;
+  timestamp: SlackMessageTs;
+}): Promise<void> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Slack message update",
+  );
+  const timestamp = requireSlackMessageTimestamp(
+    input.timestamp,
+    "Slack message update",
+  );
+  const text = requireSlackMessageText(input.text, "Slack message update");
+
+  await withSlackRetries(
+    () =>
+      getSlackClient().chat.update({
+        blocks: input.blocks,
+        channel: channelId,
+        text,
+        ts: timestamp,
+      }),
+    3,
+    {
+      action: "chat.update",
+      idempotent: true,
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": timestamp,
+      },
+    },
+  );
+}
+
 /**
  * Post an ephemeral Slack message. Delivery is best-effort on Slack's side, but
  * request validation and Web API behavior are centralized here.
