@@ -3,6 +3,7 @@ import type {
   AppMentionEvent,
   AssistantThreadStartedEvent,
   GenericMessageEvent,
+  KnownBlock,
 } from "@slack/types";
 import { z } from "zod";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
@@ -150,16 +151,40 @@ export const slackEventEnvelopeSchema = z.object({
 export type SlackEventEnvelope = z.output<typeof slackEventEnvelopeSchema>;
 export type SlackInboundEvent = z.output<typeof slackEventSchema>;
 
+// Keep these fields loose. Each handler validates the fields it needs, so
+// one unusual payload shape does not reject unrelated interactions.
+// https://docs.slack.dev/reference/interaction-payloads/block_actions-payload
 export const slackInteractivePayloadSchema = z.object({
   actions: z
     .array(
       z.object({
         action_id: z.string().optional(),
+        action_ts: z.string().optional(),
         selected_option: z.object({ value: z.string().optional() }).optional(),
+        text: z.object({ text: z.string().optional() }).optional(),
         value: z.string().optional(),
       }),
     )
     .optional(),
+  channel: z.object({ id: z.string().optional() }).nullish(),
+  message: z
+    .object({
+      blocks: z
+        .array(
+          z.custom<KnownBlock>(
+            (value) =>
+              typeof value === "object" &&
+              value !== null &&
+              "type" in value &&
+              typeof value.type === "string",
+          ),
+        )
+        .optional(),
+      text: z.string().optional(),
+      thread_ts: z.string().optional(),
+      ts: z.string().optional(),
+    })
+    .nullish(),
   team: z.object({ id: z.string().optional() }).nullish(),
   type: z.string(),
   user: z

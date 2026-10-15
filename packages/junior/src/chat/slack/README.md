@@ -17,6 +17,12 @@ formatting, and Slack API error mapping. The Slack provider layer in
   completed reaction. This optional UI gets one one-second attempt; failure
   must not reject the input. The worker retries and owns completion. Passive
   messages wait for the reply decision. Thread stops clear queued reactions.
+- A click on a Junior button (`buttons.ts`) is Slack input from the person who
+  clicked. It enters the mailbox as a mention in the thread of the button
+  message. Only the first click on a button message is accepted. The input id
+  is the click `action_ts`, so it sorts after earlier thread messages. Slack
+  API calls for the input, such as the processing reaction, target the button
+  message because the click has no Slack message of its own.
 
 ## Messages
 

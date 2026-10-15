@@ -43,6 +43,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.threads.setTitle",
   "chat.postMessage",
   "chat.delete",
+  "chat.update",
   "chat.postEphemeral",
   "chat.getPermalink",
   "views.publish",
@@ -220,6 +221,7 @@ function defaultSlackApiResponse(
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
     case "chat.delete":
+    case "chat.update":
       return { body: slackOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };

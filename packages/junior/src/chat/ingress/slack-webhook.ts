@@ -63,16 +63,13 @@ import {
 } from "@/chat/ingress/message-router";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { slackMessageAttributes } from "./slack-message-telemetry";
-import {
-  getWorkspaceTeamId,
-  runWithWorkspaceTeamId,
-} from "@/chat/slack/workspace-context";
+import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
+import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
 import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
@@ -724,17 +721,6 @@ async function handleSlackEvent(args: {
   );
 }
 
-function requireSlackPayloadUserId(
-  value: string | null | undefined,
-  source: string,
-): string {
-  const userId = parseActorUserId(value);
-  if (!userId) {
-    throw new Error(`${source} is missing a Slack user id`);
-  }
-  return userId;
-}
-
 async function handleSlashCommandForm(args: {
   adapter: SlackAdapter;
   form: SlackSlashCommandForm;
@@ -762,52 +748,34 @@ async function handleSlashCommandForm(args: {
   );
 }
 
-async function handleInteractivePayload(args: {
-  payload: SlackInteractivePayload;
-  userTokenStore: UserTokenStore;
+/** Persist one Slack input as a mention under the thread's ingress lock. */
+async function persistSlackMentionWithLock(args: {
+  adapter: SlackAdapter;
+  installation: SlackInstallationContext;
+  message: Message;
+  services: SlackWebhookServices;
+  state: StateAdapter;
 }): Promise<void> {
-  if (args.payload.type !== "block_actions") {
-    return;
+  const { message, threadId } = normalizeMessageThreadId(args.message);
+  const routed = await withLock(
+    args.state,
+    `slack:ingress:${threadId}`,
+    () =>
+      persistSlackMessage({
+        adapter: args.adapter,
+        installation: args.installation,
+        message,
+        conversationStore: args.services.conversationStore,
+        queue: args.services.queue,
+        receivedAtMs: Date.now(),
+        route: "mention",
+        state: args.state,
+      }),
+    { keepAlive: true, waitMs: 10_000 },
+  );
+  if (!routed.acquired) {
+    throw new Error("Could not acquire Slack ingress lock");
   }
-  const action = args.payload.actions?.find(
-    (candidate) => candidate.action_id === "app_home_disconnect",
-  );
-  const provider = action?.selected_option?.value ?? action?.value;
-  if (!provider) {
-    return;
-  }
-  const userId = requireSlackPayloadUserId(
-    args.payload.user?.id,
-    "Slack app home disconnect payload",
-  );
-
-  await withSpan(
-    "chat.app_home_disconnect",
-    "chat.app_home_disconnect",
-    { userId: userId },
-    async () => {
-      try {
-        await unlinkProvider(
-          userId,
-          provider,
-          args.userTokenStore,
-          getWorkspaceTeamId(),
-        );
-      } catch (error) {
-        logException(error, "app_home.disconnect_unlink.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-
-      try {
-        await publishAppHomeView(getSlackClient(), userId, args.userTokenStore);
-      } catch (error) {
-        logException(error, "app_home.disconnect_publish.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-    },
-  );
 }
 
 function installationFromInteractive(
@@ -894,8 +862,18 @@ async function handleSlackForm(args: {
             installation,
             state,
             task: () =>
-              handleInteractivePayload({
+              handleSlackInteractivePayload({
+                adapter,
                 payload,
+                persistMessage: (message) =>
+                  persistSlackMentionWithLock({
+                    adapter,
+                    installation,
+                    message,
+                    services: args.services,
+                    state,
+                  }),
+                state,
                 userTokenStore: getUserTokenStore(args.services),
               }),
           }),
