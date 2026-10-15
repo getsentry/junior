@@ -51,6 +51,20 @@ instead of copying Tailwind blocks.
    see [Transcript components](../conversations/README.md) for ownership.
    Context panels use the shared `Drawer`, not a separate modal implementation.
 
+## Foundations
+
+- **Type.** `font-sans` is the UI face for prose, controls, navigation, and
+  names. `font-display` is for page and conversation titles only. `font-mono`
+  is for machine values: code, ids, paths, file names, and raw payloads. Show
+  counts, times, and prices in `font-sans tabular-nums`.
+- **Radius.** Controls and chips inside rows use `rounded-md`. Cards, list
+  rows, and panels use `rounded-lg`. The composer, menus, and transcript
+  cards use `rounded-xl`. Avatars and count badges use `rounded-full`.
+- **Focus.** Use `outline-dashboard-focus` for keyboard focus. Do not use
+  other accent colors for focus rings.
+- **Surfaces.** Use the surface ladder in `src/tailwind.css`. Do not add
+  `white/*` or `black/*` fills or borders.
+
 ## Rules
 
 - Prefer a named component on the second real use.

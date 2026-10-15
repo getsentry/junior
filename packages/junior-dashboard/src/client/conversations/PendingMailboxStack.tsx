@@ -91,7 +91,7 @@ function PendingMetaIcons(props: {
                 ? "Could not remove. Try again."
                 : "Remove queued message"
             }
-            className="inline-flex size-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+            className="inline-flex size-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
             disabled={props.cancelDisabled}
             onClick={props.onCancel}
             type="button"
@@ -141,7 +141,7 @@ function PendingRow(props: {
     <article className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-2 text-dashboard-text md:px-3.5">
       <TranscriptHeadingRow
         left={
-          <span className="inline-block max-w-full truncate font-display text-sm font-semibold leading-tight text-dashboard-text">
+          <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-dashboard-text">
             {roleLabel}
           </span>
         }
@@ -160,11 +160,11 @@ function PendingRow(props: {
         }
       />
       {redacted ? (
-        <p className="m-0 font-mono text-sm leading-snug text-dashboard-text-muted">
+        <p className="m-0 font-sans text-sm leading-snug text-dashboard-text-muted">
           [redacted]
         </p>
       ) : (
-        <p className="m-0 line-clamp-3 font-mono text-sm leading-snug text-dashboard-text/90">
+        <p className="m-0 line-clamp-3 font-sans text-sm leading-snug text-dashboard-text-subtle">
           {text}
         </p>
       )}
@@ -174,7 +174,7 @@ function PendingRow(props: {
             Could not send.
           </p>
           <button
-            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-cyan-200/90 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55"
+            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-cyan-200/90 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
             onClick={() => props.onRetry?.(props.message)}
             type="button"
           >

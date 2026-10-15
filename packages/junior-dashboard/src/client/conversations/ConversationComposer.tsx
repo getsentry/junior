@@ -351,7 +351,7 @@ export const ConversationComposer = memo(function ConversationComposer(
       {props.error || imageError ? (
         <div
           aria-live="polite"
-          className="min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
+          className="min-w-0 font-sans text-xs leading-relaxed text-rose-300"
         >
           {imageError ?? props.error}
         </div>
@@ -361,10 +361,10 @@ export const ConversationComposer = memo(function ConversationComposer(
           // Accessory chrome needs a full footer row. Side-by-side mobile is
           // only for the bare reply dock.
           props.footerStart
-            ? "block overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35"
+            ? "block overflow-hidden focus-within:border-dashboard-focus/45 focus-within:ring-1 focus-within:ring-dashboard-focus/25"
             : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
           dashboardComposerSurfaceClass,
-          dragging && "ring-2 ring-cyan-300",
+          dragging && "ring-2 ring-dashboard-focus",
         )}
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
@@ -431,7 +431,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-none md:resize-y md:overflow-visible md:px-4 md:py-3"
+          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-none md:overflow-visible md:px-4 md:py-3"
           disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
           id={id}
@@ -462,6 +462,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               aria-label="Attach images"
               disabled={sendLocked || readingImages}
               onClick={() => fileInputRef.current?.click()}
+              size="icon"
               title="Attach images (up to 3 MB total)"
               type="button"
             >
@@ -478,7 +479,6 @@ export const ConversationComposer = memo(function ConversationComposer(
             {props.onStop ? (
               <Button
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
-                className="rounded-lg font-sans"
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
                 title="Stop Junior"
@@ -491,7 +491,7 @@ export const ConversationComposer = memo(function ConversationComposer(
             ) : null}
             <Button
               aria-label={sendLocked ? "Sending message" : props.submitLabel}
-              className="rounded-lg !border-0 !bg-cyan-100 font-sans !text-dashboard-text-inverse hover:!bg-cyan-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300/55 disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted"
+              className="disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100"
               disabled={
                 (!canSend && !images.length) ||
                 !online ||
@@ -499,6 +499,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 readingImages
               }
               title={sendLocked ? "Sending message" : props.submitLabel}
+              tone="primary"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />

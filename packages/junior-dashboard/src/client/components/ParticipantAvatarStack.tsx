@@ -60,7 +60,7 @@ function Avatar(props: {
     <Tooltip
       content={<ParticipantTooltipContent participant={props.participant} />}
       focusable
-      triggerClassName="-ml-1.5 first:ml-0 pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
+      triggerClassName="-ml-1 first:ml-0 pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
     >
       <span
         aria-label={label}
@@ -116,14 +116,14 @@ export function ParticipantAvatarStack(props: ParticipantAvatarStackProps) {
             </span>
           }
           focusable
-          triggerClassName="-ml-1.5 pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
+          triggerClassName="-ml-1 pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
         >
           <span
             aria-label={`${hidden.length} more participants: ${hidden
               .map(participantDescription)
               .join("; ")}`}
             className={cn(
-              "relative inline-grid shrink-0 place-items-center rounded-full border-2 border-dashboard-bg bg-dashboard-fill-strong font-mono font-semibold leading-none text-dashboard-text-muted focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
+              "relative inline-grid shrink-0 place-items-center rounded-full border-2 border-dashboard-bg bg-dashboard-surface-active font-sans font-semibold tabular-nums leading-none text-dashboard-text-muted focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
               props.size === "list" ? "size-6 text-2xs" : "size-7 text-xs",
             )}
             onKeyDown={(event) => event.stopPropagation()}

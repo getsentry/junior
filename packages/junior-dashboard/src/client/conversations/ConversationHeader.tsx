@@ -114,7 +114,7 @@ export function ConversationHeader(props: {
         <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
       </HeaderIconButton>
       {mobileMenuOpen ? (
-        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-white/[0.08] bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
+        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
           <ConversationHeaderActions
             archive={props.archive}
             conversationId={props.conversationId}
@@ -138,7 +138,7 @@ export function ConversationHeader(props: {
           />
           {openMobileNavigation ? (
             <button
-              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none"
+              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none"
               onClick={() => {
                 setMobileMenuOpen(false);
                 openMobileNavigation();
@@ -175,7 +175,7 @@ export function ConversationHeader(props: {
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
         className={cn(
-          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border-emphasis bg-dashboard-bg md:-mx-7",
+          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border bg-dashboard-bg md:-mx-7",
           !showMobileHeader && "hidden md:block",
         )}
       >
@@ -221,12 +221,12 @@ export function ConversationHeader(props: {
         {props.linkedWork ? (
           <div
             aria-label="Linked work"
-            className="border-t border-dashboard-border bg-dashboard-surface-panel px-4 py-3 md:px-7"
+            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:px-7"
           >
             {props.linkedWork}
           </div>
         ) : null}
-        <div className="hidden border-t border-dashboard-border px-7 md:flex">
+        <div className="hidden border-t border-dashboard-border-subtle px-7 md:flex">
           <TranscriptViewToggle
             labelled
             onChange={props.onViewChange}

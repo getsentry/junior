@@ -66,7 +66,7 @@ export function ConversationMemories(props: { conversationId: string }) {
     <ol className="m-0 grid list-none gap-3 p-0">
       {query.data.memories.map((memory) => (
         <li
-          className="grid gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-3"
+          className="grid gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-3"
           key={memory.id}
         >
           <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
