@@ -49,7 +49,8 @@ const baseInput = {
 };
 
 async function listAgents() {
-  return await createListAgentsTool(parentConversationId).execute!({}, {});
+  return await createListAgentsTool({ conversationId: parentConversationId })
+    .execute!({}, {});
 }
 
 function taskModel(request: AgentRun): StreamFn {
@@ -210,6 +211,7 @@ describe("agent invocation identity and concurrency", () => {
             conversation_id: first.childConversationId,
             last_result: "completed",
             name: "researcher",
+            relation: "child",
             status: "pending",
             task: "second named task",
             updated_at: expect.any(String),
@@ -458,27 +460,47 @@ describe("agent invocation identity and concurrency", () => {
         errorMessage: "sibling failed",
         status: "failed",
       });
+      const successfulChild = {
+        conversation_id: successful.childConversationId,
+        last_result: "completed",
+        status: "idle",
+        task: "successful sibling",
+        updated_at: expect.any(String),
+      };
+      const failingChild = {
+        conversation_id: failing.childConversationId,
+        error: "sibling failed",
+        last_result: "failed",
+        status: "idle",
+        task: "failing sibling",
+        updated_at: expect.any(String),
+      };
       const listed = await listAgents();
       expect(listed.agents).toHaveLength(2);
       expect(listed.agents).toEqual(
         expect.arrayContaining([
-          {
-            conversation_id: successful.childConversationId,
-            last_result: "completed",
-            status: "idle",
-            task: "successful sibling",
-            updated_at: expect.any(String),
-          },
-          {
-            conversation_id: failing.childConversationId,
-            error: "sibling failed",
-            last_result: "failed",
-            status: "idle",
-            task: "failing sibling",
-            updated_at: expect.any(String),
-          },
+          { relation: "child", ...successfulChild },
+          { relation: "child", ...failingChild },
         ]),
       );
+      // A child agent sees itself, its parent, and its sibling.
+      await expect(
+        createListAgentsTool({
+          conversationId: successful.childConversationId,
+          parentConversationId,
+        }).execute!({}, {}),
+      ).resolves.toEqual({
+        agents: [
+          { relation: "self", ...successfulChild },
+          {
+            conversation_id: parentConversationId,
+            relation: "parent",
+            status: "idle",
+            updated_at: expect.any(String),
+          },
+          { relation: "sibling", ...failingChild },
+        ],
+      });
     } finally {
       await harness.close();
     }

@@ -54,8 +54,10 @@ async function stopAgent(
 }
 
 async function listAgents() {
-  return (await createListAgentsTool(parentConversationId).execute!({}, {}))
-    .agents;
+  return (
+    await createListAgentsTool({ conversationId: parentConversationId })
+      .execute!({}, {})
+  ).agents;
 }
 
 /** Wait until the run is aborted, then fail like an aborted agent run. */
@@ -201,6 +203,7 @@ describe("stopping child agents", () => {
           conversation_id: running.childConversationId,
           error: "Stopped by the parent conversation",
           name: "researcher",
+          relation: "child",
           status: "stopped",
           task: "long task",
           updated_at: expect.any(String),

@@ -207,7 +207,8 @@ describe("messageAgent", () => {
         }),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
       await expect(
-        createListAgentsTool(slackParentConversationId).execute!({}, {}),
+        createListAgentsTool({ conversationId: slackParentConversationId })
+          .execute!({}, {}),
       ).resolves.toMatchObject({
         agents: [
           {
@@ -317,8 +318,9 @@ describe("messageAgent", () => {
         parentConversationId: slackParentConversationId,
       });
       // The `replaced` result was never reported, so it is not a result.
-      const { agents } = (await createListAgentsTool(slackParentConversationId)
-        .execute!({}, {})) as { agents: Record<string, unknown>[] };
+      const { agents } = (await createListAgentsTool({
+        conversationId: slackParentConversationId,
+      }).execute!({}, {})) as { agents: Record<string, unknown>[] };
       expect(agents).toHaveLength(1);
       expect(agents[0]).toMatchObject({ status: "stopped" });
       expect(agents[0]).not.toHaveProperty("last_result");

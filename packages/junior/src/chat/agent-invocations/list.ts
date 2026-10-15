@@ -1,5 +1,6 @@
 import { desc, eq, inArray } from "drizzle-orm";
-import { getSqlExecutor } from "@/chat/db";
+import type { ConversationStatus } from "@/chat/conversations/store";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import {
   getAgentInvocationIdForResult,
@@ -156,4 +157,54 @@ export async function listChildAgents(
       ),
     )
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+/** Conversation execution state of the parent of a child agent. */
+export type ParentAgent = {
+  conversationId: string;
+  status: ConversationStatus;
+  updatedAtMs: number;
+};
+
+/**
+ * List the agents that one Conversation can see. A root Conversation sees
+ * only its child agents. A child agent also sees itself, its parent, and the
+ * other child agents of its parent.
+ */
+export async function listAgentRelatives(input: {
+  conversationId: string;
+  parentConversationId?: string;
+}): Promise<{
+  children: ChildAgent[];
+  parent?: ParentAgent;
+  self?: ChildAgent;
+  siblings: ChildAgent[];
+}> {
+  const { conversationId, parentConversationId } = input;
+  const [children, family, parent] = await Promise.all([
+    listChildAgents(conversationId),
+    parentConversationId ? listChildAgents(parentConversationId) : [],
+    parentConversationId
+      ? getConversationStore().get({ conversationId: parentConversationId })
+      : undefined,
+  ]);
+  const self = family.find(
+    (agent) => agent.childConversationId === conversationId,
+  );
+  return {
+    children,
+    ...(parent
+      ? {
+          parent: {
+            conversationId: parent.conversationId,
+            status: parent.execution.status,
+            updatedAtMs: parent.execution.updatedAtMs ?? parent.updatedAtMs,
+          },
+        }
+      : undefined),
+    ...(self ? { self } : undefined),
+    siblings: family.filter(
+      (agent) => agent.childConversationId !== conversationId,
+    ),
+  };
 }
