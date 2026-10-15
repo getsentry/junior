@@ -1,5 +1,5 @@
 import type { PostgresHarnessConfig } from "@sentry/junior-testing/postgres";
-import type { RoachAddress } from "./roach/types";
+import type { RemoteRun } from "./roach/types";
 
 /** Invocation-wide egress and state coordinates provided to eval workers. */
 export interface EvalInvocationContext {
@@ -15,7 +15,7 @@ declare module "vitest" {
   export interface ProvidedContext {
     juniorEvalContext?: EvalInvocationContext;
     juniorPostgresHarness?: PostgresHarnessConfig;
-    /** Roach of every eval suite. See `src/recording-run.ts`. */
-    roach?: RoachAddress;
+    /** The Roach run of every eval suite. See `src/recording-run.ts`. */
+    roach?: Pick<RemoteRun, "caCert" | "controlUrl" | "token" | "url">;
   }
 }

@@ -52,11 +52,11 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 ## Eval Recordings
 
-- Evals replay model calls and web pages from `packages/junior-evals/recordings/`. Roach, a recording proxy in `packages/junior-evals/src/roach/`, records and replays them.
-- `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more or reach a new site, edit that file.
+- Evals replay model calls and web pages from Roach, the shared recording service at `https://roach-proxy.getsentry.net` ([`getsentry/roach`](https://github.com/getsentry/roach)). Recordings are in its GCS bucket, not in git. `packages/junior-evals/src/roach/` is a copy of its client.
+- `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more or reach a new site, edit that file. A new origin or custom value pattern must also be in `deploy/gcp/roach.tfvars` of `getsentry/roach`, or the service refuses the run.
 - All eval HTTP traffic must go through the proxy. In CI, a firewall (`packages/junior-evals/scripts/network-jail.sh`) rejects other connections. If a request fails with a refused connection, send it through the proxy. Do not allow its host in the firewall.
-- A changed prompt, tool, skill, or model makes new requests, and these go live. On a pull request, CI commits the new recordings to your branch. Select "Approve workflows to run" on the pull request to start its checks. The evals then run again in strict `replay` mode, where a request without a recording fails and never goes live.
-- Each run prints `[evals] Recordings: ...`. For each miss, it names the closest recording and the request parts that differ, such as `messages[3]`. Fix a value that changes on each run for all tests, in the fixture or in `values` of the rule, not in one test. For ids and times that only the product can make, add a pattern to `values` of the rule. The proxy keys the request without the value and gives a replayed response the value of the current run.
+- `ROACH_TOKEN` is the write token. With it, a run uses `auto` mode and records new requests, which go live once. Without it, a run can only `replay`, and requests without a recording fail. CI passes the token to eval runs.
+- Each run prints `[evals] Recordings: ...` and the first miss of each test. Fix a value that changes on each run for all tests, in the fixture or in `values` of the rule, not in one test. For ids and times that only the product can make, add a pattern to `values` of the rule. The proxy keys the request without the value and gives a replayed response the value of the current run.
 - Details: "Recordings" in `packages/junior-evals/README.md`.
 
 ## Architecture

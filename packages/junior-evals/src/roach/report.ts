@@ -1,7 +1,6 @@
 /**
  * Text reports of a Roach run, for logs and CI summaries.
  */
-import { describeParts } from "./request-key.ts";
 import type { RecordingMiss, RecordingStats } from "./types.ts";
 
 /** Describe the totals of a run in one line. */
@@ -33,11 +32,5 @@ export function describeRecordingMisses(misses: RecordingMiss[]): string[] {
       seen.add(miss.session);
       return first;
     })
-    .map((miss) => {
-      const where = miss.session ?? "outside a test";
-      const why = miss.closest
-        ? `differs from ${miss.closest} at ${describeParts(miss.differs)}`
-        : "no recording to compare";
-      return `${where}: ${miss.rule} ${miss.file} ${why}`;
-    });
+    .map((miss) => `${miss.session ?? "outside a test"}: ${miss.file}`);
 }

@@ -13,11 +13,11 @@
  */
 import { EnvHttpProxyAgent } from "undici";
 import { NO_PROXY } from "./recording-rules";
-import type { RoachAddress } from "./roach/types";
+import type { RemoteRun } from "./roach/types";
 
 /** Create a `fetch` dispatcher that sends requests through the proxy. */
 export function createProxyDispatcher(
-  proxy: Pick<RoachAddress, "caCert" | "url">,
+  proxy: Pick<RemoteRun, "caCert" | "url">,
 ): EnvHttpProxyAgent {
   return new EnvHttpProxyAgent({
     httpProxy: proxy.url,

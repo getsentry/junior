@@ -1,6 +1,6 @@
 /**
- * The public types of Roach: its configuration and its
- * results. See `README.md` in this directory.
+ * The public types of Roach: rules, modes, runs, and the results of a run.
+ * See `README.md` in this directory.
  */
 import type { ValuePatterns } from "./values.ts";
 
@@ -16,7 +16,10 @@ export type RecordingMode = "auto" | "off" | "record" | "replay";
 
 /** One kind of traffic that the proxy records. */
 export interface RecordingRule {
-  /** The name of the rule. Its recordings are in `<directory>/<name>/`. */
+  /**
+   * The name of the rule, such as `model`. Its keys start with
+   * `<name>/`. Use letters, digits, `_`, `.`, and `-`.
+   */
   name: string;
   /** The requests of the rule. Each field that is set must match. */
   match: {
@@ -39,53 +42,16 @@ export interface RecordingRule {
   values?: ValuePatterns;
 }
 
-/** The configuration of one proxy. */
-export interface RoachConfig {
-  /** The directory of the recordings. Each rule has a subdirectory. */
-  directory: string;
-  mode: RecordingMode;
-  /**
-   * The only origins that the proxy sends requests to, such as
-   * `https://ai-gateway.vercel.sh`. The proxy refuses all other origins.
-   */
-  allow: string[];
-  rules: RecordingRule[];
-  /**
-   * When the proxy stops, it lists here the recordings that sessions used.
-   * A failed session uses all recordings that it recorded before. Give these
-   * files to the `prune` command.
-   */
-  usedFile?: string;
-  /**
-   * For each miss, the proxy writes the request as the key sees it to
-   * `<missDirectory>/<rule>/<key>.json`. These files contain request
-   * bodies, such as prompts, so do not commit them. It must not be inside
-   * `directory`.
-   */
-  missDirectory?: string;
-  /**
-   * Credentials that the proxy must never write, such as API keys. The
-   * proxy also learns the values of headers that can carry credentials,
-   * such as `authorization`, from each request. It redacts them in
-   * recordings and miss files.
-   */
-  secrets?: string[];
-}
-
 /** A request that a rule matched, but that had no recording. */
 export interface RecordingMiss {
   rule: string;
   /** The session of the request. */
-  session?: string;
-  /** The recording file that the request needed, relative to `directory`. */
+  session?: string | undefined;
+  /** The key of the recording that the request needed. */
   file: string;
-  /** The recording with the most equal parts, relative to `directory`. */
-  closest?: string;
-  /** The parts that differ from `closest`, such as `messages[3]`. */
-  differs: string[];
 }
 
-/** The totals of a proxy run. */
+/** The totals of a run. */
 export interface RecordingStats {
   /**
    * Requests by rule name. `missed` counts the requests that `replay` mode
@@ -105,12 +71,34 @@ export interface RecordingStats {
   passthrough: Record<string, number>;
 }
 
-/** The address of a running proxy. Give it to the processes that use it. */
-export interface RoachAddress {
-  /** The proxy URL, such as `http://127.0.0.1:1234`. */
+/** The configuration of one run. The client sends it. */
+export interface RunConfig {
+  /**
+   * The tenant of the run, as `owner/repo`, such as
+   * `process.env.GITHUB_REPOSITORY`.
+   */
+  tenant: string;
+  mode: RecordingMode;
+  rules: RecordingRule[];
+  /** Default: all origins of the service. */
+  allow?: string[];
+  /**
+   * The name of the run in Sentry, such as
+   * `${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}`. Default: the run id.
+   */
+  name?: string;
+}
+
+/** A run that the service created. */
+export interface RemoteRun {
+  /** The id of the run. */
+  id: string;
+  /** The proxy URL, with the run id and token as its user and password. */
   url: string;
-  /** The bearer token of the control API. */
+  /** The run token. Session and stats calls use it. */
   token: string;
+  /** The base URL of the control API of the run. */
+  controlUrl: string;
   /** The PEM certificate of the authority that signs intercepted hosts. */
   caCert: string;
 }

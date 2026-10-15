@@ -1,19 +1,16 @@
 /**
  * The traffic that evals record.
  *
- * Global setup starts Roach, the recording proxy in `src/roach/` with
- * this configuration. The proxy knows nothing about Junior. This file is the
- * one place that decides which eval requests are recorded and replayed. To
- * record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE` sets the mode:
- * `auto` (the default), `replay`, `record`, or `off`.
- * `EVAL_RECORDINGS_USED_FILE` names a file where the proxy lists the
- * recordings that passing tests used. The prune workflow gives these files
- * to `roach/cli.ts prune`. `EVAL_RECORDING_MISSES_DIR` names a
- * directory where the proxy writes each request that had no recording.
+ * Global setup starts a run on Roach, the shared recording service
+ * (`src/roach/`), with this configuration. Roach knows nothing about Junior.
+ * This file is the one place that decides which eval requests are recorded
+ * and replayed. To record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE`
+ * sets the mode: `auto`, `replay`, `record`, or `off`. Without it, a run with
+ * the write token (`ROACH_TOKEN`) uses `auto`, and a run without it uses
+ * `replay`, because the service allows only `replay` without the token.
  */
-import { fileURLToPath } from "node:url";
 import { USER_AGENT } from "@/chat/tools/web/constants";
-import type { RecordingMode, RoachConfig, RecordingRule } from "./roach/types";
+import type { RecordingMode, RecordingRule, RunConfig } from "./roach/types";
 import { NOT_AFTER_WORD, VALUE_PATTERNS } from "./roach/values";
 
 /**
@@ -87,11 +84,22 @@ const ALLOWED_ORIGINS = [
  */
 export const NO_PROXY = "localhost,127.0.0.1,::1,.trycloudflare.com";
 
-/** The committed recordings of the eval package. */
-const RECORDINGS_DIR = fileURLToPath(new URL("../recordings", import.meta.url));
+/**
+ * The Roach service of Sentry. See "Deploy" in the `README.md` of
+ * `getsentry/roach`.
+ */
+export const ROACH_URL = "https://roach-proxy.getsentry.net";
 
-function readMode(): RecordingMode {
-  const value = process.env.VITEST_EVALS_REPLAY_MODE?.trim() || "auto";
+/**
+ * The tenant of the recordings. Each local and CI run of Junior evals uses
+ * the same recordings, also a run of a fork.
+ */
+const TENANT = "getsentry/junior";
+
+function readMode(canWrite: boolean): RecordingMode {
+  const value =
+    process.env.VITEST_EVALS_REPLAY_MODE?.trim() ||
+    (canWrite ? "auto" : "replay");
   if (
     value === "auto" ||
     value === "off" ||
@@ -106,25 +114,20 @@ function readMode(): RecordingMode {
 }
 
 /**
- * Environment variables with real credentials in CI. The proxy never writes
- * their values. It also learns credentials from request headers.
+ * The Roach run configuration of this eval invocation. `canWrite` tells if
+ * the invocation has the write token of the service.
  */
-const SECRET_ENV = [
-  "AI_GATEWAY_API_KEY",
-  "SENTRY_EVALS_API_KEY",
-  "VERCEL_OIDC_TOKEN",
-  "VERCEL_TOKEN",
-];
-
-/** The Roach configuration of this eval run. */
-export function roachConfig(): RoachConfig {
-  return {
-    directory: RECORDINGS_DIR,
-    mode: readMode(),
+export function roachRunConfig(canWrite: boolean): RunConfig {
+  const config: RunConfig = {
+    tenant: TENANT,
+    mode: readMode(canWrite),
     allow: ALLOWED_ORIGINS,
     rules: RECORDING_RULES,
-    usedFile: process.env.EVAL_RECORDINGS_USED_FILE?.trim() || undefined,
-    missDirectory: process.env.EVAL_RECORDING_MISSES_DIR?.trim() || undefined,
-    secrets: SECRET_ENV.flatMap((name) => process.env[name]?.trim() || []),
   };
+  // The name of the run in the metrics of the service.
+  const runId = process.env.GITHUB_RUN_ID?.trim();
+  if (runId) {
+    config.name = `${runId}-${process.env.GITHUB_RUN_ATTEMPT?.trim() || "1"}`;
+  }
+  return config;
 }

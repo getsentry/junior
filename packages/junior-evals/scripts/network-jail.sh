@@ -6,17 +6,15 @@
 # The command runs with the group `junior-evals-net`. Firewall rules let
 # that group connect only to:
 #
-# - loopback: Roach, local fixture servers, Postgres, Redis.
+# - loopback: local fixture servers, Postgres, Redis.
 # - DNS.
+# - The Roach service (`ROACH_HOST`), on HTTPS. All eval traffic to other
+#   origins goes through it.
 # - Cloudflare, on the ports of Cloudflare Tunnel. cloudflared and the Quick
 #   Tunnel of the sandbox egress (`src/eval-egress.ts`) use it.
 #
 # The firewall rejects every other connection. So a request that does not
 # use the proxy fails at once, and does not silently go live.
-#
-# Roach must reach upstream origins, so it starts outside the
-# group. `EVAL_ROACH_LAUNCHER` gives the command for that to
-# `src/recording-run.ts`.
 #
 # This is a guard against mistakes, not a security boundary: the command
 # can still use sudo. Linux only. Needs passwordless sudo, iptables, and
@@ -30,6 +28,8 @@ fi
 
 group=junior-evals-net
 chain=JUNIOR_EVALS_NET
+# The host of `ROACH_URL` in `src/recording-rules.ts`.
+ROACH_HOST=roach-proxy.getsentry.net
 # From https://www.cloudflare.com/ips/.
 cloudflare_v4=(
   173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22
@@ -44,12 +44,28 @@ cloudflare_v6=(
 # HTTPS, and Cloudflare Tunnel connections to the Cloudflare network.
 cloudflare_ports=443,7844
 
+# The addresses of the Roach service, read once before the rules start.
+mapfile -t roach_v4 < <(getent ahostsv4 "$ROACH_HOST" | awk '{ print $1 }' | sort -u)
+mapfile -t roach_v6 < <(getent ahostsv6 "$ROACH_HOST" | awk '$1 !~ /^::ffff:/ { print $1 }' | sort -u)
+if [[ ${#roach_v4[@]} -eq 0 && ${#roach_v6[@]} -eq 0 ]]; then
+  echo "Cannot resolve the Roach service $ROACH_HOST" >&2
+  exit 1
+fi
+
 getent group "$group" >/dev/null || sudo groupadd "$group"
 jail_gid=$(getent group "$group" | cut -d: -f3)
 
-# Replace the rules of the chain. Keep one jump from OUTPUT to it.
+# Replace the rules of the chain. Keep one jump from OUTPUT to it. The
+# arguments are the table command, the Roach addresses, `--`, and the
+# Cloudflare ranges.
 jail_rules() {
   local tables=$1
+  shift
+  local roach=()
+  while [[ $# -gt 0 && $1 != -- ]]; do
+    roach+=("$1")
+    shift
+  done
   shift
   sudo "$tables" -N "$chain" 2>/dev/null || sudo "$tables" -F "$chain"
   sudo "$tables" -C OUTPUT -m owner --gid-owner "$jail_gid" -j "$chain" \
@@ -58,6 +74,10 @@ jail_rules() {
   sudo "$tables" -A "$chain" -o lo -j ACCEPT
   sudo "$tables" -A "$chain" -p udp --dport 53 -j ACCEPT
   sudo "$tables" -A "$chain" -p tcp --dport 53 -j ACCEPT
+  local address
+  for address in "${roach[@]}"; do
+    sudo "$tables" -A "$chain" -d "$address" -p tcp --dport 443 -j ACCEPT
+  done
   local range
   for range in "$@"; do
     sudo "$tables" -A "$chain" -d "$range" -p tcp -m multiport \
@@ -68,19 +88,13 @@ jail_rules() {
   sudo "$tables" -A "$chain" -j REJECT
 }
 
-jail_rules iptables "${cloudflare_v4[@]}"
+jail_rules iptables "${roach_v4[@]}" -- "${cloudflare_v4[@]}"
 if command -v ip6tables >/dev/null; then
-  jail_rules ip6tables "${cloudflare_v6[@]}"
+  jail_rules ip6tables "${roach_v6[@]}" -- "${cloudflare_v6[@]}"
 fi
 
 # `sudo` resets PATH and HOME. `setpriv` then drops root again.
 as_user=(sudo -n -E env "PATH=$PATH" "HOME=$HOME" setpriv
   "--reuid=$(id -u)" --init-groups)
-launcher=("${as_user[@]}" "--regid=$(id -g)" --)
-EVAL_ROACH_LAUNCHER=$(
-  node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' \
-    "${launcher[@]}"
-)
-export EVAL_ROACH_LAUNCHER
 
 exec "${as_user[@]}" "--regid=$jail_gid" -- "$@"
