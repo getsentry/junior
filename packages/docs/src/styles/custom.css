@@ -105,6 +105,14 @@ body:has(.jr-home) main {
   overflow: hidden;
 }
 
+/*
+ * Starlight centers .sl-container only at 72rem and wider. The full-width
+ * homepage bands use calc(50% - 50vw), which needs a centered parent.
+ */
+body:has(.jr-home) .sl-container {
+  margin-inline: auto;
+}
+
 :root:not([data-has-sidebar]) .hero {
   box-sizing: border-box;
   margin-inline: calc(50% - 50vw);
