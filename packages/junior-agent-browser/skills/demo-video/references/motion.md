@@ -66,7 +66,7 @@ export function cue(id: string, phrase: string, nth = 0): number {
 }
 ```
 
-Write cues as `cue('02', 'open the screening')`, not frame numbers. Offset small amounts (`- 6`, `+ 10`) so motion arrives just before or as the word lands.
+Write cues as `cue('02', 'open the screening')`, not frame numbers. A cue is the frame where the word starts. Offset small amounts (`- 6`, `+ 10`) for short motion, such as a highlight or a caption, so it arrives just before or as the word lands. For motion that takes longer, start it earlier by its duration. See the camera example below.
 
 ## Guided Camera
 
@@ -102,6 +102,7 @@ export function camera(
 // Render: <Img style={{transformOrigin: '0 0', transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.s})`}} />
 ```
 
+- `f` is the frame where a move starts. `d` is its length (default 26 frames). The move ends at `f + d`. To make the camera arrive on a word, start the move one duration before the cue: `{ f: cue('02', 'open the screening') - 26, cx, cy, w }`. If you set `f` to the cue, the camera arrives `d` frames after the word.
 - `w` is the visible capture width. A smaller `w` zooms in. Stay at or above about 70% of the capture width; stronger zooms blur 1× captures.
 - Put frame edges between page sections. Do not cut a heading or card title through the middle.
 - Return to a wider view when the narration summarizes.
