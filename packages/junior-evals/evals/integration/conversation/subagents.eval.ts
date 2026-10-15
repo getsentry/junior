@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { slackMention } from "@junior-evals/fixture/inputs";
+import { reply, slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -26,25 +26,33 @@ describe("Child Agents", () => {
     ]);
   });
 
-  test("when the parent delegates, the brief carries the target repo, verified facts, and done criteria", async ({
+  test("when the parent delegates, the brief carries facts from earlier thread messages", async ({
     agent,
   }) => {
     const { run } = await agent({ experimental: { subagents: true } });
     const conversation = await run(
       slackMention(
-        'We work on getsentry/junior. I already checked that README.md has the typo "recieve" on line 12. Delegate this to a child agent: it should write a one-paragraph plan to fix the typo, with no repo changes. The work is done when the plan names the file and the correct word "receive". Then post the plan here.',
+        "Hand that typo fix plan off to a child agent and post the plan here. No repo changes.",
       ),
+      {
+        history: [
+          slackMention(
+            'I already checked that README.md has the typo "recieve" on line 12.',
+          ),
+          reply("Got it."),
+        ],
+      },
     );
 
     const tasks = completedToolCalls("spawnAgent", conversation).map(
       (call) => (call.input as { task?: string } | undefined)?.task ?? "",
     );
     expect(tasks).toHaveLength(1);
-    // The child gets no thread history, so the brief must name the repo,
-    // the verified fact, and the done criteria itself.
-    expect(tasks[0]).toContain("getsentry/junior");
+    // The child gets no thread history, so the brief must carry the fact
+    // from the earlier message.
     expect(tasks[0]).toContain("README.md");
-    expect(tasks[0]).toContain("receive");
+    expect(tasks[0]).toMatch(/recieve|receive/);
+    expect(tasks[0]).toContain("12");
   });
 
   test("when a child agent is missing input, it reports the block and the parent says what is missing", async ({
