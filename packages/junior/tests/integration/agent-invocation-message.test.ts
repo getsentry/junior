@@ -8,6 +8,7 @@ import {
   completeAgentInvocation,
   createAgentInvocation,
   getAgentInvocation,
+  getAgentInvocationId,
   getAgentInvocationIdForMessage,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
@@ -110,6 +111,7 @@ describe("messageAgent", () => {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
         agentName: "researcher",
+        modelProfile: "handoff",
         idempotencyKey: "message-child",
         parentToolCallId: "call-spawn",
       });
@@ -139,6 +141,14 @@ describe("messageAgent", () => {
         delivery: "queued",
       });
       expect(await mailbox(child.childConversationId)).toHaveLength(1);
+      await expect(
+        getAgentInvocation(
+          getAgentInvocationId(
+            slackParentConversationId,
+            "parent-turn:call-message",
+          ),
+        ),
+      ).resolves.toMatchObject({ modelProfile: "handoff" });
       await expect(sendFromParent("nobody", "call-unknown")).rejects.toThrow(
         /"nobody" is not "parent" or a child agent/,
       );

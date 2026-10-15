@@ -5,7 +5,7 @@ import {
   buildSteeringPiMessage,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
-import type { AgentSteeringMessage } from "@/chat/agent/types";
+import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
   instructionProvenanceFor,
@@ -92,6 +92,24 @@ type EnqueueOptions = {
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 };
+
+/** Map a durable invocation's model settings and depth to the child Run policy. */
+export function agentInvocationRunPolicy(
+  invocation: AgentInvocation,
+  canSpawn: boolean,
+): Pick<AgentRun, "disabledFeatures" | "modelProfile" | "reasoning"> {
+  return {
+    disabledFeatures: canSpawn
+      ? ["handoff", "interactive-auth"]
+      : ["handoff", "interactive-auth", "subagents"],
+    ...(invocation.modelProfile
+      ? { modelProfile: invocation.modelProfile }
+      : undefined),
+    ...(invocation.reasoningLevel
+      ? { reasoning: invocation.reasoningLevel }
+      : undefined),
+  };
+}
 
 /** Build destinationless mailbox work that references one durable invocation. */
 export function buildAgentInvocationInboundMessage(
@@ -709,10 +727,7 @@ export function createAgentInvocationWorker(
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
           // of pausing for an OAuth link.
-          disabledFeatures: canSpawn
-            ? ["handoff", "interactive-auth"]
-            : ["handoff", "interactive-auth", "subagents"],
-          reasoning: invocation.reasoningLevel,
+          ...agentInvocationRunPolicy(invocation, canSpawn),
           state: {
             sandboxRef,
           },

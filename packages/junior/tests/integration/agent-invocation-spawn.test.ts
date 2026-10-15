@@ -159,12 +159,19 @@ describe("agent invocation spawn and result delivery", () => {
         queue,
       });
       expect(spawnAgent).toBeDefined();
-      const tool = createSpawnAgentTool(spawnAgent!);
+      const tool = createSpawnAgentTool(spawnAgent!, {
+        activeProfile: () => "standard",
+        profiles: [
+          { name: "standard" },
+          { name: "handoff", description: "Implementation work." },
+        ],
+      });
       const input = tool.prepareArguments!({
         task: "Inspect the failing checks.",
         title: "Failing checks",
         name: "reviewer",
         reasoning_level: "high",
+        profile: "handoff",
       });
 
       const first = await tool.execute!(input, { toolCallId: "call-1" });
@@ -185,6 +192,7 @@ describe("agent invocation spawn and result delivery", () => {
         destination,
         input: "Inspect the failing checks.",
         parentConversationId,
+        modelProfile: "handoff",
         reasoningLevel: "high",
         title: "Failing checks",
       });

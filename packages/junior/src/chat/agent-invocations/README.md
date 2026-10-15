@@ -13,8 +13,9 @@ stores the terminal result for its parent to read later.
   `messageAgent`.
 - An **agent invocation** is one retry-safe task sent to a child. Its
   `invocationId` is derived from the parent conversation and caller-supplied
-  idempotency key. Optional reasoning level is per-invocation policy, not
-  binding state.
+  idempotency key. The invocation stores its model profile and optional
+  reasoning level. Later `messageAgent` invocations keep the child's original
+  profile.
 - A `spawnAgent` invocation stores a short `title` of its task. The parent can
   give the title. If it does not, the tool makes one from the task with the
   fast model, the same way Automations get their titles. A replayed call keeps
@@ -22,8 +23,8 @@ stores the terminal result for its parent to read later.
   title.
 - An invocation without a name gets an invocation-scoped child conversation.
 - `parentConversationId` is immutable. Bindings and invocation content are
-  purged with their root Conversation tree. Children cannot hand off model
-  profiles or otherwise override their run policy.
+  purged with their root Conversation tree. A child cannot hand off its own
+  active model profile or otherwise change its run policy.
 - `limits.maxAgentDepth` is the number of child levels that can start their
   own children. The default, 0, lets only the root start children. The worker
   hides `spawnAgent` from deeper children.
@@ -209,14 +210,21 @@ final Run carries the root Location once, separate from Source and Delivery.
 `subagents` feature is enabled via
 `createApp({ experimental: { subagents: true } })` (or automatically in
 `junior chat`, the local createApp-equivalent entrypoint). It is off by default
-so deployments can ship the runtime without advertising the model-facing tool. The
-tool receives only the delegated task, optional child name, and optional
-per-task reasoning level. The runtime derives actor, credentials, destination,
-visibility, source, parent conversation, and idempotency from the active tool
-call. Child runs set
-`disabledFeatures: ["handoff", "interactive-auth"]` so they cannot hand off
-models or start interactive OAuth pauses. They also disable `subagents` when
-they are deeper than `limits.maxAgentDepth`.
+so deployments can ship the runtime without advertising the model-facing tool.
+The tool receives the delegated task, optional child name, optional model
+profile, and optional per-task reasoning level. Profile names must match the
+configured profiles. If the parent omits the profile, the child uses the
+profile active for the spawning Turn. The invocation stores this profile, so
+retries and later `messageAgent` invocations use the same one. A profile's
+reasoning level applies unless the parent sets `reasoning_level`.
+
+The runtime derives actor, credentials, destination, visibility, source, parent
+conversation, and idempotency from the active tool call. Child runs set
+`disabledFeatures: ["handoff", "interactive-auth"]`. With handoff disabled,
+the child uses the stored profile on a fixed route and does not call the turn
+router. Children cannot hand off models or start interactive OAuth pauses.
+They also disable `subagents` when they are deeper than
+`limits.maxAgentDepth`.
 TODO(dcramer): Issues #881 and #883 track a way for children to force interactive
 auth when a delegated tool requires credentials the parent can already request.
 

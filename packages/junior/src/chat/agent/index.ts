@@ -440,7 +440,7 @@ async function executeAgentRunInPrivacyContext(
   };
   try {
     const projection = await openConversationProjection({ conversationId });
-    activeModelProfile = projection.modelProfile;
+    activeModelProfile = run.modelProfile ?? projection.modelProfile;
     activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
@@ -782,6 +782,24 @@ async function executeAgentRunInPrivacyContext(
       enabled: handoffEnabled,
       execute: handoffExecute,
     });
+    const spawnProfileNames = [
+      botConfig.defaultProfile,
+      ...Object.keys(botConfig.profiles)
+        .filter((profile) => profile !== botConfig.defaultProfile)
+        .sort(),
+    ];
+    const toSpawnAgentProfile = (name: ModelProfile) => ({
+      name,
+      description: profileConfig(botConfig, name).description,
+    });
+    const [firstSpawnProfile, ...otherSpawnProfiles] = spawnProfileNames;
+    const spawnAgentProfiles = {
+      activeProfile: () => activeModelProfile,
+      profiles: [
+        toSpawnAgentProfile(firstSpawnProfile!),
+        ...otherSpawnProfiles.map(toSpawnAgentProfile),
+      ] as const,
+    };
 
     setTags({
       ...runLogContext,
@@ -816,6 +834,7 @@ async function executeAgentRunInPrivacyContext(
       preAgentPromptMessages,
       recordConnectedMcpProvider,
       requestHandoff,
+      spawnAgentProfiles,
       resume: runResume,
       run,
       skillSandbox,

@@ -36,6 +36,12 @@ interface HandoffProfile {
   name: ModelProfile;
 }
 
+export interface SpawnAgentProfileControl {
+  activeProfile: () => ModelProfile;
+  /** All configured profiles, including the active one. */
+  profiles: readonly [HandoffProfile, ...HandoffProfile[]];
+}
+
 interface HandoffControl {
   activeProfile: HandoffProfile;
   /** Non-empty list of other configured profiles. */
@@ -96,6 +102,7 @@ interface BaseToolRuntimeContext {
   handoff?: HandoffControl;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
+  spawnAgentProfiles?: SpawnAgentProfileControl;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.

@@ -23,6 +23,7 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
+import type { ModelProfile } from "@/chat/model-profile";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -67,6 +68,7 @@ export type AgentSteeringMessage = {
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   name?: string;
+  profile: ModelProfile;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
   title?: string;
@@ -288,6 +290,8 @@ export type AgentRun = {
   deadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
+  /** Fixed model profile for this run. */
+  modelProfile?: ModelProfile;
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoning?: TurnReasoningLevel;
   environment?: AgentEnvironment;

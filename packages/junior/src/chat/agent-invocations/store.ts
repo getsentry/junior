@@ -168,6 +168,7 @@ export function invocationFromRow(
     ...(row.parentToolCallId
       ? { parentToolCallId: row.parentToolCallId }
       : undefined),
+    ...(row.modelProfile ? { modelProfile: row.modelProfile } : undefined),
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
       : undefined),
@@ -195,6 +196,7 @@ function sameCreateInput(
     invocation.parentConversationId === input.parentConversationId &&
     invocation.agentName === input.agentName &&
     invocation.input === input.input &&
+    invocation.modelProfile === input.modelProfile &&
     invocation.reasoningLevel === input.reasoningLevel &&
     JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
     JSON.stringify(invocation.credentialContext) ===
@@ -460,6 +462,7 @@ export async function createAgentInvocation(
         credentialContext: input.credentialContext ?? null,
         source: { kind: "agent_invocation" },
         destination: input.destination,
+        modelProfile: input.modelProfile ?? null,
         reasoningLevel: input.reasoningLevel ?? null,
         parentToolCallId: input.parentToolCallId ?? null,
         status: "pending",
@@ -509,6 +512,7 @@ export async function createAgentInvocationFromLatest(
       credentialContext: (args.runAs ?? args.latest).credentialContext ?? null,
       source: args.runAs?.source ?? { kind: "agent_invocation" },
       destination: args.latest.destination,
+      modelProfile: args.latest.modelProfile ?? null,
       reasoningLevel: args.latest.reasoningLevel ?? null,
       status: "pending",
       mailboxStatus: "pending",
@@ -672,6 +676,7 @@ export async function createAgentInvocationForMessage(
           credentialContext: input.credentialContext ?? null,
           source: { kind: "agent_invocation" },
           destination: input.destination,
+          modelProfile: latest.modelProfile ?? null,
           reasoningLevel: latest.reasoningLevel ?? null,
           parentToolCallId: input.parentToolCallId,
           status: "pending",
