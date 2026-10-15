@@ -3,6 +3,7 @@ import {
   createEventSource,
   createLocalSource,
   createSlackSource,
+  createWebSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
@@ -148,7 +149,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
-    expect(tools).toHaveProperty("slackButtonsPost");
+    expect(tools).toHaveProperty("requestUserInput");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
     expect(tools).toHaveProperty("searchConversationBriefs");
@@ -313,6 +314,26 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("sendFiles");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).not.toHaveProperty("addReaction");
+  });
+
+  it("registers user input only where a person can answer it", () => {
+    const webTools = createTools(
+      [],
+      {},
+      {
+        conversationId: "web:test:user-input",
+        destination: {
+          platform: "local",
+          conversationId: "web:test:user-input",
+        },
+        egress: noopEgress,
+        source: createWebSource("web:test:user-input", "private"),
+        workspace: noopSandbox,
+      },
+    );
+
+    expect(webTools).toHaveProperty("requestUserInput");
+    expect(createTools([], {}, ctx())).not.toHaveProperty("requestUserInput");
   });
 
   it("does not register Slack tools for local destinations", () => {

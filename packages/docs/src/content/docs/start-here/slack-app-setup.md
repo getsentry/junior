@@ -89,7 +89,7 @@ Set the Interactivity request URL to the same webhook route:
 https://<your-domain>/api/webhooks/slack
 ```
 
-Junior uses interactivity for App Home actions such as disconnecting provider accounts. It also uses it for buttons that Junior posts in a thread. The first click on a button message starts a new Turn in that thread for the person who clicked. Junior then replaces the buttons with that person's choice.
+Junior uses interactivity for App Home actions such as disconnecting provider accounts. It also uses it when Junior asks a question with choices. Junior shows each choice as a button. The first click sends that choice as a reply from the person who clicked, in the same thread. Junior then replaces the buttons with that person's choice.
 
 ## Add the slash command
 

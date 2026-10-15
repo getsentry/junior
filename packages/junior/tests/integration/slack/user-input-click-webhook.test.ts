@@ -3,7 +3,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { Message, type SerializedMessage } from "chat";
 import { closeDb } from "@/chat/db";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
-import { buildSlackButtonMessage } from "@/chat/slack/buttons";
+import { buildSlackUserInputMessage } from "@/chat/slack/user-input";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -19,18 +19,15 @@ import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-clien
 
 const ORIGINAL_ENV = { ...process.env };
 const THREAD_TS = "1712345.0001";
-const BUTTON_MESSAGE_TS = "1712345.0002";
+const QUESTION_TS = "1712345.0002";
 
-function buttonClickPayload(args: {
+function choiceClickPayload(args: {
   actionTs: string;
   userId: string;
 }): Record<string, unknown> {
-  const posted = buildSlackButtonMessage({
-    text: "Ship this release?",
-    buttons: [
-      { label: "Ship it", value: "ship release 1.2.3", style: "primary" },
-      { label: "Hold", value: "hold release 1.2.3" },
-    ],
+  const posted = buildSlackUserInputMessage({
+    question: "Ship release 1.2.3?",
+    options: [{ label: "Ship it" }, { label: "Hold" }],
   });
   return {
     type: "block_actions",
@@ -38,25 +35,25 @@ function buttonClickPayload(args: {
     user: { id: args.userId, team_id: "T123" },
     channel: { id: "C123" },
     message: {
-      ts: BUTTON_MESSAGE_TS,
+      ts: QUESTION_TS,
       thread_ts: THREAD_TS,
       text: posted.text,
       blocks: posted.blocks,
     },
     actions: [
       {
-        action_id: "junior_button:0",
+        action_id: "junior_user_input:0",
         action_ts: args.actionTs,
-        block_id: "junior_buttons",
+        block_id: "junior_user_input",
         text: { type: "plain_text", text: "Ship it" },
         type: "button",
-        value: "ship release 1.2.3",
+        value: "Ship it",
       },
     ],
   };
 }
 
-describe("Slack webhook: Junior button clicks", () => {
+describe("Slack webhook: user input clicks", () => {
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV, SLACK_BOT_TOKEN: "xoxb-test-token" };
     resetSlackApiMockState();
@@ -82,7 +79,7 @@ describe("Slack webhook: Junior button clicks", () => {
       const response = await handleSlackWebhook({
         request: client.form(
           new URLSearchParams({
-            payload: JSON.stringify(buttonClickPayload({ actionTs, userId })),
+            payload: JSON.stringify(choiceClickPayload({ actionTs, userId })),
           }),
         ),
         waitUntil: waitUntil.fn,
@@ -100,7 +97,7 @@ describe("Slack webhook: Junior button clicks", () => {
     return { click, queue, state };
   }
 
-  it("starts one turn from the first click and answers the button message", async () => {
+  it("sends the first clicked choice as the answer and closes the question", async () => {
     const { click, queue, state } = clickHarness();
 
     await click("U123", "1712345.0003");
@@ -113,28 +110,22 @@ describe("Slack webhook: Junior button clicks", () => {
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]).toMatchObject({
       delivery: "interrupt",
-      input: {
-        authorId: "U123",
-        text: expect.stringContaining("Button label: Ship it"),
-      },
+      input: { authorId: "U123", text: "Ship it" },
     });
-    expect(work?.messages[0]?.input.text).toContain(
-      "Button value: ship release 1.2.3",
-    );
     expect(queue.queuedMessages()).toHaveLength(1);
-    // Every Slack timestamp reader resolves the button message.
+    // Every Slack timestamp reader resolves the question message.
     const saved = work?.messages[0]?.input.metadata as
       | { message?: SerializedMessage }
       | undefined;
     if (!saved?.message) throw new Error("missing saved Slack message");
     expect(getMessageTimestamp(Message.fromJSON(saved.message))).toBe(
-      BUTTON_MESSAGE_TS,
+      QUESTION_TS,
     );
 
-    // The processing reaction marks the button message, not a missing one.
+    // The processing reaction marks the question message, not a missing one.
     expect(slackApiOutbox.reactionAdds()[0]?.params).toMatchObject({
       channel: "C123",
-      timestamp: BUTTON_MESSAGE_TS,
+      timestamp: QUESTION_TS,
     });
 
     const updates = slackApiOutbox.calls("chat.update");
@@ -143,7 +134,7 @@ describe("Slack webhook: Junior button clicks", () => {
     const parsedBlocks: unknown[] =
       typeof blocks === "string" ? JSON.parse(blocks) : (blocks as unknown[]);
     expect(parsedBlocks).toEqual([
-      { type: "markdown", text: "Ship this release?" },
+      { type: "markdown", text: "Ship release 1.2.3?" },
       {
         type: "context",
         elements: [{ type: "mrkdwn", text: "<@U123> chose *Ship it*" }],
@@ -151,7 +142,7 @@ describe("Slack webhook: Junior button clicks", () => {
     ]);
     expect(updates[0]?.params).toMatchObject({
       channel: "C123",
-      ts: BUTTON_MESSAGE_TS,
+      ts: QUESTION_TS,
     });
   });
 
@@ -167,7 +158,7 @@ describe("Slack webhook: Junior button clicks", () => {
       state,
     });
     // Heartbeat recovery runs the saved click. A later click must not add a
-    // second Turn for the same button message.
+    // second Turn for the same question.
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]?.input.authorId).toBe("U123");
     expect(slackApiOutbox.calls("chat.update")).toHaveLength(1);
