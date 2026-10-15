@@ -155,7 +155,6 @@ export function DashboardShell() {
           }
           header={
             <DashboardHeader
-              compact={workspace}
               mobileBackTo={conversationId ? "/" : undefined}
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}

@@ -341,7 +341,6 @@ function FoundationsGalleryPage() {
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
           <DashboardHeader
-            compact
             mobileNavigationOpen={navigationOpen}
             navItems={[
               { key: "code", label: "Code", to: "/code" },
