@@ -105,6 +105,7 @@ export function createResumeState(args: ResumeStateArgs) {
   // Durable across slices and history replacement; not derived from live messages.
   let cumulativeToolCallCount =
     args.checkpoint.record?.cumulativeToolCallCount ?? 0;
+  let turnLimitWrappedUp = args.checkpoint.record?.turnLimitWrappedUp ?? false;
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
@@ -126,6 +127,7 @@ export function createResumeState(args: ResumeStateArgs) {
     channelName: args.channelName,
     credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
+    ...(turnLimitWrappedUp ? { turnLimitWrappedUp } : undefined),
     destination: args.destination,
     dispatchId: args.dispatchId,
     source: args.runSource,
@@ -152,6 +154,14 @@ export function createResumeState(args: ResumeStateArgs) {
     /** Usage that earlier slices of this turn saved. */
     get priorSliceUsage(): AgentTurnUsage | undefined {
       return args.checkpoint.record?.cumulativeUsage;
+    },
+    /** True when an earlier step of this turn was blocked by the turn limit. */
+    get turnLimitWrappedUp(): boolean {
+      return turnLimitWrappedUp;
+    },
+    /** Record the turn-limit wrap-up so later slices stop instead. */
+    markTurnLimitWrappedUp(): void {
+      turnLimitWrappedUp = true;
     },
     /** Charge one tool call to the durable turn total and return the total. */
     countToolCall(): number {

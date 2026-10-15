@@ -724,6 +724,8 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    // Model calls that a retry discarded. They still cost money.
+    let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate();
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
@@ -1133,6 +1135,7 @@ async function executeAgentRunInPrivacyContext(
             addAgentTurnUsage(
               runResume.priorSliceUsage,
               priorPhaseUsage,
+              discardedRetryUsage,
               usageSinceCurrentBoundary(currentAgentMessages()),
             ),
           ) ?? 0;
@@ -1141,11 +1144,13 @@ async function executeAgentRunInPrivacyContext(
           assistantMessage,
           overLimit:
             overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
+          wrappedUpBefore: runResume.turnLimitWrappedUp,
         });
         if (decision === "allow") {
           return undefined;
         }
         if (decision === "wrap_up") {
+          runResume.markTurnLimitWrappedUp();
           logWarn("agent.turn.limit.wrap_up", {
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
@@ -1506,7 +1511,7 @@ async function executeAgentRunInPrivacyContext(
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
-          let discardedRetryUsage: AgentTurnUsage | undefined;
+          discardedRetryUsage = undefined;
           let actionConfirmationRetryUsed = false;
           let automationResultReminderUsed = !requireAutomationResult;
           let providerRetryAttempt = 0;

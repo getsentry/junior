@@ -58,18 +58,27 @@ export type TurnLimitDecision = "allow" | "wrap_up" | "stop";
  * The first model step past a limit gets `wrap_up`: its tool calls are blocked
  * and the model can reply with its progress. A later step that still calls
  * tools gets `stop`, which ends the turn with an execution-limit error.
+ * `wrappedUpBefore` carries a durable wrap-up from an earlier slice of the
+ * same turn, so a resumed slice stops instead of wrapping up again.
  */
 export function createTurnLimitGate(): (args: {
   assistantMessage: object;
   overLimit: boolean;
+  wrappedUpBefore: boolean;
 }) => TurnLimitDecision {
   let wrapUpStep: object | undefined;
-  return ({ assistantMessage, overLimit }) => {
+  return ({ assistantMessage, overLimit, wrappedUpBefore }) => {
     if (!overLimit) {
       return "allow";
     }
-    wrapUpStep ??= assistantMessage;
-    return wrapUpStep === assistantMessage ? "wrap_up" : "stop";
+    if (wrapUpStep === assistantMessage) {
+      return "wrap_up";
+    }
+    if (wrapUpStep || wrappedUpBefore) {
+      return "stop";
+    }
+    wrapUpStep = assistantMessage;
+    return "wrap_up";
   };
 }
 
