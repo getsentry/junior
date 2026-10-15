@@ -215,9 +215,9 @@ The tool receives the delegated task, optional child name, optional model
 profile, and optional per-task reasoning level. The parent should normally
 choose a profile that fits the task, using the configured profile descriptions.
 Profile names must match the configured profiles. If the parent omits the
-profile, the child uses the profile active for the spawning Turn. The invocation
-stores this profile, so retries and later `messageAgent` invocations use the
-same one. A profile's reasoning level applies unless the parent sets
+profile or passes `null`, the child uses the profile active for the spawning
+Turn. The invocation stores this profile, so retries and later `messageAgent`
+invocations keep it. A profile's reasoning level applies unless the parent sets
 `reasoning_level`.
 
 The runtime derives actor, credentials, destination, visibility, source, parent

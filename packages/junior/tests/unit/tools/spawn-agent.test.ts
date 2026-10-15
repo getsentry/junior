@@ -76,6 +76,30 @@ describe("spawnAgent", () => {
     );
   });
 
+  it("treats a null profile as omitted and uses the active parent profile", async () => {
+    const spawnAgent = vi.fn().mockResolvedValue({
+      childConversationId: "agent:one",
+    });
+    const tool = createSpawnAgentTool(spawnAgent, profileControl);
+
+    await tool.execute!(
+      tool.prepareArguments!({
+        task: "Look up the release status.",
+        title: "Release status",
+        profile: null,
+      }),
+      { toolCallId: "call-null-profile" },
+    );
+    expect(spawnAgent).toHaveBeenCalledWith(
+      {
+        task: "Look up the release status.",
+        title: "Release status",
+        profile: "standard",
+      },
+      { toolCallId: "call-null-profile" },
+    );
+  });
+
   it("accepts only configured profiles and passes an explicit choice", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",

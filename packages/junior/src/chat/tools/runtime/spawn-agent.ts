@@ -85,9 +85,10 @@ export function createSpawnAgentTool(
             "New child-agent name that messageAgent can address, or omit for a one-off agent",
           ),
         profile: profileSchema
+          .nullable()
           .optional()
           .describe(
-            "Exact configured profile whose task-fit description matches the delegated task. The parent should normally set this; omit to use the active profile for this turn.",
+            "Exact configured profile whose task-fit description matches the delegated task. The parent should normally set this; omit or pass null to use the active profile for this turn.",
           ),
         reasoning_level: z
           .enum(TURN_REASONING_LEVELS)
