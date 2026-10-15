@@ -1206,6 +1206,12 @@ async function executeAgentRunInPrivacyContext(
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
           const handoffUpdate = applyPendingHandoff();
+          // Pi runs this hook after an abort, such as an auth pause, but no
+          // model call follows. Sandbox work here fails on the aborted signal
+          // and hides why the run stopped. Steering stays queued.
+          if (hookSignal?.aborted) {
+            return handoffUpdate;
+          }
           // Pi appends steering after this hook returns, so add AGENTS.md
           // context first to commit the same message order.
           const contextUpdate = await repositoryInstructionsContext.applyUpdate(

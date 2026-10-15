@@ -4,6 +4,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import {
   completeAuth,
+  file,
   githubWebhook,
   person,
   slackCommand,
@@ -14,6 +15,7 @@ import { insertWatch } from "@junior-evals/fixture/insert";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import {
   completedMcpToolCalls,
+  completedToolCalls,
   toolCallsOf,
 } from "@junior-evals/fixture/results";
 import {
@@ -27,6 +29,20 @@ const BOB = person("UBOB", "Bob");
 const BUDGET_ECHO = "mcp__eval-auth__budget-echo";
 const HANDBOOK_SEARCH = "mcp__eval-handbook__handbook-search";
 const PULL_REQUEST = "getsentry/junior#691";
+// Too many rows to add up by eye, so Junior totals the file in the sandbox.
+const Q3_SPEND_AMOUNTS = Array.from(
+  { length: 240 },
+  (_, index) => 100 + ((index * 37) % 900),
+);
+const Q3_SPEND = file(
+  "q3-vendor-spend.csv",
+  "text/csv",
+  [
+    "vendor,amount_usd",
+    ...Q3_SPEND_AMOUNTS.map((amount) => `Acme,${amount}`),
+  ].join("\n"),
+);
+const Q3_SPEND_TOTAL = Q3_SPEND_AMOUNTS.reduce((sum, amount) => sum + amount);
 
 function turnStates(conversation: Conversation) {
   return conversation.turns.map((turn) => turn.status);
@@ -102,6 +118,35 @@ describe("MCP Authorization", () => {
     const resumed = await paused.continue(completeAuth("eval-auth"));
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
     expect(resumed.replies).toHaveLength(1);
+  });
+
+  test("when Junior used the sandbox before the provider needs authorization, the authorization resumes the turn", async ({
+    run,
+  }) => {
+    const paused = await run(
+      slackMention(
+        "/eval-auth Here is our Q3 vendor spend export. Total it up, then look up the budget so I can compare.",
+        { author: ALICE, files: [Q3_SPEND] },
+      ),
+    );
+    expect(turnStates(paused)).toEqual(["started"]);
+    expect(completedToolCalls("loadAttachment", paused)).not.toEqual([]);
+    expect(completedMcpToolCalls(BUDGET_ECHO, paused)).toEqual([]);
+
+    // A teammate posts in the thread before Alice opens her link.
+    await paused.continue(
+      slackThreadMessage("Finance needs this before Friday.", { author: BOB }),
+    );
+
+    const resumed = await paused.continue(
+      completeAuth("eval-auth", { author: ALICE }),
+    );
+    expect(turnStates(resumed)).toEqual(["succeeded"]);
+    expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
+    expect(resumed.replies).toHaveLength(1);
+    expect(resumed.replies[0]?.text.replaceAll(",", "")).toContain(
+      String(Q3_SPEND_TOTAL),
+    );
   });
 
   test("when the person drops the request and authorizes later, answer the new request and do not run the dropped one", async ({
