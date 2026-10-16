@@ -13,7 +13,7 @@ export type StatusChipTone =
 export type StatusChipSize = "default" | "compact";
 
 const toneClass: Record<StatusChipTone, string> = {
-  accent: "text-violet-300",
+  accent: "text-dashboard-accent",
   danger: "text-rose-300",
   info: "text-cyan-300",
   neutral: "text-dashboard-text-muted",

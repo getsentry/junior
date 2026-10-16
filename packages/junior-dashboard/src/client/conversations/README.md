@@ -16,6 +16,15 @@ shared controls and overlays.
   `flush` when the text already sits on the transcript edge. It extends the
   padded control around that text. Do not repeat negative margins at call sites.
   The caller owns the native `details` element and its content.
+- Activity rows (tools, reasoning, and grouped rail events) share one
+  layout: a 1rem icon column, an 8px gap, then the title and metadata.
+  Expanded content sits in `transcriptActivityBodyClass` under the title.
+  `TranscriptActivityNesting` tells a rail event that it is inside an activity
+  group. Outside a group, the rail icon sits in the avatar column so the text
+  lines up with message text.
+- `TranscriptSubagentView` renders a child agent as a card with its name,
+  status, run time, and title. It matches the child agent rows in the details
+  drawer and opens the child transcript.
 - `TranscriptAttachments` owns wrapping for both message attachments and file
   deliveries. `ImageAttachment` owns image previews.
 - `TranscriptTurnContextView` owns context content. The shared `Drawer` owns

@@ -186,6 +186,7 @@ export function ConversationPage(props: {
       conversation: ConversationTranscript;
     }) => {
       setSubagentTarget({
+        ...(part.agentName ? { agentName: part.agentName } : undefined),
         conversationId: part.childConversationId,
         label: part.title ?? part.agentName,
         status: part.status,

@@ -26,11 +26,12 @@ export const TranscriptText = memo(function TranscriptText(props: {
         }
 
         return (
-          <HighlightedCode
-            code={block.code}
+          <div
+            className="min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5"
             key={index}
-            language={block.language}
-          />
+          >
+            <HighlightedCode code={block.code} language={block.language} />
+          </div>
         );
       })}
     </div>

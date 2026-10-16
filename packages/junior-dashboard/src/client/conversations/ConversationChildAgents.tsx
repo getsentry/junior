@@ -130,7 +130,10 @@ function ChildAgentRow(props: {
           conversationId: agent.conversationId,
           ...(agent.redacted
             ? undefined
-            : { label: agent.title ?? agent.name }),
+            : {
+                ...(agent.name ? { agentName: agent.name } : undefined),
+                label: agent.title ?? agent.name,
+              }),
           status: agent.status,
         })
       }
@@ -143,7 +146,7 @@ function ChildAgentRow(props: {
             Private subagent
           </span>
         ) : (
-          <span className="min-w-0 truncate font-mono text-dashboard-text-muted">
+          <span className="min-w-0 truncate font-medium text-dashboard-text-muted">
             {agent.name ?? "subagent"}
           </span>
         )}
@@ -185,7 +188,7 @@ function ChildAgentRow(props: {
         </span>
       ) : null}
       {stats.length > 0 ? (
-        <span className="block font-mono text-xs tabular-nums text-dashboard-text-muted">
+        <span className="block text-xs tabular-nums text-dashboard-text-muted">
           {stats.join(" · ")}
         </span>
       ) : null}

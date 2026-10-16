@@ -18,10 +18,10 @@ export function TranscriptContextEventView(props: {
       ? ` using the ${event.modelProfile} profile (${event.modelId})`
       : "";
   return (
-    <article className="min-w-0 px-0.5 py-1 first:mt-0.5">
+    <article className="min-w-0 py-0.5">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <strong
-          className={`font-display text-xs font-semibold ${
+          className={`font-sans text-xs font-semibold ${
             handoff ? "text-sky-100" : "text-amber-100"
           }`}
         >

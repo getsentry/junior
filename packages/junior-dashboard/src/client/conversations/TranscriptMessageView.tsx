@@ -160,11 +160,7 @@ function TranscriptMessageHeader(props: {
             </span>
           ) : null}
           {showSlack && timestamp ? <span aria-hidden="true">·</span> : null}
-          {props.message.role === "assistant" ? (
-            <TranscriptTimestamp value={props.message.timestamp} />
-          ) : (
-            timestamp
-          )}
+          <TranscriptTimestamp value={props.message.timestamp} />
         </span>
       ) : null}
     </TranscriptMessageHeading>

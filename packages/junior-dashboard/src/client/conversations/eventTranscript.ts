@@ -352,8 +352,12 @@ export function transcriptMessagesFromEvents(
     if (data.type === "subagent") {
       const subagentId = `${data.childConversationId}:${data.startedSeq}`;
       const existing = subagents.get(subagentId);
+      const finishedTimestamp =
+        data.status === "running" ? undefined : eventTimestamp(event);
       if (existing) {
         existing.status = data.status;
+        if (finishedTimestamp === undefined) delete existing.finishedTimestamp;
+        else existing.finishedTimestamp = finishedTimestamp;
         continue;
       }
       const part = {
@@ -362,6 +366,9 @@ export function transcriptMessagesFromEvents(
         childConversationId: data.childConversationId,
         subagentKind: data.subagentKind,
         status: data.status,
+        ...(finishedTimestamp === undefined
+          ? undefined
+          : { finishedTimestamp }),
         ...(data.agentName ? { agentName: data.agentName } : undefined),
         ...(data.task ? { task: data.task } : undefined),
         ...(data.title ? { title: data.title } : undefined),

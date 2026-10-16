@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, Wrench } from "lucide-react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -45,6 +45,12 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
   const frame = (
     <ToolFrame
       expandable={hasDetails}
+      icon={props.part.status === "error" ? TriangleAlert : Wrench}
+      iconClassName={
+        props.part.status === "error"
+          ? "text-rose-300"
+          : "text-dashboard-text-faint"
+      }
       meta={meta}
       mobileSummaryMeta={mobileSummary}
       signature={signature}
@@ -78,14 +84,6 @@ function ToolSignature(props: {
 
   return (
     <>
-      {failed ? (
-        <TriangleAlert
-          aria-hidden="true"
-          className="shrink-0 !text-rose-300"
-          size={12}
-          strokeWidth={2.2}
-        />
-      ) : null}
       <ShimmerText
         active={shimmering}
         aria-label={statusLabel}
@@ -109,8 +107,8 @@ function ToolSignature(props: {
 function ToolPayload(props: { label: string; value: unknown }) {
   const code = useMemo(() => stringifyPartValue(props.value), [props.value]);
   return (
-    <div className="min-w-0 max-w-full overflow-hidden bg-black/20 px-2.5 py-2">
-      <div className="pb-1.5 font-sans text-2xs font-bold leading-none text-dashboard-text-muted">
+    <div className="min-w-0 max-w-full overflow-hidden border-dashboard-border-subtle px-3 py-2.5 [&+&]:border-t">
+      <div className="pb-1.5 font-sans text-xs font-medium leading-none text-dashboard-text-muted">
         {props.label}
       </div>
       <HighlightedCode code={code} language="json" />

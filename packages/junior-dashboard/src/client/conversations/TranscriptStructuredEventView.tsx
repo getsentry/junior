@@ -14,24 +14,29 @@ export function TranscriptStructuredEventView(props: {
   const presentation = props.part.presentation;
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
-  // Match TranscriptRailEvent icon offset (mt-1.5) so single-line titles share a baseline.
-  const surfaceClass =
-    "min-w-0 px-0.5 pb-1 pt-1.5 font-mono text-xs leading-tight";
+  // The rail icon box is h-6. A leading-6 title shares its center line.
+  const surfaceClass = "min-w-0 font-sans text-xs";
+  // A lone detail often repeats the event title, such as "Loaded AGENTS.md"
+  // over "AGENTS.md". Skip that repeated title.
+  const repeatsTitle = (title: string) =>
+    details.length === 1 && presentation.title.includes(title);
   const body =
     details.length > 0 ? (
-      <div className="grid gap-4 pb-1 pt-3">
+      <div className="grid gap-4 pb-1 pt-2">
         {details.map((detail, index) => (
           <section key={`${detail.title}:${index}`}>
-            <div className="whitespace-pre-wrap break-words font-sans text-sm font-medium text-dashboard-text">
-              <HighlightText text={detail.title} />
-            </div>
+            {repeatsTitle(detail.title) ? null : (
+              <div className="whitespace-pre-wrap break-words font-sans text-sm font-medium text-dashboard-text">
+                <HighlightText text={detail.title} />
+              </div>
+            )}
             {detail.description ? (
               <div className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-dashboard-text-muted">
                 <HighlightText text={detail.description} />
               </div>
             ) : null}
             {detail.content ? (
-              <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-dashboard-text-muted">
+              <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-xs leading-normal text-dashboard-text-muted first:mt-0">
                 <HighlightText text={detail.content} />
               </pre>
             ) : null}
@@ -39,7 +44,7 @@ export function TranscriptStructuredEventView(props: {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {detail.metadata.map((value) => (
                   <span
-                    className="font-mono text-xs text-dashboard-text-muted"
+                    className="text-xs text-dashboard-text-muted"
                     key={value}
                   >
                     <HighlightText text={value} />
@@ -54,7 +59,7 @@ export function TranscriptStructuredEventView(props: {
   const header = (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
       <div className="min-w-0">
-        <div className="font-display text-sm font-semibold text-dashboard-text">
+        <div className="text-sm font-medium leading-6 text-dashboard-text">
           <HighlightText text={presentation.title} />
         </div>
         {presentation.preview ? (
@@ -64,7 +69,7 @@ export function TranscriptStructuredEventView(props: {
         ) : null}
       </div>
       {timestamp ? (
-        <span className="font-mono text-xs text-dashboard-text-muted max-md:hidden">
+        <span className="text-xs leading-6 tabular-nums text-dashboard-text-muted max-md:hidden">
           {timestamp}
         </span>
       ) : null}

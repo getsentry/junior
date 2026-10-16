@@ -40,6 +40,8 @@ export type TranscriptViewToolCallPart = {
 export type TranscriptViewSubagentPart = {
   agentName?: string;
   childConversationId: string;
+  /** When the child reached its current terminal status. */
+  finishedTimestamp?: number;
   id: string;
   status: "aborted" | "blocked" | "completed" | "error" | "running";
   subagentKind: string;

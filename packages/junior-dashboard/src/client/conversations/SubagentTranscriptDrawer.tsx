@@ -4,7 +4,11 @@ import { Link } from "react-router";
 
 import { useConversationData } from "./queries";
 import { conversationPath } from "./conversationRoutes";
-import { conversationDetailTitle, formatMessageTimestamp } from "../format";
+import {
+  conversationDetailTitle,
+  formatMessageTimestamp,
+  formatRelativeMessageTimestamp,
+} from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
 import { SearchInput } from "../components/SearchInput";
@@ -22,6 +26,8 @@ import { transcriptEmptyClass } from "./transcriptStyles";
 
 /** One child Conversation to show, with what its parent already knows. */
 export interface SubagentTranscriptTarget {
+  /** Agent name, such as "planner". Shown beside the status. */
+  agentName?: string;
   conversationId: string;
   /** Task title or agent name, shown before the child loads. */
   label?: string;
@@ -58,6 +64,11 @@ function SubagentTranscriptDrawerContent(props: {
   const label =
     props.target.label ?? conversationDetailTitle(detail) ?? "Subagent";
   const status = statusLabel(props.target.status, detail?.status);
+  const agentName =
+    props.target.agentName && props.target.agentName !== label
+      ? props.target.agentName
+      : undefined;
+  const startedAt = detail ? Date.parse(detail.startedAt) : undefined;
   const searchOpenVisible = searchOpen || search.length > 0;
 
   const titleId = "subagent-transcript-drawer-title";
@@ -100,42 +111,47 @@ function SubagentTranscriptDrawerContent(props: {
               aria-hidden="true"
               className="shrink-0 text-cyan-300"
               size={16}
-              strokeWidth={2.25}
+              strokeWidth={2}
             />
             <h2
-              className="m-0 min-w-0 break-words text-lg font-bold leading-tight tracking-normal text-dashboard-text"
+              className="m-0 min-w-0 break-words font-display text-lg font-medium leading-tight tracking-tight text-dashboard-text"
               id={titleId}
             >
               {label}
             </h2>
           </div>
-          <div className="mt-2 grid min-w-0 gap-1.5 text-xs leading-snug">
-            <code className="min-w-0 break-all font-mono text-xs text-dashboard-text">
-              {props.target.conversationId}
-            </code>
+          <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted">
+            {agentName ? (
+              <span className="font-medium text-dashboard-text">
+                {agentName}
+              </span>
+            ) : null}
+            {status ? (
+              <StatusChip size="compact" tone={subagentStatusTone(status)}>
+                {status}
+              </StatusChip>
+            ) : null}
+            {detail && startedAt !== undefined ? (
+              <time
+                className="tabular-nums"
+                dateTime={detail.startedAt}
+                title={formatMessageTimestamp(startedAt, true)}
+              >
+                Started {formatRelativeMessageTimestamp(startedAt)}
+              </time>
+            ) : null}
             <Link
-              className="inline-flex w-fit items-center gap-1 font-semibold text-dashboard-text no-underline hover:underline"
+              className="inline-flex w-fit items-center gap-1 font-medium text-dashboard-accent-text no-underline hover:underline"
               onClick={props.onClose}
               to={conversationPath(props.target.conversationId)}
             >
               Open conversation
-              <ExternalLink aria-hidden="true" size={12} strokeWidth={2.25} />
+              <ExternalLink aria-hidden="true" size={12} strokeWidth={2} />
             </Link>
           </div>
-          {status || detail ? (
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-snug text-dashboard-text-muted">
-              {status ? (
-                <StatusChip size="compact" tone={subagentStatusTone(status)}>
-                  {status}
-                </StatusChip>
-              ) : null}
-              {detail ? (
-                <time className="font-mono" dateTime={detail.startedAt}>
-                  {formatMessageTimestamp(Date.parse(detail.startedAt))}
-                </time>
-              ) : null}
-            </div>
-          ) : null}
+          <code className="mt-1 block min-w-0 break-all font-mono text-xs text-dashboard-text-faint">
+            {props.target.conversationId}
+          </code>
           {searchOpenVisible ? (
             <div className="mt-3 min-w-0">
               <SearchInput
