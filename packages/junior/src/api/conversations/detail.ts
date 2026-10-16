@@ -66,9 +66,7 @@ function projectConversationDetail(args: {
       ...(args.archivedAtMs === undefined
         ? undefined
         : { archivedAtMs: args.archivedAtMs }),
-      ...(args.automationTitle
-        ? { automationTitle: args.automationTitle }
-        : undefined),
+      automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
         ? { childAgentTotals: args.childAgentTotals }
@@ -137,9 +135,7 @@ async function readConversationDetailFromSql(
   ] = await Promise.all([
     readConversationAccessFromSql(getDb(), [conversationId], options.viewer),
     listConversationAnnotations(getDb(), conversationId),
-    readAutomationTitlesByConversationId(
-      record.conversation.title ? [] : [conversationId],
-    ),
+    readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
     record.conversation.transcriptPurgedAtMs === undefined
@@ -177,12 +173,11 @@ async function readConversationDetailFromSql(
   const metrics = metricsByConversation.get(conversationId);
   const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
   const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
-  const automationTitle = automationTitleByConversation.get(conversationId);
   return projectConversationDetail({
     ...record,
     access,
     ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
-    ...(automationTitle ? { automationTitle } : undefined),
+    automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,
     auxiliaryCosts: auxiliaryCosts?.total,

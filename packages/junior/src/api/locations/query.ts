@@ -605,9 +605,7 @@ export async function readLocationDetailFromSql(
         options.viewer,
       ),
       readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
-      readAutomationTitlesByConversationId(
-        recentRows.flatMap((row) => (row.title ? [] : [row.conversationId])),
-      ),
+      readAutomationTitlesByConversationId(recentRows),
     ]);
   return {
     ...location,

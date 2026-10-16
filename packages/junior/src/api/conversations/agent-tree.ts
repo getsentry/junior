@@ -54,19 +54,16 @@ export async function readConversationAgentTree(
 
   const [access, automationTitleByConversation] = await Promise.all([
     readConversationAccessFromSql(getDb(), ids, viewer),
-    readAutomationTitlesByConversationId(
-      root && !root.title ? [root.conversationId] : [],
-    ),
+    readAutomationTitlesByConversationId(root ? [root] : []),
   ]);
   return await Promise.all(
     ids.map(async (id) => {
       const itemAccess = access.get(id);
       if (root?.conversationId === id) {
         // The summary projection owns root titles and their privacy labels.
-        const automationTitle = automationTitleByConversation.get(id);
         const summary = conversationSummaryFromStoredConversation({
           access: itemAccess,
-          ...(automationTitle ? { automationTitle } : undefined),
+          automationTitle: automationTitleByConversation.get(id),
           conversation: root,
           durationMs: 0,
         });

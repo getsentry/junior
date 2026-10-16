@@ -15,6 +15,7 @@ import {
 import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
+import { fallbackShortTitle } from "@/chat/services/short-title";
 import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorEventAutomations } from "@/db/schema/event-automations";
@@ -391,20 +392,32 @@ export async function readAutomationExecutionByConversationId(args: {
 }
 
 /**
- * Load the stored name of the Automation linked to each conversation.
- * The newest execution wins. Conversations without a linked, named
- * Automation are absent from the result.
+ * Load the display name of the Automation linked to each untitled
+ * conversation. The newest execution wins. Like the Automation list, the name
+ * falls back to the first line of the instruction. Titled conversations and
+ * conversations without a linked Automation are absent from the result.
  */
 export async function readAutomationTitlesByConversationId(
-  conversationIds: readonly string[],
-  namespace = "junior",
+  conversations: ReadonlyArray<{
+    conversationId: string;
+    title?: string | null;
+  }>,
 ): Promise<Map<string, string>> {
   const titles = new Map<string, string>();
-  if (conversationIds.length === 0) return titles;
+  const untitledIds = conversations.flatMap((conversation) =>
+    conversation.title ? [] : [conversation.conversationId],
+  );
+  if (untitledIds.length === 0) return titles;
   const rows = await getDb()
     .select({
       conversationId: juniorAutomationExecutions.conversationId,
+      eventInstruction: sql<
+        string | null
+      >`${juniorEventAutomations.task}->'task'->>'text'`,
       eventTitle: juniorEventAutomations.title,
+      scheduledInstruction: sql<
+        string | null
+      >`${juniorSchedulerTasks.record}->'task'->>'text'`,
       scheduledTitle: juniorSchedulerTasks.title,
     })
     .from(juniorAutomationExecutions)
@@ -424,10 +437,8 @@ export async function readAutomationTitlesByConversationId(
     )
     .where(
       and(
-        inArray(juniorAutomationExecutions.conversationId, [
-          ...conversationIds,
-        ]),
-        eq(juniorAutomationExecutions.namespace, namespace),
+        inArray(juniorAutomationExecutions.conversationId, untitledIds),
+        eq(juniorAutomationExecutions.namespace, "junior"),
       ),
     )
     .orderBy(
@@ -438,7 +449,12 @@ export async function readAutomationTitlesByConversationId(
   for (const row of rows) {
     if (!row.conversationId || seen.has(row.conversationId)) continue;
     seen.add(row.conversationId);
-    const title = (row.scheduledTitle ?? row.eventTitle)?.trim();
+    const title =
+      (row.scheduledTitle ?? row.eventTitle)?.trim() ||
+      fallbackShortTitle(
+        row.scheduledInstruction ?? row.eventInstruction ?? "",
+        "",
+      );
     if (title) titles.set(row.conversationId, title);
   }
   return titles;

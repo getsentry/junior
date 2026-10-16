@@ -257,9 +257,7 @@ export function conversationSummaryFromStoredConversation(args: {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
     displayTitle: titleFromConversation({
-      ...(args.automationTitle
-        ? { automationTitle: args.automationTitle }
-        : undefined),
+      automationTitle: args.automationTitle,
       canViewPrivateContent,
       conversation,
       surface,

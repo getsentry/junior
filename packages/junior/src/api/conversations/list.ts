@@ -394,11 +394,7 @@ export async function readConversationFeedFromSql(
     listConversationWork(conversationIds),
     readLastUserMessageAtByConversation(db, conversationIds),
     readConversationActivityPreviews(db, conversationIds),
-    readAutomationTitlesByConversationId(
-      conversations.flatMap((conversation) =>
-        conversation.title ? [] : [conversation.conversationId],
-      ),
-    ),
+    readAutomationTitlesByConversationId(conversations),
   ]);
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
@@ -427,12 +423,11 @@ export async function readConversationFeedFromSql(
       const archivedAtMs = archiveTimesByConversation.get(
         conversation.conversationId,
       );
-      const automationTitle = automationTitleByConversation.get(
-        conversation.conversationId,
-      );
       const summary = conversationSummaryFromStoredConversation({
         ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
-        ...(automationTitle ? { automationTitle } : undefined),
+        automationTitle: automationTitleByConversation.get(
+          conversation.conversationId,
+        ),
         conversation,
         access,
         auxiliaryCosts: auxiliaryCosts?.total,
