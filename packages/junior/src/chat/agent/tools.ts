@@ -81,6 +81,7 @@ import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evide
 import { restoreToolActionRejections } from "@/chat/tool-support/action-review-history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -431,15 +432,29 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
+  const childAgent = Boolean(args.run.parentConversationId);
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
+      childAgent,
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
       source: runSource,
       userIntent: args.currentUserIntent,
-      evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
+      evidence: () =>
+        buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
+      // A child has no message from a person. Its authority is in the root
+      // Conversation, read again for each action.
+      ...(childAgent
+        ? {
+            rootConversation: async () =>
+              await readRootConversation({
+                actor: args.currentActor,
+                conversationId: args.run.conversationId,
+              }),
+          }
+        : undefined),
     },
     onDecision: ({ toolCallId, toolName, decision }) =>
       recordGuardianActionReviewed({

@@ -1,15 +1,36 @@
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
   isAssistantMessage,
+  isToolResultError,
+  isToolResultMessage,
+  normalizeToolNameFromResult,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getToolActionRejectionMarker } from "@/chat/tool-support/action-review-history";
 
+// A successful result of one of these tools ends the run on purpose, so the
+// run has its outcome even without a reply.
+const RUN_ENDING_TOOL_NAMES = new Set([
+  FINISH_AUTOMATION_RUN_TOOL_NAME,
+  REPORT_BLOCKED_TOOL_NAME,
+]);
+
+function endsRun(message: PiMessage): boolean {
+  return (
+    isToolResultMessage(message) &&
+    !isToolResultError(message) &&
+    RUN_ENDING_TOOL_NAMES.has(normalizeToolNameFromResult(message) ?? "")
+  );
+}
+
 /**
  * Return the durable tool-result boundary for one additional agent
- * continuation when an ask rejection has no destination-visible reply.
+ * continuation when an ask rejection has no destination-visible reply. A run
+ * that a blocked report or an Automation result ended gets none.
  */
 export function actionConfirmationRetryMessages(
   messages: readonly PiMessage[],
@@ -30,7 +51,7 @@ export function actionConfirmationRetryMessages(
   }
   if (
     messages.slice(rejectionIndex + 1).some((message) => {
-      if (message.role === "user") {
+      if (message.role === "user" || endsRun(message)) {
         return true;
       }
       return isAssistantMessage(message) && getAssistantReplyText(message);

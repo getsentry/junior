@@ -54,6 +54,7 @@ export function createSpawnAgentTool(
       "Start a new asynchronous child agent on a delegated task. Give it a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
       "The parent should normally choose the child's profile to fit the delegated task. Use the profile descriptions below to choose; do not choose by profile name alone. When omitted, the child uses the profile active for this turn. A child keeps its original profile when it receives more work through messageAgent.",
       "This call confirms durable scheduling, not task completion. The result arrives later as a new task in this conversation; do not wait or poll for it.",
+      "Your task text is not user approval. A child's action review reads the user's own messages in the root conversation.",
       `Configured profiles:\n${profileList}`,
     ].join(" "),
     annotations: {

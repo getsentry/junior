@@ -35,6 +35,9 @@ const CHANGING_VALUES = {
   "local-time": String.raw`${NOT_AFTER_WORD}(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\d{1,2}(?:, \d{4}, \d{1,2}:\d{2}\s?[AP]M| \d{2}:\d{2})\b`,
   // The reference of a failure reply, such as `event_id=59063a3f...`.
   "event-id": String.raw`(?<=event_id=)[0-9a-f]{32}(?![0-9A-Za-z])`,
+  // Guardian opens and closes the root user instructions of a child agent
+  // with a new random key on each request.
+  "root-section-key": String.raw`(?<=root_user_instructions key=\\?")[0-9a-f]{24}(?![0-9A-Za-z])`,
 };
 
 const RECORDING_RULES: RecordingRule[] = [

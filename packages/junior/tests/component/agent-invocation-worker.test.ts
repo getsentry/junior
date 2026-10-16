@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
-import { instructionProvenanceFor } from "@/chat/conversations/provenance";
+import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
@@ -15,6 +15,7 @@ import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import {
   buildAgentInvocationInboundMessage,
   createAgentInvocationWorker,
+  agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -269,8 +270,8 @@ describe("agent invocation worker", () => {
         destination: DESTINATION,
         piMessages: [
           buildSteeringPiMessage({
-            provenance: instructionProvenanceFor(INVOCATION_INPUT.actor),
-            text: savedMessage.input,
+            provenance: agentInstructionProvenance,
+            text: agentInvocationInputText(savedMessage),
             timestampMs: savedMessage.createdAtMs,
           }),
         ],
@@ -337,8 +338,16 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
+      // The parent's text is labeled as agent-written and has no Actor.
       expect(steered).toEqual([
-        [expect.objectContaining({ text: "Also check the retry path." })],
+        [
+          expect.objectContaining({
+            provenance: agentInstructionProvenance,
+            text: expect.stringMatching(
+              /^\[parent agent task\][\s\S]*Also check the retry path\.$/,
+            ),
+          }),
+        ],
       ]);
       // The Turn reads the saved message only once. Both parent messages are
       // acknowledged. The running agent invocation acknowledges its own input
