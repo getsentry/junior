@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 /** Default desktop browser size for route shots. */
 export const desktop = { height: 900, name: "desktop", width: 1440 } as const;
@@ -29,7 +29,7 @@ const SCREENSHOT_STYLE = "[data-dashboard-noise] { display: none !important; }";
 /**
  * Save a loaded page image for visual review.
  * Writes `{name}__desktop.png` and `{name}__mobile.png` by default.
- * Pass `view` to save only one size.
+ * Pass `view` to save only one size. Pass `target` to save only one element.
  */
 export async function screenshot(
   page: Page,
@@ -41,6 +41,7 @@ export async function screenshot(
       x: number;
       y: number;
     };
+    target?: Locator;
     view?: View;
   } = {},
 ) {
@@ -70,9 +71,22 @@ export async function screenshot(
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       );
     });
+    // Element shots clip a full-page capture. A plain element shot scrolls
+    // the element into view, where sticky page chrome can cover it.
+    const clip = options.target
+      ? await options.target.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return {
+            height: Math.round(box.height),
+            width: Math.round(box.width),
+            x: Math.round(box.x + window.scrollX),
+            y: Math.round(box.y + window.scrollY),
+          };
+        })
+      : options.clip;
     await page.screenshot({
       animations: "disabled",
-      clip: options.clip,
+      clip,
       fullPage: !options.clip,
       style: SCREENSHOT_STYLE,
       path: path.join(SCREENSHOT_DIR, `${name}__${view.name}.png`),
