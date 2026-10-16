@@ -37,15 +37,8 @@ export function SecondaryNavigation(props: {
     <div className="min-w-0">
       <SecondaryNavigationPortal
         desktop={
-          <div>
-            <div
-              className={cn(
-                dashboardContainerClass,
-                "min-w-0 px-4 pb-3 md:px-8",
-              )}
-            >
-              <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
-            </div>
+          <div className={cn(dashboardContainerClass, "min-w-0 px-4 md:px-8")}>
+            <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
           </div>
         }
         mobile={
@@ -63,7 +56,7 @@ export function SecondaryNavigation(props: {
           </nav>
         }
       />
-      <div className="px-4 pt-4 sm:px-8 md:hidden">
+      <div className="border-b border-dashboard-border px-4 pt-2 sm:px-8 md:hidden">
         <SegmentedNav ariaLabel={props.ariaLabel} fill items={props.items} />
       </div>
       {props.children}

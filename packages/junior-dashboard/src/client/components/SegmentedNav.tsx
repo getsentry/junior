@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 
 import { pathWithSearch } from "../searchParams";
-import { segmentedTabClass } from "./SegmentedTabs";
 import { cn } from "../styles";
 
 export type SegmentedNavItem = {
@@ -80,9 +79,10 @@ function edgeFade(edges: HiddenEdges): CSSProperties | undefined {
 }
 
 /**
- * Show links between sibling pages as a row of pills on the page canvas.
- * Page links have no track. `SegmentedTabs` keeps the track for in-place
- * panel switches.
+ * Show links between sibling pages as underline tabs. The current page has
+ * a solid underline that sits on the border below the row. App navigation
+ * uses pills and in-place panel switches use `SegmentedTabs`, so the three
+ * levels stay distinct.
  *
  * With `fill`, links share the row width equally while their labels fit.
  * Otherwise each link keeps its label width. When the links do not fit, the
@@ -137,8 +137,10 @@ export function SegmentedNav(props: {
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      segmentedTabClass(isActive),
-      "flex items-center justify-center whitespace-nowrap no-underline",
+      "relative flex h-10 items-center justify-center whitespace-nowrap font-sans text-sm font-medium no-underline transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+      isActive
+        ? "text-dashboard-text after:bg-dashboard-text-solid"
+        : "text-dashboard-text-muted hover:text-dashboard-text",
       props.fill ? "min-w-max flex-[1_0_0]" : "shrink-0",
     );
 
@@ -149,7 +151,7 @@ export function SegmentedNav(props: {
     >
       <div
         className={cn(
-          "relative -mx-1 flex gap-1 px-1 min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "relative -mx-1 flex gap-5 px-1 min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         )}
         ref={rowRef}
         style={edgeFade(edges)}
