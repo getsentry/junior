@@ -72,11 +72,7 @@ describe("agent dispatch conversation work", () => {
 
     // The title model returns no title, so run title generation fails.
     mockTitleModel("");
-    await enqueueAgentDispatch(dispatch, {
-      queue,
-      state,
-      title: "Plain input check",
-    });
+    await enqueueAgentDispatch(dispatch, { queue, state });
     const titleWork: Promise<unknown>[] = [];
     await processConversationQueueMessage(queue.takeMessage(), {
       queue,
@@ -86,15 +82,11 @@ describe("agent dispatch conversation work", () => {
     });
     await Promise.all(titleWork);
 
-    // The provisional Automation title stays when generation fails.
-    await expect(
-      getConversationStore().get({
-        conversationId: getDispatchConversationId(dispatch),
-      }),
-    ).resolves.toMatchObject({
-      title: "Plain input check",
-      titleProvisional: true,
+    // A failed run title stays unset, so the dashboard keeps its fallback label.
+    const untitled = await getConversationStore().get({
+      conversationId: getDispatchConversationId(dispatch),
     });
+    expect(untitled?.title).toBeUndefined();
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({ text: "Done" }),
@@ -148,16 +140,7 @@ describe("agent dispatch conversation work", () => {
     const titleWork: Promise<unknown>[] = [];
     const waitUntil = (work: Promise<unknown>) => titleWork.push(work);
 
-    await enqueueAgentDispatch(dispatch, {
-      queue,
-      state,
-      title: "Weekly digest",
-    });
-    // The Automation title is a placeholder until the run title exists.
-    await expect(store.get({ conversationId })).resolves.toMatchObject({
-      title: "Weekly digest",
-      titleProvisional: true,
-    });
+    await enqueueAgentDispatch(dispatch, { queue, state });
     const queueMessage = queue.takeMessage();
     await processConversationQueueMessage(queueMessage, {
       queue,
@@ -173,10 +156,9 @@ describe("agent dispatch conversation work", () => {
     });
     await Promise.all(titleWork);
 
-    // The generated run title replaces the placeholder once.
+    // The run input is the title source because no human message exists.
     const titled = await store.get({ conversationId });
     expect(titled?.title).toBe("Weekly digest for the platform team");
-    expect(titled?.titleProvisional).toBeUndefined();
     expect(JSON.stringify(titleRequests[0]?.messages)).toContain(
       "Task input: Post the scheduled digest.",
     );

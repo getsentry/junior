@@ -25,9 +25,8 @@ export function resetConversationTitleStateForTests(): void {
  * One automatic generation path for every surface. Starts only from durable
  * transcript writes via `scheduleConversationTitle`. A dispatched run, such as
  * an automation run, has no human message, so its title comes from the run
- * input. A generated title replaces a provisional title once. Returns a newly
- * persisted title, or undefined when the conversation already has a final
- * title or generation does not apply.
+ * input. Returns a newly persisted title, or undefined when the conversation
+ * is already titled or generation does not apply.
  */
 async function ensureConversationTitle(args: {
   conversation: ThreadConversationState;
@@ -80,8 +79,8 @@ async function ensureConversationTitleOnce(args: {
   const store = args.conversationStore ?? getConversationStore();
   try {
     const stored = await store.get({ conversationId: args.conversationId });
-    // A final title ends generation. A provisional title waits for it.
-    if (stored?.title?.trim() && !stored.titleProvisional) {
+    // Already titled: generation is done.
+    if (stored?.title?.trim()) {
       return undefined;
     }
     // Conversations with a parent are execution machinery, not listable threads.
@@ -107,8 +106,8 @@ async function ensureConversationTitleOnce(args: {
           error instanceof Error ? error.message : String(error),
       });
     }
-    // Run input starts with task boilerplate, so a run keeps its provisional
-    // title, or the dashboard fallback, when generation fails.
+    // Run input starts with task boilerplate, so a failed run title stays
+    // unset and the dashboard keeps its fallback label.
     if (!title && kind === "conversation") {
       title = fallbackShortTitle(sourceText, "Conversation");
     }

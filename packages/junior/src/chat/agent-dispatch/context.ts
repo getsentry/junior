@@ -65,7 +65,6 @@ async function dispatch(args: {
   nowMs: number;
   options: BoundDispatchOptions;
   plugin: string;
-  title?: string;
 }) {
   await verifyDispatchCredentialSubjectAccess(args.options, args.plugin);
   const result = await createOrGetDispatch({
@@ -77,7 +76,6 @@ async function dispatch(args: {
     await enqueueAgentDispatch(result.record, {
       queue: args.conversationWorkQueue,
       nowMs: args.nowMs,
-      ...(args.title ? { title: args.title } : undefined),
     });
   }
   return {
@@ -142,8 +140,6 @@ export async function dispatchEventAutomation(args: {
       userId: string;
     };
   };
-  /** Automation title, shown on the run until its generated title exists. */
-  title: string;
 }) {
   const plugin = "junior";
   const { credentialSubject, outcomes, ...unboundOptions } = args.options;
@@ -168,7 +164,6 @@ export async function dispatchEventAutomation(args: {
     nowMs: args.nowMs,
     options,
     plugin,
-    title: args.title,
   });
 }
 
@@ -184,8 +179,6 @@ export async function dispatchScheduledAutomation(args: {
       userId: string;
     };
   };
-  /** Automation title, shown on the run until its generated title exists. */
-  title: string;
 }) {
   const plugin = "scheduler";
   const { credentialSubject, outcomes, ...unboundOptions } = args.options;
@@ -210,7 +203,6 @@ export async function dispatchScheduledAutomation(args: {
     nowMs: args.nowMs,
     options,
     plugin,
-    title: args.title,
   });
 }
 

@@ -24,16 +24,12 @@ authority for the other facts until their owning contract changes.
 ## Conversation Title
 
 A dispatched run has no human message. The run input is a bot-authored user
-message, so the shared title generator uses it as the title source.
+message, so the shared title generator uses it as the title source. The title
+is set once, the same as for other Conversations.
 
-- Core automations give the Automation title to `enqueueAgentDispatch`. The
-  title is stored as a provisional title when the Conversation is first
-  recorded.
-- The first generated run title replaces the provisional title once. After
-  that, the title is final.
-- If generation fails, the provisional title stays. A later transcript write
-  tries generation again.
-- A run without any title shows "Automation run" in the dashboard.
+- Until the generated title exists, the dashboard shows "Automation run".
+- If generation fails, the title stays unset and the dashboard keeps that
+  label. A later transcript write tries generation again.
 
 ## Lifecycle
 

@@ -101,8 +101,6 @@ interface EnqueueAgentDispatchOptions {
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
-  /** Provisional Conversation title until the generated run title replaces it. */
-  title?: string;
 }
 
 /** Dependencies for dispatch work owned by the conversation worker. */
@@ -162,9 +160,6 @@ export async function enqueueAgentDispatch(
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,
-    ...(options.title?.trim()
-      ? { title: options.title.trim(), titleProvisional: true as const }
-      : undefined),
     visibility: claimedDispatch.destinationVisibility,
   });
   await appendAndEnqueueInboundMessage({

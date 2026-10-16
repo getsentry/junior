@@ -5,7 +5,6 @@ import {
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
-import { fallbackShortTitle } from "@/chat/services/short-title";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
@@ -419,9 +418,6 @@ export async function runScheduledAutomationHeartbeat(args: {
           replyAttribution: automationReplyAttribution(task.title),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },
-        title:
-          task.title ??
-          fallbackShortTitle(task.task.text, "Scheduled automation"),
       });
     } catch (error) {
       await finishClaimedRun({

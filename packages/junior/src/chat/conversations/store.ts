@@ -80,11 +80,6 @@ export interface Conversation {
   // and all Conversation place readers use Location.
   sessionSource?: SessionSource;
   title?: string;
-  /**
-   * The title is a placeholder. The first final title replaces it once.
-   * Undefined means the title is final or absent.
-   */
-  titleProvisional?: true;
   updatedAtMs: number;
   /**
    * When retention purged this conversation's content. Set means messages and
@@ -148,12 +143,7 @@ export interface ConversationStore {
     source?: ConversationSource;
     /** Source normalized to a stable session locator; set-once when absent. */
     sessionSource?: Source;
-    /**
-     * Set-once title. A final title also replaces a provisional title once.
-     * A provisional title only fills an absent title.
-     */
     title?: string;
-    titleProvisional?: true;
     /** Confirmed destination visibility; omit when unavailable. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
