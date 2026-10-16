@@ -1893,14 +1893,11 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toMatch(
-      /href="\/automations\/sched_source_task"[^>]*>Triggered by Scheduled automation<\/a>/,
+      /href="\/automations\/sched_source_task"[^>]*>Automation: Refresh YC company data<\/a>/,
     );
-    // Full automation instructions stay off hover chrome; open the automation page for those.
+    // Full automation instructions stay on the automation page.
     expect(html).not.toContain("Update getsentry/yc-scraper");
     expect(html).not.toContain("Instruction");
-    expect(html).not.toContain(
-      "Triggered by Scheduled automation · Update getsentry/yc-scraper",
-    );
   });
 
   it("renders cached canonical conversation detail through decoded routing", () => {

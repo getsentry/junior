@@ -25,6 +25,13 @@ shared controls and overlays.
 - `TranscriptSubagentView` renders a child agent as a card with its name,
   status, run time, and title. It matches the child agent rows in the details
   drawer and opens the child transcript.
+- `TranscriptAutomationTriggerView` renders the input of an Automation run as
+  one card. The report names that message in `sourceTask.triggerMessageId`.
+  The card shows the Automation name and a link to it. A second line shows the
+  trigger, the run time, and whose credentials the run used. The credential
+  part comes from the run's dispatch record, not the Automation's current
+  setting. It is left out when that record is gone. The run input is not from
+  a person, so it stays collapsed behind "Show prompt".
 - `TranscriptAttachments` owns wrapping for both message attachments and file
   deliveries. `ImageAttachment` owns image previews.
 - `TranscriptTurnContextView` owns context content. The shared `Drawer` owns

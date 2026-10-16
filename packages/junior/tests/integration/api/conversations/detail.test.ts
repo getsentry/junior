@@ -197,11 +197,29 @@ describe("conversation detail API", () => {
       await import("@/chat/scheduled-automations/tasks");
     const { recordAutomationExecution } =
       await import("@/chat/automations/execution-stats");
+    const { createAgentDispatchTestRecord } =
+      await import("../../../fixtures/agent-dispatch");
+    const { getDispatchConversationId } =
+      await import("@/chat/agent-dispatch/store");
+    const { bindScheduledAutomationCredentialSubject } =
+      await import("@/chat/credentials/subject");
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
       await migrateSchema(fixture.sql);
-      const conversationId = "agent-dispatch:source-task-detail";
+      const dispatch = await createAgentDispatchTestRecord(
+        "source-task-detail",
+        bindScheduledAutomationCredentialSubject({
+          plugin: "scheduler",
+          subject: {
+            type: "user",
+            userId: "U123",
+            allowedWhen: "scheduled-automation",
+            taskId: "sched_source_task",
+          },
+        }),
+      );
+      const conversationId = getDispatchConversationId(dispatch);
       await conversationStore.recordActivity({
         conversationId,
         actor: {
@@ -237,7 +255,7 @@ describe("conversation detail API", () => {
         id: "sched_source_task",
         conversationAccess: { audience: "channel", visibility: "public" },
         createdAtMs: nowMs,
-        createdBy: { slackUserId: "U123" },
+        createdBy: { fullName: "Viewer Person", slackUserId: "U123" },
         creatorIdentityId: identity!.id,
         credentialMode: "creator",
         destination: {
@@ -287,16 +305,21 @@ describe("conversation detail API", () => {
           kind: "scheduled",
           label: "Send the weekly project summary",
           title: "Weekly project summary",
+          triggerMessageId: conversationId,
+          triggerLabel: "Every Monday at 9:00 AM",
+          credentialMode: "creator",
+          credentialUser: "Viewer Person",
         },
       });
       await expect(
         readConversationDetail(conversationId),
       ).resolves.toMatchObject({
-        sourceTask: { kind: "scheduled" },
+        sourceTask: { kind: "scheduled", triggerMessageId: conversationId },
       });
       const hidden = await readConversationDetail(conversationId);
       expect(hidden?.sourceTask).not.toHaveProperty("id");
       expect(hidden?.sourceTask).not.toHaveProperty("label");
+      expect(hidden?.sourceTask).not.toHaveProperty("credentialUser");
     } finally {
       await fixture.close();
     }

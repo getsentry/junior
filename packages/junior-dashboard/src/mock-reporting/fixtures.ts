@@ -125,6 +125,8 @@ const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
+/** Event automation run. Its trigger message id equals the conversation id. */
+const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
 const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
@@ -1395,6 +1397,75 @@ function simpleConversation(
   });
 }
 
+function eventAutomationRunConversation(
+  nowMs: number,
+): ConversationDetailReport {
+  const startedAt = iso(nowMs, -3 * 60 * 60_000);
+  const at = (offsetMs: number) => iso(Date.parse(startedAt), offsetMs);
+  return detail(nowMs, {
+    conversationId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+    displayTitle: "Closed issue summary",
+    surface: "internal",
+    startedAt,
+    lastSeenAt: at(14_000),
+    lastProgressAt: at(14_000),
+    cumulativeDurationMs: 14_000,
+    sourceTask: {
+      id: "event-1",
+      kind: "event",
+      label: "Summarize the closed issue",
+      title: "Closed issue summary",
+      triggerMessageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+      triggerLabel: "Linear issue ACME-42 closed",
+      credentialMode: "creator",
+      credentialUser: "Alex Rivera",
+    },
+    events: [
+      reportEvent(0, startedAt, {
+        type: "message",
+        messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+        role: "user",
+        // Dispatch input is authored by the dispatch owner, not a person.
+        actorIdentity: {
+          fullName: "junior",
+          slackUserId: "junior",
+          slackUserName: "junior",
+        },
+        text: [
+          "[task]",
+          "",
+          "This is a task, not a message from a person.",
+          "",
+          "About: Issue · ACME-42",
+          'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
+          "Instructions: Summarize the closed issue",
+          "",
+          "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
+          "",
+          "End with `finishAutomationRun`.",
+        ].join("\n"),
+      }),
+      reportEvent(1, at(1_000), {
+        type: "turn_lifecycle",
+        turnId: "dispatch:event-1",
+        state: "started",
+        inputMessageIds: [EVENT_AUTOMATION_RUN_CONVERSATION_ID],
+      }),
+      reportEvent(2, at(13_000), {
+        type: "message",
+        messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
+        role: "assistant",
+        text: "ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production.",
+      }),
+      reportEvent(3, at(14_000), {
+        type: "turn_lifecycle",
+        turnId: "dispatch:event-1",
+        state: "succeeded",
+      }),
+    ],
+  });
+}
+
 function actor(
   email: string | undefined,
   fullName: string,
@@ -1488,6 +1559,7 @@ function mockConversations(nowMs: number): MockConversation[] {
         title: "Weekly project summary",
       },
     }),
+    eventAutomationRunConversation(nowMs),
     simpleConversation(nowMs, {
       conversationId: ARCHIVED_CONVERSATION_ID,
       displayTitle: "Archived restore target",

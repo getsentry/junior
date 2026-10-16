@@ -486,45 +486,18 @@ function LocationLink(props: { label: string; locationUrl?: string }) {
 function SourceTask(props: {
   sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
 }) {
-  const kindLabel =
-    props.sourceTask.kind === "scheduled"
-      ? "Scheduled automation"
-      : "Event automation";
   const automationId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
-  const link = automationId ? (
+  const label = title ? `Automation: ${title}` : "Automation";
+  return automationId ? (
     <Link
       className={dashboardInlineLinkClass}
       to={automationPath(automationId)}
     >
-      Triggered by {kindLabel}
+      {label}
     </Link>
   ) : (
-    <span>Triggered by {kindLabel}</span>
-  );
-  // Keep tooltips to short identity fields. Full task prompts belong on the
-  // task details page, not in hover chrome.
-  if (!title) return link;
-  return (
-    <Tooltip
-      align="left"
-      content={
-        <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <span>Title</span>
-          <span className="text-dashboard-text">{title}</span>
-          {automationId ? (
-            <>
-              <span>ID</span>
-              <span className="break-all text-dashboard-text">
-                {automationId}
-              </span>
-            </>
-          ) : null}
-        </span>
-      }
-    >
-      {link}
-    </Tooltip>
+    <span>{label}</span>
   );
 }
 

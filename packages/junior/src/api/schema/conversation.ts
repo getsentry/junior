@@ -228,6 +228,14 @@ export const conversationSourceTaskSchema = z
     kind: z.enum(["scheduled", "event"]),
     label: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
+    /** Message id of the run's trigger input, which is not from a person. */
+    triggerMessageId: z.string().min(1).optional(),
+    /** Short trigger text, such as an event or a schedule. */
+    triggerLabel: z.string().min(1).optional(),
+    /** Credential mode this run used. Unset when the run record is gone. */
+    credentialMode: z.enum(["creator", "system"]).optional(),
+    /** Name of the creator whose credentials this run used. */
+    credentialUser: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((value, context) => {
