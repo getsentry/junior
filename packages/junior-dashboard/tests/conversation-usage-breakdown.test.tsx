@@ -82,7 +82,7 @@ describe("ConversationUsageBreakdown", () => {
     );
 
     expect(html).toContain(
-      "gpt-5 1.5k input · 500 output · 700 cached 2.7k $0.0400 gpt-5-mini 300 input · 100 output 400 $0.0100 All models 3.1k $0.0500",
+      "gpt-5 2.7k $0.0400 input 1.5k output 500 cached 700 gpt-5-mini 400 $0.0100 input 300 output 100 All models 3.1k $0.0500",
     );
     expect(html).toContain(
       "Memory recall 5 $0.0020 Thinking routing 2 $0.0010 All auxiliary 7 $0.0030",
