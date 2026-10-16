@@ -644,4 +644,133 @@ describe("agent invocation identity and concurrency", () => {
       await harness.close();
     }
   });
+
+  it("lets a parent list and stop the watches of its child agents", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const harness = await createHarness(taskModel);
+    try {
+      const [watcher, sibling] = await Promise.all([
+        harness.spawn({
+          agentName: "watcher",
+          idempotencyKey: "owned-1",
+          input: "Watch the deploy.",
+        }),
+        harness.spawn({
+          agentName: "sibling",
+          idempotencyKey: "owned-2",
+          input: "Watch the queue.",
+        }),
+      ]);
+      // A child agent can start its own child agent only while it has open
+      // work.
+      const helper = await harness.spawn({
+        agentName: "helper",
+        idempotencyKey: "owned-3",
+        input: "Watch the logs.",
+        parentConversationId: watcher.childConversationId,
+      });
+      await harness.drainQueuedWork();
+
+      const toolsFor = (conversationId: string) =>
+        createEventTools({ ...context(), conversationId }, getEventCatalog());
+      const parentTools = toolsFor(parentConversationId);
+      const watcherTools = toolsFor(watcher.childConversationId);
+      const watchTimer = async (
+        tools: ReturnType<typeof toolsFor>,
+        intent: string,
+      ) => {
+        clock.mockReturnValue(clock() + 1_000);
+        const timer = (await execute(
+          tools.watchTimer!,
+          { afterMs: 600_000, intent },
+          intent,
+        )) as { id: string };
+        return timer.id;
+      };
+      const owners = async (tools: ReturnType<typeof toolsFor>) =>
+        (
+          (await execute(tools.listWatches!, {})) as {
+            subscriptions: { childAgent?: unknown; id: string }[];
+          }
+        ).subscriptions.map(({ childAgent, id }) => ({ childAgent, id }));
+      const parentWatch = await watchTimer(parentTools, "Check the parent.");
+      const watcherWatch = await watchTimer(watcherTools, "Check the deploy.");
+      const siblingWatch = await watchTimer(
+        toolsFor(sibling.childConversationId),
+        "Check the queue.",
+      );
+      const helperWatch = await watchTimer(
+        toolsFor(helper.childConversationId),
+        "Check the logs.",
+      );
+      const watcherAgent = {
+        conversationId: watcher.childConversationId,
+        name: "watcher",
+      };
+      const siblingAgent = {
+        conversationId: sibling.childConversationId,
+        name: "sibling",
+      };
+      const helperAgent = {
+        conversationId: helper.childConversationId,
+        name: "helper",
+      };
+
+      // The parent sees its own watch and the watch of each child agent
+      // below it, with the child agent that owns it.
+      await expect(owners(parentTools)).resolves.toEqual([
+        { childAgent: undefined, id: parentWatch },
+        { childAgent: watcherAgent, id: watcherWatch },
+        { childAgent: siblingAgent, id: siblingWatch },
+        { childAgent: helperAgent, id: helperWatch },
+      ]);
+      // A child agent sees its own watches and those of its child agents,
+      // never those of its parent or its sibling.
+      await expect(owners(watcherTools)).resolves.toEqual([
+        { childAgent: undefined, id: watcherWatch },
+        { childAgent: helperAgent, id: helperWatch },
+      ]);
+      for (const id of [parentWatch, siblingWatch]) {
+        await expect(
+          execute(watcherTools.stopWatchingResources!, { id }),
+        ).rejects.toThrow(
+          "Watch was not found in the current conversation or its child agents.",
+        );
+      }
+
+      // The parent stops a watch of its child agent by id.
+      await expect(
+        execute(parentTools.stopWatchingResources!, { id: watcherWatch }),
+      ).resolves.toEqual({
+        stoppedIds: [watcherWatch],
+        watching_status: "stopped",
+      });
+      await expect(owners(watcherTools)).resolves.toEqual([
+        { childAgent: helperAgent, id: helperWatch },
+      ]);
+
+      // A stop of every watch includes the watches of the child agents below,
+      // and nothing above or beside them.
+      await expect(
+        execute(watcherTools.stopWatchingResources!, {}),
+      ).resolves.toEqual({
+        stoppedIds: [helperWatch],
+        watching_status: "stopped",
+      });
+      await expect(owners(parentTools)).resolves.toEqual([
+        { childAgent: undefined, id: parentWatch },
+        { childAgent: siblingAgent, id: siblingWatch },
+      ]);
+      await expect(
+        execute(parentTools.stopWatchingResources!, {}),
+      ).resolves.toEqual({
+        stoppedIds: [parentWatch, siblingWatch],
+        watching_status: "stopped",
+      });
+      await expect(owners(parentTools)).resolves.toEqual([]);
+    } finally {
+      clock.mockRestore();
+      await harness.close();
+    }
+  });
 });

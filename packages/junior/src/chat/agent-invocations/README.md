@@ -194,6 +194,24 @@ Its id comes from the batch's first Inbound message.
 Watch event invocations count toward the child's automated-turn limit. A task
 or message from the parent resets the count, like a user message on a root.
 
+A parent owns the watches of its child agents and of every child agent below
+them. The child still manages its own watches. `events/owned-watches.ts` owns
+this rule:
+
+- `listWatches` shows the watches of the current Conversation and of every
+  child agent below it. A watch of a child agent has `childAgent`, with the
+  child Conversation id and its agent binding name, if it has one.
+- `stopWatchingResources` with an id stops a watch of the current Conversation
+  or of a child agent below it. It refuses any other id.
+- `stopWatchingResources` without an id stops each watch that `listWatches`
+  shows, so it also stops the watches of the child agents below. The tool
+  keeps its rule: omit the id only when the user asks to stop every watch.
+- A child agent never sees or stops a watch of its parent or of a sibling.
+
+Ownership changes only these tools. Each watch still wakes the Conversation
+that created it, with the rules above. A child is not told when its parent
+stops one of its watches.
+
 ## Child Conversations
 
 A Conversation created for an Agent invocation stores `parentConversationId`.
