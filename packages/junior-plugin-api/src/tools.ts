@@ -546,6 +546,11 @@ export interface PluginEventToolContext {
     events: string[];
     intent: string;
     resource: SubscribableResource;
+    /**
+     * Guidance for this Watch only, by event type. Core adds it after the
+     * resource type guidance when a matching Event arrives.
+     */
+    guidance?: Partial<Record<string, string>>;
   }): Promise<WatchResult>;
 }
 

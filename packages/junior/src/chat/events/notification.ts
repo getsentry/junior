@@ -42,20 +42,30 @@ export interface EventNotification {
  * contract. Stable delivery rules live in runtime and docs, not this prompt.
  */
 export function renderEventNotificationText(
-  subscription: Pick<Watch, "intent" | "label" | "resourceType">,
+  subscription: Pick<Watch, "guidance" | "intent" | "label" | "resourceType">,
   event: Pick<
     EventNotification,
     "namespace" | "eventType" | "trustedSummary" | "data" | "untrustedText"
   >,
+  /** Mentions resolved from the Event people. */
+  people: readonly string[] = [],
 ): string {
-  const guidance = eventGuidance(
-    getEventCatalog(),
-    event.namespace,
-    subscription.resourceType,
-    event.eventType,
-  );
+  // Resource type guidance applies to every Watch. Watch guidance comes from
+  // the tool that created this Watch and applies only here.
+  const guidance = [
+    eventGuidance(
+      getEventCatalog(),
+      event.namespace,
+      subscription.resourceType,
+      event.eventType,
+    ),
+    subscription.guidance?.[event.eventType],
+  ]
+    .filter((text): text is string => Boolean(text?.trim()))
+    .join(" ");
   return renderTaskInput({
     about: subscription.label,
+    people,
     instructions: subscription.intent,
     guidance,
     trustedSummary: event.trustedSummary,
@@ -190,6 +200,8 @@ export function createEventInboundMessage(input: {
  */
 export async function enqueueEventNotification(args: {
   event: EventNotification;
+  /** Mentions resolved from the Event people. */
+  people?: readonly string[];
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
@@ -222,7 +234,11 @@ export async function enqueueEventNotification(args: {
     return { status: "duplicate" };
   }
 
-  const text = renderEventNotificationText(args.subscription, args.event);
+  const text = renderEventNotificationText(
+    args.subscription,
+    args.event,
+    args.people,
+  );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
       event: args.event,

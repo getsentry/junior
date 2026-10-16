@@ -1475,19 +1475,35 @@ Conversation: \`local:test:old-conversation\`
         events: [
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
+          "pull_request.review.approved",
+          "pull_request.merged",
         ],
         id: "subscription-1",
       },
     });
-    expect(subscribe).toHaveBeenCalledWith(
-      expect.objectContaining({
-        intent: "Report failed checks and requested changes.",
-        resource: expect.objectContaining({
-          identifier: "getsentry/junior#660",
-          type: "pull_request",
-        }),
+    // Approval and merge always reach the people involved, so the Watch
+    // stores guidance for those outcomes.
+    expect(subscribe).toHaveBeenCalledWith({
+      events: [
+        "pull_request.checks.failed",
+        "pull_request.review.changes_requested",
+        "pull_request.review.approved",
+        "pull_request.merged",
+      ],
+      guidance: {
+        "pull_request.review.approved": expect.stringContaining(
+          "Mention each person in People involved",
+        ),
+        "pull_request.merged": expect.stringContaining(
+          "Mention each person in People involved",
+        ),
+      },
+      intent: "Report failed checks and requested changes.",
+      resource: expect.objectContaining({
+        identifier: "getsentry/junior#660",
+        type: "pull_request",
       }),
-    );
+    });
   });
 
   it("returns the created pull request when subscribe-after-create fails", async () => {

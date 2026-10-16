@@ -1,7 +1,9 @@
 import type { StateAdapter } from "chat";
 import { eventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { logException } from "@/chat/logging";
 import { enqueueEventNotification } from "@/chat/events/notification";
+import { resolveEventPeopleMentions } from "@/chat/events/people";
 import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
 
 /** Match a normalized event and enqueue notifications into conversations. */
@@ -10,6 +12,8 @@ export async function ingestEvent(
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
+    /** Slack workspace whose users Event people resolve to. */
+    slackTeamId?: string;
     state?: StateAdapter;
   },
 ): Promise<{ enqueued: number }> {
@@ -23,6 +27,22 @@ export async function ingestEvent(
     identifier: event.identifier,
     state: options.state,
   });
+  // Resolve once per Event. Only matched Watches pay for the lookup.
+  let people: string[] = [];
+  if (subscriptions.length > 0 && event.people && options.slackTeamId) {
+    try {
+      people = await resolveEventPeopleMentions(
+        event.people,
+        options.slackTeamId,
+      );
+    } catch (error) {
+      // People only add mentions. Deliver the Event without them.
+      logException(error, "event.people.resolve.failed", {
+        "app.event.event_type": event.eventType,
+        "app.event.namespace": event.namespace,
+      });
+    }
+  }
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
@@ -41,6 +61,7 @@ export async function ingestEvent(
         deliver: async (current) => {
           const result = await enqueueEventNotification({
             event,
+            people,
             queue: options.queue,
             state: options.state,
             subscription: current,

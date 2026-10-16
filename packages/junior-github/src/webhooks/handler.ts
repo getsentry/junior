@@ -7,6 +7,7 @@ import type {
   PluginLogger,
   PluginRoute,
   EventInput,
+  EventPerson,
   EventPublisher,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
@@ -36,6 +37,10 @@ import {
   parseCheckSuitePublishTargets,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
+import {
+  withGitHubPullRequestPeople,
+  type GitHubPullRequestPeopleTarget,
+} from "./pull-request-people.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -154,6 +159,10 @@ export function createGitHubWebhookRoute(args: {
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
+  /** Load the people involved in a pull request for approvals and merges. */
+  loadPullRequestPeople?(
+    target: GitHubPullRequestPeopleTarget,
+  ): Promise<EventPerson[]>;
   log?: Pick<PluginLogger, "error">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
@@ -327,15 +336,22 @@ export function createGitHubWebhookRoute(args: {
               privateKeyEnv: args.privateKeyEnv,
             })
           : undefined;
-      const events = normalizeGitHubEvents({
+      const hasMatch = args.events.hasMatch;
+      const events = await withGitHubPullRequestPeople({
         body,
-        botEmail,
-        ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
         deliveryId,
-        eventName,
+        events: normalizeGitHubEvents({
+          body,
+          botEmail,
+          ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
+          deliveryId,
+          eventName,
+        }),
+        hasMatch,
+        load: args.loadPullRequestPeople,
+        log: args.log,
       });
       const feedbackTarget = pullRequestFeedbackTarget(events);
-      const hasMatch = args.events.hasMatch;
       const feedbackHasMatch =
         feedbackTarget && hasMatch
           ? (await Promise.all(events.map((event) => hasMatch(event)))).some(

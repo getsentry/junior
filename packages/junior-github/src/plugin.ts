@@ -44,6 +44,7 @@ import {
 import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import { loadGitHubPullRequestPeople } from "./webhooks/pull-request-people.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
   listGitHubAssignedWork,
@@ -285,42 +286,51 @@ export function githubPlugin(
         };
       },
       routes(ctx) {
+        /** Read pages of a pull request's commits with a read-only token. */
+        const loadPullRequestCommitPage = async (pullRequest: {
+          number: number;
+          repositoryFullName: string;
+        }) => {
+          const [owner, name, ...extra] =
+            pullRequest.repositoryFullName.split("/");
+          if (!owner || !name || extra.length > 0) {
+            throw new Error(
+              "GitHub pull request commits received an invalid repository name",
+            );
+          }
+          const token = await issueInstallationToken({
+            appIdEnv,
+            privateKeyEnv,
+            installationIdEnv,
+            permissions: { pull_requests: "read" },
+            repositories: [name],
+          });
+          return async (page: number, perPage: number) =>
+            await githubRequest(
+              "https://api.github.com",
+              `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}/commits?per_page=${perPage}&page=${page}`,
+              { token: token.token },
+            );
+        };
         return [
           createGitHubWebhookRoute({
             annotations: ctx.annotations,
             appIdEnv,
             botEmail: () => readEnv(botEmailEnv),
-            classifyPullRequestCommits: async ({
-              number,
-              repositoryFullName,
-            }) => {
-              const [owner, name, ...extra] = repositoryFullName.split("/");
-              if (!owner || !name || extra.length > 0) {
-                throw new Error(
-                  "GitHub pull request commit classification received an invalid repository name",
-                );
-              }
-              const token = await issueInstallationToken({
-                appIdEnv,
-                privateKeyEnv,
-                installationIdEnv,
-                permissions: { pull_requests: "read" },
-                repositories: [name],
-              });
-              return await classifyGitHubPullRequestCommitComposition({
+            classifyPullRequestCommits: async (pullRequest) =>
+              await classifyGitHubPullRequestCommitComposition({
                 botEmail: requireEnv(botEmailEnv),
-                loadPage: async (page, perPage) =>
-                  await githubRequest(
-                    "https://api.github.com",
-                    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${number}/commits?per_page=${perPage}&page=${page}`,
-                    { token: token.token },
-                  ),
-              });
-            },
+                loadPage: await loadPullRequestCommitPage(pullRequest),
+              }),
             codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
+            loadPullRequestPeople: async (pullRequest) =>
+              await loadGitHubPullRequestPeople({
+                logins: pullRequest.logins,
+                loadPage: await loadPullRequestCommitPage(pullRequest),
+              }),
             log: ctx.log,
             markFeedbackReviewing: async ({ commentId, commentKind, repo }) => {
               const [owner, name, ...extra] = repo.split("/");

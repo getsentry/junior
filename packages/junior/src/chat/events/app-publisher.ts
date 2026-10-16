@@ -81,6 +81,8 @@ export function createEventAppPublisher(args: {
       await Promise.all([
         ingestEvent(event, {
           queue,
+          // Junior runs one Slack bot, so every Watch is in this workspace.
+          slackTeamId: eventAutomationTeamId,
           state: work.state,
         }),
         eventAutomationTeamId
