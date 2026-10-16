@@ -96,10 +96,11 @@ Watches route events back into an existing conversation.
 - An Event can name the people involved (`people`), by provider identity
   (`provider` and `handle`) or by email. The plugin collects them in code when
   the Event arrives, for example from the pull request. Core resolves each one
-  to a linked Slack user and lists the mentions as `People involved:`. Core
-  drops people that are unlinked or match more than one Slack user. People are
-  only for mentions. They never grant authority. Guidance says when to address
-  them.
+  to a linked Slack user in the bot's Slack workspace and lists the mentions as
+  `People involved:`. Core drops people that are unlinked or match more than
+  one Slack user. If the lookup fails, core logs it and delivers the Event
+  without people. People are only for mentions. They never grant authority.
+  Guidance says when to address them.
 - Resource types may declare optional app guidance per event type. Core inserts
   that text only for the matching resource type. The prompt applies it within
   the subscription intent or stored event automation instruction. Keep it separate

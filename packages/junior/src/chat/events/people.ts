@@ -31,14 +31,16 @@ function personCondition(person: EventPerson) {
 }
 
 /**
- * Resolve Event people to Slack mentions through linked user identities.
+ * Resolve Event people to Slack mentions through linked user identities in
+ * one Slack workspace.
  *
- * A person resolves only when exactly one linked Slack user matches. Core
- * drops unlinked and ambiguous people, so a provider value never guesses a
- * mention. The result keeps input order and has no duplicates.
+ * A person resolves only when exactly one linked Slack user in that workspace
+ * matches. Core drops unlinked and ambiguous people, so a provider value never
+ * guesses a mention. The result keeps input order and has no duplicates.
  */
 export async function resolveEventPeopleMentions(
   people: readonly EventPerson[],
+  slackTeamId: string,
 ): Promise<string[]> {
   if (people.length === 0) return [];
 
@@ -58,6 +60,7 @@ export async function resolveEventPeopleMentions(
         eq(linkedSlackIdentity.userId, juniorIdentities.userId),
         eq(linkedSlackIdentity.kind, "user"),
         eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, slackTeamId),
       ),
     )
     .where(

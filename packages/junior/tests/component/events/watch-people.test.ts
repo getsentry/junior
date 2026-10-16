@@ -20,12 +20,13 @@ import {
 async function seedSlackUser(args: {
   email: string;
   githubLogin?: string;
+  slackTeamId?: string;
   slackUserId: string;
 }): Promise<void> {
   const slack = await upsertIdentity(getSqlExecutor(), {
     kind: "user",
     provider: "slack",
-    providerTenantId: "T123",
+    providerTenantId: args.slackTeamId ?? "T123",
     providerSubjectId: args.slackUserId,
     email: args.email,
     emailVerified: true,
@@ -76,6 +77,13 @@ describe("Watch Event people", () => {
       email: "coauthor@example.com",
       slackUserId: "U456",
     });
+    // The same person in another Slack workspace is neither ambiguous nor
+    // mentioned.
+    await seedSlackUser({
+      email: "coauthor@example.com",
+      slackTeamId: "T999",
+      slackUserId: "U999",
+    });
     getPluginTools({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
@@ -117,7 +125,7 @@ describe("Watch Event people", () => {
             { email: "requester@example.com" },
           ],
         },
-        { queue },
+        { queue, slackTeamId: "T123" },
       );
     }
 
