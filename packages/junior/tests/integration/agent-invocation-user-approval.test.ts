@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/chat/actor";
 import { startAgentInvocationsForChildInput } from "@/chat/agent-invocations/result";
@@ -12,11 +13,12 @@ import {
   agentInvocationInputText,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { juniorAgentInvocations } from "@/db/schema";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   prepareSlackParentConversation,
@@ -168,7 +170,14 @@ describe("user approval for child agents", () => {
       );
       expect(grandchild.taskActor).toEqual(user);
       // The watch result starts a root Event Turn as the event system Actor.
-      // A message from that Turn keeps the child's task Actor.
+      // A message from that Turn keeps the child's task Actor, also when the
+      // newest agent invocation of the child is a watch event row from before
+      // task Actors were stored.
+      await getSqlExecutor()
+        .db()
+        .update(juniorAgentInvocations)
+        .set({ taskActor: null })
+        .where(eq(juniorAgentInvocations.invocationId, watch.invocationId));
       const { invocation: fromEventTurn } =
         await createAgentInvocationForMessage({
           actor: EVENT_SYSTEM_ACTOR,

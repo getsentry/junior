@@ -7,6 +7,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   lt,
   ne,
   or,
@@ -275,6 +276,31 @@ export async function getLatestAgentInvocationForConversation(
     .orderBy(desc(juniorAgentInvocations.createdAt))
     .limit(1);
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
+}
+
+/**
+ * Read the task Actor of one child Conversation: the newest one that its
+ * agent invocations store. Each agent invocation stores the child's task
+ * Actor when it is created, so this is the task Actor of the latest task. A
+ * watch event row from before task Actors were stored has none, so it does
+ * not hide an older one.
+ */
+export async function getChildTaskActor(
+  childConversationId: string,
+): Promise<AgentInvocation["taskActor"]> {
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({ taskActor: juniorAgentInvocations.taskActor })
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.childConversationId, childConversationId),
+        isNotNull(juniorAgentInvocations.taskActor),
+      ),
+    )
+    .orderBy(desc(juniorAgentInvocations.createdAt))
+    .limit(1);
+  return row?.taskActor ?? undefined;
 }
 
 /**
@@ -646,7 +672,8 @@ export async function createAgentInvocationForMessage(
           taskActor:
             taskActorFor(
               input.actor,
-              input.parentTaskActor ?? latest.taskActor,
+              input.parentTaskActor ??
+                (await getChildTaskActor(input.childConversationId)),
             ) ?? null,
           source: { kind: "agent_invocation" },
           destination: input.destination,
