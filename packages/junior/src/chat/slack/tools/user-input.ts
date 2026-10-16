@@ -1,6 +1,9 @@
+import { logException } from "@/chat/logging";
 import { postSlackMessage } from "@/chat/slack/outbound";
+import { getConnectedStateContext } from "@/chat/state/adapter";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { buildSlackUserInputMessage } from "@/chat/slack/user-input";
+import { recordOpenSlackUserInput } from "@/chat/slack/user-input-state";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ShowUserInputRequest } from "@/chat/tools/runtime/request-user-input";
@@ -43,6 +46,22 @@ export function createSlackUserInputShow(
       text: message.text,
       threadTs,
     });
+    // A typed reply to Junior closes this question too. The question is
+    // already posted, so a failure here only leaves its buttons active.
+    try {
+      const { stateAdapter } = await getConnectedStateContext();
+      await recordOpenSlackUserInput(stateAdapter, {
+        channelId,
+        messageTs: posted.ts,
+        request,
+        threadTs,
+      });
+    } catch (error) {
+      logException(error, "slack.user_input.record_open.failed", {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": posted.ts,
+      });
+    }
     const response = { channel_id: channelId, message_ts: posted.ts };
     state.setOperationResult(operationKey, response);
     return response;

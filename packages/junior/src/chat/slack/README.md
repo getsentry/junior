@@ -20,8 +20,10 @@ formatting, and Slack API error mapping. The Slack provider layer in
 - `requestUserInput` shows its question in Slack as one message with a button
   for each choice (`user-input.ts`). A click is Slack input from the person
   who clicked, and its text is the choice label. It enters the mailbox as a
-  mention in the thread of the question. Only the first click on a question is
-  accepted, also when only the queue wake fails after the click is saved. The
+  mention in the thread of the question. Only the first answer to a question
+  is accepted, also when only the queue wake fails after the click is saved.
+  A message to Junior in the thread also answers the open question: it claims
+  the question and replaces the buttons (`user-input-state.ts`). The
   click has no Slack message of its own, so its Slack timestamp is the
   question message. Its id is `slack-user-input-click:<action_ts>`, which is
   not a Slack timestamp, and its time is the click `action_ts`.

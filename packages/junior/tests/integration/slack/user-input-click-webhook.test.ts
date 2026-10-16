@@ -4,31 +4,36 @@ import { Message, type SerializedMessage } from "chat";
 import { closeDb } from "@/chat/db";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { buildSlackUserInputMessage } from "@/chat/slack/user-input";
+import { recordOpenSlackUserInput } from "@/chat/slack/user-input-state";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import {
+  SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
 } from "../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 
 const ORIGINAL_ENV = { ...process.env };
 const THREAD_TS = "1712345.0001";
 const QUESTION_TS = "1712345.0002";
 
+const QUESTION = {
+  question: "Ship release 1.2.3?",
+  options: [{ label: "Ship it" }, { label: "Hold" }],
+};
+
 function choiceClickPayload(args: {
   actionTs: string;
   userId: string;
 }): Record<string, unknown> {
-  const posted = buildSlackUserInputMessage({
-    question: "Ship release 1.2.3?",
-    options: [{ label: "Ship it" }, { label: "Hold" }],
-  });
+  const posted = buildSlackUserInputMessage(QUESTION);
   return {
     type: "block_actions",
     team: { id: "T123" },
@@ -94,7 +99,32 @@ describe("Slack webhook: user input clicks", () => {
       await waitUntil.flush();
     }
 
-    return { click, queue, state };
+    async function reply(userId: string, ts: string) {
+      const waitUntil = client.waitUntil();
+      const response = await handleSlackWebhook({
+        request: client.event(
+          slackEventsApiEnvelope({
+            eventType: "app_mention",
+            channel: "C123",
+            text: `<@${SLACK_BOT_USER_ID}> Hold, the tests are red`,
+            threadTs: THREAD_TS,
+            ts,
+            user: userId,
+          }),
+        ),
+        waitUntil: waitUntil.fn,
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+      expect(response.status).toBe(200);
+      await waitUntil.flush();
+    }
+
+    return { click, queue, reply, state };
   }
 
   it("sends the first clicked choice as the answer and closes the question", async () => {
@@ -162,5 +192,40 @@ describe("Slack webhook: user input clicks", () => {
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]?.input.authorId).toBe("U123");
     expect(slackApiOutbox.calls("chat.update")).toHaveLength(1);
+  });
+
+  it("closes the question when a person replies to Junior instead", async () => {
+    const { click, reply, state } = clickHarness();
+    // requestUserInput records the question when it posts it in Slack.
+    await state.connect();
+    await recordOpenSlackUserInput(state, {
+      channelId: "C123",
+      messageTs: QUESTION_TS,
+      request: QUESTION,
+      threadTs: THREAD_TS,
+    });
+
+    await reply("U456", "1712345.0003");
+    await click("U123", "1712345.0004");
+
+    const work = await getConversationWorkState({
+      conversationId: `slack:C123:${THREAD_TS}`,
+      state,
+    });
+    // The typed reply is the answer. The later click must not add a Turn.
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input.authorId).toBe("U456");
+    const updates = slackApiOutbox.calls("chat.update");
+    expect(updates).toHaveLength(1);
+    const blocks = updates[0]?.params.blocks;
+    const parsedBlocks: unknown[] =
+      typeof blocks === "string" ? JSON.parse(blocks) : (blocks as unknown[]);
+    expect(parsedBlocks).toEqual([
+      { type: "markdown", text: "Ship release 1.2.3?" },
+      {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: "<@U456> replied in the thread" }],
+      },
+    ]);
   });
 });

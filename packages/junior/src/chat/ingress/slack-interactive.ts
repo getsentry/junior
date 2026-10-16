@@ -14,12 +14,12 @@ import {
   buildAnsweredSlackUserInputBlocks,
   isSlackUserInputActionId,
 } from "@/chat/slack/user-input";
+import {
+  claimSlackUserInput,
+  releaseSlackUserInput,
+} from "@/chat/slack/user-input-state";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import type { SlackInteractivePayload } from "./slack-payload";
-
-// One answer per question. Keep the claim longer than people are likely to
-// come back to an old thread.
-const USER_INPUT_CLAIM_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function requireSlackPayloadUserId(
   value: string | null | undefined,
@@ -103,13 +103,8 @@ async function handleUserInputClick(args: {
     return;
   }
 
-  const claimKey = `slack:user-input-click:${channelId}:${messageTs}`;
   if (
-    !(await args.state.setIfNotExists(
-      claimKey,
-      userId,
-      USER_INPUT_CLAIM_TTL_MS,
-    ))
+    !(await claimSlackUserInput(args.state, { channelId, messageTs, userId }))
   ) {
     return;
   }
@@ -148,7 +143,7 @@ async function handleUserInputClick(args: {
     await args.persistMessage(message);
   } catch (error) {
     // Junior did not save the click, so let the person click again.
-    await args.state.delete(claimKey);
+    await releaseSlackUserInput(args.state, { channelId, messageTs });
     throw error;
   }
 
