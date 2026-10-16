@@ -44,6 +44,18 @@ sandbox.
 5. Replayed, expired, mismatched, or already-consumed callbacks fail without
    altering conversation authority.
 
+### Dashboard Connections
+
+- The dashboard connects and disconnects plugin OAuth accounts through
+  `/api/connections`. The credential subject is the viewer's web actor id
+  (`webActorFromEmail`), which is the subject of the viewer's web
+  Conversations. Slack grants stay keyed by Slack user id and are managed from
+  Slack App Home or the slash command.
+- A dashboard connection has no Conversation to resume. The callback stores the
+  token and does not publish Slack App Home.
+- MCP plugins are not listed yet. Their authorization attempts are bound to a
+  Conversation.
+
 ### MCP Authorization Attempts
 
 - Every authorization start creates a fresh v2 attempt id. Its PKCE verifier

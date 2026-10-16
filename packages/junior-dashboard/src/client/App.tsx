@@ -38,6 +38,7 @@ import { CodePage } from "./pages/code/CodePage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
+import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -561,6 +562,23 @@ export function DashboardShell() {
               )
             }
             path="/settings/api-tokens"
+          />
+          <Route
+            element={
+              loading ? (
+                <PageRouteLoading
+                  description="Connect and disconnect your accounts."
+                  label="Loading connected accounts"
+                  title="Connected accounts"
+                  variant="list"
+                />
+              ) : loggedIn ? (
+                <ConnectionsPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/settings/connections"
           />
           <Route
             element={
