@@ -7,11 +7,12 @@ The npm `sentry` package is intentionally installed at runtime by `sentryPlugin(
 
 ## Command selection rules
 
-1. Prefer current canonical singular command groups: `issue`, `org`, `log`, `trace`, and `api`.
+1. Prefer current canonical singular command groups: `issue`, `org`, `project`, `team`, `dsn`, `log`, `trace`, `alert`, and `api`.
 2. Do not use stale plural subcommands such as `sentry organizations list`.
 3. If a command errors as unknown, run `sentry --help` and the nearest subcommand help before declaring the surface unavailable.
 4. Prefer `--json` and, when useful, `--fields` for structured parsing.
-5. Use `sentry api <endpoint>` for authenticated API calls when a high-level command does not cover the request. Default to `GET`; only perform documented alert or monitor mutations when explicitly requested.
+5. Use `sentry api <endpoint>` for authenticated API calls when a high-level command does not cover the request. Default to `GET`; write only when the user asks for the change.
+6. Use `sentry schema <resource>` (for example `sentry schema projects` or `sentry schema --search team`) to find the current endpoint and body fields before an API write.
 
 ## Issue commands
 
@@ -49,6 +50,40 @@ sentry org view ORG [--json]
 ```
 
 Views one organization.
+
+## Project and team commands
+
+Read commands:
+
+```bash
+sentry project list ORG/ [--platform PLATFORM] [--json]
+sentry project view ORG/PROJECT [--json]
+sentry team list ORG/ [--json]
+sentry dsn list ORG/PROJECT [--json]
+sentry api projects/ORG/PROJECT/teams/ --json
+sentry api teams/ORG/TEAM/members/ --json
+```
+
+Write commands. Each write runs once with `--dry-run`, then once for real:
+
+| Change                       | Command                                                              | Scope           |
+| ---------------------------- | -------------------------------------------------------------------- | --------------- |
+| Create a project             | `sentry project create ORG/NAME:PLATFORM --team TEAM [--json]`       | `project:write` |
+| Update project settings      | `sentry api projects/ORG/PROJECT/ -X PUT -d '{"FIELD":VALUE}'`       | `project:write` |
+| Add a team to a project      | `sentry api projects/ORG/PROJECT/teams/TEAM/ -X POST`                | `project:write` |
+| Remove a team from a project | `sentry api projects/ORG/PROJECT/teams/TEAM/ -X DELETE`              | `project:write` |
+| Create a team                | `sentry api organizations/ORG/teams/ -X POST -d '{"slug":"TEAM"}'`   | `team:write`    |
+| Update a team                | `sentry api teams/ORG/TEAM/ -X PUT -d '{"name":"NAME"}'`             | `team:write`    |
+| Add a member to a team       | `sentry api organizations/ORG/members/MEMBER_ID/teams/TEAM/ -X POST` | `team:write`    |
+
+Notes:
+
+- Run `sentry platform list` when the platform slug is unclear.
+- `sentry project create` needs `--team` when the org has more than one team. Ask which team when the user did not say.
+- After a project is created, run `sentry dsn list ORG/PROJECT` and report the DSN and the project URL.
+- For a settings update, run `sentry schema updateProject` to confirm the field name. Send only the changed fields. Common fields: `name`, `slug`, `platform`, `isBookmarked`, `resolveAge`, `subjectPrefix`, `highlightTags`, `options[...]`.
+- Changing `slug` changes project URLs and breaks saved links. Treat it as an irreversible change.
+- Resolve `MEMBER_ID` with `sentry api organizations/ORG/members/?query=EMAIL --json`. Do not guess IDs.
 
 ## Log commands
 
@@ -124,7 +159,7 @@ The current CLI create command exposes threshold triggers but no dynamic/anomaly
 sentry api ENDPOINT [--method METHOD] [--field KEY=VALUE] [--data JSON] [--json]
 ```
 
-Use `sentry api` only when no first-class CLI command covers the requested operation. Default to read-only `GET` requests. For an explicitly requested alerting write, validate with `--dry-run` and verify the current API schema before executing. Do not mutate unrelated Sentry resources.
+Use `sentry api` only when no first-class CLI command covers the requested operation. Default to read-only `GET` requests. For an explicitly requested write, verify the endpoint with `sentry schema`, validate with `--dry-run`, then execute once. Do not mutate unrelated Sentry resources.
 
 ## Common flags
 
@@ -135,19 +170,22 @@ Use `sentry api` only when no first-class CLI command covers the requested opera
 
 ## Common use cases
 
-| User request                                          | Command pattern                                                     |
-| ----------------------------------------------------- | ------------------------------------------------------------------- |
-| "List my orgs"                                        | `sentry org list --json`                                            |
-| "Show issues in frontend"                             | `sentry issue list ORG/frontend --json`                             |
-| "Show unresolved errors across the org"               | `sentry issue list ORG/ --query "is:unresolved level:error" --json` |
-| "Inspect this issue"                                  | `sentry issue view ISSUE --json`                                    |
-| "Show events for this issue"                          | `sentry issue events ISSUE --json`                                  |
-| "Find error logs"                                     | `sentry log list ORG/PROJECT --query "level:error" --json`          |
-| "Inspect a trace"                                     | `sentry trace view ORG/PROJECT/TRACE_ID --json`                     |
-| "Show logs for a trace"                               | `sentry trace logs ORG/TRACE_ID --json`                             |
-| "Call an endpoint not covered by high-level commands" | `sentry api organizations/ --json`                                  |
-| "Create a static metric alert"                       | `sentry alert metrics create ... --dry-run`, then execute           |
-| "Create a dynamic anomaly alert"                     | Verify CLI help; use API fallback only if still unsupported         |
+| User request                                          | Command pattern                                                                   |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| "List my orgs"                                        | `sentry org list --json`                                                          |
+| "Show issues in frontend"                             | `sentry issue list ORG/frontend --json`                                           |
+| "Show unresolved errors across the org"               | `sentry issue list ORG/ --query "is:unresolved level:error" --json`               |
+| "Inspect this issue"                                  | `sentry issue view ISSUE --json`                                                  |
+| "Show events for this issue"                          | `sentry issue events ISSUE --json`                                                |
+| "Find error logs"                                     | `sentry log list ORG/PROJECT --query "level:error" --json`                        |
+| "Inspect a trace"                                     | `sentry trace view ORG/PROJECT/TRACE_ID --json`                                   |
+| "Show logs for a trace"                               | `sentry trace logs ORG/TRACE_ID --json`                                           |
+| "Call an endpoint not covered by high-level commands" | `sentry api organizations/ --json`                                                |
+| "Create a project for my Node app"                    | `sentry project create ORG/NAME:node --team TEAM --dry-run`, then execute         |
+| "Give team X access to project Y"                     | `sentry api projects/ORG/Y/teams/X/ -X POST --dry-run`, then execute              |
+| "Change project setting Z"                            | `sentry schema updateProject`, then `sentry api projects/ORG/PROJECT/ -X PUT ...` |
+| "Create a static metric alert"                        | `sentry alert metrics create ... --dry-run`, then execute                         |
+| "Create a dynamic anomaly alert"                      | Verify CLI help; use API fallback only if still unsupported                       |
 
 ## Troubleshooting
 
@@ -163,8 +201,9 @@ Use `sentry api` only when no first-class CLI command covers the requested opera
 | API returns `401` or invalid/expired/revoked token text             | Stale or missing credential                | Rerun the real command once so the runtime can trigger reconnect.                             |
 | API returns explicit missing scope text                             | OAuth grant lacks a named scope            | Rerun the real command once so the runtime can trigger reconnect.                             |
 | API returns generic `403` or permission denied                      | Connected account lacks org/project access | Stop and tell the user the current connection cannot access the requested data.               |
-| Alert write returns an explicit missing-scope error                  | OAuth grant predates alert writes         | Rerun once to trigger reconnect; the connection needs `alerts:write`.                          |
-| Static metric alert requested                                       | First-class CLI command is available       | Use `sentry alert metrics create`; do not drop directly to `sentry api`.                        |
-| Dynamic/anomaly alert flags are unavailable                         | CLI coverage gap                          | Verify live help, then use the current API fallback if needed.                                 |
+| Alert write returns an explicit missing-scope error                 | OAuth grant predates alert writes          | Rerun once to trigger reconnect; the connection needs `alerts:write`.                         |
+| Project or team write returns an explicit missing-scope error       | OAuth grant predates the write scope       | Rerun once to trigger reconnect; the connection needs `project:write` or `team:write`.        |
+| Static metric alert requested                                       | First-class CLI command is available       | Use `sentry alert metrics create`; do not drop directly to `sentry api`.                      |
+| Dynamic/anomaly alert flags are unavailable                         | CLI coverage gap                           | Verify live help, then use the current API fallback if needed.                                |
 
 Use these command shapes during normal skill execution, but treat live CLI help as the final source when this reference and the installed CLI disagree.

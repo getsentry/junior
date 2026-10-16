@@ -1,6 +1,6 @@
 # @sentry/junior-sentry
 
-Sentry investigations (per-user OAuth plus optional org read access) and signed issue webhooks (internal integration) for Junior.
+Sentry investigations and explicitly requested project, team, and alert changes (per-user OAuth plus optional org read access) and signed issue webhooks (internal integration) for Junior.
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-sentry
@@ -27,10 +27,11 @@ Verified CLI surface (check live `sentry --help` before blocking):
 
 - `sentry issue list|events|explain|plan|view`
 - `sentry org list|view`
+- `sentry project create|list|view`, `sentry team list`, `sentry dsn list`
 - `sentry log list|view`
 - `sentry trace list|view|logs`
 - `sentry alert metrics list|view|create|edit|delete`
-- `sentry api <endpoint>` fallback
+- `sentry api <endpoint>` fallback, with `sentry schema` for endpoint lookup
 
 ## Org read access
 

@@ -62,7 +62,7 @@ export function sentryPlugin(): PluginRegistration {
         type: "oauth-bearer",
       },
       description:
-        "Investigate Sentry telemetry, manage alerting, and receive issue and metric alert webhooks",
+        "Investigate Sentry telemetry, manage projects, teams, and alerting, and receive issue and metric alert webhooks",
       displayName: "Sentry",
       envVars: {
         SENTRY_CLIENT_ID: {},

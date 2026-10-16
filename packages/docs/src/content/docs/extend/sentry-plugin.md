@@ -10,7 +10,7 @@ related:
   - /operate/security-hardening/
 ---
 
-Use the Sentry plugin to investigate issues with a user's Sentry account and respond to new issues and metric alerts through watches and event automations.
+Use the Sentry plugin to investigate issues with a user's Sentry account, make requested project, team, and alert changes, and respond to new issues and metric alerts through watches and event automations.
 
 Junior stores each user's OAuth grant and uses it only for that user's requests. Optional org read access lets Junior read Sentry data without a user's OAuth token, such as in scheduled tasks and event automations. Webhooks use a separate internal integration.
 
@@ -129,6 +129,8 @@ Set `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` to the app's credentials. Juni
 `alerts:write event:write member:read org:read project:releases project:write team:write`
 
 Reconnect after scope changes. Existing grants do not pick up new scopes automatically.
+
+With these scopes, Junior can make Sentry writes that a user asks for, such as creating projects, changing project settings, managing teams, and managing alerts. The user's own Sentry role still applies. The skill does not limit which requests Junior makes. To limit access, narrow the OAuth scopes or add host egress rules.
 
 ## Set up org read access
 
