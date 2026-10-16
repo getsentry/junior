@@ -277,7 +277,9 @@ describe("Slack tool registration", () => {
       expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools.createEventAutomation?.disabledReason).toBeDefined();
       expect(tools.addReaction?.disabledReason).toBeDefined();
+      expect(tools.requestUserInput?.disabledReason).toBeDefined();
     }
+    expect(messageTurn.requestUserInput?.disabledReason).toBeUndefined();
     expect(messageTurn.createEventAutomation?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
@@ -316,7 +318,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("addReaction");
   });
 
-  it("registers user input only where a person can answer it", () => {
+  it("enables user input only where a person can answer it", () => {
     const webTools = createTools(
       [],
       {},
@@ -333,7 +335,10 @@ describe("Slack tool registration", () => {
     );
 
     expect(webTools).toHaveProperty("requestUserInput");
-    expect(createTools([], {}, ctx())).not.toHaveProperty("requestUserInput");
+    expect(webTools.requestUserInput?.disabledReason).toBeUndefined();
+    expect(
+      createTools([], {}, ctx()).requestUserInput?.disabledReason,
+    ).toBeDefined();
   });
 
   it("does not register Slack tools for local destinations", () => {
