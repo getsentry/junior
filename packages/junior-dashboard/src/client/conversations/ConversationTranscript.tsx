@@ -202,12 +202,10 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       renderMessage={(entry) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
-          <TranscriptRailEvent kind="event" objectType="automation">
-            <TranscriptAutomationTriggerView
-              message={entry.message}
-              sourceTask={props.conversation.sourceTask}
-            />
-          </TranscriptRailEvent>
+          <TranscriptAutomationTriggerView
+            message={entry.message}
+            sourceTask={props.conversation.sourceTask}
+          />
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
@@ -415,12 +413,10 @@ function RedactedTranscriptView(props: {
       renderMessage={(entry) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
-          <TranscriptRailEvent kind="event" objectType="automation">
-            <TranscriptAutomationTriggerView
-              message={entry.message}
-              sourceTask={props.conversation.sourceTask}
-            />
-          </TranscriptRailEvent>
+          <TranscriptAutomationTriggerView
+            message={entry.message}
+            sourceTask={props.conversation.sourceTask}
+          />
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"

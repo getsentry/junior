@@ -29,7 +29,6 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
-import { ConversationAutomationLink } from "./ConversationAutomationLink";
 import {
   ConversationAnnotations,
   ConversationPrivacyChip,
@@ -273,13 +272,6 @@ export function ConversationPage(props: {
               live={live}
               meta={
                 <ConversationHeaderMeta
-                  automation={
-                    detail.data?.sourceTask ? (
-                      <ConversationAutomationLink
-                        sourceTask={detail.data.sourceTask}
-                      />
-                    ) : null
-                  }
                   identity={identity}
                   stats={
                     hasConversationStats({

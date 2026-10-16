@@ -11,6 +11,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
+import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
@@ -19,10 +20,10 @@ import {
   summarizeCost,
   summarizeModelUsage,
   summarizeUsage,
+  automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
-import { ConversationAutomationLink } from "./ConversationAutomationLink";
 import { cn, dashboardInlineLinkClass } from "../styles";
 import {
   CostMetric,
@@ -482,6 +483,28 @@ function LocationLink(props: { label: string; locationUrl?: string }) {
   );
 }
 
+function SourceTask(props: {
+  sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
+}) {
+  const automationId = props.sourceTask.id?.trim();
+  const title = props.sourceTask.title?.trim();
+  const label = title
+    ? `Automation: ${title}`
+    : props.sourceTask.kind === "scheduled"
+      ? "Scheduled automation"
+      : "Event automation";
+  return automationId ? (
+    <Link
+      className={dashboardInlineLinkClass}
+      to={automationPath(automationId)}
+    >
+      {label}
+    </Link>
+  ) : (
+    <span>{label}</span>
+  );
+}
+
 /** Resolve the model still running an open turn, including mid-turn handoffs. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
@@ -568,7 +591,7 @@ function conversationStatItems(props: {
       : undefined,
     variant === "full" && sourceTask
       ? {
-          content: <ConversationAutomationLink sourceTask={sourceTask} />,
+          content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
         }
       : undefined,

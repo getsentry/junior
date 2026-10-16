@@ -1416,6 +1416,9 @@ function eventAutomationRunConversation(
       label: "Summarize the closed issue",
       title: "Closed issue summary",
       triggerMessageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+      triggerLabel: "Linear issue ACME-42 closed",
+      credentialMode: "creator",
+      credentialUser: "Alex Rivera",
     },
     events: [
       reportEvent(0, startedAt, {

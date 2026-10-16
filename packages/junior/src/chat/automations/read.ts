@@ -32,7 +32,11 @@ import {
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
-import { getDispatchInputMessageIdForConversation } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchIdForConversation,
+  getDispatchInputMessageId,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
 import {
   automationDefinition,
   listAutomationVersions,
@@ -800,6 +804,36 @@ export async function readViewerAutomationVersions(
   };
 }
 
+/** Name the event in a trigger, such as "opened" for `pull_request.opened`. */
+function eventActionLabel(eventName: string): string {
+  const [, ...action] = eventName.split(".");
+  return (action.length > 0 ? action : [eventName])
+    .join(" ")
+    .replaceAll("_", " ");
+}
+
+/**
+ * Read whose access one run used from its dispatch record. Return nothing when
+ * the record is gone, because the Automation's current setting can differ.
+ */
+async function readRunCredential(
+  dispatchId: string | undefined,
+  creator: { fullName?: string; slackUserId: string; userName?: string },
+): Promise<Pick<ConversationSourceTask, "credentialMode" | "credentialUser">> {
+  if (!dispatchId) return {};
+  const dispatch = await getDispatchRecord(dispatchId);
+  if (!dispatch) return {};
+  const subject = dispatch.credentialSubject;
+  if (!subject) return { credentialMode: "system" };
+  return {
+    credentialMode: "creator",
+    credentialUser:
+      subject.userId === creator.slackUserId
+        ? creatorLabel(creator)
+        : subject.userId,
+  };
+}
+
 /** Resolve the source task for one conversation when a terminal execution links it. */
 export async function readConversationSourceTask(args: {
   conversationId: string;
@@ -809,12 +843,12 @@ export async function readConversationSourceTask(args: {
     conversationId: args.conversationId,
   });
   if (!execution) return undefined;
-  const triggerMessageId = getDispatchInputMessageIdForConversation(
-    args.conversationId,
-  );
+  const dispatchId = getDispatchIdForConversation(args.conversationId);
   const base = {
     kind: execution.kind,
-    ...(triggerMessageId ? { triggerMessageId } : undefined),
+    ...(dispatchId
+      ? { triggerMessageId: getDispatchInputMessageId(dispatchId) }
+      : undefined),
   };
   if (!args.viewer) return base;
   const candidate = await resolveViewerTaskCandidate(
@@ -823,13 +857,19 @@ export async function readConversationSourceTask(args: {
     execution.automationId,
   );
   if (!candidate) return base;
+  const credential = await readRunCredential(
+    dispatchId,
+    candidate.task.createdBy,
+  );
   if (candidate.kind === "scheduled") {
     const instruction = displayText(
       candidate.task.task.text,
       "Untitled scheduled automation",
     );
+    const schedule = candidate.task.schedule.description.trim();
     return {
       ...base,
+      ...credential,
       id: candidate.task.id,
       kind: "scheduled",
       label: instruction,
@@ -838,14 +878,17 @@ export async function readConversationSourceTask(args: {
         instruction,
         "Untitled scheduled automation",
       ),
+      ...(schedule ? { triggerLabel: schedule } : undefined),
     };
   }
   const instruction = displayText(
     candidate.task.task.text,
     "Untitled event automation",
   );
+  const { events, label } = candidate.task.trigger;
   return {
     ...base,
+    ...credential,
     id: candidate.task.id,
     kind: "event",
     label: instruction,
@@ -854,6 +897,8 @@ export async function readConversationSourceTask(args: {
       instruction,
       "Untitled event automation",
     ),
+    triggerLabel:
+      events.length === 1 ? `${label} ${eventActionLabel(events[0]!)}` : label,
   };
 }
 

@@ -194,16 +194,14 @@ export function getDispatchInputMessageId(dispatchId: string): string {
 }
 
 /**
- * Return the input message id of a dispatch Conversation, such as an
- * Automation run. Other Conversations have no dispatch input.
+ * Return the dispatch id of a dispatch Conversation, such as an Automation
+ * run. Other Conversations have no dispatch.
  */
-export function getDispatchInputMessageIdForConversation(
+export function getDispatchIdForConversation(
   conversationId: string,
 ): string | undefined {
   if (!conversationId.startsWith(DISPATCH_ID_PREFIX)) return undefined;
-  return getDispatchInputMessageId(
-    conversationId.slice(DISPATCH_ID_PREFIX.length),
-  );
+  return conversationId.slice(DISPATCH_ID_PREFIX.length) || undefined;
 }
 
 /** Return the stable turn id used by every run of one dispatch. */

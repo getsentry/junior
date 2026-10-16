@@ -1893,7 +1893,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toMatch(
-      /href="\/automations\/sched_source_task"[^>]*>.*Automation: Refresh YC company data<\/span><\/a>/,
+      /href="\/automations\/sched_source_task"[^>]*>Automation: Refresh YC company data<\/a>/,
     );
     // Full automation instructions stay on the automation page.
     expect(html).not.toContain("Update getsentry/yc-scraper");
