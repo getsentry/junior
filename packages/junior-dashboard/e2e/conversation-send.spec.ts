@@ -553,6 +553,9 @@ test("hands web and external messages from queue to history without gaps", async
     .getByRole("button", { name: "Could not remove. Try again." })
     .click();
   await expect(pending).toBeHidden();
+  // Polling keeps detail reads in flight. Drop them before the page closes so
+  // a late route.fetch does not fail the test during teardown.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("stops the active Turn and returns queued text to the composer", async ({
