@@ -50,7 +50,7 @@ async function setup(kind: "scheduled" | "event") {
     ["U123", "creator@example.com", "T123"],
     ["U456", "reader@example.com", "T123"],
     ["U123", "foreign@example.com", "TFOREIGN"],
-  ]) {
+  ] as const) {
     await getConversationStore().recordActivity({
       conversationId: `slack:${teamId}:${slackUserId}:edit`,
       actor: { platform: "slack", slackUserId, email, teamId },

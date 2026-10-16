@@ -127,11 +127,11 @@ describe("uploadFilesToThread", () => {
     expect(uploadUrlCalls).toHaveLength(2);
     expect(uploadUrlCalls[0]?.params).toMatchObject({
       filename: "a.png",
-      length: String(files[0].data.length),
+      length: String(files[0]!.data.length),
     });
     expect(uploadUrlCalls[1]?.params).toMatchObject({
       filename: "b.jpg",
-      length: String(files[1].data.length),
+      length: String(files[1]!.data.length),
     });
 
     const externalUploadCalls = getCapturedSlackFileUploadCalls();

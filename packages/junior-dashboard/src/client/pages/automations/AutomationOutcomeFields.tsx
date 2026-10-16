@@ -141,10 +141,10 @@ export function AutomationOutcomeFields(props: {
                       disabled={index === 0}
                       onClick={() => {
                         const next = [...props.value];
-                        [next[index - 1], next[index]] = [
-                          next[index],
-                          next[index - 1],
-                        ];
+                        const previous = next[index - 1];
+                        if (!previous) return;
+                        next[index - 1] = outcome;
+                        next[index] = previous;
                         props.onChange(next);
                       }}
                     >

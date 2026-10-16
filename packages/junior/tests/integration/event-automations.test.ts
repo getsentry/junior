@@ -414,7 +414,7 @@ describe("event automations", () => {
         { queue, teamId },
       );
 
-      const [{ conversationId }] = queue.sentRecords();
+      const { conversationId } = queue.sentRecords()[0]!;
       expect(conversationId).toBeDefined();
       const dispatch = await getDispatchRecord(
         conversationId!.replace(/^agent-dispatch:/, ""),
@@ -477,7 +477,7 @@ describe("event automations", () => {
       { queue, teamId },
     );
 
-    const [{ conversationId }] = queue.sentRecords();
+    const { conversationId } = queue.sentRecords()[0]!;
     const dispatch = await getDispatchRecord(
       conversationId!.replace(/^agent-dispatch:/, ""),
     );
@@ -494,8 +494,8 @@ describe("event automations", () => {
       .select()
       .from(juniorEventAutomations)
       .where(eq(juniorEventAutomations.id, task.id));
-    expect(saved.task.destination).toEqual(destination);
-    expect(saved.task.outcomes).toEqual([outcomes[0]]);
+    expect(saved?.task.destination).toEqual(destination);
+    expect(saved?.task.outcomes).toEqual([outcomes[0]]);
   });
 
   it("rejects event types that the plugin did not register", async () => {
@@ -675,7 +675,7 @@ describe("event automations", () => {
       ),
     ).resolves.toEqual({ dispatched: 1 });
 
-    const [{ conversationId }] = queue.sentRecords();
+    const { conversationId } = queue.sentRecords()[0]!;
     const dispatch = await getDispatchRecord(
       conversationId!.replace(/^agent-dispatch:/, ""),
     );

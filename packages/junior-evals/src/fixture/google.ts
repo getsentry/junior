@@ -60,19 +60,20 @@ function offsetMs(ms: number): number {
       .formatToParts(ms)
       .map((part) => [part.type, Number(part.value)]),
   );
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts[type] ?? 0;
   const wall = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute"),
   );
   return wall - Math.floor(ms / 60_000) * 60_000;
 }
 
 /** The instant of a Pacific time on a day, given as UTC midnight. */
 function pacificMs(dayMs: number, clock: string): number {
-  const [hours, minutes] = clock.split(":").map(Number);
+  const [hours = 0, minutes = 0] = clock.split(":").map(Number);
   const wall = dayMs + hours * 3_600_000 + minutes * 60_000;
   // A second pass corrects the offset on days when it changes.
   return wall - offsetMs(wall - offsetMs(wall));
@@ -92,6 +93,7 @@ function occurrences(calendar: MockCalendar, timeMin: string, timeMax: string) {
     dayMs += DAY_MS
   ) {
     const weekday = WEEKDAYS[new Date(dayMs).getUTCDay()];
+    if (!weekday) continue;
     const date = new Date(dayMs).toISOString().slice(0, 10).replaceAll("-", "");
     for (const [index, event] of calendar.events.entries()) {
       const startMs = pacificMs(dayMs, event.start);

@@ -7,11 +7,11 @@ import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 
 export class AutomationEditError extends ToolInputError {
-  constructor(
-    message: string,
-    readonly field?: string,
-  ) {
+  readonly field: string | undefined;
+
+  constructor(message: string, field?: string) {
     super(message);
+    this.field = field;
     this.name = "AutomationEditError";
   }
 }

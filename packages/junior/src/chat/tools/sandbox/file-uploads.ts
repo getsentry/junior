@@ -97,8 +97,11 @@ export interface SandboxFileUpload {
 
 /** Signal that a model-provided file path did not resolve in the active sandbox. */
 export class SandboxFileNotFoundError extends ToolInputError {
-  constructor(readonly path: string) {
+  readonly path: string;
+
+  constructor(path: string) {
     super(`failed to read file: ${path}`);
+    this.path = path;
   }
 }
 

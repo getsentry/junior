@@ -37,7 +37,7 @@ const defaultImageOptions = {
 };
 
 function getRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
-  const request = fetchMock.mock.calls[0];
+  const request = fetchMock.mock.calls[0]!;
   expect(request).toBeDefined();
   expect(request[1]).toBeDefined();
   return JSON.parse((request[1] as RequestInit).body as string);
@@ -120,7 +120,7 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute({ prompt: "test prompt" }, {} as any);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const request = fetchMock.mock.calls[0];
+    const request = fetchMock.mock.calls[0]!;
     expect(request).toBeDefined();
     expect(request[0]).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
     expect(getRequestBody(fetchMock)).toMatchObject({

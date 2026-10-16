@@ -31,7 +31,8 @@ type StructuredToolExecuteResult<TOutputSchema extends ZodTypeAny> =
   | z.input<TOutputSchema>
   | StructuredToolResultEnvelope<z.input<TOutputSchema>>;
 
-interface StructuredToolResultEnvelope<TDetails> {
+/** Tool result that carries model-visible content and typed details. */
+export interface StructuredToolResultEnvelope<TDetails> {
   content: Array<TextContent | ImageContent>;
   details: TDetails;
 }
