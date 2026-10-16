@@ -17,7 +17,11 @@ import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchConversationId,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { automationRevision } from "@/chat/automations/revision";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -31,6 +35,7 @@ import { createEventAutomationTool } from "@/chat/tools/create-event-automation"
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
+import { juniorConversations } from "@/db/schema/conversations";
 import { juniorEventAutomations } from "@/db/schema/event-automations";
 import {
   createConversationWorkQueueTestAdapter,
@@ -342,6 +347,30 @@ describe("event automations", () => {
         dispatch?.credentialSubject?.allowedWhen === "event-automation" &&
         dispatch.credentialSubject.taskId === first.automation.id,
     );
+    // The run's Conversation links to its Automation run before it finishes,
+    // so the API can name the untitled run after its Automation.
+    const firstConversationId = getDispatchConversationId(firstDispatch!);
+    await expect(
+      db
+        .select({
+          originId: juniorConversations.originId,
+          originRunId: juniorConversations.originRunId,
+          originType: juniorConversations.originType,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, firstConversationId)),
+    ).resolves.toEqual([
+      {
+        originId: first.automation.id,
+        originRunId: firstDispatch!.id,
+        originType: "event_automation",
+      },
+    ]);
+    await expect(
+      readAutomationTitlesByConversationId([
+        { conversationId: firstConversationId },
+      ]),
+    ).resolves.toEqual(new Map([[firstConversationId, firstTask.title]]));
     expect(firstDispatch?.input).toMatchInlineSnapshot(`
       "[task]
 

@@ -30,6 +30,10 @@ is set once, the same as for other Conversations.
 - Until the generated title exists, the conversation API returns the name of
   the linked source Automation. When the API cannot find that Automation, it
   returns "Automation run". The API does not store this fallback.
+- Enqueue stores the Automation run on the dispatch Conversation as its
+  origin: the Source kind, the Automation id, and the run id. The origin is
+  set-once, so the API finds the Automation while the run is still running.
+  Runs from before this link use their run history row instead.
 - If generation fails, the title stays unset and the API keeps that fallback.
   A later transcript write tries generation again.
 

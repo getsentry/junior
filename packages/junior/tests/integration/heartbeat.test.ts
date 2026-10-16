@@ -14,6 +14,7 @@ import {
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
 import type { JuniorDatabase } from "@/db/db";
+import { juniorConversations } from "@/db/schema/conversations";
 import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
 import { getDb } from "@/chat/db";
 import {
@@ -694,6 +695,21 @@ describe("plugin heartbeat", () => {
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
     expect(dispatchRecord?.replyAttribution).toEqual({
       label: "Automation",
+    });
+    // The run's Conversation links to its Automation run before it finishes.
+    const [conversation] = await db
+      .select()
+      .from(juniorConversations)
+      .where(
+        eq(
+          juniorConversations.conversationId,
+          `agent-dispatch:${running!.dispatchId}`,
+        ),
+      );
+    expect(conversation).toMatchObject({
+      originId: "sched_plugin_1",
+      originRunId: running!.id,
+      originType: "scheduled_automation",
     });
 
     await markDispatchCompleted(running!.dispatchId!, "1700000000.000001");

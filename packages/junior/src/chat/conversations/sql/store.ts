@@ -15,6 +15,7 @@ import {
 import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   Conversation,
+  ConversationAutomationRun,
   ConversationExecution,
   ConversationSource,
   ConversationStatus,
@@ -414,6 +415,7 @@ export class SqlStore implements ConversationStore {
 
   async recordActivity(args: {
     activityAtMs?: number;
+    automationRun?: ConversationAutomationRun;
     channelName?: string;
     conversationId: string;
     destination?: Destination;
@@ -455,6 +457,7 @@ export class SqlStore implements ConversationStore {
         ...currentWithoutPersistedSignals
       } = current;
       await this.upsertConversation({
+        automationRun: args.automationRun,
         conversation: {
           ...currentWithoutPersistedSignals,
           destination: current.destination ?? args.destination,
@@ -707,9 +710,10 @@ export class SqlStore implements ConversationStore {
 
   /** Upsert the conversation row while preserving previously discovered nullable metadata fields. */
   private async upsertConversation(args: {
+    automationRun?: ConversationAutomationRun;
     conversation: Conversation;
   }): Promise<void> {
-    const { conversation } = args;
+    const { automationRun, conversation } = args;
     // Root Conversations set Destination on first write. A Conversation with a
     // parent can omit Destination. Later updates may omit Destination because
     // onConflict keeps the existing destination_id.
@@ -766,9 +770,12 @@ export class SqlStore implements ConversationStore {
         schemaVersion: 1,
         source: conversation.source ?? null,
         sessionSource: conversation.sessionSource ?? null,
-        originType: originTypeFromSource(conversation.source) ?? null,
-        originId: null,
-        originRunId: null,
+        // An Automation run stores its Source kind, Automation id, and run id.
+        originType: automationRun
+          ? `${automationRun.kind}_automation`
+          : (originTypeFromSource(conversation.source) ?? null),
+        originId: automationRun?.automationId ?? null,
+        originRunId: automationRun?.runId ?? null,
         location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
@@ -804,9 +811,10 @@ export class SqlStore implements ConversationStore {
           // Origin source is set-once so dashboard continues cannot rewrite a Slack root.
           source: sql`coalesce(${juniorConversations.source}, excluded.source)`,
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
-          originType: sql`coalesce(excluded.origin_type, ${juniorConversations.originType})`,
-          originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,
-          originRunId: sql`coalesce(excluded.origin_run_id, ${juniorConversations.originRunId})`,
+          // Origin is set-once, like source, so later writes keep the Automation run link.
+          originType: sql`coalesce(${juniorConversations.originType}, excluded.origin_type)`,
+          originId: sql`coalesce(${juniorConversations.originId}, excluded.origin_id)`,
+          originRunId: sql`coalesce(${juniorConversations.originRunId}, excluded.origin_run_id)`,
           location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
           actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,

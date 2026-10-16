@@ -391,11 +391,49 @@ export async function readAutomationExecutionByConversationId(args: {
   return { kind: row.kind, automationId: row.automationId };
 }
 
+const automationTitleColumns = {
+  eventInstruction: sql<
+    string | null
+  >`${juniorEventAutomations.task}->'task'->>'text'`,
+  eventTitle: juniorEventAutomations.title,
+  scheduledInstruction: sql<
+    string | null
+  >`${juniorSchedulerTasks.record}->'task'->>'text'`,
+  scheduledTitle: juniorSchedulerTasks.title,
+};
+
+/** Add the first Automation name found for each conversation. */
+function addAutomationTitles(
+  titles: Map<string, string>,
+  seen: Set<string>,
+  rows: ReadonlyArray<{
+    conversationId: string | null;
+    eventInstruction: string | null;
+    eventTitle: string | null;
+    scheduledInstruction: string | null;
+    scheduledTitle: string | null;
+  }>,
+): void {
+  for (const row of rows) {
+    if (!row.conversationId || seen.has(row.conversationId)) continue;
+    seen.add(row.conversationId);
+    const title =
+      (row.scheduledTitle ?? row.eventTitle)?.trim() ||
+      fallbackShortTitle(
+        row.scheduledInstruction ?? row.eventInstruction ?? "",
+        "",
+      );
+    if (title) titles.set(row.conversationId, title);
+  }
+}
+
 /**
  * Load the display name of the Automation linked to each untitled
- * conversation. The newest execution wins. Like the Automation list, the name
- * falls back to the first line of the instruction. Titled conversations and
- * conversations without a linked Automation are absent from the result.
+ * conversation. The Automation run stored on the conversation wins. Older runs
+ * have no stored Automation run, so their newest execution decides. Like the
+ * Automation list, the name falls back to the first line of the instruction.
+ * Titled conversations and conversations without a linked Automation are
+ * absent from the result.
  */
 export async function readAutomationTitlesByConversationId(
   conversations: ReadonlyArray<{
@@ -408,55 +446,80 @@ export async function readAutomationTitlesByConversationId(
     conversation.title ? [] : [conversation.conversationId],
   );
   if (untitledIds.length === 0) return titles;
-  const rows = await getDb()
-    .select({
-      conversationId: juniorAutomationExecutions.conversationId,
-      eventInstruction: sql<
-        string | null
-      >`${juniorEventAutomations.task}->'task'->>'text'`,
-      eventTitle: juniorEventAutomations.title,
-      scheduledInstruction: sql<
-        string | null
-      >`${juniorSchedulerTasks.record}->'task'->>'text'`,
-      scheduledTitle: juniorSchedulerTasks.title,
-    })
-    .from(juniorAutomationExecutions)
-    .leftJoin(
-      juniorSchedulerTasks,
-      and(
-        eq(juniorAutomationExecutions.kind, "scheduled"),
-        eq(juniorSchedulerTasks.id, juniorAutomationExecutions.automationId),
-      ),
-    )
-    .leftJoin(
-      juniorEventAutomations,
-      and(
-        eq(juniorAutomationExecutions.kind, "event"),
-        eq(juniorEventAutomations.id, juniorAutomationExecutions.automationId),
-      ),
-    )
-    .where(
-      and(
-        inArray(juniorAutomationExecutions.conversationId, untitledIds),
-        eq(juniorAutomationExecutions.namespace, "junior"),
-      ),
-    )
-    .orderBy(
-      desc(juniorAutomationExecutions.executedAtMs),
-      desc(juniorAutomationExecutions.executionId),
-    );
   const seen = new Set<string>();
-  for (const row of rows) {
-    if (!row.conversationId || seen.has(row.conversationId)) continue;
-    seen.add(row.conversationId);
-    const title =
-      (row.scheduledTitle ?? row.eventTitle)?.trim() ||
-      fallbackShortTitle(
-        row.scheduledInstruction ?? row.eventInstruction ?? "",
-        "",
-      );
-    if (title) titles.set(row.conversationId, title);
-  }
+  const db = getDb();
+  addAutomationTitles(
+    titles,
+    seen,
+    await db
+      .select({
+        conversationId: juniorConversations.conversationId,
+        ...automationTitleColumns,
+      })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorSchedulerTasks,
+        and(
+          eq(juniorConversations.originType, "scheduled_automation"),
+          eq(juniorSchedulerTasks.id, juniorConversations.originId),
+        ),
+      )
+      .leftJoin(
+        juniorEventAutomations,
+        and(
+          eq(juniorConversations.originType, "event_automation"),
+          eq(juniorEventAutomations.id, juniorConversations.originId),
+        ),
+      )
+      .where(
+        and(
+          inArray(juniorConversations.conversationId, untitledIds),
+          inArray(juniorConversations.originType, [
+            "scheduled_automation",
+            "event_automation",
+          ]),
+        ),
+      ),
+  );
+  const unlinkedIds = untitledIds.filter((id) => !seen.has(id));
+  if (unlinkedIds.length === 0) return titles;
+  addAutomationTitles(
+    titles,
+    seen,
+    await db
+      .select({
+        conversationId: juniorAutomationExecutions.conversationId,
+        ...automationTitleColumns,
+      })
+      .from(juniorAutomationExecutions)
+      .leftJoin(
+        juniorSchedulerTasks,
+        and(
+          eq(juniorAutomationExecutions.kind, "scheduled"),
+          eq(juniorSchedulerTasks.id, juniorAutomationExecutions.automationId),
+        ),
+      )
+      .leftJoin(
+        juniorEventAutomations,
+        and(
+          eq(juniorAutomationExecutions.kind, "event"),
+          eq(
+            juniorEventAutomations.id,
+            juniorAutomationExecutions.automationId,
+          ),
+        ),
+      )
+      .where(
+        and(
+          inArray(juniorAutomationExecutions.conversationId, unlinkedIds),
+          eq(juniorAutomationExecutions.namespace, "junior"),
+        ),
+      )
+      .orderBy(
+        desc(juniorAutomationExecutions.executedAtMs),
+        desc(juniorAutomationExecutions.executionId),
+      ),
+  );
   return titles;
 }
 

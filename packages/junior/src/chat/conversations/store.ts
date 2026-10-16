@@ -92,6 +92,17 @@ export interface Conversation {
 }
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
+/**
+ * The Automation run that one Conversation runs. Event automation runs use
+ * the dispatch id as `runId`. Scheduled automation runs use the scheduled run
+ * id.
+ */
+export type ConversationAutomationRun = {
+  automationId: string;
+  kind: "event" | "scheduled";
+  runId: string;
+};
+
 export interface ConversationStore {
   /** Create one Conversation with an immutable parent. */
   createChild(args: {
@@ -135,6 +146,8 @@ export interface ConversationStore {
   }): Promise<{ channelId: string; channelName?: string } | undefined>;
   recordActivity(args: {
     activityAtMs?: number;
+    /** Automation run that this Conversation runs; set-once. */
+    automationRun?: ConversationAutomationRun;
     channelName?: string;
     conversationId: string;
     destination?: Destination;

@@ -9,6 +9,7 @@ import {
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import type { ConversationAutomationRun } from "@/chat/conversations/store";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -184,6 +185,35 @@ export function getDispatchConversationId(
   dispatch: Pick<DispatchRecord, "id">,
 ): string {
   return `agent-dispatch:${dispatch.id}`;
+}
+
+/** Return the Automation run that one core automation dispatch runs, if any. */
+export function getDispatchAutomationRun(
+  dispatch: Pick<DispatchRecord, "id" | "metadata" | "source">,
+): ConversationAutomationRun | undefined {
+  const metadata = dispatch.metadata;
+  if (
+    dispatch.source.kind === "event_automation" &&
+    metadata?.eventAutomationId
+  ) {
+    return {
+      automationId: metadata.eventAutomationId,
+      kind: "event",
+      runId: dispatch.id,
+    };
+  }
+  if (
+    dispatch.source.kind === "scheduled_automation" &&
+    metadata?.taskId &&
+    metadata.runId
+  ) {
+    return {
+      automationId: metadata.taskId,
+      kind: "scheduled",
+      runId: metadata.runId,
+    };
+  }
+  return undefined;
 }
 
 /** Return the stable synthetic input message id for one dispatch turn. */
@@ -405,17 +435,17 @@ async function recordEventAutomationExecution(
   status: "blocked" | "completed" | "failed",
 ): Promise<void> {
   if (!next || next.status !== status || previous?.status === status) return;
-  if (next.plugin !== "junior") return;
-  const eventAutomationId = next.metadata?.eventAutomationId;
-  if (!eventAutomationId) return;
+  const automationRun = getDispatchAutomationRun(next);
+  // The scheduled heartbeat records Scheduled automation outcomes.
+  if (automationRun?.kind !== "event") return;
   // Only link a conversation when enqueue already created the durable row.
   // Early failed/blocked dispatches can terminate before that write, and the
   // execution table still FKs conversation_id when present.
   const conversationId = getDispatchConversationId(next);
   const conversation = await getConversationStore().get({ conversationId });
-  await recordAutomationExecution("event", eventAutomationId, {
+  await recordAutomationExecution("event", automationRun.automationId, {
     ...(conversation ? { conversationId } : undefined),
-    executionId: next.id,
+    executionId: automationRun.runId,
     nowMs: next.updatedAtMs,
     status,
   });

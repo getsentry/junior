@@ -35,6 +35,7 @@ import type {
 import {
   claimDispatchMailboxAppend,
   confirmDispatchMailboxAppend,
+  getDispatchAutomationRun,
   getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
@@ -153,8 +154,11 @@ export async function enqueueAgentDispatch(
   if (!claimedDispatch) {
     return;
   }
+  // The Conversation links to its Automation run before the run starts.
+  const automationRun = getDispatchAutomationRun(claimedDispatch);
   await (options.conversationStore ?? getConversationStore()).recordActivity({
     activityAtMs: claimedDispatch.createdAtMs,
+    ...(automationRun ? { automationRun } : undefined),
     conversationId: getDispatchConversationId(claimedDispatch),
     destination: claimedDispatch.destination,
     nowMs,
