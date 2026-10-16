@@ -17,7 +17,7 @@ import {
   parseRequiredSlackTimestampParam,
   slackTimestampParam,
 } from "@/chat/slack/timestamp-param";
-import type { SlackChannelId } from "@/chat/slack/ids";
+import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackFileRef, SlackThreadReply } from "@/chat/slack/channel";
 import {
@@ -27,6 +27,7 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
+import { getConversationStore } from "@/chat/db";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
@@ -121,6 +122,32 @@ function truncateMessages(
   return { messages: kept, omitted: messages.length - kept.length };
 }
 
+/**
+ * Find stored Junior Conversations for a Slack thread.
+ *
+ * A thread that an automation run started is bound to the run's Conversation.
+ * Other threads use `slack:<channel>:<threadTs>`. Return both when both exist.
+ */
+async function findThreadConversationIds(args: {
+  channelId: SlackChannelId;
+  teamId: SlackTeamId;
+  threadTs: string;
+}): Promise<string[]> {
+  const store = getConversationStore();
+  const boundId = await store.getConversationIdByProviderConversation({
+    provider: "slack",
+    providerDestinationId: args.channelId,
+    providerTenantId: args.teamId,
+    providerConversationId: args.threadTs,
+  });
+  const threadId = `slack:${args.channelId}:${args.threadTs}`;
+  const ids = boundId ? [boundId] : [];
+  if (threadId !== boundId && (await store.get({ conversationId: threadId }))) {
+    ids.push(threadId);
+  }
+  return ids;
+}
+
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
 export function createSlackThreadReadTool(
   context: SlackToolContext,
@@ -128,7 +155,7 @@ export function createSlackThreadReadTool(
 ) {
   return zodTool({
     description:
-      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels.",
+      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `junior_conversation_ids` when Junior took part in the thread; use them with `searchConversationEvents`.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -305,6 +332,11 @@ export function createSlackThreadReadTool(
         sanitized,
         MAX_THREAD_READ_CHARS,
       );
+      const juniorConversationIds = await findThreadConversationIds({
+        channelId,
+        teamId: context.teamId,
+        threadTs: resolvedThreadTs,
+      });
 
       return {
         channel_id: channelId,
@@ -312,6 +344,9 @@ export function createSlackThreadReadTool(
         ...(joined ? { joined_channel: true } : undefined),
         target_message_ts: messageTs,
         thread_ts: resolvedThreadTs,
+        ...(juniorConversationIds.length > 0
+          ? { junior_conversation_ids: juniorConversationIds }
+          : undefined),
         count: messages.length,
         fetched_count: replies.length,
         truncated: omitted > 0,
