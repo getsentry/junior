@@ -102,7 +102,7 @@ function ArchivedNotice(props: {
     >
       {restore.error ? (
         <div
-          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-mono text-xs text-rose-50/85"
+          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-sans text-xs text-rose-50/85"
           role="alert"
         >
           Could not restore the conversation.

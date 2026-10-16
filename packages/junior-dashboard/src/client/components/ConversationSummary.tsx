@@ -11,6 +11,7 @@ import {
   conversationParticipants,
   ParticipantAvatarStack,
 } from "./ParticipantAvatarStack";
+import { cn, dashboardInlineLinkClass } from "../styles";
 
 /** Render the shared conversation title and identity. */
 export function ConversationSummary(props: { conversation: Conversation }) {
@@ -38,7 +39,7 @@ function ConversationIdentity(props: { conversation: Conversation }) {
       {location && props.conversation.locationId ? (
         <>
           <Link
-            className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
+            className={cn("font-semibold", dashboardInlineLinkClass)}
             onClick={(event: MouseEvent<HTMLAnchorElement>) =>
               event.stopPropagation()
             }

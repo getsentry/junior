@@ -66,17 +66,17 @@ export function ConversationMemories(props: { conversationId: string }) {
     <ol className="m-0 grid list-none gap-3 p-0">
       {query.data.memories.map((memory) => (
         <li
-          className="grid gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-3"
+          className="grid gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-3"
           key={memory.id}
         >
           <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
             {memory.content}
           </p>
-          <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs text-dashboard-text-muted">
-            <span className="rounded border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs tabular-nums text-dashboard-text-muted">
+            <span className="rounded-md border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
               {memory.kind}
             </span>
-            <span className="rounded border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
+            <span className="rounded-md border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
               {memory.visibility}
             </span>
             <time className="ml-auto" dateTime={memory.capturedAt}>

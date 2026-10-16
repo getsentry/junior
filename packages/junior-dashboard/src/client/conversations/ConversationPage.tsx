@@ -186,6 +186,7 @@ export function ConversationPage(props: {
       conversation: ConversationTranscript;
     }) => {
       setSubagentTarget({
+        ...(part.agentName ? { agentName: part.agentName } : undefined),
         conversationId: part.childConversationId,
         label: part.title ?? part.agentName,
         status: part.status,
@@ -327,7 +328,7 @@ export function ConversationPage(props: {
               {detail.isPending ? (
                 <TranscriptLoading />
               ) : detail.error && !detail.data ? (
-                <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
                   {detail.error.message}
                 </Card>
               ) : (

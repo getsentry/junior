@@ -118,7 +118,7 @@ export function UsageCard(props: UsageCardProps) {
           className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2"
           key={section.title}
         >
-          <span className="col-span-2 font-mono uppercase tracking-[0.08em] text-dashboard-text-faint">
+          <span className="col-span-2 font-sans font-medium text-dashboard-text-faint">
             {section.title}
             {section.total ? ` · ${section.total}` : null}
           </span>

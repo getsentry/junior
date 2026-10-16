@@ -43,7 +43,7 @@ export function MemoryTimeline(props: {
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           Activity over time
         </h2>
-        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"
             ? "Stacked personal + public memories created each hour."
             : bucketUnit === "6hour"
@@ -80,9 +80,7 @@ export function MemoryTimeline(props: {
                 date={day.date}
                 summary={`${day.personal} personal, ${day.public} public, ${total} total memories`}
               >
-                <g
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   {series.map((item) => {
                     const value = day[item.key];
                     const segmentHeight = (value / maximum) * layout.plotHeight;
@@ -118,7 +116,7 @@ export function MemoryTimeline(props: {
           />
         </ChartSvg>
         {!hasMemories ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No memories were learned in this period.
           </div>
         ) : null}

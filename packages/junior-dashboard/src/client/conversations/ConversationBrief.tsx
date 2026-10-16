@@ -49,7 +49,7 @@ export function ConversationBrief(props: {
         <StatusChip tone={outcomeTones[content.outcome.status]}>
           {displayLabel(content.outcome.status)}
         </StatusChip>
-        <span className="font-mono text-xs text-dashboard-text-muted">
+        <span className="text-xs text-dashboard-text-muted">
           Brief v{props.brief.version} · updated{" "}
           {formatTime(props.brief.updatedAt, {
             dateStyle: "medium",
@@ -101,14 +101,14 @@ export function ConversationBrief(props: {
                       key={`${link.kind}:${link.url}`}
                     >
                       <a
-                        className="min-w-0 break-all font-medium text-cyan-200 underline decoration-cyan-300/30 underline-offset-2 hover:text-cyan-100"
+                        className="min-w-0 break-all font-medium text-dashboard-accent-text underline decoration-dashboard-accent/30 underline-offset-2 hover:text-dashboard-accent-text"
                         href={link.url}
                         rel="noopener noreferrer"
                         target="_blank"
                       >
                         {link.label}
                       </a>
-                      <span className="font-mono text-xs text-dashboard-text-muted">
+                      <span className="text-xs text-dashboard-text-muted">
                         {displayLabel(link.kind)}
                       </span>
                       {link.status ? (
@@ -172,7 +172,7 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
             <span className="min-w-0">{decision.text}</span>
           </div>
           {decision.by ? (
-            <div className="mt-0.5 font-mono text-xs text-dashboard-text-muted">
+            <div className="mt-0.5 text-xs text-dashboard-text-muted">
               by · {decision.by}
             </div>
           ) : null}

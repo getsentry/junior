@@ -7,6 +7,7 @@ import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { TranscriptSummary } from "./TranscriptSummary";
 
 function countLabel(count: number, singular: string, plural: string): string {
@@ -156,7 +157,11 @@ export function TranscriptActivityGroup(props: {
   const live = hasLiveActivity(props.entries);
 
   if (searchActive) {
-    return <div className="grid min-w-0 gap-1">{rows}</div>;
+    return (
+      <TranscriptActivityNesting.Provider value>
+        <div className="grid min-w-0 gap-1">{rows}</div>
+      </TranscriptActivityNesting.Provider>
+    );
   }
 
   const open = activityGroupOpen(userOpen);
@@ -167,7 +172,7 @@ export function TranscriptActivityGroup(props: {
         flush
         className={cn(
           "flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
-          live && "text-cyan-100/80",
+          live && "text-dashboard-accent-text/80",
         )}
         onClick={(event) => {
           event.preventDefault();
@@ -190,7 +195,9 @@ export function TranscriptActivityGroup(props: {
           </span>
         </Tooltip>
       </TranscriptSummary>
-      <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
+      <TranscriptActivityNesting.Provider value>
+        <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
+      </TranscriptActivityNesting.Provider>
     </details>
   );
 }

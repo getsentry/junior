@@ -93,7 +93,7 @@ export function ConversationWorkspace() {
       <main
         className={cn(
           dashboardContainerClass,
-          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
+          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
         )}
       >
         <div className="mx-auto grid w-full max-w-6xl gap-8">

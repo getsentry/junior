@@ -96,7 +96,7 @@ export function ConversationHeaderActions(props: {
       <Button
         aria-label="Conversation details"
         aria-pressed={props.detailsOpen}
-        className="ml-2 rounded-lg font-sans text-xs"
+        className="ml-2"
         onClick={props.onDetailsClick}
       >
         <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
@@ -153,13 +153,13 @@ function ViewModeButton(props: {
     <ToggleButton
       aria-label={props.label}
       className={cn(
-        "!normal-case !no-underline font-sans",
+        "!no-underline",
         props.labelled
-          ? "relative flex h-11 items-center gap-2 px-0 py-0 text-xs after:absolute after:inset-x-0 after:bottom-0 after:h-0.5"
-          : "grid size-7 place-items-center rounded px-0 py-0",
+          ? "relative flex h-11 items-center gap-2 rounded-none px-0 py-0 text-sm after:absolute after:inset-x-0 after:bottom-0 after:h-0.5"
+          : "grid size-7 place-items-center rounded-md px-0 py-0",
         props.active &&
           (props.labelled
-            ? "text-cyan-100 after:bg-cyan-100"
+            ? "text-dashboard-text after:bg-dashboard-text-solid"
             : "bg-dashboard-fill-hover text-dashboard-text"),
       )}
       onClick={props.onClick}
@@ -191,7 +191,7 @@ export function HeaderIconButton(props: {
         aria-pressed={props.pressed}
         className={cn(
           "text-dashboard-text-muted",
-          props.pressed && "bg-white/10 text-dashboard-text",
+          props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
         )}
         onClick={props.onClick}
         size="icon"
@@ -233,8 +233,8 @@ function MenuActionButton(props: {
       aria-label={props.label}
       aria-pressed={props.pressed}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none",
-        props.pressed && "bg-white/[0.08]",
+        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none",
+        props.pressed && "bg-dashboard-fill-strong",
       )}
       onClick={props.onClick}
       type="button"
@@ -258,7 +258,7 @@ function ArchiveConversationButton(
     return (
       <button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={props.disabled}
         onClick={props.onClick}
         type="button"

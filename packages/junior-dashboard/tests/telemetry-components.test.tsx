@@ -33,7 +33,7 @@ import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 import { ConversationPage } from "../src/client/conversations/ConversationPage";
-import { ToolCallGallery } from "../src/client/pages/dev/ComponentsPage";
+import { ToolCallGallery } from "../src/client/pages/dev/TranscriptActivityFixtures";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
@@ -1299,7 +1299,9 @@ describe("dashboard canonical-event components", () => {
             'aria-label="2026-01-01: 0 conversations, 0ms, $0.00 spend, 0 tokens"',
           ),
         )
-        .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
+        .match(
+          /class="size-3 border border-dashboard-overlay bg-dashboard-surface-raised"/g,
+        ),
     ).toHaveLength(4);
     expect(html).not.toContain('href="/people/avery%40example.com"');
     expect(html).toContain('href="/system/people"');

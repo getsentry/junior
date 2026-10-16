@@ -66,7 +66,7 @@ export function MemoryCostChart(props: {
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           {formatCostSummary({ total })}
         </h2>
-        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           System-wide estimate across {formatRunCount(runs)} spanning extraction
           and recall.
         </p>
@@ -128,9 +128,7 @@ export function MemoryCostChart(props: {
                 date={day.date}
                 summary={`extraction ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}; recall ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`}
               >
-                <g
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   <rect
                     fill="#67e8f9"
                     height={extractionHeight}
@@ -180,7 +178,7 @@ export function MemoryCostChart(props: {
           />
         </ChartSvg>
         {runs === 0 ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No memory extraction or recall ran in this period.
           </div>
         ) : null}

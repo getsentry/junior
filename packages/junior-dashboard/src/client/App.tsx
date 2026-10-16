@@ -63,7 +63,6 @@ import {
 } from "./pages/user/PluginUserPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
-import { dashboardShellBgClass } from "./styles";
 import type { DashboardCoreData } from "./types";
 
 const dashboardNoise = {
@@ -142,10 +141,7 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <VisualViewportShell
-        className={dashboardShellBgClass}
-        enabled={workspace}
-      >
+      <VisualViewportShell className="bg-dashboard-bg" enabled={workspace}>
         <DashboardChrome
           banner={
             <>

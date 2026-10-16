@@ -177,7 +177,7 @@ function MarkdownTable(props: {
 
   return (
     <div className="min-w-0 max-w-full overflow-x-auto rounded-md border border-dashboard-border bg-dashboard-fill-faint">
-      <table className="w-max border-collapse text-left text-sm">
+      <table className="w-max min-w-full border-collapse text-left text-sm">
         <thead className="bg-dashboard-overlay-soft">
           <tr>
             {Array.from({ length: columnCount }, (_, index) => {
@@ -185,7 +185,7 @@ function MarkdownTable(props: {
               return (
                 <th
                   className={cn(
-                    "whitespace-nowrap border-b border-dashboard-border px-2.5 py-1.5 font-mono text-xs font-medium tracking-[0.04em] text-dashboard-text-muted",
+                    "whitespace-nowrap border-b border-dashboard-border px-2.5 py-1.5 font-sans text-xs font-medium text-dashboard-text-muted",
                     tableCellAlignClass(alignment),
                   )}
                   key={`h-${index}`}
@@ -365,7 +365,7 @@ function renderInlineCode(text: string, keyBase: number): ReactNode[] {
     }
     nodes.push(
       <code
-        className="rounded-[0.25rem] bg-white/[0.08] px-1 py-0.5 font-mono text-[0.9em] text-cyan-50"
+        className="rounded-[0.25rem] bg-dashboard-fill-strong px-1 py-0.5 font-mono text-[0.9em] text-dashboard-text"
         key={`code-${keyBase}-${part++}`}
       >
         <HighlightText text={match[2] ?? ""} />

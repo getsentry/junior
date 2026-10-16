@@ -24,7 +24,7 @@ import {
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
-import { cn } from "../styles";
+import { cn, dashboardInlineLinkClass } from "../styles";
 import {
   CostMetric,
   DurationMetric,
@@ -49,9 +49,9 @@ export function PendingAuthorization(props: {
   };
 }) {
   return (
-    <div className="mb-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
+    <div className="mb-2 rounded-lg border border-dashboard-accent/20 bg-dashboard-accent/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
       <a
-        className="font-medium text-cyan-200 underline decoration-cyan-300/40 underline-offset-2 hover:text-cyan-100"
+        className="font-medium text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-accent-text"
         href={props.authorization.authorizationUrl}
         rel="noreferrer"
         target="_blank"
@@ -82,7 +82,7 @@ export function ConversationPrivacyChip(props: {
       className={
         isPublic
           ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
+          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
       }
       role="note"
       title={`${fullLabel}. ${detail}`}
@@ -176,7 +176,7 @@ export function ConversationSidebarAnnotations(props: {
               <SidebarAnnotationGroupChip group={group} key={group.label} />
             ))}
             {badges.overflowGroupCount > 0 ? (
-              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
                 +{badges.overflowGroupCount}
               </span>
             ) : null}
@@ -225,7 +225,7 @@ function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
       {props.group.annotations.map((annotation) =>
         annotation.objectType ? (
           <ObjectIcon
@@ -269,7 +269,7 @@ function SidebarAnnotationStatusChip(props: {
         // real chips, not floating glyphs. Box-shadow cutout (not border) keeps
         // layout at 18px while punching a surface-colored ring through the chip
         // underneath — classic avatar-facepile silhouette.
-        "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control",
+        "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control",
         props.stacked && "-ml-1",
       )}
       style={{
@@ -420,7 +420,7 @@ export function ConversationAnnotations(props: {
           className={cn(
             "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
             props.layout === "strip"
-              ? "px-1 py-0.5 text-xs hover:text-cyan-100"
+              ? "px-1 py-0.5 text-xs hover:text-dashboard-accent-text"
               : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
           )}
           href={link.url ?? undefined}
@@ -471,7 +471,7 @@ function resourceLinkTitle(link: {
 function LocationLink(props: { label: string; locationUrl?: string }) {
   return props.locationUrl ? (
     <a
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className={dashboardInlineLinkClass}
       href={props.locationUrl}
       rel="noreferrer"
       target="_blank"
@@ -494,7 +494,7 @@ function SourceTask(props: {
   const title = props.sourceTask.title?.trim();
   const link = automationId ? (
     <Link
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className={dashboardInlineLinkClass}
       to={automationPath(automationId)}
     >
       Triggered by {kindLabel}

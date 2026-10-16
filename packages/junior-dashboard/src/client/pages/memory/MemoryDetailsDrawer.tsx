@@ -83,7 +83,7 @@ export function MemoryDetailsDrawer(props: {
     >
       <section className="grid gap-5">
         <div>
-          <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+          <div className="mb-2 font-sans font-medium text-xs text-dashboard-text-muted">
             Memory
           </div>
           <TranscriptText text={record.title} />
@@ -94,14 +94,14 @@ export function MemoryDetailsDrawer(props: {
           ) : null}
         </div>
 
-        <div className="flex items-start gap-3 rounded border border-cyan-300/12 bg-cyan-300/[0.035] p-3">
+        <div className="flex items-start gap-3 rounded-md border border-dashboard-accent/12 bg-dashboard-accent/[0.035] p-3">
           <BrainCircuit
             aria-hidden="true"
-            className="mt-0.5 shrink-0 text-cyan-200/70"
+            className="mt-0.5 shrink-0 text-dashboard-accent-text/70"
             size={15}
           />
           <div>
-            <div className="font-mono text-xs uppercase tracking-[0.12em] text-cyan-200/65">
+            <div className="font-sans font-medium text-xs text-dashboard-accent-text/65">
               Why Junior remembers this
             </div>
             <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text">
@@ -126,7 +126,7 @@ export function MemoryDetailsDrawer(props: {
 
         {forgetAction ? (
           <button
-            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
+            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-sans font-medium text-xs text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
             disabled={props.action.isPending}
             onClick={() => {
               if (

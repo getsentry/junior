@@ -144,6 +144,51 @@ export function findComposerSafeAreaBottomPadding(files) {
   });
 }
 
+// Structural fills, borders, and rings use dashboard tokens, not raw white or
+// black opacity steps. Shadows may still use black.
+const NEUTRAL_SURFACE_LITERAL_PATTERN =
+  /(?<![\w-])(?:[a-z-]+:)*!?(?:bg|border(?:-[xytrblse])?|decoration|divide|fill|outline|ring|stroke)-(?:white|black)(?![\w-])/;
+const DASHBOARD_COLOR_UTILITY_PATTERN =
+  /(?<![\w-])(?:[a-z-]+:)*!?(?:accent|bg|border|caret|decoration|divide|fill|from|outline|placeholder|ring|shadow|stroke|text|to|via)-dashboard-([a-z]+(?:-[a-z]+)*)/g;
+
+/** Report raw white or black fills, borders, and rings that bypass tokens. */
+export function findNeutralSurfaceLiterals(files) {
+  return files.flatMap((file) =>
+    file.contents
+      .split("\n")
+      .flatMap((line, index) =>
+        NEUTRAL_SURFACE_LITERAL_PATTERN.test(line)
+          ? [`${file.path}:${index + 1}: ${line.trim()}`]
+          : [],
+      ),
+  );
+}
+
+/** Read the dashboard color token names defined in the Tailwind theme. */
+export function dashboardColorTokens(css) {
+  return new Set(
+    [...css.matchAll(/--color-dashboard-([a-z]+(?:-[a-z]+)*)\s*:/g)].map(
+      (match) => match[1],
+    ),
+  );
+}
+
+/** Report dashboard color utilities that name a token the theme does not define. */
+export function findUnknownDashboardColorTokens(files, tokens) {
+  return files.flatMap((file) =>
+    file.contents.split("\n").flatMap((line, index) => {
+      const unknown = [...line.matchAll(DASHBOARD_COLOR_UTILITY_PATTERN)]
+        .map((match) => match[1])
+        .filter((token) => !tokens.has(token));
+      return unknown.length > 0
+        ? [
+            `${file.path}:${index + 1}: unknown dashboard color ${unknown.join(", ")}`,
+          ]
+        : [];
+    }),
+  );
+}
+
 function collectSourceFiles(root, directory, files = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const absolutePath = path.join(directory, entry.name);
@@ -170,8 +215,16 @@ function main() {
     root,
     path.join(root, "packages/junior-dashboard/tests"),
   );
+  const tokens = dashboardColorTokens(
+    fs.readFileSync(
+      path.join(root, "packages/junior-dashboard/src/tailwind.css"),
+      "utf8",
+    ),
+  );
   const errors = [
     ...findNonstandardNeutralTextColors(files),
+    ...findNeutralSurfaceLiterals(files),
+    ...findUnknownDashboardColorTokens(files, tokens),
     ...findArbitraryTextSizes(files),
     ...findUndersizedHardcodedFontSizes(files),
     ...findClassicViewportHeights(files),
@@ -181,7 +234,7 @@ function main() {
   ];
   if (errors.length === 0) {
     console.log(
-      "Dashboard source uses shared text tokens, type scale, and mobile-safe viewport padding.",
+      "Dashboard source uses shared color tokens, type scale, and mobile-safe viewport padding.",
     );
     return;
   }

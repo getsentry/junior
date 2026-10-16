@@ -1,13 +1,13 @@
 import { TranscriptAttachments } from "./TranscriptAttachment";
 
 import { getDashboardAgentName } from "../agentName";
-import { formatMessageTimestamp } from "../format";
 import type {
   ConversationTranscript,
   TranscriptViewAttachmentsDeliveredPart,
 } from "../types";
 import { TranscriptMessageHeading } from "./TranscriptHeadingRow";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
+import { TranscriptTimestamp } from "./TranscriptTimestamp";
 
 /** Render host-delivered conversation attachments as first-class transcript media. */
 export function TranscriptAttachmentsDeliveredView(props: {
@@ -15,17 +15,15 @@ export function TranscriptAttachmentsDeliveredView(props: {
   part: TranscriptViewAttachmentsDeliveredPart;
   timestamp?: number;
 }) {
-  const timestamp = formatMessageTimestamp(props.timestamp);
-
   return (
     <TranscriptMessageShell role="assistant" actor={getDashboardAgentName()}>
       <TranscriptMessageHeading>
-        <span className="max-w-full truncate font-sans text-sm font-semibold leading-6 text-cyan-100">
+        <span className="max-w-full truncate font-sans text-sm font-semibold leading-6 text-dashboard-accent-text">
           {getDashboardAgentName()}
         </span>
-        {timestamp ? (
+        {typeof props.timestamp === "number" ? (
           <span className="text-xs leading-6 text-dashboard-text-muted">
-            {timestamp}
+            <TranscriptTimestamp value={props.timestamp} />
           </span>
         ) : null}
       </TranscriptMessageHeading>

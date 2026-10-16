@@ -10,7 +10,7 @@ export function Select({
     <select
       {...props}
       className={cn(
-        "block min-h-11 w-full min-w-0 rounded border border-dashboard-border-emphasis bg-dashboard-ink px-3 py-2 text-base text-dashboard-text focus:border-dashboard-focus focus:outline-none aria-invalid:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:text-sm",
+        "block min-h-11 w-full min-w-0 rounded-md border border-dashboard-border-emphasis bg-dashboard-ink px-3 py-2 text-base text-dashboard-text focus:border-dashboard-focus focus:outline-none aria-invalid:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:text-sm",
         className,
       )}
     />

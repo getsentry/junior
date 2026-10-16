@@ -30,7 +30,7 @@ export function SearchInput(props: {
       <input
         aria-label={props.label}
         className={cn(
-          "w-full rounded-lg border border-dashboard-border font-mono text-xs text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted hover:border-dashboard-border-emphasis focus:border-dashboard-focus",
+          "w-full rounded-md border border-dashboard-border font-sans text-sm text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted/70 hover:border-dashboard-border-emphasis focus:border-dashboard-focus",
           searchInputClass[size],
         )}
         onChange={(event) => props.onChange(event.currentTarget.value)}
@@ -49,7 +49,8 @@ const searchIconClass: Record<SearchInputSize, string> = {
 };
 
 const searchInputClass: Record<SearchInputSize, string> = {
-  compact: "h-9 bg-dashboard-overlay-soft pr-3 pl-8 focus:ring-1 focus:ring-dashboard-focus/25",
+  compact:
+    "h-9 bg-dashboard-overlay-soft pr-3 pl-8 focus:ring-1 focus:ring-dashboard-focus/25",
   default:
-    "h-10 bg-dashboard-overlay-soft pr-3 pl-9 focus:ring-2 focus:ring-dashboard-focus/20",
+    "h-10 bg-dashboard-overlay-soft pr-3 pl-9 focus:ring-1 focus:ring-dashboard-focus/25",
 };

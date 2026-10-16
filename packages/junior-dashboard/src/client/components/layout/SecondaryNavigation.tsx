@@ -27,31 +27,24 @@ export function SecondaryNavigation(props: {
 }) {
   const menuLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "rounded-lg px-3 py-3 pl-6 font-mono text-sm font-medium no-underline transition-colors",
+      "rounded-lg px-3 py-3 pl-6 font-sans text-sm font-medium no-underline transition-colors",
       isActive
-        ? "bg-cyan-300/[0.1] text-cyan-50"
-        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
+        : cn("hover:bg-dashboard-fill-faint", dashboardInteractiveTextClass),
     );
 
   return (
     <div className="min-w-0">
       <SecondaryNavigationPortal
         desktop={
-          <div className="border-b border-white/[0.06] bg-white/[0.018]">
-            <div
-              className={cn(
-                dashboardContainerClass,
-                "min-w-0 px-4 py-2 md:px-8",
-              )}
-            >
-              <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
-            </div>
+          <div className={cn(dashboardContainerClass, "min-w-0 px-4 md:px-8")}>
+            <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
           </div>
         }
         mobile={
           <nav
             aria-label={props.ariaLabel}
-            className="mt-3 grid gap-1 border-t border-white/[0.07] pt-3"
+            className="mt-3 grid gap-1 border-t border-dashboard-border pt-3"
           >
             {props.items.map((item) => (
               <SiblingPageLink
@@ -63,7 +56,7 @@ export function SecondaryNavigation(props: {
           </nav>
         }
       />
-      <div className="px-4 pt-4 sm:px-8 md:hidden">
+      <div className="border-b border-dashboard-border px-4 pt-2 sm:px-8 md:hidden">
         <SegmentedNav ariaLabel={props.ariaLabel} fill items={props.items} />
       </div>
       {props.children}

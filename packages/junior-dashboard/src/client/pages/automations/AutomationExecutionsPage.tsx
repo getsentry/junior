@@ -87,7 +87,7 @@ export function AutomationExecutionsPage(props: { enabled: boolean }) {
               : "Automation executions could not be loaded. Try again."}
           </InlineError>
           <Link
-            className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+            className="mt-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
             to={
               automationId ? automationPath(automationId) : "/automations/list"
             }
@@ -122,7 +122,7 @@ function AutomationExecutionsView(props: {
     <>
       <div>
         <Link
-          className="mb-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+          className="mb-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
           to={props.backTo}
         >
           <ArrowLeft aria-hidden="true" size={14} />
@@ -177,7 +177,7 @@ function AutomationExecutionsView(props: {
             <div className="min-w-[36rem]">
               <div
                 className={cn(
-                  "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
+                  "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted md:grid",
                   EXECUTION_GRID,
                 )}
                 role="row"
@@ -290,7 +290,7 @@ function MetricCell(props: { label: string; value: string }) {
     <div className="min-w-0 max-md:flex max-md:items-center max-md:gap-2">
       <div
         aria-hidden="true"
-        className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:mb-0 max-md:block"
+        className="mb-1 hidden font-sans font-medium text-2xs text-dashboard-text-muted max-md:mb-0 max-md:block"
       >
         {props.label}
       </div>

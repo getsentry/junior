@@ -12,22 +12,22 @@ export function CardHeader(props: {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-5",
+        "flex flex-wrap items-start justify-between gap-4 border-b border-dashboard-border-subtle px-4 py-4 sm:px-5",
         props.className,
       )}
     >
       <div>
-        <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+        <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
           {props.title}
         </h3>
         {props.description ? (
-          <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             {props.description}
           </p>
         ) : null}
       </div>
       {props.trailing ? (
-        <div className="font-mono text-xs text-dashboard-text-muted">
+        <div className="font-sans text-xs text-dashboard-text-muted">
           {props.trailing}
         </div>
       ) : null}

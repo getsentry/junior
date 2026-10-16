@@ -85,7 +85,10 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                       rows={[
                         ["conversations", day.conversations],
                         ["runtime", activityRuntime(day)],
-                        ["spend", formatCostSummary({ total: day.costUsd ?? 0 })],
+                        [
+                          "spend",
+                          formatCostSummary({ total: day.costUsd ?? 0 }),
+                        ],
                         ["tokens", formatCompactNumber(day.tokens ?? 0)],
                       ]}
                     />
@@ -96,7 +99,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                   <span
                     aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
                     className={cn(
-                      "size-3 border border-black/40 outline-none focus-visible:ring-2 focus-visible:ring-[#beaaff]",
+                      "size-3 border border-dashboard-overlay outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
                       activityClass(day.conversations, max),
                     )}
                     role="listitem"
@@ -106,20 +109,20 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
               ) : (
                 <span
                   aria-hidden="true"
-                  className="size-3 border border-black/40 bg-[#101010]"
+                  className="size-3 border border-dashboard-overlay bg-dashboard-surface-raised"
                   key={`empty-${weekIndex}-${dayIndex}`}
                 />
               ),
             ),
           )}
         </div>
-        <div className="mt-3 flex items-center gap-1 text-xs font-semibold uppercase leading-none text-dashboard-text-muted">
+        <div className="mt-3 flex items-center gap-1 text-xs font-semibold leading-none text-dashboard-text-muted">
           <span>Less</span>
           {[0, 1, 2, 3, 4].map((level) => (
             <span
               aria-hidden="true"
               className={cn(
-                "size-3 border border-black/40",
+                "size-3 border border-dashboard-overlay",
                 level === 0 && "bg-dashboard-surface-hover",
                 level === 1 && "bg-[#133225]",
                 level === 2 && "bg-[#176a4a]",

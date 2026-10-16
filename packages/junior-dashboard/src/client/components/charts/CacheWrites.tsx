@@ -21,17 +21,17 @@ export function CacheWrites(props: {
   const unit = props.bucketUnit === "6hour" ? "6 hours" : props.bucketUnit;
   return (
     <details className="border-t border-dashboard-border-subtle px-4 py-3 sm:px-5">
-      <summary className="cursor-pointer font-mono text-xs text-dashboard-text focus-visible:outline focus-visible:outline-cyan-300">
+      <summary className="cursor-pointer font-sans tabular-nums text-xs text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
         Largest cache writes
       </summary>
-      <p className="mb-2 mt-3 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+      <p className="mb-2 mt-3 font-sans tabular-nums text-xs leading-relaxed text-dashboard-text-muted">
         Top three by tokens written per {unit}, within the selected time window.
         Large writes alone do not mean a cache problem.
       </p>
       <div className="overflow-x-auto">
         <table
           aria-label="Largest cache writes"
-          className="w-full min-w-80 table-fixed border-collapse font-mono text-xs tabular-nums"
+          className="w-full min-w-80 table-fixed border-collapse font-sans text-xs tabular-nums"
         >
           <thead className="text-dashboard-text-muted">
             <tr>

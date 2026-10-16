@@ -77,7 +77,7 @@ export function AutomationVersionsPage(props: { enabled: boolean }) {
 function BackLink(props: { to: string }) {
   return (
     <Link
-      className="mb-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+      className="mb-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
       to={props.to}
     >
       <ArrowLeft aria-hidden="true" size={14} />

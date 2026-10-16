@@ -124,13 +124,16 @@ function ChildAgentRow(props: {
 
   return (
     <button
-      className="grid w-full min-w-0 cursor-pointer gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-2.5 text-left text-inherit transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      className="grid w-full min-w-0 cursor-pointer gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 text-left text-inherit transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
       onClick={() =>
         props.onOpen({
           conversationId: agent.conversationId,
           ...(agent.redacted
             ? undefined
-            : { label: agent.title ?? agent.name }),
+            : {
+                ...(agent.name ? { agentName: agent.name } : undefined),
+                label: agent.title ?? agent.name,
+              }),
           status: agent.status,
         })
       }
@@ -143,7 +146,7 @@ function ChildAgentRow(props: {
             Private subagent
           </span>
         ) : (
-          <span className="min-w-0 truncate font-mono text-dashboard-text-muted">
+          <span className="min-w-0 truncate font-medium text-dashboard-text-muted">
             {agent.name ?? "subagent"}
           </span>
         )}
@@ -185,7 +188,7 @@ function ChildAgentRow(props: {
         </span>
       ) : null}
       {stats.length > 0 ? (
-        <span className="block font-mono text-xs tabular-nums text-dashboard-text-muted">
+        <span className="block text-xs tabular-nums text-dashboard-text-muted">
           {stats.join(" · ")}
         </span>
       ) : null}

@@ -18,10 +18,10 @@ export type ToggleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const buttonClassName =
-  "inline-flex h-9 max-w-full items-center gap-2 rounded border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 font-mono text-sm font-semibold leading-none text-dashboard-text transition-colors hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text";
+  "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 font-sans text-sm font-medium leading-none text-dashboard-text transition-colors hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus";
 
 const dangerButtonClassName =
-  "inline-flex h-9 max-w-full items-center justify-center gap-1.5 rounded border border-dashboard-border-strong bg-transparent px-3 font-mono text-xs font-semibold text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300";
+  "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border border-dashboard-border-strong bg-transparent px-3 font-sans text-sm font-medium leading-none text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300/55";
 
 /** Render the dashboard's standard bordered command button surface. */
 export function Button({
@@ -36,16 +36,16 @@ export function Button({
     <button
       {...props}
       className={cn(
-        "font-mono transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        "font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         size === "icon"
           ? cn(
-              "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 disabled:hover:!bg-transparent",
+              "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 disabled:hover:!bg-transparent",
               isDanger
                 ? "text-dashboard-text-muted hover:!bg-rose-300/10 hover:!text-rose-300 focus-visible:outline-rose-300/55 disabled:hover:!text-dashboard-text-muted"
-                : "text-dashboard-text-muted hover:!bg-dashboard-fill-strong hover:!text-dashboard-text focus-visible:outline-cyan-300/55 disabled:hover:!text-dashboard-text-muted",
+                : "text-dashboard-text-muted hover:!bg-dashboard-fill-strong hover:!text-dashboard-text focus-visible:outline-dashboard-focus disabled:hover:!text-dashboard-text-muted",
             )
           : tone === "primary"
-            ? "inline-flex h-9 items-center justify-center gap-2 rounded border border-dashboard-text-solid bg-dashboard-text-solid px-3 font-sans text-sm font-semibold text-dashboard-text-inverse hover:bg-dashboard-text-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+            ? "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-dashboard-text-solid bg-dashboard-text-solid px-3 font-sans text-sm font-medium leading-none text-dashboard-text-inverse hover:border-dashboard-text-subtle hover:bg-dashboard-text-subtle disabled:hover:border-dashboard-text-solid disabled:hover:bg-dashboard-text-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
             : isDanger
               ? cn(
                   dangerButtonClassName,
@@ -96,21 +96,22 @@ export function ToggleButton({
 }
 
 const toggleButtonBase: Record<ToggleButtonVariant, string> = {
-  pill: "cursor-pointer rounded border px-2 py-1 font-mono text-xs font-semibold uppercase leading-tight transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
+  pill: "cursor-pointer rounded-md border px-2 py-1 font-sans text-xs font-medium leading-tight transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
   segment:
-    "h-7 min-w-10 cursor-pointer rounded border px-2 font-mono text-xs transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
-  text: "cursor-pointer border-0 bg-transparent px-1.5 py-1 font-mono uppercase tracking-normal underline-offset-4 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
+    "inline-flex h-7 min-w-10 cursor-pointer items-center justify-center rounded-md border px-2 font-sans text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+  text: "cursor-pointer rounded-sm border-0 bg-transparent px-1.5 py-1 font-sans font-medium underline-offset-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
 };
 
 const toggleButtonPressed: Record<ToggleButtonVariant, string> = {
   pill: "border-dashboard-border-heavy bg-dashboard-text-solid text-dashboard-text-inverse",
-  segment: "border-amber-500/30 bg-amber-500/20 text-amber-400",
+  segment:
+    "border-dashboard-border-interactive bg-dashboard-surface-active text-dashboard-text",
   text: "text-dashboard-text underline decoration-dashboard-text-solid",
 };
 
 const toggleButtonIdle: Record<ToggleButtonVariant, string> = {
   pill: "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text-muted hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover hover:text-dashboard-text",
   segment:
-    "border-dashboard-border-strong bg-dashboard-fill-faint text-dashboard-text-muted hover:bg-dashboard-fill-strong hover:text-dashboard-text",
+    "border-transparent bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
   text: "text-dashboard-text-muted hover:text-dashboard-text",
 };

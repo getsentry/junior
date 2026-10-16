@@ -112,10 +112,7 @@ export function Profile(props: {
       />
 
       <section className="grid gap-4" aria-labelledby="profile-metrics-title">
-        <SectionIntro
-          id="profile-metrics-title"
-          title="Usage over time"
-        />
+        <SectionIntro id="profile-metrics-title" title="Usage over time" />
         <SystemMetricCharts
           bucketUnit={timeRangeBucketUnit(range)}
           days={selectTimeSeries({
@@ -184,7 +181,7 @@ export function Profile(props: {
           <Card as="section" className="mb-0" variant="section">
             <SectionHeader
               actions={
-                <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                   52 weeks
                 </div>
               }
@@ -213,7 +210,7 @@ function LeaderboardSection(props: {
       <ol className="m-0 list-none p-0">
         {props.items.slice(0, 6).map((item, index) => (
           <li
-            className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/[0.06] px-4 py-3 last:border-b-0"
+            className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-dashboard-border-subtle px-4 py-3 last:border-b-0"
             key={item.label}
           >
             <div className="font-mono text-xs leading-none text-dashboard-text-muted">

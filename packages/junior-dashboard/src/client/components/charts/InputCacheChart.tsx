@@ -69,7 +69,7 @@ export function InputCacheChart(props: {
           </div>
         }
       />
-      <dl className="m-0 flex flex-wrap gap-x-5 gap-y-2 px-4 py-3 font-mono text-xs sm:px-5">
+      <dl className="m-0 flex flex-wrap gap-x-5 gap-y-2 px-4 py-3 font-sans tabular-nums text-xs sm:px-5">
         {CACHE_INPUT_SERIES.map(({ key, label, color }) => (
           <div key={key} className="flex items-center gap-2">
             <dt className="flex items-center gap-1.5 text-dashboard-text-muted">
@@ -87,11 +87,11 @@ export function InputCacheChart(props: {
         ))}
       </dl>
       {summary.activePeriods === 0 ? (
-        <p className="m-0 px-4 pb-2 font-mono text-xs text-dashboard-text-muted sm:px-5">
+        <p className="m-0 px-4 pb-2 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">
           No input data in this time window.
         </p>
       ) : summary.incompletePeriods > 0 ? (
-        <p className="m-0 px-4 pb-2 font-mono text-xs text-dashboard-text-muted sm:px-5">
+        <p className="m-0 px-4 pb-2 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">
           Missing data in {summary.incompletePeriods} of {summary.activePeriods}{" "}
           active time intervals. Percentages are unavailable; Tokens shows the
           reported values.
@@ -183,8 +183,8 @@ export function InputCacheChart(props: {
         </ChartSvg>
       </div>
       <CacheWrites days={props.days} bucketUnit={props.bucketUnit} />
-      <details className="border-t border-dashboard-border-subtle px-4 py-3 font-mono text-xs text-dashboard-text-muted sm:px-5">
-        <summary className="cursor-pointer text-dashboard-text focus-visible:outline focus-visible:outline-cyan-300">
+      <details className="border-t border-dashboard-border-subtle px-4 py-3 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">
+        <summary className="cursor-pointer text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
           How to read this
         </summary>
         <div className="mt-3 grid gap-2 leading-relaxed">

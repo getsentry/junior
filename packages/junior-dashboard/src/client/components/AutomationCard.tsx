@@ -21,7 +21,7 @@ export function AutomationCard({
       className="my-1 w-full min-w-0 max-w-[37.5rem] overflow-hidden rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-panel text-sm"
     >
       <div className="flex items-center gap-3 px-4 pb-3 pt-4 md:px-5">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-cyan-100">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-dashboard-accent-text">
           <ObjectIcon objectType="automation" status={card.status} size={18} />
         </span>
         <span className="min-w-0 flex-1 break-words text-base font-semibold text-dashboard-text">
@@ -65,7 +65,7 @@ export function AutomationCard({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 md:px-5">
         <Link
           to={automationPath(card.id)}
-          className="inline-flex shrink-0 items-center gap-2 rounded-sm text-xs font-medium text-cyan-100 no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-dashboard-focus"
+          className="inline-flex shrink-0 items-center gap-2 rounded-sm text-xs font-medium text-dashboard-accent-text no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-dashboard-focus"
         >
           Open automation
           <ArrowUpRight aria-hidden="true" size={14} />

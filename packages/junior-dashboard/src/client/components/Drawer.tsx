@@ -112,7 +112,7 @@ export function Drawer(props: {
       />
       <aside
         className={cn(
-          "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:border-l md:border-dashboard-border-emphasis",
+          "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:border-l md:border-dashboard-border-strong",
           props.width === "wide"
             ? "md:w-[min(760px,94vw)]"
             : props.width === "narrow"
@@ -120,7 +120,7 @@ export function Drawer(props: {
               : "md:w-[min(560px,94vw)]",
         )}
       >
-        <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dashboard-border-strong bg-dashboard-surface-raised px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
+        <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dashboard-border bg-dashboard-bg-elevated px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
           <div className="min-w-0">{props.header}</div>
           <div className="flex items-start gap-1.5">
             {props.actions}

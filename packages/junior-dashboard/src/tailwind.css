@@ -2,18 +2,24 @@
 @import "tailwindcss";
 
 /*
- * Dashboard color tokens.
- * Keep structural UI colors here so light/dark themes can share one utility surface.
+ * Dashboard design tokens. components/README.md explains each role.
+ * Keep structural UI colors here so a second theme can redefine them.
  * Prefer roles over opacity ladders. Status accents stay as Tailwind palette utilities.
  */
 @theme {
+  /* Headings, record titles, and large metric values. */
   --font-display:
     "Outfit", "Avenir Next", Avenir, "Segoe UI", -apple-system,
     BlinkMacSystemFont, sans-serif;
-  /* Primary UI/body face. Prefer Inter over the previous mono-first shell. */
+  /* UI face for prose, controls, navigation, labels, and names. */
   --font-sans:
     "Inter", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu,
     sans-serif;
+  /*
+   * Machine values only: code, ids, paths, file names, and raw payloads.
+   * Use font-sans with tabular-nums for counts, times, and prices. Controls,
+   * navigation, and human text use font-sans.
+   */
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -43,25 +49,39 @@
   --text-4xl: 2.25rem; /* 36px — large display titles */
   --text-4xl--line-height: 1.15;
 
-  /* Canvas and elevated surfaces */
-  --color-dashboard-bg: #050507;
-  --color-dashboard-bg-elevated: #070707;
-  --color-dashboard-surface-panel: #09090b;
-  --color-dashboard-surface-active: #1a1a1c;
-  --color-dashboard-surface-raised: #0b0b0b;
-  --color-dashboard-surface-hover: #151515;
-  --color-dashboard-control: #111114;
+  /*
+   * Canvas and elevated surfaces, darkest to lightest. One cool zinc hue.
+   * bg: page canvas. bg-elevated: drawers and sheets. surface-panel: sidebar,
+   * cards, and message bubbles. surface-raised: buttons, tooltips, and drawer
+   * headers. control: form controls. surface-hover / surface-active: row
+   * hover and selected rows.
+   */
+  --color-dashboard-bg: #060607;
+  --color-dashboard-bg-elevated: #09090b;
+  --color-dashboard-surface-panel: #0c0c0e;
+  --color-dashboard-surface-active: #1c1c20;
+  --color-dashboard-surface-raised: #101013;
+  --color-dashboard-surface-hover: #17171a;
+  --color-dashboard-control: #121215;
   --color-dashboard-ink: #000000;
 
-  /* Text */
+  /* Text, brightest to dimmest: solid, text, subtle, muted, faint. */
   --color-dashboard-text: #f4f4f5;
   --color-dashboard-text-muted: #a1a1aa;
-  --color-dashboard-text-subtle: #b8b8b8;
-  --color-dashboard-text-faint: #888888;
+  --color-dashboard-text-subtle: #c4c4cc;
+  --color-dashboard-text-faint: #8a8a93;
   --color-dashboard-text-solid: #ffffff;
   --color-dashboard-text-inverse: #000000;
 
-  /* Brand focus used for rings and avatar chips */
+  /*
+   * Brand accent (lavender). Use accent for icons, active markers, and tinted
+   * fills (with an opacity suffix). Use accent-text for links and accent text
+   * on the dark canvas. Focus rings use focus, which is the same hue.
+   * Status colors (info, success, warning, error) and categorical chart or
+   * event colors stay as Tailwind palette utilities.
+   */
+  --color-dashboard-accent: #beaaff;
+  --color-dashboard-accent-text: #ddd3ff;
   --color-dashboard-focus: #beaaff;
 
   /* Hairline borders (pre-multiplied so themes can flip without white/black literals) */
@@ -82,8 +102,7 @@
   --color-dashboard-overlay-soft: rgb(0 0 0 / 0.2);
   --color-dashboard-overlay: rgb(0 0 0 / 0.55);
 
-  /* Shell grid + scroll chrome */
-  --color-dashboard-grid-line: rgb(255 255 255 / 0.04);
+  /* Scroll chrome */
   --color-dashboard-scrollbar-track: rgb(255 255 255 / 0.02);
   --color-dashboard-scrollbar-thumb: rgb(255 255 255 / 0.1);
   --color-dashboard-scrollbar-thumb-hover: rgb(255 255 255 / 0.2);
@@ -116,27 +135,6 @@
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-dashboard-scrollbar-thumb-hover);
   }
-}
-
-/* Shared shell canvas + grid. Prefer this class over inline background styles. */
-.dashboard-shell-bg {
-  background-color: var(--color-dashboard-bg);
-  background-image:
-    radial-gradient(
-      ellipse at 50% 0%,
-      transparent 0%,
-      var(--color-dashboard-bg) 70%
-    ),
-    linear-gradient(var(--color-dashboard-grid-line) 1px, transparent 1px),
-    linear-gradient(
-      90deg,
-      var(--color-dashboard-grid-line) 1px,
-      transparent 1px
-    );
-  background-size:
-    100% 100%,
-    40px 40px,
-    40px 40px;
 }
 
 @source "./app.ts";

@@ -18,7 +18,10 @@ import {
   formatActivityDate,
   formatActivityTooltipDate,
 } from "../src/client/components/charts/ActivityChart";
-import { ChartHeader } from "../src/client/components/charts/ChartHeader";
+import {
+  ChartHeader,
+  chartHeaderPrimaryClassName,
+} from "../src/client/components/charts/ChartHeader";
 import { SystemMetricCharts } from "../src/client/components/charts/SystemMetricCharts";
 import {
   cacheInputTotal,
@@ -115,9 +118,9 @@ describe("ChartHeader", () => {
     expect(html).toContain("Daily cumulative runtime");
     expect(html).toContain("<h3");
     // Title and total value use the same primary class string.
-    const primaryClass = html.match(/class="([^"]*font-mono[^"]*)"/)?.[1];
-    expect(primaryClass).toBeTruthy();
-    expect(html.split(primaryClass!).length - 1).toBeGreaterThanOrEqual(2);
+    expect(
+      html.split(`class="${chartHeaderPrimaryClassName}"`).length - 1,
+    ).toBeGreaterThanOrEqual(2);
   });
 });
 

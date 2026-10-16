@@ -9,7 +9,7 @@ export function Skeleton(props: { as?: ElementType; className?: string }) {
     <Component
       aria-hidden="true"
       className={cn(
-        "animate-pulse rounded bg-dashboard-fill-soft motion-reduce:animate-none",
+        "animate-pulse rounded-md bg-dashboard-fill-soft motion-reduce:animate-none",
         props.className,
       )}
     />

@@ -35,13 +35,13 @@ import {
   RepositoryChangesTab,
   RepositoryConversationsTab,
 } from "./RepositoryTabs";
+import { cn, dashboardInlineLinkClass } from "../../styles";
 
 const RECENT_ROWS = 5;
 const DESCRIPTION = "Conversations and code changes from Junior.";
 
 /** Inline link style used by `ConversationSummary` location links. */
-const inlineLinkClass =
-  "font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60";
+const inlineLinkClass = cn("font-semibold", dashboardInlineLinkClass);
 
 /** Render one repository tab under the shared header and tab bar. */
 export function RepositoryPage(props: { tab: CodeRepositoryTab }) {

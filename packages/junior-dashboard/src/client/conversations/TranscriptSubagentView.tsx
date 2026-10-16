@@ -1,65 +1,90 @@
-import { formatMessageTimestamp } from "../format";
+import { ChevronRight } from "lucide-react";
+
+import { StatusChip } from "../components/StatusChip";
+import { formatElapsedDuration, formatMessageTimestamp } from "../format";
+import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
-import { ToolFrame } from "./ToolFrame";
+import { subagentStatusTone } from "./ConversationChildAgents";
 import { HighlightText } from "./transcriptSearch";
 
-/** Render a child-agent lifecycle event inside the transcript stream. */
+/**
+ * Render a child agent as a compact card in the transcript stream. The card
+ * matches the child agent rows in the details drawer: name, status, and run
+ * time first, then the task title. It opens the child transcript.
+ */
 export function TranscriptSubagentView(props: {
   onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
   part: TranscriptViewSubagentPart;
   timestamp?: number;
 }) {
   const label = props.part.agentName ?? props.part.subagentKind;
-  const summary = props.part.title ?? props.part.task;
+  const headline = props.part.title ?? props.part.task;
   const status = props.part.status;
-  const meta = [
-    status,
-    typeof props.timestamp === "number"
-      ? formatMessageTimestamp(props.timestamp)
-      : undefined,
-  ].filter(isString);
-
-  const frame = (
-    <ToolFrame
-      meta={meta}
-      mobileSummaryMeta={status}
-      signature={
-        <>
-          <strong className="min-w-0 break-words font-bold text-cyan-100">
-            <HighlightText text={label} />
-          </strong>
-          {summary ? (
-            <span className="min-w-0 truncate text-dashboard-text-muted">
-              <HighlightText text={summary} />
-            </span>
-          ) : null}
-          {props.part.status === "running" ? (
-            <span
-              aria-hidden="true"
-              className="mt-px size-1.5 shrink-0 animate-pulse rounded-full bg-cyan-300"
-            />
-          ) : null}
-        </>
-      }
-    />
+  const duration = formatElapsedDuration(
+    props.timestamp,
+    props.part.finishedTimestamp,
   );
+  const started =
+    typeof props.timestamp === "number"
+      ? `Started ${formatMessageTimestamp(props.timestamp)}`
+      : undefined;
+  const interactive = Boolean(props.onOpenTranscript);
+
+  const content = (
+    <>
+      <span className="flex min-w-0 items-center gap-2 text-xs leading-5">
+        <span className="min-w-0 truncate font-sans text-sm font-semibold text-dashboard-text">
+          <HighlightText text={label} />
+        </span>
+        <StatusChip
+          className={cn("shrink-0", status === "running" && "animate-pulse")}
+          size="compact"
+          tone={subagentStatusTone(status)}
+        >
+          {status}
+        </StatusChip>
+        {duration ? (
+          <span className="shrink-0 tabular-nums text-dashboard-text-muted">
+            {duration}
+          </span>
+        ) : null}
+        {interactive ? (
+          <ChevronRight
+            aria-hidden="true"
+            className="ml-auto size-4 shrink-0 text-dashboard-text-faint transition-colors group-hover/subagent:text-dashboard-text"
+          />
+        ) : null}
+      </span>
+      {headline ? (
+        <span className="block min-w-0 truncate text-sm leading-snug text-dashboard-text-subtle">
+          <HighlightText text={headline} />
+        </span>
+      ) : null}
+    </>
+  );
+  const frameClass =
+    "group/subagent grid w-full min-w-0 max-w-[37.5rem] gap-0.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2 text-left text-inherit";
 
   if (!props.onOpenTranscript) {
-    return frame;
+    return (
+      <div className={frameClass} title={started}>
+        {content}
+      </div>
+    );
   }
 
   return (
     <button
       aria-label={`Open ${label} transcript`}
-      className="block w-full min-w-0 cursor-pointer text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55"
+      className={cn(
+        frameClass,
+        "cursor-pointer transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+      )}
       onClick={() => props.onOpenTranscript?.(props.part)}
+      title={started}
       type="button"
     >
-      {frame}
+      {content}
     </button>
   );
-}
-
-function isString(value: string | undefined): value is string {
-  return typeof value === "string" && value.length > 0;
 }
