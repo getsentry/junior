@@ -12,7 +12,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | ---------------------------- | ------------------------------------------------------------------------------------ |
 | `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
 | `github.actions.write`       | `gh workflow run`, `gh run rerun`, `gh run cancel`                                   |
-| `github.contents.read`       | `gh repo clone`, `git fetch`                                                         |
+| `github.contents.read`       | `github_cloneRepository`, `git fetch`                                                |
 | `github.contents.write`      | Git smart-HTTP `git push` only                                                       |
 | `github.workflows.write`     | Workflow-file changes on push                                                        |
 | `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
@@ -22,7 +22,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 
 | Operation               | Command                                                                                         |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
-| Clone (default shallow) | `gh repo clone owner/repo [DIR] -- --depth=1`                                                   |
+| Clone (default shallow) | `github_cloneRepository`. Do not use `git clone` or `gh repo clone`.                            |
 | Fetch bounded base      | `git -C DIR fetch --depth=N origin BASE:refs/remotes/origin/BASE`                               |
 | Deepen base             | `git -C DIR fetch --deepen=N origin BASE:refs/remotes/origin/BASE`                              |
 | Unshallow               | `git -C DIR fetch --unshallow origin`                                                           |
@@ -51,7 +51,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 
 ## Notes
 
-- Prefer `--json` where available. Pass clone flags after `--`.
+- Prefer `--json` where available.
 - A local commit does not call GitHub. A push uses installation credentials. Workflow changes also need `workflows.write`.
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.

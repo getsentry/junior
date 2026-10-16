@@ -7,14 +7,14 @@ description: Work with GitHub repositories, source code, branches, commits, pull
 
 Use `git` and `gh` for repository work.
 
-| Action                          | Tool / command                                                           |
-| ------------------------------- | ------------------------------------------------------------------------ |
-| Create PR                       | `github_createPullRequest` (not `gh pr create`)                          |
-| Update PR title/body/base/state | `github_updatePullRequest`                                               |
-| Mark PR ready / draft           | `github_updatePullRequest` with `draft: false` / `draft: true`           |
-| Submit PR review                | `github_submitPullRequestReview`                                         |
-| Resolve review thread           | `github_resolvePullRequestReviewThread`                                  |
-| Clone missing repo              | `github_cloneRepository`; on Workspace match error use `switchWorkspace` |
+| Action                          | Tool / command                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Create PR                       | `github_createPullRequest` (not `gh pr create`)                                                               |
+| Update PR title/body/base/state | `github_updatePullRequest`                                                                                    |
+| Mark PR ready / draft           | `github_updatePullRequest` with `draft: false` / `draft: true`                                                |
+| Submit PR review                | `github_submitPullRequestReview`                                                                              |
+| Resolve review thread           | `github_resolvePullRequestReviewThread`                                                                       |
+| Clone missing repo              | `github_cloneRepository` (not `git clone` or `gh repo clone`); on Workspace match error use `switchWorkspace` |
 
 ## Open when needed
 
