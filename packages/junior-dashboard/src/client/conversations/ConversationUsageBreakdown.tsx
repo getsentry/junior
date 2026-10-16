@@ -131,7 +131,7 @@ function BreakdownTable(props: {
               const padding = index === parts.length - 1 ? "pb-2" : "";
               return (
                 <tr
-                  className="text-[11px] leading-5 text-dashboard-text-faint"
+                  className="text-2xs leading-5 text-dashboard-text-faint"
                   key={part.label}
                 >
                   <th
