@@ -505,6 +505,19 @@ export async function listWatches(input: {
     .sort((left, right) => left.createdAtMs - right.createdAtMs);
 }
 
+/**
+ * Read one watch by id in any status. The caller checks that its Conversation
+ * owns the watch before it acts on it.
+ */
+export async function getWatch(input: {
+  id: string;
+  state?: StateAdapter;
+}): Promise<Watch | undefined> {
+  const state = input.state ?? getStateAdapter();
+  await state.connect();
+  return parseSubscription(await state.get(subscriptionKey(input.id)));
+}
+
 /** Cancel a current-conversation subscription and remove it from match indexes. */
 export async function cancelWatch(input: {
   conversationId: string;

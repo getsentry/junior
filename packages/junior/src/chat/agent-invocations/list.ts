@@ -1,7 +1,15 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray, ne } from "drizzle-orm";
+import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
+import {
+  juniorAgentBindings,
+  juniorAgentInvocations,
+  juniorConversations,
+} from "@/db/schema";
 import {
   getAgentInvocationIdForResult,
   invocationFromRow,
@@ -157,6 +165,50 @@ export async function listChildAgents(
       ),
     )
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+/** One child agent below a Conversation, at any depth. */
+export type DescendantAgent = {
+  conversationId: string;
+  /** The agent binding name. An unnamed child agent has none. */
+  name?: string;
+};
+
+/**
+ * List every child agent below one Conversation, at any depth. A parent owns
+ * the work of its child agents and of their child agents. The list never has
+ * the Conversation itself, its parent, or a sibling.
+ */
+export async function listDescendantAgents(
+  conversationId: string,
+): Promise<DescendantAgent[]> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      name: juniorAgentBindings.name,
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      conversationSubtree([conversationId]),
+      eq(
+        conversationSubtreeColumns.conversationId,
+        juniorConversations.conversationId,
+      ),
+    )
+    .leftJoin(
+      juniorAgentBindings,
+      eq(
+        juniorAgentBindings.childConversationId,
+        juniorConversations.conversationId,
+      ),
+    )
+    .where(ne(juniorConversations.conversationId, conversationId))
+    .orderBy(juniorConversations.conversationId);
+  return rows.map((row) => ({
+    conversationId: row.conversationId,
+    ...(row.name ? { name: row.name } : undefined),
+  }));
 }
 
 /** Conversation execution state of the parent of a child agent. */

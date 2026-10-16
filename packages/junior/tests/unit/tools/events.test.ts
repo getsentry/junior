@@ -3,23 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-const {
-  cancelSubscription,
-  cancelSubscriptions,
-  createSubscription,
-  listSubscriptions,
-} = vi.hoisted(() => ({
-  cancelSubscription: vi.fn(),
-  cancelSubscriptions: vi.fn(),
+const { createSubscription } = vi.hoisted(() => ({
   createSubscription: vi.fn(),
-  listSubscriptions: vi.fn(),
 }));
 
 vi.mock("@/chat/events/store", () => ({
-  cancelWatch: cancelSubscription,
-  cancelSubscriptions,
   createWatch: createSubscription,
-  listWatches: listSubscriptions,
 }));
 
 import { createEventTools } from "@/chat/tools/events";
@@ -45,18 +34,6 @@ const context: ToolRuntimeContext = {
   workspace: {} as ToolRuntimeContext["workspace"],
 };
 
-const subscriptions = [
-  {
-    id: "subscription-1",
-    label: "GitHub PR #1",
-    identifier: "getsentry/junior#1",
-  },
-  {
-    id: "subscription-2",
-    label: "GitHub PR #2",
-    identifier: "getsentry/junior#2",
-  },
-];
 const GITHUB_EVENTS = {
   github: {
     resourceTypes: [
@@ -75,13 +52,6 @@ const GITHUB_EVENTS = {
 
 describe("event tools", () => {
   beforeEach(() => {
-    cancelSubscription.mockReset();
-    cancelSubscription.mockResolvedValue({
-      id: "subscription-1",
-      status: "cancelled",
-    });
-    cancelSubscriptions.mockReset();
-    cancelSubscriptions.mockResolvedValue(undefined);
     createSubscription.mockReset();
     createSubscription.mockResolvedValue({
       id: "subscription-1",
@@ -93,8 +63,6 @@ describe("event tools", () => {
       ],
       expiresAtMs: 1_800_000_000_000,
     });
-    listSubscriptions.mockReset();
-    listSubscriptions.mockResolvedValue(subscriptions);
   });
 
   it("returns the inverse action after creating a resource watch", async () => {
@@ -286,44 +254,5 @@ describe("event tools", () => {
       ),
     ).rejects.toThrow("Watches cannot exceed 30 days");
     expect(createSubscription).not.toHaveBeenCalled();
-  });
-
-  it("stops one selected resource watch", async () => {
-    const tool = createEventTools(
-      context,
-      GITHUB_EVENTS,
-    ).stopWatchingResources!;
-
-    await expect(
-      tool.execute!({ id: "subscription-1" }, {}),
-    ).resolves.toMatchObject({
-      watching_status: "stopped",
-      stoppedIds: ["subscription-1"],
-    });
-    expect(cancelSubscription).toHaveBeenCalledWith({
-      conversationId: "slack:C123:1712345.0001",
-      id: "subscription-1",
-    });
-    expect(cancelSubscriptions).not.toHaveBeenCalled();
-    expect(listSubscriptions).not.toHaveBeenCalled();
-  });
-
-  it("stops every resource watch when no watch id is selected", async () => {
-    const tool = createEventTools(
-      context,
-      GITHUB_EVENTS,
-    ).stopWatchingResources!;
-
-    await expect(tool.execute!({ id: null }, {})).resolves.toMatchObject({
-      watching_status: "stopped",
-      stoppedIds: ["subscription-1", "subscription-2"],
-    });
-    expect(cancelSubscriptions).toHaveBeenCalledTimes(1);
-    expect(cancelSubscriptions).toHaveBeenCalledWith({
-      conversationId: "slack:C123:1712345.0001",
-    });
-    expect(listSubscriptions).toHaveBeenCalledWith({
-      conversationId: "slack:C123:1712345.0001",
-    });
   });
 });

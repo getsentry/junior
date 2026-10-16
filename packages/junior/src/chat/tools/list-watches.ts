@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { listWatches } from "@/chat/events/store";
+import { listOwnedWatches } from "@/chat/events/owned-watches";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -17,6 +17,13 @@ const listedResourceWatchSchema = z
     intent: z.string().min(1),
     expiresAtMs: z.number().finite(),
     firesAtMs: z.number().finite().optional(),
+    childAgent: z
+      .object({
+        conversationId: z.string().min(1),
+        name: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -26,7 +33,10 @@ const resultDataSchema = z
 
 const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
-/** Create the tool that lists active watches for this conversation. */
+/**
+ * Create the tool that lists the active watches this conversation owns: its
+ * own and those of every child agent below it.
+ */
 export function createListWatchesTool(context: ToolRuntimeContext) {
   return zodTool({
     annotations: {
@@ -35,17 +45,16 @@ export function createListWatchesTool(context: ToolRuntimeContext) {
       openWorldHint: false,
       readOnlyHint: true,
     },
-    description: "List active watches for the current conversation.",
+    description:
+      "List active watches for the current conversation and for every child agent below it. A watch with childAgent belongs to that child agent; one without belongs to the current conversation.",
     exposure: "deferred",
     source: RESOURCE_WATCH_TOOL_SOURCE,
     inputSchema: z.object({}).strict(),
     outputSchema,
     async execute() {
-      const subscriptions = await listWatches({
-        conversationId: context.conversationId,
-      });
+      const owned = await listOwnedWatches(context.conversationId);
       const details = {
-        subscriptions: subscriptions.map((subscription) => ({
+        subscriptions: owned.map(({ childAgent, watch: subscription }) => ({
           id: subscription.id,
           label: subscription.label,
           identifier: subscription.identifier,
@@ -56,6 +65,7 @@ export function createListWatchesTool(context: ToolRuntimeContext) {
           intent: subscription.intent,
           expiresAtMs: subscription.expiresAtMs,
           firesAtMs: subscription.firesAtMs,
+          ...(childAgent ? { childAgent } : undefined),
         })),
       };
       return {

@@ -11,6 +11,9 @@ Watches route events back into an existing conversation.
 - Inspection and stop actions stay in the tool catalog. A successful
   watch result identifies the exact watch id to stop. Omitting that id
   is reserved for an explicit request to stop every watch in the thread.
+- A Conversation owns its own watches and the watches of every child agent
+  below it. `listWatches` and `stopWatchingResources` act on all of them. See
+  "Watches on a Child" in `agent-invocations/README.md`.
 - A thread opt-out cancels every active subscription for that conversation
   before the Slack thread is marked unsubscribed.
 - Plugin route code validates and normalizes incoming events before calling
