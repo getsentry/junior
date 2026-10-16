@@ -11,7 +11,7 @@ The npm `sentry` package is intentionally installed at runtime by `sentryPlugin(
 2. Do not use stale plural subcommands such as `sentry organizations list`.
 3. If a command errors as unknown, run `sentry --help` and the nearest subcommand help before declaring the surface unavailable.
 4. Prefer `--json` and, when useful, `--fields` for structured parsing.
-5. Use `sentry api <endpoint>` for authenticated API calls when a high-level command does not cover the request. Default to `GET`; only perform the supported writes in `SKILL.md` when explicitly requested.
+5. Use `sentry api <endpoint>` for authenticated API calls when a high-level command does not cover the request. Default to `GET`; write only when the user asks for the change.
 6. Use `sentry schema <resource>` (for example `sentry schema projects` or `sentry schema --search team`) to find the current endpoint and body fields before an API write.
 
 ## Issue commands
@@ -84,7 +84,6 @@ Notes:
 - For a settings update, run `sentry schema updateProject` to confirm the field name. Send only the changed fields. Common fields: `name`, `slug`, `platform`, `isBookmarked`, `resolveAge`, `subjectPrefix`, `highlightTags`, `options[...]`.
 - Changing `slug` changes project URLs and breaks saved links. Treat it as an irreversible change.
 - Resolve `MEMBER_ID` with `sentry api organizations/ORG/members/?query=EMAIL --json`. Do not guess IDs.
-- `sentry project delete` and team deletes need `project:admin` or `team:admin`. Junior does not request these scopes. Give the settings URL instead: `https://ORG.sentry.io/settings/projects/PROJECT/` or `https://ORG.sentry.io/settings/teams/TEAM/`.
 
 ## Log commands
 
@@ -204,7 +203,6 @@ Use `sentry api` only when no first-class CLI command covers the requested opera
 | API returns generic `403` or permission denied                      | Connected account lacks org/project access | Stop and tell the user the current connection cannot access the requested data.               |
 | Alert write returns an explicit missing-scope error                 | OAuth grant predates alert writes          | Rerun once to trigger reconnect; the connection needs `alerts:write`.                         |
 | Project or team write returns an explicit missing-scope error       | OAuth grant predates the write scope       | Rerun once to trigger reconnect; the connection needs `project:write` or `team:write`.        |
-| Project or team delete requested                                    | Junior does not request admin scopes       | Do not try; give the Sentry settings URL.                                                     |
 | Static metric alert requested                                       | First-class CLI command is available       | Use `sentry alert metrics create`; do not drop directly to `sentry api`.                      |
 | Dynamic/anomaly alert flags are unavailable                         | CLI coverage gap                           | Verify live help, then use the current API fallback if needed.                                |
 

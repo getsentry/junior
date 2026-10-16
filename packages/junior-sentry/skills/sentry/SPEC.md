@@ -13,16 +13,14 @@ In scope:
 - Investigating Sentry's own product telemetry and product feature usage through Sentry CLI/API data surfaces.
 - Using `sentry api <endpoint>` for authenticated requests when no high-level command exists.
 - Creating explicitly requested metric alerts through `sentry alert metrics` after duplicate checks and dry-run validation, with API fallback only for unsupported alert behavior.
-- Creating projects, updating project settings, adding or removing teams on projects, creating or updating teams, and adding members to teams, when explicitly requested, after target resolution, duplicate checks, and dry-run validation.
+- Other Sentry API writes the user asks for, such as creating projects, updating project settings, and managing teams, after target resolution, duplicate checks, and dry-run validation.
 - Generating Sentry deep links for user-scoped or entity-specific views.
 - Diagnosing auth, scope, and access failures without guessing missing scopes.
 
 Out of scope:
 
 - Repository, code search, commit, branch, and pull-request work.
-- Mutating Sentry data outside the explicitly requested project, team, alert, or monitor operations.
-- Org settings, member roles, invites, integrations, auth, billing, data scrubbing, rate limits, and event data deletion.
-- Project and team deletes. These need `project:admin` or `team:admin`, which Junior does not request.
+- Sentry writes the user did not ask for.
 - Persisting, printing, or transforming Sentry credentials.
 
 ## Users And Trigger Context
@@ -35,7 +33,7 @@ Out of scope:
 
 - Required first actions: classify the Sentry operation, resolve configured org/project when needed, and verify current CLI help before blocking on an unknown command.
 - Required outputs: concise findings, relevant Sentry URLs or deep links, changed resource URLs with before/after values, and clear access/auth failure messages.
-- Non-negotiable constraints: do not print credentials; default to read-only commands; only perform explicitly requested supported writes; read current state, check duplicates, and dry-run before writing; change only requested fields; verify after writing; use canonical current CLI command groups; use `sentry api` before claiming a surface is unavailable.
+- Non-negotiable constraints: do not print credentials; default to read-only commands; write only when the user asks; read current state, check duplicates, and dry-run before writing; change only requested fields; verify after writing; use canonical current CLI command groups; use `sentry api` before claiming a surface is unavailable.
 - Expected bundled files loaded at runtime: `references/cli-commands.md`, `references/deep-link-patterns.md`, and `references/sandbox-runtime.md`.
 
 ## Current CLI Data
@@ -88,6 +86,8 @@ Data that must not be stored:
 - Acceptance gates: command guidance matches latest CLI help, stale plural forms are not canonical, read-only fallback is available, writes require explicit intent plus duplicate and dry-run checks, unrelated mutations remain blocked, and credential handling remains private.
 
 ## Known Limitations
+
+- This skill does not decide which Sentry requests are allowed. OAuth scopes, the user's Sentry role, and host egress rules (when added) own that limit.
 
 - The skill depends on the runtime-installed npm `sentry` package, which may change independently of this repository.
 - The eval shim is intentionally narrow and is not a full Sentry CLI replacement.

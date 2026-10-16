@@ -130,7 +130,7 @@ Set `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` to the app's credentials. Juni
 
 Reconnect after scope changes. Existing grants do not pick up new scopes automatically.
 
-With these scopes, Junior can create projects, change project settings, add teams to projects, create and update teams, add members to teams, and manage alerts. It does this only when a user asks for the change, and the user's own Sentry role still applies. Junior does not request `project:admin` or `team:admin`, so it cannot delete projects or teams.
+With these scopes, Junior can make Sentry writes that a user asks for, such as creating projects, changing project settings, managing teams, and managing alerts. The user's own Sentry role still applies. The skill does not limit which requests Junior makes. To limit access, narrow the OAuth scopes or add host egress rules.
 
 ## Set up org read access
 

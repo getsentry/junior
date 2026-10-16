@@ -39,16 +39,15 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 - If a Sentry API call returns a generic `403`, `permission denied`, or otherwise indicates missing org/project access without naming missing scopes, stop and tell the user the current Sentry connection could not access the requested Sentry data.
 - Only mention a specific missing scope when the CLI or API error explicitly names that scope. Do not guess scope names from a generic `403`.
 
-3. Make explicitly requested writes:
+3. Make requested writes:
 
-- Supported writes: create projects, update project settings, add or remove a team on a project, create or update teams, add a member to a team, and create, edit, or delete alerts and monitors.
 - Read [references/cli-commands.md](references/cli-commands.md) for the write command shapes. Use `sentry schema <resource>` to confirm the current endpoint and fields before an API write.
 - Resolve the exact org, project, team, and member slugs or IDs. Ask when the target is ambiguous; do not guess.
 - Read the current state first. Stop on a likely duplicate (for example, a project or team with the same slug) and report it.
 - Change only the fields the user asked for. Do not reset or rewrite other settings.
 - Run the complete command with `--dry-run` first, then run it once without `--dry-run`.
 - Read the resource again and report what changed (before → after) with the Sentry URL.
-- Destructive or irreversible changes (delete a project, team, or alert; remove a team from a project; rename a project slug, transfer a project) need the user to name that exact action in the current request. Project and team deletes need `project:admin` or `team:admin`, which Junior does not request; report that and give the Sentry settings URL instead.
+- For a destructive or irreversible change (a delete, removing a team from a project, a slug rename, or a transfer), make sure the user named that exact action in the current request.
 
 4. Generate deep links:
 
@@ -62,8 +61,7 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 
 ## Guardrails
 
-- Default to read-only operations. Write only when the user explicitly asks for that change, and only for the supported writes listed in step 3.
-- Do not change org settings, member roles, invites, integrations, auth, billing, data scrubbing, or rate limits, and do not delete event data.
+- Write only when the user asks for that change.
 - Avoid speculative Sentry CLI subcommands. Use bundled references plus live `sentry --help` output to verify current commands.
 - Do not print credential values.
 - If org is missing and needed, ask the user.
