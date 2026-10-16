@@ -2,11 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 
 import { pathWithSearch } from "../searchParams";
-import {
-  segmentedTabClass,
-  segmentedTabsFrameClass,
-  segmentedTabsInsetClass,
-} from "./SegmentedTabs";
+import { segmentedTabClass } from "./SegmentedTabs";
 import { cn } from "../styles";
 
 export type SegmentedNavItem = {
@@ -84,7 +80,9 @@ function edgeFade(edges: HiddenEdges): CSSProperties | undefined {
 }
 
 /**
- * Show links between sibling pages in the segmented pill track.
+ * Show links between sibling pages as a row of pills on the page canvas.
+ * Page links have no track. `SegmentedTabs` keeps the track for in-place
+ * panel switches.
  *
  * With `fill`, links share the row width equally while their labels fit.
  * Otherwise each link keeps its label width. When the links do not fit, the
@@ -147,18 +145,11 @@ export function SegmentedNav(props: {
   return (
     <nav
       aria-label={props.ariaLabel}
-      className={cn(
-        segmentedTabsFrameClass,
-        "flex min-w-0 max-w-full",
-        !props.fill && "w-fit",
-      )}
+      className={cn("flex min-w-0 max-w-full", !props.fill && "w-fit")}
     >
-      {/* Pad the scrolling row, not the frame, so the last link keeps its
-          padding when the row is scrolled to the end. */}
       <div
         className={cn(
-          segmentedTabsInsetClass,
-          "relative flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "relative -mx-1 flex gap-1 px-1 min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         )}
         ref={rowRef}
         style={edgeFade(edges)}

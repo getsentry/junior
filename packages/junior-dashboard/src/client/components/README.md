@@ -11,7 +11,8 @@ instead of copying Tailwind blocks.
    Use the segmented pill track to pick one of a few siblings. Use
    `SegmentedTabs` to switch panels in place. Pass the selected value, items,
    change handler, and selected panel content. It owns tab/panel labels and
-   keyboard focus. Use `SegmentedNav` for links between sibling pages. With
+   keyboard focus. It draws the pill track. Use `SegmentedNav` for links
+   between sibling pages. Its pills sit on the canvas with no track. With
    `fill`, links share the row width equally while their labels fit. Otherwise
    each link keeps its label width. Rows that do not fit scroll sideways. Keep
    collection filters in `FilterTabList`. Prefer

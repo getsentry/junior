@@ -148,7 +148,7 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative border-b border-dashboard-border-emphasis bg-dashboard-bg">
+    <header className="relative bg-dashboard-bg">
       <div
         className={cn(
           props.compact ? "w-full min-w-0" : dashboardContainerClass,

@@ -30,18 +30,18 @@ export function SecondaryNavigation(props: {
       "rounded-lg px-3 py-3 pl-6 font-sans text-sm font-medium no-underline transition-colors",
       isActive
         ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
-        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
+        : cn("hover:bg-dashboard-fill-faint", dashboardInteractiveTextClass),
     );
 
   return (
     <div className="min-w-0">
       <SecondaryNavigationPortal
         desktop={
-          <div className="border-b border-white/[0.06] bg-white/[0.018]">
+          <div>
             <div
               className={cn(
                 dashboardContainerClass,
-                "min-w-0 px-4 py-2 md:px-8",
+                "min-w-0 px-4 pb-3 md:px-8",
               )}
             >
               <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
@@ -51,7 +51,7 @@ export function SecondaryNavigation(props: {
         mobile={
           <nav
             aria-label={props.ariaLabel}
-            className="mt-3 grid gap-1 border-t border-white/[0.07] pt-3"
+            className="mt-3 grid gap-1 border-t border-dashboard-border pt-3"
           >
             {props.items.map((item) => (
               <SiblingPageLink
