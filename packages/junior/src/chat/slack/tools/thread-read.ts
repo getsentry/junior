@@ -123,7 +123,7 @@ function truncateMessages(
 }
 
 /**
- * Find stored Junior Conversations for a Slack thread.
+ * Find stored Conversations for a Slack thread.
  *
  * A thread that an automation run started is bound to the run's Conversation.
  * Other threads use `slack:<channel>:<threadTs>`. Return both when both exist.
@@ -155,7 +155,7 @@ export function createSlackThreadReadTool(
 ) {
   return zodTool({
     description:
-      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `junior_conversation_ids` when Junior took part in the thread; use them with `searchConversationEvents`.",
+      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `conversation_ids` when you took part in the thread; pass one to `searchConversationEvents`.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -332,7 +332,7 @@ export function createSlackThreadReadTool(
         sanitized,
         MAX_THREAD_READ_CHARS,
       );
-      const juniorConversationIds = await findThreadConversationIds({
+      const conversationIds = await findThreadConversationIds({
         channelId,
         teamId: context.teamId,
         threadTs: resolvedThreadTs,
@@ -344,8 +344,8 @@ export function createSlackThreadReadTool(
         ...(joined ? { joined_channel: true } : undefined),
         target_message_ts: messageTs,
         thread_ts: resolvedThreadTs,
-        ...(juniorConversationIds.length > 0
-          ? { junior_conversation_ids: juniorConversationIds }
+        ...(conversationIds.length > 0
+          ? { conversation_ids: conversationIds }
           : undefined),
         count: messages.length,
         fetched_count: replies.length,

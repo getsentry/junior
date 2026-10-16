@@ -112,7 +112,7 @@ describe("slackThreadRead", () => {
       fetched_count: 2,
       truncated: false,
     });
-    expect(result).not.toHaveProperty("junior_conversation_ids");
+    expect(result).not.toHaveProperty("conversation_ids");
     expect(result.messages).toHaveLength(2);
     expect(result.messages[0].text).toBe("root message");
     expect(result.messages[1].text).toBe("reply message");
@@ -121,7 +121,7 @@ describe("slackThreadRead", () => {
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 
-  it("returns Junior Conversation ids for the thread", async () => {
+  it("returns Conversation ids for the thread", async () => {
     const store = getConversationStore();
     const nowMs = Date.parse("2026-07-01T12:00:00.000Z");
     for (const conversationId of [
@@ -164,7 +164,7 @@ describe("slackThreadRead", () => {
       url: "https://sentry.slack.com/archives/C0AHB7N2JCR/p1700000000123456",
     });
 
-    expect(result.junior_conversation_ids).toEqual([
+    expect(result.conversation_ids).toEqual([
       "automation-run:1",
       "slack:C0AHB7N2JCR:1700000000.123456",
     ]);
