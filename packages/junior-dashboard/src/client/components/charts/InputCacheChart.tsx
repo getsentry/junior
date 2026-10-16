@@ -9,15 +9,14 @@ import {
   timeRangeBucketPerLabel,
 } from "../controls/TimeRangeSelector";
 import {
-  ActivityChartDateLabels,
-  ActivityChartGrid,
-  ActivityChartTooltip,
   ActivityTooltipRows,
-  ChartSvg,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import { CacheWrites } from "./CacheWrites";
-import { useChartLayout } from "./useChartLayout";
 import {
   CACHE_INPUT_SERIES,
   cacheInputTotal,
@@ -33,14 +32,10 @@ export function InputCacheChart(props: {
 }) {
   const [mode, setMode] = useState<"share" | "tokens">("share");
   const summary = summarizeCacheInput(props.days);
-  const { ref, layout } = useChartLayout(160);
   const reportedTotals = props.days.map((day) =>
     CACHE_INPUT_SERIES.reduce((sum, { key }) => sum + (day[key] ?? 0), 0),
   );
   const maximum = mode === "share" ? 100 : Math.max(1, ...reportedTotals);
-  const step = layout.plotWidth / Math.max(1, props.days.length);
-  const barWidth = Math.min(32, step * 0.7);
-  const x = (index: number) => layout.left + step * (index + 0.5);
 
   return (
     <Card>
@@ -97,51 +92,22 @@ export function InputCacheChart(props: {
           reported values.
         </p>
       ) : null}
-      <div className="px-2 pb-2" ref={ref}>
-        <ChartSvg
+      <div className="px-4 pt-2 pb-3">
+        <ChartFrame
           aria-label={`Input cache ${mode} per ${timeRangeBucketPerLabel(props.bucketUnit)}`}
-          layout={layout}
+          buckets={props.days.map((day) => day.date)}
+          className="h-28"
+          formatTick={
+            mode === "share" ? (value) => `${value}%` : formatCompactNumber
+          }
+          maximum={maximum}
         >
-          <ActivityChartGrid
-            format={
-              mode === "share" ? (value) => `${value}%` : formatCompactNumber
-            }
-            layout={layout}
-            maximum={maximum}
-          />
-          {props.days.map((day, index) => {
+          {props.days.map((day) => {
             const total = cacheInputTotal(day);
             const incomplete = total === undefined && hasCacheActivity(day);
-            let offset = 0;
-            const bars = CACHE_INPUT_SERIES.map(({ key, color }) => {
-              const value = day[key] ?? 0;
-              const plotted =
-                mode === "share" ? (total ? (value / total) * 100 : 0) : value;
-              const height = (plotted / maximum) * layout.plotHeight;
-              offset += height;
-              return (
-                <rect
-                  key={key}
-                  fill={color}
-                  opacity={0.85}
-                  height={height}
-                  width={barWidth}
-                  x={x(index) - barWidth / 2}
-                  y={layout.top + layout.plotHeight - offset}
-                />
-              );
-            });
             return (
-              <ActivityChartTooltip
-                key={day.date}
-                date={day.date}
-                summary={
-                  incomplete
-                    ? "Missing cache data"
-                    : total === undefined
-                      ? "No input reported"
-                      : `${formatCacheShare(day.cachedInputTokens, total)} cached · ${formatCompactNumber(total)} input tokens`
-                }
+              <ChartBucket
+                bucket={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={CACHE_INPUT_SERIES.map(({ key, label }) => [
@@ -152,35 +118,41 @@ export function InputCacheChart(props: {
                     ])}
                   />
                 }
+                key={day.date}
+                summary={
+                  incomplete
+                    ? "Missing cache data"
+                    : total === undefined
+                      ? "No input reported"
+                      : `${formatCacheShare(day.cachedInputTokens, total)} cached · ${formatCompactNumber(total)} input tokens`
+                }
               >
-                <g tabIndex={0}>
-                  <rect
-                    fill="transparent"
-                    x={x(index) - step / 2}
-                    y={layout.top}
-                    width={step}
-                    height={layout.plotHeight}
-                  />
-                  {bars}
+                <span className="flex h-full w-[70%] max-w-8 flex-col-reverse">
                   {incomplete ? (
-                    <rect
-                      fill="#94a3b8"
-                      x={x(index) - barWidth / 2}
-                      y={layout.top + layout.plotHeight - 3}
-                      width={barWidth}
-                      height={3}
-                    />
+                    <span className="block h-0.75 w-full shrink-0 bg-slate-400" />
                   ) : null}
-                </g>
-              </ActivityChartTooltip>
+                  {CACHE_INPUT_SERIES.map(({ key, color }) => {
+                    const value = day[key] ?? 0;
+                    const plotted =
+                      mode === "share"
+                        ? total
+                          ? (value / total) * 100
+                          : 0
+                        : value;
+                    return (
+                      <ChartBar
+                        className="w-full rounded-none opacity-85"
+                        fill={color}
+                        key={key}
+                        percent={chartPercent(plotted, maximum)}
+                      />
+                    );
+                  })}
+                </span>
+              </ChartBucket>
             );
           })}
-          <ActivityChartDateLabels
-            dates={props.days.map((day) => day.date)}
-            layout={layout}
-            xPosition={x}
-          />
-        </ChartSvg>
+        </ChartFrame>
       </div>
       <CacheWrites days={props.days} bucketUnit={props.bucketUnit} />
       <details className="border-t border-dashboard-border-subtle px-4 py-3 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">

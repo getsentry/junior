@@ -1,10 +1,9 @@
 import {
-  ActivityChartDateLabels,
-  ActivityChartGrid,
-  ActivityChartTooltip,
   ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import {
@@ -29,10 +28,6 @@ export function MemoryTimeline(props: {
   const bucketUnit = props.bucketUnit ?? "day";
 
   const days = props.days;
-  const layout = createActivityChartLayout(200);
-  const step =
-    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
-  const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const totals = days.map((day) => day.personal + day.public);
   const maximum = Math.max(1, ...totals);
   const hasMemories = totals.some((total) => total > 0);
@@ -54,20 +49,20 @@ export function MemoryTimeline(props: {
 
       <ChartLegend ariaLabel="Memory visibility legend" items={series} />
 
-      <div className="relative mt-3 overflow-hidden">
-        <ChartSvg
+      <div className="mt-3">
+        <ChartFrame
           aria-label={`Memories learned during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
-          className="min-h-40"
-          layout={layout}
+          buckets={days.map((day) => day.date)}
+          empty={
+            hasMemories ? undefined : "No memories were learned in this period."
+          }
+          maximum={maximum}
         >
-          <ActivityChartGrid layout={layout} maximum={maximum} />
           {days.map((day, dayIndex) => {
-            let stackedHeight = 0;
-            const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
-              <ActivityChartTooltip
-                key={day.date}
+              <ChartBucket
+                bucket={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -77,49 +72,23 @@ export function MemoryTimeline(props: {
                     ]}
                   />
                 }
-                date={day.date}
+                key={day.date}
                 summary={`${day.personal} personal, ${day.public} public, ${total} total memories`}
               >
-                <g tabIndex={0}>
-                  {series.map((item) => {
-                    const value = day[item.key];
-                    const segmentHeight = (value / maximum) * layout.plotHeight;
-                    stackedHeight += segmentHeight;
-                    return (
-                      <rect
-                        fill={item.color}
-                        height={segmentHeight}
-                        key={item.key}
-                        opacity={0.82}
-                        rx="1"
-                        width={barWidth}
-                        x={x}
-                        y={layout.top + layout.plotHeight - stackedHeight}
-                      />
-                    );
-                  })}
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={Math.max(barWidth, 8)}
-                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
+                <span className="flex h-full w-[68%] max-w-3.25 flex-col-reverse">
+                  {series.map((item) => (
+                    <ChartBar
+                      className="w-full opacity-82"
+                      fill={item.color}
+                      key={item.key}
+                      percent={chartPercent(day[item.key], maximum)}
+                    />
+                  ))}
+                </span>
+              </ChartBucket>
             );
           })}
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
-        {!hasMemories ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
-            No memories were learned in this period.
-          </div>
-        ) : null}
+        </ChartFrame>
       </div>
     </Card>
   );

@@ -36,7 +36,9 @@ describe("MemoryCostChart", () => {
     expect(html).toContain(
       'aria-label="Jul 30: extraction $0.005, 1 run; recall $0.005, 2 runs"',
     );
-    expect(html).toMatch(/fill="#67e8f9"[^>]+height="70"[^>]+y="94"/);
-    expect(html).toMatch(/fill="#e879f9"[^>]+height="70"[^>]+y="24"/);
+    // Extraction renders first, so it sits at the bottom of the stack.
+    expect(html).toMatch(
+      /background:#67e8f9;height:50%.*background:#e879f9;height:50%/,
+    );
   });
 });

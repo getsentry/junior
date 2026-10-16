@@ -12,15 +12,16 @@ import {
   formatCostSummary,
 } from "../../format";
 import {
-  ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
-  ActivityChartTooltip,
   activityChartAverage,
-  ChartSvg,
+  chartAreaPath,
+  chartLinePoints,
+  chartPercent,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  ChartPoint,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
-import { useChartLayout } from "./useChartLayout";
 import { InputCacheChart } from "./InputCacheChart";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
@@ -123,108 +124,82 @@ function MetricChart(props: {
   days: ConversationMetricDay[];
 }) {
   const { chart, days } = props;
-  const { ref, layout } = useChartLayout(
-    150,
-    chart.metric === "costUsd" ? 72 : 64,
-  );
   const values = days.map((day) => metricValue(day, chart.metric));
   const maximum = Math.max(Number.EPSILON, ...values);
-  const step = layout.plotWidth / Math.max(1, days.length);
-  const points = values.map((value, index) => ({
-    x: layout.left + step * index + step / 2,
-    y: layout.top + layout.plotHeight - (value / maximum) * layout.plotHeight,
-  }));
-  const area = points.length
-    ? `M ${points[0]!.x} ${layout.top + layout.plotHeight} L ${points
-        .map((point) => `${point.x} ${point.y}`)
-        .join(" L ")} L ${points.at(-1)!.x} ${layout.top + layout.plotHeight} Z`
-    : "";
   const total = values.reduce((sum, value) => sum + value, 0);
   const average = activityChartAverage(values);
-  const barWidth = Math.max(1.5, Math.min(8, step * 0.65));
 
   return (
     <Card>
       <ChartHeader title={chart.title} total={chart.format(total)} />
-      <div className="px-2 py-2" ref={ref}>
-        <ChartSvg
+      <div className="px-4 pt-4 pb-3">
+        <ChartFrame
           aria-label={`${chart.title} per ${props.bucketUnit === "6hour" ? "6 hours" : props.bucketUnit}`}
-          layout={layout}
+          average={{
+            color: chart.color,
+            format:
+              chart.metric === "tokens"
+                ? formatActivityChartAverage
+                : chart.format,
+            unit: timeRangeBucketAverageUnit(props.bucketUnit),
+            value: average,
+          }}
+          buckets={days.map((day) => day.date)}
+          className="h-26"
+          formatTick={chart.axisFormat}
+          lines={
+            chart.type === "area" && values.length > 0 ? (
+              <>
+                <path
+                  d={chartAreaPath(values, maximum)}
+                  fill={chart.color}
+                  fillOpacity={0.08}
+                />
+                <polyline
+                  fill="none"
+                  points={chartLinePoints(values, maximum)}
+                  stroke={chart.color}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </>
+            ) : null
+          }
+          maximum={maximum}
         >
-          <ActivityChartGrid
-            format={chart.axisFormat}
-            layout={layout}
-            maximum={maximum}
-          />
-          {chart.type === "area" && area ? (
-            <>
-              <path d={area} fill={chart.color} fillOpacity={0.08} />
-              <polyline
-                fill="none"
-                points={points
-                  .map((point) => `${point.x},${point.y}`)
-                  .join(" ")}
-                stroke={chart.color}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              />
-            </>
-          ) : null}
           {days.map((day, index) => {
             const value = values[index]!;
-            const point = points[index]!;
-            const barHeight = (value / maximum) * layout.plotHeight;
-            const renderedBarHeight = Math.max(value ? 2 : 0, barHeight);
+            const percent = chartPercent(value, maximum);
             return (
-              <ActivityChartTooltip
-                key={day.date}
+              <ChartBucket
+                bucket={day.date}
                 content={chart.format(value)}
-                date={day.date}
+                key={day.date}
                 summary={chart.format(value)}
               >
                 {chart.type === "bar" ? (
-                  <rect
+                  <ChartBar
+                    className="w-[65%] max-w-2 rounded-t-xs opacity-80"
                     fill={chart.color}
-                    height={renderedBarHeight}
-                    opacity={value ? 0.8 : 0.1}
-                    rx="1.5"
-                    tabIndex={0}
-                    width={barWidth}
-                    x={point.x - barWidth / 2}
-                    y={layout.top + layout.plotHeight - renderedBarHeight}
+                    percent={percent}
                   />
                 ) : (
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
+                  <ChartPoint
+                    className={
+                      chart.type === "scatter"
+                        ? "size-1.75 opacity-75"
+                        : "size-1.25 opacity-45"
+                    }
                     fill={chart.color}
-                    opacity={chart.type === "scatter" ? 0.75 : 0.45}
-                    r={chart.type === "scatter" ? 3.5 : 2.5}
-                    tabIndex={0}
+                    percent={percent}
                   />
                 )}
-              </ActivityChartTooltip>
+              </ChartBucket>
             );
           })}
-          <ActivityChartAverageLine
-            average={average}
-            format={
-              chart.metric === "tokens"
-                ? formatActivityChartAverage
-                : chart.format
-            }
-            layout={layout}
-            maximum={maximum}
-            stroke={chart.color}
-            unit={timeRangeBucketAverageUnit(props.bucketUnit)}
-          />
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => points[index]?.x ?? layout.left}
-          />
-        </ChartSvg>
+        </ChartFrame>
       </div>
     </Card>
   );

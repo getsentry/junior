@@ -27,8 +27,10 @@ or a cache failure rate.
 The list and chart consume the same selected buckets. There is no local time
 selector or comparison window. The list is collapsed until needed.
 
-`useChartLayout` measures the available width. Charts keep a fixed, compact
-height rather than growing taller on wide screens.
+Charts use `ChartFrame`, which sizes everything with CSS. The plot has a
+fixed, compact height rather than growing taller on wide screens. Bars,
+points, and labels are HTML; the SVG layer only draws grid and line paths and
+stretches to the plot box. Do not measure chart size in JavaScript.
 
 This report has no per-call model, release, environment, trace, or write-cost
 fields. Add a reporting contract before adding those filters or drilldowns.

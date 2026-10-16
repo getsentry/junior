@@ -1,16 +1,15 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
 import {
-  ChartAxisLabel,
-  ChartCategoryLabels,
-  ChartSvg,
-  createActivityChartLayout,
-  formatActivityCategoryTooltipLabel,
+  ActivityTooltipRows,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
+  chartY,
   isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
-import { Tooltip } from "../../components/Tooltip";
 import { formatCostSummary } from "../../format";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
@@ -33,24 +32,14 @@ export function PluginBarChart(props: {
     ? widget.categories.slice(-visibleCategoryCount(widget, props.range))
     : widget.categories;
   const seriesFormat = commonSeriesFormat(widget);
-  const layout = createActivityChartLayout(250, {
-    bottom: 36,
-    left: seriesFormat === "usd" ? 104 : 56,
-    right: 12,
-    top: 16,
-    width: 520,
-  });
-  const step = layout.plotWidth / Math.max(1, categories.length);
-  const groupWidth = Math.min(72, step * 0.72);
-  const barWidth = groupWidth / Math.max(1, widget.series.length);
   const values = categories.flatMap((category) =>
     widget.series.map((series) => category.values[series.key] ?? 0),
   );
   const minimum = Math.min(0, ...values);
   const dataMaximum = Math.max(0, ...values);
   const maximum = dataMaximum === minimum ? minimum + 1 : dataMaximum;
-  const span = maximum - minimum;
-  const zeroY = layout.top + (maximum / span) * layout.plotHeight;
+  // Bars grow up or down from the zero line.
+  const zero = chartY(0, maximum, minimum) * 100;
 
   return (
     <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel">
@@ -83,73 +72,68 @@ export function PluginBarChart(props: {
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (
-        <ChartSvg
-          aria-label={widget.title}
-          className="min-h-48"
-          layout={layout}
-        >
-          {[maximum, maximum - span / 2, minimum].map((tickValue, index) => {
-            const y = layout.top + index * (layout.plotHeight / 2);
-            return (
-              <g key={index}>
-                <line
-                  stroke="rgba(255,255,255,0.07)"
-                  strokeDasharray="3 5"
-                  x1={layout.left}
-                  x2={layout.width - layout.right}
-                  y1={y}
-                  y2={y}
-                />
-                <ChartAxisLabel textAnchor="end" x={layout.left - 6} y={y + 3}>
-                  {formatChartValue(tickValue, seriesFormat)}
-                </ChartAxisLabel>
-              </g>
-            );
-          })}
-          {categories.flatMap((category, categoryIndex) =>
-            widget.series.map((series, seriesIndex) => {
-              const value = category.values[series.key] ?? 0;
-              const renderedHeight = Math.max(
-                value ? 2 : 0,
-                (Math.abs(value) / span) * layout.plotHeight,
-              );
-              const formatted = formatChartValue(value, series.format);
-              return (
-                <Tooltip
-                  content={`${series.label}: ${formatted}`}
-                  key={`${category.id}:${series.key}`}
-                  label={formatActivityCategoryTooltipLabel(category.label)}
-                >
-                  <rect
-                    aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
-                    fill={
-                      series.tone
-                        ? toneColors[series.tone]
-                        : colors[seriesIndex % colors.length]
-                    }
-                    height={renderedHeight}
-                    opacity={value ? 0.82 : 0.1}
-                    rx="1.5"
-                    tabIndex={value ? 0 : -1}
-                    width={barWidth * 0.75}
-                    x={
-                      layout.left +
-                      categoryIndex * step +
-                      (step - groupWidth) / 2 +
-                      seriesIndex * barWidth
-                    }
-                    y={value >= 0 ? zeroY - renderedHeight : zeroY}
+        <div className="px-4 pt-4 pb-3">
+          <ChartFrame
+            aria-label={widget.title}
+            buckets={categories.map((category) => category.label)}
+            className="h-44"
+            formatTick={(value) => formatChartValue(value, seriesFormat)}
+            labelAlign="center"
+            maximum={maximum}
+            minimum={minimum}
+          >
+            {categories.map((category) => (
+              <ChartBucket
+                bucket={category.label}
+                content={
+                  <ActivityTooltipRows
+                    rows={widget.series.map((series) => [
+                      series.label,
+                      formatChartValue(
+                        category.values[series.key] ?? 0,
+                        series.format,
+                      ),
+                    ])}
                   />
-                </Tooltip>
-              );
-            }),
-          )}
-          <ChartCategoryLabels
-            categories={categories}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
+                }
+                key={category.id}
+                summary={widget.series
+                  .map(
+                    (series) =>
+                      `${series.label}: ${formatChartValue(category.values[series.key] ?? 0, series.format)}`,
+                  )
+                  .join(", ")}
+              >
+                <span className="relative flex h-full w-[72%] max-w-18 gap-[25%]">
+                  {widget.series.map((series, seriesIndex) => {
+                    const value = category.values[series.key] ?? 0;
+                    return (
+                      <span
+                        className="relative h-full min-w-0 flex-1"
+                        key={series.key}
+                      >
+                        {value ? (
+                          <span
+                            className="absolute inset-x-0 block min-h-0.5 rounded-t-xs opacity-82"
+                            style={{
+                              background: series.tone
+                                ? toneColors[series.tone]
+                                : colors[seriesIndex % colors.length],
+                              height: `${chartPercent(value, maximum, minimum)}%`,
+                              ...(value >= 0
+                                ? { bottom: `${100 - zero}%` }
+                                : { top: `${zero}%` }),
+                            }}
+                          />
+                        ) : null}
+                      </span>
+                    );
+                  })}
+                </span>
+              </ChartBucket>
+            ))}
+          </ChartFrame>
+        </div>
       )}
     </div>
   );

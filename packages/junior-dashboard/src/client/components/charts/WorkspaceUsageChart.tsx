@@ -1,12 +1,10 @@
 import {
-  ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
   activityChartAverage,
-  ActivityChartTooltip,
   ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import type { TimeRangeDays } from "../controls/TimeRangeSelector";
@@ -22,17 +20,10 @@ export function WorkspaceUsageChart(props: {
   range: TimeRangeDays;
   workspaceName: string;
 }) {
-  const layout = createActivityChartLayout(200);
-  const step =
-    props.days.length > 0
-      ? layout.plotWidth / props.days.length
-      : layout.plotWidth;
-  const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const values = props.days.map((day) => day.count);
   const maximum = Math.max(1, ...values);
   const average = activityChartAverage(values);
   const total = values.reduce((sum, value) => sum + value, 0);
-  const hasUsage = total > 0;
 
   return (
     <Card>
@@ -42,63 +33,33 @@ export function WorkspaceUsageChart(props: {
         total={formatCompactNumber(total)}
         totalLabel={`last ${props.range} days`}
       />
-      <div className="relative px-2 py-3 sm:px-4 sm:py-4">
-        <ChartSvg
+      <div className="px-4 py-4">
+        <ChartFrame
           aria-label={`Usage for ${props.workspaceName} during the last ${props.range} days`}
-          className="min-h-40 overflow-visible"
-          layout={layout}
+          average={{
+            color: USAGE_COLOR,
+            format: formatActivityChartAverage,
+            value: average,
+          }}
+          buckets={props.days.map((day) => day.date)}
+          empty={total > 0 ? undefined : "No usage in this period."}
+          maximum={maximum}
         >
-          <ActivityChartGrid layout={layout} maximum={maximum} />
-          {props.days.map((day, index) => {
-            const x = layout.left + index * step + step / 2;
-            const barHeight = (day.count / maximum) * layout.plotHeight;
-            const renderedHeight = Math.max(day.count ? 2 : 0, barHeight);
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={<ActivityTooltipRows rows={[["usage", day.count]]} />}
-                date={day.date}
-                summary={`${day.count} switches`}
-              >
-                <g tabIndex={0}>
-                  <rect
-                    fill={USAGE_COLOR}
-                    height={renderedHeight}
-                    opacity={day.count ? 0.82 : 0.08}
-                    rx="2"
-                    width={barWidth}
-                    x={x - barWidth / 2}
-                    y={layout.top + layout.plotHeight - renderedHeight}
-                  />
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={step}
-                    x={layout.left + index * step}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartAverageLine
-            average={average}
-            format={formatActivityChartAverage}
-            layout={layout}
-            maximum={maximum}
-            stroke={USAGE_COLOR}
-          />
-          <ActivityChartDateLabels
-            dates={props.days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
-        {!hasUsage ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
-            No usage in this period.
-          </div>
-        ) : null}
+          {props.days.map((day) => (
+            <ChartBucket
+              bucket={day.date}
+              content={<ActivityTooltipRows rows={[["usage", day.count]]} />}
+              key={day.date}
+              summary={`${day.count} switches`}
+            >
+              <ChartBar
+                className="w-[68%] max-w-3.25 rounded-t-xs opacity-82"
+                fill={USAGE_COLOR}
+                percent={chartPercent(day.count, maximum)}
+              />
+            </ChartBucket>
+          ))}
+        </ChartFrame>
       </div>
     </Card>
   );

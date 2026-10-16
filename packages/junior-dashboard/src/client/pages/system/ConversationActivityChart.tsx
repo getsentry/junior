@@ -1,4 +1,3 @@
-import { useChartLayout } from "../../components/charts/useChartLayout";
 import {
   type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
@@ -6,13 +5,12 @@ import {
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import {
-  ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
   activityChartAverage,
-  ActivityChartTooltip,
   ActivityTooltipRows,
-  ChartSvg,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
 } from "../../components/charts/ActivityChart";
 import { ChartHeader } from "../../components/charts/ChartHeader";
 import { Card } from "../../components/layout/Card";
@@ -24,11 +22,8 @@ export function ConversationActivityChart(props: {
   days: ConversationMetricDay[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
-  const { ref, layout } = useChartLayout(150);
-  const maximum = Math.max(1, ...props.days.map((day) => day.conversations));
-  const step = layout.plotWidth / Math.max(1, props.days.length);
-  const barWidth = Math.max(2, Math.min(24, step * 0.68));
   const values = props.days.map((day) => day.conversations);
+  const maximum = Math.max(1, ...values);
   const total = values.reduce((sum, value) => sum + value, 0);
   const average = activityChartAverage(values);
 
@@ -39,65 +34,38 @@ export function ConversationActivityChart(props: {
         title="Conversation activity"
         total={formatCompactNumber(total)}
       />
-      <div className="px-2 py-2" ref={ref}>
-        <ChartSvg
+      <div className="px-4 pt-4 pb-3">
+        <ChartFrame
           aria-label={`Conversations per ${bucketUnit === "6hour" ? "6 hours" : bucketUnit}`}
-          layout={layout}
+          average={{
+            color: "#22d3ee",
+            format: formatActivityChartAverage,
+            unit: timeRangeBucketAverageUnit(bucketUnit),
+            value: average,
+          }}
+          buckets={props.days.map((day) => day.date)}
+          className="h-26"
+          maximum={maximum}
         >
-          <ActivityChartGrid layout={layout} maximum={maximum} />
-          {props.days.map((day, index) => {
-            const x = layout.left + index * step + step / 2;
-            const barHeight = (day.conversations / maximum) * layout.plotHeight;
-            const renderedHeight = Math.max(
-              day.conversations ? 2 : 0,
-              barHeight,
-            );
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={
-                  <ActivityTooltipRows
-                    rows={[["conversations", day.conversations]]}
-                  />
-                }
-                date={day.date}
-                summary={`${day.conversations} conversations`}
-              >
-                <g tabIndex={0}>
-                  <rect
-                    fill="#22d3ee"
-                    height={renderedHeight}
-                    opacity={day.conversations ? 0.78 : 0.08}
-                    rx="2"
-                    width={barWidth}
-                    x={x - barWidth / 2}
-                    y={layout.top + layout.plotHeight - renderedHeight}
-                  />
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={step}
-                    x={layout.left + index * step}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartAverageLine
-            average={average}
-            format={formatActivityChartAverage}
-            layout={layout}
-            maximum={maximum}
-            stroke="#22d3ee"
-            unit={timeRangeBucketAverageUnit(bucketUnit)}
-          />
-          <ActivityChartDateLabels
-            dates={props.days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
+          {props.days.map((day) => (
+            <ChartBucket
+              bucket={day.date}
+              content={
+                <ActivityTooltipRows
+                  rows={[["conversations", day.conversations]]}
+                />
+              }
+              key={day.date}
+              summary={`${day.conversations} conversations`}
+            >
+              <ChartBar
+                className="w-[68%] max-w-6 rounded-t-xs opacity-78"
+                fill="#22d3ee"
+                percent={chartPercent(day.conversations, maximum)}
+              />
+            </ChartBucket>
+          ))}
+        </ChartFrame>
       </div>
     </Card>
   );

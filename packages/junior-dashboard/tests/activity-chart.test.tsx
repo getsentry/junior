@@ -2,17 +2,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
-  ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
   ActivityChartTooltip,
   activityBucketStartMs,
   activityChartAverage,
   ChartAxisHtmlLabel,
-  ChartAxisLabel,
-  ChartCategoryLabels,
-  ChartSvg,
-  createActivityChartLayout,
+  ChartFrame,
   formatActivityCategoryLabel,
   formatActivityCategoryTooltipLabel,
   formatActivityDate,
@@ -30,70 +24,43 @@ import {
 } from "../src/client/components/charts/cache-input";
 import { setDashboardTimeZone } from "../src/client/format";
 
-describe("ChartAxisLabel", () => {
-  it("defaults to the shared 11px screen-size contract", () => {
+describe("ChartFrame", () => {
+  it("renders tick and date labels as HTML text", () => {
     const html = renderToStaticMarkup(
-      <svg>
-        <ChartAxisLabel x={0} y={0}>
-          12
-        </ChartAxisLabel>
-      </svg>,
-    );
-
-    expect(html).toContain('font-size="11"');
-    expect(html).toContain(">12</text>");
-  });
-
-  it("renders y-axis and date labels through the shared text component", () => {
-    const layout = createActivityChartLayout(200);
-    const html = renderToStaticMarkup(
-      <ChartSvg aria-label="fixture" layout={layout}>
-        <ActivityChartGrid layout={layout} maximum={10} />
-        <ActivityChartDateLabels
-          dates={["2026-05-01", "2026-05-15", "2026-05-30"]}
-          layout={layout}
-          xPosition={(index) => layout.left + index * 100}
-        />
-      </ChartSvg>,
+      <ChartFrame
+        aria-label="fixture"
+        buckets={["2026-05-01", "2026-05-15", "2026-05-30"]}
+        maximum={10}
+      />,
     );
 
     expect(html).toContain('aria-label="fixture"');
-    expect(html).toContain(">10</text>");
-    expect(html).toContain(">5</text>");
-    expect(html).toContain(">0</text>");
+    expect(html).toContain(">10</span>");
+    expect(html).toContain(">5</span>");
+    expect(html).toContain(">0</span>");
     expect(html).toContain("May 1");
     expect(html).toContain("May 15");
     expect(html).toContain("May 30");
+    // Text keeps its CSS size; the SVG layer has no text to scale.
+    expect(html).not.toContain("<text");
+    expect(html).toContain('preserveAspectRatio="none"');
   });
 
   it("keeps categorical labels centered when labels repeat", () => {
-    const layout = createActivityChartLayout(200);
     const html = renderToStaticMarkup(
-      <ChartSvg aria-label="categories" layout={layout}>
-        <ChartCategoryLabels
-          categories={[
-            { id: "first", label: "30d" },
-            { id: "middle", label: "7d" },
-            { id: "last", label: "30d" },
-          ]}
-          layout={layout}
-          xPosition={(index) => layout.left + index * 100}
-        />
-      </ChartSvg>,
+      <ChartFrame
+        aria-label="categories"
+        buckets={["30d", "7d", "30d"]}
+        labelAlign="center"
+        maximum={1}
+      />,
     );
 
-    expect(html.match(/text-anchor="middle"/g)).toHaveLength(3);
-    expect(html.match(/>30d<\/text>/g)).toHaveLength(2);
+    expect(html.match(/-translate-x-1\/2/g)).toHaveLength(3);
+    expect(html.match(/>30d<\/span>/g)).toHaveLength(2);
   });
 
-  it("supports a wider left gutter and custom viewBox width", () => {
-    const layout = createActivityChartLayout(200, { left: 64, width: 400 });
-    expect(layout.left).toBe(64);
-    expect(layout.width).toBe(400);
-    expect(layout.plotWidth).toBe(400 - 64 - 18);
-  });
-
-  it("renders html axis labels for non-svg charts", () => {
+  it("renders html axis labels", () => {
     const html = renderToStaticMarkup(
       <ChartAxisHtmlLabel>Jul 10</ChartAxisHtmlLabel>,
     );
@@ -177,67 +144,58 @@ describe("formatActivityDate", () => {
   });
 });
 
-describe("ActivityChartAverageLine", () => {
+describe("ChartFrame average", () => {
   it("averages bucket values across the plotted window", () => {
     expect(activityChartAverage([])).toBe(0);
     expect(activityChartAverage([10, 20, 30])).toBe(20);
   });
 
   it("renders a dashed guide with a compact / day label", () => {
-    const layout = createActivityChartLayout(200, { left: 64, width: 400 });
     const html = renderToStaticMarkup(
-      <ChartSvg aria-label="average fixture" layout={layout}>
-        <ActivityChartAverageLine
-          average={40}
-          format={(value) => `${value}`}
-          layout={layout}
-          maximum={100}
-          stroke="#22d3ee"
-        />
-      </ChartSvg>,
+      <ChartFrame
+        aria-label="average fixture"
+        average={{
+          color: "#22d3ee",
+          format: (value) => `${value}`,
+          value: 40,
+        }}
+        buckets={["2026-05-01", "2026-05-02"]}
+        maximum={100}
+      />,
     );
 
     expect(html).toContain('aria-label="average 40 / day"');
     expect(html).toContain('stroke-dasharray="4 4"');
-    expect(html).toContain(">40 / day</text>");
+    expect(html).toContain(">40 / day</span>");
     expect(html).toContain('stroke="#22d3ee"');
-    // Label sits on a dark chip so series colors stay off the text.
-    expect(html).toContain('fill="rgba(9, 12, 14, 0.92)"');
-    expect(html).toContain('fill="#ffffff"');
   });
 
   it("hides when the average is zero", () => {
-    const layout = createActivityChartLayout(200);
     const html = renderToStaticMarkup(
-      <ChartSvg aria-label="empty average" layout={layout}>
-        <ActivityChartAverageLine
-          average={0}
-          format={(value) => String(value)}
-          layout={layout}
-          maximum={10}
-        />
-      </ChartSvg>,
+      <ChartFrame
+        aria-label="empty average"
+        average={{ format: (value) => String(value), value: 0 }}
+        buckets={["2026-05-01"]}
+        maximum={10}
+      />,
     );
 
     expect(html).not.toContain("/ day");
-    expect(html).not.toContain("stroke-dasharray");
+    expect(html).not.toContain('stroke-dasharray="4 4"');
   });
 
   it("hides when the formatter collapses a real mean to zero", () => {
-    const layout = createActivityChartLayout(200);
     const html = renderToStaticMarkup(
-      <ChartSvg aria-label="floored average" layout={layout}>
-        <ActivityChartAverageLine
-          average={0.4}
-          format={() => "0"}
-          layout={layout}
-          maximum={10}
-        />
-      </ChartSvg>,
+      <ChartFrame
+        aria-label="floored average"
+        average={{ format: () => "0", value: 0.4 }}
+        buckets={["2026-05-01"]}
+        maximum={10}
+      />,
     );
 
     expect(html).not.toContain("/ day");
-    expect(html).not.toContain("stroke-dasharray");
+    expect(html).not.toContain('stroke-dasharray="4 4"');
   });
 });
 
@@ -272,7 +230,7 @@ describe("SystemMetricCharts average line", () => {
     expect(html).not.toContain("Input cache");
     expect(html).not.toContain("Cached");
     expect(html).toContain('aria-label="average 1.2b / day"');
-    expect(html).toContain(">1.2b / day</text>");
+    expect(html).toContain(">1.2b / day</span>");
     expect(html).toContain("Model spend");
     expect(html).toContain("Runtime");
   });

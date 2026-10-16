@@ -1616,8 +1616,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain("Pull request outcomes");
     expect(html).toContain('aria-label="Chart legend"');
-    expect(html).toContain('aria-label="30d, Created: 4.5"');
-    expect(html).toContain('aria-label="30d, Merged: -1.25"');
+    expect(html).toContain('aria-label="30d: Created: 4.5, Merged: -1.25"');
   });
 
   it("uses the plugin display name for a single metric", () => {
@@ -1659,7 +1658,7 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain(">0.1</text>");
+    expect(html).toContain(">0.1</span>");
     expect(html).not.toContain("0.10000000000000002");
     expect(html).not.toContain('aria-label="Chart legend"');
   });
@@ -1695,9 +1694,8 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="Jul 31, Cost: $0.0042"');
-    expect(html).toContain(">$0.0042</text>");
-    expect(html).toContain('x1="104"');
+    expect(html).toContain('aria-label="Jul 31: Cost: $0.0042"');
+    expect(html).toContain(">$0.0042</span>");
   });
 
   it("renders daily chart ranges from the shared page selection", () => {
@@ -1731,9 +1729,9 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="Jul 31, Created: 89"');
-    expect(html).toContain('aria-label="Jul 25, Created: 83"');
-    expect(html).not.toContain('aria-label="Jul 24, Created: 82"');
+    expect(html).toContain('aria-label="Jul 31: Created: 89"');
+    expect(html).toContain('aria-label="Jul 25: Created: 83"');
+    expect(html).not.toContain('aria-label="Jul 24: Created: 82"');
     expect(html).not.toContain('aria-label="Reporting period"');
   });
 
@@ -1772,9 +1770,9 @@ describe("dashboard canonical-event components", () => {
       />,
     );
     // Hour buckets render in the dashboard timezone (America/Los_Angeles).
-    expect(html).toContain('aria-label="Jul 31, 4 PM, Created: 47"');
-    expect(html).toContain('aria-label="Jul 30, 5 PM, Created: 24"');
-    expect(html).not.toContain('aria-label="Jul 30, 4 PM, Created: 23"');
+    expect(html).toContain('aria-label="Jul 31, 4 PM: Created: 47"');
+    expect(html).toContain('aria-label="Jul 30, 5 PM: Created: 24"');
+    expect(html).not.toContain('aria-label="Jul 30, 4 PM: Created: 23"');
   });
 
   it("renders an all-zero chart with a stable zero scale", () => {
@@ -1799,9 +1797,9 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain(">1</text>");
-    expect(html).toContain(">0.5</text>");
-    expect(html).toContain(">0</text>");
+    expect(html).toContain(">1</span>");
+    expect(html).toContain(">0.5</span>");
+    expect(html).toContain(">0</span>");
   });
 
   it("keeps chart chrome visible for empty widget data", () => {

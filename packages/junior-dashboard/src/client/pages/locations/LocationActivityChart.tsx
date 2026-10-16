@@ -5,14 +5,12 @@ import {
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import {
-  ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
   activityChartAverage,
-  ActivityChartTooltip,
   ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
@@ -27,12 +25,9 @@ export function LocationActivityChart(props: {
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
 
-  const layout = createActivityChartLayout(240);
   const values = props.days.map((day) => day.conversations);
   const maximum = Math.max(1, ...values);
   const average = activityChartAverage(values);
-  const step = layout.plotWidth / Math.max(1, props.days.length);
-  const barWidth = Math.max(4, Math.min(20, step * 0.55));
 
   return (
     <Card>
@@ -47,65 +42,42 @@ export function LocationActivityChart(props: {
           />
         }
       />
-      <div className="px-2 py-3 sm:px-4 sm:py-4">
-        <ChartSvg
+      <div className="px-4 py-4">
+        <ChartFrame
           aria-label="Daily conversations for this location"
-          className="min-h-52 w-full overflow-visible"
-          layout={layout}
+          average={{
+            color: "#22d3ee",
+            format: formatActivityChartAverage,
+            unit: timeRangeBucketAverageUnit(bucketUnit),
+            value: average,
+          }}
+          buckets={props.days.map((day) => day.date)}
+          className="h-48"
+          maximum={maximum}
         >
-          <defs>
-            <linearGradient id="location-bars" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#22d3ee" />
-              <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.65" />
-            </linearGradient>
-          </defs>
-          <ActivityChartGrid layout={layout} maximum={maximum} />
-          {props.days.map((day, index) => {
-            const barHeight = (day.conversations / maximum) * layout.plotHeight;
-            const x = layout.left + index * step + (step - barWidth) / 2;
-            const y = layout.top + layout.plotHeight - barHeight;
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={
-                  <ActivityTooltipRows
-                    rows={[
-                      ["conversations", day.conversations],
-                      ["active", day.active],
-                      ["failed", day.failed],
-                    ]}
-                  />
-                }
-                date={day.date}
-                summary={`${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
-              >
-                <rect
-                  fill="url(#location-bars)"
-                  height={Math.max(day.conversations ? 2 : 0, barHeight)}
-                  opacity={day.conversations ? 0.9 : 0.18}
-                  rx="2"
-                  tabIndex={0}
-                  width={barWidth}
-                  x={x}
-                  y={y}
+          {props.days.map((day) => (
+            <ChartBucket
+              bucket={day.date}
+              content={
+                <ActivityTooltipRows
+                  rows={[
+                    ["conversations", day.conversations],
+                    ["active", day.active],
+                    ["failed", day.failed],
+                  ]}
                 />
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartAverageLine
-            unit={timeRangeBucketAverageUnit(bucketUnit)}
-            average={average}
-            format={formatActivityChartAverage}
-            layout={layout}
-            maximum={maximum}
-            stroke="#22d3ee"
-          />
-          <ActivityChartDateLabels
-            dates={props.days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
+              }
+              key={day.date}
+              summary={`${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
+            >
+              <ChartBar
+                className="w-[55%] max-w-5 rounded-t-xs opacity-90"
+                fill="linear-gradient(to bottom, #22d3ee, rgb(245 158 11 / 0.65))"
+                percent={chartPercent(day.conversations, maximum)}
+              />
+            </ChartBucket>
+          ))}
+        </ChartFrame>
       </div>
     </Card>
   );

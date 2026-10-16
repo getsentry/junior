@@ -5,14 +5,12 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import type { CodeActivityDay } from "@sentry/junior/api/schema";
 import {
-  ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
   activityChartAverage,
-  ActivityChartTooltip,
   ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 
@@ -33,19 +31,14 @@ export function CodeActivityChart(props: {
   const bucketUnit = props.bucketUnit ?? "day";
 
   const days = props.days;
-  const layout = createActivityChartLayout(220, { left: 40 });
-  const step =
-    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
-  const barWidth = Math.max(2, Math.min(10, step * 0.28));
-  const gap = Math.max(1, barWidth * 0.2);
-  const groupWidth = barWidth * 3 + gap * 2;
-  const totals = days.map((day) => day.created + day.merged + day.closed);
   const maximum = Math.max(
     1,
     ...days.flatMap((day) => [day.created, day.merged, day.closed]),
   );
   const average = activityChartAverage(days.map((day) => day.created));
-  const hasActivity = totals.some((total) => total > 0);
+  const hasActivity = days.some(
+    (day) => day.created + day.merged + day.closed > 0,
+  );
 
   return (
     <Card className="min-h-[17rem] p-4 sm:p-5">
@@ -68,94 +61,55 @@ export function CodeActivityChart(props: {
         />
       </div>
 
-      <div className="relative mt-5 overflow-hidden">
-        <ChartSvg
+      <div className="mt-5">
+        <ChartFrame
           aria-label={`Code changes during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
-          className="min-h-40"
-          layout={layout}
+          average={{
+            color: "#e2e8f0",
+            format: formatActivityChartAverage,
+            unit: timeRangeBucketAverageUnit(bucketUnit),
+            value: average,
+          }}
+          buckets={days.map((day) => day.date)}
+          empty={hasActivity ? undefined : "No code changes in this period."}
+          maximum={maximum}
         >
-          <ActivityChartGrid layout={layout} maximum={maximum} />
-          {days.map((day, dayIndex) => {
-            const groupX =
-              layout.left + dayIndex * step + (step - groupWidth) / 2;
-            const series = [
-              {
-                color: CREATED_COLOR,
-                key: "created",
-                label: "created",
-                value: day.created,
-              },
-              {
-                color: MERGED_COLOR,
-                key: "merged",
-                label: "merged",
-                value: day.merged,
-              },
-              {
-                color: CLOSED_COLOR,
-                key: "closed",
-                label: "closed",
-                value: day.closed,
-              },
-            ] as const;
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={
-                  <ActivityTooltipRows
-                    rows={series.map((entry) => [entry.label, entry.value])}
-                  />
-                }
-                date={day.date}
-                summary={`${day.created} created, ${day.merged} merged, ${day.closed} closed`}
-              >
-                <g tabIndex={0}>
-                  {series.map((entry, seriesIndex) => {
-                    const height = (entry.value / maximum) * layout.plotHeight;
-                    const x = groupX + seriesIndex * (barWidth + gap);
-                    return (
-                      <rect
-                        fill={entry.color}
-                        height={height}
-                        key={entry.key}
-                        opacity={0.86}
-                        rx="1"
-                        width={barWidth}
-                        x={x}
-                        y={layout.top + layout.plotHeight - height}
-                      />
-                    );
-                  })}
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={Math.max(groupWidth, 8)}
-                    x={groupX - (Math.max(groupWidth, 8) - groupWidth) / 2}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartAverageLine
-            unit={timeRangeBucketAverageUnit(bucketUnit)}
-            average={average}
-            format={formatActivityChartAverage}
-            layout={layout}
-            maximum={maximum}
-            stroke="#e2e8f0"
-          />
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
-        {!hasActivity ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
-            No code changes in this period.
-          </div>
-        ) : null}
+          {days.map((day) => (
+            <ChartBucket
+              bucket={day.date}
+              content={
+                <ActivityTooltipRows
+                  rows={[
+                    ["created", day.created],
+                    ["merged", day.merged],
+                    ["closed", day.closed],
+                  ]}
+                />
+              }
+              key={day.date}
+              summary={`${day.created} created, ${day.merged} merged, ${day.closed} closed`}
+            >
+              <span className="flex h-full w-[88%] max-w-8.5 items-end gap-px">
+                {[
+                  { color: CREATED_COLOR, value: day.created },
+                  { color: MERGED_COLOR, value: day.merged },
+                  { color: CLOSED_COLOR, value: day.closed },
+                ].map((entry) => (
+                  <span
+                    className="flex h-full min-w-0 flex-1 items-end"
+                    key={entry.color}
+                  >
+                    <ChartBar
+                      className="w-full opacity-85"
+                      fill={entry.color}
+                      percent={chartPercent(entry.value, maximum)}
+                    />
+                  </span>
+                ))}
+              </span>
+            </ChartBucket>
+          ))}
+        </ChartFrame>
       </div>
     </Card>
   );

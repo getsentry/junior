@@ -28,6 +28,7 @@ describe("MemoryTimeline", () => {
       'aria-label="Memories learned during the last 30 days"',
     );
     expect(html).not.toContain('aria-label="Memory timeline range"');
-    expect(html).toContain('tabindex="0"');
+    // Bucket columns are buttons, so keyboard focus reaches each tooltip.
+    expect(html).toContain('<button class="relative flex h-full');
   });
 });

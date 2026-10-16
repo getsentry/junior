@@ -4,20 +4,21 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import {
-  ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
   activityChartAverage,
-  ActivityChartTooltip,
   ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  ChartBar,
+  ChartBucket,
+  ChartFrame,
+  chartPercent,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 import type { MemoryCostDay } from "./memoryDashboard";
+
+const EXTRACTION_COLOR = "#67e8f9";
+const RECALL_COLOR = "#e879f9";
 
 /** Render stacked memory extraction and recall cost from durable plugin events. */
 export function MemoryCostChart(props: {
@@ -54,11 +55,7 @@ export function MemoryCostChart(props: {
   );
   const maximum = Math.max(0.01, ...dayTotals);
   const average = activityChartAverage(dayTotals);
-  // Cost charts need a wider left gutter for currency tick labels.
-  const layout = createActivityChartLayout(200, { left: 112 });
-  const step =
-    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
-  const barWidth = Math.max(2, Math.min(13, step * 0.68));
+  const formatCost = (value: number) => formatCostSummary({ total: value });
 
   return (
     <Card className="min-h-[17rem] p-4 sm:p-5">
@@ -74,13 +71,13 @@ export function MemoryCostChart(props: {
           ariaLabel="Memory cost legend"
           items={[
             {
-              color: "#67e8f9",
+              color: EXTRACTION_COLOR,
               key: "extraction",
               label: "Extraction",
               value: formatCostSummary({ total: extractionTotal }),
             },
             {
-              color: "#e879f9",
+              color: RECALL_COLOR,
               key: "recall",
               label: "Recall",
               value: formatCostSummary({ total: recallTotal }),
@@ -89,99 +86,63 @@ export function MemoryCostChart(props: {
         />
       </div>
 
-      <div className="relative mt-4 overflow-hidden">
-        <ChartSvg
+      <div className="mt-4">
+        <ChartFrame
           aria-label={`Memory extraction and recall cost during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
-          className="min-h-40"
-          layout={layout}
+          average={{
+            color: "#e2e8f0",
+            format: formatCost,
+            unit: timeRangeBucketAverageUnit(bucketUnit),
+            value: average,
+          }}
+          buckets={days.map((day) => day.date)}
+          empty={
+            runs === 0
+              ? "No memory extraction or recall ran in this period."
+              : undefined
+          }
+          formatTick={formatCost}
+          maximum={maximum}
         >
-          <ActivityChartGrid
-            format={(value) => formatCostSummary({ total: value })}
-            layout={layout}
-            maximum={maximum}
-          />
-          {days.map((day, index) => {
-            const extractionHeight =
-              (day.extraction.costUsd / maximum) * layout.plotHeight;
-            const recallHeight =
-              (day.recall.costUsd / maximum) * layout.plotHeight;
-            const x = layout.left + index * step + (step - barWidth) / 2;
+          {days.map((day) => {
             const dayTotal = day.extraction.costUsd + day.recall.costUsd;
             return (
-              <ActivityChartTooltip
-                key={day.date}
+              <ChartBucket
+                bucket={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
                       [
                         "extraction",
-                        `${formatCostSummary({ total: day.extraction.costUsd })} · ${formatRunCount(day.extraction.events)}`,
+                        `${formatCost(day.extraction.costUsd)} · ${formatRunCount(day.extraction.events)}`,
                       ],
                       [
                         "recall",
-                        `${formatCostSummary({ total: day.recall.costUsd })} · ${formatRunCount(day.recall.events)}`,
+                        `${formatCost(day.recall.costUsd)} · ${formatRunCount(day.recall.events)}`,
                       ],
-                      ["total", formatCostSummary({ total: dayTotal })],
+                      ["total", formatCost(dayTotal)],
                     ]}
                   />
                 }
-                date={day.date}
-                summary={`extraction ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}; recall ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`}
+                key={day.date}
+                summary={`extraction ${formatCost(day.extraction.costUsd)}, ${formatRunCount(day.extraction.events)}; recall ${formatCost(day.recall.costUsd)}, ${formatRunCount(day.recall.events)}`}
               >
-                <g tabIndex={0}>
-                  <rect
-                    fill="#67e8f9"
-                    height={extractionHeight}
-                    opacity={day.extraction.costUsd > 0 ? 0.82 : 0.1}
-                    rx="1"
-                    width={barWidth}
-                    x={x}
-                    y={layout.top + layout.plotHeight - extractionHeight}
+                <span className="flex h-full w-[68%] max-w-3.25 flex-col-reverse">
+                  <ChartBar
+                    className="w-full opacity-82"
+                    fill={EXTRACTION_COLOR}
+                    percent={chartPercent(day.extraction.costUsd, maximum)}
                   />
-                  <rect
-                    fill="#e879f9"
-                    height={recallHeight}
-                    opacity={day.recall.costUsd > 0 ? 0.82 : 0.1}
-                    rx="1"
-                    width={barWidth}
-                    x={x}
-                    y={
-                      layout.top +
-                      layout.plotHeight -
-                      extractionHeight -
-                      recallHeight
-                    }
+                  <ChartBar
+                    className="w-full opacity-82"
+                    fill={RECALL_COLOR}
+                    percent={chartPercent(day.recall.costUsd, maximum)}
                   />
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={Math.max(barWidth, 8)}
-                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
+                </span>
+              </ChartBucket>
             );
           })}
-          <ActivityChartAverageLine
-            unit={timeRangeBucketAverageUnit(bucketUnit)}
-            average={average}
-            format={(value) => formatCostSummary({ total: value })}
-            layout={layout}
-            maximum={maximum}
-            stroke="#e2e8f0"
-          />
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
-        {runs === 0 ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
-            No memory extraction or recall ran in this period.
-          </div>
-        ) : null}
+        </ChartFrame>
       </div>
     </Card>
   );

@@ -1,61 +1,13 @@
 import {
   cloneElement,
-  createContext,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
-  type SVGProps,
-  useContext,
-  useLayoutEffect,
-  useRef,
-  useState,
 } from "react";
 
 import { Tooltip } from "../Tooltip";
 import { getDashboardTimeZone } from "../../format";
 import { cn } from "../../styles";
-
-/** Shared SVG dimensions and derived plot bounds for activity charts. */
-export type ActivityChartLayout = {
-  bottom: number;
-  height: number;
-  left: number;
-  plotHeight: number;
-  plotWidth: number;
-  right: number;
-  top: number;
-  width: number;
-};
-
-type LayoutOptions = {
-  bottom?: number;
-  left?: number;
-  right?: number;
-  top?: number;
-  width?: number;
-};
-
-/** Create the shared plot dimensions used by dashboard activity charts. */
-export function createActivityChartLayout(
-  height: number,
-  options?: LayoutOptions,
-): ActivityChartLayout {
-  const width = options?.width ?? 960;
-  const left = options?.left ?? 56;
-  const right = options?.right ?? 18;
-  const top = options?.top ?? 24;
-  const bottom = options?.bottom ?? 36;
-  return {
-    bottom,
-    height,
-    left,
-    plotHeight: height - top - bottom,
-    plotWidth: width - left - right,
-    right,
-    top,
-    width,
-  };
-}
 
 /** True when the bucket key is a UTC hour (`YYYY-MM-DDTHH`). */
 export function isActivityHourBucket(date: string): boolean {
@@ -127,36 +79,7 @@ export function activityLabelIndexes(count: number): number[] {
   );
 }
 
-const chartAxisFontSizePx = 11;
-const ChartSvgScaleContext = createContext(1);
-
-/** Shared visual style for SVG chart axis labels. */
-export const chartAxisLabelClassName =
-  "fill-dashboard-text-muted font-sans tabular-nums leading-none text-dashboard-text-muted";
-
-type ChartAxisLabelProps = Omit<
-  SVGProps<SVGTextElement>,
-  "children" | "className" | "fill" | "fontFamily" | "fontSize"
-> & {
-  children: ReactNode;
-};
-
-/** Render an SVG axis label at the shared on-screen size. */
-export function ChartAxisLabel(props: ChartAxisLabelProps) {
-  const { children, ...textProps } = props;
-  const scale = useContext(ChartSvgScaleContext);
-  return (
-    <text
-      className={chartAxisLabelClassName}
-      fontSize={chartAxisFontSizePx / scale}
-      {...textProps}
-    >
-      {children}
-    </text>
-  );
-}
-
-/** Shared HTML axis label for non-SVG chart axes. */
+/** Shared HTML axis label for chart ticks and bucket labels. */
 export function ChartAxisHtmlLabel(props: {
   children: ReactNode;
   className?: string;
@@ -165,7 +88,7 @@ export function ChartAxisHtmlLabel(props: {
   return (
     <span
       className={cn(
-        "font-sans tabular-nums text-2xs leading-none text-dashboard-text-muted",
+        "font-sans tabular-nums text-2xs leading-none whitespace-nowrap text-dashboard-text-muted",
         props.className,
       )}
       style={props.style}
@@ -175,240 +98,311 @@ export function ChartAxisHtmlLabel(props: {
   );
 }
 
-type ChartBox = { height: number; width: number };
-
-/**
- * Screen pixels per SVG user unit. The default `preserveAspectRatio` fits the
- * whole viewBox inside the element box, so the smaller ratio wins.
- */
-function chartSvgScale(box: ChartBox | undefined, layout: ActivityChartLayout) {
-  if (!box || box.width <= 0 || box.height <= 0) return 1;
-  return Math.min(box.width / layout.width, box.height / layout.height);
+/** Bucket center in plot space. Each bucket is one unit wide. */
+export function chartX(index: number): number {
+  return index + 0.5;
 }
 
+/** Vertical plot-space position of a value: 0 is the top and 1 the bottom. */
+export function chartY(value: number, maximum: number, minimum = 0): number {
+  const span = maximum - minimum;
+  return span > 0 ? (maximum - value) / span : 1;
+}
+
+/** Bar length as a percent of the plot height. */
+export function chartPercent(value: number, maximum: number, minimum = 0) {
+  const span = maximum - minimum;
+  return span > 0 ? (Math.abs(value) / span) * 100 : 0;
+}
+
+/** Dashed average guide across all buckets, with its value label. */
+export type ChartAverage = {
+  color?: string;
+  format(value: number): string;
+  unit?: string;
+  value: number;
+};
+
 /**
- * Render the shared SVG chart shell and provide its live screen scale to labels.
- * SVG text uses user units, so labels invert this scale to remain 12px on screen.
- * The scale comes from the current element size and viewBox, so a measurement
- * from an earlier layout is never reused.
+ * Lay out a bucketed chart with CSS only.
+ * The plot has a fixed CSS height. Its SVG layer stretches to the plot box,
+ * with one plot-space unit per bucket across and 0 to 1 down; strokes do not
+ * stretch. Bucket columns, labels, and the average label are HTML, so text
+ * keeps its CSS size at every width. Nothing in the chart is measured.
  */
-export function ChartSvg(props: {
+export function ChartFrame(props: {
   "aria-label": string;
-  children: ReactNode;
+  average?: ChartAverage;
+  /** Day or hour bucket keys, or category labels, in plot order. */
+  buckets: readonly string[];
+  /** Bucket columns from `ChartBucket`, one for each bucket. */
+  children?: ReactNode;
+  /** Plot height. Defaults to `h-40`. */
   className?: string;
-  layout: ActivityChartLayout;
+  /** Message shown over the plot when the chart has no data. */
+  empty?: ReactNode;
+  formatLabel?(bucket: string): string;
+  formatTick?(value: number): string;
+  /** `edges` keeps the first and last labels inside the plot. */
+  labelAlign?: "center" | "edges";
+  /** SVG marks in plot space, such as lines and areas. */
+  lines?: ReactNode;
+  maximum: number;
+  minimum?: number;
 }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [box, setBox] = useState<ChartBox>();
-
-  useLayoutEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const updateBox = (next: ChartBox) =>
-      setBox((previous) =>
-        previous?.width === next.width && previous.height === next.height
-          ? previous
-          : next,
-      );
-    // Measure before the first paint; the observer reports later changes.
-    updateBox({ height: svg.clientHeight, width: svg.clientWidth });
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) updateBox(entry.contentRect);
-    });
-    observer.observe(svg);
-    return () => observer.disconnect();
-  }, []);
-
-  const scale = chartSvgScale(box, props.layout);
+  const minimum = props.minimum ?? 0;
+  const count = props.buckets.length;
+  const formatTick =
+    props.formatTick ?? ((value: number) => String(Math.round(value)));
+  const formatLabel = props.formatLabel ?? formatActivityCategoryLabel;
+  const ticks = [props.maximum, (props.maximum + minimum) / 2, minimum];
+  const labelAlign = props.labelAlign ?? "edges";
 
   return (
-    <ChartSvgScaleContext value={scale}>
-      <svg
-        aria-label={props["aria-label"]}
-        className={cn("block h-auto w-full", props.className)}
-        ref={svgRef}
-        role="img"
-        viewBox={`0 0 ${props.layout.width} ${props.layout.height}`}
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2">
+      <div
+        aria-hidden="true"
+        className="-my-1.5 flex flex-col items-end justify-between"
       >
-        {props.children}
-      </svg>
-    </ChartSvgScaleContext>
+        {ticks.map((tick, index) => (
+          <ChartAxisHtmlLabel key={index}>
+            {formatTick(tick)}
+          </ChartAxisHtmlLabel>
+        ))}
+      </div>
+      <div className={cn("relative", props.className ?? "h-40")}>
+        <svg
+          aria-label={props["aria-label"]}
+          className="absolute inset-0 size-full overflow-visible"
+          preserveAspectRatio="none"
+          role="img"
+          viewBox={`0 0 ${Math.max(1, count)} 1`}
+        >
+          {[0, 0.5, 1].map((y) => (
+            <line
+              key={y}
+              stroke="rgba(255,255,255,0.07)"
+              strokeDasharray="3 5"
+              vectorEffect="non-scaling-stroke"
+              x1={0}
+              x2={Math.max(1, count)}
+              y1={y}
+              y2={y}
+            />
+          ))}
+          {props.lines}
+          {props.average ? (
+            <ChartAverageLine
+              average={props.average}
+              maximum={props.maximum}
+              minimum={minimum}
+              width={Math.max(1, count)}
+            />
+          ) : null}
+        </svg>
+        <div className="absolute inset-0 flex">{props.children}</div>
+        {props.average ? (
+          <ChartAverageLabel
+            average={props.average}
+            maximum={props.maximum}
+            minimum={minimum}
+          />
+        ) : null}
+        {props.empty ? (
+          <div className="pointer-events-none absolute inset-0 grid place-items-center font-sans text-xs text-dashboard-text-muted">
+            {props.empty}
+          </div>
+        ) : null}
+      </div>
+      <div />
+      <div aria-hidden="true" className="relative mt-2 h-3">
+        {activityLabelIndexes(count).map((index) => {
+          const bucket = props.buckets[index]!;
+          const position = (chartX(index) / count) * 100;
+          const edge =
+            labelAlign === "edges"
+              ? index === 0
+                ? "start"
+                : index === count - 1
+                  ? "end"
+                  : "middle"
+              : "middle";
+          return (
+            <ChartAxisHtmlLabel
+              className={cn(
+                "absolute top-0",
+                edge === "middle" && "-translate-x-1/2",
+              )}
+              key={`${index}-${bucket}`}
+              style={
+                edge === "end"
+                  ? { right: `${100 - position}%` }
+                  : { left: `${position}%` }
+              }
+            >
+              {formatLabel(bucket)}
+            </ChartAxisHtmlLabel>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-/** Render the shared horizontal guide lines and values for activity charts. */
-export function ActivityChartGrid(props: {
-  format?(value: number): string;
-  layout: ActivityChartLayout;
+/** Formatted average label, or undefined when no average should show. */
+function averageLabel(average: ChartAverage, maximum: number) {
+  if (!(average.value > 0) || !(maximum > 0)) return undefined;
+  const formatted = average.format(average.value).trim();
+  // Flooring formatters can turn a real sub-1 mean into "0"; hide that case.
+  if (!formatted || /^\$?0(?:\.0+)?(?:ms)?$/i.test(formatted)) return undefined;
+  return `${formatted} / ${average.unit ?? "day"}`;
+}
+
+function ChartAverageLine(props: {
+  average: ChartAverage;
   maximum: number;
+  minimum: number;
+  width: number;
 }) {
-  const format = props.format ?? ((value: number) => String(Math.round(value)));
-  return [0, 0.5, 1].map((ratio) => {
-    const yPosition = props.layout.top + ratio * props.layout.plotHeight;
-    return (
-      <g key={ratio}>
-        <line
-          stroke="rgba(255,255,255,0.07)"
-          strokeDasharray="3 5"
-          x1={props.layout.left}
-          x2={props.layout.width - props.layout.right}
-          y1={yPosition}
-          y2={yPosition}
-        />
-        <ChartAxisLabel
-          textAnchor="end"
-          x={props.layout.left - 8}
-          y={yPosition + 3}
-        >
-          {format(props.maximum * (1 - ratio))}
-        </ChartAxisLabel>
-      </g>
-    );
-  });
+  if (!averageLabel(props.average, props.maximum)) return null;
+  const y = chartY(props.average.value, props.maximum, props.minimum);
+  return (
+    <line
+      pointerEvents="none"
+      stroke={props.average.color ?? "rgba(255,255,255,0.55)"}
+      strokeDasharray="4 4"
+      strokeOpacity={0.85}
+      strokeWidth={1.25}
+      vectorEffect="non-scaling-stroke"
+      x1={0}
+      x2={props.width}
+      y1={y}
+      y2={y}
+    />
+  );
 }
 
-/** Render the shared first, middle, and last date labels for activity charts. */
-export function ActivityChartDateLabels(props: {
-  dates: readonly string[];
-  formatDate?(date: string): string;
-  layout: ActivityChartLayout;
-  xPosition(index: number): number;
+/** Average value chip on a solid fill so bars and guides never cover it. */
+function ChartAverageLabel(props: {
+  average: ChartAverage;
+  maximum: number;
+  minimum: number;
 }) {
-  const formatDate = props.formatDate ?? formatActivityDate;
-  return activityLabelIndexes(props.dates.length).map((index) => {
-    const date = props.dates[index];
-    if (!date) return null;
-    return (
-      <ChartAxisLabel
-        key={date}
-        textAnchor={
-          index === 0
-            ? "start"
-            : index === props.dates.length - 1
-              ? "end"
-              : "middle"
-        }
-        x={props.xPosition(index)}
-        y={props.layout.height - 8}
-      >
-        {formatDate(date)}
-      </ChartAxisLabel>
-    );
-  });
+  const label = averageLabel(props.average, props.maximum);
+  if (!label) return null;
+  const height =
+    (1 - chartY(props.average.value, props.maximum, props.minimum)) * 100;
+  // Keep the label inside the plot; put it below the guide near the top.
+  const style: CSSProperties =
+    height > 75
+      ? { top: `calc(${100 - height}% + 4px)` }
+      : { bottom: `calc(${height}% + 3px)` };
+  return (
+    <span
+      aria-label={`average ${label}`}
+      className="pointer-events-none absolute right-0 rounded-sm bg-dashboard-bg/90 px-1.5 py-0.5 font-sans tabular-nums text-2xs leading-none whitespace-nowrap text-dashboard-text-solid"
+      style={style}
+    >
+      {label}
+    </span>
+  );
 }
 
-/** Render centered categorical labels using stable category keys. */
-export function ChartCategoryLabels(props: {
-  categories: ReadonlyArray<{ id: string; label: string }>;
-  formatLabel?(label: string): string;
-  layout: ActivityChartLayout;
-  xPosition(index: number): number;
+/**
+ * One focusable bucket column with its tooltip.
+ * Columns share the plot width equally, so marks inside line up with `chartX`.
+ */
+export function ChartBucket(props: {
+  bucket: string;
+  children?: ReactNode;
+  className?: string;
+  content: ReactNode;
+  summary: string;
 }) {
-  // Default formats day/hour bucket keys; leave other category labels alone.
-  const formatLabel = props.formatLabel ?? formatActivityCategoryLabel;
-  return activityLabelIndexes(props.categories.length).map((index) => {
-    const category = props.categories[index];
-    if (!category) return null;
-    return (
-      <ChartAxisLabel
-        key={category.id}
-        textAnchor="middle"
-        x={props.xPosition(index)}
-        y={props.layout.height - 8}
+  return (
+    <ActivityChartTooltip
+      content={props.content}
+      date={props.bucket}
+      summary={props.summary}
+      triggerClassName="h-full min-w-0 flex-1"
+    >
+      <button
+        className={cn(
+          "relative flex h-full w-full min-w-0 items-end justify-center focus-visible:outline-1 focus-visible:outline-dashboard-focus",
+          props.className,
+        )}
+        type="button"
       >
-        {formatLabel(category.label)}
-      </ChartAxisLabel>
-    );
-  });
+        {props.children}
+      </button>
+    </ActivityChartTooltip>
+  );
+}
+
+/**
+ * Bar or stacked bar segment, sized as a percent of the plot height.
+ * A non-zero value is at least 2px tall so it stays visible.
+ */
+export function ChartBar(props: {
+  className?: string;
+  /** CSS background, such as a color or gradient. */
+  fill: string;
+  percent: number;
+}) {
+  if (!(props.percent > 0)) return null;
+  return (
+    <span
+      className={cn(
+        "block min-h-0.5 shrink-0 rounded-t-[1px]",
+        props.className,
+      )}
+      style={{ background: props.fill, height: `${props.percent}%` }}
+    />
+  );
+}
+
+/** Round point marker centered on a bucket at a percent of the plot height. */
+export function ChartPoint(props: {
+  className?: string;
+  fill: string;
+  percent: number;
+}) {
+  return (
+    <span
+      className={cn(
+        "absolute left-1/2 block -translate-x-1/2 translate-y-1/2 rounded-full",
+        props.className ?? "size-2",
+      )}
+      style={{ background: props.fill, bottom: `${props.percent}%` }}
+    />
+  );
+}
+
+/** Polyline points for one value per bucket, in plot space. */
+export function chartLinePoints(
+  values: readonly number[],
+  maximum: number,
+): string {
+  return values
+    .map((value, index) => `${chartX(index)},${chartY(value, maximum)}`)
+    .join(" ");
+}
+
+/** Closed area path under one value per bucket, in plot space. */
+export function chartAreaPath(
+  values: readonly number[],
+  maximum: number,
+): string {
+  if (values.length === 0) return "";
+  return `M ${chartX(0)} 1 L ${values
+    .map((value, index) => `${chartX(index)} ${chartY(value, maximum)}`)
+    .join(" L ")} L ${chartX(values.length - 1)} 1 Z`;
 }
 
 /** Mean of chart bucket values; empty input is 0. */
 export function activityChartAverage(values: readonly number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-/** Shared visual style for average-line labels. */
-export const chartAverageLabelClassName =
-  "fill-dashboard-text-solid font-sans tabular-nums leading-none";
-
-/** Solid chip behind average labels so series colors never wash out the text. */
-const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";
-
-/**
- * Opt-in horizontal average across the plotted buckets.
- * Renders a dashed guide plus a compact "value / day" label on the right.
- * Label sits on a dark chip so series-colored bars and guides stay off the text.
- */
-export function ActivityChartAverageLine(props: {
-  average: number;
-  format(value: number): string;
-  layout: ActivityChartLayout;
-  maximum: number;
-  stroke?: string;
-  unit?: string;
-}) {
-  const scale = useContext(ChartSvgScaleContext);
-  if (!(props.average > 0) || !(props.maximum > 0)) return null;
-
-  const unit = props.unit ?? "day";
-  const formatted = props.format(props.average).trim();
-  // Flooring formatters can turn a real sub-1 mean into "0"; hide that case.
-  if (!formatted || /^\$?0(?:\.0+)?(?:ms)?$/i.test(formatted)) return null;
-
-  const y =
-    props.layout.top +
-    props.layout.plotHeight -
-    (props.average / props.maximum) * props.layout.plotHeight;
-  const x1 = props.layout.left;
-  const x2 = props.layout.width - props.layout.right;
-  const label = `${formatted} / ${unit}`;
-  const fontSize = chartAxisFontSizePx / scale;
-  // Mono width estimate for the chip and dashed-guide stop.
-  const labelWidth = Math.max(52, label.length * fontSize * 0.68);
-  const chipPadX = 5;
-  const chipPadY = 3;
-  const chipHeight = fontSize + chipPadY * 2;
-  const chipWidth = labelWidth + chipPadX * 2;
-  const chipX = x2 - chipWidth;
-  // Keep the chip inside the plot; flip below the line near the top edge.
-  const labelAbove = y - props.layout.top > chipHeight + 4;
-  const chipY = labelAbove ? y - chipHeight - 3 : y + 4;
-  const textY = chipY + chipHeight / 2 + fontSize * 0.35;
-  const lineEnd = Math.max(x1, chipX - 6);
-
-  return (
-    <g aria-label={`average ${label}`} pointerEvents="none">
-      <line
-        stroke={props.stroke ?? "rgba(255,255,255,0.55)"}
-        strokeDasharray="4 4"
-        strokeOpacity={0.85}
-        strokeWidth={1.25}
-        x1={x1}
-        x2={lineEnd}
-        y1={y}
-        y2={y}
-      />
-      <rect
-        fill={chartAverageLabelChip}
-        height={chipHeight}
-        rx={3}
-        width={chipWidth}
-        x={chipX}
-        y={chipY}
-      />
-      <text
-        className={chartAverageLabelClassName}
-        fill="#ffffff"
-        fontSize={fontSize}
-        textAnchor="middle"
-        x={chipX + chipWidth / 2}
-        y={textY}
-      >
-        {label}
-      </text>
-    </g>
-  );
 }
 
 /** Render label and value rows inside an activity-chart tooltip. */
@@ -432,8 +426,9 @@ export function ActivityTooltipRows(props: {
 /**
  * Activity-chart tooltip that owns bucket date formatting.
  * Pass the UTC day/hour key as `date` so axes stay compact and tooltips always
- * include the local date for hour buckets. Optional `summary` prefixes the
- * trigger aria-label as `"{date}: {summary}"`.
+ * include the local date for hour buckets. Other category labels show as they
+ * are. Optional `summary` prefixes the trigger aria-label as
+ * `"{date}: {summary}"`.
  */
 export function ActivityChartTooltip(props: {
   children: ReactElement;
@@ -442,7 +437,7 @@ export function ActivityChartTooltip(props: {
   summary?: string;
   triggerClassName?: string;
 }) {
-  const dateLabel = formatActivityTooltipDate(props.date);
+  const dateLabel = formatActivityCategoryTooltipLabel(props.date);
   const child = props.summary
     ? cloneElement(props.children, {
         "aria-label": `${dateLabel}: ${props.summary}`,
