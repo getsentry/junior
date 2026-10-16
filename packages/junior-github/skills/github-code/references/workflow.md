@@ -5,7 +5,7 @@ Open this when making repository edits, not for read-only inspection.
 ## Resolve and inspect
 
 1. Identify repo, checkout, branches, worktree, package manager, and relevant checks.
-2. Prefer an existing checkout or matching Workspace; otherwise clone shallowly.
+2. Prefer an existing checkout or matching Workspace; otherwise clone with `github_cloneRepository`.
 3. If clone returns a Workspace match error, switch Workspace or pass `allowAdHoc=true`.
 4. Shallow clones are for fast inspection. Before rebase, merge-base, blame, or base comparison, fetch/deepen the needed refs. Never force-push around missing history.
 5. For edits, pick the smallest credible validation path. Capture a baseline when a failure may be pre-existing.

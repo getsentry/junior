@@ -3743,6 +3743,56 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("Missing GITHUB_APP_BOT_NAME");
   });
 
+  it("denies bash clones of GitHub repositories so the clone tool checks Workspaces", async () => {
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+    const plugin = githubPlugin();
+    const actor = {
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    };
+    const denied = [
+      "cd /tmp && (test -d junior || git clone --depth 1 -q https://github.com/getsentry/junior.git)",
+      "gh repo clone getsentry/junior -- --depth=1",
+      "GIT_TERMINAL_PROMPT=0 timeout 120 git -C /tmp clone git@github.com:getsentry/junior.git",
+      "bash -lc 'git clone https://github.com/getsentry/junior.git'",
+    ];
+    const allowed = [
+      "git -C repos/junior fetch --deepen=50 origin main",
+      'grep -rn "git clone https://github.com/x/y" docs',
+      "echo gh repo clone getsentry/junior",
+      "git clone https://gitlab.com/acme/tool.git",
+    ];
+
+    const results = new Map<string, { denial?: string; env: object }>();
+    for (const command of [...denied, ...allowed]) {
+      const before = beforeToolContext(actor);
+      before.ctx.tool.input = { command };
+      await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+      results.set(command, { denial: before.denial, env: before.env });
+    }
+
+    expect(Object.fromEntries(results)).toEqual({
+      ...Object.fromEntries(
+        denied.map((command) => [
+          command,
+          {
+            denial: expect.stringContaining("github_cloneRepository"),
+            env: {},
+          },
+        ]),
+      ),
+      ...Object.fromEntries(
+        allowed.map((command) => [
+          command,
+          { denial: undefined, env: expect.any(Object) },
+        ]),
+      ),
+    });
+  });
+
   it("injects Junior author and committer identity", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";

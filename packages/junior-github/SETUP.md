@@ -164,11 +164,9 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 
 Run as a regular sandbox `bash` command while the relevant skill is active:
 
-Clone a repository with a shallow checkout by default:
-
-```bash
-gh repo clone owner/repo -- --depth=1
-```
+Clone a repository with the `github_cloneRepository` tool. It makes a shallow
+checkout. It first checks for a matching Workspace. The plugin denies
+`git clone` and `gh repo clone` of GitHub repositories in sandbox `bash`.
 
 Deepen later only if the task needs more history:
 

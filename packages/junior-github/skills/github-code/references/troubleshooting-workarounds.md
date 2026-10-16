@@ -3,7 +3,6 @@
 | Problem                                                    | Action                                                                                    |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `gh` reports an unknown command                            | Report that the GitHub plugin is unavailable. Do not install it.                          |
-| Clone rejects `--depth`                                    | Put clone flags after `--`: `gh repo clone owner/repo -- --depth=1`.                      |
 | Repository is missing or wrong                             | Read `github.repo`, then pass `--repo owner/repo`.                                        |
 | GraphQL cannot find the repository                         | Check `owner/repo` and the GitHub App installation.                                       |
 | `junior-auth-required` with `user-write`                   | Follow the private OAuth prompt. Never ask for a pasted token.                            |
