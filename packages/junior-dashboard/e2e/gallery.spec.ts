@@ -22,7 +22,17 @@ test("shows gallery charts", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Charts", exact: true }),
   ).toBeVisible();
-  await screenshot(page, "gallery-charts", { view: "desktop" });
+  // One image per chart keeps each chart's visual diff separate.
+  const charts = page.locator("[data-gallery-chart]");
+  await expect(charts.first()).toBeVisible();
+  const ids = await charts.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-gallery-chart")!),
+  );
+  for (const id of ids) {
+    await screenshot(page, `gallery-chart-${id}`, {
+      target: page.locator(`[data-gallery-chart="${id}"]`),
+    });
+  }
 });
 
 test("shows gallery transcripts", async ({ page, dashboard }) => {
