@@ -2,7 +2,6 @@ name: Evals
 
 permissions:
   contents: read
-  # The eval-recordings-mode action reads the commits and runs of the PR.
   pull-requests: read
   actions: read
   checks: write
@@ -13,9 +12,7 @@ on:
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
-  # A recordings commit must not cancel the runs that are still recording,
-  # so each bot that pushes has its own group.
-  group: evals-router-${{ github.event.pull_request.number || github.ref }}-${{ github.event.sender.type == 'Bot' && github.event.sender.login || 'user' }}
+  group: evals-router-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,7 +21,6 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
-      mode: ${{ steps.mode.outputs.mode || 'auto' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,10 +31,6 @@ jobs:
         with:
           filters: |
             relevant:
-              - '.github/actions/collect-eval-recordings/**'
-              - '.github/actions/commit-eval-recordings/**'
-              - '.github/actions/eval-recordings-mode/**'
-              - 'packages/junior-evals/recordings/**'
               - 'packages/junior-evals/src/roach/**'
               - 'packages/junior-evals/src/recording-rules.ts'
               - 'packages/junior-evals/src/recording-run.ts'
@@ -84,11 +76,6 @@ jobs:
             echo "- gateway_ready: $gateway_ready"
             echo "- will_run: $should_run"
           } >> "$GITHUB_STEP_SUMMARY"
-      - id: mode
-        if: steps.decision.outputs.should_run == 'true'
-        uses: ./.github/actions/eval-recordings-mode
-        with:
-          suite: router
 
   router:
     name: router / run
@@ -107,14 +94,9 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: router-results.json
           VITEST_EVALS_REPORT_LEVEL: info
-          EVAL_RECORDING_MISSES_DIR: ${{ runner.temp }}/eval-recording-misses
-          VITEST_EVALS_REPLAY_MODE: ${{ needs.select.outputs.mode }}
+          # The write token of Roach. With it, the run records new requests.
+          ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
         run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:router
-      - name: Collect new recordings
-        if: always() && !cancelled()
-        uses: ./.github/actions/collect-eval-recordings
-        with:
-          name: eval-recordings-router
       - name: Require router eval results
         id: results
         if: steps.run.conclusion != 'skipped'
@@ -146,25 +128,3 @@ jobs:
         env:
           SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
         run: node packages/junior-evals/scripts/report.mjs router packages/junior-evals/router-results.json
-
-  recordings:
-    name: router / commit recordings
-    needs: [select, router]
-    # Only for a branch of this repository: the token of a fork run is
-    # read-only. Strict replay runs write no recordings.
-    if: ${{ always() && !cancelled() && needs.select.outputs.should_run == 'true' && needs.select.outputs.mode == 'auto' && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    # GITHUB_TOKEN pushes the commit. It expires when the job ends, and it
-    # can do only what a person who can push a branch here can already do.
-    # The job holds no other secret, so it can run the action from the pull
-    # request.
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          sparse-checkout: .github/actions
-      - uses: ./.github/actions/commit-eval-recordings
-        with:
-          suite: router

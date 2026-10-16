@@ -1,10 +1,11 @@
 /**
  * The recording session of each eval test.
  *
- * Global setup starts Roach (`src/recording-run.ts`). The
- * proxy owns all reads and writes of recordings. This file only sends the
+ * Global setup starts a run on Roach, the shared recording service
+ * (`src/recording-run.ts`). The service owns all reads and writes of
+ * recordings. This file only sends the
  * traffic of the worker through the proxy and tells the proxy when each
- * test starts and ends. The proxy writes the new recordings of a passed
+ * test starts and ends. The service writes the new recordings of a passed
  * test and drops those of a failed test, so a bad sample is never replayed.
  * The session opens before the first request of a test, so requests that a
  * test makes before it runs the agent, such as embeddings for stored
@@ -39,7 +40,7 @@ if (address) {
       // no model call goes live. The test must fail even if it recovered.
       if (missed > 0) {
         throw new Error(
-          `[evals] ${missed} request(s) had no recording in replay mode. The proxy log shows what differs. Run with VITEST_EVALS_REPLAY_MODE=auto to record them.`,
+          `[evals] ${missed} request(s) had no recording in replay mode. Run in auto mode with ROACH_TOKEN to record them.`,
         );
       }
     });

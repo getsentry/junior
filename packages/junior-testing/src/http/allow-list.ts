@@ -2,6 +2,9 @@ const LOCAL_TEST_HTTP_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 const LIVE_TEST_HTTP_HOST_ALLOWLIST = new Set([
   "oidc.vercel.com",
+  // Roach, the eval recording service. Each eval test opens its recording
+  // session through the control API on this host.
+  "roach-proxy.getsentry.net",
   "vercel.app",
   "vercel.com",
   "vercel.run",

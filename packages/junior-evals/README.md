@@ -319,9 +319,13 @@ cache keeps the file for the later runs of a pull request.
 
 ## Recordings
 
-Roach, the recording proxy in `src/roach/`, does this. It has no Junior code.
-recording proxy Roach (`src/roach/`) does this. It has no Junior code.
-Its `README.md` tells how it keys, records, and replays requests.
+Evals replay model calls and web pages from recordings. Roach, a shared
+recording service ([`getsentry/roach`](https://github.com/getsentry/roach)),
+does this. Sentry runs it at `https://roach-proxy.getsentry.net`. The
+service keeps the recordings of the tenant `getsentry/junior` in a GCS
+bucket, not in git. The bucket deletes each recording 30 days after it was
+written. `src/roach/` is a copy of the Roach client. Its `README.md` tells
+how to update it.
 
 ### How evals use the proxy
 
@@ -330,37 +334,57 @@ Its `README.md` tells how it keys, records, and replays requests.
   - `model`: every POST to the AI Gateway. This includes agent, title,
     compaction, judge, Guardian, and turn router requests.
   - `web`: the pages that `webFetch` reads. A redirect is its own recording.
-- `src/recording-run.ts`: global setup starts the proxy and sets the proxy
-  variables. Test workers and child processes inherit them. At the end, it
-  prints the totals and adds them to the GitHub Actions job summary.
-- `src/recording-setup.ts`: each test opens a proxy session before its first
+- `src/recording-run.ts`: global setup starts a run on the service and sets
+  the proxy variables. Test workers and child processes inherit them. At
+  the end, it ends the run, prints the totals, and adds them to the GitHub
+  Actions job summary.
+- `src/recording-setup.ts`: each test opens a session before its first
   request and ends it when it finishes. A passed test writes its new
   recordings. A failed test writes nothing.
 - `src/proxy-dispatcher.ts`: sends `fetch` through the proxy in processes
   that started before the proxy variables. It also removes the own agent
   that some clients, such as `@vercel/sandbox`, give `fetch`.
 - MSW mocks, such as Slack and GitHub, answer before the proxy.
+- Requests that match no rule, such as Vercel Sandbox API calls, go live
+  through the proxy and are not recorded.
 - In CI, `scripts/network-jail.sh` runs the evals with a firewall. It allows
-  only loopback, DNS, and Cloudflare. Any connection that does not use the
-  proxy fails at once. Add a host to the jail only if it cannot go through
-  the proxy.
+  only loopback, DNS, the Roach service, and Cloudflare. Any connection that
+  does not use the proxy fails at once. Add a host to the jail only if it
+  cannot go through the proxy.
+
+### The write token
+
+`ROACH_TOKEN` is the write token of the service. Only global setup reads it.
+Test workers and child processes do not get it.
+
+- With the token, a run uses `auto` mode by default.
+- Without the token, the service allows only `replay` mode. Such a run also
+  refuses every request that no rule records, so evals that use the Vercel
+  Sandbox fail. Guardian and turn router evals do not use the Sandbox, so
+  they can replay without the token.
+- CI gets the token from the `ROACH_TOKEN` organization secret. Pull
+  requests from forks do not get secrets, so their eval runs only replay.
+- To record locally, put `ROACH_TOKEN` in `.env.local`. All tenants share
+  the token, so keep it private.
 
 ### Modes
 
-`VITEST_EVALS_REPLAY_MODE` sets the mode:
+`VITEST_EVALS_REPLAY_MODE` sets the mode. Without it, the mode is `auto` with
+the token and `replay` without it.
 
-- `auto` (the default) replays recordings and records misses.
+- `auto` replays recordings and records misses.
 - `replay` replays recordings. A request without a recording fails with HTTP
   412 and never goes live, and its test fails. Use it to prove that a run
   makes no model calls, judge calls included.
 - `record` sends every request live and writes it again.
 - `off` sends every request live and records nothing.
 
+`record` and `off` also need the token.
+
 ### Keep requests stable
 
 - A change to a prompt, a tool, a skill, or the model makes new requests.
-  You can commit the new recordings with your change. Do a check for
-  secret-like values before you commit them.
+  An `auto` run with `ROACH_TOKEN` records them. Recordings are not in git.
 - Fix a changing value for all tests, not in one test. A new test must not
   need its own fix. The fixture and the rules already handle these:
   - Every eval suite loads `src/stable-setup.ts` first. It sets the time
@@ -380,8 +404,10 @@ Its `README.md` tells how it keys, records, and replays requests.
   - The `values` of the model rule in `src/recording-rules.ts` cover ids and
     times that only the product makes: UUIDs, SHA-256 ids, git commit ids,
     ISO times and dates, Unix milliseconds, local times, and the event id
-    in a failure notice.
-  - The proxy remembers the values of each request in a test. A later
+    in a failure notice. Each run sends these patterns to the service. A
+    slow pattern fails its request with HTTP 400, so avoid nested
+    quantifiers, such as `(a+)+`.
+  - Roach remembers the values of each request in a test. A later
     request of the same test that repeats one, for example a short commit id
     that the model quotes in its reply, gets the same placeholder.
   - `insertMemory()` gives each memory a later time than the one before.
@@ -413,66 +439,35 @@ Its `README.md` tells how it keys, records, and replays requests.
 ### Debug a miss
 
 - For each test, the log and the job summary name the first request without
-  a recording, and the parts that differ from the closest recording:
+  a recording:
 
   ```text
-  [evals] No recording: <test>: model model/<key>.json differs from model/<other>.json at messages[3]
+  [evals] No recording: <test>: model/<key>.json
   ```
 
 - Fix the first miss of a test. The later misses usually follow from it.
-- `EVAL_RECORDING_MISSES_DIR` names a directory. The proxy writes each
-  request without a recording there, as the key sees it. CI uploads it as
-  the `misses-*` artifact for 3 days. Compare the files of two runs to see
-  the changed value. These files contain prompts, but no request headers
-  except the model ids. Locally, use `EVAL_RECORDING_MISSES_DIR=recording-misses`,
-  which git ignores.
-- The proxy redacts credentials in recordings and miss files. It knows the
-  values of request headers whose names can mean a credential, such as
-  `auth`, `token`, or `key`, and of the variables in `SECRET_ENV` of
-  `src/recording-rules.ts`. Add a new secret variable there.
+- The key changes when any part of the request changes. Compare the request
+  of two runs to find the changed value, for example with a log of the
+  request body in the fixture.
+- The service redacts credentials in recordings. It knows the values of
+  request headers whose names can mean a credential, such as `auth`,
+  `token`, or `key`. It also knows the values of the environment variables
+  in `SECRET_ENV` of `src/recording-rules.ts`, because the run config sends
+  them. Add a variable there when CI gets a new credential. Recordings are public to anyone who can make the same
+  request, so do not record responses that must stay private.
 
 ### Recordings in CI
 
-- Each eval workflow chooses its mode with
-  `.github/actions/eval-recordings-mode`. A pull request run uses `auto`.
-- After an `auto` run, the "commit recordings" job commits the new
-  recordings to the branch as "chore(evals): Update eval recordings"
-  (`.github/actions/commit-eval-recordings`). It takes only recording files
-  from the run artifacts and runs no pull request code. It pushes only when
-  the branch is still at the tested commit, or at recording commits on top
-  of it. Each suite makes its own commit.
-- The job pushes with its own `GITHUB_TOKEN` and `contents: write`. It holds
-  no other secret. The token expires when the job ends.
-- GitHub holds the checks of a `GITHUB_TOKEN` push until a person with write
-  access selects "Approve workflows to run" on the pull request. Then the
-  normal checks run, including `ci / required`. If GitHub shows no held
-  runs, close and reopen the pull request, or push another commit.
-- A run on a recordings commit uses strict `replay`. A green run shows that
-  the committed recordings cover every model request. Strict runs write
-  nothing, so they never start another commit.
-- If the recordings of a suite are still on the way, its strict run waits
-  for the earlier run of that suite.
-- Pull requests from forks get a read-only token. Their new recordings stay
-  in the `eval-recordings-*` artifacts. The job summary shows the
-  `gh run download` command that adds them to a branch.
-
-### Prune unused recordings
-
-- Run the "Prune eval recordings" workflow by hand. It runs every eval suite
-  on `main` in strict `replay` mode. Each job sets
-  `EVAL_RECORDINGS_USED_FILE`, so the proxy lists the recordings that the
-  tests replayed. Then `src/roach/cli.ts prune` deletes the
-  recordings that no list has, and the workflow opens or updates one pull
-  request.
-- It deletes recordings only when every job finished and its proxy listed
-  the recordings it used. A failed test stops at its failure, so it keeps
-  all of the recordings that it recorded before. Tests that fail on `main`
-  then do not block a prune.
-- A test file that does not load starts no test, so its recordings look
-  unused. Check the deleted files in the pull request.
-- Nothing refreshes recordings on a schedule. A change of the model id
-  makes new requests, so they record on their own. A provider that changes
-  its behavior under the same model id goes unnoticed until a live run.
+- Each eval workflow passes `ROACH_TOKEN` to the run step, so a pull request
+  run uses `auto`. It replays the recordings that it has, and records new
+  requests. The next run replays them.
+- A recording that a passed test wrote is at once available to all later
+  runs, also of other branches.
+- Nothing prunes recordings. The bucket deletes each one 30 days after it
+  was written, and the next `auto` run records it again. A change of the
+  model id makes new requests, so they record on their own. A provider that
+  changes its behavior under the same model id goes unnoticed until the
+  recording is recorded again.
 
 ## Running
 
