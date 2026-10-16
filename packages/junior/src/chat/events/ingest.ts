@@ -2,6 +2,7 @@ import type { StateAdapter } from "chat";
 import { eventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueEventNotification } from "@/chat/events/notification";
+import { resolveEventPeopleMentions } from "@/chat/events/people";
 import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
 
 /** Match a normalized event and enqueue notifications into conversations. */
@@ -23,6 +24,11 @@ export async function ingestEvent(
     identifier: event.identifier,
     state: options.state,
   });
+  // Resolve once per Event. Only matched Watches pay for the lookup.
+  const people =
+    subscriptions.length > 0 && event.people
+      ? await resolveEventPeopleMentions(event.people)
+      : [];
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
@@ -41,6 +47,7 @@ export async function ingestEvent(
         deliver: async (current) => {
           const result = await enqueueEventNotification({
             event,
+            people,
             queue: options.queue,
             state: options.state,
             subscription: current,

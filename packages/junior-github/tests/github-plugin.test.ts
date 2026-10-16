@@ -1482,7 +1482,7 @@ Conversation: \`local:test:old-conversation\`
       },
     });
     // Approval and merge always reach the people involved, so the Watch
-    // stores the run's Actors and guidance for those outcomes.
+    // stores guidance for those outcomes.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
@@ -1492,13 +1492,12 @@ Conversation: \`local:test:old-conversation\`
       ],
       guidance: {
         "pull_request.review.approved": expect.stringContaining(
-          "Mention each of the people involved.",
+          "Mention each person in People involved",
         ),
         "pull_request.merged": expect.stringContaining(
-          "Mention each of the people involved.",
+          "Mention each person in People involved",
         ),
       },
-      includeActors: true,
       intent: "Report failed checks and requested changes.",
       resource: expect.objectContaining({
         identifier: "getsentry/junior#660",

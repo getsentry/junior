@@ -1,13 +1,8 @@
-import {
-  objectTypeSchema,
-  type Actor,
-  type ObjectType,
-} from "@sentry/junior-plugin-api";
+import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
-import { slackMention } from "@/chat/slack/mrkdwn";
 import { renderTaskInput } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -47,14 +42,13 @@ export interface EventNotification {
  * contract. Stable delivery rules live in runtime and docs, not this prompt.
  */
 export function renderEventNotificationText(
-  subscription: Pick<
-    Watch,
-    "actors" | "guidance" | "intent" | "label" | "resourceType"
-  >,
+  subscription: Pick<Watch, "guidance" | "intent" | "label" | "resourceType">,
   event: Pick<
     EventNotification,
     "namespace" | "eventType" | "trustedSummary" | "data" | "untrustedText"
   >,
+  /** Mentions resolved from the Event people. */
+  people: readonly string[] = [],
 ): string {
   // Resource type guidance applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
@@ -71,22 +65,13 @@ export function renderEventNotificationText(
     .join(" ");
   return renderTaskInput({
     about: subscription.label,
-    ...(subscription.actors
-      ? { people: subscription.actors.map(actorLabel) }
-      : undefined),
+    ...(people.length > 0 ? { people: [...people] } : undefined),
     instructions: subscription.intent,
     ...(guidance ? { guidance } : undefined),
     trustedSummary: event.trustedSummary,
     verifiedDetails: event.data,
     externalText: event.untrustedText,
   });
-}
-
-/** Slack Actors render as mentions so a reply notifies them. */
-function actorLabel(actor: Actor): string {
-  if (actor.platform === "slack") return slackMention(actor.userId);
-  if (actor.platform === "system") return actor.name;
-  return actor.fullName ?? actor.userName ?? actor.userId;
 }
 
 /** Resource-event metadata stored on plain mailbox input. */
@@ -215,6 +200,8 @@ export function createEventInboundMessage(input: {
  */
 export async function enqueueEventNotification(args: {
   event: EventNotification;
+  /** Mentions resolved from the Event people. */
+  people?: readonly string[];
   queue: ConversationWorkQueue;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
@@ -247,7 +234,11 @@ export async function enqueueEventNotification(args: {
     return { status: "duplicate" };
   }
 
-  const text = renderEventNotificationText(args.subscription, args.event);
+  const text = renderEventNotificationText(
+    args.subscription,
+    args.event,
+    args.people,
+  );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
       event: args.event,

@@ -7,6 +7,7 @@ import type {
   PluginLogger,
   PluginRoute,
   EventInput,
+  EventPerson,
   EventPublisher,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
@@ -36,6 +37,12 @@ import {
   parseCheckSuitePublishTargets,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
+import {
+  GITHUB_PULL_REQUEST_PEOPLE_EVENTS,
+  gitHubPullRequestPeopleTarget,
+  withGitHubPullRequestPeople,
+  type GitHubPullRequestPeopleTarget,
+} from "./pull-request-people.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -141,6 +148,45 @@ function githubCodeChange(
   };
 }
 
+/**
+ * Add the people involved to pull request outcome events. It loads them only
+ * when a Watch or event automation matches, so other deliveries make no extra
+ * GitHub calls. People only enrich the Event, so a failed load keeps it.
+ */
+async function withPullRequestPeople(args: {
+  body: unknown;
+  deliveryId: string;
+  events: EventInput[];
+  hasMatch: EventPublisher["hasMatch"];
+  load:
+    | ((target: GitHubPullRequestPeopleTarget) => Promise<EventPerson[]>)
+    | undefined;
+  log?: Pick<PluginLogger, "error">;
+}): Promise<EventInput[]> {
+  const { hasMatch, load } = args;
+  const peopleEvents = args.events.filter((event) =>
+    GITHUB_PULL_REQUEST_PEOPLE_EVENTS.has(event.eventType),
+  );
+  if (peopleEvents.length === 0 || !hasMatch || !load) return args.events;
+  const target = gitHubPullRequestPeopleTarget(args.body);
+  if (!target) return args.events;
+  const matches = await Promise.all(
+    peopleEvents.map((event) => hasMatch(event)),
+  );
+  if (!matches.some(Boolean)) return args.events;
+  try {
+    return withGitHubPullRequestPeople(args.events, await load(target));
+  } catch (error) {
+    args.log?.error("GitHub pull request people lookup failed", {
+      deliveryId: args.deliveryId,
+      errorType: error instanceof Error ? error.name : "UnknownError",
+      number: target.number,
+      repository: target.repositoryFullName,
+    });
+    return args.events;
+  }
+}
+
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
@@ -154,6 +200,10 @@ export function createGitHubWebhookRoute(args: {
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
+  /** Load the people involved in a pull request for outcome events. */
+  loadPullRequestPeople?(
+    target: GitHubPullRequestPeopleTarget,
+  ): Promise<EventPerson[]>;
   log?: Pick<PluginLogger, "error">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
@@ -327,15 +377,23 @@ export function createGitHubWebhookRoute(args: {
               privateKeyEnv: args.privateKeyEnv,
             })
           : undefined;
-      const events = normalizeGitHubEvents({
+      const hasMatch = args.events.hasMatch;
+      let events = normalizeGitHubEvents({
         body,
         botEmail,
         ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
         deliveryId,
         eventName,
       });
+      events = await withPullRequestPeople({
+        body,
+        deliveryId,
+        events,
+        hasMatch,
+        load: args.loadPullRequestPeople,
+        log: args.log,
+      });
       const feedbackTarget = pullRequestFeedbackTarget(events);
-      const hasMatch = args.events.hasMatch;
       const feedbackHasMatch =
         feedbackTarget && hasMatch
           ? (await Promise.all(events.map((event) => hasMatch(event)))).some(

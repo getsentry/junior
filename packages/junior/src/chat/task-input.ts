@@ -46,7 +46,7 @@ export function renderTaskInput(args: {
   about?: string;
   /** Mention of the person who created the task, so "me" in it is exact. */
   creator?: string;
-  /** Mentions of the people a watch acts for. Guidance says when to address them. */
+  /** Mentions of the people involved in an Event. Guidance says when to address them. */
   people?: string[];
   /** Plugin guidance scoped under the instructions. */
   guidance?: string;

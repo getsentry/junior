@@ -93,10 +93,13 @@ Watches route events back into an existing conversation.
 - A tool-created Watch can store its own guidance by event type. Core adds it
   after the resource type guidance, only for that Watch and only for the
   events that the Watch receives.
-- A tool-created Watch can also store the human Actors of the run that created
-  it (`includeActors`). Core takes them from the run, not from the plugin, so a
-  plugin cannot add people. Each Event lists them as `People involved:`. Slack
-  Actors render as mentions. Guidance says when to address them.
+- An Event can name the people involved (`people`), by provider identity
+  (`provider` and `handle`) or by email. The plugin collects them in code when
+  the Event arrives, for example from the pull request. Core resolves each one
+  to a linked Slack user and lists the mentions as `People involved:`. Core
+  drops people that are unlinked or match more than one Slack user. People are
+  only for mentions. They never grant authority. Guidance says when to address
+  them.
 - Resource types may declare optional app guidance per event type. Core inserts
   that text only for the matching resource type. The prompt applies it within
   the subscription intent or stored event automation instruction. Keep it separate

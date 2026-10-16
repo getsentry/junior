@@ -1,12 +1,10 @@
 import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import {
-  actorSchema,
   eventMatchSchema,
   eventMatches,
   eventTypeSchema,
   stableEventMatchKey,
-  type Actor,
   type EventData,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
@@ -32,8 +30,6 @@ const subscriptionIdIndexSchema = z.array(z.string().min(1));
 
 const subscriptionSchema = z
   .object({
-    /** Human Actors of the run that created the Watch. Events list them. */
-    actors: z.array(actorSchema).min(1).optional(),
     conversationId: z.string().min(1),
     createdAtMs: z.number().finite(),
     /** Timer creator whose grants the timer Turn may use. */
@@ -58,7 +54,6 @@ const subscriptionSchema = z
 export type Watch = z.output<typeof subscriptionSchema>;
 
 export interface CreateWatchInput {
-  actors?: Actor[];
   conversationId: string;
   events: string[];
   expiresAtMs: number;
@@ -348,9 +343,6 @@ export async function createWatch(
   });
   const guidance = watchGuidance(input.guidance, events);
   const record: Watch = {
-    ...(input.actors && input.actors.length > 0
-      ? { actors: input.actors }
-      : undefined),
     conversationId: input.conversationId,
     createdAtMs: nowMs,
     events,

@@ -2222,6 +2222,129 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("adds the people involved to approvals through production plugin wiring", async () => {
+    const fixture = await createGitHubFixture();
+    const commitRequests: Request[] = [];
+    const published: EventInput[] = [];
+    let matches = false;
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
+    vi.stubEnv(
+      "GITHUB_APP_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
+        ({ request }) => {
+          commitRequests.push(request);
+          return HttpResponse.json([
+            {
+              author: { login: "sentry-junior[bot]" },
+              commit: {
+                message: [
+                  "feat: Add the thing",
+                  "",
+                  "Co-Authored-By: Requester <requester@example.com>",
+                  "Co-authored-by: Helper <99+helper@users.noreply.github.com>",
+                ].join("\n"),
+              },
+            },
+            {
+              author: { login: "pusher" },
+              commit: {
+                message:
+                  "fix: Tweak\n\nCo-Authored-By: Requester <Requester@example.com>",
+              },
+            },
+          ]);
+        },
+      ),
+    );
+    const review = {
+      action: "submitted",
+      pull_request: {
+        assignees: [{ login: "requester-gh" }],
+        number: 946,
+        user: { login: "sentry-junior[bot]" },
+      },
+      repository: { full_name: "getsentry/junior", id: 2001 },
+      review: {
+        body: "Ship it",
+        state: "approved",
+        user: { login: "reviewer" },
+      },
+    };
+
+    try {
+      const [route] = githubPlugin().hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
+        codeChanges: {
+          async associateConversations() {},
+          async record() {},
+        },
+        db: fixture.db(),
+        log: { error() {}, info() {}, warn() {} },
+        plugin: { name: "github" },
+        events: {
+          hasMatch: async () => matches,
+          async publish(event) {
+            published.push(event);
+          },
+        },
+      });
+      // Without a matching Watch or event automation, no commits load.
+      await route!.handler(signedRequest(review, "pull_request_review"));
+      expect(commitRequests).toHaveLength(0);
+      expect(published.every((event) => !event.people)).toBe(true);
+
+      matches = true;
+      published.length = 0;
+      await route!.handler(signedRequest(review, "pull_request_review"));
+
+      expect(commitRequests).toHaveLength(1);
+      const people = [
+        { provider: "github", handle: "requester-gh" },
+        { email: "requester@example.com" },
+        { provider: "github", handle: "helper" },
+        { provider: "github", handle: "pusher" },
+      ];
+      expect(published.map((event) => [event.eventType, event.people])).toEqual(
+        [
+          ["pull_request.review.approved", people],
+          ["pull_request.review.approved", people],
+          ["pull_request.review.commented", undefined],
+          ["pull_request.review.commented", undefined],
+        ],
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("tracks one idempotent projection and ignores stale lifecycle events", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];

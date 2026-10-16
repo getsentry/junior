@@ -44,6 +44,7 @@ import {
 import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import { loadGitHubPullRequestPeople } from "./webhooks/pull-request-people.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
   listGitHubAssignedWork,
@@ -321,6 +322,34 @@ export function githubPlugin(
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
+            loadPullRequestPeople: async ({
+              logins,
+              number,
+              repositoryFullName,
+            }) => {
+              const [owner, name, ...extra] = repositoryFullName.split("/");
+              if (!owner || !name || extra.length > 0) {
+                throw new Error(
+                  "GitHub pull request people lookup received an invalid repository name",
+                );
+              }
+              const token = await issueInstallationToken({
+                appIdEnv,
+                privateKeyEnv,
+                installationIdEnv,
+                permissions: { pull_requests: "read" },
+                repositories: [name],
+              });
+              return await loadGitHubPullRequestPeople({
+                logins,
+                loadPage: async (page, perPage) =>
+                  await githubRequest(
+                    "https://api.github.com",
+                    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${number}/commits?per_page=${perPage}&page=${page}`,
+                    { token: token.token },
+                  ),
+              });
+            },
             log: ctx.log,
             markFeedbackReviewing: async ({ commentId, commentKind, repo }) => {
               const [owner, name, ...extra] = repo.split("/");

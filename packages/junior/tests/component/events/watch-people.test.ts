@@ -5,8 +5,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { closeDb } from "@/chat/db";
+import { closeDb, getSqlExecutor } from "@/chat/db";
 import { ingestEvent } from "@/chat/events/ingest";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -16,19 +17,35 @@ import {
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 
-const REQUESTER = {
-  platform: "slack",
-  teamId: "T123",
-  userId: "U123",
-} as const;
+async function seedSlackUser(args: {
+  email: string;
+  githubLogin?: string;
+  slackUserId: string;
+}): Promise<void> {
+  const slack = await upsertIdentity(getSqlExecutor(), {
+    kind: "user",
+    provider: "slack",
+    providerTenantId: "T123",
+    providerSubjectId: args.slackUserId,
+    email: args.email,
+    emailVerified: true,
+  });
+  if (!args.githubLogin) return;
+  await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
+    kind: "user",
+    provider: "github",
+    providerSubjectId: `gh-${args.githubLogin}`,
+    handle: args.githubLogin,
+  });
+}
 
-describe("tool Watch people", () => {
+describe("Watch Event people", () => {
   afterEach(async () => {
     await closeDb();
     await disconnectStateAdapter();
   });
 
-  it("lists the run's people and Watch guidance on each matching event", async () => {
+  it("mentions linked Event people and applies Watch guidance per event", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let events: ToolRegistrationHookContext["events"] | undefined;
     await createApp({
@@ -50,16 +67,18 @@ describe("tool Watch people", () => {
         }),
       ]),
     });
+    await seedSlackUser({
+      email: "requester@example.com",
+      githubLogin: "Requester",
+      slackUserId: "U123",
+    });
+    await seedSlackUser({
+      email: "coauthor@example.com",
+      slackUserId: "U456",
+    });
     getPluginTools({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
-      actor: REQUESTER,
-      // The current Actor repeats, and system Actors are not people.
-      actors: () => [
-        REQUESTER,
-        { platform: "slack", teamId: "T123", userId: "U456" },
-        { platform: "system", name: "junior-event" },
-      ],
       egress: { fetch: async () => new Response("ok") },
       source: createSlackSource({
         teamId: "T123",
@@ -71,7 +90,6 @@ describe("tool Watch people", () => {
     await events!.subscribe({
       events: ["job.failed", "job.succeeded"],
       guidance: { "job.succeeded": "Tell the people involved." },
-      includeActors: true,
       intent: "Watch the job.",
       resource: {
         identifier: "job-1",
@@ -91,6 +109,13 @@ describe("tool Watch people", () => {
           namespace: "demo",
           identifier: "job-1",
           trustedSummary: `Demo job 1: ${eventType}.`,
+          // Handles match without case. Unlinked people and repeats drop out.
+          people: [
+            { provider: "github", handle: "requester" },
+            { email: "CoAuthor@example.com" },
+            { provider: "github", handle: "unlinked" },
+            { email: "requester@example.com" },
+          ],
         },
         { queue },
       );
@@ -102,10 +127,10 @@ describe("tool Watch people", () => {
     const [succeeded, failed] = (work?.messages ?? []).map(
       (message) => message.input.text,
     );
-    expect(succeeded).toContain("People involved: <@U123>, <@U456>");
+    expect(succeeded).toContain("People involved: <@U123>, <@U456>\n");
     expect(succeeded).toContain("Tell the people involved.");
     // Watch guidance applies only to its own event type.
-    expect(failed).toContain("People involved: <@U123>, <@U456>");
+    expect(failed).toContain("People involved: <@U123>, <@U456>\n");
     expect(failed).not.toContain("Tell the people involved.");
   });
 });
