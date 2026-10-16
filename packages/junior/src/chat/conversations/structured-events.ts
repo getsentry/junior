@@ -152,10 +152,35 @@ export const agentsInstructionsUpdatedEvent = defineConversationEvent({
   },
 });
 
+/** Longest text of one Conversation note. */
+export const MAX_CONVERSATION_NOTE_CHARS = 500;
+
+/**
+ * Junior-owned Conversation note. `notes.ts` owns when the model sees it. The
+ * dashboard shows it as context, not as a message from a person.
+ */
+export const conversationNoteEvent = defineConversationEvent({
+  name: "conversation_note",
+  version: 1,
+  schema: z
+    .object({
+      text: z.string().trim().min(1).max(MAX_CONVERSATION_NOTE_CHARS),
+    })
+    .strict(),
+  renderEvent(event) {
+    return {
+      icon: "info",
+      title: "Note for the next Turn",
+      preview: event.text,
+    };
+  },
+});
+
 const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] = [
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   agentsInstructionsUpdatedEvent,
+  conversationNoteEvent,
 ];
 
 /** Resolve a registered Junior-native conversation event definition. */

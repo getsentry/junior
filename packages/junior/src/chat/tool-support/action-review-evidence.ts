@@ -8,6 +8,11 @@ import {
 } from "@/chat/pi/transcript";
 import { estimateTextTokens } from "@/chat/services/context-budget";
 import type { ToolActionEvidence } from "@/chat/tool-support/action-review";
+import {
+  CONVERSATION_NOTES_TAG,
+  TURN_CONTEXT_TAG,
+} from "@/chat/turn-context-tag";
+import { unescapeXml } from "@/chat/xml";
 
 const MAX_MESSAGE_TRANSCRIPT_TOKENS = 10_000;
 const MAX_TOOL_TRANSCRIPT_TOKENS = 10_000;
@@ -107,16 +112,52 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
   return entries;
 }
 
+const CONVERSATION_NOTES_PATTERN = new RegExp(
+  `<${CONVERSATION_NOTES_TAG}>\\n([\\s\\S]*?)\\n</${CONVERSATION_NOTES_TAG}>`,
+  "g",
+);
+
+/**
+ * Split Conversation notes out of a user-role message. Only the runtime turn
+ * context holds notes, so a block that a person typed stays their text.
+ */
+function userEntries(message: PiMessage): EvidenceEntry[] {
+  const content = (message as { content?: unknown }).content;
+  const blocks = Array.isArray(content)
+    ? content.flatMap((part) =>
+        part &&
+        typeof part === "object" &&
+        typeof (part as { text?: unknown }).text === "string" &&
+        (part as { text: string }).text.startsWith(`<${TURN_CONTEXT_TAG}>`)
+          ? [
+              ...(part as { text: string }).text.matchAll(
+                CONVERSATION_NOTES_PATTERN,
+              ),
+            ]
+          : [],
+      )
+    : [];
+  let text = getUserMessageInstructionText(message);
+  for (const block of blocks) {
+    text = text.replace(block[0], "");
+  }
+  text = text.trim();
+  return [
+    ...blocks.map((block) => ({
+      role: "conversation note" as const,
+      text: unescapeXml(block[1]!),
+    })),
+    ...(text ? [{ role: "user" as const, text }] : []),
+  ];
+}
+
 function collectEvidenceEntries(
   messages: readonly PiMessage[],
 ): EvidenceEntry[] {
   const entries: EvidenceEntry[] = [];
   for (const message of messages) {
     if (message.role === "user") {
-      const text = getUserMessageInstructionText(message);
-      if (text) {
-        entries.push({ role: "user", text });
-      }
+      entries.push(...userEntries(message));
       continue;
     }
     if (isAssistantMessage(message)) {
@@ -140,7 +181,8 @@ function collectEvidenceEntries(
  * Project the Codex Guardian transcript selection into structured evidence.
  * In a child agent, no person writes a message: each user-role message is a
  * parent agent task or another agent's output, so it gets the `parent agent`
- * role.
+ * role. A Conversation note gets the `conversation note` role in every
+ * Conversation, because core wrote it.
  */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],

@@ -1,6 +1,9 @@
 import { z } from "zod";
-import { findOwnedWatch, listOwnedWatches } from "@/chat/events/owned-watches";
-import { cancelWatch } from "@/chat/events/store";
+import {
+  findOwnedWatch,
+  listOwnedWatches,
+  stopOwnedWatch,
+} from "@/chat/events/owned-watches";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -46,7 +49,10 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
           id,
         });
         const stopped = owned
-          ? await cancelWatch({ conversationId: owned.conversationId, id })
+          ? await stopOwnedWatch({
+              conversationId: context.conversationId,
+              watch: owned,
+            })
           : undefined;
         if (!stopped) {
           throw new ToolInputError(
@@ -64,9 +70,9 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         for (const { watch } of await listOwnedWatches(
           context.conversationId,
         )) {
-          const stopped = await cancelWatch({
-            conversationId: watch.conversationId,
-            id: watch.id,
+          const stopped = await stopOwnedWatch({
+            conversationId: context.conversationId,
+            watch,
           });
           if (stopped?.status === "cancelled") {
             stoppedIds.push(stopped.id);

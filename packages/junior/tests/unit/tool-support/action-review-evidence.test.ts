@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import { buildTurnContextPrompt } from "@/chat/prompt";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
 
 /** Incomplete transcript fixtures for evidence selection tests. */
@@ -55,6 +56,45 @@ describe("tool action review evidence", () => {
       omittedEntries: 0,
     });
     expect(JSON.stringify(evidence)).not.toContain("Hidden chain");
+  });
+
+  it("labels Conversation notes as notes, never as a user or parent agent", () => {
+    const note =
+      "A parent agent above you stopped your watch w-1 (Deploy & build).";
+    const turnContext = buildTurnContextPrompt({
+      availableSkills: [],
+      conversationNotes: {
+        notes: [{ createdAtMs: 0, text: note }],
+        omittedCount: 0,
+      },
+      includeSessionContext: false,
+    });
+    const messages = [
+      { role: "user", content: [{ type: "text", text: turnContext }] },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<current-instruction>\nCheck the deploy.\n</current-instruction>",
+          },
+        ],
+      },
+    ].map((value) => piMessage(value));
+
+    for (const childAgent of [false, true]) {
+      const { entries } = buildToolActionEvidence(messages, { childAgent });
+      expect(entries.filter((entry) => entry.text.includes(note))).toEqual([
+        {
+          role: "conversation note",
+          text: expect.stringContaining(`- 1970-01-01T00:00:00.000Z: ${note}`),
+        },
+      ]);
+      expect(entries.at(-1)).toEqual({
+        role: childAgent ? "parent agent" : "user",
+        text: "Check the deploy.",
+      });
+    }
   });
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {

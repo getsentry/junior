@@ -41,6 +41,7 @@ export interface ToolActionEvidence {
       | "assistant"
       | "user"
       | "parent agent"
+      | "conversation note"
       | `tool ${string} call`
       | `tool ${string} result`;
     text: string;

@@ -21,6 +21,7 @@ import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
 import { createEventTools } from "@/chat/tools/events";
 import { skipInputBeforeConversationStop } from "@/chat/conversations/session-stop";
+import { getConversationEventStore } from "@/chat/db";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -647,7 +648,36 @@ describe("agent invocation identity and concurrency", () => {
 
   it("lets a parent list and stop the watches of its child agents", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    const harness = await createHarness(taskModel);
+    // Each model request of a child, and an action to run during the next one.
+    const modelInputs: Array<{ conversationId: string; text: string }> = [];
+    let duringNextRequest: (() => Promise<unknown>) | undefined;
+    const harness = await createHarness((request) => {
+      const stream = taskModel(request);
+      return async (model, context, options) => {
+        modelInputs.push({
+          conversationId: request.conversationId,
+          text: JSON.stringify(context.messages),
+        });
+        const action = duringNextRequest;
+        duringNextRequest = undefined;
+        await action?.();
+        return await stream(model, context, options);
+      };
+    });
+    const notesOf = async (conversationId: string) =>
+      (
+        await getConversationEventStore().query(conversationId, {
+          limit: 100,
+          types: ["structured_event"],
+        })
+      ).events.flatMap(({ data }) =>
+        data.type === "structured_event" && data.name === "conversation_note"
+          ? [data.content.text]
+          : [],
+      );
+    const stoppedNote = (id: string) =>
+      `A parent agent above you stopped your watch ${id} (Timer). It will not wake you again.`;
+    const count = (text: string, part: string) => text.split(part).length - 1;
     try {
       const [watcher, sibling] = await Promise.all([
         harness.spawn({
@@ -738,6 +768,7 @@ describe("agent invocation identity and concurrency", () => {
         );
       }
 
+      const requestsBeforeStops = modelInputs.length;
       // The parent stops a watch of its child agent by id.
       await expect(
         execute(parentTools.stopWatchingResources!, { id: watcherWatch }),
@@ -768,6 +799,54 @@ describe("agent invocation identity and concurrency", () => {
         watching_status: "stopped",
       });
       await expect(owners(parentTools)).resolves.toEqual([]);
+
+      // Each stop of a child agent's watch adds a Conversation note to that
+      // child. A stop of a Conversation's own watch adds none. No note starts
+      // a Turn.
+      expect(harness.queue.hasQueuedMessages()).toBe(false);
+      expect(modelInputs).toHaveLength(requestsBeforeStops);
+      await expect(notesOf(parentConversationId)).resolves.toEqual([]);
+      await expect(notesOf(watcher.childConversationId)).resolves.toEqual([
+        stoppedNote(watcherWatch),
+      ]);
+      await expect(notesOf(sibling.childConversationId)).resolves.toEqual([
+        stoppedNote(siblingWatch),
+      ]);
+      await expect(notesOf(helper.childConversationId)).resolves.toEqual([
+        stoppedNote(helperWatch),
+      ]);
+
+      // The next Turn of the child shows the note. A note added while that
+      // Turn runs waits for the Turn after it. Each note is shown once.
+      const lateWatch = await watchTimer(watcherTools, "Check again.");
+      duringNextRequest = () =>
+        execute(parentTools.stopWatchingResources!, { id: lateWatch });
+      await harness.message({
+        childConversationId: watcher.childConversationId,
+        idempotencyKey: "owned-message-1",
+        input: "Report status.",
+      });
+      await harness.drainQueuedWork();
+      await harness.message({
+        childConversationId: watcher.childConversationId,
+        idempotencyKey: "owned-message-2",
+        input: "Report status again.",
+      });
+      await harness.drainQueuedWork();
+      const nextTurns = modelInputs.slice(requestsBeforeStops);
+      expect(
+        nextTurns.map(({ conversationId, text }) => ({
+          conversationId,
+          late: count(text, stoppedNote(lateWatch)),
+          stopped: count(text, stoppedNote(watcherWatch)),
+        })),
+      ).toEqual([
+        { conversationId: watcher.childConversationId, late: 0, stopped: 1 },
+        { conversationId: watcher.childConversationId, late: 1, stopped: 1 },
+      ]);
+      expect(nextTurns[1]!.text.indexOf(stoppedNote(lateWatch))).toBeLessThan(
+        nextTurns[1]!.text.indexOf("Report status again."),
+      );
     } finally {
       clock.mockRestore();
       await harness.close();
