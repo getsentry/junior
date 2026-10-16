@@ -104,7 +104,7 @@ function escapeRegExp(value: string): string {
 function globToRegExp(pattern: string): RegExp {
   let source = "";
   for (let index = 0; index < pattern.length; index += 1) {
-    const char = pattern[index];
+    const char = pattern.charAt(index);
     const next = pattern[index + 1];
     if (char === "*" && next === "*") {
       if (pattern[index + 2] === "/") {

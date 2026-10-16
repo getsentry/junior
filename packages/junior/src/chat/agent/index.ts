@@ -183,8 +183,11 @@ async function readRunConversationVisibility(
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
-  constructor(readonly originalError: unknown) {
+  readonly originalError: unknown;
+
+  constructor(originalError: unknown) {
     super("Assistant message delivery failed");
+    this.originalError = originalError;
   }
 }
 
@@ -1290,6 +1293,7 @@ async function executeAgentRunInPrivacyContext(
         }
         return deliverAssistantMessage(event.message);
       }
+      return undefined;
     });
 
     let newMessages: PiMessage[] = [];
@@ -1662,6 +1666,7 @@ async function executeAgentRunInPrivacyContext(
             }
             throw error;
           }
+          return undefined;
         },
         {
           "gen_ai.operation.name": "invoke_agent",

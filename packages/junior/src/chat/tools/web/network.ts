@@ -7,18 +7,21 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".").map((chunk) => Number.parseInt(chunk, 10));
+  const [first, second] = parts;
   if (
     parts.length !== 4 ||
+    first === undefined ||
+    second === undefined ||
     parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)
   ) {
     return true;
   }
 
-  if (parts[0] === 10 || parts[0] === 127) return true;
-  if (parts[0] === 169 && parts[1] === 254) return true;
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  if (parts[0] === 192 && parts[1] === 168) return true;
-  if (parts[0] === 0) return true;
+  if (first === 10 || first === 127) return true;
+  if (first === 169 && second === 254) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 168) return true;
+  if (first === 0) return true;
   return false;
 }
 
@@ -28,12 +31,13 @@ function parseMappedIpv4FromIpv6(mapped: string): string | undefined {
   }
 
   const hexMatch = mapped.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
-  if (!hexMatch) {
+  const [, highHex, lowHex] = hexMatch ?? [];
+  if (!highHex || !lowHex) {
     return undefined;
   }
 
-  const high = Number.parseInt(hexMatch[1], 16);
-  const low = Number.parseInt(hexMatch[2], 16);
+  const high = Number.parseInt(highHex, 16);
+  const low = Number.parseInt(lowHex, 16);
   return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
 }
 
@@ -72,6 +76,8 @@ type ResolvedAddress = {
   family: 4 | 6;
 };
 
+type ResolvedAddresses = [ResolvedAddress, ...ResolvedAddress[]];
+
 function normalizeHostname(hostname: string): string {
   const lowered = hostname.toLowerCase();
   if (lowered.startsWith("[") && lowered.endsWith("]")) {
@@ -82,12 +88,8 @@ function normalizeHostname(hostname: string): string {
 
 async function resolvePublicHostname(
   hostname: string,
-): Promise<ResolvedAddress[]> {
+): Promise<ResolvedAddresses> {
   const records = await dns.lookup(hostname, { all: true, verbatim: true });
-  if (records.length === 0) {
-    throw new ToolInputError("Could not resolve hostname");
-  }
-
   const deduped = new Map<string, ResolvedAddress>();
   for (const record of records) {
     const family = record.family === 6 ? 6 : 4;
@@ -103,12 +105,16 @@ async function resolvePublicHostname(
     });
   }
 
-  return [...deduped.values()];
+  const [first, ...rest] = deduped.values();
+  if (!first) {
+    throw new ToolInputError("Could not resolve hostname");
+  }
+  return [first, ...rest];
 }
 
 async function resolvePinnedAddresses(
   url: URL,
-): Promise<ResolvedAddress[] | undefined> {
+): Promise<ResolvedAddresses | undefined> {
   const hostname = normalizeHostname(url.hostname);
   if (net.isIP(hostname) !== 0) {
     return undefined;
@@ -116,8 +122,8 @@ async function resolvePinnedAddresses(
   return resolvePublicHostname(hostname);
 }
 
-function createPinnedLookup(resolved: ResolvedAddress[]) {
-  const fallback = resolved[0];
+function createPinnedLookup(resolved: ResolvedAddresses) {
+  const [fallback] = resolved;
   return (
     _hostname: string,
     options: { family?: number | "IPv4" | "IPv6"; all?: boolean },
@@ -155,7 +161,7 @@ function createPinnedLookup(resolved: ResolvedAddress[]) {
 
 async function fetchWithPinnedLookup(
   url: URL,
-  resolved: ResolvedAddress[] | undefined,
+  resolved: ResolvedAddresses | undefined,
   signal: AbortSignal,
 ): Promise<Response> {
   if (!resolved) {
@@ -180,7 +186,9 @@ async function fetchWithPinnedLookup(
         path: `${url.pathname}${url.search}`,
         method: "GET",
         lookup,
-        ...(url.protocol === "https:" ? { servername: url.hostname } : undefined),
+        ...(url.protocol === "https:"
+          ? { servername: url.hostname }
+          : undefined),
         headers: {
           "user-agent": USER_AGENT,
           "accept-encoding": "identity",
@@ -196,8 +204,8 @@ async function fetchWithPinnedLookup(
             signal.removeEventListener("abort", onAbort);
             const headers = new Headers();
             const rawHeaders = response.rawHeaders;
-            for (let i = 0; i < rawHeaders.length; i += 2) {
-              headers.append(rawHeaders[i], rawHeaders[i + 1]);
+            for (let i = 0; i + 1 < rawHeaders.length; i += 2) {
+              headers.append(rawHeaders[i] ?? "", rawHeaders[i + 1] ?? "");
             }
 
             const rawStatus = response.statusCode ?? 500;

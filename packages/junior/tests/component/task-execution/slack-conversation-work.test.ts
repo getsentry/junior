@@ -1814,7 +1814,6 @@ describe("Slack conversation work execution", () => {
       services: {
         agentRunner: {
           run: async (request) => {
-            const _text = request.instruction.text;
             const context = request;
 
             await context?.durability?.onInputCommitted?.();
