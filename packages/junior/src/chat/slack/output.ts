@@ -20,11 +20,11 @@ function countSlackLines(text: string): number {
 
 /** Count the characters Slack shows, with each labeled link counted as its label. */
 function countVisibleChars(text: string): number {
-  return text.replace(
-    LABELED_LINK_RE,
-    (_match, markdownLabel?: string, slackLabel?: string) =>
-      markdownLabel ?? slackLabel ?? "",
-  ).length;
+  let hiddenChars = 0;
+  for (const match of text.matchAll(LABELED_LINK_RE)) {
+    hiddenChars += match[0].length - (match[1] ?? match[2] ?? "").length;
+  }
+  return text.length - hiddenChars;
 }
 
 function fitsInlineBudget(
