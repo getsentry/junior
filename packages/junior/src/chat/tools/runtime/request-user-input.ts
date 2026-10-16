@@ -4,9 +4,6 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-/** Model-facing name of the tool that asks a person to pick a choice. */
-export const REQUEST_USER_INPUT_TOOL_NAME = "requestUserInput";
-
 // Slack buttons allow 75 label characters and 5 buttons in one row. Use the
 // same limits on every surface so one request renders the same everywhere.
 // https://docs.slack.dev/reference/block-kit/block-elements/button-element

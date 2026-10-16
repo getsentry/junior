@@ -21,10 +21,7 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
-import {
-  createRequestUserInputTool,
-  REQUEST_USER_INPUT_TOOL_NAME,
-} from "@/chat/tools/runtime/request-user-input";
+import { createRequestUserInputTool } from "@/chat/tools/runtime/request-user-input";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
@@ -36,7 +33,10 @@ import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-l
 import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
-import { getSlackToolContext } from "@/chat/slack/tool-support/context";
+import {
+  getSlackToolContext,
+  isSlackMessageTurn,
+} from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSlackUserInputShow } from "@/chat/slack/tools/user-input";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
@@ -346,21 +346,29 @@ export function createTools(
         ),
       );
     }
-
-    // A click comes back as Slack input in the thread of the question, so
-    // only ask in Slack when a person in this Slack thread started the Turn.
-    if (context.source.kind === "slack") {
-      tools[REQUEST_USER_INPUT_TOOL_NAME] = createRequestUserInputTool(
-        createSlackUserInputShow(slackContext, state),
-      );
-    }
   }
 
-  // The dashboard renders the question and its choices from the transcript,
-  // so a web Turn has nothing more to show.
-  if (context.source.kind === "web") {
-    tools[REQUEST_USER_INPUT_TOOL_NAME] = createRequestUserInputTool();
-  }
+  // Register in every Conversation so the cached tool list stays the same. A
+  // person must be there to answer: the dashboard renders the question from
+  // the transcript in a web Turn, and Slack posts buttons in a Slack message
+  // Turn. A click comes back as Slack input in the thread of the question.
+  const slackQuestionContext =
+    slackContext && isSlackMessageTurn(context) ? slackContext : undefined;
+  Object.assign(
+    tools,
+    disableTools(
+      {
+        requestUserInput: createRequestUserInputTool(
+          slackQuestionContext
+            ? createSlackUserInputShow(slackQuestionContext, state)
+            : undefined,
+        ),
+      },
+      context.source.kind === "web" || slackQuestionContext
+        ? undefined
+        : "It needs a Turn that a person started in Slack or the web dashboard.",
+    ),
+  );
 
   for (const [name, pluginTool] of Object.entries(
     getPluginTools(context, options.pluginSandbox),
