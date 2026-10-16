@@ -1,6 +1,7 @@
 import { getTableColumns, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  boolean,
   index,
   integer,
   jsonb,
@@ -55,6 +56,9 @@ export const juniorConversations = pgTable(
     actor: jsonb("actor_json").$type<StoredSlackActor>(),
     channelName: text("channel_name"),
     title: text("title"),
+    // A provisional title is a placeholder, such as an Automation title on a
+    // new automation run. The first generated title replaces it once.
+    titleProvisional: boolean("title_provisional").notNull().default(false),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),

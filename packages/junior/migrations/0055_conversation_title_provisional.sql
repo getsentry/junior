@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "title_provisional" boolean DEFAULT false NOT NULL;

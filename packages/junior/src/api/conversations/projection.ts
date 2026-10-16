@@ -151,7 +151,10 @@ function titleFromConversation(args: {
       channel: slackThread?.channelId,
       channelName: effectiveChannelName,
     }) ??
-    surfaceFallbackLabel(args.surface)
+    // Dispatched runs, such as automation runs, are not internal machinery.
+    (args.conversation.source === "plugin"
+      ? "Automation run"
+      : surfaceFallbackLabel(args.surface))
   );
 }
 

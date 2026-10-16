@@ -4,12 +4,30 @@ import { logWarn } from "@/chat/logging";
 
 export const SHORT_TITLE_MAX_LENGTH = 60;
 
-export type ShortTitleKind = "conversation" | "task";
+export type ShortTitleKind = "conversation" | "run" | "task";
+
+// Run input starts with fixed task boilerplate, so it needs more source text.
+const SOURCE_TEXT_MAX_LENGTH: Record<ShortTitleKind, number> = {
+  conversation: 500,
+  run: 2000,
+  task: 500,
+};
+
+const SOURCE_LABELS: Record<ShortTitleKind, string> = {
+  conversation: "First user message",
+  run: "Task input",
+  task: "Task instruction",
+};
 
 const TITLE_PROMPTS: Record<ShortTitleKind, string[]> = {
   conversation: [
     "Generate a concise 5-8 word conversation title from the first user message below.",
     "Capture the user's main request.",
+    "Reply with ONLY the title, with no quotes or trailing punctuation.",
+  ],
+  run: [
+    "Generate a concise 5-8 word title for one task run from its task input below.",
+    "Capture what this run is about. Prefer the specific event or subject over the task wording.",
     "Reply with ONLY the title, with no quotes or trailing punctuation.",
   ],
   task: [
@@ -63,9 +81,7 @@ export async function generateShortTitle(args: {
           content: [
             ...TITLE_PROMPTS[args.kind],
             "",
-            args.kind === "conversation"
-              ? `First user message: ${sourceText.slice(0, 500)}`
-              : `Task instruction: ${sourceText.slice(0, 500)}`,
+            `${SOURCE_LABELS[args.kind]}: ${sourceText.slice(0, SOURCE_TEXT_MAX_LENGTH[args.kind])}`,
           ].join("\n"),
           timestamp: Date.now(),
         },

@@ -300,6 +300,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(source ? { source } : undefined),
     ...(sessionSource ? { sessionSource } : undefined),
     ...(row.title ? { title: row.title } : undefined),
+    ...(row.title && row.titleProvisional
+      ? { titleProvisional: true as const }
+      : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : undefined),
@@ -422,6 +425,7 @@ export class SqlStore implements ConversationStore {
     source?: ConversationSource;
     sessionSource?: Source;
     title?: string;
+    titleProvisional?: true;
     visibility?: ConversationPrivacy;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
@@ -451,9 +455,17 @@ export class SqlStore implements ConversationStore {
       // previously stored confirmation must not be replayed as a new signal.
       const {
         sessionSource: _persistedSessionSource,
+        titleProvisional: _persistedTitleProvisional,
         visibility: _persistedVisibility,
         ...currentWithoutPersistedSignals
       } = current;
+      const replaceTitle =
+        Boolean(args.title) &&
+        (!current.title ||
+          (current.titleProvisional === true && !args.titleProvisional));
+      const titleProvisional = replaceTitle
+        ? args.titleProvisional
+        : current.titleProvisional;
       await this.upsertConversation({
         conversation: {
           ...currentWithoutPersistedSignals,
@@ -462,7 +474,8 @@ export class SqlStore implements ConversationStore {
           ...(sessionSource ? { sessionSource } : undefined),
           channelName: current.channelName ?? args.channelName,
           actor: mergeActor(current.actor, args.actor),
-          title: current.title ?? args.title,
+          title: replaceTitle ? args.title : current.title,
+          ...(titleProvisional ? { titleProvisional } : undefined),
           lastActivityAtMs: Math.max(current.lastActivityAtMs, activityAtMs),
           updatedAtMs: nowMs,
           execution: {
@@ -778,6 +791,7 @@ export class SqlStore implements ConversationStore {
         actor: null,
         channelName: conversation.channelName ?? null,
         title: conversation.title ?? null,
+        titleProvisional: conversation.titleProvisional === true,
         createdAt: dateFromMs(conversation.createdAtMs),
         lastActivityAt: dateFromMs(conversation.lastActivityAtMs),
         updatedAt: dateFromMs(conversation.updatedAtMs),
@@ -814,6 +828,8 @@ export class SqlStore implements ConversationStore {
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
           title: sql`coalesce(excluded.title, ${juniorConversations.title})`,
+          // A written title carries its own provisional flag.
+          titleProvisional: sql`case when excluded.title is not null then excluded.title_provisional else ${juniorConversations.titleProvisional} end`,
           createdAt: sql`least(${juniorConversations.createdAt}, excluded.created_at)`,
           lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
           updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,

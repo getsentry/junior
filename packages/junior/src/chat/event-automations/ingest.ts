@@ -15,6 +15,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
 import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
+import { fallbackShortTitle } from "@/chat/services/short-title";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
@@ -160,6 +161,8 @@ export async function ingestEventAutomations(
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
         },
+        title:
+          task.title ?? fallbackShortTitle(task.task.text, "Event automation"),
       });
       if (dispatch.status === "created") {
         dispatched += 1;
