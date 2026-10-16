@@ -12,7 +12,7 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
       aria-live="polite"
       className={cn(
         dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
+        "grid h-full min-h-0 overflow-hidden md:grid-cols-[20rem_minmax(0,1fr)]",
       )}
       role="status"
     >
@@ -60,7 +60,7 @@ function ConversationHomeLoading() {
       aria-live="polite"
       className={cn(
         dashboardContainerClass,
-        "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
+        "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
       )}
       role="status"
     >

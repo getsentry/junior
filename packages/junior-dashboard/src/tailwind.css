@@ -101,8 +101,7 @@
   --color-dashboard-overlay-soft: rgb(0 0 0 / 0.2);
   --color-dashboard-overlay: rgb(0 0 0 / 0.55);
 
-  /* Shell grid + scroll chrome */
-  --color-dashboard-grid-line: rgb(255 255 255 / 0.04);
+  /* Scroll chrome */
   --color-dashboard-scrollbar-track: rgb(255 255 255 / 0.02);
   --color-dashboard-scrollbar-thumb: rgb(255 255 255 / 0.1);
   --color-dashboard-scrollbar-thumb-hover: rgb(255 255 255 / 0.2);
@@ -135,27 +134,6 @@
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-dashboard-scrollbar-thumb-hover);
   }
-}
-
-/* Shared shell canvas + grid. Prefer this class over inline background styles. */
-.dashboard-shell-bg {
-  background-color: var(--color-dashboard-bg);
-  background-image:
-    radial-gradient(
-      ellipse at 50% 0%,
-      transparent 0%,
-      var(--color-dashboard-bg) 70%
-    ),
-    linear-gradient(var(--color-dashboard-grid-line) 1px, transparent 1px),
-    linear-gradient(
-      90deg,
-      var(--color-dashboard-grid-line) 1px,
-      transparent 1px
-    );
-  background-size:
-    100% 100%,
-    40px 40px,
-    40px 40px;
 }
 
 @source "./app.ts";
