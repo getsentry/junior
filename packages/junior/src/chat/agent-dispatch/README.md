@@ -27,9 +27,11 @@ A dispatched run has no human message. The run input is a bot-authored user
 message, so the shared title generator uses it as the title source. The title
 is set once, the same as for other Conversations.
 
-- Until the generated title exists, the dashboard shows "Automation run".
-- If generation fails, the title stays unset and the dashboard keeps that
-  label. A later transcript write tries generation again.
+- Until the generated title exists, the conversation API returns the name of
+  the linked source Automation. When the API cannot find that Automation, it
+  returns "Automation run". The API does not store this fallback.
+- If generation fails, the title stays unset and the API keeps that fallback.
+  A later transcript write tries generation again.
 
 ## Lifecycle
 

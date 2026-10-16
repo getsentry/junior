@@ -129,6 +129,7 @@ function statusFromConversation(
 }
 
 function titleFromConversation(args: {
+  automationTitle?: string;
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
   surface: ConversationSurface;
@@ -147,6 +148,8 @@ function titleFromConversation(args: {
   return (
     privateLabel ??
     args.conversation.title ??
+    // Read-time fallback while a run's own title is unset. Nothing is stored.
+    args.automationTitle ??
     slackStatsLocationLabel({
       channel: slackThread?.channelId,
       channelName: effectiveChannelName,
@@ -211,6 +214,8 @@ export function conversationEventHistory(args: {
 export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
   archivedAtMs?: number;
+  /** Name of the Automation that started this conversation, when known. */
+  automationTitle?: string;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   conversation: ConversationProjectionSource;
@@ -252,6 +257,9 @@ export function conversationSummaryFromStoredConversation(args: {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
     displayTitle: titleFromConversation({
+      ...(args.automationTitle
+        ? { automationTitle: args.automationTitle }
+        : undefined),
       canViewPrivateContent,
       conversation,
       surface,

@@ -217,8 +217,8 @@ describe("conversation detail API", () => {
         },
         channelName: "project-updates",
         nowMs: 1,
-        source: "scheduler",
-        title: "Weekly project summary run",
+        // The run's own title is unset, as while title generation runs.
+        source: "plugin",
         visibility: "public",
       });
       const user = await resolveViewerUserFromSql(
@@ -264,6 +264,10 @@ describe("conversation detail API", () => {
         title: "Weekly project summary",
         updatedAtMs: nowMs,
       });
+      // Before a source Automation is linked, the API uses its generic run label.
+      await expect(
+        readConversationDetail(conversationId, { viewer: user! }),
+      ).resolves.toMatchObject({ displayTitle: "Automation run" });
       await recordAutomationExecution("scheduled", "sched_source_task", {
         conversationId,
         executionId: "run_source_task",
@@ -276,6 +280,8 @@ describe("conversation detail API", () => {
           viewer: user!,
         }),
       ).resolves.toMatchObject({
+        // The API names an untitled run after its source Automation.
+        displayTitle: "Weekly project summary",
         sourceTask: {
           id: "sched_source_task",
           kind: "scheduled",

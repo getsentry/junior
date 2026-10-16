@@ -75,7 +75,9 @@ function actorFromRow(
   const actor = {
     ...(row.email ? { email: row.email } : undefined),
     ...(row.fullName ? { fullName: row.fullName } : undefined),
-    ...(row.providerSubjectId ? { slackUserId: row.providerSubjectId } : undefined),
+    ...(row.providerSubjectId
+      ? { slackUserId: row.providerSubjectId }
+      : undefined),
     ...(row.handle ? { slackUserName: row.handle } : undefined),
   };
   return Object.keys(actor).length ? actor : undefined;
@@ -86,6 +88,7 @@ export function summaryFromRow(
   row: ReportingConversationRow,
   options: {
     access?: ConversationAccess;
+    automationTitle?: string | undefined;
     metrics?: {
       durationMs: number;
       usage?: NonNullable<ReportingConversationRow["usage"]>;
@@ -111,6 +114,9 @@ export function summaryFromRow(
   };
   return conversationSummaryFromStoredConversation({
     access: options.access,
+    ...(options.automationTitle
+      ? { automationTitle: options.automationTitle }
+      : undefined),
     conversation,
     durationMs: options.metrics?.durationMs ?? row.durationMs,
     ...(options.access?.visibility === "public" && row.destinationId

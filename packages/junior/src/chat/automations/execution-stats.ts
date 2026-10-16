@@ -17,6 +17,8 @@ import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import { juniorConversations } from "@/db/schema/conversations";
+import { juniorEventAutomations } from "@/db/schema/event-automations";
+import { juniorSchedulerTasks } from "@/db/schema/scheduled-automations";
 import {
   juniorAutomationExecutions,
   type AutomationExecutionStatus,
@@ -386,6 +388,60 @@ export async function readAutomationExecutionByConversationId(args: {
   if (!row) return undefined;
   if (row.kind !== "scheduled" && row.kind !== "event") return undefined;
   return { kind: row.kind, automationId: row.automationId };
+}
+
+/**
+ * Load the stored name of the Automation linked to each conversation.
+ * The newest execution wins. Conversations without a linked, named
+ * Automation are absent from the result.
+ */
+export async function readAutomationTitlesByConversationId(
+  conversationIds: readonly string[],
+  namespace = "junior",
+): Promise<Map<string, string>> {
+  const titles = new Map<string, string>();
+  if (conversationIds.length === 0) return titles;
+  const rows = await getDb()
+    .select({
+      conversationId: juniorAutomationExecutions.conversationId,
+      eventTitle: juniorEventAutomations.title,
+      scheduledTitle: juniorSchedulerTasks.title,
+    })
+    .from(juniorAutomationExecutions)
+    .leftJoin(
+      juniorSchedulerTasks,
+      and(
+        eq(juniorAutomationExecutions.kind, "scheduled"),
+        eq(juniorSchedulerTasks.id, juniorAutomationExecutions.automationId),
+      ),
+    )
+    .leftJoin(
+      juniorEventAutomations,
+      and(
+        eq(juniorAutomationExecutions.kind, "event"),
+        eq(juniorEventAutomations.id, juniorAutomationExecutions.automationId),
+      ),
+    )
+    .where(
+      and(
+        inArray(juniorAutomationExecutions.conversationId, [
+          ...conversationIds,
+        ]),
+        eq(juniorAutomationExecutions.namespace, namespace),
+      ),
+    )
+    .orderBy(
+      desc(juniorAutomationExecutions.executedAtMs),
+      desc(juniorAutomationExecutions.executionId),
+    );
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.conversationId || seen.has(row.conversationId)) continue;
+    seen.add(row.conversationId);
+    const title = (row.scheduledTitle ?? row.eventTitle)?.trim();
+    if (title) titles.set(row.conversationId, title);
+  }
+  return titles;
 }
 
 /** Load newest-first executions for one automation, with conversation titles when present. */
