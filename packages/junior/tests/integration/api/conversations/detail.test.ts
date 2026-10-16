@@ -281,12 +281,13 @@ describe("conversation detail API", () => {
           kind: "scheduled",
           label: "Send the weekly project summary",
           title: "Weekly project summary",
+          triggerMessageId: conversationId,
         },
       });
       await expect(
         readConversationDetail(conversationId),
       ).resolves.toMatchObject({
-        sourceTask: { kind: "scheduled" },
+        sourceTask: { kind: "scheduled", triggerMessageId: conversationId },
       });
       const hidden = await readConversationDetail(conversationId);
       expect(hidden?.sourceTask).not.toHaveProperty("id");
