@@ -481,6 +481,8 @@ export async function readAutomationTitlesByConversationId(
         ),
       ),
   );
+  // TODO: Runs created before this change have no `origin_id`, so run history
+  // names them. Remove this fallback after those runs age out, one release on.
   const unlinkedIds = untitledIds.filter((id) => !seen.has(id));
   if (unlinkedIds.length === 0) return titles;
   addAutomationTitles(
