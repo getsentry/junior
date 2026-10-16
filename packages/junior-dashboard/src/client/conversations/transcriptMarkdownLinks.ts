@@ -1,5 +1,5 @@
 export const TRANSCRIPT_ANCHOR_CLASS =
-  "font-medium text-dashboard-accent-text underline decoration-dashboard-accent/35 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white";
+  "font-medium text-dashboard-accent-text underline decoration-dashboard-accent/35 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-dashboard-text-solid";
 
 export type TranscriptMarkdownLink = {
   end: number;

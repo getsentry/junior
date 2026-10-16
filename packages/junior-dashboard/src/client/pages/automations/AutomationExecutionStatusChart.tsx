@@ -44,7 +44,7 @@ export function AutomationExecutionStatusChart(props: {
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           Executions over time
         </h2>
-        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"
             ? "Terminal runs for this automation each hour."
             : bucketUnit === "6hour"
@@ -121,7 +121,7 @@ export function AutomationExecutionStatusChart(props: {
           />
         </ChartSvg>
         {!hasExecutions ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No automation executions in this period.
           </div>
         ) : null}

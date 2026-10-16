@@ -7,6 +7,10 @@ export function cn(
 
 export const dashboardContainerClass = "mx-auto w-full min-w-0 max-w-screen-xl";
 
+/** Underline a neutral inline link, such as a channel or record name in prose. */
+export const dashboardInlineLinkClass =
+  "text-dashboard-text underline decoration-dashboard-border-heavy underline-offset-2 transition-colors hover:decoration-dashboard-text-muted";
+
 export const dashboardInteractiveTextClass =
   "text-dashboard-text-muted hover:text-dashboard-text";
 

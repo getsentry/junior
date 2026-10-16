@@ -19,8 +19,8 @@ export function PluginReportRecordSet(props: {
     <div
       className={cn(
         embedded
-          ? "border-t border-white/[0.06]"
-          : "overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel",
+          ? "border-t border-dashboard-border-subtle"
+          : "overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel",
       )}
     >
       <div className="flex items-center justify-between gap-4 px-5 py-3">
@@ -32,20 +32,20 @@ export function PluginReportRecordSet(props: {
         </div>
       </div>
       {records.length === 0 ? (
-        <div className="px-5 pb-5 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <div className="px-5 pb-5 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {props.recordSet.emptyText ?? "No records."}
         </div>
       ) : fields.length === 0 ? (
-        <div className="px-5 pb-5 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <div className="px-5 pb-5 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           Report records are unavailable because no fields were declared.
         </div>
       ) : (
         <>
-          <div className="grid gap-2 border-t border-white/[0.05] p-3 sm:hidden">
+          <div className="grid gap-2 border-t border-dashboard-border-subtle p-3 sm:hidden">
             {records.map((record) => (
               <div
                 className={cn(
-                  "grid gap-3 rounded-md border border-white/[0.06] bg-black/15 p-3",
+                  "grid gap-3 rounded-md border border-dashboard-border-subtle bg-dashboard-overlay-soft p-3",
                   rowToneClass(record.tone),
                 )}
                 key={record.id}
@@ -55,7 +55,7 @@ export function PluginReportRecordSet(props: {
                     <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                       {field.label}
                     </div>
-                    <div className="mt-1 break-words font-mono text-xs leading-relaxed text-dashboard-text-muted">
+                    <div className="mt-1 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">
                       {record.values[field.key] ?? ""}
                     </div>
                   </div>
@@ -63,13 +63,13 @@ export function PluginReportRecordSet(props: {
               </div>
             ))}
           </div>
-          <div className="hidden overflow-x-auto border-t border-white/[0.05] sm:block">
+          <div className="hidden overflow-x-auto border-t border-dashboard-border-subtle sm:block">
             <table className="w-full min-w-[36rem] border-collapse text-left">
-              <thead className="bg-black/15 font-sans font-medium text-xs text-dashboard-text-muted">
+              <thead className="bg-dashboard-overlay-soft font-sans font-medium text-xs text-dashboard-text-muted">
                 <tr>
                   {fields.map((field) => (
                     <th
-                      className="border-b border-white/[0.055] px-5 py-2.5 font-medium"
+                      className="border-b border-dashboard-border-subtle px-5 py-2.5 font-medium"
                       key={field.key}
                       scope="col"
                     >
@@ -82,14 +82,14 @@ export function PluginReportRecordSet(props: {
                 {records.map((record) => (
                   <tr
                     className={cn(
-                      "transition-colors hover:bg-white/[0.025]",
+                      "transition-colors hover:bg-dashboard-fill-soft",
                       rowToneClass(record.tone),
                     )}
                     key={record.id}
                   >
                     {fields.map((field) => (
                       <td
-                        className="max-w-72 truncate border-b border-white/[0.05] px-5 py-3 font-mono text-xs text-dashboard-text-muted"
+                        className="max-w-72 truncate border-b border-dashboard-border-subtle px-5 py-3 font-mono text-xs text-dashboard-text-muted"
                         key={field.key}
                       >
                         {record.values[field.key] ?? ""}

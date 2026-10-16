@@ -49,7 +49,7 @@ export function ConversationBrief(props: {
         <StatusChip tone={outcomeTones[content.outcome.status]}>
           {displayLabel(content.outcome.status)}
         </StatusChip>
-        <span className="font-mono text-xs text-dashboard-text-muted">
+        <span className="text-xs text-dashboard-text-muted">
           Brief v{props.brief.version} · updated{" "}
           {formatTime(props.brief.updatedAt, {
             dateStyle: "medium",
@@ -108,7 +108,7 @@ export function ConversationBrief(props: {
                       >
                         {link.label}
                       </a>
-                      <span className="font-mono text-xs text-dashboard-text-muted">
+                      <span className="text-xs text-dashboard-text-muted">
                         {displayLabel(link.kind)}
                       </span>
                       {link.status ? (
@@ -172,7 +172,7 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
             <span className="min-w-0">{decision.text}</span>
           </div>
           {decision.by ? (
-            <div className="mt-0.5 font-mono text-xs text-dashboard-text-muted">
+            <div className="mt-0.5 text-xs text-dashboard-text-muted">
               by · {decision.by}
             </div>
           ) : null}

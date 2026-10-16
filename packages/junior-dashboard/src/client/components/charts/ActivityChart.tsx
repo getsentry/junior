@@ -132,7 +132,7 @@ const ChartSvgScaleContext = createContext(1);
 
 /** Shared visual style for SVG chart axis labels. */
 export const chartAxisLabelClassName =
-  "fill-white/50 font-sans tabular-nums leading-none text-dashboard-text-muted";
+  "fill-dashboard-text-muted font-sans tabular-nums leading-none text-dashboard-text-muted";
 
 type ChartAxisLabelProps = Omit<
   SVGProps<SVGTextElement>,
@@ -330,7 +330,7 @@ export function activityChartAverage(values: readonly number[]): number {
 
 /** Shared visual style for average-line labels. */
 export const chartAverageLabelClassName =
-  "fill-white font-sans tabular-nums leading-none";
+  "fill-dashboard-text-solid font-sans tabular-nums leading-none";
 
 /** Solid chip behind average labels so series colors never wash out the text. */
 const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";

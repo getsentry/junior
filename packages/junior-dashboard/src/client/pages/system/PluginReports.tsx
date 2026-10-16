@@ -21,14 +21,14 @@ export function PluginReports(props: {
     return (
       <Card padding="md">
         <div className="flex items-center gap-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted">
+          <div className="grid size-10 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
             <RadioTower aria-hidden="true" size={17} />
           </div>
           <div>
             <h2 className="m-0 font-display text-base font-medium text-dashboard-text-muted">
               Operational reports
             </h2>
-            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+            <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
               {props.emptyText}
             </p>
           </div>
@@ -65,7 +65,7 @@ function PluginReportView(props: {
   const metrics = props.report.metrics ?? [];
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-4">
+      <div className="flex items-start justify-between gap-4 border-b border-dashboard-border-subtle px-5 py-4">
         <div className="min-w-0">
           <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
             {title}
@@ -83,7 +83,7 @@ function PluginReportView(props: {
       {metrics.length ? (
         <div
           className={cn(
-            "grid gap-px bg-white/[0.055]",
+            "grid gap-px bg-dashboard-fill-hover",
             metrics.length === 1 ? "grid-cols-1" : "grid-cols-2",
             metrics.length === 3
               ? "lg:grid-cols-3"
@@ -116,7 +116,7 @@ function PluginReportView(props: {
         </div>
       ) : null}
       {props.report.widgets?.length ? (
-        <div className="grid gap-3 border-t border-white/[0.06] bg-black/15 p-3 lg:grid-cols-2">
+        <div className="grid gap-3 border-t border-dashboard-border-subtle bg-dashboard-overlay-soft p-3 lg:grid-cols-2">
           {props.report.widgets.map((widget) => (
             <PluginBarChart
               key={widget.id}

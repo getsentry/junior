@@ -31,8 +31,8 @@ export function Notice({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.5)]",
-        isError ? "bg-[#1f1216]" : "bg-[#111719]",
+        "overflow-hidden rounded-xl border bg-dashboard-surface-raised shadow-[0_16px_40px_rgba(0,0,0,0.5)]",
+        isError ? "border-rose-300/25" : "border-dashboard-border-strong",
       )}
     >
       <div className="flex min-w-0 items-center gap-3 px-3 py-3">
@@ -91,8 +91,8 @@ export function NoticeAction({
         "shrink-0 cursor-pointer px-3 py-1.5 text-xs transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
         isError ? "focus:ring-rose-300/40" : "focus:ring-dashboard-focus/35",
         isError
-          ? "rounded-lg bg-rose-200/15 font-display font-medium text-rose-50 hover:bg-rose-200/25"
-          : "rounded-lg bg-dashboard-accent/10 font-display font-medium text-dashboard-accent-text hover:bg-dashboard-accent/20",
+          ? "rounded-lg bg-rose-200/15 font-sans font-medium text-rose-50 hover:bg-rose-200/25"
+          : "rounded-lg bg-dashboard-accent/10 font-sans font-medium text-dashboard-accent-text hover:bg-dashboard-accent/20",
         className,
       )}
       type={type}

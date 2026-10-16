@@ -129,13 +129,13 @@ function CodeOverview(props: {
                         {repository.provider}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
+                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
                       {repository.created}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
+                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
                       {formatMergeRate(repository.mergeRate)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
+                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
                       {formatCodeCost(repository.medianCostUsd)}
                     </td>
                   </tr>

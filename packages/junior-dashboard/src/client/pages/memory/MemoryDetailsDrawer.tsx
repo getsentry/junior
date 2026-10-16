@@ -94,7 +94,7 @@ export function MemoryDetailsDrawer(props: {
           ) : null}
         </div>
 
-        <div className="flex items-start gap-3 rounded border border-dashboard-accent/12 bg-dashboard-accent/[0.035] p-3">
+        <div className="flex items-start gap-3 rounded-md border border-dashboard-accent/12 bg-dashboard-accent/[0.035] p-3">
           <BrainCircuit
             aria-hidden="true"
             className="mt-0.5 shrink-0 text-dashboard-accent-text/70"
@@ -126,7 +126,7 @@ export function MemoryDetailsDrawer(props: {
 
         {forgetAction ? (
           <button
-            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-sans font-medium text-xs text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
+            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-sans font-medium text-xs text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
             disabled={props.action.isPending}
             onClick={() => {
               if (

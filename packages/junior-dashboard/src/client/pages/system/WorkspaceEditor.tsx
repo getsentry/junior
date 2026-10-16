@@ -114,7 +114,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           <div className="grid gap-3">
             {props.draft.repos.map((repo, index) => (
               <div
-                className="grid gap-3 rounded-lg border border-white/10 bg-black/20 p-3 sm:p-4"
+                className="grid gap-3 rounded-lg border border-dashboard-border-strong bg-dashboard-overlay-soft p-3 sm:p-4"
                 key={repo.key}
               >
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_auto] sm:items-end">
@@ -202,7 +202,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
 
         {props.error ? <InlineError>{props.error}</InlineError> : null}
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-5">
+        <div className="flex flex-wrap items-center gap-3 border-t border-dashboard-border-subtle pt-5">
           <Button disabled={!props.canSave} type="submit">
             {props.busy
               ? "Saving…"

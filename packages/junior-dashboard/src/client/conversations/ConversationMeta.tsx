@@ -24,7 +24,7 @@ import {
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
-import { cn } from "../styles";
+import { cn, dashboardInlineLinkClass } from "../styles";
 import {
   CostMetric,
   DurationMetric,
@@ -471,7 +471,7 @@ function resourceLinkTitle(link: {
 function LocationLink(props: { label: string; locationUrl?: string }) {
   return props.locationUrl ? (
     <a
-      className="text-dashboard-text underline decoration-dashboard-border-heavy underline-offset-2 transition-colors hover:decoration-dashboard-text-muted"
+      className={dashboardInlineLinkClass}
       href={props.locationUrl}
       rel="noreferrer"
       target="_blank"
@@ -494,7 +494,7 @@ function SourceTask(props: {
   const title = props.sourceTask.title?.trim();
   const link = automationId ? (
     <Link
-      className="text-dashboard-text underline decoration-dashboard-border-heavy underline-offset-2 transition-colors hover:decoration-dashboard-text-muted"
+      className={dashboardInlineLinkClass}
       to={automationPath(automationId)}
     >
       Triggered by {kindLabel}

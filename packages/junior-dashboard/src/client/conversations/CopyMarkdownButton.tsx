@@ -39,7 +39,7 @@ export function CopyMarkdownButton(props: {
     return (
       <button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!props.getMarkdown || status === "copying"}
         onClick={() => void copyMarkdown()}
         type="button"

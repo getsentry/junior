@@ -17,6 +17,7 @@ import {
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { formatTime, peoplePath } from "../../format";
 import { TranscriptText } from "../../conversations/TranscriptText";
+import { cn, dashboardInlineLinkClass } from "../../styles";
 
 /** Show one automation's instruction and metadata in a right-side slide-out. */
 export function AutomationDetailsDrawer(props: {
@@ -30,7 +31,7 @@ export function AutomationDetailsDrawer(props: {
   const { automation } = props;
   const createdBy = automation.createdByEmail ? (
     <Link
-      className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className={cn("font-semibold", dashboardInlineLinkClass)}
       to={peoplePath(automation.createdByEmail)}
     >
       {automation.ownedByViewer ? "you" : automation.createdBy}
@@ -175,10 +176,7 @@ function AutomationExecutionSummary(props: {
   return (
     <div className="text-sm text-dashboard-text-muted">
       {automation.totalRuns > 0 ? (
-        <Link
-          className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
-          to={executionsPath}
-        >
+        <Link className={dashboardInlineLinkClass} to={executionsPath}>
           {runCount} runs / {rangeLabel}
         </Link>
       ) : (
@@ -189,10 +187,7 @@ function AutomationExecutionSummary(props: {
       <span className="mx-2 opacity-45">·</span>
       <span>
         {automation.totalRuns > 0 ? (
-          <Link
-            className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
-            to={executionsPath}
-          >
+          <Link className={dashboardInlineLinkClass} to={executionsPath}>
             {automation.totalRuns} total
           </Link>
         ) : (
@@ -201,7 +196,7 @@ function AutomationExecutionSummary(props: {
         {automation.lastRunAt ? " · Last run " : " · Never run"}
         {automation.lastRunAt && automation.lastConversationId ? (
           <Link
-            className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
+            className={dashboardInlineLinkClass}
             to={conversationPath(automation.lastConversationId)}
           >
             {formatAutomationRunTime(automation.lastRunAt)}

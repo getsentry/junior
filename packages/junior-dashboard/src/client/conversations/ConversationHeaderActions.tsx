@@ -191,7 +191,7 @@ export function HeaderIconButton(props: {
         aria-pressed={props.pressed}
         className={cn(
           "text-dashboard-text-muted",
-          props.pressed && "bg-white/10 text-dashboard-text",
+          props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
         )}
         onClick={props.onClick}
         size="icon"
@@ -233,8 +233,8 @@ function MenuActionButton(props: {
       aria-label={props.label}
       aria-pressed={props.pressed}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none",
-        props.pressed && "bg-white/[0.08]",
+        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none",
+        props.pressed && "bg-dashboard-fill-strong",
       )}
       onClick={props.onClick}
       type="button"
@@ -258,7 +258,7 @@ function ArchiveConversationButton(
     return (
       <button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={props.disabled}
         onClick={props.onClick}
         type="button"

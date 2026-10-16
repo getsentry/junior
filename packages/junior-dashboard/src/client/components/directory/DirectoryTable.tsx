@@ -84,7 +84,7 @@ export function DirectoryIdentity(props: {
     <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">
       <span
         className={cn(
-          "grid size-9 shrink-0 place-items-center rounded border border-white/10 transition-colors",
+          "grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border-strong transition-colors",
           props.iconClassName,
         )}
       >

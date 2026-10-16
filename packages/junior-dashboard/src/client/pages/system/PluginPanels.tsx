@@ -31,19 +31,19 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
   );
   return (
     <Link
-      className="group grid min-w-0 gap-4 rounded-lg border border-white/[0.07] bg-dashboard-surface-panel/85 p-4 no-underline transition-colors hover:border-dashboard-accent/20 hover:bg-dashboard-accent/[0.025] sm:p-5"
+      className="group grid min-w-0 gap-4 rounded-lg border border-dashboard-border bg-dashboard-surface-panel/85 p-4 no-underline transition-colors hover:border-dashboard-accent/20 hover:bg-dashboard-accent/[0.025] sm:p-5"
       to={systemPluginPath(props.plugin.name)}
     >
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-accent/15 bg-dashboard-accent/[0.075] text-dashboard-accent-text">
+          <div className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-accent/15 bg-dashboard-accent/[0.075] text-dashboard-accent-text">
             <Boxes aria-hidden="true" size={16} strokeWidth={1.8} />
           </div>
           <div className="min-w-0">
             <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
               {props.plugin.displayName}
             </h3>
-            <p className="mt-1 mb-0 line-clamp-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+            <p className="mt-1 mb-0 line-clamp-2 font-sans text-xs leading-relaxed text-dashboard-text-muted">
               {props.plugin.description}
             </p>
           </div>
@@ -59,7 +59,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         <div
           className={`grid ${
             metrics.length === 1 ? "grid-cols-1" : "grid-cols-2"
-          } gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]`}
+          } gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover`}
         >
           {metrics.slice(0, 2).map((metric) => (
             <div
@@ -77,7 +77,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/[0.055] pt-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashboard-border-subtle pt-3">
         <PanelFact
           icon={Sparkles}
           label={`${props.plugin.skills.length} skills`}

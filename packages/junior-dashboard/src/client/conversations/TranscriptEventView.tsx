@@ -41,7 +41,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
               strokeWidth={2.2}
             />
           </TranscriptSummary>
-          <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border bg-dashboard-surface-panel px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border bg-dashboard-surface-panel px-3 py-2 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             <HighlightText text={text} />
           </pre>
         </details>

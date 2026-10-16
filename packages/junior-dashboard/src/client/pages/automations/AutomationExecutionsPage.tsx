@@ -87,7 +87,7 @@ export function AutomationExecutionsPage(props: { enabled: boolean }) {
               : "Automation executions could not be loaded. Try again."}
           </InlineError>
           <Link
-            className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+            className="mt-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
             to={
               automationId ? automationPath(automationId) : "/automations/list"
             }
@@ -122,7 +122,7 @@ function AutomationExecutionsView(props: {
     <>
       <div>
         <Link
-          className="mb-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+          className="mb-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
           to={props.backTo}
         >
           <ArrowLeft aria-hidden="true" size={14} />

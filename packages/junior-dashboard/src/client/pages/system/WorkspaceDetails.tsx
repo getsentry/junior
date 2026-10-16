@@ -1,7 +1,4 @@
-import type {
-  StatsReport,
-  WorkspaceReport,
-} from "@sentry/junior/api/schema";
+import type { StatsReport, WorkspaceReport } from "@sentry/junior/api/schema";
 
 import { useStatsData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -58,7 +55,7 @@ export function WorkspaceDetailsContent(props: {
       ) : (
         <div className="grid min-w-0 gap-3">
           {props.error ? (
-            <p className="m-0 font-mono text-xs text-rose-200/65">
+            <p className="m-0 font-sans text-xs text-rose-200/65">
               Workspace usage refresh failed. Showing cached data.
             </p>
           ) : null}

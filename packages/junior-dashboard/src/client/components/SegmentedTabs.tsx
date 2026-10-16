@@ -88,7 +88,7 @@ export function SegmentedTabs<const Value extends string>(props: {
       </div>
       <div
         aria-labelledby={`${id}-${props.value}`}
-        className="min-w-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        className="min-w-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
         id={`${id}-panel`}
         role="tabpanel"
         tabIndex={0}

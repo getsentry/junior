@@ -24,7 +24,7 @@ export function TranscriptTurnContextView(props: {
         aria-expanded={open}
         aria-label="View turn context"
         className={cn(
-          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         onClick={() => setOpen(true)}

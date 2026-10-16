@@ -91,7 +91,7 @@ function PendingMetaIcons(props: {
                 ? "Could not remove. Try again."
                 : "Remove queued message"
             }
-            className="inline-flex size-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+            className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
             disabled={props.cancelDisabled}
             onClick={props.onCancel}
             type="button"

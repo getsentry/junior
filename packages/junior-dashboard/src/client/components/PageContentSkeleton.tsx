@@ -96,7 +96,7 @@ function LibrarySkeleton() {
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <SkeletonBone className="h-7 w-56 rounded bg-dashboard-fill-soft" />
+        <SkeletonBone className="h-7 w-56 rounded-md bg-dashboard-fill-soft" />
         <SkeletonBone className="h-10 w-full max-w-md rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint sm:w-72" />
       </div>
       <div
@@ -108,7 +108,7 @@ function LibrarySkeleton() {
             className="flex items-center justify-between gap-2 px-3 py-2.5 sm:justify-start"
             key={index}
           >
-            <SkeletonBone className="h-3 w-12 rounded bg-dashboard-fill-soft" />
+            <SkeletonBone className="h-3 w-12 rounded-md bg-dashboard-fill-soft" />
             <SkeletonBone className="h-5 w-8 rounded-sm border border-dashboard-border-subtle bg-dashboard-fill-faint" />
           </div>
         ))}

@@ -17,7 +17,7 @@ export function DirectorySortSelect(props: {
       </span>
       <select
         aria-label={props.ariaLabel}
-        className="h-full min-w-0 bg-dashboard-control px-2 font-mono text-xs text-dashboard-text-muted outline-none [color-scheme:var(--dashboard-color-scheme,dark)]"
+        className="h-full min-w-0 bg-dashboard-control px-2 font-sans text-xs text-dashboard-text-muted outline-none [color-scheme:var(--dashboard-color-scheme,dark)]"
         value={props.value}
         onChange={(event) => props.onChange(event.currentTarget.value)}
       >

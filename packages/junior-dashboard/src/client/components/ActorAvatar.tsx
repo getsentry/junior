@@ -9,10 +9,13 @@ export function ActorAvatar(props: {
 }) {
   const [failedUrl, setFailedUrl] = useState<string>();
   const words = props.name.trim().split(/\s+/).filter(Boolean);
+  // The compact size fits one initial at the 12px type floor.
   const initials =
-    words.length > 1
-      ? `${words[0]![0]}${words.at(-1)![0]}`
-      : props.name.slice(0, 2);
+    props.size === "list"
+      ? props.name.trim().slice(0, 1)
+      : words.length > 1
+        ? `${words[0]![0]}${words.at(-1)![0]}`
+        : props.name.slice(0, 2);
   return (
     <span
       aria-hidden="true"

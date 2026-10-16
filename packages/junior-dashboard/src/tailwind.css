@@ -2,15 +2,16 @@
 @import "tailwindcss";
 
 /*
- * Dashboard color tokens.
- * Keep structural UI colors here so light/dark themes can share one utility surface.
+ * Dashboard design tokens. components/README.md explains each role.
+ * Keep structural UI colors here so a second theme can redefine them.
  * Prefer roles over opacity ladders. Status accents stay as Tailwind palette utilities.
  */
 @theme {
+  /* Headings, record titles, and large metric values. */
   --font-display:
     "Outfit", "Avenir Next", Avenir, "Segoe UI", -apple-system,
     BlinkMacSystemFont, sans-serif;
-  /* Primary UI/body face. Prefer Inter over the previous mono-first shell. */
+  /* UI face for prose, controls, navigation, labels, and names. */
   --font-sans:
     "Inter", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu,
     sans-serif;

@@ -72,11 +72,11 @@ export function ConversationMemories(props: { conversationId: string }) {
           <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
             {memory.content}
           </p>
-          <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs text-dashboard-text-muted">
-            <span className="rounded border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs tabular-nums text-dashboard-text-muted">
+            <span className="rounded-md border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
               {memory.kind}
             </span>
-            <span className="rounded border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
+            <span className="rounded-md border border-dashboard-border-subtle bg-dashboard-surface-raised px-1.5 py-0.5">
               {memory.visibility}
             </span>
             <time className="ml-auto" dateTime={memory.capturedAt}>

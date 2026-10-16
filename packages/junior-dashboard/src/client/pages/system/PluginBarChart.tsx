@@ -53,8 +53,8 @@ export function PluginBarChart(props: {
   const zeroY = layout.top + (maximum / span) * layout.plotHeight;
 
   return (
-    <div className="overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel">
-      <div className="border-b border-white/[0.06] px-4 py-3">
+    <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel">
+      <div className="border-b border-dashboard-border-subtle px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h4 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
             {widget.title}
@@ -79,7 +79,7 @@ export function PluginBarChart(props: {
         ) : null}
       </div>
       {categories.length === 0 ? (
-        <p className="m-0 p-4 font-mono text-xs text-dashboard-text-muted">
+        <p className="m-0 p-4 font-sans text-xs text-dashboard-text-muted">
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (

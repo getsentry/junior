@@ -77,7 +77,7 @@ export function EventUsage({ usage }: { usage?: ConversationUsage }) {
                 >
                   {row.label}
                 </th>
-                <td className="py-2 text-right font-mono tabular-nums text-dashboard-text">
+                <td className="py-2 text-right font-sans tabular-nums text-dashboard-text">
                   {row.tokens === undefined ? (
                     <span
                       aria-label="Not recorded"
@@ -89,7 +89,7 @@ export function EventUsage({ usage }: { usage?: ConversationUsage }) {
                     row.tokens.toLocaleString("en-US")
                   )}
                 </td>
-                <td className="py-2 text-right font-mono tabular-nums text-dashboard-text">
+                <td className="py-2 text-right font-sans tabular-nums text-dashboard-text">
                   {row.cost === undefined ? (
                     <span
                       aria-label="Not recorded separately"

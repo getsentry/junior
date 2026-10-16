@@ -99,10 +99,10 @@ function BreakdownTable(props: {
                   </span>
                 ) : null}
               </th>
-              <td className="py-2 text-right align-top font-mono tabular-nums text-dashboard-text">
+              <td className="py-2 text-right align-top font-sans tabular-nums text-dashboard-text">
                 {row.count}
               </td>
-              <td className="py-2 text-right align-top font-mono tabular-nums text-dashboard-text">
+              <td className="py-2 text-right align-top font-sans tabular-nums text-dashboard-text">
                 {row.cost}
               </td>
             </tr>
@@ -112,10 +112,10 @@ function BreakdownTable(props: {
               <th scope="row" className="py-2 text-left font-semibold">
                 {props.total.label}
               </th>
-              <td className="py-2 text-right font-mono tabular-nums">
+              <td className="py-2 text-right font-sans tabular-nums">
                 {props.total.count}
               </td>
-              <td className="py-2 text-right font-mono tabular-nums">
+              <td className="py-2 text-right font-sans tabular-nums">
                 {props.total.cost}
               </td>
             </tr>
