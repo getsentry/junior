@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { conversationReadColumns } from "@/db/schema/conversations";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
@@ -367,6 +368,7 @@ export async function readConversationFeedFromSql(
     conversationWork,
     lastUserMessageAtByConversation,
     activityPreviewByConversation,
+    automationTitleByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationArchiveTimes(
@@ -392,6 +394,7 @@ export async function readConversationFeedFromSql(
     listConversationWork(conversationIds),
     readLastUserMessageAtByConversation(db, conversationIds),
     readConversationActivityPreviews(db, conversationIds),
+    readAutomationTitlesByConversationId(conversations),
   ]);
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
@@ -422,6 +425,9 @@ export async function readConversationFeedFromSql(
       );
       const summary = conversationSummaryFromStoredConversation({
         ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
+        automationTitle: automationTitleByConversation.get(
+          conversation.conversationId,
+        ),
         conversation,
         access,
         auxiliaryCosts: auxiliaryCosts?.total,

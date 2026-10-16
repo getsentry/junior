@@ -21,6 +21,18 @@ credential subject, Source, Destination, and plugin metadata from the dispatch
 record. The Turn saves Actor for later Runs. The dispatch record remains the
 authority for the other facts until their owning contract changes.
 
+## Conversation Title
+
+A dispatched run has no human message. The run input is a bot-authored user
+message, so the shared title generator uses it as the title source. The title
+is set once, the same as for other Conversations.
+
+- Until the generated title exists, the conversation API returns the name of
+  the linked source Automation. When the API cannot find that Automation, it
+  returns "Automation run". The API does not store this fallback.
+- If generation fails, the title stays unset and the API keeps that fallback.
+  A later transcript write tries generation again.
+
 ## Lifecycle
 
 1. Core task or plugin heartbeat code creates the dispatch idempotently.

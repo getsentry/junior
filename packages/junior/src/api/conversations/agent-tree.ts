@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import { getChildAgentLabel } from "@/chat/agent-invocations/store";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationAgentTreeNode } from "../schema/conversation";
@@ -51,7 +52,10 @@ export async function readConversationAgentTree(
     ? undefined
     : await getConversationStore().get({ conversationId: ids[0]! });
 
-  const access = await readConversationAccessFromSql(getDb(), ids, viewer);
+  const [access, automationTitleByConversation] = await Promise.all([
+    readConversationAccessFromSql(getDb(), ids, viewer),
+    readAutomationTitlesByConversationId(root ? [root] : []),
+  ]);
   return await Promise.all(
     ids.map(async (id) => {
       const itemAccess = access.get(id);
@@ -59,6 +63,7 @@ export async function readConversationAgentTree(
         // The summary projection owns root titles and their privacy labels.
         const summary = conversationSummaryFromStoredConversation({
           access: itemAccess,
+          automationTitle: automationTitleByConversation.get(id),
           conversation: root,
           durationMs: 0,
         });

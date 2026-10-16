@@ -26,6 +26,7 @@ import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationArchivedAt } from "./archive";
 import { readConversationParticipants } from "./participants";
 import { readConversationForks } from "./fork";
@@ -35,6 +36,7 @@ import { readConversationAgentTree } from "./agent-tree";
 function projectConversationDetail(args: {
   access?: ConversationAccess;
   archivedAtMs?: number;
+  automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
   childAgentTotals?: ConversationDetailReport["childAgentTotals"];
@@ -64,6 +66,7 @@ function projectConversationDetail(args: {
       ...(args.archivedAtMs === undefined
         ? undefined
         : { archivedAtMs: args.archivedAtMs }),
+      automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
         ? { childAgentTotals: args.childAgentTotals }
@@ -121,6 +124,7 @@ async function readConversationDetailFromSql(
   const [
     accessByConversation,
     annotations,
+    automationTitleByConversation,
     auxiliaryCostsByConversation,
     briefVersion,
     modelUsage,
@@ -131,6 +135,7 @@ async function readConversationDetailFromSql(
   ] = await Promise.all([
     readConversationAccessFromSql(getDb(), [conversationId], options.viewer),
     listConversationAnnotations(getDb(), conversationId),
+    readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
     record.conversation.transcriptPurgedAtMs === undefined
@@ -172,6 +177,7 @@ async function readConversationDetailFromSql(
     ...record,
     access,
     ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
+    automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,
     auxiliaryCosts: auxiliaryCosts?.total,
