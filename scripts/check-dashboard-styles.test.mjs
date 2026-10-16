@@ -21,6 +21,7 @@ test("reports raw white and black surfaces", () => {
         contents: [
           'const fill = "bg-white/[0.04]";',
           'const edge = "hover:border-black/40";',
+          'const row = "border-b border-b-white/[0.055]";',
           'const shadow = "shadow-black/40 bg-dashboard-fill-soft";',
         ].join("\n"),
       },
@@ -28,6 +29,7 @@ test("reports raw white and black surfaces", () => {
     [
       'src/example.tsx:1: const fill = "bg-white/[0.04]";',
       'src/example.tsx:2: const edge = "hover:border-black/40";',
+      'src/example.tsx:3: const row = "border-b border-b-white/[0.055]";',
     ],
   );
 });

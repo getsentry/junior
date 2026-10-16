@@ -103,8 +103,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
 
 /**
  * Sticky shell chrome: primary header, secondary navigation slot, and banner.
- * One bottom border closes the whole block, so page links read as part of the
- * header.
+ * One bottom border closes the header and page links, so page link
+ * underlines sit on it. Banners render below that border.
  */
 export function DashboardChrome(props: {
   banner?: ReactNode;
@@ -116,9 +116,11 @@ export function DashboardChrome(props: {
   }
 
   return (
-    <div className="sticky top-0 z-30 border-b border-dashboard-border-strong bg-dashboard-bg/95 pt-[env(safe-area-inset-top)]">
-      {props.header}
-      <div className="hidden md:block" ref={chrome.secondarySlotRef} />
+    <div className="sticky top-0 z-30 bg-dashboard-bg/95 pt-[env(safe-area-inset-top)]">
+      <div className="border-b border-dashboard-border-strong">
+        {props.header}
+        <div className="hidden md:block" ref={chrome.secondarySlotRef} />
+      </div>
       {props.banner}
     </div>
   );

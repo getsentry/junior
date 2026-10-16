@@ -147,7 +147,7 @@ export function findComposerSafeAreaBottomPadding(files) {
 // Structural fills, borders, and rings use dashboard tokens, not raw white or
 // black opacity steps. Shadows may still use black.
 const NEUTRAL_SURFACE_LITERAL_PATTERN =
-  /(?<![\w-])(?:[a-z-]+:)*!?(?:bg|border|decoration|divide|fill|outline|ring|stroke)-(?:white|black)(?![\w-])/;
+  /(?<![\w-])(?:[a-z-]+:)*!?(?:bg|border(?:-[xytrblse])?|decoration|divide|fill|outline|ring|stroke)-(?:white|black)(?![\w-])/;
 const DASHBOARD_COLOR_UTILITY_PATTERN =
   /(?<![\w-])(?:[a-z-]+:)*!?(?:accent|bg|border|caret|decoration|divide|fill|from|outline|placeholder|ring|shadow|stroke|text|to|via)-dashboard-([a-z]+(?:-[a-z]+)*)/g;
 
