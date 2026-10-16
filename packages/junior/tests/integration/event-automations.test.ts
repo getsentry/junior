@@ -370,7 +370,15 @@ describe("event automations", () => {
       readAutomationTitlesByConversationId([
         { conversationId: firstConversationId },
       ]),
-    ).resolves.toEqual(new Map([[firstConversationId, firstTask.title]]));
+    ).resolves.toEqual(
+      // An untitled Automation is named by the first line of its instruction.
+      new Map([
+        [
+          firstConversationId,
+          firstTask.title ?? "Address the requested changes.",
+        ],
+      ]),
+    );
     expect(firstDispatch?.input).toMatchInlineSnapshot(`
       "[task]
 
