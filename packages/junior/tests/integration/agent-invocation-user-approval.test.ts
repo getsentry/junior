@@ -1,12 +1,22 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/chat/actor";
+import { startAgentInvocationsForChildInput } from "@/chat/agent-invocations/result";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import {
+  createAgentInvocationForMessage,
+  getAgentInvocation,
+  getAgentInvocationIdForEvents,
+} from "@/chat/agent-invocations/store";
+import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import {
   agentInvocationInputText,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import { getConversationEventStore } from "@/chat/db";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   prepareSlackParentConversation,
@@ -50,6 +60,48 @@ async function recordRootMessage(
   ]);
 }
 
+/** Give one watch event to a child Conversation, as the worker does. */
+async function deliverWatchEvent(
+  conversationId: string,
+  options: {
+    queue: ConversationWorkQueue;
+    state: ReturnType<typeof getStateAdapter>;
+  },
+): Promise<AgentInvocation> {
+  const message = createEventInboundMessage({
+    event: {
+      eventKey: "checks-failed",
+      eventType: "pull_request.checks.failed",
+      identifier: "getsentry/junior#1",
+      namespace: "github",
+      occurredAtMs: 1,
+      trustedSummary: "Code change checks failed",
+    },
+    // The burst window has passed.
+    receivedAtMs: 0,
+    subscription: { conversationId, id: "watch-checks" },
+    text: "Code change checks failed",
+  });
+  await startAgentInvocationsForChildInput(
+    {
+      attempt: {
+        ack: async () => undefined,
+        conversationId,
+        drain: async () => [],
+        isFinalAttempt: false,
+        messages: [message],
+      },
+      checkIn: async () => true,
+      conversationId,
+      shouldYield: () => false,
+    },
+    options,
+  );
+  return (await getAgentInvocation(
+    getAgentInvocationIdForEvents(message.inboundMessageId),
+  ))!;
+}
+
 describe("user approval for child agents", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
@@ -89,18 +141,48 @@ describe("user approval for child agents", () => {
         },
         { conversationStore, nowMs: 2_000, queue, state },
       );
-      // A grandchild of the open child reads the same root, with no special
-      // case.
+      // A watch event Turn on the child runs as the event system Actor. It
+      // keeps the user as its task Actor, so review still reads the user's
+      // approval.
+      const watch = await deliverWatchEvent(child.childConversationId, {
+        queue,
+        state,
+      });
+      expect(watch).toMatchObject({
+        actor: EVENT_SYSTEM_ACTOR,
+        taskActor: user,
+      });
+      // A grandchild that the watch event Turn starts reads the same root,
+      // for the same user, with no special case.
       const grandchild = await createAndEnqueueAgentInvocation(
         {
           ...slackInvocationInput,
+          actor: EVENT_SYSTEM_ACTOR,
           idempotencyKey: "spawn-grandchild",
           input: "The user approved it. Unpublish def.png.",
           parentConversationId: child.childConversationId,
+          parentTaskActor: watch.taskActor,
           parentToolCallId: "call-grandchild",
         },
         { conversationStore, nowMs: 3_000, queue, state },
       );
+      expect(grandchild.taskActor).toEqual(user);
+      // The watch result starts a root Event Turn as the event system Actor.
+      // A message from that Turn keeps the child's task Actor.
+      const { invocation: fromEventTurn } =
+        await createAgentInvocationForMessage({
+          actor: EVENT_SYSTEM_ACTOR,
+          childConversationId: child.childConversationId,
+          destination: slackDestination,
+          idempotencyKey: "message-from-event-turn",
+          input: "Checks failed. Try again.",
+          parentConversationId: slackParentConversationId,
+          parentToolCallId: "call-message",
+        });
+      expect(fromEventTurn).toMatchObject({
+        actor: EVENT_SYSTEM_ACTOR,
+        taskActor: user,
+      });
       // The child model reads the task under an agent label. It never
       // becomes user intent: action review reads the root instead.
       expect(agentInvocationInputText(child)).toMatch(
@@ -109,8 +191,8 @@ describe("user approval for child agents", () => {
 
       // Action review reads the root, not the task. Only the user's own
       // message is labeled `user`.
-      const read = async (conversationId: string, actor?: Actor) =>
-        await readRootConversation({ actor, conversationId });
+      const read = async (conversationId: string, taskActor?: Actor) =>
+        await readRootConversation({ conversationId, taskActor });
       await expect(read(child.childConversationId, user)).resolves.toEqual({
         messages: [
           { author: "user", text: "Which images did we publish here?" },
@@ -122,7 +204,21 @@ describe("user approval for child agents", () => {
         ],
         truncated: false,
       });
-      // Without the child's Actor, nothing is the user.
+      // The watch event Turn reads the same approval as the task.
+      await expect(
+        read(child.childConversationId, watch.taskActor),
+      ).resolves.toEqual(await read(child.childConversationId, user));
+      // The event system Actor is not the user, and without a task Actor
+      // nothing is the user.
+      await expect(
+        read(child.childConversationId, EVENT_SYSTEM_ACTOR),
+      ).resolves.toMatchObject({
+        messages: [
+          { author: "other person" },
+          { author: "assistant" },
+          { author: "other person" },
+        ],
+      });
       await expect(read(child.childConversationId)).resolves.toEqual({
         messages: [],
         truncated: false,
@@ -160,7 +256,10 @@ describe("user approval for child agents", () => {
         truncated: false,
       });
 
-      const fromGrandchild = await read(grandchild.childConversationId, user);
+      const fromGrandchild = await read(
+        grandchild.childConversationId,
+        grandchild.taskActor,
+      );
       expect(fromGrandchild.messages.slice(-3)).toEqual(latest);
     } finally {
       await fixture.close();
@@ -217,8 +316,8 @@ describe("user approval for child agents", () => {
       );
 
       const read = await readRootConversation({
-        actor: user,
         conversationId: child.childConversationId,
+        taskActor: child.taskActor,
       });
       expect(read.messages).toHaveLength(16);
       expect(read.messages.at(-1)).toEqual({
@@ -251,17 +350,18 @@ describe("user approval for child agents", () => {
       });
       const instruction =
         "Post the findings as a comment on the Linear issue. Do not post a Slack update.";
+      // An event automation runs as the system Actor of its plugin.
       await recordRootMessage(dispatchConversationId, {
-        author: { isBot: true, userId: "event" },
+        author: { isBot: true, userId: "junior" },
         messageId: dispatchConversationId,
         role: "user",
         text: instruction,
       });
-      const eventActor = { platform: "system", name: "event" } as const;
+      const automationActor = { platform: "system", name: "junior" } as const;
       const child = await createAndEnqueueAgentInvocation(
         {
           ...slackInvocationInput,
-          actor: eventActor,
+          actor: automationActor,
           idempotencyKey: "automation-child",
           input: "The creator approved closing the issue. Mark it Done.",
           parentConversationId: dispatchConversationId,
@@ -270,10 +370,11 @@ describe("user approval for child agents", () => {
         { conversationStore, nowMs: 2_000, queue, state },
       );
 
+      expect(child.taskActor).toEqual(automationActor);
       await expect(
         readRootConversation({
-          actor: eventActor,
           conversationId: child.childConversationId,
+          taskActor: child.taskActor,
         }),
       ).resolves.toEqual({
         messages: [{ author: "automation", text: instruction }],
@@ -282,8 +383,8 @@ describe("user approval for child agents", () => {
       // Another system Actor does not get this run's authority.
       await expect(
         readRootConversation({
-          actor: { platform: "system", name: "scheduler" },
           conversationId: child.childConversationId,
+          taskActor: { platform: "system", name: "scheduler" },
         }),
       ).resolves.toMatchObject({
         messages: [{ author: "event", text: instruction }],
@@ -298,8 +399,8 @@ describe("user approval for child agents", () => {
         });
       }
       const long = await readRootConversation({
-        actor: eventActor,
         conversationId: child.childConversationId,
+        taskActor: child.taskActor,
       });
       expect(long.messages[0]).toEqual({
         author: "automation",

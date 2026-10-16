@@ -12,7 +12,10 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import type { Actor } from "@/chat/actor";
+import { sameActorIdentity } from "@/chat/conversations/provenance";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import {
   agentBindingSchema,
@@ -175,6 +178,7 @@ export function invocationFromRow(
     ...(row.result !== null ? { result: row.result } : undefined),
     source: row.source,
     status: row.status,
+    ...(row.taskActor ? { taskActor: row.taskActor } : undefined),
     ...(row.terminalAt
       ? { terminalAtMs: row.terminalAt.getTime() }
       : undefined),
@@ -381,6 +385,18 @@ async function countActiveChildAgentsForParent(
 }
 
 /**
+ * Return the task Actor of a new task: the Actor of the Run that gives it,
+ * unless that is the event system Actor. Then the task keeps `inherited`: the
+ * task Actor of the parent Run, or of the child.
+ */
+function taskActorFor(
+  actor: Actor,
+  inherited: Actor | undefined,
+): Actor | undefined {
+  return sameActorIdentity(actor, EVENT_SYSTEM_ACTOR) ? inherited : actor;
+}
+
+/**
  * Create or replay the first invocation of one new child agent. A name gives
  * the child a stable Conversation id that later messages can address. A name
  * that is already used throws: later work for that child goes through
@@ -460,6 +476,7 @@ export async function createAgentInvocation(
         title: input.title ?? null,
         actor: input.actor,
         credentialContext: input.credentialContext ?? null,
+        taskActor: taskActorFor(input.actor, input.parentTaskActor) ?? null,
         source: { kind: "agent_invocation" },
         destination: input.destination,
         modelProfile: input.modelProfile ?? null,
@@ -478,57 +495,6 @@ export async function createAgentInvocation(
     }
     return invocation;
   });
-}
-
-/**
- * Create or replay the agent invocation that gives one input to a child
- * Conversation: a result or message from its own child agent, or its own
- * watch events. It continues that Conversation for the same parent as
- * `latest`, and for the same Actor and credentials unless `runAs` sets them.
- * It skips the queue and active-count checks because it continues work that
- * already passed them.
- */
-export async function createAgentInvocationFromLatest(
-  args: {
-    input: string;
-    invocationId: string;
-    latest: AgentInvocation;
-    /** Actor, credentials, and Source for watch events. */
-    runAs?: Pick<AgentInvocation, "actor" | "credentialContext" | "source">;
-  },
-  nowMs = Date.now(),
-): Promise<AgentInvocation> {
-  const { invocationId } = args;
-  await getSqlExecutor()
-    .db()
-    .insert(juniorAgentInvocations)
-    .values({
-      invocationId,
-      parentConversationId: args.latest.parentConversationId,
-      childConversationId: args.latest.childConversationId,
-      agentName: args.latest.agentName ?? null,
-      input: args.input,
-      actor: (args.runAs ?? args.latest).actor,
-      credentialContext: (args.runAs ?? args.latest).credentialContext ?? null,
-      source: args.runAs?.source ?? { kind: "agent_invocation" },
-      destination: args.latest.destination,
-      modelProfile: args.latest.modelProfile ?? null,
-      reasoningLevel: args.latest.reasoningLevel ?? null,
-      status: "pending",
-      mailboxStatus: "pending",
-      createdAt: new Date(nowMs),
-      updatedAt: new Date(nowMs),
-      terminalAt: null,
-    })
-    .onConflictDoNothing();
-  const invocation = await getAgentInvocation(invocationId);
-  if (
-    !invocation ||
-    invocation.childConversationId !== args.latest.childConversationId
-  ) {
-    throw new Error(`Agent invocation creation raced for ${invocationId}`);
-  }
-  return invocation;
 }
 
 /** Find a direct child agent of one parent by name or child Conversation id. */
@@ -606,6 +572,8 @@ export async function createAgentInvocationForMessage(
     idempotencyKey: string;
     input: string;
     parentConversationId: string;
+    /** Task Actor of the parent Run when the parent is a child agent. */
+    parentTaskActor?: Actor;
     parentToolCallId: string;
   },
   nowMs = Date.now(),
@@ -674,6 +642,12 @@ export async function createAgentInvocationForMessage(
           title: null,
           actor: input.actor,
           credentialContext: input.credentialContext ?? null,
+          // A root parent has no task Actor. The child keeps its own.
+          taskActor:
+            taskActorFor(
+              input.actor,
+              input.parentTaskActor ?? latest.taskActor,
+            ) ?? null,
           source: { kind: "agent_invocation" },
           destination: input.destination,
           modelProfile: latest.modelProfile ?? null,

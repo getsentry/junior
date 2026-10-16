@@ -739,6 +739,9 @@ export function createAgentInvocationWorker(
           history,
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
+          ...(invocation.taskActor
+            ? { taskActor: invocation.taskActor }
+            : undefined),
           destination: invocation.destination,
           source: invocation.source,
           ...(location ? { location } : undefined),

@@ -445,13 +445,15 @@ export async function wireAgentTools(
       evidence: () =>
         buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
       // A child has no message from a person. Its authority is in the root
-      // Conversation, read again for each action.
+      // Conversation, read again for each action. The task Actor, not the
+      // Run Actor, is the user there: a watch event Turn runs as the event
+      // system Actor.
       ...(childAgent
         ? {
             rootConversation: async () =>
               await readRootConversation({
-                actor: args.currentActor,
                 conversationId: args.run.conversationId,
+                taskActor: args.run.taskActor,
               }),
           }
         : undefined),

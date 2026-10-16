@@ -8,9 +8,9 @@
  * handoff never rewrite these events, so an early request or a later
  * revocation is still there after the root's model history changes.
  *
- * Only a message whose author has the same Actor identity as the child counts
- * as authority. Each other message keeps its real author as a label and is
- * only context. Nothing is copied into the child.
+ * Only a message whose author has the same Actor identity as the child's task
+ * Actor counts as authority. Each other message keeps its real author as a
+ * label and is only context. Nothing is copied into the child.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -104,7 +104,7 @@ function messageAuthor(
 function messageLabel(
   root: Conversation,
   data: MessageData,
-  actor: Actor,
+  taskActor: Actor,
 ): RootConversationMessage["author"] {
   if (data.role === "assistant") {
     return "assistant";
@@ -117,7 +117,7 @@ function messageLabel(
     return "event";
   }
   const author = messageAuthor(root, data);
-  if (!sameActorIdentity(author, actor)) {
+  if (!sameActorIdentity(author, taskActor)) {
     return author?.platform === "system" ? "event" : "other person";
   }
   return author?.platform === "system" ? "automation" : "user";
@@ -160,17 +160,18 @@ async function readAutomationInstruction(
 
 /**
  * Read a bounded projection of the root Conversation for Guardian review of
- * one child agent action. `actor` is the child's Actor. Only messages that
- * the same Actor wrote, or the Automation run's own instruction for a system
- * Actor, are labeled as authority. When `conversationId` is a root, it
- * returns nothing.
+ * one child agent action. `taskActor` is the child's task Actor, not the Actor
+ * of its Run. Only messages that the task Actor wrote, or the Automation run's
+ * own instruction for its system Actor, are labeled as authority. When
+ * `conversationId` is a root, it returns nothing.
  */
 export async function readRootConversation(args: {
-  actor: Actor | undefined;
   conversationId: string;
+  taskActor: Actor | undefined;
 }): Promise<RootConversation> {
+  const { taskActor } = args;
   const root = await findRootConversation(args.conversationId);
-  if (!root || root.conversationId === args.conversationId || !args.actor) {
+  if (!root || root.conversationId === args.conversationId || !taskActor) {
     return { messages: [], truncated: false };
   }
   const page = await getConversationEventStore().query(root.conversationId, {
@@ -208,7 +209,7 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(root, data, args.actor),
+      author: messageLabel(root, data, taskActor),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
@@ -220,7 +221,7 @@ export async function readRootConversation(args: {
     instruction && instructionText
       ? [
           {
-            author: messageLabel(root, instruction, args.actor),
+            author: messageLabel(root, instruction, taskActor),
             text: truncate(instructionText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]

@@ -22,8 +22,8 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
+import { createAgentInvocationForChildInput } from "./child-input";
 import {
-  createAgentInvocationFromLatest,
   getAgentInvocation,
   getAgentInvocationIdForEvents,
   getAgentInvocationIdForMessage,
@@ -366,9 +366,10 @@ export async function startAgentInvocationsForChildInput(
       return { status: "deferred", delayMs };
     }
     // The events run as the event system Actor, as on a root. A timer may
-    // use the grants of the person who set it.
+    // use the grants of the person who set it. The child keeps its task
+    // Actor, so action review still reads that Actor's root approval.
     const { actor, source } = events[0]!;
-    const invocation = await createAgentInvocationFromLatest({
+    const invocation = await createAgentInvocationForChildInput({
       input: joinMailboxText(messages),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
@@ -400,7 +401,7 @@ export async function startAgentInvocationsForChildInput(
     ) {
       continue;
     }
-    const invocation = await createAgentInvocationFromLatest({
+    const invocation = await createAgentInvocationForChildInput({
       input: message.input.text.trim(),
       invocationId:
         input.kind === "result"

@@ -129,6 +129,10 @@ Canonical words used across Junior's code and documentation.
   message as a steering message. A message to the parent is an Event Inbound
   message, the same as a child result. An agent message is not from a person,
   so it does not give user approval.
+- **Task Actor**: the Actor whose root Conversation messages give user approval
+  to a child agent. It is the Actor of the child's latest task from
+  `spawnAgent` or `messageAgent`, and never the event system Actor. It does not
+  select the Run Actor or its credentials.
 - **Reasoning level**: the configured or selected amount of model reasoning for
   a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Reply**: a destination-visible message owned by delivery or reply-policy

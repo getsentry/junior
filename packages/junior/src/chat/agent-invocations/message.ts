@@ -83,6 +83,7 @@ export function bindMessageAgent(
       idempotencyKey: `${run.turnId}:${call.toolCallId}`,
       input: input.text,
       parentConversationId: run.conversationId,
+      ...(run.taskActor ? { parentTaskActor: run.taskActor } : undefined),
       parentToolCallId: call.toolCallId,
     });
     await enqueueAgentInvocation(invocation, { ...options, queue });
