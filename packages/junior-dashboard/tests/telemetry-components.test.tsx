@@ -161,7 +161,9 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
     configKeys: [],
     description: `${name} plugin description`,
     displayName:
-      name === "github" ? "GitHub" : `${name[0].toUpperCase()}${name.slice(1)}`,
+      name === "github"
+        ? "GitHub"
+        : `${name.charAt(0).toUpperCase()}${name.slice(1)}`,
     name,
     ...overrides,
   };

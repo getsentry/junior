@@ -19,8 +19,7 @@ export function isAuthPath(
   const requestSegments = segments(pathname);
   return routes.some((route) => {
     const routeSegments = segments(route.path);
-    for (let index = 0; index < routeSegments.length; index += 1) {
-      const pattern = routeSegments[index];
+    for (const [index, pattern] of routeSegments.entries()) {
       if (pattern === "*") return true;
       const value = requestSegments[index];
       if (!value || (pattern !== value && !pattern.startsWith(":"))) {

@@ -635,14 +635,23 @@ vi.mock("@/chat/mcp/client", () => {
   }
 
   class MockPluginMcpClient {
+    private readonly plugin: { manifest: { name: string } };
+    private readonly options: {
+      authProvider?: {
+        redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
+      };
+    };
+
     constructor(
-      private readonly plugin: { manifest: { name: string } },
-      private readonly options: {
+      plugin: { manifest: { name: string } },
+      options: {
         authProvider?: {
           redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
         };
       },
     ) {
+      this.plugin = plugin;
+      this.options = options;
       clientOptions.push({ ...options });
     }
 

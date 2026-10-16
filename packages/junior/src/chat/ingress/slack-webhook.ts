@@ -128,7 +128,7 @@ const IGNORED_MESSAGE_SUBTYPES = new Set([
 ]);
 
 class SlackEventPersistenceError extends Error {
-  readonly cause: unknown;
+  override readonly cause: unknown;
 
   constructor(cause: unknown) {
     super("Slack event durable persistence failed");

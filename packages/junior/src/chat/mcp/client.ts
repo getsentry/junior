@@ -89,10 +89,12 @@ export class PluginMcpClient {
   private listedTools?: ListedTool[];
   private readonly resourceHost?: string;
 
-  constructor(
-    private readonly plugin: PluginDefinition,
-    private readonly options: PluginMcpClientOptions = {},
-  ) {
+  private readonly plugin: PluginDefinition;
+  private readonly options: PluginMcpClientOptions;
+
+  constructor(plugin: PluginDefinition, options: PluginMcpClientOptions = {}) {
+    this.plugin = plugin;
+    this.options = options;
     const url = plugin.manifest.mcp?.url;
     this.resourceHost = url ? new URL(url).hostname : undefined;
   }

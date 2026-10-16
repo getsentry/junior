@@ -4,18 +4,22 @@ import { estimateTextTokens } from "@/chat/services/context-budget";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { buildSubscribedReplyRouterPolicy } from "@/chat/services/subscribed-reply-router-policy";
 
-export enum SubscribedReplyReason {
-  ThreadOptOut = "thread_opt_out",
-  ExplicitMention = "explicit_mention",
-  DirectedFollowUp = "directed_follow_up",
-  DirectedToOtherParty = "directed_to_other_party",
-  EmptyMessage = "empty_message",
-  Classifier = "llm_classifier",
-  SideConversation = "side_conversation",
-  LowConfidence = "low_confidence",
-  ClassifierError = "classifier_error",
-  PassiveDisabled = "passive_disabled",
-}
+/** Why the subscribed-thread router chose to reply or stay silent. */
+export const SubscribedReplyReason = {
+  ThreadOptOut: "thread_opt_out",
+  ExplicitMention: "explicit_mention",
+  DirectedFollowUp: "directed_follow_up",
+  DirectedToOtherParty: "directed_to_other_party",
+  EmptyMessage: "empty_message",
+  Classifier: "llm_classifier",
+  SideConversation: "side_conversation",
+  LowConfidence: "low_confidence",
+  ClassifierError: "classifier_error",
+  PassiveDisabled: "passive_disabled",
+} as const;
+
+export type SubscribedReplyReason =
+  (typeof SubscribedReplyReason)[keyof typeof SubscribedReplyReason];
 
 export interface SubscribedDecisionInput {
   rawText: string;
@@ -241,7 +245,7 @@ function parseTranscriptMessages(
 
   for (const line of lines) {
     const match = line.match(TRANSCRIPT_MESSAGE_LINE_RE);
-    if (!match) {
+    if (!match?.[1]) {
       continue;
     }
 
