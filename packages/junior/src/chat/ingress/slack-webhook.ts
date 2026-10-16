@@ -68,6 +68,7 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
+import { closeSlackUserInputOnReply } from "@/chat/slack/user-input-state";
 import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -574,6 +575,10 @@ async function routeParsedMessage(args: {
     route,
     state: args.state,
   });
+  // A message to Junior answers an open question in its thread, like a click.
+  if (route === "mention") {
+    await closeSlackUserInputOnReply(args.state, args.event, message.author);
+  }
 }
 
 async function handleSlackEvent(args: {

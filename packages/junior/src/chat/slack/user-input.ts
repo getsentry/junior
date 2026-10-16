@@ -51,13 +51,17 @@ export function isSlackUserInputActionId(
 
 /**
  * Replace the choices with a note that names the person and their answer.
- * This keeps the question visible and stops more clicks on the same message.
+ * Without a clicked answer, the note says that the person replied. This
+ * keeps the question visible and stops more clicks on the same message.
  */
 export function buildAnsweredSlackUserInputBlocks(args: {
-  answer: string;
+  answer?: string;
   blocks: readonly KnownBlock[];
   userId: string;
 }): KnownBlock[] {
+  const note = args.answer
+    ? `${slackMention(args.userId)} chose *${escapeSlackMrkdwnText(args.answer)}*`
+    : `${slackMention(args.userId)} replied in the thread`;
   return [
     ...args.blocks.filter(
       (block) =>
@@ -68,7 +72,7 @@ export function buildAnsweredSlackUserInputBlocks(args: {
       elements: [
         {
           type: "mrkdwn",
-          text: `${slackMention(args.userId)} chose *${escapeSlackMrkdwnText(args.answer)}*`,
+          text: note,
         },
       ],
     },
