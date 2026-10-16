@@ -171,6 +171,8 @@ export const plugins = defineJuniorPlugins([
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
+This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. It also stores the people who asked for the pull request in the conversation. When the pull request is approved or merged, Junior mentions those people in the thread.
+
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
 
 </details>

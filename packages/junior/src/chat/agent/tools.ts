@@ -386,6 +386,7 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
+    ...(args.currentActors ? { actors: args.currentActors } : undefined),
     ...(args.currentActor
       ? {
           resolveActorIdentity: async () =>

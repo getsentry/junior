@@ -56,6 +56,38 @@ export interface GitHubPullRequestSubscriptionConfig {
   intent: string;
 }
 
+/**
+ * Watch guidance for outcomes that the people involved need to hear about.
+ * The Watch made after Junior creates a pull request always receives these
+ * events and stores the run's Actors, so the Turn knows whom to mention.
+ */
+const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
+  "pull_request.review.approved":
+    "Mention each of the people involved. Tell them who approved the pull request and link it. Do not merge it unless asked.",
+  "pull_request.merged":
+    "Mention each of the people involved. Tell them the pull request merged and link it.",
+} as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
+
+/** Build the Watch created after Junior creates a pull request. */
+export function gitHubPullRequestCreateWatch(
+  config: GitHubPullRequestSubscriptionConfig,
+): {
+  events: GitHubPullRequestEvent[];
+  guidance: Partial<Record<GitHubPullRequestEvent, string>>;
+  includeActors: true;
+  intent: string;
+} {
+  const outcomeEvents = Object.keys(
+    GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
+  ) as GitHubPullRequestEvent[];
+  return {
+    events: [...new Set([...config.events, ...outcomeEvents])],
+    guidance: GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE,
+    includeActors: true,
+    intent: config.intent,
+  };
+}
+
 export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.checks.failed",
   "pull_request.comment.created",

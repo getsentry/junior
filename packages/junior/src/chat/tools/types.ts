@@ -128,6 +128,8 @@ interface BaseToolRuntimeContext {
   destination: Destination;
 
   actor?: Actor;
+  /** Live getter for every Actor whose instructions the run accepted so far. */
+  actors?: () => Actor[];
   resolveActorIdentity?: () => Promise<
     { identity: Identity; user?: User } | undefined
   >;

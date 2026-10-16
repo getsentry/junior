@@ -546,6 +546,16 @@ export interface PluginEventToolContext {
     events: string[];
     intent: string;
     resource: SubscribableResource;
+    /**
+     * Guidance for this Watch only, by event type. Core adds it after the
+     * resource type guidance when a matching Event arrives.
+     */
+    guidance?: Partial<Record<string, string>>;
+    /**
+     * Store the human Actors of the current run on the Watch. Each Event then
+     * lists them, so the Turn can address them without reading the thread.
+     */
+    includeActors?: boolean;
   }): Promise<WatchResult>;
 }
 

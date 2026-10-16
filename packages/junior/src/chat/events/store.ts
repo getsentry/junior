@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import {
+  actorSchema,
   eventMatchSchema,
   eventMatches,
   eventTypeSchema,
   stableEventMatchKey,
+  type Actor,
   type EventData,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
@@ -30,6 +32,8 @@ const subscriptionIdIndexSchema = z.array(z.string().min(1));
 
 const subscriptionSchema = z
   .object({
+    /** Human Actors of the run that created the Watch. Events list them. */
+    actors: z.array(actorSchema).min(1).optional(),
     conversationId: z.string().min(1),
     createdAtMs: z.number().finite(),
     /** Timer creator whose grants the timer Turn may use. */
@@ -37,6 +41,8 @@ const subscriptionSchema = z
     events: z.array(eventTypeSchema).min(1),
     expiresAtMs: z.number().finite(),
     firesAtMs: z.number().finite().optional(),
+    /** Guidance for this Watch only, by event type. */
+    guidance: z.record(eventTypeSchema, z.string().min(1)).optional(),
     id: z.string().min(1),
     intent: z.string().min(1),
     label: z.string().min(1),
@@ -52,9 +58,11 @@ const subscriptionSchema = z
 export type Watch = z.output<typeof subscriptionSchema>;
 
 export interface CreateWatchInput {
+  actors?: Actor[];
   conversationId: string;
   events: string[];
   expiresAtMs: number;
+  guidance?: Partial<Record<string, string>>;
   intent: string;
   label: string;
   match?: EventMatch;
@@ -296,6 +304,20 @@ function matchesEvent(
   );
 }
 
+/** Keep non-empty guidance for events that the Watch receives. */
+function watchGuidance(
+  guidance: Partial<Record<string, string>> | undefined,
+  events: readonly string[],
+): Record<string, string> | undefined {
+  if (!guidance) return undefined;
+  const kept: Record<string, string> = {};
+  for (const eventType of events) {
+    const text = guidance[eventType]?.trim();
+    if (text) kept[eventType] = text;
+  }
+  return Object.keys(kept).length > 0 ? kept : undefined;
+}
+
 /** Create or replace the active subscription for one conversation/resource/event set. */
 export async function createWatch(
   input: CreateWatchInput,
@@ -324,11 +346,16 @@ export async function createWatch(
     namespace: input.namespace,
     identifier: input.identifier,
   });
+  const guidance = watchGuidance(input.guidance, events);
   const record: Watch = {
+    ...(input.actors && input.actors.length > 0
+      ? { actors: input.actors }
+      : undefined),
     conversationId: input.conversationId,
     createdAtMs: nowMs,
     events,
     expiresAtMs: input.expiresAtMs,
+    ...(guidance ? { guidance } : undefined),
     id,
     intent: input.intent,
     label: input.label,

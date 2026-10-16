@@ -59,7 +59,7 @@ import type {
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
-import type { Actor } from "@/chat/actor";
+import { isUserActor, type Actor, type UserActor } from "@/chat/actor";
 import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
@@ -614,6 +614,24 @@ export async function getPluginUserPromptContributions(args: {
   return contributions;
 }
 
+/** Return each human Actor of the run once, current Actor first. */
+function watchActors(context: ToolRuntimeContext): UserActor[] {
+  const candidates = [
+    ...(context.actor ? [context.actor] : []),
+    ...(context.actors?.() ?? []),
+  ];
+  const seen = new Set<string>();
+  const actors: UserActor[] = [];
+  for (const actor of candidates) {
+    if (!isUserActor(actor)) continue;
+    const key = `${actor.platform}:${actor.userId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    actors.push(actor);
+  }
+  return actors;
+}
+
 /** Collect turn-scoped tools exposed by plugins. */
 export function getPluginTools(
   context: ToolRuntimeContext,
@@ -679,10 +697,13 @@ export function getPluginTools(
             "Watch contains an event or resource that the plugin does not support.",
           );
         }
+        const actors = input.includeActors ? watchActors(context) : [];
         const subscription = await createWatch({
+          ...(actors.length > 0 ? { actors } : undefined),
           conversationId: context.conversationId,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+          ...(input.guidance ? { guidance: input.guidance } : undefined),
           intent: input.intent,
           label: input.resource.label,
           namespace: pluginName,

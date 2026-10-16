@@ -90,6 +90,13 @@ Watches route events back into an existing conversation.
   watch without asking the model to call
   `watchEvents`. Forced subscriptions should omit those events from the
   tool result's suggested events.
+- A tool-created Watch can store its own guidance by event type. Core adds it
+  after the resource type guidance, only for that Watch and only for the
+  events that the Watch receives.
+- A tool-created Watch can also store the human Actors of the run that created
+  it (`includeActors`). Core takes them from the run, not from the plugin, so a
+  plugin cannot add people. Each Event lists them as `People involved:`. Slack
+  Actors render as mentions. Guidance says when to address them.
 - Resource types may declare optional app guidance per event type. Core inserts
   that text only for the matching resource type. The prompt applies it within
   the subscription intent or stored event automation instruction. Keep it separate

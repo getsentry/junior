@@ -46,6 +46,8 @@ export function renderTaskInput(args: {
   about?: string;
   /** Mention of the person who created the task, so "me" in it is exact. */
   creator?: string;
+  /** Mentions of the people a watch acts for. Guidance says when to address them. */
+  people?: string[];
   /** Plugin guidance scoped under the instructions. */
   guidance?: string;
   /** Trusted one-line summary, when available. */
@@ -64,6 +66,9 @@ export function renderTaskInput(args: {
 
   const about = args.about?.trim();
   const creator = args.creator?.trim();
+  const people = (args.people ?? [])
+    .map((person) => oneLine(person))
+    .filter(Boolean);
   const lines = [
     "[task]",
     "",
@@ -75,6 +80,7 @@ export function renderTaskInput(args: {
           `Created by: ${oneLine(creator)}. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.`,
         ]
       : []),
+    ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),
     `Instructions: ${instructions}`,
   ];
 

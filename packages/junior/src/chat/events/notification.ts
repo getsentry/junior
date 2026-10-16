@@ -1,8 +1,13 @@
-import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
+import {
+  objectTypeSchema,
+  type Actor,
+  type ObjectType,
+} from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
+import { slackMention } from "@/chat/slack/mrkdwn";
 import { renderTaskInput } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -42,26 +47,46 @@ export interface EventNotification {
  * contract. Stable delivery rules live in runtime and docs, not this prompt.
  */
 export function renderEventNotificationText(
-  subscription: Pick<Watch, "intent" | "label" | "resourceType">,
+  subscription: Pick<
+    Watch,
+    "actors" | "guidance" | "intent" | "label" | "resourceType"
+  >,
   event: Pick<
     EventNotification,
     "namespace" | "eventType" | "trustedSummary" | "data" | "untrustedText"
   >,
 ): string {
-  const guidance = eventGuidance(
-    getEventCatalog(),
-    event.namespace,
-    subscription.resourceType,
-    event.eventType,
-  );
+  // Resource type guidance applies to every Watch. Watch guidance comes from
+  // the tool that created this Watch and applies only here.
+  const guidance = [
+    eventGuidance(
+      getEventCatalog(),
+      event.namespace,
+      subscription.resourceType,
+      event.eventType,
+    ),
+    subscription.guidance?.[event.eventType],
+  ]
+    .filter((text): text is string => Boolean(text?.trim()))
+    .join(" ");
   return renderTaskInput({
     about: subscription.label,
+    ...(subscription.actors
+      ? { people: subscription.actors.map(actorLabel) }
+      : undefined),
     instructions: subscription.intent,
-    guidance,
+    ...(guidance ? { guidance } : undefined),
     trustedSummary: event.trustedSummary,
     verifiedDetails: event.data,
     externalText: event.untrustedText,
   });
+}
+
+/** Slack Actors render as mentions so a reply notifies them. */
+function actorLabel(actor: Actor): string {
+  if (actor.platform === "slack") return slackMention(actor.userId);
+  if (actor.platform === "system") return actor.name;
+  return actor.fullName ?? actor.userName ?? actor.userId;
 }
 
 /** Resource-event metadata stored on plain mailbox input. */
