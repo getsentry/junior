@@ -14,6 +14,9 @@ name, through dashboard settings.
 - The installable shell is static only: a public web app manifest, theme color,
   and install icon. There is no service worker and no offline app shell cache.
 - API schemas under `src/api/` define the client/server boundary.
+- Connected accounts (`/settings/connections`) use the core `/api/connections`
+  contract. It lists plugins with user OAuth, starts OAuth in a new tab, and
+  disconnects. The page refreshes on window focus after OAuth finishes.
 - Plugin user pages use the core `/api/user-pages` contract and render under
   `/plugins/:plugin/:page/*`. Plugins choose primary dashboard navigation or the
   signed-in user menu. Core-rendered lists own metrics, search query state,

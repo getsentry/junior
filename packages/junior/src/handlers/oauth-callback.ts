@@ -383,9 +383,12 @@ export async function GET(
     );
   }
 
+  // Dashboard-started connections belong to a web actor with no App Home.
+  const webActor = stored.actor?.platform === "web";
   if (
     stored.destination?.platform !== "local" &&
-    stored.source?.kind !== "web"
+    stored.source?.kind !== "web" &&
+    !webActor
   ) {
     waitUntil(async () => {
       try {
@@ -471,7 +474,7 @@ export async function GET(
           ? "Your request is being processed in Slack."
           : `Your ${providerLabel} account is connected.`;
   const footerMessage =
-    stored.destination?.platform === "local" || resumesWebTurn
+    stored.destination?.platform === "local" || resumesWebTurn || webActor
       ? `You can close this tab and return to ${botName}.`
       : "You can close this tab and return to Slack.";
   return htmlCallbackResponse(

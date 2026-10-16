@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { createVercelAttachmentStorage } from "./chat/attachments/vercel";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
+import { createConnectionRoutes } from "./api/connections/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
@@ -82,6 +83,7 @@ export function createJuniorApi(
     }),
   );
   app.route("/api/code", createCodeRoutes());
+  app.route("/api/connections", createConnectionRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());

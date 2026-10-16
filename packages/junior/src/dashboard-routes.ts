@@ -209,6 +209,8 @@ function dashboardHostRoutePaths(
     "/api/skills",
     "/api/code",
     "/api/code/*",
+    "/api/connections",
+    "/api/connections/*",
     "/api/stats",
     "/api/conversations",
     "/api/conversations/*",

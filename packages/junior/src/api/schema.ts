@@ -147,6 +147,13 @@ export type {
 export { apiErrorSchema } from "./schema/common";
 export type { ApiError } from "./schema/common";
 export {
+  connectionListSchema,
+  connectionParamsSchema,
+  connectionSchema,
+  disconnectConnectionResponseSchema,
+  startConnectionResponseSchema,
+} from "./schema/connection";
+export {
   createPersonalTokenBodySchema,
   createdPersonalTokenSchema,
   personalTokenListSchema,
