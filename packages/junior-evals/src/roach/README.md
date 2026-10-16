@@ -8,7 +8,7 @@ read and write of the recordings. It keeps them in a GCS bucket, which
 deletes each one 30 days after it was written.
 
 This directory is a copy of the client side of `getsentry/roach` at commit
-`653c28e`. It has no Junior code and uses only Node built-ins. The package
+`9c623c0` (getsentry/roach#11). It has no Junior code and uses only Node built-ins. The package
 `@sentry/roach` is not on npm, and pnpm does not install it from git,
 because its `prepare` script must run. When the package is on npm, use it
 and delete this directory.

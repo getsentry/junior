@@ -114,6 +114,19 @@ function readMode(canWrite: boolean): RecordingMode {
 }
 
 /**
+ * Environment variables with real credentials in CI. The service never
+ * writes their values, also when a response shows one, such as a model that
+ * repeats a token from its prompt. It also learns credentials from request
+ * headers.
+ */
+const SECRET_ENV = [
+  "AI_GATEWAY_API_KEY",
+  "SENTRY_EVALS_API_KEY",
+  "VERCEL_OIDC_TOKEN",
+  "VERCEL_TOKEN",
+];
+
+/**
  * The Roach run configuration of this eval invocation. `canWrite` tells if
  * the invocation has the write token of the service.
  */
@@ -123,6 +136,7 @@ export function roachRunConfig(canWrite: boolean): RunConfig {
     mode: readMode(canWrite),
     allow: ALLOWED_ORIGINS,
     rules: RECORDING_RULES,
+    secrets: SECRET_ENV.flatMap((name) => process.env[name]?.trim() || []),
   };
   // The name of the run in the metrics of the service.
   const runId = process.env.GITHUB_RUN_ID?.trim();

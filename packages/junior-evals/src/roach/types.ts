@@ -87,6 +87,12 @@ export interface RunConfig {
    * `${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}`. Default: the run id.
    */
   name?: string;
+  /**
+   * Credentials that this run must never write, such as the API keys of
+   * its CI job. The service redacts them with the `secrets` of the service
+   * config, keeps them only in memory, and forgets them when the run ends.
+   */
+  secrets?: string[];
 }
 
 /** A run that the service created. */

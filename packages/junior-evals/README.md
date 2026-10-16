@@ -453,7 +453,9 @@ the token and `replay` without it.
   request body in the fixture.
 - The service redacts credentials in recordings. It knows the values of
   request headers whose names can mean a credential, such as `auth`,
-  `token`, or `key`. Recordings are public to anyone who can make the same
+  `token`, or `key`. It also knows the values of the environment variables
+  in `SECRET_ENV` of `src/recording-rules.ts`, because the run config sends
+  them. Add a variable there when CI gets a new credential. Recordings are public to anyone who can make the same
   request, so do not record responses that must stay private.
 
 ### Recordings in CI
