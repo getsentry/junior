@@ -68,7 +68,8 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
-import { closeSlackUserInputOnReply } from "@/chat/slack/user-input-state";
+import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
+import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -124,19 +125,6 @@ const IGNORED_MESSAGE_SUBTYPES = new Set([
   "ekm_access_denied",
   "tombstone",
 ]);
-
-class SlackEventPersistenceError extends Error {
-  readonly cause: unknown;
-  /** True when the mailbox kept the input and only the queue send failed. */
-  readonly saved: boolean;
-
-  constructor(cause: unknown, saved: boolean) {
-    super("Slack event durable persistence failed");
-    this.name = "SlackEventPersistenceError";
-    this.cause = cause;
-    this.saved = saved;
-  }
-}
 
 export interface SlackWebhookServices {
   getUserTokenStore?: () => UserTokenStore;
@@ -564,21 +552,28 @@ async function routeParsedMessage(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
-  await persistSlackMessage({
-    adapter: args.adapter,
-    installation: args.installation,
-    message,
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    receivedAtMs: args.receivedAtMs,
-    route,
-    state: args.state,
-  });
+  const persist = () =>
+    persistSlackMessage({
+      adapter: args.adapter,
+      installation: args.installation,
+      message,
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      receivedAtMs: args.receivedAtMs,
+      route,
+      state: args.state,
+    });
   // A message to Junior answers an open question in its thread, like a click.
-  if (route === "mention") {
-    await closeSlackUserInputOnReply(args.state, args.event, message.author);
-  }
+  await (route !== "mention"
+    ? persist()
+    : persistSlackUserInputReply({
+        author: message.author,
+        event: args.event,
+        isSaved: (e) => e instanceof SlackEventPersistenceError && e.saved,
+        persist,
+        state: args.state,
+      }));
 }
 
 async function handleSlackEvent(args: {
