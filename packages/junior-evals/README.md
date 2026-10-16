@@ -404,10 +404,9 @@ the token and `replay` without it.
   - The `values` of the model rule in `src/recording-rules.ts` cover ids and
     times that only the product makes: UUIDs, SHA-256 ids, git commit ids,
     ISO times and dates, Unix milliseconds, local times, and the event id
-    in a failure notice. Each run sends these patterns to the service, so a
-    new or changed pattern needs no change in `getsentry/roach`. The key of
-    each request has a time limit, so a pattern that backtracks a lot fails
-    its request with HTTP 400. Avoid nested quantifiers, such as `(a+)+`.
+    in a failure notice. Each run sends these patterns to the service. A
+    slow pattern fails its request with HTTP 400, so avoid nested
+    quantifiers, such as `(a+)+`.
   - Roach remembers the values of each request in a test. A later
     request of the same test that repeats one, for example a short commit id
     that the model quotes in its reply, gets the same placeholder.
