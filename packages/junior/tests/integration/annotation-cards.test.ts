@@ -344,7 +344,7 @@ it("saves plugin object results once per reply, leaves background updates silent
           entity_type: "slack#/entities/item",
           entity_payload: {
             attributes: {
-              display_type: "Automation",
+              display_type: "Automation: Fix the parser",
               product_icon: {
                 url: "https://junior.example.com/_junior/dashboard/object-icons/v1/workflow.png",
               },

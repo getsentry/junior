@@ -12,6 +12,7 @@ import {
   type SlackEntity,
   type SlackTextField,
 } from "./work-object";
+import { slackAutomationDisplayType } from "./automation-card";
 import { getSlackClient } from "./client";
 
 type DetailField = NonNullable<
@@ -123,10 +124,7 @@ function renderAutomationDetails(
     entity_payload: {
       attributes: {
         title: { text: automation.title },
-        display_type:
-          automation.kind === "scheduled"
-            ? "Scheduled automation"
-            : "Event automation",
+        display_type: slackAutomationDisplayType(automation.title),
       },
       custom_fields: fields,
     },

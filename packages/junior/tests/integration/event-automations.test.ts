@@ -188,7 +188,7 @@ describe("event automations", () => {
             entity_payload: {
               attributes: {
                 title: { text: cards[0]!.title },
-                display_type: "Automation",
+                display_type: `Automation: ${cards[0]!.title}`,
               },
               custom_fields: [
                 {

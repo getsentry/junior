@@ -8,6 +8,12 @@ function preview(text: string, length: number): string {
   return compact.length > length ? `${compact.slice(0, length - 1)}…` : compact;
 }
 
+/** Name the Automation in the Work Object label, or use plain "Automation". */
+export function slackAutomationDisplayType(title: string): string {
+  const name = preview(title, 160);
+  return name ? `Automation: ${name}` : "Automation";
+}
+
 /** Show an Automation as a native Work Object, not an operation receipt. */
 export function renderSlackAutomationCard(
   card: Pick<AutomationCard, "id" | "title" | "url" | "trigger" | "warning">,
@@ -38,7 +44,7 @@ export function renderSlackAutomationCard(
       entity_payload: {
         attributes: {
           title: { text: title },
-          display_type: "Automation",
+          display_type: slackAutomationDisplayType(card.title),
           product_icon: iconUrl
             ? { url: iconUrl, alt_text: "Automation" }
             : undefined,
