@@ -50,11 +50,7 @@ export function TranscriptAutomationTriggerView(props: {
   const [open, setOpen] = useState(false);
   const promptId = useId();
   const automationId = props.sourceTask.id?.trim();
-  const name =
-    props.sourceTask.title?.trim() ||
-    (props.sourceTask.kind === "scheduled"
-      ? "Scheduled automation"
-      : "Event automation");
+  const name = props.sourceTask.title?.trim() || "Automation";
   const details = [
     props.sourceTask.triggerLabel,
     props.message.timestamp

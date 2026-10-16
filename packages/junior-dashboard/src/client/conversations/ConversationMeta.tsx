@@ -488,11 +488,7 @@ function SourceTask(props: {
 }) {
   const automationId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
-  const label = title
-    ? `Automation: ${title}`
-    : props.sourceTask.kind === "scheduled"
-      ? "Scheduled automation"
-      : "Event automation";
+  const label = title ? `Automation: ${title}` : "Automation";
   return automationId ? (
     <Link
       className={dashboardInlineLinkClass}
