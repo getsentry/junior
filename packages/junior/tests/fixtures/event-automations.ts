@@ -89,7 +89,12 @@ export function changesRequestedEvent(eventKey: string) {
   };
 }
 
-/** Create an event Automation through its production tool. */
+/**
+ * Create an event Automation through its production tool.
+ *
+ * The fixture sets the title. An untitled create asks the live title model,
+ * which answers only where AI Gateway credentials exist.
+ */
 export async function createTask(
   instruction: string,
   toolCallId?: string,
@@ -100,6 +105,7 @@ export async function createTask(
     createEventAutomationTool(taskContext, EVENT_CATALOG),
     {
       instruction,
+      title: `Task: ${instruction}`,
       outcomes: [],
       trigger: {
         namespace: "github",

@@ -163,8 +163,8 @@ describe("event automations", () => {
           kind: "object",
           plugin: "junior",
           key: created.automation.id,
-          label: "Review fixes.",
-          title: "Review fixes.",
+          label: "Task: Review fixes.",
+          title: "Task: Review fixes.",
           trigger: "Review feedback · pull_request.review.commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
@@ -371,13 +371,7 @@ describe("event automations", () => {
         { conversationId: firstConversationId },
       ]),
     ).resolves.toEqual(
-      // An untitled Automation is named by the first line of its instruction.
-      new Map([
-        [
-          firstConversationId,
-          firstTask.title ?? "Address the requested changes.",
-        ],
-      ]),
+      new Map([[firstConversationId, "Task: Address the requested changes."]]),
     );
     expect(firstDispatch?.input).toMatchInlineSnapshot(`
       "[task]
