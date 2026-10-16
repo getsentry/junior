@@ -41,7 +41,7 @@ This plugin adds three skills and installs a browser runtime into the sandbox sn
 
 - `/agent-browser` for general browser interaction
 - `/visual-web-qa` for evidence-driven visual checks
-- `/demo-video` for edited product demo videos with Remotion
+- `/demo-video` for edited demo, walkthrough, and explainer videos with Remotion
 
 Rebuild the sandbox snapshot after you enable the plugin so browser commands work in new sandboxes.
 
@@ -63,7 +63,7 @@ Use `/demo-video` for a product presentation rather than a raw browser recording
 /demo-video Make a 90-second walkthrough of this app with UI captures and narration. Keep the story about what users can do.
 ```
 
-The demo workflow reuses captures and unchanged narration during revisions. It checks the rendered export before delivery. It does not install Remotion or FFmpeg. Use compatible dependencies in a separate artifact project and check the applicable Remotion license. Generated narration needs an enabled [TTS plugin](/extend/tts-plugin/) or another available speech workflow; supplied audio also works. No production changes are needed to make a video.
+The demo workflow reuses captures and unchanged narration during revisions. It times camera moves, highlights, and captions to the spoken words, and it checks the rendered export before delivery. Music is optional and must come from a track you supply or have a license for. It does not install Remotion or FFmpeg. Use compatible dependencies in a separate artifact project and check the applicable Remotion license. Generated narration needs an enabled [TTS plugin](/extend/tts-plugin/) or another available speech workflow; supplied audio also works. No production changes are needed to make a video.
 
 ## Verify
 

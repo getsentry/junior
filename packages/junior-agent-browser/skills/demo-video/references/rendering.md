@@ -59,6 +59,36 @@ startFrame = sum(previous sceneFrames)
 
 Place audio at `leadFrames` within the scene. Ensure fades do not cut off speech. Caption times use the same audio offset. Never keep an old duration after replacing a clip.
 
+With word times from the motion reference, use the last word end instead of `audioSeconds`. Clips often end with silence; this keeps pacing tight. Keep the tail longer than the trailing silence, so the next clip does not overlap.
+
+## Mix Music
+
+Add music only from a user-supplied or licensed track. Record the source and license in the artifact README.
+
+In Remotion, put the track in one `Audio` element over the whole composition. Lower it while narration plays:
+
+```tsx
+<Audio
+  src={staticFile("music.mp3")}
+  volume={(f) => {
+    const fadeIn = interpolate(f, [0, 30], [0, 1], clamp);
+    const fadeOut = interpolate(f, [total - 45, total], [1, 0], clamp);
+    const ducked = speaking(f) ? 0.12 : 0.3; // speaking(f) comes from scene starts and word times
+    return ducked * fadeIn * fadeOut;
+  }}
+/>
+```
+
+Smooth the duck over about 8 frames so it does not pump. Loop or trim the track to the composition length. Do not cut it in the middle of a phrase at the end.
+
+After render, measure loudness. Speech-led videos for chat and laptops work at about −16 to −18 LUFS integrated, with true peaks below −1 dBFS:
+
+```bash
+ffmpeg -hide_banner -i out/demo.mp4 -af ebur128=peak=true -f null - 2>&1 | grep -A14 Summary
+```
+
+If music is too loud under speech, lower the duck level. Do not compress the narration to compete with it.
+
 ## Preview, Then Render
 
 Run from the artifact project. Replace the entry point, composition ID, frame, and output names as needed. Use fresh output names. Add `--browser-executable="$BROWSER"` only after resolving that path.
@@ -94,11 +124,13 @@ ffmpeg -v error -ss 12 -i out/demo.mp4 -frames:v 1 -update 1 out/frame.png
 
 Extract and inspect representative frames from all scenes and changed transitions. Keep captions outside the UI crop. Do not treat a contact sheet as proof that motion or speech timing is correct.
 
-Check the destination's current limit and the file's byte size. Do not assume the upload limit from a previous conversation still applies. If necessary, re-encode the existing master:
+Check the destination's current limit and the file's byte size. Do not assume the upload limit from a previous conversation still applies. A rejected `sendFiles` call reports the limit; one run saw 10,485,760 bytes. If necessary, re-encode the existing master:
 
 ```bash
 ffmpeg -n -i out/demo.mp4 -vf scale=1280:720 -c:v libx264 -preset medium -crf 28 -c:a aac -b:a 96k -movflags +faststart out/demo-delivery.mp4
 ```
+
+For flat UI and motion graphics, `-tune animation` keeps text sharp at lower bitrates. In one run, a 103-second 1080p master became 10.3 MB with `-preset slower -crf 29 -tune animation` and 112k AAC, with readable UI text. Try that before you drop to 720p.
 
 Measure the new file and check its text readability and decoding. If it still exceeds the limit, reduce resolution or bitrate while preserving usable UI text. Keep the original master. For standalone narration, join the original lossless clips with the same scene gaps; do not decode the compressed MP4 audio when source WAV files are available.
 
@@ -108,4 +140,6 @@ Measure the new file and check its text readability and decoding. If it still ex
 - **Private app:** “Use our dashboard in a demo.” Sign-in blocks access. Use an authorized session or the real local UI with isolated, labeled synthetic fixtures. State that this is not a production-data recording. Do not copy private submissions or alter production to make the capture work.
 - **Story correction:** “This is about the product, not your new voice.” Bad: regenerate everything and announce “take three.” Correct: remove voice and take references from spoken and on-screen text, replace only changed clips, recompute timing, and keep useful captures.
 - **Add credit and operations:** “Name my collaborator and explain reminders.” Verify the name and capability. Add the credit and a short workflow explanation, including required confirmation. Do not send a reminder just to illustrate it.
+- **Polish pass:** “Make the animation better.” Keep the approved script and narration. Align words, add the missing UI states, and key camera moves, highlights, and captions to cues. Review still grids and fix defects before the full render. No new speech request is needed.
+- **Source gone:** the Sandbox no longer has last turn's project. Load the source archive that was attached earlier. Rebuild only what is missing.
 - **Upload rejected:** a valid MP4 exceeds the attachment limit. Keep its narration and composition. Make a smaller delivery copy, check it, and resend that file rather than repeating paid generation.
