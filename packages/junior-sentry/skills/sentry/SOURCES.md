@@ -1,6 +1,6 @@
 # Sentry Skill Sources
 
-Last updated: 2026-07-13
+Last updated: 2026-10-16
 
 ## Source inventory
 
@@ -32,7 +32,9 @@ Last updated: 2026-07-13
 | Treat Sentry product feature usage and explicit Sentry telemetry redirects as Sentry skill triggers. | adopted  | Issue 615 showed the previous trigger language under-specified product-introspection queries and let Hex win. |
 | Preserve stale plural subcommands as recommended forms.                                              | rejected | `organizations list` was the root failure; aliases should not be taught as canonical command shapes.          |
 | Create a broad new troubleshooting reference.                                                        | deferred | Current failure modes fit in the focused CLI reference without crowding `SKILL.md`.                           |
-| Permit explicitly requested alert/monitor writes only.                                               | adopted  | `alerts:write` is intentionally narrow; unrelated Sentry mutations remain out of scope.                       |
+| Permit explicitly requested alert/monitor writes only.                                               | replaced | Replaced on 2026-10-16 by the project and team write decision below.                                          |
+| Permit explicitly requested project, team, and alert writes.                                         | adopted  | The OAuth grant already has `project:write` and `team:write`; admin scopes stay out, so deletes stay manual.  |
+| Use `sentry schema` before API writes.                                                               | adopted  | CLI `0.47.0` ships the API schema, so endpoint and field names come from the installed CLI, not memory.       |
 | Prefer first-class `sentry alert metrics` commands.                                                  | adopted  | CLI `0.38.0` supports list, view, create, edit, delete, triggers, and dry-run.                                |
 | Keep API fallback for dynamic anomaly detection.                                                     | adopted  | The current CLI create flags expose threshold triggers but no dynamic/anomaly configuration.                  |
 
@@ -52,6 +54,8 @@ Last updated: 2026-07-13
 - Review the Sentry CLI docs and rerun `pnpm dlx sentry@latest --help` when the plugin pins or upgrades beyond npm `sentry@0.38.0`.
 
 ## Changelog
+
+- 2026-10-16: Added explicit project and team writes (create project, project settings, project teams, team create/update, team members) with dry-run, duplicate, and verify steps. Checked against CLI `0.47.0` help and `sentry schema` output, and Sentry endpoint permissions (`ProjectPermission`, `ProjectTeamsPermission`, `OrganizationTeamMemberPermission`).
 
 - 2026-07-13: Added CLI-first `sentry alert metrics` guidance, explicit-write and duplicate safeguards, API fallback for unsupported anomaly configuration, and `alerts:write` scope behavior.
 - 2026-06-18: Expanded trigger language for Sentry product telemetry and feature usage, and recorded issue 615 routing evidence.
