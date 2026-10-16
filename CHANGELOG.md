@@ -1,4 +1,18 @@
 # Changelog
+## 0.249.0
+
+### New Features ✨
+
+- (evals) Record and replay evals with the Roach service by @sentry-junior in [#2156](https://github.com/getsentry/junior/pull/2156)
+- (sentry) Allow requested Sentry writes beyond alerts by @sentry-junior in [#2158](https://github.com/getsentry/junior/pull/2158)
+- (subagents) Guide parents to write self-contained tasks by @sentry-junior in [#2146](https://github.com/getsentry/junior/pull/2146)
+
+### Bug Fixes 🐛
+
+- (agents) Never take parent agent text as user approval in a child by @sentry-junior in [#2147](https://github.com/getsentry/junior/pull/2147)
+- (dashboard) Make the design system consistent across core UI and the conversation view by @dcramer in [#2157](https://github.com/getsentry/junior/pull/2157)
+- (docs) Center homepage bands below 72rem by @sentry-junior in [#2155](https://github.com/getsentry/junior/pull/2155)
+
 ## 0.248.0
 
 ### New Features ✨
