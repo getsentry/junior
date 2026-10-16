@@ -693,8 +693,7 @@ describe("plugin heartbeat", () => {
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorUserName");
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
     expect(dispatchRecord?.replyAttribution).toEqual({
-      label: "Scheduled automation",
-      detail: "One-time",
+      label: "Automation",
     });
 
     await markDispatchCompleted(running!.dispatchId!, "1700000000.000001");

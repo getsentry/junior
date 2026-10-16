@@ -267,6 +267,7 @@ describe("event automations", () => {
 
     const db = fixture.sql.db();
     const firstTask = (await getEventAutomation(db, first.automation.id))!;
+    const secondTask = (await getEventAutomation(db, second.automation.id))!;
     const paused = await setEventAutomationStatus(
       db,
       firstTask.id,
@@ -315,8 +316,8 @@ describe("event automations", () => {
           }),
           plugin: "junior",
           replyAttribution: {
-            label: "Event automation",
-            detail: "GitHub PR getsentry/junior#1174",
+            label: "Automation",
+            detail: firstTask.title,
           },
           outcomes: [],
         }),
@@ -329,8 +330,8 @@ describe("event automations", () => {
           }),
           plugin: "junior",
           replyAttribution: {
-            label: "Event automation",
-            detail: "GitHub PR getsentry/junior#1174",
+            label: "Automation",
+            detail: secondTask.title,
           },
           outcomes: [],
         }),

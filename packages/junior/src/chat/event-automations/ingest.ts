@@ -10,11 +10,11 @@ import {
   EVENT_SUMMARY_MAX_LENGTH,
   EVENT_TEXT_MAX_LENGTH,
   eventSchema,
-  type ReplyAttribution,
   type Event,
   type TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
+import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
@@ -46,22 +46,6 @@ function eventAutomationDispatchKey(
     .update(`${taskId}\0${namespace}\0${eventKey}`)
     .digest("hex")
     .slice(0, 32)}`;
-}
-
-function oneLine(value: string): string {
-  return value
-    .replace(/[\r\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 512);
-}
-
-/** Compact destination-visible context for event-automation replies. */
-function replyAttribution(task: EventAutomation): ReplyAttribution {
-  const detail = oneLine(task.trigger.label).slice(0, 128).trim();
-  return detail
-    ? { label: "Event automation", detail }
-    : { label: "Event automation" };
 }
 
 /** Render plain agent input for one matching event automation. */
@@ -173,7 +157,7 @@ export async function ingestEventAutomations(
           destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event, outcomes),
           metadata: { eventAutomationId: task.id },
-          replyAttribution: replyAttribution(task),
+          replyAttribution: automationReplyAttribution(task.title),
           outcomes,
         },
       });

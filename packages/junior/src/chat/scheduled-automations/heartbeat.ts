@@ -1,8 +1,5 @@
 import { slackMention } from "@/chat/slack/mrkdwn";
-import {
-  type Dispatch,
-  type ReplyAttribution,
-} from "@sentry/junior-plugin-api";
+import { type Dispatch } from "@sentry/junior-plugin-api";
 import {
   dispatchScheduledAutomation,
   getScheduledAutomationDispatch,
@@ -15,6 +12,7 @@ import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import type { JuniorDatabase } from "@/db/db";
 import {
   advanceScheduledAutomationAfterRun,
@@ -34,13 +32,6 @@ import {
 import type { ScheduledRun, ScheduledAutomation } from "./types";
 
 const SCHEDULED_AUTOMATION_HEARTBEAT_LIMIT = 10;
-
-const SCHEDULE_FREQUENCY_COPY = {
-  daily: { label: "Daily", unit: "day" },
-  weekly: { label: "Weekly", unit: "week" },
-  monthly: { label: "Monthly", unit: "month" },
-  yearly: { label: "Yearly", unit: "year" },
-} as const;
 
 function singleLineMetadataValue(value: string): string {
   return value
@@ -82,23 +73,6 @@ function buildDispatchMetadata(args: {
         }
       : undefined),
   };
-}
-
-function replyAttribution(task: ScheduledAutomation): ReplyAttribution {
-  if (task.schedule.kind === "one_off") {
-    return { label: "Scheduled automation", detail: "One-time" };
-  }
-  const recurrence = task.schedule.recurrence;
-  if (!recurrence) {
-    return { label: "Scheduled automation", detail: "Recurring" };
-  }
-  const frequency = SCHEDULE_FREQUENCY_COPY[recurrence.frequency];
-  return recurrence.interval === 1
-    ? { label: "Scheduled automation", detail: frequency.label }
-    : {
-        label: "Scheduled automation",
-        detail: `Every ${recurrence.interval} ${frequency.unit}s`,
-      };
 }
 
 function shouldSkipRun(
@@ -441,7 +415,7 @@ export async function runScheduledAutomationHeartbeat(args: {
           destinationVisibility: task.conversationAccess.visibility,
           input: buildDispatchInput(task),
           metadata,
-          replyAttribution: replyAttribution(task),
+          replyAttribution: automationReplyAttribution(task.title),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },
       });
