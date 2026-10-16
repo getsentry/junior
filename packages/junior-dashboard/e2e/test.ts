@@ -37,6 +37,12 @@ export const test = base.extend<DashboardFixtures, DashboardWorkerFixtures>({
     await resetDashboardMockState();
     await mockDashboardApis(page, { controlTimers });
     await use(page);
+    // App polling can leave route callbacks in flight when a test ends. Leave
+    // the app first to stop polling and cancel its requests, then drop the
+    // callbacks so a late route.fetch cannot fail teardown. Tests must end
+    // after their own navigations settle, or this navigation is interrupted.
+    await page.goto("about:blank");
+    await page.unrouteAll({ behavior: "ignoreErrors" });
   },
 });
 
