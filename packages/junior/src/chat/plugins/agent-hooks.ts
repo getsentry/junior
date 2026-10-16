@@ -683,7 +683,7 @@ export function getPluginTools(
           conversationId: context.conversationId,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-          ...(input.guidance ? { guidance: input.guidance } : undefined),
+          guidance: input.guidance,
           intent: input.intent,
           label: input.resource.label,
           namespace: pluginName,

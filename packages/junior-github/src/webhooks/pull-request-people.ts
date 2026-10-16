@@ -1,143 +1,138 @@
-import type { EventInput, EventPerson } from "@sentry/junior-plugin-api";
+import type {
+  EventInput,
+  EventPerson,
+  EventPublisher,
+  PluginLogger,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-/**
- * Pull request events that tell the people involved about an outcome. Only
- * these events load people, so other events make no extra GitHub calls.
- */
-export const GITHUB_PULL_REQUEST_PEOPLE_EVENTS: ReadonlySet<string> = new Set([
+/** Pull request outcomes that the people involved need to hear about. */
+const PEOPLE_EVENTS = new Set([
   "pull_request.review.approved",
   "pull_request.merged",
 ]);
-
 const MAX_PEOPLE = 20;
 const PAGE_SIZE = 100;
 const MAX_PAGES = 3;
+const CO_AUTHOR_TRAILER = /^co-authored-by:[^<\n]*<([^>\s]+@[^>\s]+)>\s*$/gim;
+const GITHUB_NOREPLY_EMAIL =
+  /^(?:\d+\+)?(?<login>[^@+]+)@users\.noreply\.github\.com$/i;
 
-const pullRequestPeopleWebhookSchema = z.object({
+const webhookSchema = z.object({
   pull_request: z.object({
-    assignees: z
-      .array(z.object({ login: z.string().min(1) }).passthrough())
-      .optional()
-      .nullable(),
+    assignees: z.array(z.object({ login: z.string().min(1) })).nullish(),
     number: z.number(),
-    user: z
-      .object({ login: z.string().min(1) })
-      .passthrough()
-      .optional()
-      .nullable(),
+    user: z.object({ login: z.string().min(1) }).nullish(),
   }),
   repository: z.object({ full_name: z.string().min(1) }),
 });
 
 const commitPageSchema = z.array(
-  z
-    .object({
-      author: z
-        .object({ login: z.string().min(1) })
-        .passthrough()
-        .nullable()
-        .optional(),
-      commit: z.object({ message: z.string() }).passthrough(),
-    })
-    .passthrough(),
+  z.object({
+    author: z.object({ login: z.string().min(1) }).nullish(),
+    commit: z.object({ message: z.string() }),
+  }),
 );
 
-/** Pull request facts from the webhook that people loading needs. */
+/** The pull request that a people lookup reads. */
 export interface GitHubPullRequestPeopleTarget {
-  /** Pull request author first, then assignees. */
+  /** Pull request author and assignees from the webhook. */
   logins: string[];
   number: number;
   repositoryFullName: string;
 }
 
-/** Read the pull request and its people from a PR or review webhook body. */
-export function gitHubPullRequestPeopleTarget(
-  body: unknown,
-): GitHubPullRequestPeopleTarget | undefined {
-  const parsed = pullRequestPeopleWebhookSchema.safeParse(body);
-  if (!parsed.success) return undefined;
-  const author = parsed.data.pull_request.user?.login;
-  return {
-    logins: [
-      ...(author ? [author] : []),
-      ...(parsed.data.pull_request.assignees ?? []).map(
-        (assignee) => assignee.login,
-      ),
-    ],
-    number: parsed.data.pull_request.number,
-    repositoryFullName: parsed.data.repository.full_name,
-  };
-}
-
-const CO_AUTHOR_TRAILER = /^co-authored-by:[^<\n]*<([^>\s]+@[^>\s]+)>\s*$/gim;
-const GITHUB_NOREPLY_EMAIL =
-  /^(?:\d+\+)?(?<login>[^@+]+)@users\.noreply\.github\.com$/i;
-
-/** Return the email of each `Co-authored-by` trailer in a commit message. */
-export function coAuthorEmails(message: string): string[] {
-  return [...message.matchAll(CO_AUTHOR_TRAILER)].map((match) => match[1]!);
-}
-
 /**
  * Collect the people involved in a pull request: the webhook logins, commit
- * authors, and the co-authors that commit trailers name. Junior adds a trailer
- * for each person whose instructions a run accepted, so people who steer later
- * are included.
- * GitHub noreply emails become GitHub logins. App accounts are skipped.
+ * authors, and `Co-authored-by` trailers. Junior adds a trailer for each
+ * person whose instructions a run accepted, so people who steer later are
+ * included. Noreply emails become logins. `[bot]` accounts are skipped.
  */
 export async function loadGitHubPullRequestPeople(args: {
   logins: readonly string[];
   loadPage(page: number, perPage: number): Promise<unknown>;
 }): Promise<EventPerson[]> {
-  const people: EventPerson[] = [];
-  const seen = new Set<string>();
+  const people = new Map<string, EventPerson>();
   const addLogin = (login: string) => {
-    // App accounts, such as Junior or Dependabot, are not people.
     if (/\[bot\]$/i.test(login)) return;
     const key = `github:${login.toLowerCase()}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    people.push({ provider: "github", handle: login });
+    if (!people.has(key))
+      people.set(key, { provider: "github", handle: login });
   };
   const addEmail = (value: string) => {
-    const email = value.trim().toLowerCase();
+    const email = value.toLowerCase();
     const login = GITHUB_NOREPLY_EMAIL.exec(email)?.groups?.login;
-    if (login) {
-      addLogin(login);
-      return;
+    if (login) addLogin(login);
+    else if (!people.has(`email:${email}`)) {
+      people.set(`email:${email}`, { email });
     }
-    const key = `email:${email}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    people.push({ email });
   };
 
-  for (const login of args.logins) addLogin(login);
+  args.logins.forEach(addLogin);
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const commits = commitPageSchema.parse(
       await args.loadPage(page, PAGE_SIZE),
     );
     for (const commit of commits) {
       if (commit.author) addLogin(commit.author.login);
-      for (const email of coAuthorEmails(commit.commit.message)) {
-        addEmail(email);
+      for (const match of commit.commit.message.matchAll(CO_AUTHOR_TRAILER)) {
+        addEmail(match[1]!);
       }
     }
     if (commits.length < PAGE_SIZE) break;
   }
-  return people.slice(0, MAX_PEOPLE);
+  return [...people.values()].slice(0, MAX_PEOPLE);
 }
 
-/** Add people to the outcome events that need them. Other events are unchanged. */
-export function withGitHubPullRequestPeople(
-  events: EventInput[],
-  people: EventPerson[],
-): EventInput[] {
-  if (people.length === 0) return events;
-  return events.map((event) =>
-    GITHUB_PULL_REQUEST_PEOPLE_EVENTS.has(event.eventType)
-      ? { ...event, people }
-      : event,
+/**
+ * Add the people involved to approval and merge events. It loads them only
+ * when a Watch or event automation matches, so other deliveries make no extra
+ * GitHub calls. People only add context, so a failed load keeps the events.
+ */
+export async function withGitHubPullRequestPeople(args: {
+  body: unknown;
+  deliveryId: string;
+  events: EventInput[];
+  hasMatch: EventPublisher["hasMatch"];
+  load?(target: GitHubPullRequestPeopleTarget): Promise<EventPerson[]>;
+  log?: Pick<PluginLogger, "error">;
+}): Promise<EventInput[]> {
+  const { hasMatch } = args;
+  const peopleEvents = args.events.filter((event) =>
+    PEOPLE_EVENTS.has(event.eventType),
+  );
+  const parsed = webhookSchema.safeParse(args.body);
+  if (peopleEvents.length === 0 || !hasMatch || !args.load || !parsed.success) {
+    return args.events;
+  }
+  const matches = await Promise.all(
+    peopleEvents.map((event) => hasMatch(event)),
+  );
+  if (!matches.some(Boolean)) return args.events;
+
+  const { pull_request: pullRequest, repository } = parsed.data;
+  const target = {
+    logins: [
+      ...(pullRequest.user ? [pullRequest.user.login] : []),
+      ...(pullRequest.assignees ?? []).map((assignee) => assignee.login),
+    ],
+    number: pullRequest.number,
+    repositoryFullName: repository.full_name,
+  };
+  let people: EventPerson[];
+  try {
+    people = await args.load(target);
+  } catch (error) {
+    args.log?.error("GitHub pull request people lookup failed", {
+      deliveryId: args.deliveryId,
+      errorType: error instanceof Error ? error.name : "UnknownError",
+      number: target.number,
+      repository: target.repositoryFullName,
+    });
+    return args.events;
+  }
+  if (people.length === 0) return args.events;
+  return args.events.map((event) =>
+    PEOPLE_EVENTS.has(event.eventType) ? { ...event, people } : event,
   );
 }

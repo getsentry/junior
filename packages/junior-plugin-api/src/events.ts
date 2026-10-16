@@ -290,7 +290,7 @@ export const eventPersonSchema = z.union([
       handle: z.string().min(1),
     })
     .strict(),
-  z.object({ email: z.string().min(3) }).strict(),
+  z.object({ email: z.string().trim().min(3) }).strict(),
 ]);
 
 export type EventPerson = z.output<typeof eventPersonSchema>;

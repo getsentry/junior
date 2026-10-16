@@ -65,9 +65,9 @@ export function renderEventNotificationText(
     .join(" ");
   return renderTaskInput({
     about: subscription.label,
-    ...(people.length > 0 ? { people: [...people] } : undefined),
+    people,
     instructions: subscription.intent,
-    ...(guidance ? { guidance } : undefined),
+    guidance,
     trustedSummary: event.trustedSummary,
     verifiedDetails: event.data,
     externalText: event.untrustedText,
