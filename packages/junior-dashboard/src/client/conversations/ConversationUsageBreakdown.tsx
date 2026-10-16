@@ -24,33 +24,58 @@ import {
   tokenTypeRows,
 } from "./TelemetryMetrics";
 
+/** One token type of a model, shown as an indented row under the model. */
+type BreakdownPart = {
+  cost?: string;
+  count: string;
+  label: string;
+};
+
 type BreakdownRow = {
   cost: string;
   count: string;
-  /** Muted second line, such as the token types of one model. */
-  detail?: string;
   key: string;
   label: ReactNode;
+  parts?: BreakdownPart[];
 };
 
 const NOT_RECORDED = "—";
 
-/** Name each recorded token type, such as `42k input · 4.6k output`. */
-function tokenTypes(
+/**
+ * List each recorded token type of one model with its own count and, when
+ * the provider reports it, its own cost. Reasoning tokens are part of the
+ * output tokens, so they have no cost of their own.
+ */
+function tokenTypeParts(
   usage: ConversationModelUsage["usage"],
-): string | undefined {
+  formatCost: (value: number) => string,
+): BreakdownPart[] | undefined {
   const summary = summarizeUsage(usage);
-  const text = summary
-    ? tokenTypeRows(summary)
-        .map((row) => `${row.value} ${row.label}`)
-        .join(" · ")
-    : "";
-  return text || undefined;
+  if (!summary) return undefined;
+  const cost = summarizeCost(usage);
+  const costs: Readonly<Record<string, number | undefined>> = {
+    cached: cost?.cacheRead,
+    "cache write": cost?.cacheWrite,
+    input: cost?.input,
+    output: cost?.output,
+  };
+  const parts = tokenTypeRows(summary).map((row) => {
+    const value = costs[row.label];
+    return {
+      cost: value === undefined ? undefined : formatCost(value),
+      count: row.value,
+      label: row.label === "reasoning" ? "reasoning (in output)" : row.label,
+    };
+  });
+  return parts.length ? parts : undefined;
 }
+
+const CELL = "text-right align-top font-sans tabular-nums";
 
 /**
  * One usage table. Every table in the breakdown shares column widths, so the
- * cost column lines up from table to table.
+ * cost column lines up from table to table. Each row is its own `tbody`, so
+ * the token types of a model stay grouped under it.
  */
 function BreakdownTable(props: {
   /** Header of the count column, such as Tokens or Calls. */
@@ -83,31 +108,47 @@ function BreakdownTable(props: {
             </th>
           </tr>
         </thead>
-        <tbody>
-          {props.rows.map((row) => (
-            <tr
-              className="border-b border-dashboard-border-subtle last:border-b-0"
-              key={row.key}
-            >
-              <th scope="row" className="py-2 pr-3 text-left font-normal">
-                <span className="block truncate text-dashboard-text">
-                  {row.label}
-                </span>
-                {row.detail ? (
-                  <span className="mt-0.5 block text-dashboard-text-faint">
-                    {row.detail}
-                  </span>
-                ) : null}
+        {props.rows.map((row) => (
+          <tbody
+            className="border-b border-dashboard-border-subtle last-of-type:border-b-0"
+            key={row.key}
+          >
+            <tr className="text-dashboard-text">
+              <th
+                scope="row"
+                className={`pr-3 text-left font-normal ${row.parts ? "pt-2 pb-0.5" : "py-2"}`}
+              >
+                <span className="block truncate">{row.label}</span>
               </th>
-              <td className="py-2 text-right align-top font-sans tabular-nums text-dashboard-text">
+              <td className={`${CELL} ${row.parts ? "pt-2 pb-0.5" : "py-2"}`}>
                 {row.count}
               </td>
-              <td className="py-2 text-right align-top font-sans tabular-nums text-dashboard-text">
+              <td className={`${CELL} ${row.parts ? "pt-2 pb-0.5" : "py-2"}`}>
                 {row.cost}
               </td>
             </tr>
-          ))}
-          {props.total ? (
+            {row.parts?.map((part, index, parts) => {
+              const padding = index === parts.length - 1 ? "pb-2" : "";
+              return (
+                <tr
+                  className="text-[11px] leading-5 text-dashboard-text-faint"
+                  key={part.label}
+                >
+                  <th
+                    scope="row"
+                    className={`truncate pl-3 pr-3 text-left font-normal ${padding}`}
+                  >
+                    {part.label}
+                  </th>
+                  <td className={`${CELL} ${padding}`}>{part.count}</td>
+                  <td className={`${CELL} ${padding}`}>{part.cost}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        ))}
+        {props.total ? (
+          <tfoot>
             <tr className="border-t border-dashboard-border font-semibold text-dashboard-text">
               <th scope="row" className="py-2 text-left font-semibold">
                 {props.total.label}
@@ -119,8 +160,8 @@ function BreakdownTable(props: {
                 {props.total.cost}
               </td>
             </tr>
-          ) : null}
-        </tbody>
+          </tfoot>
+        ) : null}
       </table>
     </div>
   );
@@ -217,7 +258,6 @@ export function ConversationUsageBreakdown(props: {
           rows={models.map(({ cost: itemCost, item, tokens: itemTokens }) => ({
             cost: formatMaybeCost(itemCost),
             count: formatTokens(itemTokens),
-            detail: tokenTypes(item.usage),
             key: item.modelId,
             label: (
               <span className="flex min-w-0 items-baseline gap-2">
@@ -234,6 +274,7 @@ export function ConversationUsageBreakdown(props: {
                 ) : null}
               </span>
             ),
+            parts: tokenTypeParts(item.usage, formatCost),
           }))}
           total={
             models.length > 1
