@@ -69,7 +69,7 @@ export function createSpawnAgentTool(
           .trim()
           .min(1)
           .describe(
-            "Self-contained brief. The child gets no thread history and has its own sandbox, so this is its only context from you. Include: the goal and concrete output; target repos, refs, paths, and URLs; facts you already verified; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and what evidence to return. State rules the child must follow. Do not paste thread history or claim user approval.",
+            "Self-contained task. The child gets no thread history and has its own sandbox, so this is its only context from you. Include: the goal and concrete output; target repos, refs, paths, and URLs; facts you already verified; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and what evidence to return. State rules the child must follow. Do not paste thread history or claim user approval.",
           ),
         title: z
           .string()

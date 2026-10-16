@@ -26,7 +26,7 @@ describe("Child Agents", () => {
     ]);
   });
 
-  test("when the parent delegates, the brief carries facts from earlier thread messages", async ({
+  test("when the parent delegates, the task carries facts from earlier thread messages", async ({
     agent,
   }) => {
     const { run } = await agent({ experimental: { subagents: true } });
@@ -48,7 +48,7 @@ describe("Child Agents", () => {
       (call) => (call.input as { task?: string } | undefined)?.task ?? "",
     );
     expect(tasks).toHaveLength(1);
-    // The child gets no thread history, so the brief must carry the fact
+    // The child gets no thread history, so the task must carry the fact
     // from the earlier message.
     expect(tasks[0]).toContain("README.md");
     expect(tasks[0]).toMatch(/recieve|receive/);
