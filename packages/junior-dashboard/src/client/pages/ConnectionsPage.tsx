@@ -77,11 +77,17 @@ export function ConnectionsPage() {
   });
   const connections = connectionsQuery.data?.connections ?? [];
   const busy = connectMutation.isPending || disconnectMutation.isPending;
+  const pendingProvider = connectMutation.isPending
+    ? connectMutation.variables?.provider
+    : disconnectMutation.isPending
+      ? disconnectMutation.variables?.provider
+      : undefined;
+  const listFailed = !connectionsQuery.data && connectionsQuery.isError;
   const displayedError = connectMutation.isError
     ? "Could not start the connection. Try again."
     : disconnectMutation.isError
       ? "Could not disconnect the account. Try again."
-      : !connectionsQuery.data && connectionsQuery.isError
+      : listFailed
         ? "Could not load connected accounts. Try again."
         : undefined;
 
@@ -96,88 +102,101 @@ export function ConnectionsPage() {
 
         <Card className="mb-0 mt-6" padding="md" variant="raised">
           {displayedError ? (
-            <InlineError className="mb-4">{displayedError}</InlineError>
+            <InlineError className={listFailed ? undefined : "mb-4"}>
+              {displayedError}
+            </InlineError>
           ) : null}
-          <div className="space-y-2">
-            {connectionsQuery.isPending ? (
-              <p className="m-0 text-sm text-dashboard-text-muted">
-                Loading connected accounts…
-              </p>
-            ) : connections.length === 0 && !connectionsQuery.isError ? (
-              <p className="m-0 text-sm text-dashboard-text-muted">
-                No installed plugins support account connections.
-              </p>
-            ) : (
-              connections.map((connection) => (
-                <div
-                  className="flex items-center gap-3 rounded-md border border-dashboard-border-strong p-3"
-                  key={connection.provider}
-                >
-                  <Plug className="shrink-0 text-dashboard-accent" size={16} />
-                  <div className="min-w-0 flex-1">
-                    <p className="m-0 truncate text-sm font-semibold">
-                      {connection.displayName}
-                    </p>
-                    <p className="mt-1 mb-0 truncate text-xs text-dashboard-text-muted">
-                      {connection.connected ? (
-                        connection.account ? (
-                          <>
-                            Connected as{" "}
-                            {connection.account.url ? (
-                              <a
-                                className="text-dashboard-text"
-                                href={connection.account.url}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                {connection.account.label}
-                              </a>
-                            ) : (
-                              connection.account.label
-                            )}
-                          </>
+          {listFailed ? null : (
+            <div className="space-y-2">
+              {connectionsQuery.isPending ? (
+                <p className="m-0 text-sm text-dashboard-text-muted">
+                  Loading connected accounts…
+                </p>
+              ) : connections.length === 0 ? (
+                <p className="m-0 text-sm text-dashboard-text-muted">
+                  No installed plugins support account connections.
+                </p>
+              ) : (
+                connections.map((connection) => (
+                  <div
+                    className="flex items-center gap-3 rounded-md border border-dashboard-border-strong p-3"
+                    key={connection.provider}
+                  >
+                    <Plug
+                      className="shrink-0 text-dashboard-accent"
+                      size={16}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="m-0 truncate text-sm font-semibold">
+                        {connection.displayName}
+                      </p>
+                      <p className="mt-1 mb-0 line-clamp-2 break-words text-xs text-dashboard-text-muted">
+                        {connection.connected ? (
+                          connection.account ? (
+                            <>
+                              Connected as{" "}
+                              {connection.account.url ? (
+                                <a
+                                  className="text-dashboard-text"
+                                  href={connection.account.url}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                >
+                                  {connection.account.label}
+                                </a>
+                              ) : (
+                                connection.account.label
+                              )}
+                            </>
+                          ) : (
+                            "Connected"
+                          )
                         ) : (
-                          "Connected"
-                        )
-                      ) : (
-                        connection.description
-                      )}
-                    </p>
+                          connection.description
+                        )}
+                      </p>
+                    </div>
+                    {connection.connected ? (
+                      <Button
+                        aria-busy={pendingProvider === connection.provider}
+                        aria-label={`Disconnect ${connection.displayName}`}
+                        disabled={busy}
+                        onClick={() => {
+                          connectMutation.reset();
+                          disconnectMutation.mutate(connection);
+                        }}
+                        tone="danger"
+                      >
+                        {pendingProvider === connection.provider
+                          ? "Disconnecting…"
+                          : "Disconnect"}
+                      </Button>
+                    ) : (
+                      <Button
+                        aria-busy={pendingProvider === connection.provider}
+                        aria-label={`Connect ${connection.displayName}`}
+                        disabled={busy}
+                        onClick={() => {
+                          disconnectMutation.reset();
+                          // Open the tab during the click so popup blockers
+                          // allow it, then point it at the provider.
+                          const popup = window.open("about:blank", "_blank");
+                          connectMutation.mutate({
+                            provider: connection.provider,
+                            popup,
+                          });
+                        }}
+                      >
+                        {pendingProvider === connection.provider
+                          ? "Connecting…"
+                          : "Connect"}
+                      </Button>
+                    )}
                   </div>
-                  {connection.connected ? (
-                    <Button
-                      aria-label={`Disconnect ${connection.displayName}`}
-                      disabled={busy}
-                      onClick={() => {
-                        connectMutation.reset();
-                        disconnectMutation.mutate(connection);
-                      }}
-                      tone="danger"
-                    >
-                      Disconnect
-                    </Button>
-                  ) : (
-                    <Button
-                      aria-label={`Connect ${connection.displayName}`}
-                      disabled={busy}
-                      onClick={() => {
-                        disconnectMutation.reset();
-                        // Open the tab during the click so popup blockers
-                        // allow it, then point it at the provider.
-                        const popup = window.open("about:blank", "_blank");
-                        connectMutation.mutate({
-                          provider: connection.provider,
-                          popup,
-                        });
-                      }}
-                    >
-                      Connect
-                    </Button>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
+          )}
         </Card>
       </section>
     </div>
