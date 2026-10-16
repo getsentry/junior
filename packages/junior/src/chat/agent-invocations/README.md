@@ -228,6 +228,12 @@ stored.
   child's action as if the run proposed it: the instruction allows what it
   names. No person can answer in the run, so an action outside the
   instruction is denied, not sent to the user.
+- A `user` or `automation` message authorizes the actions that it names. It
+  also authorizes the conventional low- or medium-risk steps normally needed
+  to deliver that work, within its target and Destination. Guardian uses the
+  same scope rule when the action is not from a child. A parent agent task
+  can choose those steps, but it cannot add work. Approval of one exact
+  action does not cover unrelated, out-of-scope, or high-risk actions.
 - Root assistant text, Event Turn inputs such as child results, and messages
   from other people are labeled as context.
 - The read happens for each action. A later user message, such as a
