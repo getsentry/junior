@@ -12,7 +12,6 @@ import {
   type SlackEntity,
   type SlackTextField,
 } from "./work-object";
-import { slackAutomationHeaderLabel } from "./automation-card";
 import { getSlackClient } from "./client";
 
 type DetailField = NonNullable<
@@ -124,7 +123,8 @@ function renderAutomationDetails(
     entity_payload: {
       attributes: {
         title: { text: automation.title },
-        display_type: slackAutomationHeaderLabel(automation.title),
+        display_id: automation.id,
+        display_type: "Automation",
       },
       custom_fields: fields,
     },

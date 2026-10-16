@@ -8,17 +8,6 @@ function preview(text: string, length: number): string {
   return compact.length > length ? `${compact.slice(0, length - 1)}…` : compact;
 }
 
-/**
- * Build the Work Object header label for an Automation.
- *
- * Slack shows `display_type` as literal text in the Work Object header. It is
- * not a type enum. Use plain "Automation" when the name is empty.
- */
-export function slackAutomationHeaderLabel(title: string): string {
-  const name = preview(title, 160);
-  return name ? `Automation: ${name}` : "Automation";
-}
-
 /** Show an Automation as a native Work Object, not an operation receipt. */
 export function renderSlackAutomationCard(
   card: Pick<AutomationCard, "id" | "title" | "url" | "trigger" | "warning">,
@@ -49,7 +38,8 @@ export function renderSlackAutomationCard(
       entity_payload: {
         attributes: {
           title: { text: title },
-          display_type: slackAutomationHeaderLabel(card.title),
+          display_id: card.id,
+          display_type: "Automation",
           product_icon: iconUrl
             ? { url: iconUrl, alt_text: "Automation" }
             : undefined,
