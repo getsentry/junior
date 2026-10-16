@@ -39,12 +39,15 @@ export function ConnectionsPage() {
     mutationFn: (input: { provider: string; popup: Window | null }) =>
       post(startConnectionResponseSchema, connectionPath(input.provider), {}),
     onSuccess: ({ authorizationUrl }, { popup }) => {
-      if (popup && !popup.closed) {
-        popup.opener = null;
-        popup.location.href = authorizationUrl;
+      // A blocked popup returns null, so use this tab. A tab the viewer
+      // closed means they cancelled; keep them on the dashboard.
+      if (!popup) {
+        window.location.assign(authorizationUrl);
         return;
       }
-      window.location.assign(authorizationUrl);
+      if (popup.closed) return;
+      popup.opener = null;
+      popup.location.href = authorizationUrl;
     },
     onError: (_error, { popup }) => {
       popup?.close();
