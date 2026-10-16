@@ -57,7 +57,6 @@ import {
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
-import { githubBashCloneDenial } from "./clone-policy.js";
 import {
   githubGrantForEgress,
   githubGraphqlPermissionDeniedMessage,
@@ -381,13 +380,6 @@ export function githubPlugin(
       },
       async beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
-          return;
-        }
-        const cloneDenial = githubBashCloneDenial(
-          String(ctx.tool.input.command ?? ""),
-        );
-        if (cloneDenial) {
-          ctx.decision.deny(cloneDenial);
           return;
         }
         const botName = requireEnv(botNameEnv);

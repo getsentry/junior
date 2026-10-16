@@ -22,7 +22,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 
 | Operation               | Command                                                                                         |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
-| Clone (default shallow) | `github_cloneRepository`. Bash denies `git clone` and `gh repo clone` for GitHub.               |
+| Clone (default shallow) | `github_cloneRepository`. Do not use `git clone` or `gh repo clone`.                            |
 | Fetch bounded base      | `git -C DIR fetch --depth=N origin BASE:refs/remotes/origin/BASE`                               |
 | Deepen base             | `git -C DIR fetch --deepen=N origin BASE:refs/remotes/origin/BASE`                              |
 | Unshallow               | `git -C DIR fetch --unshallow origin`                                                           |
