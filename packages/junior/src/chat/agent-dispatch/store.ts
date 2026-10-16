@@ -161,6 +161,8 @@ function normalizeMetadata(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+const DISPATCH_ID_PREFIX = "agent-dispatch:";
+
 function buildDispatchId(plugin: string, idempotencyKey: string): string {
   const digest = createHash("sha256")
     .update(plugin)
@@ -183,12 +185,25 @@ export function parseDispatchRecord(
 export function getDispatchConversationId(
   dispatch: Pick<DispatchRecord, "id">,
 ): string {
-  return `agent-dispatch:${dispatch.id}`;
+  return `${DISPATCH_ID_PREFIX}${dispatch.id}`;
 }
 
 /** Return the stable synthetic input message id for one dispatch turn. */
 export function getDispatchInputMessageId(dispatchId: string): string {
-  return `agent-dispatch:${dispatchId}`;
+  return `${DISPATCH_ID_PREFIX}${dispatchId}`;
+}
+
+/**
+ * Return the input message id of a dispatch Conversation, such as an
+ * Automation run. Other Conversations have no dispatch input.
+ */
+export function getDispatchInputMessageIdForConversation(
+  conversationId: string,
+): string | undefined {
+  if (!conversationId.startsWith(DISPATCH_ID_PREFIX)) return undefined;
+  return getDispatchInputMessageId(
+    conversationId.slice(DISPATCH_ID_PREFIX.length),
+  );
 }
 
 /** Return the stable turn id used by every run of one dispatch. */

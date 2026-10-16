@@ -228,6 +228,8 @@ export const conversationSourceTaskSchema = z
     kind: z.enum(["scheduled", "event"]),
     label: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
+    /** Message id of the run's trigger input, which is not from a person. */
+    triggerMessageId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((value, context) => {

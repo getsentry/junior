@@ -32,6 +32,7 @@ import {
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
+import { getDispatchInputMessageIdForConversation } from "@/chat/agent-dispatch/store";
 import {
   automationDefinition,
   listAutomationVersions,
@@ -808,19 +809,27 @@ export async function readConversationSourceTask(args: {
     conversationId: args.conversationId,
   });
   if (!execution) return undefined;
-  if (!args.viewer) return { kind: execution.kind };
+  const triggerMessageId = getDispatchInputMessageIdForConversation(
+    args.conversationId,
+  );
+  const base = {
+    kind: execution.kind,
+    ...(triggerMessageId ? { triggerMessageId } : undefined),
+  };
+  if (!args.viewer) return base;
   const candidate = await resolveViewerTaskCandidate(
     args.viewer,
     execution.kind,
     execution.automationId,
   );
-  if (!candidate) return { kind: execution.kind };
+  if (!candidate) return base;
   if (candidate.kind === "scheduled") {
     const instruction = displayText(
       candidate.task.task.text,
       "Untitled scheduled automation",
     );
     return {
+      ...base,
       id: candidate.task.id,
       kind: "scheduled",
       label: instruction,
@@ -836,6 +845,7 @@ export async function readConversationSourceTask(args: {
     "Untitled event automation",
   );
   return {
+    ...base,
     id: candidate.task.id,
     kind: "event",
     label: instruction,

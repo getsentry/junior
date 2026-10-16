@@ -30,6 +30,10 @@ import {
   TranscriptMessageView,
 } from "./TranscriptMessageView";
 import { TranscriptEventView } from "./TranscriptEventView";
+import {
+  isAutomationTriggerMessage,
+  TranscriptAutomationTriggerView,
+} from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import {
   groupTranscriptMessages,
@@ -196,7 +200,15 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
         />
       )}
       renderMessage={(entry) =>
-        entry.message.eventType ? (
+        props.conversation.sourceTask &&
+        isAutomationTriggerMessage(props.conversation, entry.message) ? (
+          <TranscriptRailEvent kind="event" objectType="automation">
+            <TranscriptAutomationTriggerView
+              message={entry.message}
+              sourceTask={props.conversation.sourceTask}
+            />
+          </TranscriptRailEvent>
+        ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
             objectType={entry.message.eventObjectType}
@@ -401,7 +413,15 @@ function RedactedTranscriptView(props: {
         />
       )}
       renderMessage={(entry) =>
-        entry.message.eventType ? (
+        props.conversation.sourceTask &&
+        isAutomationTriggerMessage(props.conversation, entry.message) ? (
+          <TranscriptRailEvent kind="event" objectType="automation">
+            <TranscriptAutomationTriggerView
+              message={entry.message}
+              sourceTask={props.conversation.sourceTask}
+            />
+          </TranscriptRailEvent>
+        ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
             objectType={entry.message.eventObjectType}

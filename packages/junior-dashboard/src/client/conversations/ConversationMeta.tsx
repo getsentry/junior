@@ -11,7 +11,6 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
-import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
@@ -20,10 +19,10 @@ import {
   summarizeCost,
   summarizeModelUsage,
   summarizeUsage,
-  automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
+import { ConversationAutomationLink } from "./ConversationAutomationLink";
 import { cn, dashboardInlineLinkClass } from "../styles";
 import {
   CostMetric,
@@ -483,51 +482,6 @@ function LocationLink(props: { label: string; locationUrl?: string }) {
   );
 }
 
-function SourceTask(props: {
-  sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
-}) {
-  const kindLabel =
-    props.sourceTask.kind === "scheduled"
-      ? "Scheduled automation"
-      : "Event automation";
-  const automationId = props.sourceTask.id?.trim();
-  const title = props.sourceTask.title?.trim();
-  const link = automationId ? (
-    <Link
-      className={dashboardInlineLinkClass}
-      to={automationPath(automationId)}
-    >
-      Triggered by {kindLabel}
-    </Link>
-  ) : (
-    <span>Triggered by {kindLabel}</span>
-  );
-  // Keep tooltips to short identity fields. Full task prompts belong on the
-  // task details page, not in hover chrome.
-  if (!title) return link;
-  return (
-    <Tooltip
-      align="left"
-      content={
-        <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <span>Title</span>
-          <span className="text-dashboard-text">{title}</span>
-          {automationId ? (
-            <>
-              <span>ID</span>
-              <span className="break-all text-dashboard-text">
-                {automationId}
-              </span>
-            </>
-          ) : null}
-        </span>
-      }
-    >
-      {link}
-    </Tooltip>
-  );
-}
-
 /** Resolve the model still running an open turn, including mid-turn handoffs. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
@@ -614,7 +568,7 @@ function conversationStatItems(props: {
       : undefined,
     variant === "full" && sourceTask
       ? {
-          content: <SourceTask sourceTask={sourceTask} />,
+          content: <ConversationAutomationLink sourceTask={sourceTask} />,
           key: "source-task",
         }
       : undefined,
