@@ -34,6 +34,11 @@ import {
   isAutomationTriggerMessage,
   TranscriptAutomationTriggerView,
 } from "./TranscriptAutomationTriggerView";
+import {
+  RunAsAuthorAvatar,
+  RunAsAuthorHeading,
+  useRunAsPrototype,
+} from "./RunAsPrototype";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import {
   groupTranscriptMessages,
@@ -176,6 +181,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
     () => groupTranscriptMessages(props.transcript),
     [props.transcript],
   );
+  const runAs = useRunAsPrototype();
   return (
     <TranscriptEntryList
       entries={entries}
@@ -202,12 +208,31 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       renderMessage={(entry) =>
         props.conversation.sourceTask &&
         isAutomationTriggerMessage(props.conversation, entry.message) ? (
-          <TranscriptRailEvent kind="event" objectType="automation">
-            <TranscriptAutomationTriggerView
-              message={entry.message}
-              sourceTask={props.conversation.sourceTask}
-            />
-          </TranscriptRailEvent>
+          runAs?.option === "c" ? (
+            <article className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] gap-3">
+              <div
+                aria-hidden="true"
+                className="flex size-8 items-center justify-center"
+              >
+                <RunAsAuthorAvatar runAs={runAs} />
+              </div>
+              <div className="grid min-w-0 gap-1.5 py-1">
+                <RunAsAuthorHeading runAs={runAs} />
+                <TranscriptAutomationTriggerView
+                  message={entry.message}
+                  sourceTask={props.conversation.sourceTask}
+                />
+              </div>
+            </article>
+          ) : (
+            <TranscriptRailEvent kind="event" objectType="automation">
+              <TranscriptAutomationTriggerView
+                message={entry.message}
+                runAs={runAs?.option === "b" ? runAs : undefined}
+                sourceTask={props.conversation.sourceTask}
+              />
+            </TranscriptRailEvent>
+          )
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"

@@ -8,6 +8,7 @@ import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { cn } from "../styles";
+import { RunAsTriggerLine, type RunAsPrototype } from "./RunAsPrototype";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 
 type SourceTask = NonNullable<ConversationDetailReport["sourceTask"]>;
@@ -31,6 +32,7 @@ export function isAutomationTriggerMessage(
  */
 export function TranscriptAutomationTriggerView(props: {
   message: TranscriptViewMessage;
+  runAs?: RunAsPrototype;
   sourceTask: SourceTask;
 }) {
   const text = messageRawText(props.message);
@@ -83,6 +85,7 @@ export function TranscriptAutomationTriggerView(props: {
           <TranscriptTurnContextView contexts={props.message.contexts} />
         ) : null}
       </div>
+      {props.runAs ? <RunAsTriggerLine runAs={props.runAs} /> : null}
       {text && open ? (
         <pre
           className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border bg-dashboard-surface-panel px-3 py-2 font-sans text-xs leading-relaxed text-dashboard-text-muted"

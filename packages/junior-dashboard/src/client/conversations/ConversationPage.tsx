@@ -30,6 +30,7 @@ import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import { ConversationAutomationLink } from "./ConversationAutomationLink";
+import { RunAsHeaderChip, useRunAsPrototype } from "./RunAsPrototype";
 import {
   ConversationAnnotations,
   ConversationPrivacyChip,
@@ -109,6 +110,7 @@ export function ConversationPage(props: {
       <ParticipantAvatarStack participants={participants} size="detail" />
     ) : null;
   const conversationDetail = detail.data;
+  const runAs = useRunAsPrototype();
   const title =
     conversationDetailTitle(detail.data) ??
     conversationDisplayTitle(conversation);
@@ -275,9 +277,17 @@ export function ConversationPage(props: {
                 <ConversationHeaderMeta
                   automation={
                     detail.data?.sourceTask ? (
-                      <ConversationAutomationLink
-                        sourceTask={detail.data.sourceTask}
-                      />
+                      <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                        <ConversationAutomationLink
+                          sourceTask={detail.data.sourceTask}
+                        />
+                        {runAs?.option === "a" ? (
+                          <>
+                            <span className="text-dashboard-text-muted">·</span>
+                            <RunAsHeaderChip runAs={runAs} />
+                          </>
+                        ) : null}
+                      </span>
                     ) : null
                   }
                   identity={identity}
