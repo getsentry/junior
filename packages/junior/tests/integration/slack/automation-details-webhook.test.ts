@@ -267,7 +267,6 @@ describe("Slack Work Object details", () => {
         entity_payload: {
           attributes: {
             title: { text: "Water reminder" },
-            display_id: task.id,
             display_type: "Automation",
           },
           custom_fields: [
@@ -391,7 +390,6 @@ describe("Slack Work Object details", () => {
         entity_payload: {
           attributes: {
             title: { text: "Issue updates" },
-            display_id: "event_public",
             display_type: "Automation",
           },
           custom_fields: expect.arrayContaining([

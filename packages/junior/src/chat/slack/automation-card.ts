@@ -38,7 +38,6 @@ export function renderSlackAutomationCard(
       entity_payload: {
         attributes: {
           title: { text: title },
-          display_id: card.id,
           display_type: "Automation",
           product_icon: iconUrl
             ? { url: iconUrl, alt_text: "Automation" }

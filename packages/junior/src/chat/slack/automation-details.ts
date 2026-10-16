@@ -123,7 +123,6 @@ function renderAutomationDetails(
     entity_payload: {
       attributes: {
         title: { text: automation.title },
-        display_id: automation.id,
         display_type: "Automation",
       },
       custom_fields: fields,
