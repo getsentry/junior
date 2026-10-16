@@ -1,4 +1,21 @@
 # Changelog
+## 0.250.0
+
+### New Features ✨
+
+- (dashboard) Add connected accounts page for plugin OAuth by @sentry-junior in [#2166](https://github.com/getsentry/junior/pull/2166)
+- (github) Mention the people involved when a PR is approved or merged by @sentry-junior in [#2163](https://github.com/getsentry/junior/pull/2163)
+- (skills) Add narration-timed motion and music to demo video workflow by @sentry-junior in [#2154](https://github.com/getsentry/junior/pull/2154)
+- (slack) Add Conversation ids to thread reads by @sentry-junior in [#2164](https://github.com/getsentry/junior/pull/2164)
+
+### Bug Fixes 🐛
+
+- (github) Point clone guidance at github_cloneRepository by @sentry-junior in [#2165](https://github.com/getsentry/junior/pull/2165)
+
+### Internal Changes 🔧
+
+- (dashboard) Capture every chart in the gallery for visual review by @sentry-junior in [#2161](https://github.com/getsentry/junior/pull/2161)
+
 ## 0.249.0
 
 ### New Features ✨
