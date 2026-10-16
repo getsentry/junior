@@ -101,9 +101,10 @@ export function activityGroupSummary(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
   const eventCount = entries.filter((entry) => entry.kind === "message").length;
+  const [onlyHandoff] = handoffs;
   const handoffSummary =
-    handoffs.length === 1
-      ? `model handoff to ${handoffs[0].modelId} (${handoffs[0].modelProfile})`
+    handoffs.length === 1 && onlyHandoff
+      ? `model handoff to ${onlyHandoff.modelId} (${onlyHandoff.modelProfile})`
       : handoffs.length > 1
         ? countLabel(handoffs.length, "model handoff", "model handoffs")
         : undefined;

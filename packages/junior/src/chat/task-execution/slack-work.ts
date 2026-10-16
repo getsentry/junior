@@ -807,6 +807,7 @@ export function createSlackConversationWorker(
           }
           throw error;
         }
+        return undefined;
       },
     });
     if (
