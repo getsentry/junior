@@ -2,7 +2,10 @@ import { z } from "zod";
 import type { StateAdapter } from "chat";
 import { logException } from "@/chat/logging";
 import { updateSlackMessage } from "@/chat/slack/outbound";
-import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 import {
   buildAnsweredSlackUserInputBlocks,
   buildSlackUserInputMessage,
@@ -72,51 +75,94 @@ export async function recordOpenSlackUserInput(
   );
 }
 
-/**
- * Close the open question of a Slack thread after a person answers it with a
- * message to Junior instead of a click. This claims the question, so a later
- * click does nothing, and replaces the buttons with a note.
- *
- * The answer is already saved, so a failure here only leaves stale buttons.
- */
-export async function closeSlackUserInputOnReply(
-  state: StateAdapter,
-  event: { channel?: string; thread_ts?: string },
+interface OpenSlackUserInput {
+  channelId: string;
+  messageTs: SlackMessageTs;
+  request: UserInputRequest;
+}
+
+/** Claim the open question of a Slack thread for a reply, if there is one. */
+async function claimOpenSlackUserInput(args: {
+  author: { userId: string };
+  event: { channel?: string; thread_ts?: string };
+  state: StateAdapter;
+}): Promise<OpenSlackUserInput | undefined> {
+  const channelId = args.event.channel;
+  const threadTs = parseSlackMessageTs(args.event.thread_ts);
+  if (!channelId || !threadTs) return undefined;
+  const open = openUserInputSchema.safeParse(
+    await args.state.get(openKey(channelId, threadTs)),
+  );
+  if (!open.success) return undefined;
+  const messageTs = parseSlackMessageTs(open.data.messageTs);
+  if (
+    !messageTs ||
+    !(await claimSlackUserInput(args.state, {
+      channelId,
+      messageTs,
+      userId: args.author.userId,
+    }))
+  ) {
+    return undefined;
+  }
+  return { channelId, messageTs, request: open.data.request };
+}
+
+/** Replace the buttons of an answered question with a note. Best effort. */
+async function closeAnsweredSlackUserInput(
+  open: OpenSlackUserInput,
   author: { userId: string },
 ): Promise<void> {
-  const channelId = event.channel;
-  const threadTs = parseSlackMessageTs(event.thread_ts);
-  if (!channelId || !threadTs) return;
-  const key = openKey(channelId, threadTs);
+  const message = buildSlackUserInputMessage(open.request);
   try {
-    const open = openUserInputSchema.safeParse(await state.get(key));
-    if (!open.success) return;
-    await state.delete(key);
-    const messageTs = parseSlackMessageTs(open.data.messageTs);
-    if (
-      !messageTs ||
-      !(await claimSlackUserInput(state, {
-        channelId,
-        messageTs,
-        userId: author.userId,
-      }))
-    ) {
-      return;
-    }
-    const message = buildSlackUserInputMessage(open.data.request);
     await updateSlackMessage({
       blocks: buildAnsweredSlackUserInputBlocks({
         blocks: message.blocks,
         userId: author.userId,
       }),
-      channelId,
+      channelId: open.channelId,
       text: message.text,
-      timestamp: messageTs,
+      timestamp: open.messageTs,
     });
   } catch (error) {
+    // The reply is already saved. A stale button row is only cosmetic.
     logException(error, "slack.user_input.reply_close.failed", {
-      "app.slack.channel_id": channelId,
-      "app.slack.thread_ts": threadTs,
+      "app.slack.channel_id": open.channelId,
+      "app.slack.message_ts": open.messageTs,
     });
   }
+}
+
+/**
+ * Save a message to Junior that can answer the open question of its Slack
+ * thread instead of a click. The reply claims the question before Junior saves
+ * it, the same order as a click, so only the first of them is the answer. When
+ * the reply wins, its buttons change to a note. When Junior did not save the
+ * reply, the claim is released so a click or a Slack retry can answer.
+ *
+ * `isSaved` tells if a failed `persist` still saved the reply.
+ */
+export async function persistSlackUserInputReply(args: {
+  author: { userId: string };
+  event: { channel?: string; thread_ts?: string };
+  isSaved: (error: unknown) => boolean;
+  persist: () => Promise<void>;
+  state: StateAdapter;
+}): Promise<void> {
+  const open = await claimOpenSlackUserInput(args);
+  if (!open) {
+    await args.persist();
+    return;
+  }
+  try {
+    await args.persist();
+  } catch (error) {
+    if (args.isSaved(error)) {
+      await closeAnsweredSlackUserInput(open, args.author);
+    } else {
+      await releaseSlackUserInput(args.state, open);
+    }
+    throw error;
+  }
+  await closeAnsweredSlackUserInput(open, args.author);
 }
