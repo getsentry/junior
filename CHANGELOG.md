@@ -1,4 +1,25 @@
 # Changelog
+## 0.251.0
+
+### New Features ✨
+
+- (conversations) Deliver Conversation notes on a Conversation's next Turn by @sentry-junior in [#2177](https://github.com/getsentry/junior/pull/2177)
+- (dashboard) Show an automation card at the top of automation runs by @sentry-junior in [#2170](https://github.com/getsentry/junior/pull/2170)
+- (guardian) Allow by default and block only on a named rule by @sentry-junior in [#2180](https://github.com/getsentry/junior/pull/2180)
+- (watches) Let a parent list and stop its child agents' watches by @sentry-junior in [#2172](https://github.com/getsentry/junior/pull/2172)
+
+### Bug Fixes 🐛
+
+#### Automations
+
+- Title automation runs instead of "Internal" by @sentry-junior in [#2169](https://github.com/getsentry/junior/pull/2169)
+- Name the Automation in its reply footer by @sentry-junior in [#2167](https://github.com/getsentry/junior/pull/2167)
+
+#### Other
+
+- (dashboard) Show model token types as table rows by @sentry-junior in [#2168](https://github.com/getsentry/junior/pull/2168)
+- (guardian) Let a child's root request cover its conventional steps by @sentry-junior in [#2173](https://github.com/getsentry/junior/pull/2173)
+
 ## 0.250.0
 
 ### New Features ✨
