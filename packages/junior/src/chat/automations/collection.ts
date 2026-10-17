@@ -5,7 +5,7 @@ import { and, asc, count, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import {
-  juniorAutomationExecutions,
+  juniorAutomationRuns,
   juniorAutomations,
   juniorDestinations,
 } from "@/db/schema";
@@ -67,10 +67,10 @@ export function viewerAutomationCollection(user: User) {
         },
       ),
     ) ?? sql`false`;
-  const executions = juniorAutomationExecutions;
-  const lastRunNeedsAttention = sql<boolean>`coalesce((select ${executions.status} in ('failed', 'blocked') from ${executions}
-      where ${executions.kind} = ${automation.kind} and ${executions.namespace} = 'junior' and ${executions.automationId} = ${automation.id}
-      order by ${executions.executedAtMs} desc, ${executions.executionId} desc limit 1), false)`;
+  const runs = juniorAutomationRuns;
+  const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
+      where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
+      order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), false)`;
   return db
     .select({
       kind: automation.kind,

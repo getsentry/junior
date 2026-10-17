@@ -9,14 +9,12 @@ import {
   readScheduledAutomation,
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
-import {
-  scheduledRunSchema,
-  type ScheduledAutomation,
-} from "@/chat/scheduled-automations/types";
+import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { getDb } from "@/chat/db";
 import {
+  getDispatchConversationId,
   getDispatchRecord,
   getDispatchStorageKey,
   markDispatchBlocked,
@@ -87,12 +85,11 @@ async function runAuthorizedHeartbeat(): Promise<void> {
 
 const scheduledAutomationDb = (): JuniorDatabase => getDb();
 async function readScheduledRun(db: JuniorDatabase, id: string) {
-  const rows = await db
-    .select({ record: juniorSchedulerRuns.record })
-    .from(juniorSchedulerRuns)
-    .where(eq(juniorSchedulerRuns.id, id));
-  const parsed = scheduledRunSchema.safeParse(rows[0]?.record);
-  return parsed.success ? parsed.data : undefined;
+  const [row] = await db
+    .select()
+    .from(juniorAutomationRuns)
+    .where(eq(juniorAutomationRuns.id, id));
+  return row;
 }
 
 function createTask(
@@ -668,6 +665,10 @@ describe("plugin heartbeat", () => {
       status: "running",
       dispatchId: expect.any(String),
     });
+    // The run links its Conversation when it is dispatched.
+    expect(running?.conversationId).toBe(
+      getDispatchConversationId({ id: running!.dispatchId! }),
+    );
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);

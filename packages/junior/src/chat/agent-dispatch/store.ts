@@ -10,7 +10,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
@@ -421,13 +421,9 @@ async function recordEventAutomationExecution(
   if (next.plugin !== "junior") return;
   const eventAutomationId = next.metadata?.eventAutomationId;
   if (!eventAutomationId) return;
-  // Only link a conversation when enqueue already created the durable row.
-  // Early failed/blocked dispatches can terminate before that write, and the
-  // execution table still FKs conversation_id when present.
-  const conversationId = getDispatchConversationId(next);
-  const conversation = await getConversationStore().get({ conversationId });
-  await recordAutomationExecution("event", eventAutomationId, {
-    ...(conversation ? { conversationId } : undefined),
+  await recordAutomationExecution(eventAutomationId, {
+    conversationId: getDispatchConversationId(next),
+    errorMessage: next.errorMessage,
     executionId: next.id,
     nowMs: next.updatedAtMs,
     status,

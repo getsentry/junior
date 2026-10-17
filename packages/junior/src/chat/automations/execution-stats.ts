@@ -6,9 +6,9 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   lte,
   max,
-  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -20,16 +20,28 @@ import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
-  juniorAutomationExecutions,
-  type AutomationExecutionStatus,
-} from "@/db/schema/automation-executions";
+  juniorAutomationRuns,
+  type AutomationRunStatus,
+} from "@/db/schema/automation-runs";
 
 export const AUTOMATION_EXECUTION_TYPES = ["scheduled", "event"] as const;
 export const AUTOMATION_EXECUTION_STATUSES = [
   "blocked",
   "completed",
   "failed",
-] as const satisfies readonly AutomationExecutionStatus[];
+] as const satisfies readonly AutomationRunStatus[];
+
+/** Outcome of an Automation run that finished. */
+export type AutomationExecutionStatus =
+  (typeof AUTOMATION_EXECUTION_STATUSES)[number];
+
+/** An execution is a run with an outcome. Skipped runs are not executions. */
+function isExecution(): SQL {
+  return and(
+    inArray(juniorAutomationRuns.status, [...AUTOMATION_EXECUTION_STATUSES]),
+    isNotNull(juniorAutomationRuns.completedAtMs),
+  )!;
+}
 
 export type AutomationExecutionType =
   (typeof AUTOMATION_EXECUTION_TYPES)[number];
@@ -102,122 +114,116 @@ function emptyStatusDay(date: string): AutomationExecutionStatusDay {
   return { blocked: 0, completed: 0, date, failed: 0 };
 }
 
-/** Record one terminal automation execution and its durable conversation when present. */
+/**
+ * Return the Conversation id when that Conversation exists, else null. A
+ * dispatch can end before it creates its Conversation, and the run's
+ * `conversation_id` is a foreign key.
+ */
+export function existingConversationId(conversationId: string): SQL {
+  return sql`(select ${juniorConversations.conversationId} from ${juniorConversations} where ${juniorConversations.conversationId} = ${conversationId})`;
+}
+
+/**
+ * Record the outcome of one Automation run. A run that already has an outcome
+ * keeps it. A failed write is logged, and the heartbeat settles a started
+ * event run later.
+ */
 export async function recordAutomationExecution(
-  type: AutomationExecutionType,
   automationId: string,
   options: {
     conversationId?: string;
+    errorMessage?: string;
     executionId: string;
-    namespace?: string;
     nowMs?: number;
     status?: AutomationExecutionStatus;
   },
 ): Promise<void> {
-  const namespace = options.namespace ?? "junior";
   const nowMs = options.nowMs ?? Date.now();
   const status = options.status ?? "completed";
+  const outcome = {
+    completedAtMs: nowMs,
+    errorMessage: options.errorMessage ?? null,
+    status,
+  };
   try {
     await getDb()
-      .insert(juniorAutomationExecutions)
+      .insert(juniorAutomationRuns)
       .values({
-        ...(options.conversationId
-          ? { conversationId: options.conversationId }
-          : undefined),
-        executedAtMs: nowMs,
-        executionId: options.executionId,
-        kind: type,
-        namespace,
-        status,
+        id: options.executionId,
         automationId,
+        conversationId: options.conversationId
+          ? existingConversationId(options.conversationId)
+          : null,
+        ...outcome,
       })
-      .onConflictDoNothing({
-        target: [
-          juniorAutomationExecutions.kind,
-          juniorAutomationExecutions.namespace,
-          juniorAutomationExecutions.executionId,
-        ],
+      .onConflictDoUpdate({
+        target: juniorAutomationRuns.id,
+        set: {
+          ...outcome,
+          conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+        },
+        setWhere: inArray(juniorAutomationRuns.status, ["pending", "running"]),
       });
   } catch (error) {
     logWarn("task.execution.stat_failed", {
       error,
       "app.task.execution.id": options.executionId,
-      "app.task.execution.namespace": namespace,
       "app.task.execution.status": status,
       "app.task.execution.task_id": automationId,
-      "app.task.execution.type": type,
     });
   }
 }
 
-/** Load usage analytics for all automations of one type and namespace. */
+/** Load usage analytics for the given automations. */
 export async function readAutomationExecutionSummaries(
-  type: AutomationExecutionType,
-  namespace: string,
-  options: { nowMs?: number; automationIds?: string[] } = {},
+  automationIds: string[],
+  options: { nowMs?: number } = {},
 ): Promise<Map<string, AutomationExecutionSummary>> {
+  if (automationIds.length === 0) return new Map();
   const nowMs = options.nowMs ?? Date.now();
   const oneDayAgoMs = nowMs - 1 * 24 * 60 * 60 * 1000;
   const sevenDaysAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
   const thirtyDaysAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
   const ninetyDaysAgoMs = nowMs - 90 * 24 * 60 * 60 * 1000;
   const db = getDb();
+  const selected = and(
+    isExecution(),
+    inArray(juniorAutomationRuns.automationId, automationIds),
+  );
   const latest = db
-    .selectDistinctOn([juniorAutomationExecutions.automationId], {
-      status: juniorAutomationExecutions.status,
-      conversationId: juniorAutomationExecutions.conversationId,
-      automationId: juniorAutomationExecutions.automationId,
+    .selectDistinctOn([juniorAutomationRuns.automationId], {
+      status: juniorAutomationRuns.status,
+      conversationId: juniorAutomationRuns.conversationId,
+      automationId: juniorAutomationRuns.automationId,
     })
-    .from(juniorAutomationExecutions)
-    .where(
-      and(
-        eq(juniorAutomationExecutions.kind, type),
-        eq(juniorAutomationExecutions.namespace, namespace),
-        options.automationIds
-          ? inArray(
-              juniorAutomationExecutions.automationId,
-              options.automationIds,
-            )
-          : undefined,
-      ),
-    )
+    .from(juniorAutomationRuns)
+    .where(selected)
     .orderBy(
-      juniorAutomationExecutions.automationId,
-      desc(juniorAutomationExecutions.executedAtMs),
-      desc(juniorAutomationExecutions.executionId),
+      juniorAutomationRuns.automationId,
+      desc(juniorAutomationRuns.completedAtMs),
+      desc(juniorAutomationRuns.id),
     )
     .as("latest_task_execution");
   const rows = await db
     .select({
       lastRunStatus: latest.status,
       lastConversationId: latest.conversationId,
-      lastExecutedAtMs: max(juniorAutomationExecutions.executedAtMs),
-      runsLast1Day: sql<number>`count(*) filter (where ${juniorAutomationExecutions.executedAtMs} >= ${oneDayAgoMs})::int`,
-      runsLast7Days: sql<number>`count(*) filter (where ${juniorAutomationExecutions.executedAtMs} >= ${sevenDaysAgoMs})::int`,
-      runsLast30Days: sql<number>`count(*) filter (where ${juniorAutomationExecutions.executedAtMs} >= ${thirtyDaysAgoMs})::int`,
-      runsLast90Days: sql<number>`count(*) filter (where ${juniorAutomationExecutions.executedAtMs} >= ${ninetyDaysAgoMs})::int`,
-      automationId: juniorAutomationExecutions.automationId,
+      lastExecutedAtMs: max(juniorAutomationRuns.completedAtMs),
+      runsLast1Day: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${oneDayAgoMs})::int`,
+      runsLast7Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sevenDaysAgoMs})::int`,
+      runsLast30Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${thirtyDaysAgoMs})::int`,
+      runsLast90Days: sql<number>`count(*) filter (where ${juniorAutomationRuns.completedAtMs} >= ${ninetyDaysAgoMs})::int`,
+      automationId: juniorAutomationRuns.automationId,
       totalRuns: sql<number>`count(*)::int`,
     })
-    .from(juniorAutomationExecutions)
+    .from(juniorAutomationRuns)
     .innerJoin(
       latest,
-      eq(latest.automationId, juniorAutomationExecutions.automationId),
+      eq(latest.automationId, juniorAutomationRuns.automationId),
     )
-    .where(
-      and(
-        eq(juniorAutomationExecutions.kind, type),
-        eq(juniorAutomationExecutions.namespace, namespace),
-        options.automationIds
-          ? inArray(
-              juniorAutomationExecutions.automationId,
-              options.automationIds,
-            )
-          : undefined,
-      ),
-    )
+    .where(selected)
     .groupBy(
-      juniorAutomationExecutions.automationId,
+      juniorAutomationRuns.automationId,
       latest.conversationId,
       latest.status,
     );
@@ -225,7 +231,7 @@ export async function readAutomationExecutionSummaries(
     rows.map((row) => [
       row.automationId,
       {
-        lastRunStatus: row.lastRunStatus,
+        lastRunStatus: row.lastRunStatus as AutomationExecutionStatus,
         ...(row.lastConversationId
           ? { lastConversationId: row.lastConversationId }
           : undefined),
@@ -254,33 +260,13 @@ export async function readAutomationExecutionDays(
   const endMs = Date.parse(`${end}T23:59:59.999Z`);
   const startMs =
     Date.parse(`${end}T00:00:00.000Z`) - (dayCount - 1) * 86_400_000;
-  const executionDate = sql<string>`to_char(to_timestamp(${juniorAutomationExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')`;
-  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
-  const rows = await getDb()
-    .select({
-      count: count(),
-      costUsd: sql<number | null>`SUM(${conversationCost})::double precision`,
-      date: executionDate,
-      kind: juniorAutomationExecutions.kind,
-    })
-    .from(juniorAutomationExecutions)
-    .leftJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorAutomationExecutions.conversationId,
-      ),
-    )
-    .where(
-      and(
-        gte(juniorAutomationExecutions.executedAtMs, startMs),
-        lte(juniorAutomationExecutions.executedAtMs, endMs),
-        eq(juniorAutomationExecutions.status, "completed"),
-        options.access,
-      ),
-    )
-    .groupBy(executionDate, juniorAutomationExecutions.kind)
-    .orderBy(asc(executionDate), asc(juniorAutomationExecutions.kind));
+  const executionDate = sql<string>`to_char(to_timestamp(${juniorAutomationRuns.completedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')`;
+  const rows = await readCompletedExecutionBuckets({
+    access: options.access,
+    bucket: executionDate,
+    endMs,
+    startMs,
+  });
 
   const byDate = new Map<string, AutomationExecutionDay>();
   for (let offset = 0; offset < dayCount; offset += 1) {
@@ -309,33 +295,13 @@ export async function readAutomationExecutionHours(
   end.setUTCMinutes(0, 0, 0);
   const endMs = end.getTime() + 3_599_999;
   const startMs = end.getTime() - (hourCount - 1) * 3_600_000;
-  const executionHour = sql<string>`to_char(to_timestamp(${juniorAutomationExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
-  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
-  const rows = await getDb()
-    .select({
-      count: count(),
-      costUsd: sql<number | null>`SUM(${conversationCost})::double precision`,
-      date: executionHour,
-      kind: juniorAutomationExecutions.kind,
-    })
-    .from(juniorAutomationExecutions)
-    .leftJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorAutomationExecutions.conversationId,
-      ),
-    )
-    .where(
-      and(
-        gte(juniorAutomationExecutions.executedAtMs, startMs),
-        lte(juniorAutomationExecutions.executedAtMs, endMs),
-        eq(juniorAutomationExecutions.status, "completed"),
-        options.access,
-      ),
-    )
-    .groupBy(executionHour, juniorAutomationExecutions.kind)
-    .orderBy(asc(executionHour), asc(juniorAutomationExecutions.kind));
+  const executionHour = sql<string>`to_char(to_timestamp(${juniorAutomationRuns.completedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
+  const rows = await readCompletedExecutionBuckets({
+    access: options.access,
+    bucket: executionHour,
+    endMs,
+    startMs,
+  });
 
   const byHour = new Map<string, AutomationExecutionDay>();
   for (let offset = 0; offset < hourCount; offset += 1) {
@@ -356,45 +322,71 @@ export async function readAutomationExecutionHours(
   return [...byHour.values()];
 }
 
-/** Load the newest terminal automation execution linked to one conversation, if any. */
+/** Count completed executions and their cost per time bucket and kind. */
+async function readCompletedExecutionBuckets(args: {
+  access?: SQL;
+  bucket: SQL<string>;
+  endMs: number;
+  startMs: number;
+}) {
+  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
+  return await getDb()
+    .select({
+      count: count(),
+      costUsd: sql<number | null>`SUM(${conversationCost})::double precision`,
+      date: args.bucket,
+      kind: juniorAutomations.kind,
+    })
+    .from(juniorAutomationRuns)
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationRuns.automationId),
+    )
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorAutomationRuns.conversationId,
+      ),
+    )
+    .where(
+      and(
+        gte(juniorAutomationRuns.completedAtMs, args.startMs),
+        lte(juniorAutomationRuns.completedAtMs, args.endMs),
+        eq(juniorAutomationRuns.status, "completed"),
+        args.access,
+      ),
+    )
+    .groupBy(args.bucket, juniorAutomations.kind)
+    .orderBy(asc(args.bucket), asc(juniorAutomations.kind));
+}
+
+/** Load the Automation run linked to one conversation, if any. */
 export async function readAutomationExecutionByConversationId(args: {
   conversationId: string;
-  namespace?: string;
 }): Promise<
   { kind: AutomationExecutionType; automationId: string } | undefined
 > {
-  const namespace = args.namespace ?? "junior";
-  const rows = await getDb()
+  const [row] = await getDb()
     .select({
-      kind: juniorAutomationExecutions.kind,
-      automationId: juniorAutomationExecutions.automationId,
+      kind: juniorAutomations.kind,
+      automationId: juniorAutomationRuns.automationId,
     })
-    .from(juniorAutomationExecutions)
-    .where(
-      and(
-        eq(juniorAutomationExecutions.conversationId, args.conversationId),
-        eq(juniorAutomationExecutions.namespace, namespace),
-        inArray(juniorAutomationExecutions.kind, [
-          ...AUTOMATION_EXECUTION_TYPES,
-        ]),
-      ),
+    .from(juniorAutomationRuns)
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationRuns.automationId),
     )
-    .orderBy(
-      desc(juniorAutomationExecutions.executedAtMs),
-      desc(juniorAutomationExecutions.executionId),
-    )
+    .where(eq(juniorAutomationRuns.conversationId, args.conversationId))
     .limit(1);
-  const row = rows[0];
-  if (!row) return undefined;
-  if (row.kind !== "scheduled" && row.kind !== "event") return undefined;
-  return { kind: row.kind, automationId: row.automationId };
+  return row;
 }
 
 /**
  * Load the display name of the Automation linked to each untitled
- * conversation. The newest execution wins. Like the Automation list, the name
- * falls back to the first line of the instruction. Titled conversations and
- * conversations without a linked Automation are absent from the result.
+ * conversation. Like the Automation list, the name falls back to the first
+ * line of the instruction. Titled conversations and conversations without a
+ * linked Automation are absent from the result.
  */
 export async function readAutomationTitlesByConversationId(
   conversations: ReadonlyArray<{
@@ -409,153 +401,114 @@ export async function readAutomationTitlesByConversationId(
   if (untitledIds.length === 0) return titles;
   const rows = await getDb()
     .select({
-      conversationId: juniorAutomationExecutions.conversationId,
+      conversationId: juniorAutomationRuns.conversationId,
       instruction: juniorAutomations.instruction,
       title: juniorAutomations.title,
     })
-    .from(juniorAutomationExecutions)
+    .from(juniorAutomationRuns)
     .innerJoin(
       juniorAutomations,
-      eq(juniorAutomations.id, juniorAutomationExecutions.automationId),
+      eq(juniorAutomations.id, juniorAutomationRuns.automationId),
     )
-    .where(
-      and(
-        inArray(juniorAutomationExecutions.conversationId, untitledIds),
-        eq(juniorAutomationExecutions.namespace, "junior"),
-      ),
-    )
-    .orderBy(
-      desc(juniorAutomationExecutions.executedAtMs),
-      desc(juniorAutomationExecutions.executionId),
-    );
-  const seen = new Set<string>();
+    .where(inArray(juniorAutomationRuns.conversationId, untitledIds));
   for (const row of rows) {
-    if (!row.conversationId || seen.has(row.conversationId)) continue;
-    seen.add(row.conversationId);
     const title = row.title?.trim() || fallbackShortTitle(row.instruction, "");
-    if (title) titles.set(row.conversationId, title);
+    if (row.conversationId && title) titles.set(row.conversationId, title);
   }
   return titles;
 }
 
 /** Load newest-first executions for one automation, with conversation titles when present. */
 export async function readAutomationExecutions(args: {
-  kind: AutomationExecutionType;
-  limit: number;
-  namespace?: string;
   automationId: string;
+  limit: number;
 }): Promise<AutomationExecutionRecord[]> {
-  const namespace = args.namespace ?? "junior";
   const rows = await getDb()
     .select({
-      conversationId: juniorAutomationExecutions.conversationId,
+      conversationId: juniorAutomationRuns.conversationId,
       durationMs: juniorConversations.durationMs,
-      executedAtMs: juniorAutomationExecutions.executedAtMs,
-      executionId: juniorAutomationExecutions.executionId,
-      status: juniorAutomationExecutions.status,
+      executedAtMs: juniorAutomationRuns.completedAtMs,
+      executionId: juniorAutomationRuns.id,
+      status: juniorAutomationRuns.status,
       title: juniorConversations.title,
       usage: juniorConversations.usage,
     })
-    .from(juniorAutomationExecutions)
+    .from(juniorAutomationRuns)
     .leftJoin(
       juniorConversations,
       eq(
         juniorConversations.conversationId,
-        juniorAutomationExecutions.conversationId,
+        juniorAutomationRuns.conversationId,
       ),
     )
     .where(
       and(
-        eq(juniorAutomationExecutions.kind, args.kind),
-        eq(juniorAutomationExecutions.namespace, namespace),
-        eq(juniorAutomationExecutions.automationId, args.automationId),
+        isExecution(),
+        eq(juniorAutomationRuns.automationId, args.automationId),
       ),
     )
     .orderBy(
-      desc(juniorAutomationExecutions.executedAtMs),
-      desc(juniorAutomationExecutions.executionId),
+      desc(juniorAutomationRuns.completedAtMs),
+      desc(juniorAutomationRuns.id),
     )
     .limit(args.limit);
   return rows.map((row) => mapAutomationExecutionRecord(row));
 }
 
-/** Load newest-first executions for the supplied viewer-visible tasks. */
+/** Load newest-first executions for the supplied viewer-visible automations. */
 export async function readAutomationRuns(args: {
-  conversationIds?: string[];
+  automationIds: string[];
   limit: number;
-  namespace?: string;
-  automations?: Array<{ kind: AutomationExecutionType; automationId: string }>;
 }): Promise<AutomationRunRecord[]> {
-  const automations = args.automations ?? [];
-  const conversationIds = [
-    ...new Set(
-      (args.conversationIds ?? []).filter(
-        (conversationId) => conversationId.trim().length > 0,
-      ),
-    ),
-  ];
-  if (automations.length === 0 && conversationIds.length === 0) return [];
-  const namespace = args.namespace ?? "junior";
-  const selectors = [
-    ...automations.map((task) =>
-      and(
-        eq(juniorAutomationExecutions.kind, task.kind),
-        eq(juniorAutomationExecutions.automationId, task.automationId),
-      ),
-    ),
-    ...(conversationIds.length > 0
-      ? [inArray(juniorAutomationExecutions.conversationId, conversationIds)]
-      : []),
-  ];
+  if (args.automationIds.length === 0) return [];
   const rows = await getDb()
     .select({
-      conversationId: juniorAutomationExecutions.conversationId,
+      conversationId: juniorAutomationRuns.conversationId,
       durationMs: juniorConversations.durationMs,
-      executedAtMs: juniorAutomationExecutions.executedAtMs,
-      executionId: juniorAutomationExecutions.executionId,
-      kind: juniorAutomationExecutions.kind,
-      status: juniorAutomationExecutions.status,
-      automationId: juniorAutomationExecutions.automationId,
+      executedAtMs: juniorAutomationRuns.completedAtMs,
+      executionId: juniorAutomationRuns.id,
+      kind: juniorAutomations.kind,
+      status: juniorAutomationRuns.status,
+      automationId: juniorAutomationRuns.automationId,
       title: juniorConversations.title,
       usage: juniorConversations.usage,
     })
-    .from(juniorAutomationExecutions)
+    .from(juniorAutomationRuns)
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationRuns.automationId),
+    )
     .leftJoin(
       juniorConversations,
       eq(
         juniorConversations.conversationId,
-        juniorAutomationExecutions.conversationId,
+        juniorAutomationRuns.conversationId,
       ),
     )
     .where(
       and(
-        eq(juniorAutomationExecutions.namespace, namespace),
-        or(...selectors),
+        isExecution(),
+        inArray(juniorAutomationRuns.automationId, args.automationIds),
       ),
     )
     .orderBy(
-      desc(juniorAutomationExecutions.executedAtMs),
-      desc(juniorAutomationExecutions.executionId),
+      desc(juniorAutomationRuns.completedAtMs),
+      desc(juniorAutomationRuns.id),
     )
     .limit(args.limit);
-  return rows.flatMap((row) => {
-    if (row.kind !== "scheduled" && row.kind !== "event") return [];
-    return [
-      {
-        ...mapAutomationExecutionRecord(row),
-        kind: row.kind,
-        automationId: row.automationId,
-      },
-    ];
-  });
+  return rows.map((row) => ({
+    ...mapAutomationExecutionRecord(row),
+    kind: row.kind,
+    automationId: row.automationId,
+  }));
 }
 
 function mapAutomationExecutionRecord(row: {
   conversationId: string | null;
   durationMs: number | null;
-  executedAtMs: number;
+  executedAtMs: number | null;
   executionId: string;
-  status: AutomationExecutionStatus;
+  status: AutomationRunStatus;
   title: string | null;
   usage: Parameters<typeof agentTurnCostUsd>[0] | null;
 }): AutomationExecutionRecord {
@@ -574,9 +527,10 @@ function mapAutomationExecutionRecord(row: {
       : undefined),
     ...(costUsd !== undefined ? { costUsd } : undefined),
     ...(durationMs !== undefined ? { durationMs } : undefined),
-    executedAt: new Date(row.executedAtMs).toISOString(),
+    // isExecution() selects only runs with an outcome and a completion time.
+    executedAt: new Date(row.executedAtMs!).toISOString(),
     executionId: row.executionId,
-    status: row.status,
+    status: row.status as AutomationExecutionStatus,
     ...(title ? { title } : undefined),
     ...(totalTokens !== undefined ? { totalTokens } : undefined),
   };
@@ -584,41 +538,23 @@ function mapAutomationExecutionRecord(row: {
 
 /** Load a fixed trailing window of terminal executions for one automation by status. */
 export async function readAutomationExecutionStatusDays(args: {
-  dayCount?: number;
-  kind: AutomationExecutionType;
-  namespace?: string;
-  nowMs?: number;
   automationId: string;
+  dayCount?: number;
+  nowMs?: number;
 }): Promise<AutomationExecutionStatusDay[]> {
   const dayCount = args.dayCount ?? 90;
-  const namespace = args.namespace ?? "junior";
   const nowMs = args.nowMs ?? Date.now();
   const end = utcDate(nowMs);
   const endMs = Date.parse(`${end}T23:59:59.999Z`);
   const startMs =
     Date.parse(`${end}T00:00:00.000Z`) - (dayCount - 1) * 86_400_000;
-  const executionDate = sql<string>`to_char(to_timestamp(${juniorAutomationExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')`;
-  const rows = await getDb()
-    .select({
-      count: count(),
-      date: executionDate,
-      status: juniorAutomationExecutions.status,
-    })
-    .from(juniorAutomationExecutions)
-    .where(
-      and(
-        eq(juniorAutomationExecutions.kind, args.kind),
-        eq(juniorAutomationExecutions.namespace, namespace),
-        eq(juniorAutomationExecutions.automationId, args.automationId),
-        gte(juniorAutomationExecutions.executedAtMs, startMs),
-        lte(juniorAutomationExecutions.executedAtMs, endMs),
-        inArray(juniorAutomationExecutions.status, [
-          ...AUTOMATION_EXECUTION_STATUSES,
-        ]),
-      ),
-    )
-    .groupBy(executionDate, juniorAutomationExecutions.status)
-    .orderBy(asc(executionDate), asc(juniorAutomationExecutions.status));
+  const executionDate = sql<string>`to_char(to_timestamp(${juniorAutomationRuns.completedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')`;
+  const rows = await readExecutionStatusBuckets({
+    automationId: args.automationId,
+    bucket: executionDate,
+    endMs,
+    startMs,
+  });
 
   const byDate = new Map<string, AutomationExecutionStatusDay>();
   for (let offset = 0; offset < dayCount; offset += 1) {
@@ -637,41 +573,23 @@ export async function readAutomationExecutionStatusDays(args: {
 
 /** Load a fixed trailing window of terminal executions for one automation by hour. */
 export async function readAutomationExecutionStatusHours(args: {
-  hourCount?: number;
-  kind: AutomationExecutionType;
-  namespace?: string;
-  nowMs?: number;
   automationId: string;
+  hourCount?: number;
+  nowMs?: number;
 }): Promise<AutomationExecutionStatusDay[]> {
   const hourCount = args.hourCount ?? 7 * 24;
-  const namespace = args.namespace ?? "junior";
   const nowMs = args.nowMs ?? Date.now();
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
   const endMs = end.getTime() + 3_599_999;
   const startMs = end.getTime() - (hourCount - 1) * 3_600_000;
-  const executionHour = sql<string>`to_char(to_timestamp(${juniorAutomationExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
-  const rows = await getDb()
-    .select({
-      count: count(),
-      date: executionHour,
-      status: juniorAutomationExecutions.status,
-    })
-    .from(juniorAutomationExecutions)
-    .where(
-      and(
-        eq(juniorAutomationExecutions.kind, args.kind),
-        eq(juniorAutomationExecutions.namespace, namespace),
-        eq(juniorAutomationExecutions.automationId, args.automationId),
-        gte(juniorAutomationExecutions.executedAtMs, startMs),
-        lte(juniorAutomationExecutions.executedAtMs, endMs),
-        inArray(juniorAutomationExecutions.status, [
-          ...AUTOMATION_EXECUTION_STATUSES,
-        ]),
-      ),
-    )
-    .groupBy(executionHour, juniorAutomationExecutions.status)
-    .orderBy(asc(executionHour), asc(juniorAutomationExecutions.status));
+  const executionHour = sql<string>`to_char(to_timestamp(${juniorAutomationRuns.completedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
+  const rows = await readExecutionStatusBuckets({
+    automationId: args.automationId,
+    bucket: executionHour,
+    endMs,
+    startMs,
+  });
 
   const byHour = new Map<string, AutomationExecutionStatusDay>();
   for (let offset = 0; offset < hourCount; offset += 1) {
@@ -688,4 +606,30 @@ export async function readAutomationExecutionStatusHours(args: {
     else if (row.status === "blocked") hour.blocked = row.count;
   }
   return [...byHour.values()];
+}
+
+/** Count one automation's executions per time bucket and status. */
+async function readExecutionStatusBuckets(args: {
+  automationId: string;
+  bucket: SQL<string>;
+  endMs: number;
+  startMs: number;
+}) {
+  return await getDb()
+    .select({
+      count: count(),
+      date: args.bucket,
+      status: juniorAutomationRuns.status,
+    })
+    .from(juniorAutomationRuns)
+    .where(
+      and(
+        isExecution(),
+        eq(juniorAutomationRuns.automationId, args.automationId),
+        gte(juniorAutomationRuns.completedAtMs, args.startMs),
+        lte(juniorAutomationRuns.completedAtMs, args.endMs),
+      ),
+    )
+    .groupBy(args.bucket, juniorAutomationRuns.status)
+    .orderBy(asc(args.bucket), asc(juniorAutomationRuns.status));
 }

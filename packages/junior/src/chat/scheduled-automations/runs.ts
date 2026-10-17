@@ -1,9 +1,10 @@
 import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
-import { z } from "zod";
 import { getNextRunAtMs } from "./cadence";
+import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
+import { existingConversationId } from "@/chat/automations/execution-stats";
 import type { JuniorDatabase } from "@/db/db";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
-import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
 import {
   listScheduledAutomations,
   listScheduledAutomationsForTeam,
@@ -23,30 +24,31 @@ import {
 const PENDING_CLAIM_STALE_MS = 60_000;
 const MISSED_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const INCOMPLETE_RUN_STATUSES = ["pending", "running"] as const;
-const retainedScheduledRunSchema = scheduledRunSchema
-  .extend({
-    idempotencyKey: z.string().optional(),
-    taskVersion: z.number().optional(),
-  })
-  .strict();
 
-type ScheduledRunRow = Pick<typeof juniorSchedulerRuns.$inferSelect, "record">;
 type SkippedRunTelemetry = {
   errorMessage: string;
   run: ScheduledRun;
   task: ScheduledAutomation;
 };
 
-/** Decode a scheduler run row and remove retained legacy fields. */
-function parseScheduledRunRow(row: ScheduledRunRow): ScheduledRun | undefined {
-  const parsed = retainedScheduledRunSchema.safeParse(row.record);
-  if (!parsed.success) return undefined;
-  const {
-    idempotencyKey: _idempotencyKey,
-    taskVersion: _taskVersion,
-    ...run
-  } = parsed.data;
-  return run;
+/** Decode a Scheduled automation run row. Returns undefined for an invalid row. */
+function parseScheduledRunRow(
+  row: typeof juniorAutomationRuns.$inferSelect,
+): ScheduledRun | undefined {
+  const parsed = scheduledRunSchema.safeParse({
+    id: row.id,
+    attempt: row.attempt,
+    claimedAtMs: row.claimedAtMs,
+    completedAtMs: row.completedAtMs ?? undefined,
+    dispatchId: row.dispatchId ?? undefined,
+    errorMessage: row.errorMessage ?? undefined,
+    resultMessageTs: row.resultMessageTs ?? undefined,
+    scheduledForMs: row.scheduledForMs,
+    startedAtMs: row.startedAtMs ?? undefined,
+    status: row.status,
+    taskId: row.automationId,
+  });
+  return parsed.success ? parsed.data : undefined;
 }
 
 function present<T>(value: T | undefined): value is T {
@@ -58,33 +60,36 @@ async function readRun(
   runId: string,
 ): Promise<ScheduledRun | undefined> {
   const rows = await db
-    .select({ record: juniorSchedulerRuns.record })
-    .from(juniorSchedulerRuns)
-    .where(eq(juniorSchedulerRuns.id, runId))
+    .select()
+    .from(juniorAutomationRuns)
+    .where(eq(juniorAutomationRuns.id, runId))
     .limit(1);
   return rows[0] ? parseScheduledRunRow(rows[0]) : undefined;
 }
 
 async function writeRun(db: JuniorDatabase, run: ScheduledRun): Promise<void> {
   const stored = scheduledRunSchema.parse(run);
+  const columns = {
+    attempt: stored.attempt,
+    automationId: stored.taskId,
+    claimedAtMs: stored.claimedAtMs,
+    completedAtMs: stored.completedAtMs ?? null,
+    conversationId: stored.dispatchId
+      ? existingConversationId(
+          getDispatchConversationId({ id: stored.dispatchId }),
+        )
+      : null,
+    dispatchId: stored.dispatchId ?? null,
+    errorMessage: stored.errorMessage ?? null,
+    resultMessageTs: stored.resultMessageTs ?? null,
+    scheduledForMs: stored.scheduledForMs,
+    startedAtMs: stored.startedAtMs ?? null,
+    status: stored.status,
+  };
   await db
-    .insert(juniorSchedulerRuns)
-    .values({
-      id: stored.id,
-      record: stored,
-      scheduledForMs: stored.scheduledForMs,
-      status: stored.status,
-      taskId: stored.taskId,
-    })
-    .onConflictDoUpdate({
-      target: juniorSchedulerRuns.id,
-      set: {
-        record: sql`excluded.record`,
-        scheduledForMs: sql`excluded.scheduled_for_ms`,
-        status: sql`excluded.status`,
-        taskId: sql`excluded.task_id`,
-      },
-    });
+    .insert(juniorAutomationRuns)
+    .values({ id: stored.id, ...columns })
+    .onConflictDoUpdate({ target: juniorAutomationRuns.id, set: columns });
 }
 
 async function listIncompleteRunsForTaskIds(
@@ -93,17 +98,17 @@ async function listIncompleteRunsForTaskIds(
 ): Promise<ScheduledRun[]> {
   if (taskIds.length === 0) return [];
   const rows = await db
-    .select({ record: juniorSchedulerRuns.record })
-    .from(juniorSchedulerRuns)
+    .select()
+    .from(juniorAutomationRuns)
     .where(
       and(
-        inArray(juniorSchedulerRuns.taskId, taskIds),
-        inArray(juniorSchedulerRuns.status, [...INCOMPLETE_RUN_STATUSES]),
+        inArray(juniorAutomationRuns.automationId, taskIds),
+        inArray(juniorAutomationRuns.status, [...INCOMPLETE_RUN_STATUSES]),
       ),
     )
     .orderBy(
-      asc(juniorSchedulerRuns.scheduledForMs),
-      asc(juniorSchedulerRuns.id),
+      asc(juniorAutomationRuns.scheduledForMs),
+      asc(juniorAutomationRuns.id),
     );
   return rows.map(parseScheduledRunRow).filter(present);
 }

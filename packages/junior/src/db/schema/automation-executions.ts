@@ -13,7 +13,9 @@ import { juniorConversations } from "./conversations";
 /** Terminal outcome recorded for one automation execution. */
 export type AutomationExecutionStatus = "blocked" | "completed" | "failed";
 
-/** One terminal automation execution linked to its durable conversation when present. */
+// TODO(dcramer): Drop junior_task_executions, delete this file, and remove its
+// export from src/db/schema.ts in PR 3 of #2176. Its rows now live in
+// junior_automation_runs, and no current code reads or writes it.
 export const juniorAutomationExecutions = pgTable(
   "junior_task_executions",
   {

@@ -4,7 +4,10 @@ This module owns Junior's one-time and recurring task domain. Scheduled-task too
 
 ## Persistence
 
-The SQL tables retain their deployed `junior_scheduler_*` names so moving the feature into core does not copy or rename task data. Core migration `0016` supports both cases:
+Scheduled automations are `scheduled` rows in `junior_automations`. Their runs
+are rows in `junior_automation_runs`. Migrations 0055 and 0056 copied them from
+the older `junior_scheduler_*` tables. Core migration `0016` created those
+tables and supports both cases:
 
 - fresh databases create the tables and indexes;
 - databases upgraded from `@sentry/junior-scheduler` adopt the existing tables, normalize older records, and backfill canonical creator identities.

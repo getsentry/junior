@@ -30,6 +30,9 @@ export const juniorConversations = pgTable(
     // TODO(dcramer): Remove source_json after resume reads the saved Turn Source
     // and all provider context readers use Conversation Location.
     sessionSource: jsonb("source_json").$type<SessionSource>(),
+    // TODO(dcramer): Drop origin_type, origin_id, origin_run_id, and their
+    // index in PR 3 of #2176. No code reads them. junior_automation_runs links
+    // a run to its Conversation.
     originType: text("origin_type"),
     originId: text("origin_id"),
     originRunId: text("origin_run_id"),

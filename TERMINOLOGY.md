@@ -59,6 +59,8 @@ Canonical words used across Junior's code and documentation.
 - **Watch**: a temporary association between an Event and a Conversation. It
   delivers matching Events to that Conversation and expires. It is not an
   Automation.
+- **Automation run**: one dispatch of an Automation, from claim or dispatch to
+  its outcome. It is not a Run.
 - **Scheduled automation**: an Automation that has a Schedule trigger.
 - **Event automation**: an Automation that has an Event trigger.
 - **Inbound message**: one normalized source event made available to the agent.

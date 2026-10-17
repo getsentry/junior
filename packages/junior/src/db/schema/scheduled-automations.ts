@@ -44,6 +44,9 @@ export const juniorSchedulerTasks = pgTable(
   ],
 );
 
+// TODO(dcramer): Drop junior_scheduler_runs and remove juniorSchedulerRuns here
+// and in src/db/schema.ts in PR 3 of #2176. Its rows now live in
+// junior_automation_runs, and no current code reads or writes it.
 export const juniorSchedulerRuns = pgTable(
   "junior_scheduler_runs",
   {
