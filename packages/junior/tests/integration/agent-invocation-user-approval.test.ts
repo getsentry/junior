@@ -109,8 +109,8 @@ describe("user approval for child agents", () => {
 
       // Action review reads the root, not the task. Only the user's own
       // message is labeled `user`.
-      const read = async (conversationId: string, actor?: Actor) =>
-        await readRootConversation({ actor, conversationId });
+      const read = async (conversationId: string, onBehalfOf?: Actor) =>
+        await readRootConversation({ conversationId, onBehalfOf });
       await expect(read(child.childConversationId, user)).resolves.toEqual({
         messages: [
           { author: "user", text: "Which images did we publish here?" },
@@ -217,8 +217,8 @@ describe("user approval for child agents", () => {
       );
 
       const read = await readRootConversation({
-        actor: user,
         conversationId: child.childConversationId,
+        onBehalfOf: user,
       });
       expect(read.messages).toHaveLength(16);
       expect(read.messages.at(-1)).toEqual({
@@ -272,8 +272,8 @@ describe("user approval for child agents", () => {
 
       await expect(
         readRootConversation({
-          actor: eventActor,
           conversationId: child.childConversationId,
+          onBehalfOf: eventActor,
         }),
       ).resolves.toEqual({
         messages: [{ author: "automation", text: instruction }],
@@ -282,8 +282,8 @@ describe("user approval for child agents", () => {
       // Another system Actor does not get this run's authority.
       await expect(
         readRootConversation({
-          actor: { platform: "system", name: "scheduler" },
           conversationId: child.childConversationId,
+          onBehalfOf: { platform: "system", name: "scheduler" },
         }),
       ).resolves.toMatchObject({
         messages: [{ author: "event", text: instruction }],
@@ -298,8 +298,8 @@ describe("user approval for child agents", () => {
         });
       }
       const long = await readRootConversation({
-        actor: eventActor,
         conversationId: child.childConversationId,
+        onBehalfOf: eventActor,
       });
       expect(long.messages[0]).toEqual({
         author: "automation",

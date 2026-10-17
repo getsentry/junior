@@ -14,6 +14,7 @@ import {
   findChildAgentConversationId,
   getActiveAgentInvocationForConversation,
 } from "./store";
+import { taskOnBehalfOf } from "./on-behalf-of";
 import { PARENT_AGENT_TARGET } from "./types";
 import { enqueueAgentInvocation } from "./work";
 
@@ -85,7 +86,11 @@ export function bindMessageAgent(
       parentConversationId: run.conversationId,
       parentToolCallId: call.toolCallId,
     });
-    await enqueueAgentInvocation(invocation, { ...options, queue });
+    await enqueueAgentInvocation(invocation, {
+      ...options,
+      onBehalfOf: taskOnBehalfOf(run, actor),
+      queue,
+    });
     return {
       conversationId: childConversationId,
       delivery: queued ? "queued" : "started",

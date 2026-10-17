@@ -257,6 +257,12 @@ export type AgentRun = {
   actor?: Actor;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
+  /**
+   * The Actor whose work a child agent Run serves, from the child's latest
+   * task. Only the runtime sets it. Action review reads the root Conversation
+   * as this Actor. It never changes `actor` or credentials. Unset for a root.
+   */
+  onBehalfOf?: Actor;
   source: Source;
   /** Conversation Location available to this Run. */
   location?: Location;
