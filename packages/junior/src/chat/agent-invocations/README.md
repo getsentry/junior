@@ -209,8 +209,11 @@ this rule:
 - A child agent never sees or stops a watch of its parent or of a sibling.
 
 Ownership changes only these tools. Each watch still wakes the Conversation
-that created it, with the rules above. A child is not told when its parent
-stops one of its watches.
+that created it, with the rules above.
+
+When a parent agent stops an active watch of a child agent below it, the child
+gets a Conversation note (see `conversations/README.md`). The child reads it in
+its next Turn. A stop of a Conversation's own watch adds no note.
 
 ## Child Conversations
 

@@ -133,6 +133,24 @@ event data is represented by identifying fields and its original JSON byte
 size. The complete event array also has a fixed byte budget and reports omitted
 events through its pagination contract.
 
+## Conversation Notes
+
+A Conversation note is a short fact that core attaches to a Conversation
+without starting a Turn. `notes.ts` owns it. Today, the only writer is a parent
+agent stop of a child agent's watch.
+
+- **Storage.** A note is a `conversation_note` `structured_event` in the
+  reserved `junior` namespace. The append preserves Conversation activity. A
+  note adds no mailbox work and does not count toward the automated-turn limit.
+- **Authors.** Only core adds notes. No tool lets the model write one.
+- **Delivery.** A Turn shows the notes added after the previous
+  `turn_started` and before its own, newest 20, in a `<conversation-notes>`
+  block of its runtime turn context. A note added during a Turn waits for the
+  next Turn. A retry reads the same window. A resumed slice replays the saved
+  context. A note is lost only when its Turn stops before its first model
+  request.
+- **Authority.** A note is context, never user intent.
+
 ## Conversation Forks
 
 `forkConversation` creates a new web root Conversation from a copy of a source

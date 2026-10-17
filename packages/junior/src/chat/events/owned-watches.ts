@@ -9,7 +9,13 @@ import {
   listDescendantAgents,
   type DescendantAgent,
 } from "@/chat/agent-invocations/list";
-import { getWatch, listWatches, type Watch } from "@/chat/events/store";
+import { addConversationNote } from "@/chat/conversations/notes";
+import {
+  cancelWatch,
+  getWatch,
+  listWatches,
+  type Watch,
+} from "@/chat/events/store";
 
 /** An active watch and the child agent that created it, if not the owner. */
 export type OwnedWatch = {
@@ -56,4 +62,34 @@ export async function findOwnedWatch(input: {
   )
     ? watch
     : undefined;
+}
+
+/**
+ * Stop one watch that the Conversation owns. When the watch belongs to a child
+ * agent below it, the child gets a Conversation note, so its next Turn knows
+ * that the watch stopped. The note never starts a Turn. Returns the watch
+ * after the stop, or undefined when it does not exist.
+ */
+export async function stopOwnedWatch(input: {
+  conversationId: string;
+  watch: Watch;
+}): Promise<Watch | undefined> {
+  const { watch } = input;
+  const stopped = await cancelWatch({
+    conversationId: watch.conversationId,
+    id: watch.id,
+  });
+  if (
+    watch.status === "active" &&
+    stopped?.status === "cancelled" &&
+    stopped.conversationId !== input.conversationId
+  ) {
+    await addConversationNote({
+      conversationId: stopped.conversationId,
+      createdAtMs: stopped.updatedAtMs,
+      key: `watch_stopped:${stopped.id}`,
+      text: `A parent agent stopped your watch ${stopped.id}. It will not wake you again. Label: ${stopped.label}`,
+    });
+  }
+  return stopped;
 }

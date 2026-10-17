@@ -263,6 +263,9 @@ same way.
   order. New AGENTS.md context is committed as context when it is added, before
   a reply can follow it. After an abort, such as an auth pause, the hook only
   applies a pending handoff. Steering stays queued for the next slice.
+- A Conversation note never starts a Turn. The next Turn shows it in
+  `<runtime-turn-context>`, not in the system prompt. It is context, never user
+  intent. `conversations/notes.ts` owns it.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt

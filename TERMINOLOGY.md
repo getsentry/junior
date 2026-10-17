@@ -105,6 +105,9 @@ Canonical words used across Junior's code and documentation.
 - **Message card**: a reference to an Annotation attached to a Message. Each
   surface shows the latest saved facts and owns its layout. A card does not
   record facts at delivery or fetch live provider state.
+- **Conversation note**: a short fact that core attaches to a Conversation
+  without starting a Turn. The next Turn shows it as runtime turn context. It is
+  not a Message and never gives authority.
 - **Message update**: later delivery or hydration state for an existing
   message, stored as a `message_updated` event without creating another message.
 - **Transcript**: a reporting view rendered from stored messages and agent

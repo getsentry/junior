@@ -23,6 +23,7 @@ import {
   getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
 } from "@/chat/plugins/agent-hooks";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   hasRuntimeTurnContext,
@@ -586,13 +587,23 @@ export async function assemblePrompt(args: {
         });
   const disabledTools =
     !shouldPromptAgent || replayedPrompt ? [] : args.disabledTools;
+  // A replayed or checkpointed prompt already holds the notes of this Turn.
+  const conversationNotes =
+    !shouldPromptAgent || replayedPrompt
+      ? undefined
+      : await loadTurnConversationNotes({
+          conversationId: args.toolRuntimeContext.conversationId,
+          turnId: args.turnId,
+        });
   const turnContextPrompt =
     needsBootstrapContextForPrompt ||
     pluginUserPromptContributions.length > 0 ||
+    (conversationNotes?.length ?? 0) > 0 ||
     disabledTools.length > 0
       ? buildTurnContextPrompt({
           availableSkills: args.availableSkills,
           activeMcpCatalogs: args.activeMcpCatalogs,
+          conversationNotes,
           disabledTools,
           includeSessionContext: needsBootstrapContextForPrompt,
           pluginPromptContributions: pluginUserPromptContributions,
