@@ -2,6 +2,7 @@ import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGuardianActionReviewer,
+  guardianDecision,
   guardianPrompt,
 } from "@/chat/services/guardian-action-review";
 import { ProviderError } from "@/chat/services/provider-error";
@@ -48,7 +49,7 @@ describe("Guardian action review", () => {
     mocks.logWarn.mockReset();
   });
 
-  it("returns a schema-constrained decision for the exact proposal", async () => {
+  it("derives the decision from the named rule for the exact proposal", async () => {
     const completeObject = vi.fn<
       (request: { schema: ZodType }) => Promise<{
         costUsd: number;
@@ -56,9 +57,9 @@ describe("Guardian action review", () => {
       }>
     >(async () => ({
       object: {
-        decision: "ask" as const,
         reason: "Recurring work should be confirmed.",
         riskLevel: "medium" as const,
+        rule: "withheld_step" as const,
         userAuthorization: "low" as const,
       },
       costUsd: 0.0042,
@@ -73,6 +74,7 @@ describe("Guardian action review", () => {
       decision: "ask",
       reason: "Recurring work should be confirmed.",
       riskLevel: "medium",
+      rule: "withheld_step",
       userAuthorization: "low",
     });
     expect(
@@ -98,9 +100,9 @@ describe("Guardian action review", () => {
       .mockRejectedValueOnce(invalidResponse)
       .mockResolvedValueOnce({
         object: {
-          decision: "allow" as const,
           reason: "The requested report is routine and scoped.",
           riskLevel: "low" as const,
+          rule: "none" as const,
           userAuthorization: "high" as const,
         },
       });
@@ -123,6 +125,46 @@ describe("Guardian action review", () => {
         "gen_ai.request.model": "test/guardian",
       },
     );
+  });
+
+  it("allows unless a named rule or a code backstop blocks the action", () => {
+    const assess = (
+      rule: Parameters<typeof guardianDecision>[0]["rule"],
+      riskLevel: Parameters<typeof guardianDecision>[0]["riskLevel"] = "medium",
+      userAuthorization: Parameters<
+        typeof guardianDecision
+      >[0]["userAuthorization"] = "low",
+    ) => ({ reason: "r", riskLevel, rule, userAuthorization });
+    const automationProposal: ToolActionProposal = {
+      ...proposal,
+      context: { ...proposal.context, source: { kind: "event_automation" } },
+    };
+    const automationChild: ToolActionProposal = {
+      ...proposal,
+      rootConversation: {
+        messages: [{ author: "automation", text: "Post the findings." }],
+        truncated: false,
+      },
+    };
+
+    expect(guardianDecision(assess("none"), proposal)).toBe("allow");
+    expect(guardianDecision(assess("withheld_step"), proposal)).toBe("ask");
+    expect(guardianDecision(assess("revoked_approval"), proposal)).toBe("deny");
+    expect(guardianDecision(assess("none", "critical"), proposal)).toBe("deny");
+    expect(guardianDecision(assess("none", "high", "unknown"), proposal)).toBe(
+      "ask",
+    );
+    expect(guardianDecision(assess("none", "high", "medium"), proposal)).toBe(
+      "allow",
+    );
+    // No person can answer a question in an Automation run.
+    expect(
+      guardianDecision(assess("unclear_destination"), automationProposal),
+    ).toBe("deny");
+    expect(guardianDecision(assess("withheld_step"), automationChild)).toBe(
+      "deny",
+    );
+    expect(guardianDecision(assess("none"), automationProposal)).toBe("allow");
   });
 
   it("rejects non-JSON action input before model review", async () => {
