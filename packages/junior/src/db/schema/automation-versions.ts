@@ -1,7 +1,5 @@
-import { sql } from "drizzle-orm";
 import {
   bigint,
-  check,
   foreignKey,
   integer,
   jsonb,
@@ -15,9 +13,6 @@ import { juniorAutomations } from "./automations";
 export const juniorAutomationVersions = pgTable(
   "junior_automation_versions",
   {
-    // TODO(dcramer): In PR 3 of #2176, drop this column. Only old workers
-    // write it. Readers use junior_automations.kind.
-    kind: text("kind").$type<"scheduled" | "event">(),
     automationId: text("automation_id").notNull(),
     /** Starts at 1 and increases by 1 for each saved definition change. */
     version: integer("version").notNull(),
@@ -27,10 +22,6 @@ export const juniorAutomationVersions = pgTable(
     definition: jsonb("definition").notNull(),
   },
   (table) => [
-    check(
-      "junior_automation_versions_kind_check",
-      sql`${table.kind} in ('scheduled', 'event')`,
-    ),
     primaryKey({
       name: "junior_automation_versions_pk",
       columns: [table.automationId, table.version],

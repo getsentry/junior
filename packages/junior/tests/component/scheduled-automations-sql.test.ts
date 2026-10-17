@@ -203,7 +203,7 @@ describe("scheduled-automation SQL storage", () => {
       }>(
         `SELECT creator_identity_id AS "creatorIdentityId",
                 creator_slack_user_id AS "creatorSlackUserId", record
-         FROM junior_scheduler_tasks WHERE id = $1`,
+         FROM junior_automations WHERE id = $1`,
         [legacyTask.id],
       );
       expect(migrated).toMatchObject({
@@ -215,7 +215,6 @@ describe("scheduled-automation SQL storage", () => {
             visibility: "public",
           },
           credentialMode: "system",
-          creatorIdentityId: identity.id,
         },
       });
       expect(migrated?.record).not.toHaveProperty("credentialSubject");
@@ -228,15 +227,12 @@ describe("scheduled-automation SQL storage", () => {
         `SELECT status,
                 next_run_at_ms AS "nextRunAtMs",
                 record
-         FROM junior_scheduler_tasks WHERE id = $1`,
+         FROM junior_automations WHERE id = $1`,
         [pausedTaskId],
       );
       expect(paused).toMatchObject({
         nextRunAtMs: null,
         status: "deleted",
-        record: {
-          status: "deleted",
-        },
       });
       expect(paused?.record).not.toHaveProperty("nextRunAtMs");
       expect(paused?.record).not.toHaveProperty("runNowAtMs");

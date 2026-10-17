@@ -39,9 +39,6 @@ An Automation run is one dispatch of an Automation. Each run is one row in
   Execution lists, stats, and the last run status read only executions.
 - The Conversation title fallback and the run card join on `conversation_id`.
 
-Migration 0056 copied `junior_scheduler_runs` and `junior_task_executions`.
-Old workers write those tables during the deploy, and those writes are lost.
-
 ## Web edits
 
 `GET /api/automations/:kind/:id/edit` returns exact values and an opaque
