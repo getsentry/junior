@@ -120,23 +120,20 @@ function noPersonCanConfirm(proposal: ToolActionProposal): boolean {
 
 /**
  * Derive allow, ask, or deny from the model's assessment. The named rule
- * sets the decision. Code also denies critical risk, asks for high risk with
- * weak authorization, and turns an ask into deny when no person can answer.
+ * sets the decision. Code also asks for high or critical risk with weak
+ * authorization, and turns an ask into deny when no person can answer.
  */
 export function guardianDecision(
   assessment: GuardianAssessment,
   proposal: ToolActionProposal,
 ): ToolActionDecision {
-  if (assessment.riskLevel === "critical") {
-    return "deny";
-  }
   let decision: ToolActionDecision =
     assessment.rule === "none"
       ? "allow"
       : GUARDIAN_BLOCK_RULES[assessment.rule].decision;
   if (
     decision === "allow" &&
-    assessment.riskLevel === "high" &&
+    (assessment.riskLevel === "high" || assessment.riskLevel === "critical") &&
     (assessment.userAuthorization === "low" ||
       assessment.userAuthorization === "unknown")
   ) {

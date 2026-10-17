@@ -150,7 +150,10 @@ describe("Guardian action review", () => {
     expect(guardianDecision(assess("none"), proposal)).toBe("allow");
     expect(guardianDecision(assess("withheld_step"), proposal)).toBe("ask");
     expect(guardianDecision(assess("revoked_approval"), proposal)).toBe("deny");
-    expect(guardianDecision(assess("none", "critical"), proposal)).toBe("deny");
+    expect(guardianDecision(assess("none", "critical"), proposal)).toBe("ask");
+    expect(guardianDecision(assess("none", "critical", "high"), proposal)).toBe(
+      "allow",
+    );
     expect(guardianDecision(assess("none", "high", "unknown"), proposal)).toBe(
       "ask",
     );
