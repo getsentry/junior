@@ -10,12 +10,14 @@ import type {
   ToolActionReviewer,
 } from "@/chat/tool-support/action-review";
 
+// Field order is generation order. The model rates risk and authorization
+// before it chooses a decision, as the policy and the Codex reviewer require.
 const guardianDecisionSchema = z
   .object({
-    decision: z.enum(["allow", "ask", "deny"]),
-    reason: z.string().trim().min(1).max(500),
     riskLevel: z.enum(["low", "medium", "high", "critical"]),
     userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+    decision: z.enum(["allow", "ask", "deny"]),
+    reason: z.string().trim().min(1).max(500),
   })
   .strict();
 
