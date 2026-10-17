@@ -1,4 +1,10 @@
 # Changelog
+## 0.253.0
+
+### New Features ✨
+
+- (automations) Store all Automation runs in one table by @sentry-junior in [#2183](https://github.com/getsentry/junior/pull/2183)
+
 ## 0.252.0
 
 ### New Features ✨
