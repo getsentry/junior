@@ -10,33 +10,25 @@ import {
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/types";
 
-export type AutomationKind = "scheduled" | "event";
-
-export type AutomationStatus =
-  | "active"
-  | "blocked"
-  | "paused"
-  | "completed"
-  | "deleted";
-
 /**
- * One row per Automation of either kind. Top-level scalar fields have their
- * own columns, and `record` holds the rest of the Automation. The kind store
- * also copies nested values that queries filter, join, or search on into
- * columns, on every write: `team_id`, `channel_id`, `creator_slack_user_id`,
- * `instruction`, and the Event trigger `namespace` and `identifier`.
+ * One row per Automation of either kind. `record` holds the fields that have
+ * no column. Each write also copies the nested fields that queries filter or
+ * search on into columns: `team_id`, `channel_id`, `creator_slack_user_id`,
+ * `instruction`, and the event trigger `namespace` and `identifier`.
  */
 export const juniorAutomations = pgTable(
   "junior_automations",
   {
     id: text("id").primaryKey(),
-    kind: text("kind").$type<AutomationKind>().notNull(),
+    kind: text("kind").$type<"scheduled" | "event">().notNull(),
     teamId: text("team_id").notNull(),
     channelId: text("channel_id").notNull(),
     creatorSlackUserId: text("creator_slack_user_id").notNull(),
     /** Provider identity that created a Scheduled automation. */
     creatorIdentityId: text("creator_identity_id"),
-    status: text("status").$type<AutomationStatus>().notNull(),
+    status: text("status")
+      .$type<"active" | "blocked" | "paused" | "completed" | "deleted">()
+      .notNull(),
     /** Why a run blocked this Automation, until its creator resumes it. */
     statusReason: text("status_reason"),
     title: text("title"),

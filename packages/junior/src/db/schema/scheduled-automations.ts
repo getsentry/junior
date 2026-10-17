@@ -2,28 +2,24 @@ import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
 import type { ScheduledRun } from "@/chat/scheduled-automations/types";
 
-// TODO(dcramer): Drop this table after no deployed worker uses it. Its rows
-// moved to junior_automations, and current code does not read it (#2176).
+// TODO(dcramer): In PR 3 of #2176, drop the junior_scheduler_tasks table and
+// remove juniorSchedulerTasks here and in src/db/schema.ts. Its rows now live
+// in junior_automations, and no current code reads or writes it.
 export const juniorSchedulerTasks = pgTable(
   "junior_scheduler_tasks",
   {
     id: text("id").primaryKey(),
     teamId: text("team_id").notNull(),
-    // TODO(dcramer): Remove after v0.127.x runtimes are unsupported and no
-    // supported runtime writes this column.
     creatorSlackUserId: text("creator_slack_user_id"),
     creatorIdentityId: text("creator_identity_id"),
     status: text("status").notNull(),
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
-    /** Short display title generated from the task instruction. */
     title: text("title"),
     record: jsonb("record").notNull(),
   },
   (table) => [
-    // TODO(dcramer): Remove after no supported runtime reads or writes the
-    // legacy creatorSlackUserId column.
     index("junior_scheduler_tasks_creator_idx")
       .on(table.teamId, table.creatorSlackUserId, table.createdAtMs, table.id)
       .where(sql`${table.status} <> 'deleted'`),

@@ -1,4 +1,3 @@
-import { automationCopiedColumns } from "@/chat/automations/columns";
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { recordAutomationVersion } from "@/chat/automations/versions";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
@@ -9,7 +8,6 @@ import {
   scheduledRunSchema,
   scheduledAutomationSchema,
   type ScheduledAutomation,
-  type ScheduledAutomationRecord,
 } from "./types";
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
@@ -79,50 +77,39 @@ function requireStoredTask(task: ScheduledAutomation): ScheduledAutomation {
   };
 }
 
-function scheduledAutomationRecord(
-  task: ScheduledAutomation,
-): ScheduledAutomationRecord {
-  const {
-    createdAtMs: _createdAtMs,
-    creatorIdentityId: _creatorIdentityId,
-    id: _id,
-    nextRunAtMs: _nextRunAtMs,
-    runNowAtMs: _runNowAtMs,
-    status: _status,
-    statusReason: _statusReason,
-    title: _title,
-    ...record
-  } = task;
-  return record;
-}
-
 async function upsertScheduledAutomation(
   db: JuniorDatabase,
   task: ScheduledAutomation,
 ): Promise<void> {
+  const {
+    createdAtMs,
+    creatorIdentityId,
+    id,
+    nextRunAtMs,
+    runNowAtMs,
+    status,
+    statusReason,
+    title,
+    ...record
+  } = task;
   const columns = {
-    ...automationCopiedColumns(task),
-    createdAtMs: task.createdAtMs,
-    creatorIdentityId: task.creatorIdentityId,
-    nextRunAtMs: task.nextRunAtMs ?? null,
-    record: scheduledAutomationRecord(task),
-    runNowAtMs: task.runNowAtMs ?? null,
-    status: task.status,
-    statusReason: task.statusReason ?? null,
-    title: task.title?.trim() || null,
+    channelId: record.destination.channelId,
+    createdAtMs,
+    creatorIdentityId,
+    creatorSlackUserId: record.createdBy.slackUserId,
+    instruction: record.task.text,
+    nextRunAtMs: nextRunAtMs ?? null,
+    record,
+    runNowAtMs: runNowAtMs ?? null,
+    status,
+    statusReason: statusReason ?? null,
+    teamId: record.destination.teamId,
+    title: title?.trim() || null,
   };
-  const saved = await db
+  await db
     .insert(juniorAutomations)
-    .values({ ...columns, id: task.id, kind: "scheduled" })
-    .onConflictDoUpdate({
-      target: juniorAutomations.id,
-      set: columns,
-      setWhere: eq(juniorAutomations.kind, "scheduled"),
-    })
-    .returning({ id: juniorAutomations.id });
-  if (!saved[0]) {
-    throw new Error(`Automation ${task.id} already exists with another kind.`);
-  }
+    .values({ ...columns, id, kind: "scheduled" })
+    .onConflictDoUpdate({ target: juniorAutomations.id, set: columns });
 }
 
 /** Read and decode one scheduled automation. */

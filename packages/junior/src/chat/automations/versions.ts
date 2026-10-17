@@ -6,10 +6,7 @@ import {
 } from "@/api/schema/automation";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationVersions } from "@/db/schema/automation-versions";
-import {
-  juniorAutomations,
-  type AutomationKind,
-} from "@/db/schema/automations";
+import { juniorAutomations } from "@/db/schema/automations";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { canonicalJson } from "./revision";
@@ -76,7 +73,7 @@ function parseVersionRow(row: {
   createdAtMs: number;
   definition: unknown;
   editedBy: unknown;
-  kind: AutomationKind;
+  kind: "scheduled" | "event";
   version: number;
 }): AutomationVersion {
   return automationVersionSchema.parse({

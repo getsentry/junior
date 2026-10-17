@@ -328,10 +328,8 @@ export async function claimDueScheduledRun(
           }
           const finishedRun = await readRun(taskTx, runId);
           if (finishedRun) {
-            // The run finished but the Automation still targets it, so the
-            // advance after the run was not saved. A crash between the two
-            // writes can cause this. So can a worker that saved only the old
-            // scheduler table during the #2176 deploy.
+            // The run finished, but the advance after it was not saved. A
+            // crash or an old worker during the #2176 deploy can cause this.
             if (
               finishedRun.status === "blocked" ||
               finishedRun.status === "completed" ||

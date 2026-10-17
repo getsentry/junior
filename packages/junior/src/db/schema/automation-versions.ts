@@ -15,8 +15,8 @@ import { juniorAutomations } from "./automations";
 export const juniorAutomationVersions = pgTable(
   "junior_automation_versions",
   {
-    // TODO(dcramer): Drop kind after no deployed worker writes it. Current
-    // workers leave it null; junior_automations.kind is authoritative (#2176).
+    // TODO(dcramer): In PR 3 of #2176, drop this column. Only old workers
+    // write it. Readers use junior_automations.kind.
     kind: text("kind").$type<"scheduled" | "event">(),
     automationId: text("automation_id").notNull(),
     /** Starts at 1 and increases by 1 for each saved definition change. */

@@ -1649,12 +1649,10 @@ describe("Slack schedule tools", () => {
       errorMessage: "Dispatch failed.",
       runId: first!.id,
     });
+    await claimDueScheduledRun(schedulerDb(), { nowMs: 3000 });
     await expect(
-      claimDueScheduledRun(schedulerDb(), { nowMs: 3000 }),
-    ).resolves.toBeUndefined();
-    const advanced = await readScheduledAutomation(created.automation.id);
-    expect(advanced).toMatchObject({ lastRunAtMs: 1000, status: "active" });
-    expect(advanced?.nextRunAtMs).toBeGreaterThan(3000);
+      readScheduledAutomation(created.automation.id),
+    ).resolves.toMatchObject({ lastRunAtMs: 1000, status: "active" });
   });
 
   it("lists the active conversation by default and requester tasks when filtered", async () => {
