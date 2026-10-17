@@ -54,4 +54,4 @@ The replacement must keep anything needed to continue the work: unfinished
 tasks, important facts, files, completed tool results, and the active actor and
 destination.
 
-Integration coverage lives under `packages/junior/tests/integration/runtime/`.
+Coverage lives under `packages/junior/tests/component/runtime/` and `packages/junior/tests/integration/`.
