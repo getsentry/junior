@@ -1,9 +1,9 @@
 /** Viewer-scoped scheduled-automation queries and mutations. */
 import type { User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, inArray, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorSchedulerTasks } from "@/db/schema/scheduled-automations";
+import { juniorAutomations } from "@/db/schema/automations";
 import {
   isListedScheduledAutomation,
   parseScheduledAutomationRow,
@@ -128,37 +128,29 @@ export async function listViewerScheduledAutomations(
   while (automations.length < fetchLimit) {
     const cursorFilter = before
       ? or(
-          lt(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
+          lt(juniorAutomations.createdAtMs, before.createdAtMs),
           and(
-            eq(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
-            lt(juniorSchedulerTasks.id, before.id),
+            eq(juniorAutomations.createdAtMs, before.createdAtMs),
+            lt(juniorAutomations.id, before.id),
           ),
         )
       : undefined;
     const search = query
-      ? sql<boolean>`strpos(lower(coalesce(${juniorSchedulerTasks.title}, ${juniorSchedulerTasks.record}->'task'->>'text')), ${query}) > 0`
+      ? sql<boolean>`strpos(lower(coalesce(${juniorAutomations.title}, ${juniorAutomations.instruction})), ${query}) > 0`
       : undefined;
     const rows = await db
-      .select({
-        createdAtMs: juniorSchedulerTasks.createdAtMs,
-        creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-        id: juniorSchedulerTasks.id,
-        record: juniorSchedulerTasks.record,
-        title: juniorSchedulerTasks.title,
-      })
-      .from(juniorSchedulerTasks)
+      .select()
+      .from(juniorAutomations)
       .where(
         and(
-          notInArray(juniorSchedulerTasks.status, ["deleted"]),
-          inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
+          eq(juniorAutomations.kind, "scheduled"),
+          ne(juniorAutomations.status, "deleted"),
+          inArray(juniorAutomations.creatorIdentityId, identityIds),
           cursorFilter,
           search,
         ),
       )
-      .orderBy(
-        desc(juniorSchedulerTasks.createdAtMs),
-        desc(juniorSchedulerTasks.id),
-      )
+      .orderBy(desc(juniorAutomations.createdAtMs), desc(juniorAutomations.id))
       .limit(fetchLimit);
     automations.push(
       ...rows

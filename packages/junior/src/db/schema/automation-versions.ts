@@ -2,18 +2,22 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  foreignKey,
   integer,
   jsonb,
   pgTable,
   primaryKey,
   text,
 } from "drizzle-orm/pg-core";
+import { juniorAutomations } from "./automations";
 
 /** One saved Automation definition. Lifecycle and scheduler state are not versioned. */
 export const juniorAutomationVersions = pgTable(
   "junior_automation_versions",
   {
-    kind: text("kind").$type<"scheduled" | "event">().notNull(),
+    // TODO(dcramer): In PR 3 of #2176, drop this column. Only old workers
+    // write it. Readers use junior_automations.kind.
+    kind: text("kind").$type<"scheduled" | "event">(),
     automationId: text("automation_id").notNull(),
     /** Starts at 1 and increases by 1 for each saved definition change. */
     version: integer("version").notNull(),
@@ -29,7 +33,12 @@ export const juniorAutomationVersions = pgTable(
     ),
     primaryKey({
       name: "junior_automation_versions_pk",
-      columns: [table.kind, table.automationId, table.version],
+      columns: [table.automationId, table.version],
     }),
+    foreignKey({
+      name: "junior_automation_versions_automation_id_fk",
+      columns: [table.automationId],
+      foreignColumns: [juniorAutomations.id],
+    }).onDelete("cascade"),
   ],
 );

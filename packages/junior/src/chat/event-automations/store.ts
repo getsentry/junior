@@ -1,41 +1,17 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { recordAutomationVersion } from "@/chat/automations/versions";
-import {
-  eventMatches,
-  slackDestinationSchema,
-  taskOutcomeSchema,
-  type Event,
-  type User,
-} from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import { eventMatches, type Event, type User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorEventAutomations,
-  type EventAutomationStatus,
-} from "@/db/schema/event-automations";
+import { juniorAutomations } from "@/db/schema/automations";
 import { clearEventAutomationRuns } from "./run-limit";
-import { eventAutomationSchema, type EventAutomation } from "./types";
+import {
+  eventAutomationSchema,
+  type EventAutomation,
+  type EventAutomationStatus,
+} from "./types";
 
-// Older workers can still write thread destinations during deployment.
-const retainedEventAutomationSchema = eventAutomationSchema.extend({
-  destination: slackDestinationSchema,
-  outcomes: z.array(taskOutcomeSchema).max(5),
-});
-
-type EventAutomationRow = {
-  status?: EventAutomationStatus | null;
-  statusReason?: string | null;
-  task: unknown;
-  title: string | null;
-};
-
-const eventAutomationRowColumns = {
-  status: juniorEventAutomations.status,
-  statusReason: juniorEventAutomations.statusReason,
-  task: juniorEventAutomations.task,
-  title: juniorEventAutomations.title,
-};
+type AutomationRow = typeof juniorAutomations.$inferSelect;
 
 /** Live event automation plus retained SQL status for history after delete. */
 export type StoredEventAutomation = EventAutomation & {
@@ -44,64 +20,62 @@ export type StoredEventAutomation = EventAutomation & {
   statusReason?: string;
 };
 
-/** JSON task payload must not carry SQL-backed columns. */
-function eventAutomationJsonPayload(
-  task: EventAutomation | StoredEventAutomation,
-): EventAutomation {
+/**
+ * Validate an event automation and split it into its SQL columns. Lifecycle
+ * columns are written separately.
+ */
+function eventAutomationColumns(task: EventAutomation | StoredEventAutomation) {
   const {
     status: _status,
     statusReason: _statusReason,
-    title: _title,
-    ...payload
+    title,
+    ...definition
   } = task as StoredEventAutomation;
-  return payload;
+  const {
+    createdAtMs: _createdAtMs,
+    id: _id,
+    ...record
+  } = eventAutomationSchema.parse(definition);
+  return {
+    channelId: record.destination.channelId,
+    creatorSlackUserId: record.createdBy.slackUserId,
+    identifier: record.trigger.identifier,
+    instruction: record.task.text,
+    namespace: record.trigger.namespace,
+    record,
+    teamId: record.destination.teamId,
+    title: title?.trim() || null,
+  };
 }
 
-/** Decode a retained event Automation with its SQL-backed fields. */
+/** Decode an event Automation row with its SQL-backed fields. */
 export function parseEventAutomationRow(
-  row: EventAutomationRow,
+  row: AutomationRow,
 ): StoredEventAutomation {
-  const raw =
-    row.task && typeof row.task === "object"
-      ? ({ ...(row.task as Record<string, unknown>) } as Record<
-          string,
-          unknown
-        >)
-      : row.task;
-  // Title is SQL-column-backed; ignore any legacy JSON title key.
-  if (raw && typeof raw === "object" && "title" in raw) {
-    delete raw.title;
-  }
-  // TODO(dcramer): Remove this rolling-deploy fallback after v0.205.x writers
-  // are unsupported. Migration 0041 backfills all rows present at upgrade time.
-  if (
-    raw &&
-    typeof raw === "object" &&
-    !("outcomes" in raw) &&
-    "destination" in raw
-  ) {
-    (raw as Record<string, unknown>).outcomes = [
-      { action: "send_message", destination: raw.destination },
-    ];
-  }
-  const retained = retainedEventAutomationSchema.parse(raw);
-  const { threadTs: _threadTs, ...destination } = retained.destination;
+  const task = eventAutomationSchema.parse({
+    ...row.record,
+    createdAtMs: row.createdAtMs,
+    id: row.id,
+  });
   const title = row.title?.trim();
   return {
-    ...retained,
-    destination,
-    outcomes: retained.outcomes.map((outcome) => {
-      const { threadTs: _threadTs, ...destination } = outcome.destination;
-      return { ...outcome, destination };
-    }),
-    status: row.status ?? "active",
+    ...task,
+    // The trigger check rejects "completed" for event rows.
+    status: row.status as EventAutomationStatus,
     ...(row.statusReason ? { statusReason: row.statusReason } : undefined),
     ...(title ? { title } : undefined),
   };
 }
 
+function eventAutomationWhere(id: string) {
+  return and(eq(juniorAutomations.id, id), eq(juniorAutomations.kind, "event"));
+}
+
 function activeEventAutomationWhere() {
-  return ne(juniorEventAutomations.status, "deleted");
+  return and(
+    eq(juniorAutomations.kind, "event"),
+    ne(juniorAutomations.status, "deleted"),
+  );
 }
 
 /** Read one event automation by id, including deleted rows when present. */
@@ -110,11 +84,9 @@ export async function getEventAutomation(
   id: string,
 ): Promise<StoredEventAutomation | undefined> {
   const rows = await db
-    .select({
-      ...eventAutomationRowColumns,
-    })
-    .from(juniorEventAutomations)
-    .where(eq(juniorEventAutomations.id, id))
+    .select()
+    .from(juniorAutomations)
+    .where(eventAutomationWhere(id))
     .limit(1);
   return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
@@ -124,79 +96,59 @@ export async function createEventAutomation(
   db: JuniorDatabase,
   task: EventAutomation,
 ): Promise<StoredEventAutomation> {
-  const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
-  const title = task.title?.trim() || null;
+  const columns = eventAutomationColumns(task);
   // A revived row starts with a new run-limit window. Clear while the row is
   // still deleted and cannot match Events. Live retries keep their count.
-  if ((await getEventAutomation(db, parsed.id))?.status === "deleted") {
-    await clearEventAutomationRuns(parsed.id);
+  if ((await getEventAutomation(db, task.id))?.status === "deleted") {
+    await clearEventAutomationRuns(task.id);
   }
   return db.transaction(async (tx) => {
     const inserted = await tx
-      .insert(juniorEventAutomations)
+      .insert(juniorAutomations)
       .values({
-        id: parsed.id,
-        teamId: parsed.destination.teamId,
-        namespace: parsed.trigger.namespace,
-        identifier: parsed.trigger.identifier,
-        createdAtMs: parsed.createdAtMs,
+        ...columns,
+        createdAtMs: task.createdAtMs,
+        id: task.id,
+        kind: "event",
         status: "active",
-        title,
-        task: parsed,
       })
       .onConflictDoNothing()
-      .returning({
-        ...eventAutomationRowColumns,
-      });
+      .returning();
     if (inserted[0]) {
       const created = parseEventAutomationRow(inserted[0]);
-      await recordAutomationVersion(tx, "event", created, undefined);
+      await recordAutomationVersion(tx, created, undefined);
       return created;
     }
-    const existing = await getEventAutomation(tx, parsed.id);
+    const existing = await getEventAutomation(tx, task.id);
     if (!existing) {
-      return {
-        ...parsed,
-        status: "active",
-        ...(title ? { title } : undefined),
-      };
+      throw new Error(
+        `Automation ${task.id} already exists with another kind.`,
+      );
     }
     // Live retries keep the original row. Deleted rows reactivate with the new payload.
     if (existing.status !== "deleted") {
       return existing;
     }
     const rows = await tx
-      .update(juniorEventAutomations)
+      .update(juniorAutomations)
       .set({
-        teamId: parsed.destination.teamId,
-        namespace: parsed.trigger.namespace,
-        identifier: parsed.trigger.identifier,
+        ...columns,
         status: "active",
         // A reason from before the delete must not block the new row.
         statusReason: null,
-        title,
-        task: parsed,
       })
       .where(
         and(
-          eq(juniorEventAutomations.id, parsed.id),
-          eq(juniorEventAutomations.status, "deleted"),
+          eventAutomationWhere(task.id),
+          eq(juniorAutomations.status, "deleted"),
         ),
       )
-      .returning({
-        ...eventAutomationRowColumns,
-      });
+      .returning();
     if (!rows[0]) {
-      return (
-        (await getEventAutomation(tx, parsed.id)) ?? {
-          ...parsed,
-          status: "active",
-          ...(title ? { title } : undefined),
-        }
-      );
+      return (await getEventAutomation(tx, task.id))!;
     }
     const revived = parseEventAutomationRow(rows[0]);
-    await recordAutomationVersion(tx, "event", revived, undefined);
+    await recordAutomationVersion(tx, revived, undefined);
     return revived;
   });
 }
@@ -211,34 +163,24 @@ export async function saveEventAutomation(
   expectedRevision?: string,
   editedBy?: EventAutomation["createdBy"],
 ): Promise<StoredEventAutomation | undefined> {
-  const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
-  const title = task.title?.trim() || null;
+  const columns = eventAutomationColumns(task);
   return db.transaction(async (tx) => {
     const rows = await tx
-      .select({
-        ...eventAutomationRowColumns,
-      })
-      .from(juniorEventAutomations)
-      .where(eq(juniorEventAutomations.id, parsed.id))
+      .select()
+      .from(juniorAutomations)
+      .where(eventAutomationWhere(task.id))
       .for("update");
     const current = rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
     if (expectedRevision !== undefined)
       requireAutomationRevision(current, expectedRevision);
     if (!current || current.status === "deleted") return undefined;
     const updated = await tx
-      .update(juniorEventAutomations)
-      .set({
-        namespace: parsed.trigger.namespace,
-        identifier: parsed.trigger.identifier,
-        title,
-        task: parsed,
-      })
-      .where(eq(juniorEventAutomations.id, parsed.id))
-      .returning({
-        ...eventAutomationRowColumns,
-      });
+      .update(juniorAutomations)
+      .set(columns)
+      .where(eventAutomationWhere(task.id))
+      .returning();
     const saved = parseEventAutomationRow(updated[0]!);
-    await recordAutomationVersion(tx, "event", saved, current, editedBy);
+    await recordAutomationVersion(tx, saved, current, editedBy);
     return saved;
   });
 }
@@ -249,12 +191,10 @@ export async function deleteEventAutomation(
   id: string,
 ): Promise<StoredEventAutomation | undefined> {
   const rows = await db
-    .update(juniorEventAutomations)
+    .update(juniorAutomations)
     .set({ status: "deleted" })
-    .where(and(eq(juniorEventAutomations.id, id), activeEventAutomationWhere()))
-    .returning({
-      ...eventAutomationRowColumns,
-    });
+    .where(and(eq(juniorAutomations.id, id), activeEventAutomationWhere()))
+    .returning();
   return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
 
@@ -264,20 +204,12 @@ export async function listEventAutomationsForTeam(
   teamId: string,
 ): Promise<StoredEventAutomation[]> {
   const rows = await db
-    .select({
-      ...eventAutomationRowColumns,
-    })
-    .from(juniorEventAutomations)
+    .select()
+    .from(juniorAutomations)
     .where(
-      and(
-        eq(juniorEventAutomations.teamId, teamId),
-        activeEventAutomationWhere(),
-      ),
+      and(eq(juniorAutomations.teamId, teamId), activeEventAutomationWhere()),
     )
-    .orderBy(
-      asc(juniorEventAutomations.createdAtMs),
-      asc(juniorEventAutomations.id),
-    );
+    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
   return rows.map(parseEventAutomationRow);
 }
 
@@ -315,22 +247,23 @@ export async function listDeletedEventAutomationsCreatedBy(
   const ownership = or(
     ...identities.map((identity) =>
       and(
-        eq(juniorEventAutomations.teamId, identity.providerTenantId!),
-        sql`${juniorEventAutomations.task}->'createdBy'->>'slackUserId' = ${identity.providerSubjectId}`,
+        eq(juniorAutomations.teamId, identity.providerTenantId!),
+        eq(juniorAutomations.creatorSlackUserId, identity.providerSubjectId!),
       ),
     ),
   );
   if (!ownership) return [];
   const rows = await db
-    .select({
-      ...eventAutomationRowColumns,
-    })
-    .from(juniorEventAutomations)
-    .where(and(ownership, eq(juniorEventAutomations.status, "deleted")))
-    .orderBy(
-      desc(juniorEventAutomations.createdAtMs),
-      desc(juniorEventAutomations.id),
+    .select()
+    .from(juniorAutomations)
+    .where(
+      and(
+        ownership,
+        eq(juniorAutomations.kind, "event"),
+        eq(juniorAutomations.status, "deleted"),
+      ),
     )
+    .orderBy(desc(juniorAutomations.createdAtMs), desc(juniorAutomations.id))
     .limit(limit);
   return rows.map(parseEventAutomationRow);
 }
@@ -356,22 +289,18 @@ export async function collectEventAutomationMatchKeys(
   ];
   if (eventTypes.size === 0 || identifiers.length === 0) return [];
   const rows = await db
-    .select({
-      ...eventAutomationRowColumns,
-    })
-    .from(juniorEventAutomations)
+    .select()
+    .from(juniorAutomations)
     .where(
       and(
-        eq(juniorEventAutomations.teamId, input.teamId),
-        eq(juniorEventAutomations.namespace, input.namespace),
-        inArray(juniorEventAutomations.identifier, identifiers),
-        eq(juniorEventAutomations.status, "active"),
+        eq(juniorAutomations.kind, "event"),
+        eq(juniorAutomations.teamId, input.teamId),
+        eq(juniorAutomations.namespace, input.namespace),
+        inArray(juniorAutomations.identifier, identifiers),
+        eq(juniorAutomations.status, "active"),
       ),
     )
-    .orderBy(
-      asc(juniorEventAutomations.createdAtMs),
-      asc(juniorEventAutomations.id),
-    );
+    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
   const keys = new Set<string>();
   for (const row of rows) {
     const task = parseEventAutomationRow(row);
@@ -392,22 +321,18 @@ export async function findMatchingEventAutomations(
   teamId: string,
 ): Promise<StoredEventAutomation[]> {
   const rows = await db
-    .select({
-      ...eventAutomationRowColumns,
-    })
-    .from(juniorEventAutomations)
+    .select()
+    .from(juniorAutomations)
     .where(
       and(
-        eq(juniorEventAutomations.teamId, teamId),
-        eq(juniorEventAutomations.namespace, event.namespace),
-        eq(juniorEventAutomations.identifier, event.identifier),
-        eq(juniorEventAutomations.status, "active"),
+        eq(juniorAutomations.kind, "event"),
+        eq(juniorAutomations.teamId, teamId),
+        eq(juniorAutomations.namespace, event.namespace),
+        eq(juniorAutomations.identifier, event.identifier),
+        eq(juniorAutomations.status, "active"),
       ),
     )
-    .orderBy(
-      asc(juniorEventAutomations.createdAtMs),
-      asc(juniorEventAutomations.id),
-    );
+    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
   return rows
     .map(parseEventAutomationRow)
     .filter(
@@ -440,8 +365,8 @@ export async function setEventAutomationStatus(
   return db.transaction(async (tx) => {
     const rows = await tx
       .select()
-      .from(juniorEventAutomations)
-      .where(eq(juniorEventAutomations.id, id))
+      .from(juniorAutomations)
+      .where(eventAutomationWhere(id))
       .for("update");
     const current = rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
     requireAutomationRevision(current, revision);
@@ -454,9 +379,9 @@ export async function setEventAutomationStatus(
           ? { status: "blocked", statusReason: current.statusReason }
           : { status, statusReason: undefined };
     await tx
-      .update(juniorEventAutomations)
+      .update(juniorAutomations)
       .set({ status: next.status, statusReason: next.statusReason ?? null })
-      .where(eq(juniorEventAutomations.id, id));
+      .where(eventAutomationWhere(id));
     const { statusReason: _statusReason, ...rest } = current;
     return {
       ...rest,
@@ -480,23 +405,23 @@ export async function blockEventAutomation(
   reason: string,
 ): Promise<boolean> {
   const updated = await db
-    .update(juniorEventAutomations)
+    .update(juniorAutomations)
     .set({
-      status: sql`case when ${juniorEventAutomations.status} = 'active' then 'blocked' else ${juniorEventAutomations.status} end`,
+      status: sql`case when ${juniorAutomations.status} = 'active' then 'blocked' else ${juniorAutomations.status} end`,
       statusReason: reason,
     })
     .where(
       and(
-        eq(juniorEventAutomations.id, id),
+        eventAutomationWhere(id),
         or(
-          eq(juniorEventAutomations.status, "active"),
+          eq(juniorAutomations.status, "active"),
           and(
-            eq(juniorEventAutomations.status, "paused"),
-            sql`${juniorEventAutomations.statusReason} is distinct from ${reason}`,
+            eq(juniorAutomations.status, "paused"),
+            sql`${juniorAutomations.statusReason} is distinct from ${reason}`,
           ),
         ),
       ),
     )
-    .returning({ status: juniorEventAutomations.status });
+    .returning({ status: juniorAutomations.status });
   return updated[0]?.status === "blocked";
 }

@@ -8,11 +8,13 @@ import {
   createSlackScheduleUpdateAutomationTool,
   type SchedulerToolContext,
 } from "@/chat/scheduled-automations";
-import { claimDueScheduledRun } from "@/chat/scheduled-automations/runs";
+import {
+  claimDueScheduledRun,
+  markScheduledRunFailed,
+} from "@/chat/scheduled-automations/runs";
 import {
   listScheduledAutomations as listStoredTasks,
   listScheduledAutomationsForTeam as listStoredTasksForTeam,
-  parseScheduledAutomationRow,
   readScheduledAutomation as readStoredTask,
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
@@ -598,36 +600,6 @@ describe("Slack schedule tools", () => {
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
-  });
-
-  it("normalizes retained thread-bound tasks to their channel", async () => {
-    await createTask();
-    const task = (await listScheduledAutomations()).at(0);
-    if (!task) {
-      throw new Error("Expected scheduled automation to be created");
-    }
-    const { title: _title, ...record } = task;
-    const legacyDestination = {
-      ...task.destination,
-      threadTs: "1700000000.000100",
-    };
-
-    const parsed = parseScheduledAutomationRow({
-      creatorIdentityId: task.creatorIdentityId,
-      title: task.title ?? null,
-      record: {
-        ...record,
-        destination: legacyDestination,
-        outcomes: [{ action: "send_message", destination: legacyDestination }],
-      },
-    });
-
-    expect(parsed).toMatchObject({
-      destination: { channelId: "C123" },
-      outcomes: [{ destination: { channelId: "C123" } }],
-    });
-    expect(parsed).not.toHaveProperty("destination.threadTs");
-    expect(parsed).not.toHaveProperty("outcomes.0.destination.threadTs");
   });
 
   it("rejects invalid scheduled automation routing context at the store boundary", async () => {
@@ -1670,6 +1642,17 @@ describe("Slack schedule tools", () => {
       status: "pending",
     });
     expect(second).toBeUndefined();
+
+    // A finished run whose advance was not saved must not stop the task.
+    await markScheduledRunFailed(schedulerDb(), {
+      completedAtMs: 2000,
+      errorMessage: "Dispatch failed.",
+      runId: first!.id,
+    });
+    await claimDueScheduledRun(schedulerDb(), { nowMs: 3000 });
+    await expect(
+      readScheduledAutomation(created.automation.id),
+    ).resolves.toMatchObject({ lastRunAtMs: 1000, status: "active" });
   });
 
   it("lists the active conversation by default and requester tasks when filtered", async () => {

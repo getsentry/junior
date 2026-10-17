@@ -63,10 +63,9 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
   juniorAutomationExecutions,
+  juniorAutomations,
   juniorDestinations,
-  juniorEventAutomations,
   juniorIdentities,
-  juniorSchedulerTasks,
   juniorUsers,
 } from "@/db/schema";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
@@ -481,40 +480,35 @@ export async function readViewerAutomations(
   const { rows, ...page } = await readAutomationCollection(user, input);
   const db = getDb();
   const ids = rows.map((row) => row.id);
-  const [scheduled, events] = ids.length
-    ? await Promise.all([
-        db
-          .select()
-          .from(juniorSchedulerTasks)
-          .where(inArray(juniorSchedulerTasks.id, ids)),
-        db
-          .select()
-          .from(juniorEventAutomations)
-          .where(inArray(juniorEventAutomations.id, ids)),
-      ])
-    : [[], []];
+  const stored = ids.length
+    ? await db
+        .select()
+        .from(juniorAutomations)
+        .where(inArray(juniorAutomations.id, ids))
+    : [];
   const identityIds = new Set(user.identities.map((identity) => identity.id));
   const candidates = new Map<string, TaskCandidate>();
-  for (const row of scheduled) {
-    const task = parseScheduledAutomationRow(row);
-    if (task && task.status !== "deleted")
-      candidates.set(`scheduled:${task.id}`, {
-        kind: "scheduled",
-        task,
-        ownedByViewer: identityIds.has(task.creatorIdentityId),
-      });
-  }
-  for (const row of events) {
+  for (const row of stored) {
+    if (row.kind === "scheduled") {
+      const task = parseScheduledAutomationRow(row);
+      if (task && task.status !== "deleted")
+        candidates.set(task.id, {
+          kind: "scheduled",
+          task,
+          ownedByViewer: identityIds.has(task.creatorIdentityId),
+        });
+      continue;
+    }
     const task = parseEventAutomationRow(row);
     if (task.status !== "deleted")
-      candidates.set(`event:${task.id}`, {
+      candidates.set(task.id, {
         kind: "event",
         task,
         ownedByViewer: eventAutomationBelongsToUser(task, user),
       });
   }
   const selected = rows.flatMap((row) => {
-    const candidate = candidates.get(`${row.kind}:${row.id}`);
+    const candidate = candidates.get(row.id);
     return candidate ? [candidate] : [];
   });
   const [destinations, creators] = await Promise.all([
@@ -597,23 +591,16 @@ async function readDeletedOwnedScheduledAutomations(
   const identityIds = user.identities.map((identity) => identity.id);
   if (identityIds.length === 0) return [];
   const rows = await getDb()
-    .select({
-      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-      id: juniorSchedulerTasks.id,
-      record: juniorSchedulerTasks.record,
-      title: juniorSchedulerTasks.title,
-    })
-    .from(juniorSchedulerTasks)
+    .select()
+    .from(juniorAutomations)
     .where(
       and(
-        eq(juniorSchedulerTasks.status, "deleted"),
-        inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
+        eq(juniorAutomations.kind, "scheduled"),
+        eq(juniorAutomations.status, "deleted"),
+        inArray(juniorAutomations.creatorIdentityId, identityIds),
       ),
     )
-    .orderBy(
-      desc(juniorSchedulerTasks.createdAtMs),
-      desc(juniorSchedulerTasks.id),
-    )
+    .orderBy(desc(juniorAutomations.createdAtMs), desc(juniorAutomations.id))
     .limit(TASK_EXECUTION_LIST_LIMIT);
   return rows
     .map(parseScheduledAutomationRow)
@@ -789,7 +776,6 @@ export async function readViewerAutomationVersions(
   if (!candidate) throw new ViewerTaskNotFoundError();
   const versions = await listAutomationVersions(
     getDb(),
-    kind,
     id,
     AUTOMATION_VERSION_LIST_LIMIT + 1,
   );

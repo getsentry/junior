@@ -10,7 +10,7 @@ import { EVENT_AUTOMATION_RUN_WINDOW_MS } from "@/chat/event-automations/run-lim
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
-import { juniorEventAutomations } from "@/db/schema/event-automations";
+import { juniorAutomations } from "@/db/schema/automations";
 import {
   changesRequestedEvent,
   context,
@@ -63,8 +63,8 @@ describe("event automation blocking", () => {
   afterEach(async () => {
     await fixture.sql
       .db()
-      .delete(juniorEventAutomations)
-      .where(eq(juniorEventAutomations.teamId, teamId));
+      .delete(juniorAutomations)
+      .where(eq(juniorAutomations.teamId, teamId));
     await fixture.close();
     await disconnectStateAdapter();
     vi.restoreAllMocks();

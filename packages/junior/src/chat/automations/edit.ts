@@ -291,7 +291,7 @@ export async function activateViewerAutomationVersion(
 ): Promise<AutomationEdit> {
   const current = await requireEditableAutomation(user, kind, id);
   requireAutomationRevision(current.task, input.revision);
-  const saved = await readAutomationVersion(getDb(), kind, id, input.version);
+  const saved = await readAutomationVersion(getDb(), id, input.version);
   if (!saved)
     throw new AutomationEditError("This version does not exist.", "version");
   const { definition } = saved;

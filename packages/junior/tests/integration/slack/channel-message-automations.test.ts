@@ -9,7 +9,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
-import { juniorEventAutomations } from "@/db/schema/event-automations";
+import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
 import {
   createConversationWorkQueueTestAdapter,
@@ -96,8 +96,8 @@ describe("Slack channel-message automations", () => {
   afterEach(async () => {
     await fixture.sql
       .db()
-      .delete(juniorEventAutomations)
-      .where(eq(juniorEventAutomations.teamId, TEAM_ID));
+      .delete(juniorAutomations)
+      .where(eq(juniorAutomations.teamId, TEAM_ID));
     await fixture.close();
     await disconnectStateAdapter();
     vi.restoreAllMocks();
