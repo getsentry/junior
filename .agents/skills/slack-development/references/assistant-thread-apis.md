@@ -104,7 +104,7 @@ This file intentionally separates:
 3. Lifecycle event handling:
 
 - `packages/junior/src/chat/slack/assistant-thread/lifecycle.ts`
-- `packages/junior/src/chat/runtime/slack-runtime.ts`
+- `packages/junior/src/chat/ingress/slack-webhook.ts`
 
 4. DM title generation and permission handling:
 
