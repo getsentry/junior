@@ -381,6 +381,7 @@ export function createWorkspaceTools(
               namespace: watch.namespace,
               identifier: watch.identifier,
               resourceType: watch.type,
+              ...(context.turnId ? { turnId: context.turnId } : undefined),
             })
           : undefined;
 

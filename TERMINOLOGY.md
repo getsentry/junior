@@ -44,6 +44,14 @@ Canonical words used across Junior's code and documentation.
   fields that the agent or tools need. Those fields do not select the runtime.
   A Turn stores the Actor selected from the input that started it. Steering
   inputs keep their own Actors.
+- **Task Actor**: the Actor whose work one Turn is. Each Turn records it in
+  its `turn_started` event, for a root and for a child. It comes from the Turn
+  that caused the Turn: the Turn's own person or Automation run Actor, the
+  parent Turn of a `spawnAgent` or `messageAgent` call, the Turn that created
+  a Watch, or the child Turn that sent a result or agent message. The event
+  system Actor is never a task Actor. A Turn can have no task Actor. The task
+  Actor only selects whose root messages give user approval to a child agent.
+  It never selects the Run Actor or credentials.
 - **Automation**: a saved instruction that Junior runs later. It has an owner,
   a trigger, an instruction, and an ordered list of outcomes.
 - **Schedule**: a time-based trigger for an Automation.
@@ -129,10 +137,6 @@ Canonical words used across Junior's code and documentation.
   message as a steering message. A message to the parent is an Event Inbound
   message, the same as a child result. An agent message is not from a person,
   so it does not give user approval.
-- **Task Actor**: the Actor whose root Conversation messages give user approval
-  to a child agent. It is the Actor of the child's latest task from
-  `spawnAgent` or `messageAgent`, and never the event system Actor. It does not
-  select the Run Actor or its credentials.
 - **Reasoning level**: the configured or selected amount of model reasoning for
   a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Reply**: a destination-visible message owned by delivery or reply-policy

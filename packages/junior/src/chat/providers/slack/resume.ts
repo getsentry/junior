@@ -42,6 +42,7 @@ import {
   getAgentTurnDiagnosticsAttributes,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
+import { taskActorForActor } from "@/chat/conversations/task-actor";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import {
@@ -621,12 +622,15 @@ async function resumeSlackTurnInContext(
     );
     const run = buildResumedRun(runArgs, status, deliverAssistantMessage);
     if (runArgs.inputMessageIds?.length) {
+      // A Turn that already started keeps the task Actor it recorded.
+      const taskActor = taskActorForActor(resumeActor);
       await turnLifecycle.start({
         conversationId: runArgs.conversationId,
         turnId: runArgs.turnId,
         createdAtMs: Date.now(),
         inputMessageIds: [...new Set(runArgs.inputMessageIds)],
         surface: "slack",
+        ...(taskActor ? { taskActor } : undefined),
       });
     }
     const outcome = await runArgs.executeTurn(run, async (result) => {

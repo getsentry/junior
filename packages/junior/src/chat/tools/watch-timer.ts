@@ -45,6 +45,7 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
         conversationId: context.conversationId,
         ...(creatorUserId ? { creatorUserId } : undefined),
         toolCallId: options.toolCallId,
+        ...(context.turnId ? { turnId: context.turnId } : undefined),
       });
       return { id: watch.id, firesAtMs: watch.firesAtMs! };
     },

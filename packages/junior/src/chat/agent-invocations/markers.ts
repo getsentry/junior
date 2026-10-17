@@ -4,6 +4,7 @@
  * The child Conversation gets `message` events for its input and its result,
  * because a child has no Location that records visible messages.
  */
+import type { TurnReference } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import { getAgentInvocationMessageId } from "./store";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
@@ -11,15 +12,21 @@ import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 // The dashboard labels each child row with this kind.
 const SUBAGENT_KIND = "agent";
 
+function subagentStartedKey(invocationId: string): string {
+  return `subagent_started:${invocationId}`;
+}
+
 /**
  * Record in the parent Conversation that one agent invocation started, and
  * record its input as a user message in the child Conversation. The dashboard
  * pairs the parent event with `subagent_ended` to show the child and its
  * status. It must be written before the child mailbox append, so the child
- * cannot end first.
+ * cannot end first. `causingTurn` is the Turn that caused the agent
+ * invocation. The child Turn takes its task Actor.
  */
 export async function recordSubagentStarted(
   invocation: AgentInvocation,
+  causingTurn?: TurnReference,
 ): Promise<void> {
   const eventStore = getConversationEventStore();
   // The mailbox input has the same id, so the child Turn links to it.
@@ -38,7 +45,7 @@ export async function recordSubagentStarted(
   ]);
   await eventStore.append(invocation.parentConversationId, [
     {
-      idempotencyKey: `subagent_started:${invocation.invocationId}`,
+      idempotencyKey: subagentStartedKey(invocation.invocationId),
       data: {
         type: "subagent_started",
         subagentInvocationId: invocation.invocationId,
@@ -60,10 +67,28 @@ export async function recordSubagentStarted(
         ...(invocation.reasoningLevel
           ? { reasoningLevel: invocation.reasoningLevel }
           : undefined),
+        ...(causingTurn ? { causingTurn } : undefined),
       },
       createdAtMs: invocation.createdAtMs,
     },
   ]);
+}
+
+/**
+ * Read the Turn that caused one agent invocation from its `subagent_started`
+ * event. It is undefined when the event names no causing Turn.
+ */
+export async function loadCausingTurn(
+  invocation: Pick<AgentInvocation, "invocationId" | "parentConversationId">,
+): Promise<TurnReference | undefined> {
+  const event = await getConversationEventStore().loadByIdempotencyKey(
+    invocation.parentConversationId,
+    subagentStartedKey(invocation.invocationId),
+  );
+  return event?.data.type === "subagent_started" &&
+    event.data.subagentInvocationId === invocation.invocationId
+    ? event.data.causingTurn
+    : undefined;
 }
 
 const SUBAGENT_OUTCOMES = {

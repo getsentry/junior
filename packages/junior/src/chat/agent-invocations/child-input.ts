@@ -3,18 +3,15 @@
  * a result or message from its own child agent, or its own watch events.
  *
  * The parent did not start this work, so it is not a task. It runs with the
- * Actor and credentials of the child's latest task, and it keeps the child's
- * task Actor. A watch event or a result is never a task, so the credentials of
- * one timer Turn never pass to later work.
+ * Actor and credentials of the child's latest task. A watch event or a result
+ * is never a task, so the credentials of one timer Turn never pass to later
+ * work. The task Actor of its Turn comes from the Turn that caused the input,
+ * not from this row (see `conversations/task-actor.ts`).
  */
 import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
-import {
-  getAgentInvocation,
-  getChildTaskActor,
-  invocationFromRow,
-} from "./store";
+import { getAgentInvocation, invocationFromRow } from "./store";
 import type { AgentInvocation } from "./types";
 
 /**
@@ -54,9 +51,8 @@ async function getLatestAgentTask(
  * Create or replay the agent invocation that gives one input to the child
  * Conversation of `latest`. It continues that Conversation for the same
  * parent. It runs as the Actor and with the credentials of the child's latest
- * task, unless `runAs` sets them, and it keeps the child's task Actor.
- * It skips the queue and active-count checks because it continues work that
- * already passed them.
+ * task, unless `runAs` sets them. It skips the queue and active-count checks
+ * because it continues work that already passed them.
  */
 export async function createAgentInvocationForChildInput(
   args: {
@@ -76,7 +72,6 @@ export async function createAgentInvocationForChildInput(
     );
   }
   const runAs = args.runAs ?? task;
-  const taskActor = await getChildTaskActor(latest.childConversationId);
   await getSqlExecutor()
     .db()
     .insert(juniorAgentInvocations)
@@ -88,7 +83,6 @@ export async function createAgentInvocationForChildInput(
       input: args.input,
       actor: runAs.actor,
       credentialContext: runAs.credentialContext ?? null,
-      taskActor: taskActor ?? null,
       source: args.runAs?.source ?? { kind: "agent_invocation" },
       destination: latest.destination,
       modelProfile: latest.modelProfile ?? null,

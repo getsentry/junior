@@ -1,8 +1,11 @@
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
+import type { TurnReference } from "@/chat/conversations/history";
+import { resolveCausingTurn } from "@/chat/conversations/task-actor";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import {
   EVENT_WAIT_MS,
+  eventWatchCausingTurn,
   isEventMailboxMetadata,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
@@ -29,6 +32,7 @@ import {
   getAgentInvocationIdForMessage,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+  getAgentInvocationTurnId,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
@@ -303,6 +307,17 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
 }
 
 /**
+ * Return the child Turn that one agent invocation ran. A result or agent
+ * message from it takes the task Actor of that Turn.
+ */
+function agentInvocationTurn(invocation: AgentInvocation): TurnReference {
+  return {
+    conversationId: invocation.childConversationId,
+    turnId: getAgentInvocationTurnId(invocation.invocationId),
+  };
+}
+
+/**
  * Read the agent invocation of one result or message and check that it
  * belongs to a child of the Conversation that received it.
  */
@@ -384,7 +399,12 @@ export async function startAgentInvocationsForChildInput(
         source,
       },
     });
-    await enqueueAgentInvocation(invocation, options);
+    // The Turn takes the task Actor of the Turns that created the Watches.
+    const cause = await resolveCausingTurn(messages.map(eventWatchCausingTurn));
+    await enqueueAgentInvocation(invocation, {
+      ...options,
+      ...(cause ? { causingTurn: cause.turn } : undefined),
+    });
     await context.attempt.ack();
     return { status: "completed" };
   }
@@ -409,7 +429,11 @@ export async function startAgentInvocationsForChildInput(
           : getAgentInvocationIdForMessage(message.inboundMessageId),
       latest,
     });
-    await enqueueAgentInvocation(invocation, options);
+    // The Turn takes the task Actor of the child Turn that sent the input.
+    await enqueueAgentInvocation(invocation, {
+      ...options,
+      causingTurn: agentInvocationTurn(source),
+    });
   }
   await context.attempt.ack();
   return { status: "completed" };
@@ -419,7 +443,9 @@ export async function startAgentInvocationsForChildInput(
  * Run each agent invocation result or message as the Actor that triggered the
  * child, user or system. This is on purpose: the result continues that
  * Actor's work. The Actor comes from SQL, not from mailbox metadata, so the
- * parent Turn has the same authority it had at spawn time.
+ * parent Turn has the same authority it had at spawn time. Each input also
+ * names the child Turn that sent it, so the parent Turn can take its task
+ * Actor.
  *
  * TODO(dcramer): Pass the delegated credential subject of a system Actor, such
  * as a timer watch Turn, when system Turns can spawn children that need it.
@@ -440,7 +466,11 @@ export async function withAgentInvocationResultActors(
         entry.message,
         input,
       );
-      return { ...entry, actor: invocation.actor };
+      return {
+        ...entry,
+        actor: invocation.actor,
+        causingTurn: agentInvocationTurn(invocation),
+      };
     }),
   );
   return { kind: "mailbox", batch };

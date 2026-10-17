@@ -257,12 +257,6 @@ export type AgentRun = {
   actor?: Actor;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
-  /**
-   * Task Actor of a child agent Run: the Actor whose root messages give user
-   * approval. It can differ from `actor`, such as in a watch event Turn. It
-   * never gives credentials.
-   */
-  taskActor?: Actor;
   source: Source;
   /** Conversation Location available to this Run. */
   location?: Location;

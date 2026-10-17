@@ -513,9 +513,7 @@ describe("agent invocation identity and concurrency", () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const harness = await createHarness(taskModel);
     try {
-      const user = { platform: "local", userId: "U-watcher" } as const;
       const child = await harness.spawn({
-        actor: user,
         agentName: "watcher",
         idempotencyKey: "watch-1",
         input: "Watch the deploy.",
@@ -538,8 +536,7 @@ describe("agent invocation identity and concurrency", () => {
       await harness.drainQueuedWork();
 
       // The timer runs on the child as the event Actor, with an event Source
-      // and the grants of the person who set it. Action review still reads
-      // root approval for the user who gave the task.
+      // and the grants of the person who set it.
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
       const timerRun = requests[1]!;
@@ -561,7 +558,6 @@ describe("agent invocation identity and concurrency", () => {
           eventType: "timer.fired",
           namespace: "junior",
         },
-        taskActor: user,
       });
       // Its result is saved on its own agent invocation for the parent.
       await expect(getAgentInvocation(timerRun.runId!)).resolves.toMatchObject({

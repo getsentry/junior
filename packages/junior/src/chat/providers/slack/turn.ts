@@ -144,6 +144,7 @@ import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
+import { taskActorForActor } from "@/chat/conversations/task-actor";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   scheduleSessionCompletedPluginTasks,
@@ -668,6 +669,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           nextTurnId: turnId,
         });
         if (conversationId && preparedState.userMessageId) {
+          // The Turn is the work of the person whose message it runs as, not
+          // of the thread owner.
+          const taskActor = taskActorForActor(executionActor);
           await turnLifecycle.start({
             conversationId,
             createdAtMs: Date.now(),
@@ -680,6 +684,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               ]),
             ],
             surface: options.execution?.surface ?? "slack",
+            ...(taskActor ? { taskActor } : undefined),
             turnId,
           });
         }

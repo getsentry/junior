@@ -81,10 +81,6 @@ export const juniorAgentInvocations = pgTable(
     // Short display title of the task. Null for runtime-started invocations.
     title: text("title"),
     actor: jsonb("actor_json").$type<Actor>().notNull(),
-    // Actor of the child's latest task that is not the event system Actor.
-    // Guardian reads root approval for this Actor. Null when no such task is
-    // known.
-    taskActor: jsonb("task_actor_json").$type<Actor>(),
     credentialContext: jsonb(
       "credential_context_json",
     ).$type<CredentialContext>(),

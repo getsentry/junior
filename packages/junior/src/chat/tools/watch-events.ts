@@ -185,6 +185,7 @@ export function createWatchEventsTool(
         namespace: input.namespace.trim(),
         identifier: requireEventIdentifier(catalog, input),
         resourceType: input.resourceType.trim(),
+        ...(context.turnId ? { turnId: context.turnId } : undefined),
       });
       const details = {
         id: subscription.id,

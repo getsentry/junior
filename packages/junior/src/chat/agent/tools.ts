@@ -351,6 +351,7 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
+    turnId: args.run.turnId,
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),
@@ -445,15 +446,15 @@ export async function wireAgentTools(
       evidence: () =>
         buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
       // A child has no message from a person. Its authority is in the root
-      // Conversation, read again for each action. The task Actor, not the
-      // Run Actor, is the user there: a watch event Turn runs as the event
-      // system Actor.
+      // Conversation, read again for each action, for the task Actor of this
+      // Turn. A watch event Turn runs as the event system Actor, so the Run
+      // Actor is not the person whose work it is.
       ...(childAgent
         ? {
             rootConversation: async () =>
               await readRootConversation({
                 conversationId: args.run.conversationId,
-                taskActor: args.run.taskActor,
+                turnId: args.run.turnId,
               }),
           }
         : undefined),

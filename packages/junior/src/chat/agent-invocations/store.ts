@@ -7,16 +7,12 @@ import {
   desc,
   eq,
   inArray,
-  isNotNull,
   lt,
   ne,
   or,
   sql,
 } from "drizzle-orm";
-import type { Actor } from "@/chat/actor";
-import { sameActorIdentity } from "@/chat/conversations/provenance";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import {
   agentBindingSchema,
@@ -179,7 +175,6 @@ export function invocationFromRow(
     ...(row.result !== null ? { result: row.result } : undefined),
     source: row.source,
     status: row.status,
-    ...(row.taskActor ? { taskActor: row.taskActor } : undefined),
     ...(row.terminalAt
       ? { terminalAtMs: row.terminalAt.getTime() }
       : undefined),
@@ -276,31 +271,6 @@ export async function getLatestAgentInvocationForConversation(
     .orderBy(desc(juniorAgentInvocations.createdAt))
     .limit(1);
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
-}
-
-/**
- * Read the task Actor of one child Conversation: the newest one that its
- * agent invocations store. Each agent invocation stores the child's task
- * Actor when it is created, so this is the task Actor of the latest task. A
- * watch event row from before task Actors were stored has none, so it does
- * not hide an older one.
- */
-export async function getChildTaskActor(
-  childConversationId: string,
-): Promise<AgentInvocation["taskActor"]> {
-  const [row] = await getSqlExecutor()
-    .db()
-    .select({ taskActor: juniorAgentInvocations.taskActor })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        eq(juniorAgentInvocations.childConversationId, childConversationId),
-        isNotNull(juniorAgentInvocations.taskActor),
-      ),
-    )
-    .orderBy(desc(juniorAgentInvocations.createdAt))
-    .limit(1);
-  return row?.taskActor ?? undefined;
 }
 
 /**
@@ -411,18 +381,6 @@ async function countActiveChildAgentsForParent(
 }
 
 /**
- * Return the task Actor of a new task: the Actor of the Run that gives it,
- * unless that is the event system Actor. Then the task keeps `inherited`: the
- * task Actor of the parent Run, or of the child.
- */
-function taskActorFor(
-  actor: Actor,
-  inherited: Actor | undefined,
-): Actor | undefined {
-  return sameActorIdentity(actor, EVENT_SYSTEM_ACTOR) ? inherited : actor;
-}
-
-/**
  * Create or replay the first invocation of one new child agent. A name gives
  * the child a stable Conversation id that later messages can address. A name
  * that is already used throws: later work for that child goes through
@@ -502,7 +460,6 @@ export async function createAgentInvocation(
         title: input.title ?? null,
         actor: input.actor,
         credentialContext: input.credentialContext ?? null,
-        taskActor: taskActorFor(input.actor, input.parentTaskActor) ?? null,
         source: { kind: "agent_invocation" },
         destination: input.destination,
         modelProfile: input.modelProfile ?? null,
@@ -598,8 +555,6 @@ export async function createAgentInvocationForMessage(
     idempotencyKey: string;
     input: string;
     parentConversationId: string;
-    /** Task Actor of the parent Run when the parent is a child agent. */
-    parentTaskActor?: Actor;
     parentToolCallId: string;
   },
   nowMs = Date.now(),
@@ -668,13 +623,6 @@ export async function createAgentInvocationForMessage(
           title: null,
           actor: input.actor,
           credentialContext: input.credentialContext ?? null,
-          // A root parent has no task Actor. The child keeps its own.
-          taskActor:
-            taskActorFor(
-              input.actor,
-              input.parentTaskActor ??
-                (await getChildTaskActor(input.childConversationId)),
-            ) ?? null,
           source: { kind: "agent_invocation" },
           destination: input.destination,
           modelProfile: latest.modelProfile ?? null,

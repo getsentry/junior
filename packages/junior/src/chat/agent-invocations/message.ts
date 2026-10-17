@@ -83,10 +83,14 @@ export function bindMessageAgent(
       idempotencyKey: `${run.turnId}:${call.toolCallId}`,
       input: input.text,
       parentConversationId: run.conversationId,
-      ...(run.taskActor ? { parentTaskActor: run.taskActor } : undefined),
       parentToolCallId: call.toolCallId,
     });
-    await enqueueAgentInvocation(invocation, { ...options, queue });
+    await enqueueAgentInvocation(invocation, {
+      ...options,
+      // The child takes the task Actor of the Turn that made this call.
+      causingTurn: { conversationId: run.conversationId, turnId: run.turnId },
+      queue,
+    });
     return {
       conversationId: childConversationId,
       delivery: queued ? "queued" : "started",

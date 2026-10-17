@@ -10,6 +10,7 @@ import {
   type AppendAndEnqueueInboundMessageResult,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import type { TurnReference } from "@/chat/conversations/history";
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -90,6 +91,11 @@ export type EventMailboxMetadata = {
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
+  /**
+   * Turn that created the Watch, in the same Conversation. The Turn that this
+   * input starts takes its task Actor. It never selects credentials.
+   */
+  watchTurnId?: string;
 } & Record<string, unknown>;
 
 /** Whether mailbox metadata is a plain event wake. */
@@ -120,6 +126,22 @@ export function isEventMailboxMetadata(
     (fields.trustedSummary === undefined ||
       typeof fields.trustedSummary === "string")
   );
+}
+
+/**
+ * Return the Turn that created the Watch of one Event input. It is in the
+ * Conversation of the input. A Watch from before Watches named their Turn
+ * has none.
+ */
+export function eventWatchCausingTurn(
+  message: InboundMessage,
+): TurnReference | undefined {
+  const metadata = message.input.metadata;
+  return isEventMailboxMetadata(metadata) &&
+    typeof metadata.watchTurnId === "string" &&
+    metadata.watchTurnId
+    ? { conversationId: message.conversationId, turnId: metadata.watchTurnId }
+    : undefined;
 }
 
 /**
@@ -157,7 +179,10 @@ export function timerWatchCredentialSubject(
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
   event: EventNotification;
-  subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
+  subscription: Pick<
+    Watch,
+    "conversationId" | "credentialSubject" | "id" | "turnId"
+  >;
   text: string;
   receivedAtMs?: number;
 }): InboundMessage {
@@ -165,6 +190,9 @@ export function createEventInboundMessage(input: {
     kind: "event",
     ...(input.subscription.credentialSubject
       ? { credentialSubject: input.subscription.credentialSubject }
+      : undefined),
+    ...(input.subscription.turnId
+      ? { watchTurnId: input.subscription.turnId }
       : undefined),
     event: {
       eventKey: input.event.eventKey,
@@ -246,6 +274,7 @@ export async function enqueueEventNotification(args: {
         conversationId: args.subscription.conversationId,
         credentialSubject: args.subscription.credentialSubject,
         id: args.subscription.id,
+        turnId: args.subscription.turnId,
       },
       text,
     }),

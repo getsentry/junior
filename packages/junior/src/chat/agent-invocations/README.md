@@ -172,11 +172,11 @@ results starts a new agent invocation on that child instead. Its id comes from
 the result's agent invocation id, so retries do not start a second one. An
 agent message from one of those children starts an agent invocation the same
 way; its id comes from the message's Inbound message id. It uses the parent of
-the child's latest agent invocation. It uses the Actor, credentials, and task
-Actor of the child's latest task: the latest agent invocation that the parent
-started with `spawnAgent` or `messageAgent`. A watch event or a result is not a
-task, so the credentials of one timer Turn never pass to later work. It skips
-the queue and active-count checks.
+the child's latest agent invocation. It uses the Actor and credentials of the
+child's latest task: the latest agent invocation that the parent started with
+`spawnAgent` or `messageAgent` (`child-input.ts`). A watch event or a result
+is not a task, so the credentials of one timer Turn never pass to later work.
+It skips the queue and active-count checks.
 
 The parent gets one report for the child's work. A finished agent invocation
 is `replaced` instead of sent when the child still has open work: another open
@@ -192,9 +192,8 @@ A child can use `watchTimer` and `watchEvents` the same as a root, and its
 watches belong to the child Conversation. Each batch of watch events starts a
 new agent invocation on the child, with the same rules as an Event Turn on a
 root: the same burst window, the event system Actor, and a timer's own grants.
-Its id comes from the batch's first Inbound message. It keeps the child's task
-Actor, so action review reads the same user approval as for the task (see
-[User Approval](#user-approval)).
+Its id comes from the batch's first Inbound message. Its Turn takes the task
+Actor of the Turn that created the Watches (see [User Approval](#user-approval)).
 
 Watch event invocations count toward the child's automated-turn limit. A task
 or message from the parent resets the count, like a user message on a root.
@@ -239,23 +238,33 @@ not on a resumed slice. A child action uses the fixed
 When Guardian reviews an action of a child, `root-conversation.ts` walks
 `parentConversationId` up to the root Conversation. It reads the root's
 `message` events, the durable visible transcript. Compaction and handoff never
-rewrite these events. Nothing is copied into the child. The only stored input
-is the child's task Actor.
+rewrite these events. Nothing is copied into the child.
 
-- Only a root message whose author has the same Actor identity as the child's
-  **task Actor** is labeled `user`. It is compared by platform, team, and user
-  id. When either Actor is not known, the message does not count.
-- The task Actor is the Actor of the child's latest task, the latest agent
-  invocation that the parent started with `spawnAgent` or `messageAgent`. The
-  event system Actor is never a task Actor. A task from a Run of the event
-  system Actor keeps the task Actor of that Run when it is a child. Otherwise
-  it keeps the child's own task Actor.
-- Each agent invocation stores its task Actor when it is created, and the
-  child Run carries it to action review. Review does not find it again. A
-  watch event Turn runs as the event system Actor, but it keeps the task
-  Actor, so the person whose work it is can still approve its actions.
+- Only a root message whose author has the same Actor identity as the
+  **task Actor** of the child's current Turn is labeled `user`. It is compared
+  by platform, team, and user id. When the Turn has no task Actor, no message
+  counts.
+- Each Turn records its task Actor in its `turn_started` event, for a root and
+  for a child (`conversations/task-actor.ts`). It comes from the Turn that
+  caused it, never from the owner of the Conversation or the Watch:
+  - A Turn from a person or an Automation run: that Actor. In a thread with
+    many people, this is the person whose message started the Turn.
+  - A child Turn from `spawnAgent` or `messageAgent`: the task Actor of the
+    parent Turn that made the call. The `subagent_started` event of the agent
+    invocation names that Turn in `causingTurn`.
+  - A Turn from a Watch, on a root or a child: the task Actor of the Turn that
+    created the Watch. The Watch record names that Turn in `turnId`.
+  - A Turn from a child result or agent message: the task Actor of the child
+    Turn that sent it.
+- The event system Actor is never a task Actor. When a Turn has inputs from
+  causing Turns with different task Actors, or an input names no causing
+  Turn, the Turn has no task Actor.
+- `tool_execution_started` has no Turn id and is not always written, so a
+  `parentToolCallId` alone cannot find the parent Turn. This is why
+  `subagent_started` names its causing Turn.
 - The task Actor only selects who is the `user` in the root read. It does not
-  change the Run Actor, its credentials, or Guardian user intent.
+  change the Run Actor, its credentials, or Guardian user intent. A watch
+  event Turn runs as the event system Actor, but it keeps the task Actor.
 - When the root is an Automation run, the dispatch input message is that
   run's own instruction. It is labeled `automation` for the run's system
   Actor. This is the authority that the run already has. Guardian reviews the
@@ -266,9 +275,8 @@ is the child's task Actor.
   from other people are labeled as context.
 - The read happens for each action. A later user message, such as a
   revocation, counts.
-- Grandchildren and children started by a result Turn read the same root.
-  A child started by a watch event Turn of its parent gets the parent's task
-  Actor.
+- Grandchildren and children started by a result or Watch Turn read the same
+  root, with the task Actor of their own Turn.
 - The read is bounded: the newest 16 messages and 24,000 characters. A cut
   adds an explicit notice.
 - The instruction of an Automation run root is always in the read. It is

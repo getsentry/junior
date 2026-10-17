@@ -6,6 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createActor, type Actor, type WebActor } from "@/chat/actor";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { TurnReference } from "@/chat/conversations/history";
 import type { Location } from "@/chat/conversations/location";
 import type {
   ConversationAuthor,
@@ -32,6 +33,11 @@ import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox
 export type MailboxTurnInput = {
   actor: Actor;
   author: ConversationAuthor;
+  /**
+   * Turn that caused this input, when it is not from a person: the child Turn
+   * of a result or agent message. A Watch names its own Turn in the input.
+   */
+  causingTurn?: TurnReference;
   message: InboundMessage;
   source: Source;
 };

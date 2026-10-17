@@ -8,14 +8,16 @@
  * handoff never rewrite these events, so an early request or a later
  * revocation is still there after the root's model history changes.
  *
- * Only a message whose author has the same Actor identity as the child's task
- * Actor counts as authority. Each other message keeps its real author as a
- * label and is only context. Nothing is copied into the child.
+ * Only a message whose author has the same Actor identity as the task Actor
+ * of the child's current Turn counts as authority (see
+ * `conversations/task-actor.ts`). Each other message keeps its real author as
+ * a label and is only context. Nothing is copied into the child.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
+import { loadTurnTaskActor } from "@/chat/conversations/task-actor";
 import type { Conversation } from "@/chat/conversations/store";
 import type {
   RootConversation,
@@ -160,18 +162,23 @@ async function readAutomationInstruction(
 
 /**
  * Read a bounded projection of the root Conversation for Guardian review of
- * one child agent action. `taskActor` is the child's task Actor, not the Actor
- * of its Run. Only messages that the task Actor wrote, or the Automation run's
- * own instruction for its system Actor, are labeled as authority. When
- * `conversationId` is a root, it returns nothing.
+ * one child agent action in Turn `turnId`. Only messages that the task Actor
+ * of that Turn wrote, or the Automation run's own instruction for its system
+ * Actor, are labeled as authority. The task Actor is not the Run Actor: a
+ * watch event Turn runs as the event system Actor. When the Turn has no task
+ * Actor, nothing is authority. When `conversationId` is a root, it returns
+ * nothing.
  */
 export async function readRootConversation(args: {
   conversationId: string;
-  taskActor: Actor | undefined;
+  turnId: string;
 }): Promise<RootConversation> {
-  const { taskActor } = args;
   const root = await findRootConversation(args.conversationId);
-  if (!root || root.conversationId === args.conversationId || !taskActor) {
+  if (!root || root.conversationId === args.conversationId) {
+    return { messages: [], truncated: false };
+  }
+  const taskActor = await loadTurnTaskActor(args);
+  if (!taskActor) {
     return { messages: [], truncated: false };
   }
   const page = await getConversationEventStore().query(root.conversationId, {

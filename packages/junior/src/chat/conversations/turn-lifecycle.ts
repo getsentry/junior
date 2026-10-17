@@ -1,3 +1,4 @@
+import type { Actor } from "@/chat/actor";
 import type {
   ConversationEventStore,
   ConversationTurnFailureCode,
@@ -11,6 +12,8 @@ export interface StartConversationTurnInput {
   createdAtMs: number;
   inputMessageIds: string[];
   surface: "slack" | "api" | "scheduler" | "internal";
+  /** Actor whose work the Turn is. See `task-actor.ts`. */
+  taskActor?: Actor;
   turnId: string;
 }
 
@@ -54,6 +57,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           turnId: input.turnId,
           inputMessageIds: input.inputMessageIds,
           surface: input.surface,
+          ...(input.taskActor ? { taskActor: input.taskActor } : undefined),
         },
       },
     ]);

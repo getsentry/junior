@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { ConversationCompaction } from "@/chat/state/conversation";
 import { modelProfileSchema } from "@/chat/model-profile";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
+import { actorSchema } from "@sentry/junior-plugin-api";
 import { conversationMessageProvenanceSchema } from "./provenance";
 import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
 
@@ -283,6 +284,11 @@ const turnStartedEventDataSchema = z
     turnId: z.string().min(1),
     inputMessageIds: z.array(z.string().min(1)).min(1),
     surface: conversationTurnSurfaceSchema,
+    /**
+     * Task Actor of the Turn: the Actor whose work it is. It comes from the
+     * Turn that caused this Turn. It never selects credentials.
+     */
+    taskActor: actorSchema.optional(),
   })
   .strict()
   .refine(
@@ -367,6 +373,17 @@ const turnFailedEventDataSchema = z
   })
   .strict();
 
+/** One Turn in one Conversation. */
+export const turnReferenceSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    turnId: z.string().min(1),
+  })
+  .strict();
+
+/** One Turn in one Conversation. */
+export type TurnReference = z.output<typeof turnReferenceSchema>;
+
 // Subagent histories are child conversations; the marker references the child by
 // its own conversation id rather than a polymorphic transcript locator.
 const subagentStartedEventDataSchema = z
@@ -381,6 +398,12 @@ const subagentStartedEventDataSchema = z
     parentToolCallId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
     childConversationId: z.string().min(1),
+    /**
+     * The Turn that caused the agent invocation: the parent Turn of a
+     * `spawnAgent` or `messageAgent` call, or the Turn that caused a result,
+     * agent message, or Watch. The child Turn takes its task Actor.
+     */
+    causingTurn: turnReferenceSchema.optional(),
   })
   .strict();
 

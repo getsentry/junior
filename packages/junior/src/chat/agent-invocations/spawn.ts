@@ -39,14 +39,18 @@ export function bindSpawnAgent(
         input: input.task,
         modelProfile: input.profile,
         parentConversationId: run.conversationId,
-        ...(run.taskActor ? { parentTaskActor: run.taskActor } : undefined),
         parentToolCallId: call.toolCallId,
         ...(input.reasoningLevel
           ? { reasoningLevel: input.reasoningLevel }
           : undefined),
         ...(input.title ? { title: input.title } : undefined),
       },
-      { ...options, queue },
+      {
+        ...options,
+        // The child takes the task Actor of the Turn that made this call.
+        causingTurn: { conversationId: run.conversationId, turnId: run.turnId },
+        queue,
+      },
     );
     return {
       childConversationId: invocation.childConversationId,

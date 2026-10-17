@@ -13,6 +13,8 @@ import {
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
+import type { TurnReference } from "@/chat/conversations/history";
+import { loadTurnTaskActor } from "@/chat/conversations/task-actor";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -76,7 +78,11 @@ import type {
   CreateAgentInvocationInput,
   TerminalAgentInvocation,
 } from "./types";
-import { recordSubagentEnded, recordSubagentStarted } from "./markers";
+import {
+  loadCausingTurn,
+  recordSubagentEnded,
+  recordSubagentStarted,
+} from "./markers";
 import { stopChildAgentsOf } from "./stop";
 import { readBlockedReport } from "./blocked-report";
 
@@ -88,6 +94,11 @@ const agentInvocationMailboxMetadataSchema = z
   .strict();
 
 type EnqueueOptions = {
+  /**
+   * Turn that caused the agent invocation. The child Turn takes its task
+   * Actor. Without it, the child Turn has no task Actor.
+   */
+  causingTurn?: TurnReference;
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
@@ -147,7 +158,7 @@ export async function enqueueAgentInvocation(
   ) {
     return;
   }
-  await recordSubagentStarted(invocation);
+  await recordSubagentStarted(invocation, options.causingTurn);
   const nowMs = options.nowMs ?? Date.now();
   await appendAndEnqueueInboundMessage({
     message: buildAgentInvocationInboundMessage(invocation, nowMs),
@@ -688,11 +699,18 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
+      // The task Actor comes from the Turn that caused this agent
+      // invocation, not from the Run Actor.
+      const causingTurn = await loadCausingTurn(invocation);
+      const taskActor = causingTurn
+        ? await loadTurnTaskActor(causingTurn)
+        : undefined;
       await lifecycle.start({
         conversationId: invocation.childConversationId,
         createdAtMs: invocation.createdAtMs,
         inputMessageIds: [getAgentInvocationMessageId(invocation.invocationId)],
         surface: "internal",
+        ...(taskActor ? { taskActor } : undefined),
         turnId,
       });
       const [persisted, projection, tree] = await Promise.all([
@@ -739,9 +757,6 @@ export function createAgentInvocationWorker(
           history,
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
-          ...(invocation.taskActor
-            ? { taskActor: invocation.taskActor }
-            : undefined),
           destination: invocation.destination,
           source: invocation.source,
           ...(location ? { location } : undefined),

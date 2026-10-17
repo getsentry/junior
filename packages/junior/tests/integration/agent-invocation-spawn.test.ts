@@ -216,6 +216,11 @@ describe("agent invocation spawn and result delivery", () => {
           task: "Inspect the failing checks.",
           title: "Failing checks",
           reasoningLevel: "high",
+          // The child Turn takes the task Actor of the Turn that made the call.
+          causingTurn: {
+            conversationId: parentConversationId,
+            turnId: "parent-turn",
+          },
         },
       ]);
       await expect(

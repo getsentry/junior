@@ -207,6 +207,12 @@ async function runLocalAgentTurnInContext(
   let sandboxRef = getPersistedSandboxState(persisted);
   const initialSandboxRef = sandboxRef;
 
+  const localActor = {
+    fullName: "Local CLI",
+    platform: "local" as const,
+    userId: "local-cli",
+    userName: "local",
+  };
   const turnId = localTurnId();
   const userMessageId = `${turnId}:user`;
   const startedAtMs = Date.now();
@@ -236,6 +242,7 @@ async function runLocalAgentTurnInContext(
     createdAtMs: Date.now(),
     inputMessageIds: [userMessageId],
     surface: "internal",
+    taskActor: localActor,
     turnId,
   });
   startActiveTurn({
@@ -251,12 +258,6 @@ async function runLocalAgentTurnInContext(
   let modelFailureCaptureAttempted = false;
   let currentRunId: string | undefined;
   let completionSliceId = 1;
-  const localActor = {
-    fullName: "Local CLI",
-    platform: "local" as const,
-    userId: "local-cli",
-    userName: "local",
-  };
   let assistantMessageDelivered = false;
   /** Print and record one completed assistant message in local conversation order. */
   const deliverAssistantMessage = async (

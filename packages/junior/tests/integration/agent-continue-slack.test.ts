@@ -307,6 +307,11 @@ describe("paused turn Slack integration", () => {
         turnId: sessionId,
         inputMessageIds: ["msg.1"],
         surface: "slack",
+        taskActor: expect.objectContaining({
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        }),
       }),
       expect.objectContaining({
         type: "turn_routed",

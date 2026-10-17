@@ -20,6 +20,10 @@ import {
   type DeliverMessage,
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
+import {
+  resolveCausingTurn,
+  taskActorForActor,
+} from "@/chat/conversations/task-actor";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -85,6 +89,7 @@ import {
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
+  eventWatchCausingTurn,
   isEventMailboxMetadata,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
@@ -414,11 +419,27 @@ export function createConversationTurnWorker(
             conversation,
             conversationId: context.conversationId,
           });
+          // Input from the event system Actor takes the task Actor of the
+          // Turns that caused it: a Watch, a child result, or an agent message.
+          const taskActor =
+            taskActorForActor(actor) ??
+            (resolved.kind === "mailbox"
+              ? (
+                  await resolveCausingTurn(
+                    resolved.batch.map(
+                      (entry) =>
+                        entry.causingTurn ??
+                        eventWatchCausingTurn(entry.message),
+                    ),
+                  )
+                )?.taskActor
+              : undefined);
           await lifecycle.start({
             conversationId: context.conversationId,
             createdAtMs: Date.now(),
             inputMessageIds,
             surface,
+            ...(taskActor ? { taskActor } : undefined),
             turnId,
           });
           if (stopSignal?.aborted) {

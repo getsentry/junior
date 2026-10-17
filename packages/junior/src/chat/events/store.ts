@@ -47,6 +47,11 @@ const subscriptionSchema = z
     identifier: z.string().min(1),
     resourceType: z.string().min(1),
     status: subscriptionStatusSchema,
+    /**
+     * Turn that created the Watch. A Turn that the Watch starts takes its task
+     * Actor. A Watch from before this field has none.
+     */
+    turnId: z.string().min(1).optional(),
     updatedAtMs: z.number().finite(),
   })
   .strict();
@@ -64,6 +69,8 @@ export interface CreateWatchInput {
   namespace: string;
   identifier: string;
   resourceType: string;
+  /** Turn that creates the Watch, in the same Conversation. */
+  turnId?: string;
 }
 
 function digest(value: string): string {
@@ -356,6 +363,7 @@ export async function createWatch(
     identifier: input.identifier,
     resourceType: input.resourceType,
     status: "active",
+    ...(input.turnId ? { turnId: input.turnId } : undefined),
     updatedAtMs: nowMs,
   };
   const parsed = subscriptionSchema.parse(record);
@@ -384,6 +392,8 @@ export async function createTimerWatch(input: {
   conversationId: string;
   creatorUserId?: string;
   toolCallId: string;
+  /** Turn that creates the timer, in the same Conversation. */
+  turnId?: string;
   afterMs: number;
   intent: string;
 }): Promise<Watch> {
@@ -420,6 +430,7 @@ export async function createTimerWatch(input: {
       label: "Timer",
       intent: input.intent,
       status: "active",
+      ...(input.turnId ? { turnId: input.turnId } : undefined),
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
     });

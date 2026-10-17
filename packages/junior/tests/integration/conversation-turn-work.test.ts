@@ -249,6 +249,8 @@ describe("Conversation mailbox Turn work", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           surface: "api",
+          // The Turn is the work of the person who sent the message.
+          taskActor: agentRuns[0]!.actor,
           turnId: conversationTurnIdForMessage(accepted.messageId),
           type: "turn_started",
         }),

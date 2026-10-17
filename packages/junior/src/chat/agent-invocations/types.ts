@@ -55,11 +55,6 @@ const agentInvocationBaseSchema = z
     modelProfile: modelProfileSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
-    /**
-     * Actor of the child's latest task that is not the event system Actor.
-     * Guardian reads root approval for this Actor, not for `actor`.
-     */
-    taskActor: actorSchema.optional(),
     title: exactStringSchema.optional(),
     updatedAtMs: z.number().finite(),
   })
@@ -92,8 +87,6 @@ export const createAgentInvocationSchema = z
     idempotencyKey: exactStringSchema,
     input: exactStringSchema,
     parentConversationId: exactStringSchema,
-    /** Task Actor of the parent Run when the parent is a child agent. */
-    parentTaskActor: actorSchema.optional(),
     parentToolCallId: exactStringSchema.optional(),
     modelProfile: modelProfileSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),

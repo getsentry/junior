@@ -692,6 +692,7 @@ export function getPluginTools(
             input.resource.identifier,
           ),
           resourceType: input.resource.type,
+          ...(context.turnId ? { turnId: context.turnId } : undefined),
         });
         return {
           events: subscription.events,

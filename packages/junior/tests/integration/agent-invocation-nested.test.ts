@@ -6,7 +6,9 @@ import {
   getAgentInvocationIdForEvents,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+  getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
+import { loadCausingTurn } from "@/chat/agent-invocations/markers";
 import {
   enqueueAgentInvocationResult,
   startAgentInvocationsForChildInput,
@@ -229,7 +231,6 @@ describe("nested agent invocations", () => {
         credentialContext: {
           subject: expect.objectContaining({ allowedWhen: "timer-watch" }),
         },
-        taskActor: slackInvocationInput.actor,
       });
       await expect(
         complete(timerInvocation.invocationId, "Still waiting."),
@@ -244,7 +245,12 @@ describe("nested agent invocations", () => {
         input: expect.stringContaining("Grand helper fact: 42."),
         parentConversationId: child.childConversationId,
         status: "pending",
-        taskActor: slackInvocationInput.actor,
+      });
+      // Its Turn takes the task Actor of the grand helper Turn that sent the
+      // result.
+      await expect(loadCausingTurn(helperContinuation)).resolves.toEqual({
+        conversationId: grandHelper.childConversationId,
+        turnId: getAgentInvocationTurnId(grandHelper.invocationId),
       });
       // listAgents shows the state of open work. A `replaced` child still
       // has work, and an agent invocation that receives a result is not a task.

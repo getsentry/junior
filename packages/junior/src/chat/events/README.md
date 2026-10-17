@@ -39,6 +39,11 @@ Watches route events back into an existing conversation.
   results rather than catalog enumeration.
 - A temporary watch stores the current conversation id only. It does not store
   destination or rewrite the conversation id.
+- A Watch also stores the id of the Turn that created it. Its event input
+  names that Turn, and the Turn that the input starts records the same task
+  Actor (see `TERMINOLOGY.md`). The task Actor never selects the Run Actor or
+  credentials. A Watch from before this field names no Turn, so its Turn has
+  no task Actor.
 - Root conversations set destination on first upsert. Later event wakes
   use that destination.
 - An automation run's Location starts at the channel top level. Its first
