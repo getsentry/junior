@@ -1,4 +1,10 @@
 # Changelog
+## 0.252.0
+
+### New Features ✨
+
+- (automations) Keep both Automation kinds in one table by @sentry-junior in [#2179](https://github.com/getsentry/junior/pull/2179)
+
 ## 0.251.0
 
 ### New Features ✨
