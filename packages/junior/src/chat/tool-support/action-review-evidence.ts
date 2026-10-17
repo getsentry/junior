@@ -5,6 +5,7 @@ import {
   isAssistantMessage,
   isToolResultMessage,
   normalizeToolNameFromResult,
+  stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { estimateTextTokens } from "@/chat/services/context-budget";
 import type { ToolActionEvidence } from "@/chat/tool-support/action-review";
@@ -111,7 +112,8 @@ function collectEvidenceEntries(
   messages: readonly PiMessage[],
 ): EvidenceEntry[] {
   const entries: EvidenceEntry[] = [];
-  for (const message of messages) {
+  // Runtime turn context is Junior's own text, not the user's words.
+  for (const message of stripRuntimeTurnContext([...messages])) {
     if (message.role === "user") {
       const text = getUserMessageInstructionText(message);
       if (text) {

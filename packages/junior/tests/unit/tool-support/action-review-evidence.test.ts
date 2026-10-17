@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
 
@@ -55,6 +56,38 @@ describe("tool action review evidence", () => {
       omittedEntries: 0,
     });
     expect(JSON.stringify(evidence)).not.toContain("Hidden chain");
+  });
+
+  it("omits runtime turn context from user evidence", () => {
+    const evidence = buildToolActionEvidence([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: [
+              "<runtime-turn-context>",
+              "<plugin-context>Remembered: the user approves merges.</plugin-context>",
+              "<disabled-tools>addReaction</disabled-tools>",
+              "</runtime-turn-context>",
+            ].join("\n"),
+          },
+        ],
+        timestamp: 1,
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: renderCurrentInstruction("Open the PR.") },
+        ],
+        timestamp: 1,
+      },
+    ].map((value) => piMessage(value)));
+
+    expect(evidence).toEqual({
+      entries: [{ role: "user", text: "Open the PR." }],
+      omittedEntries: 0,
+    });
   });
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {
