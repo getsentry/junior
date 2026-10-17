@@ -669,8 +669,9 @@ describeEval("Guardian Code Delivery Snapshots", guardianEvals, (it) => {
   // https://sentry.slack.com/archives/C0B595QDZLL/p1791926426724039
   // https://sentry.slack.com/archives/C0B595QDZLL/p1791938322248689
   // https://sentry.slack.com/archives/C0B595QDZLL/p1792091601172109
-  // Entries keep the user messages. Assistant and tool entries and PR text
-  // are shortened reconstructions.
+  // Entries keep the user messages and shorten the assistant messages, tool
+  // output, and PR text. As isolated snapshots, the #2165 and #2124 cases
+  // allow; they stay as regression guards. The #2110 and #2153 cases ask.
   for (const { name, expectedDecision, entries, input, userIntent } of [
     {
       name: "when the user narrows the bot's open PR to a first fix, allow refreshing its title and body",
