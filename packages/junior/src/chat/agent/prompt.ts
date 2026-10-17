@@ -598,7 +598,7 @@ export async function assemblePrompt(args: {
   const turnContextPrompt =
     needsBootstrapContextForPrompt ||
     pluginUserPromptContributions.length > 0 ||
-    (conversationNotes?.notes.length ?? 0) > 0 ||
+    (conversationNotes?.length ?? 0) > 0 ||
     disabledTools.length > 0
       ? buildTurnContextPrompt({
           availableSkills: args.availableSkills,

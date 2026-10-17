@@ -17,8 +17,6 @@ import {
   type Watch,
 } from "@/chat/events/store";
 
-const MAX_NOTE_LABEL_CHARS = 120;
-
 /** An active watch and the child agent that created it, if not the owner. */
 export type OwnedWatch = {
   /** Absent when the current Conversation created the watch. */
@@ -86,15 +84,11 @@ export async function stopOwnedWatch(input: {
     stopped?.status === "cancelled" &&
     stopped.conversationId !== input.conversationId
   ) {
-    const label =
-      stopped.label.length > MAX_NOTE_LABEL_CHARS
-        ? `${stopped.label.slice(0, MAX_NOTE_LABEL_CHARS - 1)}…`
-        : stopped.label;
     await addConversationNote({
       conversationId: stopped.conversationId,
       createdAtMs: stopped.updatedAtMs,
       key: `watch_stopped:${stopped.id}`,
-      text: `A parent agent above you stopped your watch ${stopped.id} (${label}). It will not wake you again.`,
+      text: `A parent agent stopped your watch ${stopped.id}. It will not wake you again. Label: ${stopped.label}`,
     });
   }
   return stopped;

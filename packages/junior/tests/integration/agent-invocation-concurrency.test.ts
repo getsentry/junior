@@ -676,7 +676,7 @@ describe("agent invocation identity and concurrency", () => {
           : [],
       );
     const stoppedNote = (id: string) =>
-      `A parent agent above you stopped your watch ${id} (Timer). It will not wake you again.`;
+      `A parent agent stopped your watch ${id}. It will not wake you again. Label: Timer`;
     const count = (text: string, part: string) => text.split(part).length - 1;
     try {
       const [watcher, sibling] = await Promise.all([

@@ -155,10 +155,7 @@ export const agentsInstructionsUpdatedEvent = defineConversationEvent({
 /** Longest text of one Conversation note. */
 export const MAX_CONVERSATION_NOTE_CHARS = 500;
 
-/**
- * Junior-owned Conversation note. `notes.ts` owns when the model sees it. The
- * dashboard shows it as context, not as a message from a person.
- */
+/** Core-written Conversation note. `notes.ts` owns when the model sees it. */
 export const conversationNoteEvent = defineConversationEvent({
   name: "conversation_note",
   version: 1,

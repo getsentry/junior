@@ -136,40 +136,20 @@ events through its pagination contract.
 ## Conversation Notes
 
 A Conversation note is a short fact that core attaches to a Conversation
-without starting a Turn. `notes.ts` owns the contract. The first use: when a
-parent agent stops a watch of a child agent, the child gets a note.
+without starting a Turn. `notes.ts` owns it. Today, the only writer is a parent
+agent stop of a child agent's watch.
 
-- **Storage.** A note is a `structured_event` in the reserved `junior`
-  namespace, named `conversation_note`. It is in the same event log as the
-  transcript, so it has the same lock, privacy, retention, and purge. The
-  append preserves Conversation activity, so a note does not keep an idle
-  Conversation alive. There is no Redis state and no mailbox entry.
-- **Authors.** Only core code adds notes, with `addConversationNote`. No tool
-  lets the model write one. The text is core-written facts, at most 500
-  characters. A retry with the same key adds nothing.
-- **No Turn.** A note does not wake the Conversation or add mailbox work. It
-  does not count toward the automated-turn limit.
-- **Delivery.** A Turn shows the notes added after the previous `turn_started`
-  event and before its own `turn_started` event. A note added while a Turn
-  runs waits for the next Turn. A Turn that is not the newest started Turn
-  shows no notes. The notes go in a `<conversation-notes>` block of the
-  `<runtime-turn-context>` message, before the Turn's instruction. The system
-  prompt does not change, so the provider prompt cache stays.
-- **Once.** The window of each Turn is fixed. A retry of the Turn reads the
-  same notes. A resumed slice replays the saved runtime turn context and does
-  not read notes again. The next Turn reads a new window, so it does not show
-  the same notes again.
-- **Compaction and handoff.** These keep the runtime turn context of the
-  current Turn, so the notes stay visible for the rest of that Turn. Later,
-  they are history like other context.
-- **Limits.** A Turn shows the newest 20 notes in its window. It says how many
-  older notes it does not show.
-- **Lost notes.** A note can be lost only with its Turn: when a Turn starts but
-  stops before its first model request, its notes are not shown again.
-- **Authority.** A note is context. It is never `user` evidence and never user
-  intent. Action review evidence gives it the `conversation note` role.
-- **Dashboard.** The transcript shows the note as a Junior event row, not as a
-  message bubble.
+- **Storage.** A note is a `conversation_note` `structured_event` in the
+  reserved `junior` namespace. The append preserves Conversation activity. A
+  note adds no mailbox work and does not count toward the automated-turn limit.
+- **Authors.** Only core adds notes. No tool lets the model write one.
+- **Delivery.** A Turn shows the notes added after the previous
+  `turn_started` and before its own, newest 20, in a `<conversation-notes>`
+  block of its runtime turn context. A note added during a Turn waits for the
+  next Turn. A retry reads the same window. A resumed slice replays the saved
+  context. A note is lost only when its Turn stops before its first model
+  request.
+- **Authority.** A note is context, never user intent.
 
 ## Conversation Forks
 
