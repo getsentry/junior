@@ -147,27 +147,49 @@ describe("Guardian action review", () => {
       },
     };
 
-    expect(guardianDecision(assess("none"), proposal)).toBe("allow");
-    expect(guardianDecision(assess("withheld_step"), proposal)).toBe("ask");
-    expect(guardianDecision(assess("revoked_approval"), proposal)).toBe("deny");
-    expect(guardianDecision(assess("none", "critical"), proposal)).toBe("ask");
-    expect(guardianDecision(assess("none", "critical", "high"), proposal)).toBe(
-      "allow",
-    );
-    expect(guardianDecision(assess("none", "high", "unknown"), proposal)).toBe(
+    expect(guardianDecision(assess("none"), proposal).decision).toBe("allow");
+    expect(guardianDecision(assess("withheld_step"), proposal).decision).toBe(
       "ask",
     );
-    expect(guardianDecision(assess("none", "high", "medium"), proposal)).toBe(
-      "allow",
-    );
+    expect(
+      guardianDecision(assess("revoked_approval"), proposal).decision,
+    ).toBe("deny");
+    expect(
+      guardianDecision(assess("none", "critical"), proposal).decision,
+    ).toBe("ask");
+    expect(
+      guardianDecision(assess("none", "critical", "high"), proposal).decision,
+    ).toBe("allow");
+    expect(
+      guardianDecision(assess("none", "high", "unknown"), proposal).decision,
+    ).toBe("ask");
+    expect(
+      guardianDecision(assess("none", "high", "medium"), proposal).decision,
+    ).toBe("allow");
     // No person can answer a question in an Automation run.
     expect(
-      guardianDecision(assess("unclear_destination"), automationProposal),
-    ).toBe("deny");
-    expect(guardianDecision(assess("withheld_step"), automationChild)).toBe(
-      "deny",
+      guardianDecision(assess("unclear_destination"), automationProposal)
+        .reason,
+    ).toBe(
+      "r No person can confirm this action in this run, so do not ask for confirmation.",
     );
-    expect(guardianDecision(assess("none"), automationProposal)).toBe("allow");
+    expect(
+      guardianDecision(assess("unclear_destination"), automationProposal)
+        .decision,
+    ).toBe("deny");
+    expect(
+      guardianDecision(assess("withheld_step"), automationChild).decision,
+    ).toBe("deny");
+    expect(guardianDecision(assess("none"), automationProposal).decision).toBe(
+      "allow",
+    );
+    // The deny says that no one can confirm, so the agent does not ask.
+    expect(
+      guardianDecision(assess("unclear_destination"), automationProposal)
+        .reason,
+    ).toBe(
+      "r No person can confirm this action in this run, so do not ask for confirmation.",
+    );
   });
 
   it("rejects non-JSON action input before model review", async () => {

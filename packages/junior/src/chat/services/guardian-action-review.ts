@@ -118,15 +118,19 @@ function noPersonCanConfirm(proposal: ToolActionProposal): boolean {
   );
 }
 
+const NO_CONFIRMATION_REASON =
+  "No person can confirm this action in this run, so do not ask for confirmation.";
+
 /**
  * Derive allow, ask, or deny from the model's assessment. The named rule
  * sets the decision. Code also asks for high or critical risk with weak
- * authorization, and turns an ask into deny when no person can answer.
+ * authorization, and turns an ask into deny when no person can answer. That
+ * deny gets a reason that says so, so the agent does not try to ask.
  */
 export function guardianDecision(
   assessment: GuardianAssessment,
   proposal: ToolActionProposal,
-): ToolActionDecision {
+): Pick<ToolActionReviewDecision, "decision" | "reason"> {
   let decision: ToolActionDecision =
     assessment.rule === "none"
       ? "allow"
@@ -140,9 +144,12 @@ export function guardianDecision(
     decision = "ask";
   }
   if (decision === "ask" && noPersonCanConfirm(proposal)) {
-    return "deny";
+    return {
+      decision: "deny",
+      reason: `${assessment.reason} ${NO_CONFIRMATION_REASON}`,
+    };
   }
-  return decision;
+  return { decision, reason: assessment.reason };
 }
 
 /** Create the structured Guardian reviewer used for permissioned tool actions. */
@@ -192,8 +199,7 @@ export function createGuardianActionReviewer(options: {
       }
       const assessment = guardianAssessmentSchema.parse(result.object);
       const decision: ToolActionReviewDecision = {
-        decision: guardianDecision(assessment, proposal),
-        reason: assessment.reason,
+        ...guardianDecision(assessment, proposal),
         riskLevel: assessment.riskLevel,
         rule: assessment.rule,
         userAuthorization: assessment.userAuthorization,
