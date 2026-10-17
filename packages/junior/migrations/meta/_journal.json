@@ -400,6 +400,13 @@
       "when": 1792244856198,
       "tag": "0056_automation_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1792256570895,
+      "tag": "0057_drop_legacy_automation_tables",
+      "breakpoints": true
     }
   ]
 }

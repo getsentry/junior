@@ -65,6 +65,7 @@ export async function settleEventAutomationRuns(
       continue;
     }
     await recordAutomationExecution(run.automationId, {
+      conversationId: getDispatchConversationId({ id: run.id }),
       errorMessage: dispatch
         ? dispatch.errorMessage
         : "Event automation dispatch record is missing.",

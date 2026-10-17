@@ -6,13 +6,7 @@ This module owns Junior's one-time and recurring task domain. Scheduled-task too
 
 Scheduled automations are `scheduled` rows in `junior_automations`. Their runs
 are rows in `junior_automation_runs`. Migrations 0055 and 0056 copied them from
-the older `junior_scheduler_*` tables. Core migration `0016` created those
-tables and supports both cases:
-
-- fresh databases create the tables and indexes;
-- databases upgraded from `@sentry/junior-scheduler` adopt the existing tables, normalize older records, and backfill canonical creator identities.
-
-The legacy creator trigger remains during rolling deployment so an old worker can insert a task that a new worker can read. Remove it only in a later migration after old Scheduler workers can no longer overlap an upgrade.
+the older `junior_scheduler_*` tables, and migration 0057 dropped those tables.
 
 ## Dispatch
 
