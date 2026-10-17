@@ -38,7 +38,8 @@ $$;
 -- Copy both old tables. Old workers still use them during the deploy, so they
 -- stay. The copy keeps what the old readers read:
 -- - A Scheduled automation takes its status and status reason from its JSON.
--- - A title comes from the column, or else from the legacy JSON key.
+-- - A title and a creator identity come from the column, or else from the
+--   legacy JSON key.
 -- - A status that the new check does not allow becomes "deleted".
 -- JSON keys that now have a column are removed from the record.
 INSERT INTO "junior_automations" (
@@ -72,7 +73,7 @@ FROM (
 		'scheduled' AS "kind",
 		"id",
 		"team_id",
-		"creator_identity_id",
+		coalesce("creator_identity_id", "record"->>'creatorIdentityId') AS "creator_identity_id",
 		"record"->>'status' AS "status",
 		"record"->>'statusReason' AS "status_reason",
 		"title",
