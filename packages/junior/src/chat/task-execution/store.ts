@@ -208,20 +208,37 @@ export async function ensureConversationWake(args: {
     return { status: "already_enqueued" };
   }
 
-  const queueResult = await args.queue.send(
-    {
-      schemaVersion: CONVERSATION_QUEUE_SCHEMA_VERSION,
+  // Mark before the send. A delivery can start before `send()` returns, and
+  // the worker clears the marker when it takes the lease. A marker written
+  // after that would make later wakes coalesce on a consumed delivery.
+  await workState.markConversationWorkEnqueued({
+    conversationId: args.conversationId,
+    nowMs,
+    state: args.state,
+  });
+  let queueResult: Awaited<ReturnType<ConversationWorkQueue["send"]>>;
+  try {
+    queueResult = await args.queue.send(
+      {
+        schemaVersion: CONVERSATION_QUEUE_SCHEMA_VERSION,
+        conversationId: args.conversationId,
+      },
+      {
+        delayMs: args.delayMs,
+        idempotencyKey: args.idempotencyKey,
+      },
+    );
+  } catch (error) {
+    await workState.clearConversationWorkEnqueued({
       conversationId: args.conversationId,
-    },
-    {
-      delayMs: args.delayMs,
-      idempotencyKey: args.idempotencyKey,
-    },
-  );
-  await markConversationWorkEnqueued({
+      enqueuedAtMs: nowMs,
+      state: args.state,
+    });
+    throw error;
+  }
+  await recordExecutionMetadata({
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
-    nowMs,
     state: args.state,
   });
   return { status: "enqueued", queueMessageId: queueResult?.messageId };
@@ -435,17 +452,6 @@ export async function recordConversationActivity(
     conversationStore: args.conversationStore,
     state: args.state,
   });
-}
-
-/** Record that a wake-up nudge was accepted for the conversation. */
-async function markConversationWorkEnqueued(args: {
-  conversationId: string;
-  conversationStore?: ConversationStore;
-  nowMs?: number;
-  state?: StateAdapter;
-}) {
-  await workState.markConversationWorkEnqueued(args);
-  await recordExecutionMetadata(args);
 }
 
 /** Try to acquire the durable execution lease for one conversation. */

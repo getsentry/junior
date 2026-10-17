@@ -116,6 +116,10 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 - Duplicate queue delivery is expected and must be idempotent.
 - Queue authentication and payload validation happen before state access.
 - If a conversation is busy, store another wake. Do not run it in parallel.
+- Write the wake marker before the queue send. A delivery can start before the
+  send returns, and the worker clears the marker when it takes the lease. A
+  marker written after that makes later wakes wait for a delivery that is
+  already consumed. Remove the marker when the send fails.
 - Lease expiry permits recovery; it must not erase mailbox or agent history.
 - Heartbeats repair missing wake-ups and abandoned leases without becoming a
   second scheduler for healthy work.
