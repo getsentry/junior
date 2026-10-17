@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Actor } from "@/chat/actor";
 import type { AgentRun } from "@/chat/agent/types";
+import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import {
   startAgentInvocationsForChildInput,
   withAgentInvocationResultActors,
@@ -20,8 +21,8 @@ import type {
 import {
   agentInvocationInputText,
   createAgentInvocationWorker,
+  createAgentInvocationWithCause,
   createAndEnqueueAgentInvocation,
-  enqueueAgentInvocation,
   routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
 import type { TurnReference } from "@/chat/conversations/history";
@@ -381,19 +382,27 @@ describe("user approval for child agents", () => {
         text: "Code change checks failed",
       });
       const eventTurn = await startRootTurn("turn-event", eventInput, user);
-      const { invocation: fromEventTurn } =
-        await createAgentInvocationForMessage({
-          actor: EVENT_SYSTEM_ACTOR,
-          childConversationId: child.childConversationId,
-          destination: slackDestination,
-          idempotencyKey: "message-from-event-turn",
-          input: "Checks failed. Try again.",
-          parentConversationId: slackParentConversationId,
-          parentToolCallId: "call-message",
-        });
-      await enqueueAgentInvocation(fromEventTurn, {
-        ...harness.options,
-        causingTurn: eventTurn,
+      const fromEventTurn = await createAgentInvocationWithCause(
+        eventTurn,
+        async () =>
+          (
+            await createAgentInvocationForMessage({
+              actor: EVENT_SYSTEM_ACTOR,
+              childConversationId: child.childConversationId,
+              destination: slackDestination,
+              idempotencyKey: "message-from-event-turn",
+              input: "Checks failed. Try again.",
+              parentConversationId: slackParentConversationId,
+              parentToolCallId: "call-message",
+            })
+          ).invocation,
+      );
+      // The process stops before the mailbox append. The heartbeat append
+      // has no causing Turn, but the row and its causing Turn were saved
+      // together.
+      await recoverPendingAgentInvocationMailboxAppends({
+        conversationWorkQueue: harness.options.queue,
+        nowMs: Date.now(),
       });
       await harness.drain();
       expect(fromEventTurn.actor).toEqual(EVENT_SYSTEM_ACTOR);

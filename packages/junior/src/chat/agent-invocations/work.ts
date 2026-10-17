@@ -16,7 +16,11 @@ import { openConversationProjection } from "@/chat/conversations/projection";
 import type { TurnReference } from "@/chat/conversations/history";
 import { loadTurnTaskActor } from "@/chat/conversations/task-actor";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import {
@@ -94,11 +98,6 @@ const agentInvocationMailboxMetadataSchema = z
   .strict();
 
 type EnqueueOptions = {
-  /**
-   * Turn that caused the agent invocation. The child Turn takes its task
-   * Actor. Without it, the child Turn has no task Actor.
-   */
-  causingTurn?: TurnReference;
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
@@ -158,7 +157,10 @@ export async function enqueueAgentInvocation(
   ) {
     return;
   }
-  await recordSubagentStarted(invocation, options.causingTurn);
+  // Creation records this event with its causing Turn (see
+  // `createAgentInvocationWithCause`). This write only fills it for an agent
+  // invocation from before that.
+  await recordSubagentStarted(invocation);
   const nowMs = options.nowMs ?? Date.now();
   await appendAndEnqueueInboundMessage({
     message: buildAgentInvocationInboundMessage(invocation, nowMs),
@@ -170,12 +172,42 @@ export async function enqueueAgentInvocation(
   await markAgentInvocationMailboxAppended(invocation.invocationId, nowMs);
 }
 
-/** Create or replay an invocation, then durably schedule its child work. */
+/**
+ * Create or replay an agent invocation with `create`, and record its
+ * `subagent_started` event with `causingTurn` in the same SQL transaction.
+ * The child Turn takes the task Actor of `causingTurn`. Because the row and
+ * its causing Turn commit together, a mailbox append retry after a crash
+ * cannot lose the causing Turn. Without `causingTurn`, the child Turn has no
+ * task Actor.
+ */
+export async function createAgentInvocationWithCause(
+  causingTurn: TurnReference | undefined,
+  create: () => Promise<AgentInvocation>,
+): Promise<AgentInvocation> {
+  return await getSqlExecutor().transaction(async () => {
+    const invocation = await create();
+    if (
+      invocation.mailboxStatus !== "appended" &&
+      !isTerminalAgentInvocation(invocation)
+    ) {
+      await recordSubagentStarted(invocation, causingTurn);
+    }
+    return invocation;
+  });
+}
+
+/**
+ * Create or replay an invocation for the Turn `causingTurn`, then durably
+ * schedule its child work.
+ */
 export async function createAndEnqueueAgentInvocation(
   input: CreateAgentInvocationInput,
-  options: EnqueueOptions,
+  options: EnqueueOptions & { causingTurn?: TurnReference },
 ): Promise<AgentInvocation> {
-  const invocation = await createAgentInvocation(input, options.nowMs);
+  const invocation = await createAgentInvocationWithCause(
+    options.causingTurn,
+    async () => await createAgentInvocation(input, options.nowMs),
+  );
   await enqueueAgentInvocation(invocation, options);
   return (await getAgentInvocation(invocation.invocationId)) ?? invocation;
 }

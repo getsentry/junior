@@ -251,7 +251,9 @@ rewrite these events. Nothing is copied into the child.
     many people, this is the person whose message started the Turn.
   - A child Turn from `spawnAgent` or `messageAgent`: the task Actor of the
     parent Turn that made the call. The `subagent_started` event of the agent
-    invocation names that Turn in `causingTurn`.
+    invocation names that Turn in `causingTurn`. It is saved in the same SQL
+    transaction as the agent invocation row, so a mailbox append retry after
+    a crash keeps it.
   - A Turn from a Watch, on a root or a child: the task Actor of the Turn that
     created the Watch. The Watch record names that Turn in `turnId`.
   - A Turn from a child result or agent message: the task Actor of the child

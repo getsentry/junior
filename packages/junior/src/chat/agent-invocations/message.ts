@@ -15,7 +15,7 @@ import {
   getActiveAgentInvocationForConversation,
 } from "./store";
 import { PARENT_AGENT_TARGET } from "./types";
-import { enqueueAgentInvocation } from "./work";
+import { createAgentInvocationWithCause, enqueueAgentInvocation } from "./work";
 
 type MessageOptions = {
   conversationStore?: ConversationStore;
@@ -73,24 +73,28 @@ export function bindMessageAgent(
         `"${input.to}" is not "${PARENT_AGENT_TARGET}" or a child agent of this conversation`,
       );
     }
-    const { invocation, queued } = await createAgentInvocationForMessage({
-      actor,
-      childConversationId,
-      ...(run.credentialContext
-        ? { credentialContext: run.credentialContext }
-        : undefined),
-      destination: toolInvocationDestination(run),
-      idempotencyKey: `${run.turnId}:${call.toolCallId}`,
-      input: input.text,
-      parentConversationId: run.conversationId,
-      parentToolCallId: call.toolCallId,
-    });
-    await enqueueAgentInvocation(invocation, {
-      ...options,
-      // The child takes the task Actor of the Turn that made this call.
-      causingTurn: { conversationId: run.conversationId, turnId: run.turnId },
-      queue,
-    });
+    let queued = false;
+    // The child takes the task Actor of the Turn that made this call.
+    const invocation = await createAgentInvocationWithCause(
+      { conversationId: run.conversationId, turnId: run.turnId },
+      async () => {
+        const created = await createAgentInvocationForMessage({
+          actor,
+          childConversationId,
+          ...(run.credentialContext
+            ? { credentialContext: run.credentialContext }
+            : undefined),
+          destination: toolInvocationDestination(run),
+          idempotencyKey: `${run.turnId}:${call.toolCallId}`,
+          input: input.text,
+          parentConversationId: run.conversationId,
+          parentToolCallId: call.toolCallId,
+        });
+        queued = created.queued;
+        return created.invocation;
+      },
+    );
+    await enqueueAgentInvocation(invocation, { ...options, queue });
     return {
       conversationId: childConversationId,
       delivery: queued ? "queued" : "started",

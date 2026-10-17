@@ -38,7 +38,7 @@ import {
   markAgentInvocationParentMailboxAppended,
 } from "./store";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
-import { enqueueAgentInvocation } from "./work";
+import { createAgentInvocationWithCause, enqueueAgentInvocation } from "./work";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
@@ -384,27 +384,28 @@ export async function startAgentInvocationsForChildInput(
     // use the grants of the person who set it. The child keeps its task
     // Actor, so action review still reads that Actor's root approval.
     const { actor, source } = events[0]!;
-    const invocation = await createAgentInvocationForChildInput({
-      input: joinMailboxText(messages),
-      invocationId: getAgentInvocationIdForEvents(
-        messages[0]!.inboundMessageId,
-      ),
-      latest,
-      runAs: {
-        actor,
-        credentialContext: credentialContextForActor(
-          actor,
-          timerWatchCredentialSubject(context.conversationId, messages),
-        ),
-        source,
-      },
-    });
     // The Turn takes the task Actor of the Turns that created the Watches.
     const cause = await resolveCausingTurn(messages.map(eventWatchCausingTurn));
-    await enqueueAgentInvocation(invocation, {
-      ...options,
-      ...(cause ? { causingTurn: cause.turn } : undefined),
-    });
+    const invocation = await createAgentInvocationWithCause(
+      cause?.turn,
+      async () =>
+        await createAgentInvocationForChildInput({
+          input: joinMailboxText(messages),
+          invocationId: getAgentInvocationIdForEvents(
+            messages[0]!.inboundMessageId,
+          ),
+          latest,
+          runAs: {
+            actor,
+            credentialContext: credentialContextForActor(
+              actor,
+              timerWatchCredentialSubject(context.conversationId, messages),
+            ),
+            source,
+          },
+        }),
+    );
+    await enqueueAgentInvocation(invocation, options);
     await context.attempt.ack();
     return { status: "completed" };
   }
@@ -421,19 +422,20 @@ export async function startAgentInvocationsForChildInput(
     ) {
       continue;
     }
-    const invocation = await createAgentInvocationForChildInput({
-      input: message.input.text.trim(),
-      invocationId:
-        input.kind === "result"
-          ? getAgentInvocationIdForResult(source.invocationId)
-          : getAgentInvocationIdForMessage(message.inboundMessageId),
-      latest,
-    });
     // The Turn takes the task Actor of the child Turn that sent the input.
-    await enqueueAgentInvocation(invocation, {
-      ...options,
-      causingTurn: agentInvocationTurn(source),
-    });
+    const invocation = await createAgentInvocationWithCause(
+      agentInvocationTurn(source),
+      async () =>
+        await createAgentInvocationForChildInput({
+          input: message.input.text.trim(),
+          invocationId:
+            input.kind === "result"
+              ? getAgentInvocationIdForResult(source.invocationId)
+              : getAgentInvocationIdForMessage(message.inboundMessageId),
+          latest,
+        }),
+    );
+    await enqueueAgentInvocation(invocation, options);
   }
   await context.attempt.ack();
   return { status: "completed" };
