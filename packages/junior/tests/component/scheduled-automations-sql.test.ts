@@ -308,8 +308,8 @@ describe("scheduled-automation SQL storage", () => {
         errorMessage: string | null;
         status: string;
       }>(
-        `SELECT status, record->>'errorMessage' AS "errorMessage"
-         FROM junior_scheduler_runs WHERE id = $1`,
+        `SELECT status, error_message AS "errorMessage"
+         FROM junior_automation_runs WHERE id = $1`,
         [`${task.id}:${TEST_RUN_AT_MS}`],
       );
       expect(row).toMatchObject({

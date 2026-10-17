@@ -21,6 +21,27 @@ legacy JSON payload. The API uses the first line of the instruction when a title
 is missing. Instruction edits keep the stored title. A title changes only when
 an edit supplies a replacement.
 
+## Runs
+
+An Automation run is one dispatch of an Automation. Each run is one row in
+`junior_automation_runs`.
+
+- The heartbeat claims a Scheduled automation run as `pending`. The run becomes
+  `running` when it is dispatched. Its id is `<automation id>:<scheduled time>`.
+- Ingest dispatches an event automation run as `running`. Its id is the
+  dispatch id.
+- Dispatch sets `conversation_id` when the dispatch Conversation exists. A
+  later write of the same run fills a missing link. A skipped run, or a run
+  that fails before dispatch, has no Conversation.
+- The heartbeat settles running runs of both kinds from their dispatch record.
+  A run whose dispatch record is gone becomes `failed`.
+- An execution is a run with the outcome `blocked`, `completed`, or `failed`.
+  Execution lists, stats, and the last run status read only executions.
+- The Conversation title fallback and the run card join on `conversation_id`.
+
+Migration 0056 copied `junior_scheduler_runs` and `junior_task_executions`.
+Old workers write those tables during the deploy, and those writes are lost.
+
 ## Web edits
 
 `GET /api/automations/:kind/:id/edit` returns exact values and an opaque

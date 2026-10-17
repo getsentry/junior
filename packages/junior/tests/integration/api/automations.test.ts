@@ -283,7 +283,7 @@ describe("Automations API", () => {
         title: "Foreign public task run",
         visibility: "public",
       });
-      await recordAutomationExecution("event", "event_foreign_public", {
+      await recordAutomationExecution("event_foreign_public", {
         conversationId: "agent-dispatch:foreign-public-run",
         executionId: "foreign-public-run",
         nowMs: scheduledRun2AtMs + 1_000,
@@ -310,25 +310,25 @@ describe("Automations API", () => {
           eq(juniorConversations.conversationId, "agent-dispatch:sched-run-1"),
         );
 
-      await recordAutomationExecution("scheduled", "sched_tasks_api", {
+      await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
         executionId: "sched-run-1",
         nowMs: scheduledRun1AtMs,
         status: "completed",
       });
-      await recordAutomationExecution("scheduled", "sched_tasks_api", {
+      await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
         nowMs: scheduledRun2AtMs,
         status: "failed",
       });
-      await recordAutomationExecution("event", "event_automations_api", {
+      await recordAutomationExecution("event_automations_api", {
         conversationId: "agent-dispatch:event-run-1",
         executionId: "event-run-1",
         nowMs: eventRunAtMs,
         status: "completed",
       });
-      await recordAutomationExecution("scheduled", "sched_tasks_api", {
+      await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
         nowMs: scheduledRun2AtMs,

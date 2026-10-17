@@ -313,7 +313,7 @@ describe("Slack Work Object details", () => {
       title: "Reminder execution",
     });
     const executedAtMs = Date.now();
-    await recordAutomationExecution("scheduled", task.id, {
+    await recordAutomationExecution(task.id, {
       conversationId: "agent-dispatch:reminder-run",
       executionId: "reminder-run",
       nowMs: executedAtMs,

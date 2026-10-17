@@ -174,7 +174,7 @@ describe("Automation edit API", () => {
             nextRunAtMs: Date.now() - 1000,
           });
         }
-        await recordAutomationExecution(kind, id, {
+        await recordAutomationExecution(id, {
           executionId: "past-failure",
           status: "failed",
           nowMs: Date.now() - 5000,
@@ -390,7 +390,7 @@ describe("Automation edit API", () => {
       const { app, fixture, id, url, read, patch, user } = await setup(kind);
       try {
         const initial = await read();
-        await recordAutomationExecution(kind, id, {
+        await recordAutomationExecution(id, {
           executionId: "retained-run",
           nowMs: Date.now(),
           status: "completed",

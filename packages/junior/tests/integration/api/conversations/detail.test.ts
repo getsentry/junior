@@ -286,7 +286,7 @@ describe("conversation detail API", () => {
       await expect(
         readConversationDetail(conversationId, { viewer: user! }),
       ).resolves.toMatchObject({ displayTitle: "Automation run" });
-      await recordAutomationExecution("scheduled", "sched_source_task", {
+      await recordAutomationExecution("sched_source_task", {
         conversationId,
         executionId: "run_source_task",
         nowMs: nowMs + 1,

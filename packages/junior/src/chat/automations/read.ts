@@ -62,7 +62,7 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
-  juniorAutomationExecutions,
+  juniorAutomationRuns,
   juniorAutomations,
   juniorDestinations,
   juniorIdentities,
@@ -406,9 +406,7 @@ async function automationSummaryForCandidate(
   const [destinations, creators, stats] = await Promise.all([
     destinationDetails([candidate.task.destination]),
     creatorProfiles([candidate]),
-    readAutomationExecutionSummaries(candidate.kind, "junior", {
-      automationIds: [candidate.task.id],
-    }),
+    readAutomationExecutionSummaries([candidate.task.id]),
   ]);
   const destination = destinations.get(
     destinationKey(candidate.task.destination),
@@ -526,25 +524,13 @@ export async function readViewerAutomations(
     getDb()
       .select({ id: collection.id })
       .from(collection)
-      .where(
-        and(
-          eq(collection.id, juniorAutomationExecutions.automationId),
-          eq(collection.kind, juniorAutomationExecutions.kind),
-          eq(juniorAutomationExecutions.namespace, "junior"),
-        ),
-      ),
+      .where(eq(collection.id, juniorAutomationRuns.automationId)),
   );
-  const [executionDays, executionHours, scheduledStats, eventStats] =
-    await Promise.all([
-      readAutomationExecutionDays(90, { access }),
-      readAutomationExecutionHours(7 * 24, { access }),
-      readAutomationExecutionSummaries("scheduled", "junior", {
-        automationIds: ids,
-      }),
-      readAutomationExecutionSummaries("event", "junior", {
-        automationIds: ids,
-      }),
-    ]);
+  const [executionDays, executionHours, stats] = await Promise.all([
+    readAutomationExecutionDays(90, { access }),
+    readAutomationExecutionHours(7 * 24, { access }),
+    readAutomationExecutionSummaries(ids),
+  ]);
   const automations = visible.map((candidate): AutomationSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -563,7 +549,7 @@ export async function readViewerAutomations(
         candidate.task,
         candidate.ownedByViewer,
         destination,
-        scheduledStats.get(candidate.task.id),
+        stats.get(candidate.task.id),
         creator,
       );
     }
@@ -571,7 +557,7 @@ export async function readViewerAutomations(
       candidate.task,
       candidate.ownedByViewer,
       destination,
-      eventStats.get(candidate.task.id),
+      stats.get(candidate.task.id),
       creator,
     );
   });
@@ -712,8 +698,8 @@ export async function readViewerAutomationRuns(
     );
   }
   const runs = await readAutomationRuns({
+    automationIds: automations.map((automation) => automation.automationId),
     limit: TASK_EXECUTION_LIST_LIMIT + 1,
-    automations,
   });
   return {
     runs: runs.slice(0, TASK_EXECUTION_LIST_LIMIT).map((run) => ({
@@ -743,18 +729,11 @@ export async function readViewerAutomationExecutions(
     await Promise.all([
       automationSummaryForCandidate(candidate),
       readAutomationExecutions({
-        kind,
+        automationId: id,
         limit: TASK_EXECUTION_LIST_LIMIT + 1,
-        automationId: id,
       }),
-      readAutomationExecutionStatusDays({
-        kind,
-        automationId: id,
-      }),
-      readAutomationExecutionStatusHours({
-        kind,
-        automationId: id,
-      }),
+      readAutomationExecutionStatusDays({ automationId: id }),
+      readAutomationExecutionStatusHours({ automationId: id }),
     ]);
   return {
     executionDays,
@@ -820,7 +799,7 @@ async function readRunCredential(
   };
 }
 
-/** Resolve the source task for one conversation when a terminal execution links it. */
+/** Resolve the source task for one conversation when an Automation run links it. */
 export async function readConversationSourceTask(args: {
   conversationId: string;
   viewer?: User;

@@ -22,6 +22,7 @@ import {
   blockEventAutomation,
   findMatchingEventAutomations,
 } from "@/chat/event-automations/store";
+import { recordEventAutomationRunStarted } from "@/chat/event-automations/runs";
 import {
   admitEventAutomationRun,
   eventAutomationRunLimitReason,
@@ -160,6 +161,11 @@ export async function ingestEventAutomations(
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
         },
+      });
+      await recordEventAutomationRunStarted(db, {
+        automationId: task.id,
+        dispatchId: dispatch.id,
+        nowMs,
       });
       if (dispatch.status === "created") {
         dispatched += 1;

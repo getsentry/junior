@@ -3,12 +3,8 @@ import { recordAutomationVersion } from "@/chat/automations/versions";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
-import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
-import {
-  scheduledRunSchema,
-  scheduledAutomationSchema,
-  type ScheduledAutomation,
-} from "./types";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
+import { scheduledAutomationSchema, type ScheduledAutomation } from "./types";
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
 
@@ -179,11 +175,14 @@ async function writeScheduledAutomation(
     Number.isFinite(task.nextRunAtMs)
   ) {
     await db
-      .delete(juniorSchedulerRuns)
+      .delete(juniorAutomationRuns)
       .where(
         and(
-          eq(juniorSchedulerRuns.id, scheduledRunId(task.id, task.nextRunAtMs)),
-          eq(juniorSchedulerRuns.status, "blocked"),
+          eq(
+            juniorAutomationRuns.id,
+            scheduledRunId(task.id, task.nextRunAtMs),
+          ),
+          eq(juniorAutomationRuns.status, "blocked"),
         ),
       );
   }
@@ -200,38 +199,19 @@ async function skipPendingRunsForDeletedTask(
   db: JuniorDatabase,
   task: ScheduledAutomation,
 ): Promise<void> {
-  const errorMessage = `Scheduled automation ${task.id} was deleted before the run started.`;
-  const rows = await db
-    .select({ record: juniorSchedulerRuns.record })
-    .from(juniorSchedulerRuns)
+  await db
+    .update(juniorAutomationRuns)
+    .set({
+      completedAtMs: task.updatedAtMs,
+      errorMessage: `Scheduled automation ${task.id} was deleted before the run started.`,
+      status: "skipped",
+    })
     .where(
       and(
-        eq(juniorSchedulerRuns.taskId, task.id),
-        eq(juniorSchedulerRuns.status, "pending"),
+        eq(juniorAutomationRuns.automationId, task.id),
+        eq(juniorAutomationRuns.status, "pending"),
       ),
     );
-  for (const row of rows) {
-    const parsed = scheduledRunSchema.safeParse(row.record);
-    if (!parsed.success || parsed.data.status !== "pending") continue;
-    const next = scheduledRunSchema.parse({
-      ...parsed.data,
-      completedAtMs: task.updatedAtMs,
-      errorMessage,
-      status: "skipped",
-    });
-    await db
-      .update(juniorSchedulerRuns)
-      .set({
-        record: next,
-        status: next.status,
-      })
-      .where(
-        and(
-          eq(juniorSchedulerRuns.id, next.id),
-          eq(juniorSchedulerRuns.status, "pending"),
-        ),
-      );
-  }
 }
 
 /** Create a scheduled automation once under its retry-stable task lock. */

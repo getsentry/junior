@@ -16,8 +16,12 @@ import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { asc, eq } from "drizzle-orm";
+import {
+  getDispatchRecord,
+  getDispatchStorageKey,
+  markDispatchCompleted,
+} from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { automationRevision } from "@/chat/automations/revision";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -26,11 +30,13 @@ import {
   saveEventAutomation,
   setEventAutomationStatus,
 } from "@/chat/event-automations/store";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
   createConversationWorkQueueTestAdapter,
@@ -337,6 +343,43 @@ describe("event automations", () => {
         }),
       ]),
     );
+    // Each dispatch starts one run that links its Conversation.
+    const readRuns = () =>
+      db
+        .select()
+        .from(juniorAutomationRuns)
+        .orderBy(asc(juniorAutomationRuns.id));
+    const runIds = dispatches.map((dispatch) => dispatch!.id).sort();
+    expect(await readRuns()).toEqual(
+      runIds.map((id) =>
+        expect.objectContaining({
+          id,
+          conversationId: `agent-dispatch:${id}`,
+          status: "running",
+        }),
+      ),
+    );
+    // A finished dispatch settles its run. The heartbeat fails a run whose
+    // dispatch record is gone.
+    const [completedId, lostId, runningId] = runIds;
+    await markDispatchCompleted(completedId!);
+    const state = getStateAdapter();
+    await state.connect();
+    await state.delete(getDispatchStorageKey(lostId!));
+    await runScheduledAutomationHeartbeat({
+      conversationWorkQueue: queue,
+      nowMs: Date.now(),
+    });
+    expect(await readRuns()).toEqual([
+      expect.objectContaining({ id: completedId, status: "completed" }),
+      expect.objectContaining({
+        id: lostId,
+        errorMessage: "Event automation dispatch record is missing.",
+        status: "failed",
+      }),
+      expect.objectContaining({ id: runningId, status: "running" }),
+    ]);
+
     const firstDispatch = dispatches.find(
       (dispatch) =>
         dispatch?.credentialSubject?.allowedWhen === "event-automation" &&
