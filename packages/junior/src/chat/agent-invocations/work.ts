@@ -7,8 +7,9 @@ import {
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
+import type { Actor } from "@/chat/actor";
 import {
-  agentInstructionProvenance,
+  agentInstructionProvenanceFor,
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -79,6 +80,10 @@ import type {
 import { recordSubagentEnded, recordSubagentStarted } from "./markers";
 import { stopChildAgentsOf } from "./stop";
 import { readBlockedReport } from "./blocked-report";
+import {
+  readAgentInvocationOnBehalfOf,
+  readTaskOnBehalfOf,
+} from "./on-behalf-of";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -90,6 +95,8 @@ const agentInvocationMailboxMetadataSchema = z
 type EnqueueOptions = {
   conversationStore?: ConversationStore;
   nowMs?: number;
+  /** Whose work a parent task serves. Only spawnAgent and messageAgent set it. */
+  onBehalfOf?: Actor;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 };
@@ -147,7 +154,7 @@ export async function enqueueAgentInvocation(
   ) {
     return;
   }
-  await recordSubagentStarted(invocation);
+  await recordSubagentStarted(invocation, options.onBehalfOf);
   const nowMs = options.nowMs ?? Date.now();
   await appendAndEnqueueInboundMessage({
     message: buildAgentInvocationInboundMessage(invocation, nowMs),
@@ -252,14 +259,16 @@ export async function resolveAgentInvocationId(
 
 /**
  * Give queued parent messages to the running agent invocation of a child as
- * steering messages. A message joins only with the Actor and credentials of
- * the running Turn. The first message that does not match stops the scan, so
- * it and every later message wait for the current work. Each message that
- * joins ends as `steered`, and the running agent invocation reports for it.
+ * steering messages. A message joins only with the Actor, credentials, and
+ * `onBehalfOf` of the running Turn. A message without `onBehalfOf` keeps the
+ * running one. The first message that does not match stops the scan, so it
+ * and every later message wait for the current work. Each message that joins
+ * ends as `steered`, and the running agent invocation reports for it.
  */
 function createAgentMessageSteeringDrain(
   context: ConversationWorkerContext,
   running: AgentInvocation,
+  onBehalfOf: Actor | undefined,
 ) {
   const turnId = getAgentInvocationTurnId(running.invocationId);
   return async (
@@ -295,12 +304,15 @@ function createAgentMessageSteeringDrain(
             }
             continue;
           }
+          const candidateOnBehalfOf = await readTaskOnBehalfOf(candidate);
           if (
             !sameActorIdentity(candidate.actor, running.actor) ||
             !isDeepStrictEqual(
               candidate.credentialContext,
               running.credentialContext,
-            )
+            ) ||
+            (candidateOnBehalfOf &&
+              !sameActorIdentity(candidateOnBehalfOf, onBehalfOf))
           ) {
             break;
           }
@@ -320,7 +332,7 @@ function createAgentMessageSteeringDrain(
           saved,
           joining.map(
             (candidate): AgentSteeringMessage => ({
-              provenance: agentInstructionProvenance,
+              provenance: agentInstructionProvenanceFor(onBehalfOf),
               text: agentInvocationInputText(candidate),
               timestampMs: candidate.createdAtMs,
             }),
@@ -656,6 +668,7 @@ export function createAgentInvocationWorker(
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     let location: Location | undefined;
+    let onBehalfOf: Actor | undefined;
     let canSpawn = false;
     try {
       if (invocation.childConversationId !== context.conversationId) {
@@ -695,13 +708,15 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, tree] = await Promise.all([
+      const [persisted, projection, tree, turnOnBehalfOf] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
         readChildDepthAndRootLocation(invocation.childConversationId),
+        readAgentInvocationOnBehalfOf(invocation),
       ]);
+      onBehalfOf = turnOnBehalfOf;
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
       location = tree.location;
@@ -739,6 +754,7 @@ export function createAgentInvocationWorker(
           history,
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
+          ...(onBehalfOf ? { onBehalfOf } : undefined),
           destination: invocation.destination,
           source: invocation.source,
           ...(location ? { location } : undefined),
@@ -756,6 +772,7 @@ export function createAgentInvocationWorker(
             drainSteeringMessages: createAgentMessageSteeringDrain(
               context,
               invocation,
+              onBehalfOf,
             ),
             onInputCommitted: acknowledge,
             shouldYield: context.shouldYield,

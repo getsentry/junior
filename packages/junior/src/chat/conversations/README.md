@@ -44,6 +44,9 @@ facts:
   results that were never platform chat messages.
 
 `user_message` provenance distinguishes user instructions from ambient context.
+Its `actor` is who wrote the message. An instruction that an agent wrote has no
+`actor`. It can have `onBehalfOf`, the Actor whose work it serves. Only the
+runtime sets it (see `../agent-invocations/README.md`).
 Tool calls remain ordered content inside the `assistant_message` that produced
 them; the corresponding results are separate `tool_result` events.
 

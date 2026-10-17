@@ -14,7 +14,10 @@ const conversationMessageAuthoritySchema = z.union([
 export const conversationMessageProvenanceSchema = z
   .object({
     authority: conversationMessageAuthoritySchema,
+    /** Who wrote the message. Agent-written text has none. */
     actor: actorSchema.optional(),
+    /** Whose work an agent-written instruction serves. Runtime-only. */
+    onBehalfOf: actorSchema.optional(),
   })
   .strict();
 
@@ -40,11 +43,16 @@ export function instructionProvenanceFor(
 /**
  * Provenance of an instruction that an agent wrote, such as a parent agent
  * task in a child Conversation. It has no Actor, so it never counts as user
- * intent.
+ * intent. `onBehalfOf` is the Actor whose work the instruction serves. Only
+ * the runtime sets it, and it never makes that Actor the writer.
  */
-export const agentInstructionProvenance: ConversationMessageProvenance = {
-  authority: "instruction",
-};
+export function agentInstructionProvenanceFor(
+  onBehalfOf: Actor | undefined,
+): ConversationMessageProvenance {
+  return onBehalfOf
+    ? { authority: "instruction", onBehalfOf }
+    : { authority: "instruction" };
+}
 
 /** Unattributed ambient-context provenance for non-instruction messages. */
 export const contextProvenance: ConversationMessageProvenance = {

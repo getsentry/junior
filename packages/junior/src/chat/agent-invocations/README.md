@@ -151,8 +151,10 @@ valid targets.
   agent invocation ends as `completed` with `parentMailboxStatus: "steered"`.
   The running agent invocation reports for both. A message joins only with the
   Actor and credentials of the running Turn. Otherwise it and every later
-  parent message wait. If the child finishes without another model call, the
-  message runs after that work, and the earlier work ends as `replaced`.
+  parent message wait. It also joins only for the same `onBehalfOf` (see
+  User Approval). A message without one keeps the running one. If the child
+  finishes without another model call, the message runs after that work, and
+  the earlier work ends as `replaced`.
 - **Child to parent.** The message wakes the parent as an Event with
   namespace `junior` and type `agent.message`. It uses the same mailbox path
   and Actor rules as a child result: the Actor comes from the sender's agent
@@ -171,9 +173,11 @@ A child Conversation has no Location, so it cannot run an Event Turn. When
 results starts a new agent invocation on that child instead. Its id comes from
 the result's agent invocation id, so retries do not start a second one. An
 agent message from one of those children starts an agent invocation the same
-way; its id comes from the message's Inbound message id. It uses the parent,
-Actor, and credentials of the child's latest agent invocation, and it skips the
-queue and active-count checks.
+way; its id comes from the message's Inbound message id. It uses the parent of
+the child's latest agent invocation, and the Actor and credentials of the
+child's latest task from `spawnAgent` or `messageAgent`. A watch event is not a
+task, so the grants of a timer never pass to later work. It skips the queue and
+active-count checks.
 
 The parent gets one report for the child's work. A finished agent invocation
 is `replaced` instead of sent when the child still has open work: another open
@@ -237,9 +241,9 @@ When Guardian reviews an action of a child, `root-conversation.ts` walks
 rewrite these events. Nothing is copied into the child, and nothing new is
 stored.
 
-- Only a root message whose author has the same Actor identity as the child
-  is labeled `user`. It is compared by platform, team, and user id. When
-  either Actor is not known, the message does not count.
+- Only a root message whose author has the same Actor identity as the
+  child's `onBehalfOf` is labeled `user`. It is compared by platform, team,
+  and user id. When either Actor is not known, the message does not count.
 - When the root is an Automation run, the dispatch input message is that
   run's own instruction. It is labeled `automation` for the run's system
   Actor. This is the authority that the run already has. Guardian reviews the
@@ -265,6 +269,34 @@ stored.
 - A message keeps the position of its original event. An edit changes only
   its text. An edit of a message older than the read is left out, so an edit
   never moves a message after a newer one, such as a revocation.
+
+### Whose Work a Child Does
+
+`onBehalfOf` is the Actor whose work a child does. It is not the Run Actor. A
+watch, timer, or result Turn of a child runs as the event system Actor, but it
+still does the work of the person who gave the task. `on-behalf-of.ts` owns
+this rule. The value is in the child's session log, so no SQL column holds it:
+
+- `spawnAgent` and `messageAgent` put it in the `meta` of the task message
+  that they write into the child. A root Turn gives its Actor. A child Turn
+  gives its own `onBehalfOf`. An Event Turn on a root is not from a person,
+  so its task has none.
+- Each child Turn uses the value of its own task message. Without one, it
+  keeps the value of the child's latest instruction. So a watch Turn, or a
+  message from a root Event Turn, keeps the person of the earlier task. A
+  child that a root Event Turn starts has none.
+- The Turn saves the value in the `onBehalfOf` field of its instruction
+  provenance. The instruction still has no `actor`, so agent text never
+  becomes user intent. The latest instruction is read across history
+  versions, so compaction and handoff do not lose it.
+- The model and tool input cannot set it. It never changes the Run Actor,
+  credentials, or a timer's own grants.
+- A child that started before this field existed has no value. It gets no
+  `user` lines until a new task gives it one. There is no fallback, such as
+  the Run Actor or the thread owner.
+- A heartbeat repair of a task message cannot know the value. The child then
+  keeps the value of its latest instruction, the same as for a message from a
+  root Event Turn.
 
 Guardian renders the projection outside the untrusted proposal JSON, in a
 `<root_user_instructions key="...">` section with a new random key for each

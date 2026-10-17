@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
-import { agentInstructionProvenance } from "@/chat/conversations/provenance";
+import { agentInstructionProvenanceFor } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
@@ -11,6 +11,7 @@ import {
   getAgentInvocationTurnId,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
+import { recordSubagentStarted } from "@/chat/agent-invocations/markers";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import {
   buildAgentInvocationInboundMessage,
@@ -238,11 +239,16 @@ describe("agent invocation worker", () => {
   it("lets a running child read a parent message as a steering message", async () => {
     const fixture = await prepareParentConversation();
     try {
+      // The task and each message record whose work they are, as spawnAgent
+      // and messageAgent do.
+      const person = { platform: "local", userId: "local-user" } as const;
       const created = await createAgentInvocation({
         ...INVOCATION_INPUT,
         agentName: "researcher",
         idempotencyKey: "steer-task",
+        parentToolCallId: "call-steer-task",
       });
+      await recordSubagentStarted(created, person);
       await markAgentInvocationRunning(created.invocationId);
       const { invocation: message, queued } =
         await createAgentInvocationForMessage({
@@ -253,6 +259,7 @@ describe("agent invocation worker", () => {
           parentToolCallId: "call-steer-message",
         });
       expect(queued).toBe(true);
+      await recordSubagentStarted(message, person);
       // An earlier drain saved this message in the Turn, then failed before
       // it marked the agent invocation read.
       const { invocation: savedMessage } =
@@ -270,7 +277,7 @@ describe("agent invocation worker", () => {
         destination: DESTINATION,
         piMessages: [
           buildSteeringPiMessage({
-            provenance: agentInstructionProvenance,
+            provenance: agentInstructionProvenanceFor(person),
             text: agentInvocationInputText(savedMessage),
             timestampMs: savedMessage.createdAtMs,
           }),
@@ -280,6 +287,20 @@ describe("agent invocation worker", () => {
         source: { kind: "agent_invocation" },
         state: "paused",
         surface: "internal",
+      });
+
+      // A message for another person's work does not join, so it waits.
+      const { invocation: otherPersonMessage } =
+        await createAgentInvocationForMessage({
+          ...INVOCATION_INPUT,
+          childConversationId: created.childConversationId,
+          idempotencyKey: "steer-other-person",
+          input: "Do this for someone else.",
+          parentToolCallId: "call-steer-other-person",
+        });
+      await recordSubagentStarted(otherPersonMessage, {
+        ...person,
+        userId: "other-user",
       });
 
       // The runner drains steering messages, as the agent does before its
@@ -319,6 +340,7 @@ describe("agent invocation worker", () => {
                 ownMessage,
                 buildAgentInvocationInboundMessage(message),
                 buildAgentInvocationInboundMessage(savedMessage),
+                buildAgentInvocationInboundMessage(otherPersonMessage),
               ]),
             );
             return [];
@@ -338,11 +360,12 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
-      // The parent's text is labeled as agent-written and has no Actor.
+      // The parent's text is labeled as agent-written and has no Actor. It
+      // keeps whose work it is.
       expect(steered).toEqual([
         [
           expect.objectContaining({
-            provenance: agentInstructionProvenance,
+            provenance: agentInstructionProvenanceFor(person),
             text: expect.stringMatching(
               /^\[parent agent task\][\s\S]*Also check the retry path\.$/,
             ),
@@ -366,11 +389,15 @@ describe("agent invocation worker", () => {
           status: "completed",
         });
       }
-      // The running agent invocation reports for all of them.
+      await expect(
+        getAgentInvocation(otherPersonMessage.invocationId),
+      ).resolves.toMatchObject({ status: "pending" });
+      // The running agent invocation answers the messages that joined. The
+      // waiting message runs next and reports for the child.
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
-        parentMailboxStatus: "pending",
+        parentMailboxStatus: "replaced",
         result: "Checked both paths.",
         status: "completed",
       });
@@ -380,10 +407,9 @@ describe("agent invocation worker", () => {
       ).resolves.toMatchObject({
         agents: [
           {
-            last_result: "completed",
             name: "researcher",
-            status: "idle",
-            task: `Skip the "cache" path & <retry>.`,
+            status: "pending",
+            task: "Do this for someone else.",
           },
         ],
       });

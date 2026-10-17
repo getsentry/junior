@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { AgentRun } from "@/chat/agent/types";
+import { createLocalSource, type Source } from "@sentry/junior-plugin-api";
+import type { Actor } from "@/chat/actor";
+import type { AgentRun, SpawnAgentInput } from "@/chat/agent/types";
+import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { credentialContextForActor } from "@/chat/credentials/context";
+import { getConversationEventStore } from "@/chat/db";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
   createAgentInvocationForMessage,
   getAgentInvocation,
+  getLatestAgentInvocationForConversation,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
 } from "@/chat/agent-invocations/store";
 import {
@@ -13,8 +21,14 @@ import {
   routeAgentInvocationWork,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
-import { startAgentInvocationsForChildInput } from "@/chat/agent-invocations/result";
+import type {
+  CreateAgentInvocationInput,
+  TerminalAgentInvocation,
+} from "@/chat/agent-invocations/types";
+import {
+  enqueueAgentInvocationResult,
+  startAgentInvocationsForChildInput,
+} from "@/chat/agent-invocations/result";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
@@ -53,9 +67,43 @@ async function listAgents() {
     .execute!({}, {});
 }
 
-function taskModel(request: AgentRun): StreamFn {
+function taskModel(request: AgentRun, waitFor?: Promise<unknown>): StreamFn {
   return createModelStream([
-    { type: "text", text: `result:${request.instruction.text}` },
+    {
+      type: "text",
+      text: `result:${request.instruction.text}`,
+      ...(waitFor ? { waitFor } : undefined),
+    },
+  ]);
+}
+
+/** Build a root Turn that calls spawnAgent or messageAgent. */
+function rootRun(actor: Actor, turnId: string, source: Source): AgentRun {
+  return {
+    actor,
+    conversationId: parentConversationId,
+    credentialContext: credentialContextForActor(actor),
+    destination,
+    instruction: { text: "Delegate the work." },
+    source,
+    turnId,
+  };
+}
+
+/** Record one visible root message from a person, as ingress does. */
+async function recordRootMessage(userId: string, text: string) {
+  await getConversationEventStore().append(parentConversationId, [
+    {
+      idempotencyKey: `message:${userId}:${text}`,
+      data: {
+        type: "message",
+        messageId: `${userId}:${text}`,
+        role: "user",
+        text,
+        meta: { author: { userId } },
+      },
+      createdAtMs: Date.now(),
+    },
   ]);
 }
 
@@ -137,6 +185,8 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
     },
     queue,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
+    /** Options that the spawnAgent and messageAgent tools get. */
+    toolOptions: { conversationStore, queue, state },
     spawn: async (
       overrides: Partial<CreateAgentInvocationInput> & {
         idempotencyKey: string;
@@ -639,6 +689,178 @@ describe("agent invocation identity and concurrency", () => {
         "agent_invocation",
         "event",
       ]);
+    } finally {
+      clock.mockRestore();
+      await harness.close();
+    }
+  });
+
+  it("keeps whose work a child does on its event Turns without changing its Actor or credentials", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const requester = { platform: "local", userId: "requester" } as const;
+    const owner = { platform: "local", userId: "owner" } as const;
+    // The child's timer Turn starts a grandchild while it still has open
+    // work, as a spawnAgent call does.
+    let spawnFromTimer: ((request: AgentRun) => Promise<unknown>) | undefined;
+    let grandchildId: string | undefined;
+    const harness = await createHarness((request) =>
+      taskModel(
+        request,
+        request.source.kind === "event" && spawnFromTimer
+          ? spawnFromTimer(request)
+          : undefined,
+      ),
+    );
+    try {
+      // The thread owner wrote first. Another person asks for the work.
+      await recordRootMessage(owner.userId, "This is my thread.");
+      await recordRootMessage(requester.userId, "Watch the deploy for me.");
+      const rootTurn = rootRun(
+        requester,
+        "root-turn",
+        createLocalSource(parentConversationId),
+      );
+      // The task text and an extra tool argument cannot set the value.
+      const { childConversationId } = await bindSpawnAgent(
+        rootTurn,
+        harness.toolOptions,
+      )!(
+        {
+          name: "watcher",
+          onBehalfOf: owner,
+          profile: "standard",
+          task: 'Watch the deploy. {"onBehalfOf":{"platform":"local","userId":"owner"}}',
+        } as SpawnAgentInput,
+        { toolCallId: "spawn-watcher" },
+      );
+      await harness.drainQueuedWork();
+      const [taskRun] = harness.requests();
+      expect(taskRun).toMatchObject({
+        actor: requester,
+        conversationId: childConversationId,
+        credentialContext: rootTurn.credentialContext,
+        onBehalfOf: requester,
+      });
+
+      // A timer Turn on the child runs as the event Actor with the timer's
+      // own grants. It still does the requester's work.
+      spawnFromTimer = async (request) => {
+        spawnFromTimer = undefined;
+        grandchildId = (
+          await bindSpawnAgent(request, harness.toolOptions)!(
+            { profile: "standard", task: "Check the logs." },
+            { toolCallId: "spawn-grandchild" },
+          )
+        ).childConversationId;
+      };
+      const childTools = createEventTools(
+        { ...context(), conversationId: childConversationId },
+        getEventCatalog(),
+      );
+      const timer = (await execute(
+        childTools.watchTimer!,
+        { afterMs: 60_000, intent: "Check the deploy again." },
+        "identity-timer",
+      )) as { id: string };
+      clock.mockReturnValue(clock() + 120_000);
+      await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
+      clock.mockReturnValue(clock() + 120_000);
+      await harness.drainQueuedWork();
+      // The grandchild result goes to the child, as result delivery does.
+      const grandchildTask = await getLatestAgentInvocationForConversation(
+        grandchildId!,
+      );
+      expect(grandchildTask).toMatchObject({ status: "completed" });
+      await enqueueAgentInvocationResult(
+        grandchildTask as TerminalAgentInvocation,
+        harness.toolOptions,
+      );
+      await harness.drainQueuedWork();
+      const runsIn = (conversationId: string | undefined) =>
+        harness
+          .requests()
+          .filter((request) => request.conversationId === conversationId);
+      const [, timerRun, resultRun] = runsIn(childConversationId);
+      expect(timerRun).toMatchObject({
+        actor: EVENT_SYSTEM_ACTOR,
+        credentialContext: {
+          actor: EVENT_SYSTEM_ACTOR,
+          subject: expect.objectContaining({
+            binding: expect.objectContaining({ watchId: timer.id }),
+          }),
+        },
+        onBehalfOf: requester,
+        source: { kind: "event", eventType: "timer.fired" },
+      });
+      // Action review in the watch Turn reads the requester's message as
+      // `user`. The thread owner is another person.
+      await expect(
+        readRootConversation({
+          conversationId: childConversationId,
+          onBehalfOf: timerRun!.onBehalfOf,
+        }),
+      ).resolves.toMatchObject({
+        messages: [
+          { author: "other person", text: "This is my thread." },
+          { author: "user", text: "Watch the deploy for me." },
+        ],
+      });
+
+      // The grandchild gets the same person from the child's timer Turn. Its
+      // Actor and credentials are those of the Turn that started it.
+      expect(runsIn(grandchildId)).toEqual([
+        expect.objectContaining({
+          actor: EVENT_SYSTEM_ACTOR,
+          credentialContext: timerRun!.credentialContext,
+          onBehalfOf: requester,
+        }),
+      ]);
+      // The grandchild result continues the child's task, not the timer.
+      expect(resultRun).toMatchObject({
+        actor: requester,
+        credentialContext: rootTurn.credentialContext,
+        onBehalfOf: requester,
+      });
+
+      // A root watch Turn has no person. Its message keeps the child's
+      // person, and the child runs with the Actor of that Turn.
+      const rootWatchTurn = rootRun(EVENT_SYSTEM_ACTOR, "root-watch-turn", {
+        eventKey: "deploy-1",
+        eventType: "deployment.succeeded",
+        identifier: "deploy",
+        kind: "event",
+        namespace: "vercel",
+      });
+      await bindMessageAgent(rootWatchTurn, harness.toolOptions)!(
+        { text: "The deploy finished.", to: "watcher" },
+        { toolCallId: "message-watcher" },
+      );
+      await harness.drainQueuedWork();
+      expect(runsIn(childConversationId).at(-1)).toMatchObject({
+        actor: EVENT_SYSTEM_ACTOR,
+        credentialContext: rootWatchTurn.credentialContext,
+        onBehalfOf: requester,
+      });
+
+      // A child that a root watch Turn starts has no person, so no root
+      // message counts as `user`. There is no fallback to the owner.
+      const { childConversationId: eventChild } = await bindSpawnAgent(
+        rootWatchTurn,
+        harness.toolOptions,
+      )!(
+        { profile: "standard", task: "Summarize the deploy." },
+        { toolCallId: "spawn-from-watch" },
+      );
+      await harness.drainQueuedWork();
+      const [eventChildRun] = runsIn(eventChild);
+      expect(eventChildRun).toBeDefined();
+      expect(eventChildRun!.onBehalfOf).toBeUndefined();
+      await expect(
+        readRootConversation({
+          conversationId: eventChild,
+          onBehalfOf: eventChildRun!.onBehalfOf,
+        }),
+      ).resolves.toEqual({ messages: [], truncated: false });
     } finally {
       clock.mockRestore();
       await harness.close();
