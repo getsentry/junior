@@ -240,50 +240,6 @@ describe("scheduled-automation SQL storage", () => {
       });
       expect(paused?.record).not.toHaveProperty("nextRunAtMs");
       expect(paused?.record).not.toHaveProperty("runNowAtMs");
-
-      const rollingTaskId = `${legacyTask.id}_rolling`;
-      await fixture.sql.execute(
-        `INSERT INTO junior_scheduler_tasks (
-          id, team_id, creator_slack_user_id, status, next_run_at_ms,
-          run_now_at_ms, created_at_ms, title, record
-        ) SELECT $2, team_id, creator_slack_user_id, status, next_run_at_ms,
-                 run_now_at_ms, created_at_ms, '',
-                 (record - 'creatorIdentityId') || jsonb_build_object(
-                   'id', $2::text,
-                   'creatorIdentityId', 42,
-                   'title', jsonb_build_object('invalid', true)
-                 )
-          FROM junior_scheduler_tasks WHERE id = $1`,
-        [legacyTask.id, rollingTaskId],
-      );
-      const rollingTask = await readTask(fixture.sql.db(), rollingTaskId);
-      expect(rollingTask).toMatchObject({
-        creatorIdentityId: identity.id,
-        id: rollingTaskId,
-      });
-      expect(rollingTask).not.toHaveProperty("title");
-
-      const legacyTitleTaskId = `${legacyTask.id}_legacy_title`;
-      await fixture.sql.execute(
-        `INSERT INTO junior_scheduler_tasks (
-          id, team_id, creator_slack_user_id, status, next_run_at_ms,
-          run_now_at_ms, created_at_ms, title, record
-        ) SELECT $2, team_id, creator_slack_user_id, status, next_run_at_ms,
-                 run_now_at_ms, created_at_ms, NULL,
-                 (record - 'creatorIdentityId') || jsonb_build_object(
-                   'id', $2::text,
-                   'title', 'Legacy null title'
-                 )
-          FROM junior_scheduler_tasks WHERE id = $1`,
-        [legacyTask.id, legacyTitleTaskId],
-      );
-      await expect(
-        readTask(fixture.sql.db(), legacyTitleTaskId),
-      ).resolves.toMatchObject({
-        creatorIdentityId: identity.id,
-        id: legacyTitleTaskId,
-        title: "Legacy null title",
-      });
     } finally {
       rmSync(oldCoreMigrations, { force: true, recursive: true });
       await fixture.close();
@@ -437,19 +393,19 @@ describe("scheduled-automation SQL storage", () => {
       const db = fixture.sql.db();
       const task = createTask({ id: "sched_valid_after_bad_record" });
       await fixture.sql.execute(
-        `INSERT INTO junior_scheduler_tasks (
-          id, team_id, creator_identity_id, creator_slack_user_id, status,
-          next_run_at_ms, created_at_ms, record
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO junior_automations (
+          id, kind, team_id, channel_id, creator_slack_user_id,
+          creator_identity_id, status, instruction, next_run_at_ms,
+          created_at_ms, record
+        ) VALUES ($1, 'scheduled', $2, $3, $4, $5, 'active', '', $6, $7, '{}')`,
         [
           "sched_bad_record",
           task.destination.teamId,
-          task.creatorIdentityId,
+          task.destination.channelId,
           task.createdBy.slackUserId,
-          "active",
+          task.creatorIdentityId,
           TEST_RUN_AT_MS,
           TEST_RUN_AT_MS - 1,
-          JSON.stringify({ id: "sched_bad_record" }),
         ],
       );
       await saveScheduledAutomation(db, task);

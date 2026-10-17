@@ -31,7 +31,7 @@ import { createEventAutomationTool } from "@/chat/tools/create-event-automation"
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
-import { juniorEventAutomations } from "@/db/schema/event-automations";
+import { juniorAutomations } from "@/db/schema/automations";
 import {
   createConversationWorkQueueTestAdapter,
   type ConversationWorkQueueTestAdapter,
@@ -88,8 +88,8 @@ describe("event automations", () => {
   afterEach(async () => {
     const db = fixture.sql.db();
     await db
-      .delete(juniorEventAutomations)
-      .where(eq(juniorEventAutomations.teamId, teamId));
+      .delete(juniorAutomations)
+      .where(eq(juniorAutomations.teamId, teamId));
     await fixture.close();
     await disconnectStateAdapter();
     vi.restoreAllMocks();
@@ -429,7 +429,7 @@ describe("event automations", () => {
     },
   );
 
-  it("removes stored thread destinations before dispatch and update", async () => {
+  it("rejects thread destinations at the store boundary", async () => {
     const db = fixture.sql.db();
     const { automation } = await createTask("Address the requested changes.");
     const { status: _status, ...task } = (await getEventAutomation(
@@ -454,49 +454,6 @@ describe("event automations", () => {
     await expect(
       saveEventAutomation(db, { ...task, outcomes: threadOutcomes }),
     ).rejects.toThrow(/threadTs/);
-
-    // Simulate a row written by an older worker during deployment.
-    await db
-      .update(juniorEventAutomations)
-      .set({
-        task: {
-          ...task,
-          destination: threadDestination,
-          outcomes: threadOutcomes,
-        },
-      })
-      .where(eq(juniorEventAutomations.id, task.id));
-    await ingestEventAutomations(
-      {
-        eventKey: "github:stored-thread",
-        eventType: "pull_request.review.changes_requested",
-        occurredAtMs: Date.now(),
-        namespace: "github",
-        identifier: "getsentry/junior#1174",
-        trustedSummary: "A reviewer requested changes.",
-      },
-      { queue, teamId },
-    );
-
-    const [{ conversationId }] = queue.sentRecords();
-    const dispatch = await getDispatchRecord(
-      conversationId!.replace(/^agent-dispatch:/, ""),
-    );
-    expect(dispatch?.destination).toEqual(destination);
-    expect(dispatch?.outcomes).toEqual(outcomes);
-
-    await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-      automationId: task.id,
-      outcomes: [
-        { action: "send_message", destination: "current_conversation" },
-      ],
-    });
-    const [saved] = await db
-      .select()
-      .from(juniorEventAutomations)
-      .where(eq(juniorEventAutomations.id, task.id));
-    expect(saved.task.destination).toEqual(destination);
-    expect(saved.task.outcomes).toEqual([outcomes[0]]);
   });
 
   it("rejects event types that the plugin did not register", async () => {

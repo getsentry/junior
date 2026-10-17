@@ -1,16 +1,10 @@
+import { automationCopiedColumns } from "@/chat/automations/columns";
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { recordAutomationVersion } from "@/chat/automations/versions";
-import { and, asc, eq, notInArray, sql } from "drizzle-orm";
-import {
-  slackDestinationSchema,
-  taskOutcomeSchema,
-} from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorSchedulerRuns,
-  juniorSchedulerTasks,
-} from "@/db/schema/scheduled-automations";
+import { juniorAutomations } from "@/db/schema/automations";
+import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
 import {
   scheduledRunSchema,
   scheduledAutomationSchema,
@@ -19,88 +13,31 @@ import {
 } from "./types";
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
-const retainedScheduledAutomationSchema = scheduledAutomationSchema
-  .omit({ creatorIdentityId: true, title: true })
-  .extend({
-    // Retained rows can predate the channel-only Destination invariant.
-    destination: slackDestinationSchema,
-    outcomes: z.array(taskOutcomeSchema).max(5),
-    version: z.number().optional(),
-  })
-  .strict();
 
-type ScheduledAutomationRow = Pick<
-  typeof juniorSchedulerTasks.$inferSelect,
-  "creatorIdentityId" | "record" | "title"
->;
+type AutomationRow = typeof juniorAutomations.$inferSelect;
 
-/** Decode a retained scheduler task row and reject invalid routing context. */
+/** Decode a Scheduled automation row. Returns undefined for an invalid row. */
 export function parseScheduledAutomationRow(
-  row: ScheduledAutomationRow,
+  row: AutomationRow,
 ): ScheduledAutomation | undefined {
-  const record = z.record(z.string(), z.unknown()).safeParse(row.record);
-  if (!record.success) return undefined;
-  const {
-    creatorIdentityId: legacyCreatorIdentityId,
-    title: legacyTitle,
-    ...retained
-  } = record.data;
-  // TODO(dcramer): Remove this rolling-deploy fallback after v0.205.x writers
-  // are unsupported. Migration 0041 backfills all rows present at upgrade time.
-  const current =
-    retained.outcomes === undefined && retained.destination !== undefined
-      ? {
-          ...retained,
-          outcomes: [
-            { action: "send_message", destination: retained.destination },
-          ],
-        }
-      : retained;
-  const parsed = retainedScheduledAutomationSchema.safeParse(current);
-  if (!parsed.success) return undefined;
-  const { status, version: _version, ...retainedTask } = parsed.data;
-  const destination = {
-    platform: "slack" as const,
-    teamId: retainedTask.destination.teamId,
-    channelId: retainedTask.destination.channelId,
+  const columns = {
+    createdAtMs: row.createdAtMs,
+    creatorIdentityId: row.creatorIdentityId,
+    id: row.id,
+    nextRunAtMs: row.nextRunAtMs,
+    runNowAtMs: row.runNowAtMs,
+    status: row.status,
+    statusReason: row.statusReason,
+    title: row.title,
   };
-  const task = {
-    ...retainedTask,
-    destination,
-    outcomes: retainedTask.outcomes.map((outcome) => ({
-      ...outcome,
-      destination: {
-        platform: "slack" as const,
-        teamId: outcome.destination.teamId,
-        channelId: outcome.destination.channelId,
-      },
-    })),
-  };
-  // The indexed identity remains authoritative while older workers may rewrite JSON.
-  const fallbackIdentity =
-    row.creatorIdentityId === null
-      ? z.string().safeParse(legacyCreatorIdentityId)
-      : undefined;
-  const creatorIdentityId =
-    row.creatorIdentityId ??
-    (fallbackIdentity?.success ? fallbackIdentity.data : undefined);
-  if (creatorIdentityId === undefined) return undefined;
-  // A non-null indexed title stays authoritative during rolling deployment.
-  const fallbackTitle =
-    row.title === null ? z.string().safeParse(legacyTitle) : undefined;
-  const titleSource =
-    row.title !== null
-      ? row.title
-      : fallbackTitle?.success
-        ? fallbackTitle.data
-        : undefined;
-  const title = titleSource?.trim() || undefined;
-  return {
-    ...task,
-    creatorIdentityId,
-    status,
-    ...(title ? { title } : undefined),
-  } satisfies ScheduledAutomation;
+  // A null column means the field is absent, not present as undefined.
+  const parsed = scheduledAutomationSchema.safeParse({
+    ...row.record,
+    ...Object.fromEntries(
+      Object.entries(columns).filter(([, value]) => value !== null),
+    ),
+  });
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Keep scan paths from returning current or legacy tombstones. */
@@ -142,10 +79,20 @@ function requireStoredTask(task: ScheduledAutomation): ScheduledAutomation {
   };
 }
 
-function scheduledAutomationJsonRecord(
+function scheduledAutomationRecord(
   task: ScheduledAutomation,
 ): ScheduledAutomationRecord {
-  const { title: _title, ...record } = task;
+  const {
+    createdAtMs: _createdAtMs,
+    creatorIdentityId: _creatorIdentityId,
+    id: _id,
+    nextRunAtMs: _nextRunAtMs,
+    runNowAtMs: _runNowAtMs,
+    status: _status,
+    statusReason: _statusReason,
+    title: _title,
+    ...record
+  } = task;
   return record;
 }
 
@@ -153,37 +100,29 @@ async function upsertScheduledAutomation(
   db: JuniorDatabase,
   task: ScheduledAutomation,
 ): Promise<void> {
-  const title = task.title?.trim() || null;
-  await db
-    .insert(juniorSchedulerTasks)
-    .values({
-      createdAtMs: task.createdAtMs,
-      creatorIdentityId: task.creatorIdentityId,
-      // TODO(dcramer): Stop writing this column after v0.127.x runtimes are
-      // unsupported and no supported runtime reads it.
-      creatorSlackUserId: task.createdBy.slackUserId,
-      id: task.id,
-      nextRunAtMs: task.nextRunAtMs,
-      record: scheduledAutomationJsonRecord(task),
-      runNowAtMs: task.runNowAtMs,
-      status: task.status,
-      teamId: task.destination.teamId,
-      title,
-    })
+  const columns = {
+    ...automationCopiedColumns(task),
+    createdAtMs: task.createdAtMs,
+    creatorIdentityId: task.creatorIdentityId,
+    nextRunAtMs: task.nextRunAtMs ?? null,
+    record: scheduledAutomationRecord(task),
+    runNowAtMs: task.runNowAtMs ?? null,
+    status: task.status,
+    statusReason: task.statusReason ?? null,
+    title: task.title?.trim() || null,
+  };
+  const saved = await db
+    .insert(juniorAutomations)
+    .values({ ...columns, id: task.id, kind: "scheduled" })
     .onConflictDoUpdate({
-      target: juniorSchedulerTasks.id,
-      set: {
-        createdAtMs: sql`excluded.created_at_ms`,
-        creatorIdentityId: sql`excluded.creator_identity_id`,
-        creatorSlackUserId: sql`excluded.creator_slack_user_id`,
-        nextRunAtMs: sql`excluded.next_run_at_ms`,
-        record: sql`excluded.record`,
-        runNowAtMs: sql`excluded.run_now_at_ms`,
-        status: sql`excluded.status`,
-        teamId: sql`excluded.team_id`,
-        title: sql`excluded.title`,
-      },
-    });
+      target: juniorAutomations.id,
+      set: columns,
+      setWhere: eq(juniorAutomations.kind, "scheduled"),
+    })
+    .returning({ id: juniorAutomations.id });
+  if (!saved[0]) {
+    throw new Error(`Automation ${task.id} already exists with another kind.`);
+  }
 }
 
 /** Read and decode one scheduled automation. */
@@ -192,13 +131,14 @@ export async function readScheduledAutomation(
   taskId: string,
 ): Promise<ScheduledAutomation | undefined> {
   const rows = await db
-    .select({
-      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-      record: juniorSchedulerTasks.record,
-      title: juniorSchedulerTasks.title,
-    })
-    .from(juniorSchedulerTasks)
-    .where(eq(juniorSchedulerTasks.id, taskId))
+    .select()
+    .from(juniorAutomations)
+    .where(
+      and(
+        eq(juniorAutomations.id, taskId),
+        eq(juniorAutomations.kind, "scheduled"),
+      ),
+    )
     .limit(1);
   return rows[0] ? parseScheduledAutomationRow(rows[0]) : undefined;
 }
@@ -208,24 +148,16 @@ async function readListedScheduledAutomations(
   teamId?: string,
 ): Promise<ScheduledAutomation[]> {
   const rows = await db
-    .select({
-      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-      record: juniorSchedulerTasks.record,
-      title: juniorSchedulerTasks.title,
-    })
-    .from(juniorSchedulerTasks)
+    .select()
+    .from(juniorAutomations)
     .where(
       and(
-        notInArray(juniorSchedulerTasks.status, ["deleted"]),
-        teamId === undefined
-          ? undefined
-          : eq(juniorSchedulerTasks.teamId, teamId),
+        eq(juniorAutomations.kind, "scheduled"),
+        ne(juniorAutomations.status, "deleted"),
+        teamId === undefined ? undefined : eq(juniorAutomations.teamId, teamId),
       ),
     )
-    .orderBy(
-      asc(juniorSchedulerTasks.createdAtMs),
-      asc(juniorSchedulerTasks.id),
-    );
+    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
   return rows
     .map(parseScheduledAutomationRow)
     .filter(isListedScheduledAutomation);
@@ -274,7 +206,7 @@ async function writeScheduledAutomation(
     await skipPendingRunsForDeletedTask(db, task);
   }
   await upsertScheduledAutomation(db, task);
-  await recordAutomationVersion(db, "scheduled", task, current, editedBy);
+  await recordAutomationVersion(db, task, current, editedBy);
 }
 
 async function skipPendingRunsForDeletedTask(

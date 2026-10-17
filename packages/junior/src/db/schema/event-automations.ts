@@ -1,15 +1,9 @@
 import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
-import type { EventAutomation } from "@/chat/event-automations/types";
 
-/**
- * Lifecycle status for one retained event automation row. A blocked
- * automation stops matching until its creator resumes it.
- */
-export type EventAutomationStatus = "active" | "blocked" | "paused" | "deleted";
-
+// TODO(dcramer): Drop this table after no deployed worker uses it. Its rows
+// moved to junior_automations, and current code does not read it (#2176).
 export const juniorEventAutomations = pgTable(
-  // Keep the deployed table name until a later storage migration.
   "junior_event_tasks",
   {
     id: text("id").primaryKey(),
@@ -18,15 +12,12 @@ export const juniorEventAutomations = pgTable(
     identifier: text("identifier").notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     /** Retained row status. Deleted tasks keep history but stop matching. */
-    status: text("status")
-      .$type<EventAutomationStatus>()
-      .notNull()
-      .default("active"),
+    status: text("status").notNull().default("active"),
     /** Why a run blocked this automation. Kept while paused; cleared on resume. */
     statusReason: text("status_reason"),
     /** Short display title generated from the task instruction. */
     title: text("title"),
-    task: jsonb("task_json").$type<EventAutomation>().notNull(),
+    task: jsonb("task_json").notNull(),
   },
   (table) => [
     index("junior_event_tasks_team_idx")

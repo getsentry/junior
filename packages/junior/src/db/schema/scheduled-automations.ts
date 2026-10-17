@@ -1,10 +1,9 @@
 import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
-import type {
-  ScheduledRun,
-  ScheduledAutomationRecord,
-} from "@/chat/scheduled-automations/types";
+import type { ScheduledRun } from "@/chat/scheduled-automations/types";
 
+// TODO(dcramer): Drop this table after no deployed worker uses it. Its rows
+// moved to junior_automations, and current code does not read it (#2176).
 export const juniorSchedulerTasks = pgTable(
   "junior_scheduler_tasks",
   {
@@ -20,7 +19,7 @@ export const juniorSchedulerTasks = pgTable(
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     /** Short display title generated from the task instruction. */
     title: text("title"),
-    record: jsonb("record").$type<ScheduledAutomationRecord>().notNull(),
+    record: jsonb("record").notNull(),
   },
   (table) => [
     // TODO(dcramer): Remove after no supported runtime reads or writes the

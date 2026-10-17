@@ -753,7 +753,7 @@ describe("Automations API", () => {
       expect(deletedScheduled.status).toBe(204);
       const [deletedScheduledAutomation] = await fixture.sql.query<{
         status: string;
-      }>("SELECT status FROM junior_scheduler_tasks WHERE id = $1", [
+      }>("SELECT status FROM junior_automations WHERE id = $1", [
         "sched_tasks_api",
       ]);
       expect(deletedScheduledAutomation).toMatchObject({ status: "deleted" });

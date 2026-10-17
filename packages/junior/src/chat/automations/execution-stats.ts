@@ -18,8 +18,7 @@ import { logWarn } from "@/chat/logging";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import { juniorConversations } from "@/db/schema/conversations";
-import { juniorEventAutomations } from "@/db/schema/event-automations";
-import { juniorSchedulerTasks } from "@/db/schema/scheduled-automations";
+import { juniorAutomations } from "@/db/schema/automations";
 import {
   juniorAutomationExecutions,
   type AutomationExecutionStatus,
@@ -411,29 +410,13 @@ export async function readAutomationTitlesByConversationId(
   const rows = await getDb()
     .select({
       conversationId: juniorAutomationExecutions.conversationId,
-      eventInstruction: sql<
-        string | null
-      >`${juniorEventAutomations.task}->'task'->>'text'`,
-      eventTitle: juniorEventAutomations.title,
-      scheduledInstruction: sql<
-        string | null
-      >`${juniorSchedulerTasks.record}->'task'->>'text'`,
-      scheduledTitle: juniorSchedulerTasks.title,
+      instruction: juniorAutomations.instruction,
+      title: juniorAutomations.title,
     })
     .from(juniorAutomationExecutions)
-    .leftJoin(
-      juniorSchedulerTasks,
-      and(
-        eq(juniorAutomationExecutions.kind, "scheduled"),
-        eq(juniorSchedulerTasks.id, juniorAutomationExecutions.automationId),
-      ),
-    )
-    .leftJoin(
-      juniorEventAutomations,
-      and(
-        eq(juniorAutomationExecutions.kind, "event"),
-        eq(juniorEventAutomations.id, juniorAutomationExecutions.automationId),
-      ),
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationExecutions.automationId),
     )
     .where(
       and(
@@ -449,12 +432,7 @@ export async function readAutomationTitlesByConversationId(
   for (const row of rows) {
     if (!row.conversationId || seen.has(row.conversationId)) continue;
     seen.add(row.conversationId);
-    const title =
-      (row.scheduledTitle ?? row.eventTitle)?.trim() ||
-      fallbackShortTitle(
-        row.scheduledInstruction ?? row.eventInstruction ?? "",
-        "",
-      );
+    const title = row.title?.trim() || fallbackShortTitle(row.instruction, "");
     if (title) titles.set(row.conversationId, title);
   }
   return titles;

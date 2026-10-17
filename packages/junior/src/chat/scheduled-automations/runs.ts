@@ -2,10 +2,8 @@ import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getNextRunAtMs } from "./cadence";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorSchedulerRuns,
-  juniorSchedulerTasks,
-} from "@/db/schema/scheduled-automations";
+import { juniorAutomations } from "@/db/schema/automations";
+import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
 import {
   listScheduledAutomations,
   listScheduledAutomationsForTeam,
@@ -278,27 +276,25 @@ export async function claimDueScheduledRun(
       sql`SELECT pg_advisory_xact_lock(hashtext('junior:scheduler:claim'))`,
     );
     const rows = await tx
-      .select({ id: juniorSchedulerTasks.id })
-      .from(juniorSchedulerTasks)
+      .select({ id: juniorAutomations.id })
+      .from(juniorAutomations)
       .where(
         and(
-          eq(juniorSchedulerTasks.status, "active"),
+          eq(juniorAutomations.kind, "scheduled"),
+          eq(juniorAutomations.status, "active"),
           or(
             and(
-              isNotNull(juniorSchedulerTasks.runNowAtMs),
-              lte(juniorSchedulerTasks.runNowAtMs, args.nowMs),
+              isNotNull(juniorAutomations.runNowAtMs),
+              lte(juniorAutomations.runNowAtMs, args.nowMs),
             ),
             and(
-              isNotNull(juniorSchedulerTasks.nextRunAtMs),
-              lte(juniorSchedulerTasks.nextRunAtMs, args.nowMs),
+              isNotNull(juniorAutomations.nextRunAtMs),
+              lte(juniorAutomations.nextRunAtMs, args.nowMs),
             ),
           ),
         ),
       )
-      .orderBy(
-        asc(juniorSchedulerTasks.createdAtMs),
-        asc(juniorSchedulerTasks.id),
-      );
+      .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
 
     for (const row of rows) {
       const run = await withScheduledAutomationLock(
@@ -330,7 +326,26 @@ export async function claimDueScheduledRun(
             await writeRun(taskTx, reclaimed);
             return reclaimed;
           }
-          if (await readRun(taskTx, runId)) return undefined;
+          const finishedRun = await readRun(taskTx, runId);
+          if (finishedRun) {
+            // The run finished but the Automation still targets it, so the
+            // advance after the run was not saved. A crash between the two
+            // writes can cause this. So can a worker that saved only the old
+            // scheduler table during the #2176 deploy.
+            if (
+              finishedRun.status === "blocked" ||
+              finishedRun.status === "completed" ||
+              finishedRun.status === "failed"
+            ) {
+              await advanceScheduledAutomationAfterRun(taskTx, {
+                errorMessage: finishedRun.errorMessage,
+                nowMs: args.nowMs,
+                run: finishedRun,
+                status: finishedRun.status,
+              });
+            }
+            return undefined;
+          }
           if (scheduledForMs + MISSED_RUN_MAX_AGE_MS < args.nowMs) {
             const skipped = await skipMissedRun(taskTx, {
               nowMs: args.nowMs,

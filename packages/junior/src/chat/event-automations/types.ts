@@ -65,3 +65,15 @@ export type EventAutomation = z.output<typeof eventAutomationSchema> & {
    */
   title?: string;
 };
+
+/** The part of an event automation that has no SQL column of its own. */
+export type EventAutomationRecord = Omit<
+  EventAutomation,
+  "createdAtMs" | "id" | "title"
+>;
+
+/**
+ * Lifecycle status for one retained event automation. A blocked automation
+ * stops matching until its creator resumes it.
+ */
+export type EventAutomationStatus = "active" | "blocked" | "paused" | "deleted";
