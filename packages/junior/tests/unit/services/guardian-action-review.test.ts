@@ -2,7 +2,6 @@ import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGuardianActionReviewer,
-  guardianDecision,
   guardianPrompt,
 } from "@/chat/services/guardian-action-review";
 import { ProviderError } from "@/chat/services/provider-error";
@@ -49,7 +48,7 @@ describe("Guardian action review", () => {
     mocks.logWarn.mockReset();
   });
 
-  it("derives the decision from the named rule for the exact proposal", async () => {
+  it("returns a schema-constrained decision for the exact proposal", async () => {
     const completeObject = vi.fn<
       (request: { schema: ZodType }) => Promise<{
         costUsd: number;
@@ -57,9 +56,9 @@ describe("Guardian action review", () => {
       }>
     >(async () => ({
       object: {
+        decision: "ask" as const,
         reason: "Recurring work should be confirmed.",
         riskLevel: "medium" as const,
-        rule: "withheld_step" as const,
         userAuthorization: "low" as const,
       },
       costUsd: 0.0042,
@@ -74,7 +73,6 @@ describe("Guardian action review", () => {
       decision: "ask",
       reason: "Recurring work should be confirmed.",
       riskLevel: "medium",
-      rule: "withheld_step",
       userAuthorization: "low",
     });
     expect(
@@ -100,9 +98,9 @@ describe("Guardian action review", () => {
       .mockRejectedValueOnce(invalidResponse)
       .mockResolvedValueOnce({
         object: {
+          decision: "allow" as const,
           reason: "The requested report is routine and scoped.",
           riskLevel: "low" as const,
-          rule: "none" as const,
           userAuthorization: "high" as const,
         },
       });
@@ -124,71 +122,6 @@ describe("Guardian action review", () => {
         "app.guardian.review_attempt": 2,
         "gen_ai.request.model": "test/guardian",
       },
-    );
-  });
-
-  it("allows unless a named rule or a code backstop blocks the action", () => {
-    const assess = (
-      rule: Parameters<typeof guardianDecision>[0]["rule"],
-      riskLevel: Parameters<typeof guardianDecision>[0]["riskLevel"] = "medium",
-      userAuthorization: Parameters<
-        typeof guardianDecision
-      >[0]["userAuthorization"] = "low",
-    ) => ({ reason: "r", riskLevel, rule, userAuthorization });
-    const automationProposal: ToolActionProposal = {
-      ...proposal,
-      context: { ...proposal.context, source: { kind: "event_automation" } },
-    };
-    const automationChild: ToolActionProposal = {
-      ...proposal,
-      rootConversation: {
-        messages: [{ author: "automation", text: "Post the findings." }],
-        truncated: false,
-      },
-    };
-
-    expect(guardianDecision(assess("none"), proposal).decision).toBe("allow");
-    expect(guardianDecision(assess("withheld_step"), proposal).decision).toBe(
-      "ask",
-    );
-    expect(
-      guardianDecision(assess("revoked_approval"), proposal).decision,
-    ).toBe("deny");
-    expect(
-      guardianDecision(assess("none", "critical"), proposal).decision,
-    ).toBe("ask");
-    expect(
-      guardianDecision(assess("none", "critical", "high"), proposal).decision,
-    ).toBe("allow");
-    expect(
-      guardianDecision(assess("none", "high", "unknown"), proposal).decision,
-    ).toBe("ask");
-    expect(
-      guardianDecision(assess("none", "high", "medium"), proposal).decision,
-    ).toBe("allow");
-    // No person can answer a question in an Automation run.
-    expect(
-      guardianDecision(assess("unclear_destination"), automationProposal)
-        .reason,
-    ).toBe(
-      "r No person can confirm this action in this run, so do not ask for confirmation.",
-    );
-    expect(
-      guardianDecision(assess("unclear_destination"), automationProposal)
-        .decision,
-    ).toBe("deny");
-    expect(
-      guardianDecision(assess("withheld_step"), automationChild).decision,
-    ).toBe("deny");
-    expect(guardianDecision(assess("none"), automationProposal).decision).toBe(
-      "allow",
-    );
-    // The deny says that no one can confirm, so the agent does not ask.
-    expect(
-      guardianDecision(assess("unclear_destination"), automationProposal)
-        .reason,
-    ).toBe(
-      "r No person can confirm this action in this run, so do not ask for confirmation.",
     );
   });
 

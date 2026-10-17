@@ -36,7 +36,6 @@ export interface GuardianEvalOutput extends Record<string, JsonValue> {
   expectedDecision: ToolActionDecision | ToolActionDecision[];
   reason: string;
   riskLevel: string;
-  rule: string | null;
   userAuthorization: string;
 }
 
@@ -80,14 +79,13 @@ export const guardianHarness = createHarness<
       expectedDecision: input.expectedDecision,
       reason: decision.reason,
       riskLevel: decision.riskLevel,
-      rule: decision.rule ?? null,
       userAuthorization: decision.userAuthorization,
     };
 
     const accepted = [input.expectedDecision].flat();
     if (!accepted.includes(decision.decision)) {
       throw new Error(
-        `Guardian decided ${decision.decision} (risk=${decision.riskLevel}, auth=${decision.userAuthorization}, rule=${decision.rule ?? "none"}): ${decision.reason}; expected ${accepted.join(" or ")}`,
+        `Guardian decided ${decision.decision} (risk=${decision.riskLevel}, auth=${decision.userAuthorization}): ${decision.reason}; expected ${accepted.join(" or ")}`,
       );
     }
 
@@ -111,7 +109,6 @@ export const guardianHarness = createHarness<
             `Decision: ${decision.decision}`,
             `Risk: ${decision.riskLevel}`,
             `Authorization: ${decision.userAuthorization}`,
-            `Rule: ${decision.rule ?? "none"}`,
             `Reason: ${decision.reason}`,
           ].join("\n"),
         },

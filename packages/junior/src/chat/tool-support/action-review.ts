@@ -32,8 +32,6 @@ export interface ToolActionReviewDecision {
   decision: ToolActionDecision;
   reason: string;
   riskLevel: "low" | "medium" | "high" | "critical";
-  /** Named policy rule that set the decision, or `none`. Diagnostic only. */
-  rule?: string;
   userAuthorization: "high" | "medium" | "low" | "unknown";
 }
 
