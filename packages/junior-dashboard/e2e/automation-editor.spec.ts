@@ -14,7 +14,7 @@ test("edits an Automation from its drawer, preserves list state, and protects th
     .getByRole("link", { name: "Edit automation", exact: true })
     .click();
   await expect(page).toHaveURL(
-    /scheduled\/scheduled-1\/edit\?scope=mine&q=weekly/,
+    /\/automations\/scheduled-1\/edit\?scope=mine&q=weekly/,
   );
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Weekly project summary",
@@ -242,7 +242,7 @@ test("makes an earlier version active from version history", async ({
   );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
   await page.getByRole("link", { name: "Version history" }).click();
-  await expect(page).toHaveURL(/scheduled\/scheduled-1\/versions/);
+  await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);
   await expect(page.getByText("Changed instruction")).toBeVisible();
   await screenshot(page, "automation-versions");
   page.once("dialog", (dialog) => {
