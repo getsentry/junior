@@ -816,6 +816,26 @@ describe("plugin heartbeat", () => {
     30_000,
   );
 
+  it("settles a run whose Scheduled automation was deleted while it ran", async () => {
+    const db = scheduledAutomationDb();
+    const task = createTask();
+    await saveScheduledAutomation(db, task);
+    await runAuthorizedHeartbeat();
+    const running = await readScheduledRun(db, `${task.id}:${TEST_RUN_AT_MS}`);
+    await saveScheduledAutomation(db, {
+      ...task,
+      nextRunAtMs: undefined,
+      status: "deleted",
+    });
+
+    await markDispatchCompleted(running!.dispatchId!);
+    await runAuthorizedHeartbeat();
+
+    await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+  }, 30_000);
+
   it("fails scheduled runs when their dispatch record disappeared", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });

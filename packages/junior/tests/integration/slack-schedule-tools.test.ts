@@ -1,13 +1,11 @@
 import { getConversationStore } from "@/chat/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createSlackScheduleCreateAutomationTool,
-  createSlackScheduleDeleteAutomationTool,
-  createSlackScheduleListAutomationsTool,
-  createSlackScheduleRunAutomationNowTool,
-  createSlackScheduleUpdateAutomationTool,
-  type SchedulerToolContext,
-} from "@/chat/scheduled-automations";
+import { createSlackScheduleCreateAutomationTool } from "@/chat/scheduled-automations/tools/create";
+import { createSlackScheduleDeleteAutomationTool } from "@/chat/scheduled-automations/tools/delete";
+import { createSlackScheduleListAutomationsTool } from "@/chat/scheduled-automations/tools/list";
+import { createSlackScheduleRunAutomationNowTool } from "@/chat/scheduled-automations/tools/run-now";
+import { createSlackScheduleUpdateAutomationTool } from "@/chat/scheduled-automations/tools/update";
+import type { SchedulerToolContext } from "@/chat/scheduled-automations/tool-support";
 import {
   claimDueScheduledRun,
   markScheduledRunFailed,

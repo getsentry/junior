@@ -16,9 +16,6 @@ export type ScheduledAutomationStatus = z.output<
   typeof scheduledAutomationStatusSchema
 >;
 const scheduledAutomationCredentialModeSchema = z.enum(["system", "creator"]);
-export type ScheduledAutomationCredentialMode = z.output<
-  typeof scheduledAutomationCredentialModeSchema
->;
 
 const scheduledRunStatusSchema = z.enum([
   "pending",

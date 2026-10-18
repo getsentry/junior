@@ -17,7 +17,7 @@ Deleted automations keep their execution history and title. They do not match
 new events or schedules.
 
 An automation title is stored in the SQL `title` column. It is not part of the
-legacy JSON payload. The API uses the first line of the instruction when a title
+JSON `record`. The API uses the first line of the instruction when a title
 is missing. Instruction edits keep the stored title. A title changes only when
 an edit supplies a replacement.
 
@@ -33,8 +33,9 @@ An Automation run is one dispatch of an Automation. Each run is one row in
 - Dispatch sets `conversation_id` when the dispatch Conversation exists. A
   later write of the same run fills a missing link. A skipped run, or a run
   that fails before dispatch, has no Conversation.
-- The heartbeat settles running runs of both kinds from their dispatch record.
-  A run whose dispatch record is gone becomes `failed`.
+- The heartbeat settles running runs of both kinds from their dispatch record,
+  also when the Automation was deleted during the run. A run whose dispatch
+  record is gone becomes `failed`.
 - An execution is a run with the outcome `blocked`, `completed`, or `failed`.
   Execution lists, stats, and the last run status read only executions.
 - The Conversation title fallback and the run card join on `conversation_id`.
@@ -90,8 +91,7 @@ version. A new Automation gets version 1 from its creator. Slack and web edits
 record the requester.
 
 Migration 0046 saves the current definition of each live Automation as
-version 1, with no editor. Edits by older workers during a rolling deploy do
-not make versions.
+version 1, with no editor.
 
 `GET /api/automations/:kind/:id/versions` returns the newest 100 versions. It
 uses the same read access as executions. `activeVersion` is the newest version
