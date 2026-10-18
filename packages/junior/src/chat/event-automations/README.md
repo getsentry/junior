@@ -56,8 +56,6 @@ Paused rows do not match new events. Resume does not replay events received duri
 the pause. Provider retries still use the event key to prevent duplicate runs.
 Deletion keeps the row and execution history.
 
-Deploy all workers before using pause. Older workers still match paused rows.
-
 Each Event automation can start at most
 `botConfig.maxEventAutomationRunsPerHour` runs in a rolling hour
 (`run-limit.ts`). The default is 10. A host sets it with

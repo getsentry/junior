@@ -52,7 +52,3 @@ Pause stops future claims. Already-claimed work may finish but cannot remove a
 pause. Resume selects the next future Schedule time and skips missed runs.
 A missed one-off needs a new Schedule. Pausing blocked work keeps its reason;
 removing the pause restores the block until the user resolves it and resumes.
-
-Deploy all workers before using pause. Older workers read paused rows as deleted.
-Pause uses the existing text status column. Migration 0017 removes only legacy
-paused rows on installations that have not yet applied it.

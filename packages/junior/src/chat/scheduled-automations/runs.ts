@@ -6,7 +6,6 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
-  listScheduledAutomations,
   listScheduledAutomationsForTeam,
   readScheduledAutomation,
   saveScheduledAutomationInLock,
@@ -92,17 +91,28 @@ async function writeRun(db: JuniorDatabase, run: ScheduledRun): Promise<void> {
     .onConflictDoUpdate({ target: juniorAutomationRuns.id, set: columns });
 }
 
-async function listIncompleteRunsForTaskIds(
+/**
+ * List incomplete Scheduled automation runs, optionally for one automation.
+ * Deleted automations are included: a run that was already dispatched when
+ * its automation was deleted must still settle.
+ */
+export async function listIncompleteScheduledRuns(
   db: JuniorDatabase,
-  taskIds: string[],
+  automationId?: string,
 ): Promise<ScheduledRun[]> {
-  if (taskIds.length === 0) return [];
   const rows = await db
-    .select()
+    .select({ run: juniorAutomationRuns })
     .from(juniorAutomationRuns)
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationRuns.automationId),
+    )
     .where(
       and(
-        inArray(juniorAutomationRuns.automationId, taskIds),
+        eq(juniorAutomations.kind, "scheduled"),
+        automationId === undefined
+          ? undefined
+          : eq(juniorAutomationRuns.automationId, automationId),
         inArray(juniorAutomationRuns.status, [...INCOMPLETE_RUN_STATUSES]),
       ),
     )
@@ -110,18 +120,7 @@ async function listIncompleteRunsForTaskIds(
       asc(juniorAutomationRuns.scheduledForMs),
       asc(juniorAutomationRuns.id),
     );
-  return rows.map(parseScheduledRunRow).filter(present);
-}
-
-/** List incomplete runs for retained scheduled automations. */
-export async function listIncompleteScheduledRuns(
-  db: JuniorDatabase,
-): Promise<ScheduledRun[]> {
-  const tasks = await listScheduledAutomations(db);
-  return await listIncompleteRunsForTaskIds(
-    db,
-    tasks.map((task) => task.id),
-  );
+  return rows.map(({ run }) => parseScheduledRunRow(run)).filter(present);
 }
 
 function getDueRunAtMs(
@@ -311,9 +310,10 @@ export async function claimDueScheduledRun(
           const scheduledForMs = getDueRunAtMs(task, args.nowMs);
           if (scheduledForMs === undefined) return undefined;
           const runId = scheduledRunId(task.id, scheduledForMs);
-          const incompleteRuns = await listIncompleteRunsForTaskIds(taskTx, [
+          const incompleteRuns = await listIncompleteScheduledRuns(
+            taskTx,
             task.id,
-          ]);
+          );
           const incompleteRun = incompleteRuns.find(
             (item) => item.id === runId,
           );

@@ -196,7 +196,7 @@ export async function readAutomationCollection(
     .select({ id: collection.id, kind: collection.kind })
     .from(collection)
     .where(where)
-    .orderBy(order, desc(collection.id), asc(collection.kind))
+    .orderBy(order, desc(collection.id))
     .limit(input.pageSize)
     .offset((page - 1) * input.pageSize);
   return {
