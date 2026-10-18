@@ -1,4 +1,10 @@
 # Changelog
+## 0.254.0
+
+### New Features ✨
+
+- (automations) Drop the legacy Automation tables by @sentry-junior in [#2184](https://github.com/getsentry/junior/pull/2184)
+
 ## 0.253.0
 
 ### New Features ✨
