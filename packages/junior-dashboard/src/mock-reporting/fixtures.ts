@@ -3031,13 +3031,10 @@ function mockStatusDays(
 
 /** Build mock terminal executions for one viewer-visible task. */
 export function readMockAutomationExecutions(
-  kind: "scheduled" | "event",
   id: string,
   nowMs = NOW_MS,
 ): AutomationExecutionList | undefined {
-  const task = mockTasks().find(
-    (candidate) => candidate.kind === kind && candidate.id === id,
-  );
+  const task = mockTasks().find((candidate) => candidate.id === id);
   if (!task) return undefined;
   if (task.totalRuns === 0) {
     return {

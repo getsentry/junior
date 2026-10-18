@@ -30,7 +30,7 @@ export function AutomationLifecycle({
   const action = paused || blocked ? "resume" : "pause";
   const mutation = useMutation({
     mutationFn: async () => {
-      const path = `/api/automations/${automation.kind}/${encodeURIComponent(automation.id)}`;
+      const path = `/api/automations/${encodeURIComponent(automation.id)}`;
       const current = await fetchDashboardJson(
         automationEditSchema,
         `${path}/edit`,
@@ -114,7 +114,7 @@ export function AutomationLifecycle({
             : ""}{" "}
           <Link
             className="text-dashboard-text underline underline-offset-2"
-            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+            to={`/automations/${encodeURIComponent(automation.id)}/executions`}
           >
             View run history
           </Link>

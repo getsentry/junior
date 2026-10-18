@@ -145,7 +145,6 @@ export const automationListSchema = z
 export const automationParamsSchema = z
   .object({
     id: z.string().min(1),
-    kind: z.enum(["scheduled", "event"]),
   })
   .strict();
 

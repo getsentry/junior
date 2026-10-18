@@ -108,7 +108,7 @@ describe("dashboard shell routes", () => {
       "/system/plugins/github",
       "/automations",
       "/automations/task-1",
-      "/automations/scheduled/task-1/executions",
+      "/automations/task-1/executions",
       "/memories",
       "/memories/memory-1",
       "/settings",

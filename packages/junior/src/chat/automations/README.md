@@ -42,12 +42,12 @@ An Automation run is one dispatch of an Automation. Each run is one row in
 
 ## Web edits
 
-`GET /api/automations/:kind/:id/edit` returns exact values and an opaque
+`GET /api/automations/:id/edit` returns exact values and an opaque
 revision. It does not depend on a list page. Scheduled edits return the stored
 Schedule and next occurrence. Event edits return the full selector, including
 match conditions. Both include ordered outcomes and credential mode.
 
-`PATCH /api/automations/:kind/:id` requires that revision and the same `kind`.
+`PATCH /api/automations/:id` requires that revision and the stored `kind`.
 It accepts only changed fields. Omitted fields stay unchanged. A replacement
 Schedule uses `ScheduleIntent`, the same input as the Slack tools. The API does
 not accept lifecycle or creator changes. It does not dispatch work or restart
@@ -93,11 +93,11 @@ record the requester.
 Migration 0046 saves the current definition of each live Automation as
 version 1, with no editor.
 
-`GET /api/automations/:kind/:id/versions` returns the newest 100 versions. It
+`GET /api/automations/:id/versions` returns the newest 100 versions. It
 uses the same read access as executions. `activeVersion` is the newest version
 that matches the current definition.
 
-`POST /api/automations/:kind/:id/versions/:version/activate` makes a version
+`POST /api/automations/:id/versions/:version/activate` makes a version
 active. It needs the edit read revision. It saves that definition as a new
 version, so history is never rewritten. It uses the edit access and edit rules,
 so a public reader cannot use it to enable creator credentials or change

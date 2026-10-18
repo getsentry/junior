@@ -108,7 +108,7 @@ export function AutomationRow(props: {
         {automation.ownedByViewer ? (
           <div className="-mr-2 -mt-1.5 shrink-0">
             <AutomationActions
-              editPath={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/edit${location.search}`}
+              editPath={`/automations/${encodeURIComponent(automation.id)}/edit${location.search}`}
               deleting={props.deleting}
               onDelete={props.onDelete}
               title={automation.title}
@@ -208,7 +208,7 @@ function AutomationTiming({ automation }: { automation: AutomationSummary }) {
         {lastRunFailed ? (
           <Link
             className="text-amber-300 underline"
-            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+            to={`/automations/${encodeURIComponent(automation.id)}/executions`}
           >
             Last run {automation.lastRunStatus}
             {automation.lastRunAt
