@@ -366,6 +366,11 @@ describe("event automations", () => {
     const state = getStateAdapter();
     await state.connect();
     await state.delete(getDispatchStorageKey(lostId!));
+    // Settling also fills a link that the start write could not set.
+    await db
+      .update(juniorAutomationRuns)
+      .set({ conversationId: null })
+      .where(eq(juniorAutomationRuns.id, lostId!));
     await runScheduledAutomationHeartbeat({
       conversationWorkQueue: queue,
       nowMs: Date.now(),
@@ -374,6 +379,7 @@ describe("event automations", () => {
       expect.objectContaining({ id: completedId, status: "completed" }),
       expect.objectContaining({
         id: lostId,
+        conversationId: `agent-dispatch:${lostId}`,
         errorMessage: "Event automation dispatch record is missing.",
         status: "failed",
       }),
