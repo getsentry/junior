@@ -55,7 +55,7 @@ export function AutomationEditor(props: {
   useEffect(() => {
     if (blocker.state === "blocked") discardNotice.current?.focus();
   }, [blocker.state]);
-  const url = `/api/automations/${original.kind}/${encodeURIComponent(original.id)}`;
+  const url = `/api/automations/${encodeURIComponent(original.id)}`;
   useEffect(() => {
     const prevent = (event: BeforeUnloadEvent) => {
       if (dirty && !allowLeave.current) {

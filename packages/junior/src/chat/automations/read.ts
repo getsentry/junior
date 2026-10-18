@@ -45,7 +45,6 @@ import {
 import {
   deleteEventAutomation,
   eventAutomationBelongsToUser,
-  getEventAutomation,
   listDeletedEventAutomationsCreatedBy,
   parseEventAutomationRow,
   type StoredEventAutomation,
@@ -56,10 +55,7 @@ import {
   deleteViewerScheduledAutomation,
   PersonalScheduledAutomationNotFoundError,
 } from "@/chat/scheduled-automations/personal";
-import {
-  parseScheduledAutomationRow,
-  readScheduledAutomation,
-} from "@/chat/scheduled-automations/tasks";
+import { parseScheduledAutomationRow } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
   juniorAutomationRuns,
@@ -350,42 +346,41 @@ function viewerTeamIds(user: User): string[] {
 /** Resolve an Automation the viewer owns or can read through a public Destination. */
 export async function resolveViewerTaskCandidate(
   user: User,
-  kind: "scheduled" | "event",
   id: string,
 ): Promise<TaskCandidate | undefined> {
-  const db = getDb();
-  const identityIds = new Set(user.identities.map((identity) => identity.id));
-  const teamIds = viewerTeamIds(user);
-  if (kind === "scheduled") {
-    const task = await readScheduledAutomation(db, id);
-    if (!task || task.status === "deleted") return undefined;
-    const ownedByViewer = identityIds.has(task.creatorIdentityId);
-    const destinations = await destinationDetails([task.destination]);
-    const destination = destinations.get(destinationKey(task.destination));
-    const publicToViewer =
-      teamIds.includes(task.destination.teamId) &&
-      destination?.visibility === "public";
-    if (!ownedByViewer && !publicToViewer) return undefined;
-    return {
+  const [row] = await getDb()
+    .select()
+    .from(juniorAutomations)
+    .where(eq(juniorAutomations.id, id))
+    .limit(1);
+  if (!row) return undefined;
+  let candidate: TaskCandidate;
+  if (row.kind === "scheduled") {
+    const task = parseScheduledAutomationRow(row);
+    if (!task) return undefined;
+    const identityIds = new Set(user.identities.map((identity) => identity.id));
+    candidate = {
       kind: "scheduled",
-      ownedByViewer,
+      ownedByViewer: identityIds.has(task.creatorIdentityId),
+      task,
+    };
+  } else {
+    const task = parseEventAutomationRow(row);
+    candidate = {
+      kind: "event",
+      ownedByViewer: eventAutomationBelongsToUser(task, user),
       task,
     };
   }
-  const task = await getEventAutomation(db, id);
-  if (!task || task.status === "deleted") return undefined;
-  const ownedByViewer = eventAutomationBelongsToUser(task, user);
+  const { task } = candidate;
+  if (task.status === "deleted") return undefined;
+  if (candidate.ownedByViewer) return candidate;
   const destinations = await destinationDetails([task.destination]);
   const destination = destinations.get(destinationKey(task.destination));
   const publicToViewer =
-    teamIds.includes(task.destination.teamId) &&
+    viewerTeamIds(user).includes(task.destination.teamId) &&
     destination?.visibility === "public";
-  if (!ownedByViewer && !publicToViewer) return undefined;
-  return {
-    kind: "event",
-    ownedByViewer,
-    task,
-  };
+  return publicToViewer ? candidate : undefined;
 }
 
 /** Read one current Automation summary with the Automations view access rules. */
@@ -393,9 +388,7 @@ export async function readViewerAutomationSummary(
   user: User,
   id: string,
 ): Promise<AutomationSummary | undefined> {
-  const candidate =
-    (await resolveViewerTaskCandidate(user, "scheduled", id)) ??
-    (await resolveViewerTaskCandidate(user, "event", id));
+  const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) return undefined;
   return automationSummaryForCandidate(candidate);
 }
@@ -720,10 +713,9 @@ export class ViewerTaskNotFoundError extends Error {
 /** Read one viewer-visible task and its newest terminal executions. */
 export async function readViewerAutomationExecutions(
   user: User,
-  kind: "scheduled" | "event",
   id: string,
 ): Promise<AutomationExecutionList> {
-  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
   const [automation, executions, executionDays, executionHours] =
     await Promise.all([
@@ -748,10 +740,9 @@ export async function readViewerAutomationExecutions(
 /** Read saved definitions for one viewer-visible Automation, newest first. */
 export async function readViewerAutomationVersions(
   user: User,
-  kind: "scheduled" | "event",
   id: string,
 ): Promise<AutomationVersionList> {
-  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
   const versions = await listAutomationVersions(
     getDb(),
@@ -818,7 +809,6 @@ export async function readConversationSourceTask(args: {
   if (!args.viewer) return base;
   const candidate = await resolveViewerTaskCandidate(
     args.viewer,
-    execution.kind,
     execution.automationId,
   );
   if (!candidate) return base;
@@ -868,12 +858,10 @@ export async function readConversationSourceTask(args: {
 }
 
 /** Delete one viewer-owned scheduled or event automation. */
-export async function deleteViewerTask(
-  user: User,
-  kind: "scheduled" | "event",
-  id: string,
-): Promise<void> {
-  if (kind === "scheduled") {
+export async function deleteViewerTask(user: User, id: string): Promise<void> {
+  const candidate = await resolveViewerTaskCandidate(user, id);
+  if (!candidate?.ownedByViewer) throw new ViewerTaskNotFoundError();
+  if (candidate.kind === "scheduled") {
     try {
       await deleteViewerScheduledAutomation(getDb(), user, id);
       return;
@@ -883,14 +871,6 @@ export async function deleteViewerTask(
       }
       throw error;
     }
-  }
-  const task = await getEventAutomation(getDb(), id);
-  if (
-    !task ||
-    task.status === "deleted" ||
-    !eventAutomationBelongsToUser(task, user)
-  ) {
-    throw new ViewerTaskNotFoundError();
   }
   await deleteEventAutomation(getDb(), id);
 }

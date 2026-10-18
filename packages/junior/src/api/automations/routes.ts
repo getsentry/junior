@@ -104,7 +104,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     );
   });
   app.post(
-    "/scheduled/:id/preview",
+    "/:id/preview",
     requireViewer,
     validateRequest(
       "json",
@@ -134,7 +134,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     );
   });
   app.get(
-    "/:kind/:id/executions",
+    "/:id/executions",
     requireViewer,
     validateRequest("param", automationParamsSchema, "Invalid task."),
     async (context) => {
@@ -143,7 +143,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       try {
         return jsonResponse(
           automationExecutionListSchema,
-          await readViewerAutomationExecutions(user, params.kind, params.id),
+          await readViewerAutomationExecutions(user, params.id),
         );
       } catch (error) {
         if (error instanceof ViewerTaskNotFoundError) {
@@ -158,15 +158,15 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     },
   );
   app.get(
-    "/:kind/:id/versions",
+    "/:id/versions",
     requireViewer,
     validateRequest("param", automationParamsSchema, "Invalid Automation."),
     async (context) => {
-      const { kind, id } = context.req.valid("param");
+      const { id } = context.req.valid("param");
       try {
         return jsonResponse(
           automationVersionListSchema,
-          await readViewerAutomationVersions(context.get("viewer"), kind, id),
+          await readViewerAutomationVersions(context.get("viewer"), id),
         );
       } catch (error) {
         if (error instanceof ViewerTaskNotFoundError) {
@@ -181,7 +181,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     },
   );
   app.post(
-    "/:kind/:id/versions/:version/activate",
+    "/:id/versions/:version/activate",
     requireViewer,
     validateRequest(
       "param",
@@ -194,16 +194,14 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       "Invalid version activation.",
     ),
     async (context) => {
-      const { kind, id, version } = context.req.valid("param");
+      const { id, version } = context.req.valid("param");
       try {
         return jsonResponse(
           automationEditSchema,
-          await activateViewerAutomationVersion(
-            context.get("viewer"),
-            kind,
-            id,
-            { version, revision: context.req.valid("json").revision },
-          ),
+          await activateViewerAutomationVersion(context.get("viewer"), id, {
+            version,
+            revision: context.req.valid("json").revision,
+          }),
         );
       } catch (error) {
         return editErrorResponse(error);
@@ -211,15 +209,15 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     },
   );
   app.get(
-    "/:kind/:id/edit",
+    "/:id/edit",
     requireViewer,
     validateRequest("param", automationParamsSchema, "Invalid Automation."),
     async (context) => {
-      const { kind, id } = context.req.valid("param");
+      const { id } = context.req.valid("param");
       try {
         return jsonResponse(
           automationEditSchema,
-          await readViewerAutomationEdit(context.get("viewer"), kind, id),
+          await readViewerAutomationEdit(context.get("viewer"), id),
         );
       } catch (error) {
         return editErrorResponse(error);
@@ -227,7 +225,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     },
   );
   app.post(
-    "/:kind/:id/lifecycle",
+    "/:id/lifecycle",
     requireViewer,
     validateRequest("param", automationParamsSchema, "Invalid Automation."),
     validateRequest(
@@ -236,13 +234,12 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       "Invalid lifecycle action.",
     ),
     async (context) => {
-      const { kind, id } = context.req.valid("param");
+      const { id } = context.req.valid("param");
       try {
         return jsonResponse(
           automationEditSchema,
           await changeViewerAutomationLifecycle(
             context.get("viewer"),
-            kind,
             id,
             context.req.valid("json"),
           ),
@@ -253,7 +250,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     },
   );
   app.patch(
-    "/:kind/:id",
+    "/:id",
     requireViewer,
     validateRequest("param", automationParamsSchema, "Invalid Automation."),
     zValidator("json", automationUpdateSchema, (result) => {
@@ -271,14 +268,9 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       }
     }),
     async (context) => {
-      const { kind, id } = context.req.valid("param");
+      const { id } = context.req.valid("param");
       const input = context.req.valid("json");
       try {
-        if (input.kind !== kind)
-          throw new AutomationEditError(
-            "The trigger type cannot change.",
-            "kind",
-          );
         return jsonResponse(
           automationEditSchema,
           await updateViewerAutomation(context.get("viewer"), id, input),
@@ -302,14 +294,14 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
         );
   });
   app.delete(
-    "/:kind/:id",
+    "/:id",
     requireViewer,
     validateRequest("param", automationParamsSchema, "Invalid task."),
     async (context) => {
       const user = context.get("viewer");
       const params = context.req.valid("param");
       try {
-        await deleteViewerTask(user, params.kind, params.id);
+        await deleteViewerTask(user, params.id);
         return emptyResponse();
       } catch (error) {
         if (error instanceof ViewerTaskNotFoundError) {

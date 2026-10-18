@@ -27,9 +27,12 @@ export async function previewAutomationSchedule(
   id: string,
   intent: ScheduleIntent,
 ) {
-  const automation = await readViewerAutomationEdit(user, "scheduled", id);
+  const automation = await readViewerAutomationEdit(user, id);
   if (automation.kind !== "scheduled")
-    throw new Error("Expected scheduled Automation");
+    throw new AutomationEditError(
+      "Only Scheduled automations have a Schedule.",
+      "schedule",
+    );
   if (automation.status === "completed")
     throw new AutomationEditError(
       "Completed automations cannot be edited.",

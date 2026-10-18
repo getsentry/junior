@@ -42,20 +42,15 @@ const EXECUTION_GRID = "grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem_auto]";
 
 /** Render one automation's terminal executions as a conversation-style list. */
 export function AutomationExecutionsPage(props: { enabled: boolean }) {
-  const { automationId, kind } = useParams();
+  const { automationId } = useParams();
   const [searchParams] = useSearchParams();
-  const taskKind = kind === "scheduled" || kind === "event" ? kind : undefined;
-  const query = useAutomationExecutionsData(
-    props.enabled && Boolean(automationId && taskKind),
-    taskKind,
-    automationId,
-  );
+  const query = useAutomationExecutionsData(props.enabled, automationId);
   const backTo = pathWithSearch(
     automationId ? automationPath(automationId) : "/automations/list",
     searchParams,
   );
 
-  if (!automationId || !taskKind) {
+  if (!automationId) {
     return <Navigate replace to="/automations" />;
   }
   if (!query.data && !query.error) {

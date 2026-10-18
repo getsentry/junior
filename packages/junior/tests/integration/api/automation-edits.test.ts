@@ -125,7 +125,7 @@ async function setup(kind: "scheduled" | "event") {
       },
     });
   }
-  const url = `/api/automations/${kind}/${id}`;
+  const url = `/api/automations/${id}`;
   const read = async () => {
     const response = await app.request(`${url}/edit`);
     expect(response.status).toBe(200);

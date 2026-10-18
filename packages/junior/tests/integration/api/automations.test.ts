@@ -476,9 +476,7 @@ describe("Automations API", () => {
 
       const executionsResponse = await authenticatedApi(
         "viewer@example.com",
-      ).request(
-        "http://localhost/api/automations/scheduled/sched_tasks_api/executions",
-      );
+      ).request("http://localhost/api/automations/sched_tasks_api/executions");
       expect(executionsResponse.status).toBe(200);
       const executionList = automationExecutionListSchema.parse(
         await executionsResponse.json(),
@@ -532,7 +530,7 @@ describe("Automations API", () => {
       const deniedExecutions = await authenticatedApi(
         "viewer@example.com",
       ).request(
-        "http://localhost/api/automations/event/event_private_tasks_api/executions",
+        "http://localhost/api/automations/event_private_tasks_api/executions",
       );
       expect(deniedExecutions.status).toBe(404);
 
@@ -670,7 +668,7 @@ describe("Automations API", () => {
       });
       expect((await list("state=completed&scope=mine")).total).toBe(1);
       await authenticatedApi("viewer@example.com").request(
-        "http://localhost/api/automations/scheduled/sched_owned_private",
+        "http://localhost/api/automations/sched_owned_private",
         { method: "DELETE" },
       );
       // A manual title must not hide the instruction from search.
@@ -737,17 +735,14 @@ describe("Automations API", () => {
 
       const deniedPublicDelete = await authenticatedApi(
         "viewer@example.com",
-      ).request(
-        "http://localhost/api/automations/event/event_public_tasks_api",
-        {
-          method: "DELETE",
-        },
-      );
+      ).request("http://localhost/api/automations/event_public_tasks_api", {
+        method: "DELETE",
+      });
       expect(deniedPublicDelete.status).toBe(404);
 
       const deletedScheduled = await authenticatedApi(
         "viewer@example.com",
-      ).request("http://localhost/api/automations/scheduled/sched_tasks_api", {
+      ).request("http://localhost/api/automations/sched_tasks_api", {
         method: "DELETE",
       });
       expect(deletedScheduled.status).toBe(204);
@@ -759,7 +754,7 @@ describe("Automations API", () => {
       expect(deletedScheduledAutomation).toMatchObject({ status: "deleted" });
 
       const deletedEvent = await authenticatedApi("viewer@example.com").request(
-        "http://localhost/api/automations/event/event_automations_api",
+        "http://localhost/api/automations/event_automations_api",
         { method: "DELETE" },
       );
       expect(deletedEvent.status).toBe(204);
