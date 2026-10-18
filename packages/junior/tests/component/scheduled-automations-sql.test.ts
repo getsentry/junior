@@ -6,13 +6,28 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { upsertIdentity } from "@/chat/identities/sql";
+import type { JuniorSqlExecutor } from "@/db/db";
 import { deferred } from "../fixtures/conversation-work";
 import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
 
+/** Migrate a fresh database and store the Slack identity that creates tasks. */
+async function prepareDatabase(sql: JuniorSqlExecutor): Promise<string> {
+  await migrateSchema(sql);
+  const identity = await upsertIdentity(sql, {
+    kind: "user",
+    provider: "slack",
+    providerTenantId: "T123",
+    providerSubjectId: "U123",
+  });
+  return identity.id;
+}
+
 function createTask(
+  creatorIdentityId: string,
   overrides: Partial<ScheduledAutomation> = {},
 ): ScheduledAutomation {
   return {
@@ -20,7 +35,7 @@ function createTask(
     conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: TEST_RUN_AT_MS,
     createdBy: { slackUserId: "U123" },
-    creatorIdentityId: "identity-viewer",
+    creatorIdentityId,
     credentialMode: "system",
     destination: {
       platform: "slack",
@@ -46,9 +61,9 @@ describe("scheduled-automation SQL storage", () => {
     const fixture = await createEmptyJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      const creatorIdentityId = await prepareDatabase(fixture.sql);
       const db = fixture.sql.db();
-      const task = createTask();
+      const task = createTask(creatorIdentityId);
       await saveScheduledAutomation(db, task);
 
       await expect(readTask(db, task.id)).resolves.toMatchObject(task);
@@ -82,9 +97,11 @@ describe("scheduled-automation SQL storage", () => {
     const fixture = await createEmptyJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      const creatorIdentityId = await prepareDatabase(fixture.sql);
       const db = fixture.sql.db();
-      const task = createTask({ id: "sched_delete_stops_runs" });
+      const task = createTask(creatorIdentityId, {
+        id: "sched_delete_stops_runs",
+      });
       await saveScheduledAutomation(db, task);
       const claimed = await claimDueScheduledRun(db, { nowMs: TEST_NOW_MS });
       expect(claimed).toMatchObject({
@@ -124,9 +141,9 @@ describe("scheduled-automation SQL storage", () => {
     const fixture = await createEmptyJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      const creatorIdentityId = await prepareDatabase(fixture.sql);
       const db = fixture.sql.db();
-      const task = createTask({
+      const task = createTask(creatorIdentityId, {
         id: "sched_concurrent_missed_save",
         title: "Original title",
       });
@@ -185,9 +202,11 @@ describe("scheduled-automation SQL storage", () => {
     const fixture = await createEmptyJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      const creatorIdentityId = await prepareDatabase(fixture.sql);
       const db = fixture.sql.db();
-      const task = createTask({ id: "sched_valid_after_bad_record" });
+      const task = createTask(creatorIdentityId, {
+        id: "sched_valid_after_bad_record",
+      });
       await fixture.sql.execute(
         `INSERT INTO junior_automations (
           id, kind, team_id, channel_id, creator_slack_user_id,

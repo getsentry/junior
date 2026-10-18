@@ -366,11 +366,18 @@ describe("Slack Work Object details", () => {
       visibility: "public",
       title: "Public automation",
     });
+    const creator = await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U999",
+    });
     await createEventAutomation(getDb(), {
       id: "event_public",
       title: "Issue updates",
       createdAtMs: Date.now(),
       createdBy: { slackUserId: "U999" },
+      creatorIdentityId: creator.id,
       credentialMode: "system",
       destination: { platform: "slack", teamId: "T123", channelId: "C123" },
       destinationVisibility: "public",

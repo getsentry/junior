@@ -407,6 +407,13 @@
       "when": 1792256570895,
       "tag": "0057_drop_legacy_automation_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792331274207,
+      "tag": "0058_automation_creator_identity",
+      "breakpoints": true
     }
   ]
 }

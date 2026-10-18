@@ -24,7 +24,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorUsers } from "@/db/schema";
+import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { readUserTimezone } from "@/chat/identities/sql";
 import {
   createJuniorSqlFixture,
@@ -59,6 +59,23 @@ async function useSchedulerSqlPlugin() {
     });
   }
   return fixture;
+}
+
+/** Store the Slack identity that Slack turns store before tools run. */
+async function storeSlackIdentity(teamId: string, userId: string) {
+  const identity = {
+    id: `identity:${teamId}:${userId}`,
+    provider: "slack",
+    providerSubjectId: userId,
+    providerTenantId: teamId,
+  };
+  const now = new Date();
+  await dbModule
+    .getDb()
+    .insert(juniorIdentities)
+    .values({ ...identity, kind: "user", createdAt: now, updatedAt: now })
+    .onConflictDoNothing();
+  return identity;
 }
 
 function createContext(
@@ -108,7 +125,7 @@ function createContext(
     userText: "schedule this weekly",
     users: {
       resolveActor: async () => ({
-        identity,
+        identity: await storeSlackIdentity(actor.teamId, actor.userId),
         ...(user ? { user } : undefined),
       }),
     },
@@ -1932,7 +1949,10 @@ describe("Slack schedule tool wiring via createTools", () => {
         id: "user:alice",
         identities: [identity],
       };
-      const resolveActorIdentity = vi.fn(async () => ({ identity, user }));
+      const resolveActorIdentity = vi.fn(async () => {
+        await storeSlackIdentity(TEAM_ID, "U123");
+        return { identity, user };
+      });
       const tools = createTools(
         [],
         {},

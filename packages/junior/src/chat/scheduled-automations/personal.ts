@@ -1,5 +1,6 @@
 /** Viewer-scoped scheduled-automation mutations. */
 import type { User } from "@sentry/junior-plugin-api";
+import { isAutomationCreator } from "@/chat/automations/creator";
 import type { JuniorDatabase } from "@/db/db";
 import {
   readScheduledAutomation,
@@ -22,12 +23,11 @@ export async function deleteViewerScheduledAutomation(
   nowMs = Date.now(),
 ): Promise<void> {
   await withScheduledAutomationLock(db, id, async (tx) => {
-    const identityIds = new Set(user.identities.map((identity) => identity.id));
     const task = await readScheduledAutomation(tx, id);
     if (
       !task ||
       task.status === "deleted" ||
-      !identityIds.has(task.creatorIdentityId)
+      !isAutomationCreator(user, task)
     ) {
       throw new PersonalScheduledAutomationNotFoundError();
     }

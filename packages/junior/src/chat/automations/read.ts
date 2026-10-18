@@ -31,6 +31,7 @@ import {
   type AutomationExecutionSummary,
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
+import { isAutomationCreator } from "@/chat/automations/creator";
 import { getDb } from "@/chat/db";
 import {
   getDispatchIdForConversation,
@@ -44,7 +45,6 @@ import {
 } from "@/chat/automations/versions";
 import {
   deleteEventAutomation,
-  eventAutomationBelongsToUser,
   listDeletedEventAutomationsCreatedBy,
   parseEventAutomationRow,
   type StoredEventAutomation,
@@ -358,17 +358,16 @@ export async function resolveViewerTaskCandidate(
   if (row.kind === "scheduled") {
     const task = parseScheduledAutomationRow(row);
     if (!task) return undefined;
-    const identityIds = new Set(user.identities.map((identity) => identity.id));
     candidate = {
       kind: "scheduled",
-      ownedByViewer: identityIds.has(task.creatorIdentityId),
+      ownedByViewer: isAutomationCreator(user, task),
       task,
     };
   } else {
     const task = parseEventAutomationRow(row);
     candidate = {
       kind: "event",
-      ownedByViewer: eventAutomationBelongsToUser(task, user),
+      ownedByViewer: isAutomationCreator(user, task),
       task,
     };
   }
@@ -477,7 +476,6 @@ export async function readViewerAutomations(
         .from(juniorAutomations)
         .where(inArray(juniorAutomations.id, ids))
     : [];
-  const identityIds = new Set(user.identities.map((identity) => identity.id));
   const candidates = new Map<string, TaskCandidate>();
   for (const row of stored) {
     if (row.kind === "scheduled") {
@@ -486,7 +484,7 @@ export async function readViewerAutomations(
         candidates.set(task.id, {
           kind: "scheduled",
           task,
-          ownedByViewer: identityIds.has(task.creatorIdentityId),
+          ownedByViewer: isAutomationCreator(user, task),
         });
       continue;
     }
@@ -495,7 +493,7 @@ export async function readViewerAutomations(
       candidates.set(task.id, {
         kind: "event",
         task,
-        ownedByViewer: eventAutomationBelongsToUser(task, user),
+        ownedByViewer: isAutomationCreator(user, task),
       });
   }
   const selected = rows.flatMap((row) => {

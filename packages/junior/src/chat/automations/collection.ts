@@ -26,25 +26,11 @@ export function viewerAutomationCollection(user: User) {
   const automation = juniorAutomations;
   const destination = juniorDestinations;
   const isScheduled = eq(automation.kind, "scheduled");
-  // Scheduled automations belong to a provider identity. Event automations
-  // belong to a Slack user in one workspace.
-  const owned =
-    or(
-      and(
-        isScheduled,
-        inArray(
-          automation.creatorIdentityId,
-          user.identities.map((identity) => identity.id),
-        ),
-      ),
-      ...identities.map((identity) =>
-        and(
-          eq(automation.kind, "event"),
-          eq(automation.teamId, identity.providerTenantId ?? ""),
-          eq(automation.creatorSlackUserId, identity.providerSubjectId),
-        ),
-      ),
-    ) ?? sql`false`;
+  // Both kinds belong to the Junior identity that created them.
+  const owned = inArray(
+    automation.creatorIdentityId,
+    user.identities.map((identity) => identity.id),
+  );
   const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
   const publicToViewer = and(
     inArray(automation.teamId, teamIds),
