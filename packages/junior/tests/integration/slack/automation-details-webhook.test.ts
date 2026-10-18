@@ -371,6 +371,7 @@ describe("Slack Work Object details", () => {
       title: "Issue updates",
       createdAtMs: Date.now(),
       createdBy: { slackUserId: "U999" },
+      creatorIdentityId: "identity-U999",
       credentialMode: "system",
       destination: { platform: "slack", teamId: "T123", channelId: "C123" },
       destinationVisibility: "public",

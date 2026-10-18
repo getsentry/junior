@@ -291,6 +291,7 @@ describe("event delivery", () => {
         id: eventAutomationId,
         createdAtMs: nowMs,
         createdBy: { slackUserId: "U123" },
+        creatorIdentityId: "identity-U123",
         credentialMode: "system",
         destination: SLACK_DESTINATION,
         destinationVisibility: "public",

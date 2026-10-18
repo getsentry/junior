@@ -24,8 +24,8 @@ export const juniorAutomations = pgTable(
     teamId: text("team_id").notNull(),
     channelId: text("channel_id").notNull(),
     creatorSlackUserId: text("creator_slack_user_id").notNull(),
-    /** Provider identity that created a Scheduled automation. */
-    creatorIdentityId: text("creator_identity_id"),
+    /** Junior identity that created the Automation. It decides ownership. */
+    creatorIdentityId: text("creator_identity_id").notNull(),
     status: text("status")
       .$type<"active" | "blocked" | "paused" | "completed" | "deleted">()
       .notNull(),
@@ -62,15 +62,11 @@ export const juniorAutomations = pgTable(
     index("junior_automations_team_idx")
       .on(table.teamId, table.createdAtMs, table.id)
       .where(sql`${table.status} <> 'deleted'`),
-    index("junior_automations_creator_idx").on(
-      table.teamId,
-      table.creatorSlackUserId,
+    index("junior_automations_creator_identity_idx").on(
+      table.creatorIdentityId,
       table.createdAtMs,
       table.id,
     ),
-    index("junior_automations_creator_identity_idx")
-      .on(table.creatorIdentityId, table.createdAtMs, table.id)
-      .where(sql`${table.creatorIdentityId} IS NOT NULL`),
     index("junior_automations_run_now_due_idx")
       .on(table.runNowAtMs, table.createdAtMs, table.id)
       .where(

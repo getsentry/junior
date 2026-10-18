@@ -131,6 +131,7 @@ describe("event catalog", () => {
           createdBy: {
             slackUserId: "U1",
           },
+          creatorIdentityId: "identity-U1",
           credentialMode: "system",
           destination: {
             platform: "slack",

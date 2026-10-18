@@ -47,6 +47,8 @@ export const eventAutomationSchema = z
     id: z.string().min(1),
     createdAtMs: z.number().finite(),
     createdBy: eventAutomationPrincipalSchema,
+    /** Junior identity that created the automation. It decides ownership. */
+    creatorIdentityId: z.string().min(1),
     credentialMode: z.enum(["system", "creator"]),
     destination: eventAutomationDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
@@ -69,7 +71,7 @@ export type EventAutomation = z.output<typeof eventAutomationSchema> & {
 /** The part of an event automation that has no SQL column of its own. */
 export type EventAutomationRecord = Omit<
   EventAutomation,
-  "createdAtMs" | "id" | "title"
+  "createdAtMs" | "creatorIdentityId" | "id" | "title"
 >;
 
 /**

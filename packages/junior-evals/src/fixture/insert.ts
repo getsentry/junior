@@ -178,7 +178,7 @@ export async function insertEventAutomation(args: {
   trigger: EventAutomation["trigger"];
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
-  await insertSlackIdentity(author);
+  const identity = await insertSlackIdentity(author);
   const id = `evt_${fixtureId("event-automation", 20)}`;
   await createEventAutomation(getDb(), {
     id,
@@ -188,6 +188,7 @@ export async function insertEventAutomation(args: {
       slackUserId: author.userId,
       userName: author.userName,
     },
+    creatorIdentityId: identity.id,
     credentialMode: args.credentialMode ?? "system",
     destination: args.destination,
     destinationVisibility: "public",

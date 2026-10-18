@@ -4,6 +4,13 @@ This module projects scheduled and event automations for signed-in users. It
 includes automations that the user owns and automations in public destinations
 in the user's linked Slack workspaces.
 
+Each Automation stores `creator_identity_id`, the Junior identity that created
+it. The user owns an Automation when one of their identities has that ID. This
+rule is the same for both kinds. The Slack create tools refuse to save an
+Automation when the requester has no stored identity. Migration 0058 sets the
+identity on event automations that were created before this rule. It adds a
+Slack identity when Junior did not have one for the creator.
+
 The collection filters, sorts, and pages all accessible Automations in SQL.
 Counts use the same access rules. Public access and Destination labels come
 from the Destination directory. Missing or private entries do not grant access.

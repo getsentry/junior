@@ -114,6 +114,9 @@ async function setup(kind: "scheduled" | "event") {
   } else {
     await createEventAutomation(getDb(), {
       ...common,
+      creatorIdentityId: user.identities.find(
+        (identity) => identity.provider === "slack",
+      )!.id,
       destinationVisibility: "public",
       trigger: {
         namespace: "unavailable",

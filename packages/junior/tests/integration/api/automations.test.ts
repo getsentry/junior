@@ -183,6 +183,7 @@ describe("Automations API", () => {
         id: "event_automations_api",
         createdAtMs: nowMs + 1,
         createdBy: { slackUserId: "U123" },
+        creatorIdentityId: identity!.id,
         credentialMode: "system",
         destination: {
           channelId: "C123",
@@ -205,6 +206,7 @@ describe("Automations API", () => {
         id: "event_public_tasks_api",
         createdAtMs: nowMs + 3,
         createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
         credentialMode: "system",
         destination: {
           channelId: "C456",
@@ -226,6 +228,7 @@ describe("Automations API", () => {
         id: "event_private_tasks_api",
         createdAtMs: nowMs + 4,
         createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
         credentialMode: "system",
         destination: {
           channelId: "CPRIVATE",

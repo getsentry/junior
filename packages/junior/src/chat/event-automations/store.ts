@@ -33,11 +33,13 @@ function eventAutomationColumns(task: EventAutomation | StoredEventAutomation) {
   } = task as StoredEventAutomation;
   const {
     createdAtMs: _createdAtMs,
+    creatorIdentityId,
     id: _id,
     ...record
   } = eventAutomationSchema.parse(definition);
   return {
     channelId: record.destination.channelId,
+    creatorIdentityId,
     creatorSlackUserId: record.createdBy.slackUserId,
     identifier: record.trigger.identifier,
     instruction: record.task.text,
@@ -55,6 +57,7 @@ export function parseEventAutomationRow(
   const task = eventAutomationSchema.parse({
     ...row.record,
     createdAtMs: row.createdAtMs,
+    creatorIdentityId: row.creatorIdentityId,
     id: row.id,
   });
   const title = row.title?.trim();
@@ -213,27 +216,6 @@ export async function listEventAutomationsForTeam(
   return rows.map(parseEventAutomationRow);
 }
 
-function viewerSlackIdentities(user: User) {
-  return user.identities.filter(
-    (identity) =>
-      identity.provider === "slack" &&
-      Boolean(identity.providerTenantId) &&
-      Boolean(identity.providerSubjectId),
-  );
-}
-
-/** Return whether one event automation was created by a viewer-linked Slack identity. */
-export function eventAutomationBelongsToUser(
-  task: EventAutomation,
-  user: User,
-): boolean {
-  return viewerSlackIdentities(user).some(
-    (identity) =>
-      identity.providerTenantId === task.destination.teamId &&
-      identity.providerSubjectId === task.createdBy.slackUserId,
-  );
-}
-
 /**
  * List deleted event automations created by one user, newest first.
  * Used only to keep historical runs after the live automation list drops the row.
@@ -243,22 +225,14 @@ export async function listDeletedEventAutomationsCreatedBy(
   user: User,
   limit: number,
 ): Promise<StoredEventAutomation[]> {
-  const identities = viewerSlackIdentities(user);
-  const ownership = or(
-    ...identities.map((identity) =>
-      and(
-        eq(juniorAutomations.teamId, identity.providerTenantId!),
-        eq(juniorAutomations.creatorSlackUserId, identity.providerSubjectId!),
-      ),
-    ),
-  );
-  if (!ownership) return [];
+  const identityIds = user.identities.map((identity) => identity.id);
+  if (identityIds.length === 0) return [];
   const rows = await db
     .select()
     .from(juniorAutomations)
     .where(
       and(
-        ownership,
+        inArray(juniorAutomations.creatorIdentityId, identityIds),
         eq(juniorAutomations.kind, "event"),
         eq(juniorAutomations.status, "deleted"),
       ),
