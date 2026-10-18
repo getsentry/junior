@@ -1,6 +1,15 @@
 -- Bind every Automation to the Junior identity that created it. Event rows
 -- did not store an identity before. Use the Slack identity of the stored
--- creator, and add it when Junior has not seen that Slack user yet.
+-- creator, and add it when Junior has not seen that Slack user yet. A stored
+-- identity ID that has no identity row is replaced the same way, so the
+-- foreign key can be added.
+UPDATE "junior_automations" AS automation
+SET "creator_identity_id" = NULL
+WHERE automation."creator_identity_id" IS NOT NULL
+	AND NOT EXISTS (
+		SELECT 1 FROM "junior_identities" AS identity
+		WHERE identity."id" = automation."creator_identity_id"
+	);--> statement-breakpoint
 INSERT INTO "junior_identities" (
 	"id",
 	"kind",
@@ -32,4 +41,5 @@ WHERE automation."creator_identity_id" IS NULL
 DROP INDEX "junior_automations_creator_idx";--> statement-breakpoint
 DROP INDEX "junior_automations_creator_identity_idx";--> statement-breakpoint
 ALTER TABLE "junior_automations" ALTER COLUMN "creator_identity_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "junior_automations" ADD CONSTRAINT "junior_automations_creator_identity_id_junior_identities_id_fk" FOREIGN KEY ("creator_identity_id") REFERENCES "public"."junior_identities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "junior_automations_creator_identity_idx" ON "junior_automations" USING btree ("creator_identity_id","created_at_ms","id");

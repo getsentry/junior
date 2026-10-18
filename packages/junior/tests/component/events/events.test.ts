@@ -5,7 +5,8 @@ import type { StateAdapter } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
-import { closeDb, getDb } from "@/chat/db";
+import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
+import { upsertIdentity } from "@/chat/identities/sql";
 import {
   createEventAutomation,
   deleteEventAutomation,
@@ -287,11 +288,17 @@ describe("event delivery", () => {
         state,
       });
       eventAutomationId = `evt_webhook_bridge_${nowMs}`;
+      const creator = await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: SLACK_DESTINATION.teamId,
+        providerSubjectId: "U123",
+      });
       await createEventAutomation(getDb(), {
         id: eventAutomationId,
         createdAtMs: nowMs,
         createdBy: { slackUserId: "U123" },
-        creatorIdentityId: "identity-U123",
+        creatorIdentityId: creator.id,
         credentialMode: "system",
         destination: SLACK_DESTINATION,
         destinationVisibility: "public",

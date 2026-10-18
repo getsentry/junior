@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
 } from "drizzle-orm/pg-core";
+import { juniorIdentities } from "./identities";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/types";
 
@@ -25,7 +26,9 @@ export const juniorAutomations = pgTable(
     channelId: text("channel_id").notNull(),
     creatorSlackUserId: text("creator_slack_user_id").notNull(),
     /** Junior identity that created the Automation. It decides ownership. */
-    creatorIdentityId: text("creator_identity_id").notNull(),
+    creatorIdentityId: text("creator_identity_id")
+      .notNull()
+      .references(() => juniorIdentities.id),
     status: text("status")
       .$type<"active" | "blocked" | "paused" | "completed" | "deleted">()
       .notNull(),
