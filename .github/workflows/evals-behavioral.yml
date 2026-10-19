@@ -52,6 +52,7 @@ jobs:
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/scripts/network-jail.sh'
+              - 'packages/junior-evals/scripts/eval-tunnel.sh'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/tests/**'
@@ -135,6 +136,9 @@ jobs:
       VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      CLOUDFLARE_TUNNEL_BASE_DOMAIN: ${{ vars.CLOUDFLARE_TUNNEL_BASE_DOMAIN }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
@@ -149,6 +153,8 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
+      - name: Install cf
+        run: npm install --global cf@1.0.0-beta.18
       # The evals build a sandbox snapshot only when this file does not have it.
       - name: Keep sandbox snapshot ids
         uses: actions/cache@v4
@@ -164,7 +170,13 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
           # The write token of Roach. With it, the run records new requests.
           ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
-        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: packages/junior-evals/scripts/eval-tunnel.sh run packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
+      - name: Remove eval tunnel
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: packages/junior-evals/scripts/eval-tunnel.sh cleanup
       - name: Require behavioral eval results
         id: results
         if: steps.run.conclusion != 'skipped'
