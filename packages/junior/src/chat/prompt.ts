@@ -342,7 +342,7 @@ const CONVERSATION_RULES = [
 ];
 
 const SLACK_ACTION_RULES = [
-  "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
+  "- Slack posts, reactions, new canvases, new lists, and file sends go only to the current conversation; if asked to send one somewhere else, explain the limitation instead of calling the tool. Slack read tools can target other public channels with `channel_id`.",
   "- Assistant text is delivered only into the active conversation or thread. You cannot create a new top-level channel post; if asked to do so, explain that limitation and do not present the requested text as delivered.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
   `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
