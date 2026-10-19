@@ -289,6 +289,11 @@ export function slackUserInputAnswerNote(args: {
   return truncate([`${who} answered`, ...lines].join("\n"), MAX_NOTE_CHARS);
 }
 
+/** Closing note for a request answered with a dashboard message. */
+export function webUserInputAnswerNote(name: string): string {
+  return `${escapeSlackMrkdwnText(name)} answered in the Junior dashboard`;
+}
+
 /**
  * Render a request without its controls and with a closing note, such as
  * the person's answer. This keeps the question visible and stops more

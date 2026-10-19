@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMemoryState } from "@chat-adapter/state-memory";
+import { Hono } from "hono";
 import { Message, type SerializedMessage } from "chat";
-import { closeDb } from "@/chat/db";
+import { createConversationRoutes } from "@/api/conversations/routes";
+import type { JuniorApiEnv } from "@/api/route";
+import { closeDb, getConversationStore } from "@/chat/db";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { recordOpenSlackUserInput } from "@/chat/slack/user-input-state";
 import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import {
@@ -16,9 +18,11 @@ import {
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
 } from "../../fixtures/conversation-work";
+import { memoryAttachmentStorage } from "../../fixtures/attachment-storage";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
+import { testViewer } from "../../fixtures/user";
 
 const ORIGINAL_ENV = { ...process.env };
 const THREAD_TS = "1712345.0001";
@@ -108,7 +112,8 @@ describe("Slack webhook: user input clicks", () => {
   });
 
   function clickHarness() {
-    const state = createMemoryState();
+    // Dashboard messages use the default state adapter, so clicks do too.
+    const state = getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
     const slackAdapter = createSlackAdapterFixture();
     const client = createSlackWebhookTestClient({
@@ -173,7 +178,62 @@ describe("Slack webhook: user input clicks", () => {
       });
     }
 
-    return { click, interact, queue, recordQuestion, reply, state };
+    async function answerInDashboard(email: string) {
+      const conversationId = `slack:C123:${THREAD_TS}`;
+      await getConversationStore().recordActivity({
+        actor: {
+          email,
+          platform: "slack",
+          slackUserId: "U789",
+          teamId: "T123",
+        },
+        conversationId,
+        destination: {
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
+          threadTs: THREAD_TS,
+        },
+        nowMs: 1,
+        source: "slack",
+        title: "Release thread",
+        visibility: "private",
+      });
+      const app = new Hono<JuniorApiEnv>();
+      app.use("*", async (context, next) => {
+        context.set("viewer", testViewer(email));
+        await next();
+      });
+      app.route(
+        "/api/conversations",
+        createConversationRoutes({
+          attachmentStorage: memoryAttachmentStorage(),
+          queue,
+        }),
+      );
+      const response = await app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            idempotencyKey: "dashboard-answer",
+            message: `Answer to request ${REQUEST_ID}:\nDecision (decision): Hold`,
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    return {
+      answerInDashboard,
+      click,
+      interact,
+      queue,
+      recordQuestion,
+      reply,
+      state,
+    };
   }
 
   it("sends the first clicked choice as the answer and closes the question", async () => {
@@ -289,6 +349,37 @@ describe("Slack webhook: user input clicks", () => {
     expect(JSON.stringify(updates[0]?.params.blocks)).toContain(
       "<@U456> replied in the thread",
     );
+  });
+
+  it("closes the Slack question when a person answers in the dashboard", async () => {
+    const { answerInDashboard, click, recordQuestion, state } = clickHarness();
+    await recordQuestion();
+
+    await answerInDashboard("participant@example.com");
+    await click("U123", "1712345.0004");
+
+    const work = await getConversationWorkState({
+      conversationId: `slack:C123:${THREAD_TS}`,
+      state,
+    });
+    // The dashboard answer wins. The later click must not add a Turn.
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input.text).toContain(
+      "Decision (decision): Hold",
+    );
+    expect(slackApiOutbox.calls("chat.update")).toHaveLength(1);
+    expect(parsedUpdateBlocks()).toEqual([
+      { type: "markdown", text: "Ship release 1.2.3?" },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "participant@example.com answered in the Junior dashboard",
+          },
+        ],
+      },
+    ]);
   });
 
   it("answers a form request with the submitted values", async () => {

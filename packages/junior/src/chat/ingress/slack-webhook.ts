@@ -69,6 +69,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
 import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
+import { slackUserInputAnswerNote } from "@/chat/slack/user-input";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -568,11 +569,14 @@ async function routeParsedMessage(args: {
   await (route !== "mention"
     ? persist()
     : persistSlackUserInputReply({
-        author: message.author,
-        event: args.event,
+        channelId: args.event.channel,
+        claimedBy: message.author.userId,
         isSaved: (e) => e instanceof SlackEventPersistenceError && e.saved,
+        note: (request) =>
+          slackUserInputAnswerNote({ request, userId: message.author.userId }),
         persist,
         state: args.state,
+        threadTs: args.event.thread_ts,
       }));
 }
 

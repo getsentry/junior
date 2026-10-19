@@ -6,10 +6,7 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
-import {
-  buildClosedSlackUserInputMessage,
-  slackUserInputAnswerNote,
-} from "@/chat/slack/user-input";
+import { buildClosedSlackUserInputMessage } from "@/chat/slack/user-input";
 import {
   userInputRequestSchema,
   type UserInputRequest,
@@ -115,12 +112,13 @@ export async function getOpenSlackUserInput(
 
 /** Claim the open request of a Slack thread for a reply, if there is one. */
 async function claimOpenSlackUserInput(args: {
-  author: { userId: string };
-  event: { channel?: string; thread_ts?: string };
+  channelId?: string;
+  claimedBy: string;
   state: StateAdapter;
+  threadTs?: string;
 }): Promise<OpenSlackUserInput | undefined> {
-  const channelId = args.event.channel;
-  const threadTs = parseSlackMessageTs(args.event.thread_ts);
+  const channelId = args.channelId;
+  const threadTs = parseSlackMessageTs(args.threadTs);
   if (!channelId || !threadTs) return undefined;
   const open = await getOpenSlackUserInput(args.state, {
     channelId,
@@ -131,7 +129,7 @@ async function claimOpenSlackUserInput(args: {
     !(await claimSlackUserInput(args.state, {
       channelId,
       messageTs: open.messageTs,
-      userId: args.author.userId,
+      userId: args.claimedBy,
     }))
   ) {
     return undefined;
@@ -168,32 +166,30 @@ export async function closeSlackUserInput(args: {
 
 /**
  * Save a message to Junior that can answer the open request of its Slack
- * thread instead of the controls. The reply claims the request before Junior
- * saves it, the same order as a click, so only the first of them is the
- * answer. When the reply wins, its controls change to a note. When Junior did
- * not save the reply, the claim is released so a click or a Slack retry can
- * answer.
+ * thread instead of the controls. The message can be a typed Slack reply or a
+ * web message from the dashboard. It claims the request before Junior saves
+ * it, the same order as a click, so only the first of them is the answer.
+ * When the message wins, its controls change to `note`. When Junior did not
+ * save the message, the claim is released so a click or a retry can answer.
  *
- * `isSaved` tells if a failed `persist` still saved the reply.
+ * `claimedBy` names who answered, such as a Slack user id or a web email.
+ * `isSaved` tells if a failed `persist` still saved the message.
  */
-export async function persistSlackUserInputReply(args: {
-  author: { userId: string };
-  event: { channel?: string; thread_ts?: string };
+export async function persistSlackUserInputReply<T>(args: {
+  channelId?: string;
+  claimedBy: string;
   isSaved: (error: unknown) => boolean;
-  persist: () => Promise<void>;
+  note: (request: UserInputRequest) => string;
+  persist: () => Promise<T>;
   state: StateAdapter;
-}): Promise<void> {
+  threadTs?: string;
+}): Promise<T> {
   const open = await claimOpenSlackUserInput(args);
-  if (!open) {
-    await args.persist();
-    return;
-  }
-  const note = slackUserInputAnswerNote({
-    request: open.request,
-    userId: args.author.userId,
-  });
+  if (!open) return args.persist();
+  const note = args.note(open.request);
+  let result: T;
   try {
-    await args.persist();
+    result = await args.persist();
   } catch (error) {
     if (args.isSaved(error)) {
       await closeSlackUserInput({ note, open });
@@ -203,4 +199,5 @@ export async function persistSlackUserInputReply(args: {
     throw error;
   }
   await closeSlackUserInput({ note, open });
+  return result;
 }

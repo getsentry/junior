@@ -10,6 +10,11 @@ import {
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { webUserInputAnswerNote } from "@/chat/slack/user-input";
+import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
+import { parseSlackThreadId } from "@/chat/slack/context";
+import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { throwApiError } from "../http";
 import type {
   AcceptedConversationMessage,
@@ -103,10 +108,11 @@ export async function appendConversationMessageForViewer(
   }
 
   const images = parseImages(body.images);
-  try {
-    return await appendAndEnqueueWebMessage(
+  const actor = actorFromViewer(viewer);
+  const append = () =>
+    appendAndEnqueueWebMessage(
       {
-        actor: actorFromViewer(viewer),
+        actor,
         conversationId,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
@@ -118,6 +124,28 @@ export async function appendConversationMessageForViewer(
         queue: services.queue,
       },
     );
+  const destination = conversation.destination;
+  try {
+    if (destination?.platform !== "slack") return await append();
+    // A dashboard message answers an open request in the Slack thread, like a
+    // typed Slack reply, so its buttons close and a later click does nothing.
+    return await runWithWorkspaceTeamId(destination.teamId, async () => {
+      const state = getStateAdapter();
+      await state.connect();
+      return persistSlackUserInputReply({
+        channelId: destination.channelId,
+        claimedBy: viewer.email,
+        // The web append cannot tell a failed queue send from a failed save.
+        isSaved: () => false,
+        note: () => webUserInputAnswerNote(viewer.displayName ?? viewer.email),
+        persist: append,
+        state,
+        // Destination is the channel. Location keeps the Slack thread.
+        threadTs:
+          conversation.location?.threadTs ??
+          parseSlackThreadId(conversationId)?.threadTs,
+      });
+    });
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);
   }
