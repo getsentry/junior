@@ -2,6 +2,7 @@ import type {
   WorkspaceFinalize,
   WorkspacePrepareHookContext,
 } from "@sentry/junior-plugin-api";
+import { GITHUB_GIT_PLACEHOLDER_HEADER } from "./credential-support.js";
 import { isReservedSandboxDirectory } from "./sandbox-paths.js";
 
 /** Clone missing GitHub repositories or refresh existing Workspace checkouts. */
@@ -43,6 +44,12 @@ export async function prepareWorkspace(
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_NOSYSTEM: "1",
   };
+  // Git sends no auth by itself. The placeholder header asks egress to add
+  // GitHub credentials for clone and fetch.
+  const gitAuthConfig = [
+    "-c",
+    `${GITHUB_GIT_PLACEHOLDER_HEADER.key}=${GITHUB_GIT_PLACEHOLDER_HEADER.value}`,
+  ];
 
   const finalize: Array<{ path: string; repo: string; target: string }> = [];
   for (const { owner, name, path, repo } of repos) {
@@ -124,6 +131,7 @@ export async function prepareWorkspace(
           args: [
             "-c",
             "credential.helper=",
+            ...gitAuthConfig,
             "-C",
             path,
             "fetch",
@@ -163,7 +171,7 @@ export async function prepareWorkspace(
     // merge-base, branch switches, and later refreshes.
     const result = await ctx.sandbox.run({
       cmd: "git",
-      args: ["clone", "--quiet", "--", cloneUrl, path],
+      args: [...gitAuthConfig, "clone", "--quiet", "--", cloneUrl, path],
       cwd: ctx.sandbox.root,
       env: gitEnv,
     });
