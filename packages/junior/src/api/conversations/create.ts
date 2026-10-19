@@ -8,7 +8,9 @@ import {
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
+import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { webUserInputAnswerNote } from "@/chat/slack/user-input";
@@ -135,8 +137,18 @@ export async function appendConversationMessageForViewer(
       return persistSlackUserInputReply({
         channelId: destination.channelId,
         claimedBy: viewer.email,
-        // The web append cannot tell a failed queue send from a failed save.
-        isSaved: () => false,
+        // A failed queue send can follow a saved append. Keep the claim then,
+        // so a click or a retry does not add a second answer.
+        isSaved: async () => {
+          const [messageId, work] = await Promise.all([
+            webMessageId({
+              conversationId,
+              idempotencyKey: body.idempotencyKey,
+            }),
+            getConversationWorkState({ conversationId, state }),
+          ]);
+          return work?.execution.inboundMessageIds.includes(messageId) === true;
+        },
         note: () => webUserInputAnswerNote(viewer.displayName ?? viewer.email),
         persist: append,
         state,

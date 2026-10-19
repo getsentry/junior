@@ -178,7 +178,7 @@ describe("Slack webhook: user input clicks", () => {
       });
     }
 
-    async function answerInDashboard(email: string) {
+    async function answerInDashboard(email: string, status = 200) {
       const conversationId = `slack:C123:${THREAD_TS}`;
       await getConversationStore().recordActivity({
         actor: {
@@ -222,7 +222,7 @@ describe("Slack webhook: user input clicks", () => {
           }),
         },
       );
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(status);
     }
 
     return {
@@ -380,6 +380,29 @@ describe("Slack webhook: user input clicks", () => {
         ],
       },
     ]);
+  });
+
+  it("keeps a dashboard answer when only the queue wake fails", async () => {
+    const { answerInDashboard, click, queue, recordQuestion, state } =
+      clickHarness();
+    await recordQuestion();
+    queue.rejectSends();
+
+    // The dashboard shows an error, but the mailbox already saved the answer.
+    await answerInDashboard("participant@example.com", 500);
+    await click("U123", "1712345.0004");
+
+    const work = await getConversationWorkState({
+      conversationId: `slack:C123:${THREAD_TS}`,
+      state,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input.text).toContain(
+      "Decision (decision): Hold",
+    );
+    expect(JSON.stringify(parsedUpdateBlocks())).toContain(
+      "answered in the Junior dashboard",
+    );
   });
 
   it("answers a form request with the submitted values", async () => {

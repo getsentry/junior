@@ -178,7 +178,7 @@ export async function closeSlackUserInput(args: {
 export async function persistSlackUserInputReply<T>(args: {
   channelId?: string;
   claimedBy: string;
-  isSaved: (error: unknown) => boolean;
+  isSaved: (error: unknown) => boolean | Promise<boolean>;
   note: (request: UserInputRequest) => string;
   persist: () => Promise<T>;
   state: StateAdapter;
@@ -191,7 +191,7 @@ export async function persistSlackUserInputReply<T>(args: {
   try {
     result = await args.persist();
   } catch (error) {
-    if (args.isSaved(error)) {
+    if (await args.isSaved(error)) {
       await closeSlackUserInput({ note, open });
     } else {
       await releaseSlackUserInput(args.state, open);
