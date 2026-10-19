@@ -61,13 +61,6 @@ const scheduledAutomationScheduleSchema = z
   })
   .strict();
 
-const scheduledAutomationExecutionActorSchema = z
-  .object({
-    platform: z.literal("system"),
-    name: z.string(),
-  })
-  .strict();
-
 /** Scheduled automations target a Slack conversation, never one message thread. */
 const scheduledAutomationDestinationSchema = slackDestinationSchema.omit({
   threadTs: true,
@@ -97,7 +90,6 @@ export const scheduledAutomationSchema = z
     /** Selects system credentials or task-bound creator credential delegation. */
     credentialMode: scheduledAutomationCredentialModeSchema,
     destination: scheduledAutomationDestinationSchema,
-    executionActor: scheduledAutomationExecutionActorSchema.optional(),
     lastRunAtMs: z.number().optional(),
     nextRunAtMs: z.number().optional(),
     originalRequest: z.string().optional(),
@@ -146,9 +138,6 @@ export type ScheduledAutomationRecord = Omit<
   | "title"
 >;
 export type ScheduledAutomationPrincipal = ScheduledAutomation["createdBy"];
-export type ScheduledAutomationExecutionActor = NonNullable<
-  ScheduledAutomation["executionActor"]
->;
 export type ScheduledAutomationConversationAccess =
   ScheduledAutomation["conversationAccess"];
 export type ScheduledAutomationSchedule = ScheduledAutomation["schedule"];
@@ -159,8 +148,3 @@ export type ScheduledAutomationSpec = ScheduledAutomation["task"];
 export type ScheduledCalendarFrequency =
   ScheduledAutomationRecurrence["frequency"];
 export type ScheduledLocalTime = ScheduledAutomationRecurrence["time"];
-
-export const SCHEDULED_AUTOMATION_SYSTEM_ACTOR = Object.freeze({
-  platform: "system",
-  name: "scheduled-automation",
-} satisfies ScheduledAutomationExecutionActor);

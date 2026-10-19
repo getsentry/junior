@@ -6,10 +6,10 @@ import { deleteEventAutomation } from "@/chat/event-automations/store";
 import {
   compactEventAutomation,
   eventAutomationToolResultSchema,
-  requireEventAutomationSlackContext,
   writableEventAutomation,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -34,7 +34,6 @@ export function createDeleteEventAutomationTool(
       .omit({ objectCards: true })
       .extend({ removedCards: z.array(removedCardSchema) }),
     async execute({ automationId }) {
-      const { actor } = requireEventAutomationSlackContext(context);
       const current = await writableEventAutomation(context, automationId);
       const deleted = await deleteEventAutomation(getDb(), current.id);
       if (!deleted) {
@@ -46,7 +45,14 @@ export function createDeleteEventAutomationTool(
         plugin: "junior",
       }).remove("object", automationId);
       return {
-        automation: compactEventAutomation(deleted, catalog, actor.userId),
+        automation: compactEventAutomation(
+          deleted,
+          catalog,
+          isRequesterAutomationCreator(
+            await context.resolveActorIdentity?.(),
+            current,
+          ),
+        ),
         removedCards: [{ plugin: "junior", key: automationId }],
       };
     },

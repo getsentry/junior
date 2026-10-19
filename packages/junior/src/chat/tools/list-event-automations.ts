@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { getDb } from "@/chat/db";
 import { listEventAutomationsForTeam } from "@/chat/event-automations/store";
 import {
@@ -30,14 +31,20 @@ export function createListEventAutomationsTool(
     inputSchema: z.object({}).strict(),
     outputSchema: eventAutomationListToolResultSchema,
     async execute() {
-      const { actor, destination } =
-        requireEventAutomationSlackContext(context);
+      const { destination } = requireEventAutomationSlackContext(context);
+      const requester = await context.resolveActorIdentity?.();
       const matching = (
         await listEventAutomationsForTeam(getDb(), destination.teamId)
       ).filter((task) => eventAutomationMatchesDestination(task, destination));
       const automations = matching
         .slice(0, MAX_LISTED_EVENT_AUTOMATIONS)
-        .map((task) => compactEventAutomation(task, catalog, actor.userId));
+        .map((task) =>
+          compactEventAutomation(
+            task,
+            catalog,
+            isRequesterAutomationCreator(requester, task),
+          ),
+        );
       return {
         automations,
         truncated: matching.length > automations.length,

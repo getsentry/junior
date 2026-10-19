@@ -7,6 +7,7 @@ import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import { logInfo } from "@/chat/logging";
 import { automationRevision } from "@/chat/automations/revision";
 import { editScheduledAutomation } from "../edit";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { moveTaskOutcomes, resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
@@ -112,7 +113,10 @@ export function createSlackScheduleUpdateAutomationTool(
       const moveDestination = input.destination != null;
       const requestedDestination = activeDestination;
       const alreadyHere = sameDestination(lookup, activeDestination);
-      const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
+      const isCreator = isRequesterAutomationCreator(
+        await context.users.resolveActor(),
+        lookup,
+      );
 
       if (!alreadyHere && !moveDestination) {
         throwToolInputError(
@@ -216,7 +220,7 @@ export function createSlackScheduleUpdateAutomationTool(
         return scheduleAutomationToolResult(
           context.conversationId,
           lookup,
-          actor.slackUserId,
+          isCreator,
         );
       }
 
@@ -235,7 +239,7 @@ export function createSlackScheduleUpdateAutomationTool(
       return scheduleAutomationToolResult(
         context.conversationId,
         committed,
-        actor.slackUserId,
+        isCreator,
       );
     },
   });

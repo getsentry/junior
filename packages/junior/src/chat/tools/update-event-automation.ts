@@ -23,6 +23,7 @@ import {
   writableEventAutomation,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -110,7 +111,10 @@ export function createUpdateEventAutomationTool(
         input.automationId,
       );
       const { actor } = requireEventAutomationSlackContext(context);
-      const isCreator = actor.userId === current.createdBy.slackUserId;
+      const isCreator = isRequesterAutomationCreator(
+        await context.resolveActorIdentity?.(),
+        current,
+      );
       const edits =
         input.title !== undefined ||
         input.instruction !== undefined ||
@@ -173,7 +177,7 @@ export function createUpdateEventAutomationTool(
         context.conversationId,
         saved,
         catalog,
-        actor.userId,
+        isCreator,
       );
     },
   });

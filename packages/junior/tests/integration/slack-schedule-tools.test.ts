@@ -1105,10 +1105,6 @@ describe("Slack schedule tools", () => {
       readScheduledAutomation(created.automation.id),
     ).resolves.toMatchObject({
       status: "deleted",
-      executionActor: {
-        platform: "system",
-        name: "scheduled-automation",
-      },
       task: {
         text: "Team-owned digest: Summarize open scheduler issues.",
       },

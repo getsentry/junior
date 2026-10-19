@@ -234,7 +234,7 @@ export function eventAutomationTriggerAvailable(
 export function compactEventAutomation(
   task: StoredEventAutomation,
   catalog: EventCatalog,
-  requesterSlackUserId?: string,
+  isCreator: boolean,
 ) {
   return compactEventAutomationResultSchema.parse({
     id: task.id,
@@ -253,7 +253,7 @@ export function compactEventAutomation(
       available: eventAutomationTriggerAvailable(task, catalog),
     },
     credentialMode: task.credentialMode,
-    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
+    isCreator,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
       (outcome) => ({
         action: outcome.action,
@@ -275,13 +275,9 @@ export async function eventAutomationToolResult(
   conversationId: string,
   task: StoredEventAutomation,
   catalog: EventCatalog,
-  requesterSlackUserId: string,
+  isCreator: boolean,
 ) {
-  const automation = compactEventAutomation(
-    task,
-    catalog,
-    requesterSlackUserId,
-  );
+  const automation = compactEventAutomation(task, catalog, isCreator);
   const filters = Object.entries(task.trigger.match ?? {}).map(
     ([key, value]) => `${key} = ${JSON.stringify(value)}`,
   );

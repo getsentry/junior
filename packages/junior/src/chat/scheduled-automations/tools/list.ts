@@ -2,6 +2,7 @@ import {
   parseRequiredSlackChannelIdParam,
   slackChannelIdParam,
 } from "@/chat/slack/id-param";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -63,7 +64,7 @@ export function createSlackScheduleListAutomationsTool(
     outputSchema: scheduleListToolResultSchema,
     execute: async (input) => {
       const destination = requireActiveChannel(context);
-      const actor = requireActor(context, destination);
+      requireActor(context, destination);
 
       let channelId: string | undefined;
       if (input.channel_id != null) {
@@ -81,6 +82,7 @@ export function createSlackScheduleListAutomationsTool(
         Boolean(query) ||
         (channelId !== undefined && channelId !== destination.channelId);
 
+      const requester = await context.users.resolveActor();
       const matching = (
         await listScheduledAutomationsForTeam(getDb(), destination.teamId)
       )
@@ -98,7 +100,7 @@ export function createSlackScheduleListAutomationsTool(
           if (
             crossConversation &&
             !sameDestination(task, destination) &&
-            task.createdBy.slackUserId !== actor.slackUserId
+            !isRequesterAutomationCreator(requester, task)
           ) {
             return false;
           }
@@ -112,7 +114,9 @@ export function createSlackScheduleListAutomationsTool(
         );
       const visible = matching
         .slice(0, MAX_LISTED_TASKS)
-        .map((task) => compactTask(task, actor.slackUserId));
+        .map((task) =>
+          compactTask(task, isRequesterAutomationCreator(requester, task)),
+        );
 
       return scheduleListToolResult({
         automations: visible,
