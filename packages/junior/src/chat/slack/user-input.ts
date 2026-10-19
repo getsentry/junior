@@ -6,6 +6,7 @@ import type {
   ModalView,
   PlainTextOption,
 } from "@slack/types";
+import { z } from "zod";
 import {
   escapeSlackMrkdwnText,
   normalizeSlackReplyMarkdown,
@@ -19,8 +20,7 @@ import {
   type UserInputRequest,
 } from "@/chat/tools/runtime/user-input-request";
 
-/** Block id of the actions block that holds the controls of a request. */
-export const SLACK_USER_INPUT_BLOCK_ID = "junior_user_input";
+const CONTROLS_BLOCK_ID = "junior_user_input";
 /** Callback id of the modal form that answers a request. */
 export const SLACK_USER_INPUT_VIEW_ID = "junior_user_input";
 const ACTION_ID_PREFIX = "junior_user_input:";
@@ -42,20 +42,25 @@ function plainText(text: string) {
   return { type: "plain_text" as const, text, emoji: true };
 }
 
-function describeRequest(request: UserInputRequest): string[] {
+/** The question and a short list of what to answer, in Slack markdown. */
+function slackUserInputText(request: UserInputRequest): string {
   const buttonField = buttonUserInputField(request);
-  if (buttonField) {
-    return buttonField.options
-      .filter((option) => option.description)
-      .map((option) => `- **${option.label}**: ${option.description}`);
-  }
-  return request.fields.map((field) => {
-    const detail =
-      field.kind === "text"
-        ? "short answer"
-        : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map((option) => option.label).join(", ")}`;
-    return `- **${field.label}** (${detail})${field.description ? `: ${field.description}` : ""}`;
-  });
+  const notes = buttonField
+    ? buttonField.options
+        .filter((option) => option.description)
+        .map((option) => `- **${option.label}**: ${option.description}`)
+    : request.fields.map((field) => {
+        const detail =
+          field.kind === "text"
+            ? "short answer"
+            : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map((option) => option.label).join(", ")}`;
+        return `- **${field.label}** (${detail})${field.description ? `: ${field.description}` : ""}`;
+      });
+  return normalizeSlackReplyMarkdown(
+    [request.question, ...(notes.length ? [notes.join("\n")] : [])].join(
+      "\n\n",
+    ),
+  );
 }
 
 /**
@@ -68,12 +73,7 @@ export function buildSlackUserInputMessage(request: UserInputRequest): {
   blocks: KnownBlock[];
   text: string;
 } {
-  const notes = describeRequest(request);
-  const text = normalizeSlackReplyMarkdown(
-    [request.question, ...(notes.length ? [notes.join("\n")] : [])].join(
-      "\n\n",
-    ),
-  );
+  const text = slackUserInputText(request);
   const buttonField = buttonUserInputField(request);
   const elements: Button[] = buttonField
     ? [
@@ -102,7 +102,7 @@ export function buildSlackUserInputMessage(request: UserInputRequest): {
       ];
   const actions: ActionsBlock = {
     type: "actions",
-    block_id: SLACK_USER_INPUT_BLOCK_ID,
+    block_id: CONTROLS_BLOCK_ID,
     elements,
   };
   return { blocks: [{ type: "markdown", text }, actions], text };
@@ -116,12 +116,14 @@ export function slackUserInputAction(
   return actionId?.startsWith(CHOICE_ACTION_ID_PREFIX) ? "choice" : undefined;
 }
 
+const formTargetSchema = z.object({
+  channelId: z.string(),
+  messageTs: z.string(),
+  threadTs: z.string(),
+});
+
 /** Slack message that a modal form answers. Kept in `private_metadata`. */
-export interface SlackUserInputFormTarget {
-  channelId: string;
-  messageTs: string;
-  threadTs: string;
-}
+export type SlackUserInputFormTarget = z.output<typeof formTargetSchema>;
 
 function toOption(option: {
   description?: string;
@@ -160,7 +162,7 @@ export function buildSlackUserInputModal(
         ? {
             type: "plain_text_input",
             action_id: VALUE_ACTION_ID,
-            max_length: USER_INPUT_LIMITS.maxOtherChars,
+            max_length: USER_INPUT_LIMITS.maxTextChars,
             multiline: true,
           }
         : field.kind === "choice"
@@ -193,7 +195,7 @@ export function buildSlackUserInputModal(
         element: {
           type: "plain_text_input",
           action_id: VALUE_ACTION_ID,
-          max_length: USER_INPUT_LIMITS.maxOtherChars,
+          max_length: USER_INPUT_LIMITS.maxTextChars,
           multiline: true,
         },
       },
@@ -206,17 +208,10 @@ export function parseSlackUserInputFormTarget(
   privateMetadata: string | undefined,
 ): SlackUserInputFormTarget | undefined {
   try {
-    const parsed: unknown = JSON.parse(privateMetadata ?? "");
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const { channelId, messageTs, threadTs } = parsed as Record<
-      string,
-      unknown
-    >;
-    return typeof channelId === "string" &&
-      typeof messageTs === "string" &&
-      typeof threadTs === "string"
-      ? { channelId, messageTs, threadTs }
-      : undefined;
+    const parsed = formTargetSchema.safeParse(
+      JSON.parse(privateMetadata ?? ""),
+    );
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -303,16 +298,12 @@ export function buildClosedSlackUserInputMessage(args: {
   note: string;
   request: UserInputRequest;
 }): { blocks: KnownBlock[]; text: string } {
-  const message = buildSlackUserInputMessage(args.request);
+  const text = slackUserInputText(args.request);
   return {
     blocks: [
-      ...message.blocks.filter(
-        (block) =>
-          !("block_id" in block) ||
-          block.block_id !== SLACK_USER_INPUT_BLOCK_ID,
-      ),
+      { type: "markdown", text },
       { type: "context", elements: [{ type: "mrkdwn", text: args.note }] },
     ],
-    text: message.text,
+    text,
   };
 }

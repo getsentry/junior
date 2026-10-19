@@ -157,26 +157,21 @@ describe("requestUserInput in Slack", () => {
     });
   });
 
-  it("rejects choices that people cannot tell apart", async () => {
-    postSlackMessage.mockReset();
-    const execute = slackTool();
+  it("rejects choices that people cannot tell apart", () => {
+    const tool = createRequestUserInputTool();
 
-    await expect(
-      execute(
-        {
-          question: "Pick one",
-          fields: [
-            {
-              id: "pick",
-              kind: "choice",
-              label: "Pick",
-              options: [{ label: "Yes" }, { label: "yes" }],
-            },
-          ],
-        },
-        OPTIONS,
-      ),
-    ).rejects.toThrow(ToolInputError);
-    expect(postSlackMessage).not.toHaveBeenCalled();
+    expect(() =>
+      tool.prepareArguments?.({
+        question: "Pick one",
+        fields: [
+          {
+            id: "pick",
+            kind: "choice",
+            label: "Pick",
+            options: [{ label: "Yes" }, { label: "yes" }],
+          },
+        ],
+      }),
+    ).toThrow(ToolInputError);
   });
 });

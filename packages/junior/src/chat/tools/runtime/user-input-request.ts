@@ -10,7 +10,7 @@ export const USER_INPUT_LIMITS = {
   maxFields: 4,
   maxLabelChars: 75,
   maxOptions: 10,
-  maxOtherChars: 3_000,
+  maxTextChars: 3_000,
   maxQuestionChars: 3_000,
   minOptions: 2,
 } as const;
@@ -53,7 +53,7 @@ const optionsSchema = z
   .max(USER_INPUT_LIMITS.maxOptions)
   .describe("Choices in display order.");
 
-export const userInputFieldSchema = z.discriminatedUnion("kind", [
+const userInputFieldSchema = z.discriminatedUnion("kind", [
   z.object({
     ...fieldBase,
     kind: z.literal("choice").describe("The person picks one option."),
@@ -72,23 +72,44 @@ export const userInputFieldSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const userInputRequestSchema = z.object({
-  question: z
-    .string()
-    .trim()
-    .min(1)
-    .max(USER_INPUT_LIMITS.maxQuestionChars)
-    .describe(
-      "The question, in markdown. Include the facts the person needs to decide.",
-    ),
-  fields: z
-    .array(userInputFieldSchema)
-    .min(1)
-    .max(USER_INPUT_LIMITS.maxFields)
-    .describe(
-      "What to ask, in display order. Use one `choice` field for a simple decision.",
-    ),
-});
+export const userInputRequestSchema = z
+  .object({
+    question: z
+      .string()
+      .trim()
+      .min(1)
+      .max(USER_INPUT_LIMITS.maxQuestionChars)
+      .describe(
+        "The question, in markdown. Include the facts the person needs to decide.",
+      ),
+    fields: z
+      .array(userInputFieldSchema)
+      .min(1)
+      .max(USER_INPUT_LIMITS.maxFields)
+      .describe(
+        "What to ask, in display order. Use one `choice` field for a simple decision.",
+      ),
+  })
+  .superRefine((request, context) => {
+    const ids = new Set<string>();
+    for (const field of request.fields) {
+      if (ids.has(field.id)) {
+        context.addIssue({
+          code: "custom",
+          message: "Each field needs a different id.",
+        });
+      }
+      ids.add(field.id);
+      if (field.kind === "text") continue;
+      const labels = field.options.map((option) => option.label.toLowerCase());
+      if (new Set(labels).size !== labels.length) {
+        context.addIssue({
+          code: "custom",
+          message: "Each choice of a field needs a different label.",
+        });
+      }
+    }
+  });
 
 /** One field of a user input request. */
 export type UserInputField = z.output<typeof userInputFieldSchema>;
@@ -105,26 +126,6 @@ export interface UserInputAnswer {
   other?: string;
   requestId: string;
   values: Record<string, string[]>;
-}
-
-/**
- * Return the problem that makes a parsed request unusable, such as two
- * fields with the same id, or undefined when the request is valid.
- */
-export function findUserInputRequestProblem(
-  request: UserInputRequest,
-): string | undefined {
-  const ids = new Set<string>();
-  for (const field of request.fields) {
-    if (ids.has(field.id)) return "Each field needs a different id.";
-    ids.add(field.id);
-    if (field.kind === "text") continue;
-    const labels = field.options.map((option) => option.label.toLowerCase());
-    if (new Set(labels).size !== labels.length) {
-      return "Each choice of a field needs a different label.";
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -155,7 +156,7 @@ export function normalizeUserInputAnswer(
       .map((value) => value.trim())
       .filter(Boolean);
     if (field.kind === "text") {
-      const text = raw.join("\n").slice(0, USER_INPUT_LIMITS.maxOtherChars);
+      const text = raw.join("\n").slice(0, USER_INPUT_LIMITS.maxTextChars);
       if (text) values[field.id] = [text];
       continue;
     }
@@ -165,7 +166,7 @@ export function normalizeUserInputAnswer(
     const kept = field.kind === "choice" ? picked.slice(0, 1) : picked;
     if (kept.length) values[field.id] = kept;
   }
-  const other = answer.other?.trim().slice(0, USER_INPUT_LIMITS.maxOtherChars);
+  const other = answer.other?.trim().slice(0, USER_INPUT_LIMITS.maxTextChars);
   return {
     requestId: answer.requestId,
     values,

@@ -111,11 +111,12 @@ async function answerSlackUserInput(args: {
     args.payload.user?.id,
     "Slack user input payload",
   );
+  const { channelId, messageTs } = args;
   const open = await getOpenSlackUserInput(args.state, {
-    channelId: args.channelId,
+    channelId,
     threadTs: args.threadTs,
   });
-  if (!open || open.messageTs !== args.messageTs) {
+  if (!open || open.messageTs !== messageTs) {
     return;
   }
   const answer = args.answer(open);
@@ -131,7 +132,6 @@ async function answerSlackUserInput(args: {
   ) {
     return;
   }
-  const { channelId, messageTs } = args;
   if (
     !(await claimSlackUserInput(args.state, { channelId, messageTs, userId }))
   ) {

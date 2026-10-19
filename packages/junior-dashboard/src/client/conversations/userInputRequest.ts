@@ -10,11 +10,6 @@ const REQUEST_USER_INPUT_TOOL_NAME = "requestUserInput";
 /** A request from Junior that still waits for an answer. */
 export type OpenUserInputRequest = UserInputRequest & { toolCallId: string };
 
-function parseRequestInput(input: unknown): UserInputRequest | undefined {
-  const parsed = userInputRequestSchema.safeParse(input);
-  return parsed.success ? parsed.data : undefined;
-}
-
 /**
  * Find the latest `requestUserInput` call that no user message answers yet.
  * Any later user message is the answer, whether it is a submitted form or
@@ -49,8 +44,12 @@ export function openUserInputRequest(
         continue;
       }
       completed.add(call.toolCallId);
-      const request = parseRequestInput(inputs.get(call.toolCallId));
-      if (request) open = { ...request, toolCallId: call.toolCallId };
+      const request = userInputRequestSchema.safeParse(
+        inputs.get(call.toolCallId),
+      );
+      if (request.success) {
+        open = { ...request.data, toolCallId: call.toolCallId };
+      }
     }
   }
   return open;

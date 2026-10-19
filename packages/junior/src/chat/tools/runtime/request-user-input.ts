@@ -2,9 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
-  findUserInputRequestProblem,
   userInputRequestSchema,
   type UserInputRequest,
 } from "@/chat/tools/runtime/user-input-request";
@@ -38,8 +36,6 @@ export function createRequestUserInputTool(show?: ShowUserInputRequest) {
     inputSchema: userInputRequestSchema,
     outputSchema: juniorToolOutputSchema,
     execute: async (request, options) => {
-      const problem = findUserInputRequestProblem(request);
-      if (problem) throw new ToolInputError(problem);
       const requestId = options.toolCallId ?? randomUUID();
       const shown = show ? await show(request, requestId) : {};
       return { ...shown, request_id: requestId, status: "waiting_for_answer" };
