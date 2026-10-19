@@ -1,23 +1,25 @@
-import { logException } from "@/chat/logging";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { getConnectedStateContext } from "@/chat/state/adapter";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { buildSlackUserInputMessage } from "@/chat/slack/user-input";
-import { recordOpenSlackUserInput } from "@/chat/slack/user-input-state";
+import {
+  closeSlackUserInput,
+  recordOpenSlackUserInput,
+} from "@/chat/slack/user-input-state";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ShowUserInputRequest } from "@/chat/tools/runtime/request-user-input";
 import type { ToolState } from "@/chat/tools/types";
 
 /**
- * Show user input requests as a button message in the active Slack thread.
- * A click comes back as Slack input from the person who clicked.
+ * Show user input requests as a message with buttons in the active Slack
+ * thread. An answer comes back as Slack input from the person who answered.
  */
 export function createSlackUserInputShow(
   context: SlackToolContext,
   state: ToolState,
 ): ShowUserInputRequest {
-  return async (request) => {
+  return async (request, requestId) => {
     const channelId = context.locationChannelId;
     const threadTs = context.threadTs ?? context.messageTs;
     if (!threadTs) {
@@ -46,20 +48,20 @@ export function createSlackUserInputShow(
       text: message.text,
       threadTs,
     });
-    // A typed reply to Junior closes this question too. The question is
-    // already posted, so a failure here only leaves its buttons active.
-    try {
-      const { stateAdapter } = await getConnectedStateContext();
-      await recordOpenSlackUserInput(stateAdapter, {
-        channelId,
-        messageTs: posted.ts,
-        request,
-        threadTs,
-      });
-    } catch (error) {
-      logException(error, "slack.user_input.record_open.failed", {
-        "app.slack.channel_id": channelId,
-        "app.slack.message_ts": posted.ts,
+    // Clicks and forms read the open request to build the answer, so a
+    // failure here must reach the model: the posted controls do nothing.
+    const { stateAdapter } = await getConnectedStateContext();
+    const replaced = await recordOpenSlackUserInput(stateAdapter, {
+      channelId,
+      messageTs: posted.ts,
+      request,
+      requestId,
+      threadTs,
+    });
+    if (replaced) {
+      await closeSlackUserInput({
+        note: "Replaced by a newer question.",
+        open: replaced,
       });
     }
     const response = { channel_id: channelId, message_ts: posted.ts };

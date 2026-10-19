@@ -1,7 +1,7 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { setSpanAttributes } from "@/chat/logging";
 import { captureSlackPostWarning } from "./post-warning";
-import type { KnownBlock } from "@slack/types";
+import type { KnownBlock, ModalView } from "@slack/types";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
@@ -245,6 +245,26 @@ export async function updateSlackMessage(input: {
         "app.slack.message_ts": timestamp,
       },
     },
+  );
+}
+
+/**
+ * Open a modal for the person who clicked. A `trigger_id` works once and
+ * only for three seconds, so this makes one attempt.
+ * https://docs.slack.dev/reference/methods/views.open
+ */
+export async function openSlackModal(input: {
+  triggerId: string;
+  view: ModalView;
+}): Promise<void> {
+  await withSlackRetries(
+    () =>
+      getSlackClient().views.open({
+        trigger_id: input.triggerId,
+        view: input.view,
+      }),
+    1,
+    { action: "views.open" },
   );
 }
 

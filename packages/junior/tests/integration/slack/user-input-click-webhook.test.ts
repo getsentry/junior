@@ -3,8 +3,8 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { Message, type SerializedMessage } from "chat";
 import { closeDb } from "@/chat/db";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
-import { buildSlackUserInputMessage } from "@/chat/slack/user-input";
 import { recordOpenSlackUserInput } from "@/chat/slack/user-input-state";
+import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -24,38 +24,74 @@ const ORIGINAL_ENV = { ...process.env };
 const THREAD_TS = "1712345.0001";
 const QUESTION_TS = "1712345.0002";
 
-const QUESTION = {
+const REQUEST_ID = "toolu_ship";
+
+const QUESTION: UserInputRequest = {
   question: "Ship release 1.2.3?",
-  options: [{ label: "Ship it" }, { label: "Hold" }],
+  fields: [
+    {
+      id: "decision",
+      kind: "choice",
+      label: "Decision",
+      options: [{ label: "Ship it" }, { label: "Hold" }],
+    },
+  ],
 };
+
+const FORM_QUESTION: UserInputRequest = {
+  question: "How should I fix the merge conflict?",
+  fields: [
+    {
+      id: "approach",
+      kind: "choice",
+      label: "Approach",
+      options: [{ label: "Rebase" }, { label: "Merge" }],
+    },
+    {
+      id: "checks",
+      kind: "multi_choice",
+      label: "Checks",
+      options: [{ label: "Lint" }, { label: "Tests" }, { label: "Types" }],
+    },
+  ],
+};
+
+function blockActionPayload(args: {
+  action: Record<string, unknown>;
+  userId: string;
+}): Record<string, unknown> {
+  return {
+    type: "block_actions",
+    team: { id: "T123" },
+    trigger_id: "trigger-1",
+    user: { id: args.userId, team_id: "T123" },
+    channel: { id: "C123" },
+    message: { ts: QUESTION_TS, thread_ts: THREAD_TS },
+    actions: [
+      { block_id: "junior_user_input", type: "button", ...args.action },
+    ],
+  };
+}
 
 function choiceClickPayload(args: {
   actionTs: string;
   userId: string;
 }): Record<string, unknown> {
-  const posted = buildSlackUserInputMessage(QUESTION);
-  return {
-    type: "block_actions",
-    team: { id: "T123" },
-    user: { id: args.userId, team_id: "T123" },
-    channel: { id: "C123" },
-    message: {
-      ts: QUESTION_TS,
-      thread_ts: THREAD_TS,
-      text: posted.text,
-      blocks: posted.blocks,
+  return blockActionPayload({
+    action: {
+      action_id: "junior_user_input:choice:0",
+      action_ts: args.actionTs,
+      value: "Ship it",
     },
-    actions: [
-      {
-        action_id: "junior_user_input:0",
-        action_ts: args.actionTs,
-        block_id: "junior_user_input",
-        text: { type: "plain_text", text: "Ship it" },
-        type: "button",
-        value: "Ship it",
-      },
-    ],
-  };
+    userId: args.userId,
+  });
+}
+
+function parsedUpdateBlocks(index = 0): unknown[] {
+  const blocks = slackApiOutbox.calls("chat.update")[index]?.params.blocks;
+  return typeof blocks === "string"
+    ? JSON.parse(blocks)
+    : (blocks as unknown[]);
 }
 
 describe("Slack webhook: user input clicks", () => {
@@ -79,13 +115,11 @@ describe("Slack webhook: user input clicks", () => {
       signingSecret: SLACK_SIGNING_SECRET,
     });
 
-    async function click(userId: string, actionTs: string) {
+    async function interact(payload: Record<string, unknown>) {
       const waitUntil = client.waitUntil();
       const response = await handleSlackWebhook({
         request: client.form(
-          new URLSearchParams({
-            payload: JSON.stringify(choiceClickPayload({ actionTs, userId })),
-          }),
+          new URLSearchParams({ payload: JSON.stringify(payload) }),
         ),
         waitUntil: waitUntil.fn,
         services: {
@@ -98,6 +132,9 @@ describe("Slack webhook: user input clicks", () => {
       expect(response.status).toBe(200);
       await waitUntil.flush();
     }
+
+    const click = (userId: string, actionTs: string) =>
+      interact(choiceClickPayload({ actionTs, userId }));
 
     async function reply(userId: string, ts: string, status = 200) {
       const waitUntil = client.waitUntil();
@@ -124,11 +161,24 @@ describe("Slack webhook: user input clicks", () => {
       await waitUntil.flush();
     }
 
-    return { click, queue, reply, state };
+    async function recordQuestion(request: UserInputRequest = QUESTION) {
+      // requestUserInput records the question when it posts it in Slack.
+      await state.connect();
+      await recordOpenSlackUserInput(state, {
+        channelId: "C123",
+        messageTs: QUESTION_TS,
+        request,
+        requestId: REQUEST_ID,
+        threadTs: THREAD_TS,
+      });
+    }
+
+    return { click, interact, queue, recordQuestion, reply, state };
   }
 
   it("sends the first clicked choice as the answer and closes the question", async () => {
-    const { click, queue, state } = clickHarness();
+    const { click, queue, recordQuestion, state } = clickHarness();
+    await recordQuestion();
 
     await click("U123", "1712345.0003");
     await click("U456", "1712345.0004");
@@ -140,7 +190,10 @@ describe("Slack webhook: user input clicks", () => {
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]).toMatchObject({
       delivery: "interrupt",
-      input: { authorId: "U123", text: "Ship it" },
+      input: {
+        authorId: "U123",
+        text: `Answer to request ${REQUEST_ID}:\nDecision (decision): Ship it`,
+      },
     });
     expect(queue.queuedMessages()).toHaveLength(1);
     // Every Slack timestamp reader resolves the question message.
@@ -160,10 +213,7 @@ describe("Slack webhook: user input clicks", () => {
 
     const updates = slackApiOutbox.calls("chat.update");
     expect(updates).toHaveLength(1);
-    const blocks = updates[0]?.params.blocks;
-    const parsedBlocks: unknown[] =
-      typeof blocks === "string" ? JSON.parse(blocks) : (blocks as unknown[]);
-    expect(parsedBlocks).toEqual([
+    expect(parsedUpdateBlocks()).toEqual([
       { type: "markdown", text: "Ship release 1.2.3?" },
       {
         type: "context",
@@ -177,7 +227,8 @@ describe("Slack webhook: user input clicks", () => {
   });
 
   it("keeps the first click when only the queue wake fails", async () => {
-    const { click, queue, state } = clickHarness();
+    const { click, queue, recordQuestion, state } = clickHarness();
+    await recordQuestion();
     queue.rejectSends();
 
     await click("U123", "1712345.0003");
@@ -194,22 +245,9 @@ describe("Slack webhook: user input clicks", () => {
     expect(slackApiOutbox.calls("chat.update")).toHaveLength(1);
   });
 
-  async function recordQuestion(
-    state: ReturnType<typeof clickHarness>["state"],
-  ) {
-    // requestUserInput records the question when it posts it in Slack.
-    await state.connect();
-    await recordOpenSlackUserInput(state, {
-      channelId: "C123",
-      messageTs: QUESTION_TS,
-      request: QUESTION,
-      threadTs: THREAD_TS,
-    });
-  }
-
   it("closes the question when a person replies to Junior instead", async () => {
-    const { click, reply, state } = clickHarness();
-    await recordQuestion(state);
+    const { click, recordQuestion, reply, state } = clickHarness();
+    await recordQuestion();
 
     await reply("U456", "1712345.0003");
     await click("U123", "1712345.0004");
@@ -221,12 +259,8 @@ describe("Slack webhook: user input clicks", () => {
     // The typed reply is the answer. The later click must not add a Turn.
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]?.input.authorId).toBe("U456");
-    const updates = slackApiOutbox.calls("chat.update");
-    expect(updates).toHaveLength(1);
-    const blocks = updates[0]?.params.blocks;
-    const parsedBlocks: unknown[] =
-      typeof blocks === "string" ? JSON.parse(blocks) : (blocks as unknown[]);
-    expect(parsedBlocks).toEqual([
+    expect(slackApiOutbox.calls("chat.update")).toHaveLength(1);
+    expect(parsedUpdateBlocks()).toEqual([
       { type: "markdown", text: "Ship release 1.2.3?" },
       {
         type: "context",
@@ -236,8 +270,8 @@ describe("Slack webhook: user input clicks", () => {
   });
 
   it("keeps a typed reply as the answer when only the queue wake fails", async () => {
-    const { click, queue, reply, state } = clickHarness();
-    await recordQuestion(state);
+    const { click, queue, recordQuestion, reply, state } = clickHarness();
+    await recordQuestion();
     queue.rejectSends();
 
     // Slack retries the event, but the mailbox already saved the reply.
@@ -255,5 +289,84 @@ describe("Slack webhook: user input clicks", () => {
     expect(JSON.stringify(updates[0]?.params.blocks)).toContain(
       "<@U456> replied in the thread",
     );
+  });
+
+  it("answers a form request with the submitted values", async () => {
+    const { interact, recordQuestion, state } = clickHarness();
+    await recordQuestion(FORM_QUESTION);
+
+    await interact(
+      blockActionPayload({
+        action: {
+          action_id: "junior_user_input:open",
+          action_ts: "1712345.0003",
+        },
+        userId: "U123",
+      }),
+    );
+    const opened = slackApiOutbox.calls("views.open");
+    expect(opened).toHaveLength(1);
+    const view = opened[0]?.params.view;
+    const modal = (typeof view === "string" ? JSON.parse(view) : view) as {
+      blocks: Array<{ block_id: string }>;
+      private_metadata: string;
+    };
+    expect(modal.blocks.map((block) => block.block_id)).toEqual([
+      "field:approach",
+      "field:checks",
+      "other",
+    ]);
+
+    const submit = (userId: string, viewId: string) =>
+      interact({
+        type: "view_submission",
+        team: { id: "T123" },
+        user: { id: userId, team_id: "T123" },
+        view: {
+          id: viewId,
+          callback_id: "junior_user_input",
+          private_metadata: modal.private_metadata,
+          state: {
+            values: {
+              "field:approach": {
+                value: { selected_option: { value: "Rebase" } },
+              },
+              "field:checks": {
+                value: {
+                  selected_options: [{ value: "Tests" }, { value: "Lint" }],
+                },
+              },
+              other: { value: { value: "Keep the commit history." } },
+            },
+          },
+        },
+      });
+    await submit("U123", "V1");
+    await submit("U456", "V2");
+
+    const work = await getConversationWorkState({
+      conversationId: `slack:C123:${THREAD_TS}`,
+      state,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input).toMatchObject({
+      authorId: "U123",
+      text: [
+        `Answer to request ${REQUEST_ID}:`,
+        "Approach (approach): Rebase",
+        "Checks (checks): Lint, Tests",
+        "Other: Keep the commit history.",
+      ].join("\n"),
+    });
+    expect(slackApiOutbox.calls("chat.update")).toHaveLength(1);
+    expect(parsedUpdateBlocks().at(-1)).toEqual({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "<@U123> answered\n*Approach*: Rebase\n*Checks*: Lint, Tests\n*Other*: Keep the commit history.",
+        },
+      ],
+    });
   });
 });

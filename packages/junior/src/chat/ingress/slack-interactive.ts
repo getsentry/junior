@@ -8,16 +8,34 @@ import { logException, withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { parseSlackChannelId } from "@/chat/slack/ids";
-import { updateSlackMessage } from "@/chat/slack/outbound";
-import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+import { openSlackModal } from "@/chat/slack/outbound";
 import {
-  buildAnsweredSlackUserInputBlocks,
-  isSlackUserInputActionId,
+  parseSlackMessageTs,
+  slackMessageTsFromMs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
+import {
+  buildSlackUserInputModal,
+  parseSlackUserInputFormTarget,
+  parseSlackUserInputSubmission,
+  SLACK_USER_INPUT_VIEW_ID,
+  slackUserInputAction,
+  slackUserInputAnswerNote,
 } from "@/chat/slack/user-input";
 import {
   claimSlackUserInput,
+  closeSlackUserInput,
+  getOpenSlackUserInput,
   releaseSlackUserInput,
+  type OpenSlackUserInput,
 } from "@/chat/slack/user-input-state";
+import {
+  buttonUserInputField,
+  formatUserInputAnswer,
+  isEmptyUserInputAnswer,
+  normalizeUserInputAnswer,
+  type UserInputAnswer,
+} from "@/chat/tools/runtime/user-input-request";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import type { SlackInteractivePayload } from "./slack-payload";
 
@@ -71,27 +89,38 @@ async function handleAppHomeDisconnect(args: {
 }
 
 /**
- * Turn the first click on a choice of a user input request into Slack input
- * from the person who clicked. The input text is the choice label, the same
- * answer as typing it. Later clicks on the same question do nothing.
+ * Save the first answer to the open request of a Slack thread as Slack input
+ * from the person who answered. The input text is the formatted answer, so
+ * the model reads one format on every surface. Later answers to the same
+ * request do nothing. A stale request, such as one that a newer request
+ * replaced, also does nothing.
  */
-async function handleUserInputClick(args: {
-  action: NonNullable<SlackInteractivePayload["actions"]>[number];
+async function answerSlackUserInput(args: {
   adapter: SlackAdapter;
+  answer: (open: OpenSlackUserInput) => UserInputAnswer;
+  channelId: string;
+  inputTs: SlackMessageTs;
+  messageId: string;
+  messageTs: SlackMessageTs;
   payload: SlackInteractivePayload;
   persistMessage: (message: Message) => Promise<void>;
   state: StateAdapter;
+  threadTs: SlackMessageTs;
 }): Promise<void> {
   const userId = requireSlackPayloadUserId(
     args.payload.user?.id,
-    "Slack user input click payload",
+    "Slack user input payload",
   );
-  const channelId = parseSlackChannelId(args.payload.channel?.id);
-  const messageTs = parseSlackMessageTs(args.payload.message?.ts);
-  const actionTs = parseSlackMessageTs(args.action.action_ts);
-  const answer = args.action.value?.trim();
-  if (!channelId || !messageTs || !actionTs || !answer) {
-    throw new Error("Slack user input click payload is incomplete");
+  const open = await getOpenSlackUserInput(args.state, {
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+  });
+  if (!open || open.messageTs !== args.messageTs) {
+    return;
+  }
+  const answer = args.answer(open);
+  if (isEmptyUserInputAnswer(answer)) {
+    return;
   }
   const userTeam = args.payload.user?.team_id;
   if (
@@ -102,35 +131,33 @@ async function handleUserInputClick(args: {
   ) {
     return;
   }
-
+  const { channelId, messageTs } = args;
   if (
     !(await claimSlackUserInput(args.state, { channelId, messageTs, userId }))
   ) {
     return;
   }
 
-  const threadTs =
-    parseSlackMessageTs(args.payload.message?.thread_ts) ?? messageTs;
   const event = {
     type: "message",
     channel: channelId,
     team: args.payload.team?.id,
-    text: answer,
-    thread_ts: threadTs,
-    ts: actionTs,
+    text: formatUserInputAnswer(open.request, answer),
+    thread_ts: args.threadTs,
+    ts: args.inputTs,
     user: userId,
     user_team: userTeam,
   };
   const parsed = args.adapter.parseMessage(event);
-  // The click has no Slack message of its own. Give it a non-timestamp id so
-  // every Slack timestamp reader, such as reactions, the actor `slack_ts`, and
-  // attachment lookup, resolves `raw.ts`: the question message. `action_ts`
-  // keeps the id unique per click and sets the time of the input.
+  // The answer has no Slack message of its own. Give it a non-timestamp id
+  // so every Slack timestamp reader, such as reactions, the actor
+  // `slack_ts`, and attachment lookup, resolves `raw.ts`: the request
+  // message. `inputTs` sets the time of the input.
   const message = new Message({
     attachments: parsed.attachments,
     author: parsed.author,
     formatted: parsed.formatted,
-    id: `slack-user-input-click:${actionTs}`,
+    id: args.messageId,
     isMention: true,
     links: parsed.links,
     metadata: parsed.metadata,
@@ -142,32 +169,119 @@ async function handleUserInputClick(args: {
   try {
     await args.persistMessage(message);
   } catch (error) {
-    // Junior did not save the click, so let the person click again.
+    // Junior did not save the answer, so let the person answer again.
     await releaseSlackUserInput(args.state, { channelId, messageTs });
     throw error;
   }
 
-  try {
-    await updateSlackMessage({
-      blocks: buildAnsweredSlackUserInputBlocks({
-        answer,
-        blocks: args.payload.message?.blocks ?? [],
-        userId,
-      }),
-      channelId,
-      text: args.payload.message?.text?.trim() || answer,
-      timestamp: messageTs,
-    });
-  } catch (error) {
-    // The click is already saved. A stale button row is only cosmetic.
-    logException(error, "slack.user_input.answer_update.failed", {
-      "app.slack.channel_id": channelId,
-      "app.slack.message_ts": messageTs,
-    });
-  }
+  await closeSlackUserInput({
+    note: slackUserInputAnswerNote({ answer, request: open.request, userId }),
+    open,
+  });
 }
 
-/** Handle Slack block actions from App Home and from user input requests. */
+/** Read the request message and thread of a block action. */
+function blockActionTarget(payload: SlackInteractivePayload) {
+  const channelId = parseSlackChannelId(payload.channel?.id);
+  const messageTs = parseSlackMessageTs(payload.message?.ts);
+  if (!channelId || !messageTs) {
+    throw new Error("Slack user input payload is incomplete");
+  }
+  const threadTs = parseSlackMessageTs(payload.message?.thread_ts) ?? messageTs;
+  return { channelId, messageTs, threadTs };
+}
+
+/** Answer a one-click request with the clicked choice. */
+async function handleUserInputChoice(args: {
+  action: NonNullable<SlackInteractivePayload["actions"]>[number];
+  adapter: SlackAdapter;
+  payload: SlackInteractivePayload;
+  persistMessage: (message: Message) => Promise<void>;
+  state: StateAdapter;
+}): Promise<void> {
+  const target = blockActionTarget(args.payload);
+  const actionTs = parseSlackMessageTs(args.action.action_ts);
+  const choice = args.action.value?.trim();
+  if (!actionTs || !choice) {
+    throw new Error("Slack user input click payload is incomplete");
+  }
+  await answerSlackUserInput({
+    ...target,
+    adapter: args.adapter,
+    answer: (open) => {
+      const field = buttonUserInputField(open.request);
+      return normalizeUserInputAnswer(open.request, {
+        requestId: open.requestId,
+        values: field ? { [field.id]: [choice] } : {},
+      });
+    },
+    inputTs: actionTs,
+    messageId: `slack-user-input-answer:${actionTs}`,
+    payload: args.payload,
+    persistMessage: args.persistMessage,
+    state: args.state,
+  });
+}
+
+/** Open the answer form of the open request for the person who clicked. */
+async function handleUserInputOpenForm(args: {
+  payload: SlackInteractivePayload;
+  state: StateAdapter;
+}): Promise<void> {
+  const target = blockActionTarget(args.payload);
+  const triggerId = args.payload.trigger_id;
+  if (!triggerId) {
+    throw new Error("Slack user input form payload is missing a trigger id");
+  }
+  const open = await getOpenSlackUserInput(args.state, target);
+  if (!open || open.messageTs !== target.messageTs) {
+    return;
+  }
+  await openSlackModal({
+    triggerId,
+    view: buildSlackUserInputModal(open.request, target),
+  });
+}
+
+/** Answer a request with the values of its submitted form. */
+async function handleUserInputSubmission(args: {
+  adapter: SlackAdapter;
+  payload: SlackInteractivePayload;
+  persistMessage: (message: Message) => Promise<void>;
+  state: StateAdapter;
+}): Promise<void> {
+  const view = args.payload.view;
+  const formTarget = parseSlackUserInputFormTarget(view?.private_metadata);
+  const channelId = parseSlackChannelId(formTarget?.channelId);
+  const messageTs = parseSlackMessageTs(formTarget?.messageTs);
+  const threadTs = parseSlackMessageTs(formTarget?.threadTs);
+  if (!view?.id || !channelId || !messageTs || !threadTs) {
+    throw new Error("Slack user input form submission is incomplete");
+  }
+  const inputTs = slackMessageTsFromMs(Date.now());
+  await answerSlackUserInput({
+    adapter: args.adapter,
+    answer: (open) =>
+      parseSlackUserInputSubmission({
+        request: open.request,
+        requestId: open.requestId,
+        values: view.state?.values ?? {},
+      }),
+    channelId,
+    inputTs,
+    messageId: `slack-user-input-answer:${view.id}`,
+    messageTs,
+    payload: args.payload,
+    persistMessage: args.persistMessage,
+    state: args.state,
+    threadTs,
+  });
+}
+
+/**
+ * Handle Slack interactions from App Home and from user input requests:
+ * block actions and submitted user input forms.
+ */
 export async function handleSlackInteractivePayload(args: {
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
@@ -175,28 +289,43 @@ export async function handleSlackInteractivePayload(args: {
   state: StateAdapter;
   userTokenStore: UserTokenStore;
 }): Promise<void> {
+  const spanAttributes = { userId: args.payload.user?.id?.trim() || undefined };
+  if (
+    args.payload.type === "view_submission" &&
+    args.payload.view?.callback_id === SLACK_USER_INPUT_VIEW_ID
+  ) {
+    await withSpan(
+      "chat.slack_user_input_submit",
+      "chat.slack_user_input_submit",
+      spanAttributes,
+      () => handleUserInputSubmission(args),
+    );
+    return;
+  }
   if (args.payload.type !== "block_actions") {
     return;
   }
 
-  const userInputAction = args.payload.actions?.find((candidate) =>
-    isSlackUserInputActionId(candidate.action_id),
-  );
-  if (userInputAction) {
-    await withSpan(
-      "chat.slack_user_input_click",
-      "chat.slack_user_input_click",
-      { userId: args.payload.user?.id?.trim() || undefined },
-      () =>
-        handleUserInputClick({
-          action: userInputAction,
-          adapter: args.adapter,
-          payload: args.payload,
-          persistMessage: args.persistMessage,
-          state: args.state,
-        }),
-    );
-    return;
+  for (const action of args.payload.actions ?? []) {
+    const kind = slackUserInputAction(action.action_id);
+    if (kind === "choice") {
+      await withSpan(
+        "chat.slack_user_input_click",
+        "chat.slack_user_input_click",
+        spanAttributes,
+        () => handleUserInputChoice({ ...args, action }),
+      );
+      return;
+    }
+    if (kind === "open_form") {
+      await withSpan(
+        "chat.slack_user_input_open_form",
+        "chat.slack_user_input_open_form",
+        spanAttributes,
+        () => handleUserInputOpenForm(args),
+      );
+      return;
+    }
   }
 
   const disconnect = args.payload.actions?.find(

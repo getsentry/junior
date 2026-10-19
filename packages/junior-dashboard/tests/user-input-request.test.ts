@@ -7,9 +7,16 @@ const createdAt = "2026-10-15T00:00:00.000Z";
 
 const INPUT = {
   question: "Use my fix for the merge conflict?",
-  options: [
-    { label: "Accept", description: "Push the fix." },
-    { label: "Decline" },
+  fields: [
+    {
+      id: "decision",
+      kind: "choice",
+      label: "Decision",
+      options: [
+        { label: "Accept", description: "Push the fix." },
+        { label: "Decline" },
+      ],
+    },
   ],
 };
 

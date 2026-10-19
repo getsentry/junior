@@ -1,39 +1,24 @@
-import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+import {
+  userInputRequestSchema,
+  type ConversationReportEvent,
+  type UserInputRequest,
+} from "@sentry/junior/api/schema";
 
-/** Model-facing name of Junior's tool that asks a person to pick a choice. */
+/** Model-facing name of Junior's tool that asks a person for input. */
 const REQUEST_USER_INPUT_TOOL_NAME = "requestUserInput";
 
-/** A question from Junior that still waits for an answer. */
-export type OpenUserInputRequest = {
-  options: Array<{ description?: string; label: string }>;
-  question: string;
-  toolCallId: string;
-};
+/** A request from Junior that still waits for an answer. */
+export type OpenUserInputRequest = UserInputRequest & { toolCallId: string };
 
-function parseRequestInput(
-  input: unknown,
-): Omit<OpenUserInputRequest, "toolCallId"> | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const { options, question } = input as Record<string, unknown>;
-  if (typeof question !== "string" || !Array.isArray(options)) return undefined;
-  const parsed: OpenUserInputRequest["options"] = [];
-  for (const option of options) {
-    if (typeof option !== "object" || option === null) return undefined;
-    const { description, label } = option as Record<string, unknown>;
-    if (typeof label !== "string" || !label.trim()) return undefined;
-    parsed.push({
-      label: label.trim(),
-      ...(typeof description === "string" && description.trim()
-        ? { description: description.trim() }
-        : undefined),
-    });
-  }
-  return parsed.length > 0 ? { options: parsed, question } : undefined;
+function parseRequestInput(input: unknown): UserInputRequest | undefined {
+  const parsed = userInputRequestSchema.safeParse(input);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /**
  * Find the latest `requestUserInput` call that no user message answers yet.
- * Any later user message is the answer, whether it is a click or typed text.
+ * Any later user message is the answer, whether it is a submitted form or
+ * typed text.
  *
  * Reporting splits one call over events: the assistant event has the input
  * and status `running`, and the later result event has status `completed`

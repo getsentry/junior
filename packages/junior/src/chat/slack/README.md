@@ -17,16 +17,24 @@ formatting, and Slack API error mapping. The Slack provider layer in
   completed reaction. This optional UI gets one one-second attempt; failure
   must not reject the input. The worker retries and owns completion. Passive
   messages wait for the reply decision. Thread stops clear queued reactions.
-- `requestUserInput` shows its question in Slack as one message with a button
-  for each choice (`user-input.ts`). A click is Slack input from the person
-  who clicked, and its text is the choice label. It enters the mailbox as a
-  mention in the thread of the question. Only the first answer to a question
-  is accepted, also when only the queue wake fails after the click is saved.
-  A message to Junior in the thread also answers the open question: it claims
-  the question and replaces the buttons (`user-input-state.ts`). The
-  click has no Slack message of its own, so its Slack timestamp is the
-  question message. Its id is `slack-user-input-click:<action_ts>`, which is
-  not a Slack timestamp, and its time is the click `action_ts`.
+- `requestUserInput` shows its request in Slack as one message
+  (`user-input.ts`). A request with one `choice` field and up to five options
+  shows one button per option and an Other button. Other requests show an
+  Answer button. Other and Answer open a modal form with one input for each
+  field and an Other text input. A click on an option, or a submitted form,
+  is Slack input from the person who answered. Its text is the formatted
+  answer from `formatUserInputAnswer`, so the model reads the same format as
+  on the web. It enters the mailbox as a mention in the thread of the
+  request. The thread keeps one open request (`user-input-state.ts`). A newer
+  request replaces it and closes the old message. Clicks and forms on a
+  replaced request do nothing. Only the first answer to a request is
+  accepted, also when only the queue wake fails after the answer is saved. A
+  message to Junior in the thread also answers the open request: it claims
+  the request and replaces the controls with a note. An answer has no Slack
+  message of its own, so its Slack timestamp is the request message. Its id
+  is `slack-user-input-answer:<action_ts or view id>`, which is not a Slack
+  timestamp. A click uses `action_ts` as its time. A form uses the time
+  Junior received it.
 
 ## Messages
 
