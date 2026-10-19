@@ -179,9 +179,14 @@ export function isEmptyUserInputAnswer(answer: UserInputAnswer): boolean {
 }
 
 // Slack parses input text as mrkdwn, which drops list markers and blank
-// lines. Plain lines keep the same text on every surface.
+// lines. Plain lines keep the same text on every surface. Split instead of a
+// regular expression, so long runs of spaces cannot make this slow.
 function answerLine(text: string): string {
-  return text.replace(/\s*\n\s*/g, "\n");
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
