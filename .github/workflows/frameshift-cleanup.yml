@@ -1,0 +1,81 @@
+name: Frameshift cleanup
+
+# Frameshift saves each pull request report as a Git tag. The images in these
+# tags make up most of the repository size. This job deletes reports that no
+# open pull request uses.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: List the refs to delete, but do not delete them
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: frameshift-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: cleanup / frameshift reports
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ inputs.dry-run || 'false' }}
+      MAX_AGE_DAYS: "7"
+    steps:
+      - name: Delete unused screenshot refs
+        run: |
+          set -euo pipefail
+
+          delete_ref() {
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "would delete $1"
+            else
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/$1" >/dev/null
+              echo "deleted $1"
+            fi
+          }
+
+          # Keep the report for the current head of each open pull request,
+          # even when it is old. The pull request comment links to it.
+          open_heads="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 --json headRefOid --jq '.[].headRefOid')"
+          cutoff="$(( $(date +%s) - MAX_AGE_DAYS * 86400 ))"
+          kept=0
+          removed=0
+
+          # Tag names are frameshift-report/at-<unix time>/<head sha>/<run>-<attempt>.
+          while read -r ref; do
+            [[ -n "$ref" ]] || continue
+            name="${ref#refs/tags/frameshift-report/}"
+            published_at="${name%%/*}"
+            published_at="${published_at#at-}"
+            rest="${name#*/}"
+            head_sha="${rest%%/*}"
+
+            if [[ ! "$published_at" =~ ^[0-9]+$ ]] || (( published_at >= cutoff )) || grep -qxF "$head_sha" <<<"$open_heads"; then
+              kept=$((kept + 1))
+              continue
+            fi
+
+            delete_ref "${ref#refs/}"
+            removed=$((removed + 1))
+          done < <(gh api --paginate "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/frameshift-report/" --jq '.[].ref')
+
+          # The old dashboard visual workflow saved images on these branches.
+          # Frameshift replaced it, so nothing reads or writes them now.
+          while read -r ref; do
+            [[ -n "$ref" ]] || continue
+            delete_ref "${ref#refs/}"
+            removed=$((removed + 1))
+          done < <(gh api --paginate "repos/${GITHUB_REPOSITORY}/git/matching-refs/heads/visual-ci/" --jq '.[].ref')
+
+          echo "Kept ${kept} Frameshift reports. Removed ${removed} refs."
