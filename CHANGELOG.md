@@ -1,4 +1,21 @@
 # Changelog
+## 0.255.0
+
+### New Features ✨
+
+- (automations) Bind Automation ownership to creator identity by @sentry-junior in [#2188](https://github.com/getsentry/junior/pull/2188)
+- (dashboard) Grow the composer with its text on desktop by @sentry-junior in [#2192](https://github.com/getsentry/junior/pull/2192)
+
+### Bug Fixes 🐛
+
+- (automations) Settle runs of deleted Scheduled automations by @sentry-junior in [#2185](https://github.com/getsentry/junior/pull/2185)
+- (prompt) Allow Slack reads from other public channels by @sentry-junior in [#2193](https://github.com/getsentry/junior/pull/2193)
+
+### Internal Changes 🔧
+
+- (automations) Address Automations by ID alone in URLs by @sentry-junior in [#2186](https://github.com/getsentry/junior/pull/2186)
+- (frameshift) Delete unused screenshot reports nightly by @sentry-junior in [#2194](https://github.com/getsentry/junior/pull/2194)
+
 ## 0.254.0
 
 ### New Features ✨
