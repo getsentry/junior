@@ -7,8 +7,10 @@ an event. Plugins do not know which conversations or automations consume it.
 
 Slack ingress also publishes core `slack` / `channel` / `message.posted` events
 (`slack/channel-message-events.ts`) for new top-level messages that no other
-route handles. Bot posts and thread replies do not publish. A Watch cannot select
-these events. An automation can watch only the channel where it posts, so
+route handles. Thread replies and Slackbot posts do not publish. Other bot posts
+publish with `postedByBot`, but they run only automations whose `match` names
+the bot in `userId`. Bots can post often and would use up the run limit of
+every other automation in the channel. A Watch cannot select these events. An automation can watch only the channel where it posts, so
 private channel text stays in that channel. Runs always use system credentials,
 because anyone in the channel writes the Event text. Each run replies in the
 thread of the source message.
