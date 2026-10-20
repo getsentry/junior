@@ -81,6 +81,10 @@ Dashboard E2E writes screenshots to
 on the default branch. On a pull request, it compares the new set with the
 saved set and links the report from the pull request.
 
+Frameshift saves each report as a `frameshift-report/*` Git tag. The nightly
+`frameshift-cleanup.yml` workflow deletes reports older than 7 days. It keeps
+the report for the current head of each open pull request.
+
 ## Browser assets
 
 `client/code-languages.ts` lists languages and aliases with explicit imports.
