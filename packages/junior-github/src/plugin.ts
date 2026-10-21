@@ -440,7 +440,15 @@ export function githubPlugin(
       async resolveOAuthAccount(ctx) {
         const [account, verifiedEmails] = await Promise.all([
           resolveUserAccount(ctx.tokens),
-          listVerifiedUserEmails(ctx.tokens),
+          // Verified emails only help link the account. An email lookup
+          // failure must not block the connection.
+          listVerifiedUserEmails(ctx.tokens).catch((error: unknown) => {
+            ctx.log.warn("github.oauth_account.emails_lookup.failed", {
+              "exception.message":
+                error instanceof Error ? error.message : String(error),
+            });
+            return [];
+          }),
         ]);
         return verifiedEmails.length > 0
           ? { ...account, verifiedEmails }

@@ -2868,22 +2868,25 @@ Conversation: \`local:test:old-conversation\`
     expect(emailRequests[0]?.headers.authorization).toBe("Bearer user-token");
   });
 
-  it("resolves the GitHub account without emails when the App lacks the email permission", async () => {
-    mockGitHubUserApi();
-    mockGitHubUserEmailsApi({
-      payload: { message: "Resource not accessible by integration" },
-      status: 403,
-    });
+  it.each([
+    [403, { message: "Resource not accessible by integration" }],
+    [500, { message: "server error" }],
+  ])(
+    "resolves the GitHub account without emails when the emails lookup returns %i",
+    async (status, payload) => {
+      mockGitHubUserApi();
+      mockGitHubUserEmailsApi({ payload, status });
 
-    const account = await resolveGitHubOAuthAccount(githubPlugin());
+      const account = await resolveGitHubOAuthAccount(githubPlugin());
 
-    expect(account).toEqual({
-      handle: "actor",
-      id: "12345",
-      label: "actor",
-      url: "https://github.com/actor",
-    });
-  });
+      expect(account).toEqual({
+        handle: "actor",
+        id: "12345",
+        label: "actor",
+        url: "https://github.com/actor",
+      });
+    },
+  );
 
   it("surfaces operational failures while lazily resolving GitHub account identity", async () => {
     mockGitHubUserApi({
