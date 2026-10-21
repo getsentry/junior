@@ -614,6 +614,26 @@ describe("sandbox egress proxy composition", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not attempt to read the body of an OPTIONS preflight request", async () => {
+    setSandboxEgressUserActor();
+    mockSentryLease();
+
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      expect(init?.method).toBe("OPTIONS");
+      expect(init).not.toHaveProperty("body");
+      return new Response("ok", { status: 200 });
+    });
+
+    // Must not throw "Body is unusable: Body has already been read"
+    const response = await proxy(
+      egressRequest({ method: "OPTIONS" }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("issues separate user credentials per actor", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
