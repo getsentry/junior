@@ -247,14 +247,11 @@ export async function findUserByVerifiedEmails(
   executor: JuniorSqlDatabase,
   emails: readonly string[],
 ): Promise<{ email: string; userId: string } | undefined> {
-  const normalized = [
-    ...new Set(
-      emails
-        .map((email) => normalizeIdentityEmail(email))
-        .filter((email): email is string => Boolean(email)),
-    ),
-  ];
-  if (normalized.length === 0) return undefined;
+  const normalized = new Set(
+    emails.map((email) => normalizeIdentityEmail(email) ?? ""),
+  );
+  normalized.delete("");
+  if (normalized.size === 0) return undefined;
   const rows = await executor
     .db()
     .select({
@@ -262,7 +259,7 @@ export async function findUserByVerifiedEmails(
       userId: juniorUsers.id,
     })
     .from(juniorUsers)
-    .where(inArray(juniorUsers.primaryEmailNormalized, normalized))
+    .where(inArray(juniorUsers.primaryEmailNormalized, Array.from(normalized)))
     .limit(2);
   return rows.length === 1 ? rows[0] : undefined;
 }
