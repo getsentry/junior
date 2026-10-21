@@ -157,6 +157,10 @@ export default defineConfig({
               label: "Sandbox Snapshots",
               link: "/operate/sandbox-snapshots/",
             },
+            {
+              label: "Vercel Log Drains",
+              link: "/operate/vercel-log-drains/",
+            },
           ],
         },
         {
