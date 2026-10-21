@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import type { WebActor } from "@/chat/actor";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
+import { getSqlExecutor } from "@/chat/db";
+import { deleteProviderIdentityForUser } from "@/chat/identities/sql";
 import type {
   StoredTokens,
   UserTokenStore,
@@ -108,11 +110,24 @@ export async function startConnection(
   return { ok: true, authorizationUrl: request.authorizationUrl };
 }
 
-/** Remove the user's stored connection for one provider. */
+/**
+ * Remove the user's stored connection for one provider and the provider
+ * identity that the connection linked to the viewer's user.
+ */
 export async function disconnectConnection(
   userId: string,
   provider: string,
   userTokenStore: UserTokenStore,
+  viewerUserId: string,
 ): Promise<void> {
+  const tokens = await userTokenStore.get(userId, provider);
+  if (tokens?.account) {
+    await deleteProviderIdentityForUser(
+      getSqlExecutor(),
+      viewerUserId,
+      provider,
+      tokens.account.id,
+    );
+  }
   await unlinkProvider(userId, provider, userTokenStore);
 }

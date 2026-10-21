@@ -78,6 +78,7 @@ import {
   issueInstallationCredential,
   issueInstallationToken,
   issueUserCredential,
+  listVerifiedUserEmails,
   normalizeScopeList,
   readEnv,
   requireEnv,
@@ -437,7 +438,13 @@ export function githubPlugin(
         }
       },
       async resolveOAuthAccount(ctx) {
-        return await resolveUserAccount(ctx.tokens);
+        const [account, verifiedEmails] = await Promise.all([
+          resolveUserAccount(ctx.tokens),
+          listVerifiedUserEmails(ctx.tokens),
+        ]);
+        return verifiedEmails.length > 0
+          ? { ...account, verifiedEmails }
+          : account;
       },
       async issueCredential(ctx) {
         try {

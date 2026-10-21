@@ -263,6 +263,37 @@ function mockGitHubUserApi(input?: {
   return requests;
 }
 
+function mockGitHubUserEmailsApi(input: {
+  payload: unknown;
+  status?: number;
+}): CapturedRequest[] {
+  const requests: CapturedRequest[] = [];
+  mswServer.use(
+    http.get("https://api.github.com/user/emails", async ({ request }) => {
+      requests.push(await captureRequest(request));
+      return HttpResponse.json(input.payload as Record<string, unknown>, {
+        status: input.status ?? 200,
+      });
+    }),
+  );
+  return requests;
+}
+
+async function resolveGitHubOAuthAccount(
+  plugin: ReturnType<typeof githubPlugin>,
+) {
+  return await plugin.hooks?.resolveOAuthAccount?.({
+    db,
+    log: pluginLog,
+    plugin: { name: "github" },
+    tokenResponse: {},
+    tokens: {
+      accessToken: "user-token",
+      refreshToken: "refresh-token",
+    },
+  });
+}
+
 function mockGitHubRefresh(
   status: number,
   payload: Record<string, unknown>,
@@ -2808,25 +2839,25 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("resolves the GitHub account for user OAuth tokens", async () => {
+  it("resolves the GitHub account and verified emails for user OAuth tokens", async () => {
     const requests = mockGitHubUserApi();
+    const emailRequests = mockGitHubUserEmailsApi({
+      payload: [
+        { email: "actor@example.com", primary: true, verified: true },
+        { email: "actor@users.noreply.github.com", verified: true },
+        { email: "unverified@example.com", verified: false },
+      ],
+    });
 
     const plugin = githubPlugin();
-    const account = await plugin.hooks?.resolveOAuthAccount?.({
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {
-        accessToken: "user-token",
-        refreshToken: "refresh-token",
-      },
-    });
+    const account = await resolveGitHubOAuthAccount(plugin);
 
     expect(account).toEqual({
       handle: "actor",
       id: "12345",
       label: "actor",
       url: "https://github.com/actor",
+      verifiedEmails: ["actor@example.com", "actor@users.noreply.github.com"],
     });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -2834,6 +2865,24 @@ Conversation: \`local:test:old-conversation\`
       method: "GET",
     });
     expect(requests[0]?.headers.authorization).toBe("Bearer user-token");
+    expect(emailRequests[0]?.headers.authorization).toBe("Bearer user-token");
+  });
+
+  it("resolves the GitHub account without emails when the App lacks the email permission", async () => {
+    mockGitHubUserApi();
+    mockGitHubUserEmailsApi({
+      payload: { message: "Resource not accessible by integration" },
+      status: 403,
+    });
+
+    const account = await resolveGitHubOAuthAccount(githubPlugin());
+
+    expect(account).toEqual({
+      handle: "actor",
+      id: "12345",
+      label: "actor",
+      url: "https://github.com/actor",
+    });
   });
 
   it("surfaces operational failures while lazily resolving GitHub account identity", async () => {

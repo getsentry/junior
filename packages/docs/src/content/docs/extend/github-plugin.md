@@ -60,6 +60,12 @@ narrow write tokens.
    - Metadata: Read
    - Pull requests: Read and write
    - Workflows: Write
+
+   Optional: grant the account permission Email addresses: Read. Junior then
+   reads the verified emails of a connected GitHub account to link it to a
+   person. Without it, Junior links the account only through the person who
+   connected it.
+
 3. Install the App on the organization or repositories Junior should reach.
 4. Copy the App ID, OAuth client ID and secret, installation ID, bot name, and
    bot noreply email into your deployment environment.

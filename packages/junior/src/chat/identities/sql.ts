@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
@@ -113,18 +113,10 @@ async function upsertIdentityRecord(
   ) {
     throw new Error("Identity verified email conflicts with linked user");
   }
-  if (
-    linkedUserId &&
-    verifiedUserId &&
-    linkedUserId !== verifiedUserId
-  ) {
+  if (linkedUserId && verifiedUserId && linkedUserId !== verifiedUserId) {
     throw new Error("Linked identity conflicts with verified email user");
   }
-  if (
-    existing?.userId &&
-    linkedUserId &&
-    existing.userId !== linkedUserId
-  ) {
+  if (existing?.userId && linkedUserId && existing.userId !== linkedUserId) {
     throw new Error("Identity conflicts with linked user");
   }
   const userId = existing?.userId ?? linkedUserId ?? verifiedUserId;
@@ -247,6 +239,34 @@ export async function upsertLinkedIdentity(
   return await upsertIdentityRecord(executor, identity, userId, nowMs);
 }
 
+/**
+ * Find the one user whose primary email is in a provider-verified email list.
+ * Return undefined when no user or more than one user matches.
+ */
+export async function findUserByVerifiedEmails(
+  executor: JuniorSqlDatabase,
+  emails: readonly string[],
+): Promise<{ email: string; userId: string } | undefined> {
+  const normalized = [
+    ...new Set(
+      emails
+        .map((email) => normalizeIdentityEmail(email))
+        .filter((email): email is string => Boolean(email)),
+    ),
+  ];
+  if (normalized.length === 0) return undefined;
+  const rows = await executor
+    .db()
+    .select({
+      email: juniorUsers.primaryEmail,
+      userId: juniorUsers.id,
+    })
+    .from(juniorUsers)
+    .where(inArray(juniorUsers.primaryEmailNormalized, normalized))
+    .limit(2);
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
 /** Remove one exact provider identity owned by a workspace Slack user. */
 export async function deleteProviderIdentityForSlackUser(
   executor: JuniorSqlDatabase,
@@ -270,7 +290,21 @@ export async function deleteProviderIdentityForSlackUser(
     .limit(1);
   const userId = slackRows[0]?.userId;
   if (!userId) return;
+  await deleteProviderIdentityForUser(
+    executor,
+    userId,
+    provider,
+    providerSubjectId,
+  );
+}
 
+/** Remove one exact provider identity owned by a user. */
+export async function deleteProviderIdentityForUser(
+  executor: JuniorSqlDatabase,
+  userId: string,
+  provider: string,
+  providerSubjectId: string,
+): Promise<void> {
   await executor
     .db()
     .delete(juniorIdentities)

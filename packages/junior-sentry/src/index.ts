@@ -20,6 +20,7 @@ import {
   issueSentryCredential,
   sentryGrantForEgress,
 } from "./org-read.js";
+import { resolveSentryOAuthAccount } from "./oauth-account.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
 import { sentryWebhookOrg, sentryWebhookSecret } from "./webhooks/secret.js";
 
@@ -91,6 +92,7 @@ export function sentryPlugin(): PluginRegistration {
     hooks: {
       grantForEgress: sentryGrantForEgress,
       issueCredential: issueSentryCredential,
+      resolveOAuthAccount: resolveSentryOAuthAccount,
       routes(ctx) {
         return [
           createSentryWebhookRoute({
