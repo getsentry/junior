@@ -70,9 +70,12 @@ Gmail and Drive writes are out of scope.
   Drive, attaches them to the Calendar event, and shares them with every
   invitee in the organizer's domain. The tool reads these Docs from the event
   attachments, so it needs no Meet scope. It reads an attached Doc only when
-  its title has the Meet record format, the organizer owns it, and Google made
-  it after the meeting started. Thus a Doc that someone else attaches to the
-  event is not read. The result marks the text as untrusted. The tool only
+  the organizer owns it and it was made after the meeting started. Thus a Doc
+  that someone else attaches to the event, or an agenda made before the
+  meeting, is not read. It does not require a title format, because Meet can
+  change the titles and they differ by language. The title only sets `kind`.
+  Google can take from some minutes to a few hours after the call to attach
+  the records, so an automation must allow for this delay. The result marks the text as untrusted. The tool only
   reads. Junior acts on what was said only when the requester or an
   automation asks for it.
 - The **Google account** page on the dashboard Admin page shows whether the
@@ -186,10 +189,10 @@ variables are set. The Admin page shows **Not configured** until then.
   SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
   admin role on Junior's account. Room emails are also outside the allowed
   domains. It cannot accept or decline invites for other people.
-- Junior finds Meet records by their English title format, such as
-  `Weekly triage - 2026/10/12 10:01 PDT - Transcript`. A record with a
-  renamed title, or a title in another language, is not kept out of the
-  file tools.
+- The general file tools find Meet records by their English title format,
+  such as `Weekly triage - 2026/10/12 10:01 PDT - Transcript`. A record with
+  a renamed title, or a title in another language, is not kept out of the
+  file tools. `readMeetingTranscript` still reads such a record.
 - Google does not share Meet records with invitees when more than 200 people
   in the organizer's domain are invited.
 - Junior reads a transcript only when someone asks. No event tells

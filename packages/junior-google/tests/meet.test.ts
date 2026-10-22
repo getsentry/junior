@@ -8,6 +8,7 @@ const DOC = "application/vnd.google-apps.document";
 const NOTES_ID = "1NotesAbCdEfGhIjKlMnOpQr";
 const FORGED_ID = "1ForgedAbCdEfGhIjKlMnOpQ";
 const DELETED_ID = "1DeletedAbCdEfGhIjKlMnOp";
+const AGENDA_ID = "1AgendaAbCdEfGhIjKlMnOp";
 const NOTES_TITLE = "Weekly triage - 2026/10/12 10:01 PDT - Notes by Gemini";
 
 function meetTools(...responses: Response[]) {
@@ -39,7 +40,7 @@ const event = {
       mimeType: DOC,
       title: "Board - 2026/10/12 10:01 PDT - Transcript",
     },
-    { fileId: "1AgendaAbCdEfGhIjKlMnOp", mimeType: DOC, title: "Agenda" },
+    { fileId: AGENDA_ID, mimeType: DOC, title: "Agenda" },
   ],
   attendees: [
     { email: "bob@example.com", responseStatus: "accepted" },
@@ -106,11 +107,20 @@ describe("Google Meet transcripts", () => {
         name: "Board - 2026/10/12 10:01 PDT - Transcript",
         owners: [{ emailAddress: "carol@example.com" }],
       }),
+      // The organizer made the agenda before the meeting, so it is not a
+      // record of this meeting.
+      Response.json({
+        createdTime: "2026-10-05T09:00:00Z",
+        id: AGENDA_ID,
+        mimeType: DOC,
+        name: "Agenda",
+        owners: [{ emailAddress: "bob@example.com" }],
+      }),
     );
 
     const result = await run("readMeetingTranscript", { eventId: "event1" });
 
-    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch).toHaveBeenCalledTimes(5);
     expect(
       fetch.mock.calls.map(([call]) => new URL(call.request.url).pathname),
     ).toEqual([
@@ -118,6 +128,7 @@ describe("Google Meet transcripts", () => {
       `/drive/v3/files/${NOTES_ID}`,
       `/drive/v3/files/${NOTES_ID}/export`,
       `/drive/v3/files/${FORGED_ID}`,
+      `/drive/v3/files/${AGENDA_ID}`,
     ]);
     expect(result).toEqual({
       eventId: "event1",
@@ -145,7 +156,8 @@ describe("Google Meet transcripts", () => {
     });
 
     // An all-day event has only a date. A record that Junior cannot open does
-    // not hide the other records.
+    // not hide the other records. A record title in another language is
+    // still read.
     const allDay = meetTools(
       Response.json({
         ...event,
@@ -161,7 +173,7 @@ describe("Google Meet transcripts", () => {
         createdTime: "2026-10-12T17:31:00Z",
         id: NOTES_ID,
         mimeType: DOC,
-        name: NOTES_TITLE,
+        name: "Weekly triage - 12.10.2026 - Notizen von Gemini",
         owners: [{ emailAddress: "bob@example.com" }],
       }),
       new Response("# Notes", {
@@ -172,7 +184,7 @@ describe("Google Meet transcripts", () => {
       await allDay.run("readMeetingTranscript", { eventId: "event1" }),
     ).toMatchObject({
       message: expect.stringContaining("cannot be opened"),
-      records: [{ content: "# Notes", kind: "notes" }],
+      records: [{ content: "# Notes", kind: "document" }],
       status: "ok",
     });
   });
