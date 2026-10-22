@@ -1,4 +1,14 @@
 # Changelog
+## 0.256.0
+
+### New Features ✨
+
+- (google) Read Meet transcripts of meetings Junior is invited to by @sentry-junior in [#2107](https://github.com/getsentry/junior/pull/2107)
+
+### Internal Changes 🔧
+
+- (node) Bump Node to 24.22.1 by @sentry-junior in [#2202](https://github.com/getsentry/junior/pull/2202)
+
 ## 0.255.0
 
 ### New Features ✨
