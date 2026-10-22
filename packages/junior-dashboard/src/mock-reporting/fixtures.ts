@@ -2682,6 +2682,7 @@ export function readMockPeopleCode(
   const overview = readMockCodeOverview();
   return {
     activityDays: overview.activityDays,
+    changes: overview.changes,
     generatedAt: overview.generatedAt,
     summary: overview.summary,
     windowEnd: overview.windowEnd,
