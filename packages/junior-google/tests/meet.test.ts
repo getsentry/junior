@@ -206,25 +206,4 @@ describe("Google Meet transcripts", () => {
       path: `/vercel/sandbox/meetings/event1/${NOTES_ID}.md`,
     });
   });
-
-  it("keeps Meet records out of the general Docs tools", async () => {
-    const { fetch, run } = meetTools(
-      Response.json({
-        files: [
-          { id: NOTES_ID, mimeType: DOC, name: NOTES_TITLE },
-          { id: "1PlanAbCdEfGhIjKlMnOpQrS", mimeType: DOC, name: "Q4 plan" },
-        ],
-      }),
-      Response.json({ id: NOTES_ID, mimeType: DOC, name: NOTES_TITLE }),
-    );
-
-    expect(await run("searchGoogleFiles", { query: "triage" })).toMatchObject({
-      files: [{ title: "Q4 plan" }],
-    });
-    await expect(run("readGoogleDoc", { document: NOTES_ID })).rejects.toThrow(
-      "Use readMeetingTranscript",
-    );
-    // The record text was never exported.
-    expect(fetch).toHaveBeenCalledTimes(2);
-  });
 });

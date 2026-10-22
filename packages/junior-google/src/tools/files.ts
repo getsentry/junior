@@ -130,26 +130,6 @@ const driveFileSchema = z.object({
   webViewLink: z.string().optional(),
 });
 
-// Google Meet names the Docs it saves like
-// "Weekly triage - 2026/10/12 14:01 CEST - Transcript".
-const MEETING_RECORD_TITLE =
-  / - \d{4}\/\d{2}\/\d{2} \d{2}:\d{2} \S+ - (Transcript|Notes by Gemini)$/;
-
-/**
- * Return the kind of Meet record a Doc title names, if any.
- *
- * Google shares a meeting's transcript and Gemini notes with everyone invited
- * in the organizer's domain, so Junior can open them when it is invited. Only
- * `readMeetingTranscript` reads them, because it checks that the requester
- * is invited too. A renamed record no longer matches.
- */
-export function meetingRecordKind(
-  title: string,
-): "notes" | "transcript" | undefined {
-  const kind = MEETING_RECORD_TITLE.exec(title)?.[1];
-  return kind === "Transcript" ? "transcript" : kind ? "notes" : undefined;
-}
-
 /**
  * Read the Drive metadata of one file, and require one of the given types.
  *
@@ -170,11 +150,6 @@ export async function readGoogleFile(
     },
   });
   const metadata = driveFileSchema.parse(response.body);
-  if (meetingRecordKind(metadata.name)) {
-    throw new PluginToolInputError(
-      `"${metadata.name}" is a Google Meet record. Use readMeetingTranscript with the meeting's Calendar event, so Junior can check that the requester was invited.`,
-    );
-  }
   const type = googleFileType(metadata.mimeType);
   if (!type || !types.includes(type)) {
     const expected = types.map((item) => FILE_TYPES[item].label).join(" or ");

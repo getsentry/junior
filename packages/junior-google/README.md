@@ -131,10 +131,11 @@ request and the tool asks an admin to reconnect.
   comment reads; Sheets metadata and cell reads; and Slides reads. Each
   request must go to the host of its own API.
 - Junior also requests `openid email` to verify the account during sign-in.
-- Meet transcripts and Gemini notes are shared with Junior when it is
-  invited. `searchGoogleFiles` leaves them out, and `readGoogleDoc` and the
-  other file tools refuse them. Only `readMeetingTranscript` reads them,
-  because it checks that the requester is invited.
+- Drive sharing decides which files Junior can read. The file tools read
+  any Doc, Sheet, or Slides file shared with Junior's account. This includes
+  Meet transcripts and Gemini notes, which Google shares with Junior when it
+  is invited. `readMeetingTranscript` finds the records from the Calendar
+  event and adds the invite checks. It is not the only way to read them.
 
 ## Setup
 
@@ -194,10 +195,6 @@ variables are set. The Admin page shows **Not configured** until then.
   SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
   admin role on Junior's account. Room emails are also outside the allowed
   domains. It cannot accept or decline invites for other people.
-- The general file tools find Meet records by their English title format,
-  such as `Weekly triage - 2026/10/12 10:01 PDT - Transcript`. A record with
-  a renamed title, or a title in another language, is not kept out of the
-  file tools. `readMeetingTranscript` still reads such a record.
 - Google does not share Meet records with invitees when more than 200 people
   in the organizer's domain are invited.
 - Junior reads a transcript only when someone asks. No event tells

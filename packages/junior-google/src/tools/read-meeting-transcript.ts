@@ -8,7 +8,6 @@ import {
   FILE_ID_PATTERN,
   googleFileMimeType,
   MAX_CONTENT_CHARS,
-  meetingRecordKind,
 } from "./files";
 import {
   googleApiError,
@@ -18,6 +17,17 @@ import {
   requesterEmail,
   type GoogleToolContext,
 } from "./shared";
+
+// Google Meet names the Docs it saves like
+// "Weekly triage - 2026/10/12 14:01 CEST - Transcript". The title only labels
+// a record. A renamed or translated record is still read, as a "document".
+const MEETING_RECORD_TITLE =
+  / - \d{4}\/\d{2}\/\d{2} \d{2}:\d{2} \S+ - (Transcript|Notes by Gemini)$/;
+
+function meetingRecordKind(title: string): "notes" | "transcript" | undefined {
+  const kind = MEETING_RECORD_TITLE.exec(title)?.[1];
+  return kind === "Transcript" ? "transcript" : kind ? "notes" : undefined;
+}
 
 // Google can save a record a little before the scheduled start, when people
 // join early.
