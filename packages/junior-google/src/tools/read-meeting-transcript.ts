@@ -7,7 +7,6 @@ import { z } from "zod";
 import {
   FILE_ID_PATTERN,
   googleFileMimeType,
-  googleFileRequest,
   MAX_CONTENT_CHARS,
   meetingRecordKind,
 } from "./files";
@@ -60,7 +59,7 @@ const outputSchema = pluginToolOutputSchema.extend({
   status: z
     .enum(["ok", "no_record"])
     .describe(
-      "ok: records follow. no_record: the event has no transcript or Gemini notes yet; see message.",
+      "ok: records follow. no_record: the event has no transcript or Gemini notes yet, or Junior cannot open them; see message.",
     ),
   title: z.string().optional(),
   truncated: z
@@ -90,7 +89,10 @@ const eventSchema = z.object({
   organizer: z
     .object({ email: z.string().optional(), self: z.boolean().optional() })
     .optional(),
-  start: z.object({ dateTime: z.string().optional() }),
+  start: z.object({
+    date: z.string().optional(),
+    dateTime: z.string().optional(),
+  }),
   summary: z.string().optional(),
 });
 
@@ -109,6 +111,37 @@ const recordFileSchema = z.object({
 
 const NO_RECORD_MESSAGE =
   "No transcript or Gemini notes are attached to this event yet. Someone in the call must turn on transcription or Gemini notes, and Google attaches them some minutes after the call ends. Google does not share them with invitees when more than 200 people in the organizer's domain are invited.";
+
+function unreadableMessage(count: number, accountEmail: string): string {
+  return `${count} attached Meet record(s) cannot be opened by Junior's Google account (${accountEmail}). The Doc may be deleted, or not shared with invitees. Ask the organizer to share it with that account.`;
+}
+
+function eventStartMs(start: CalendarEvent["start"]): number {
+  if (start.dateTime) return Date.parse(start.dateTime);
+  // An all-day event has only a date. Use the earliest time zone, so that a
+  // record from early on that day is not left out.
+  if (start.date) return Date.parse(`${start.date}T00:00:00+14:00`);
+  return Number.NaN;
+}
+
+/**
+ * Read one attached record file, or return undefined when Junior cannot open
+ * it.
+ *
+ * Google answers 404 for a file that Junior cannot open. One such file, such
+ * as a deleted Doc, must not hide the other records of the meeting.
+ */
+async function readRecordFile(
+  ctx: GoogleToolContext,
+  input: Parameters<typeof googleApiRequest>[1],
+): Promise<{ body: unknown } | undefined> {
+  const response = await googleApiRequest(ctx, input);
+  if (response.status === 404) return undefined;
+  if (response.status !== 200) {
+    throw googleApiError(input.operation, response);
+  }
+  return response;
+}
 
 function isInvited(event: CalendarEvent, email: string): boolean {
   return (
@@ -200,7 +233,7 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
     outputSchema,
     async execute(input): Promise<Output> {
       const { event, eventId } = await readInvitedEvent(ctx, input.eventId);
-      const startMs = Date.parse(event.start.dateTime ?? "");
+      const startMs = eventStartMs(event.start);
       const organizer = event.organizer?.self
         ? ctx.accountEmail
         : event.organizer?.email?.toLowerCase();
@@ -230,20 +263,21 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
       const records: Output["records"] = [];
       let chars = 0;
       let truncated = false;
+      let unreadable = 0;
       for (const fileId of fileIds) {
-        const metadata = await googleFileRequest(
-          ctx,
-          { fileId },
-          {
-            operation: "google.drive.file.get",
-            path: `/drive/v3/files/${fileId}`,
-            query: {
-              fields:
-                "createdTime,id,mimeType,name,owners(emailAddress),webViewLink",
-              supportsAllDrives: "true",
-            },
+        const metadata = await readRecordFile(ctx, {
+          operation: "google.drive.file.get",
+          path: `/drive/v3/files/${fileId}`,
+          query: {
+            fields:
+              "createdTime,id,mimeType,name,owners(emailAddress),webViewLink",
+            supportsAllDrives: "true",
           },
-        );
+        });
+        if (!metadata) {
+          unreadable += 1;
+          continue;
+        }
         const file = recordFileSchema.parse(metadata.body);
         const kind = meetingRecordKind(file.name);
         // Read only a Meet record that the organizer owns and that Google
@@ -257,16 +291,16 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
         ) {
           continue;
         }
-        const exported = await googleFileRequest(
-          ctx,
-          { fileId },
-          {
-            headers: { Accept: "text/markdown" },
-            operation: "google.drive.file.export",
-            path: `/drive/v3/files/${fileId}/export`,
-            query: { mimeType: "text/markdown" },
-          },
-        );
+        const exported = await readRecordFile(ctx, {
+          headers: { Accept: "text/markdown" },
+          operation: "google.drive.file.export",
+          path: `/drive/v3/files/${fileId}/export`,
+          query: { mimeType: "text/markdown" },
+        });
+        if (!exported) {
+          unreadable += 1;
+          continue;
+        }
         const text = typeof exported.body === "string" ? exported.body : "";
         const room = MAX_CONTENT_CHARS - chars;
         truncated ||= text.length > room;
@@ -279,10 +313,24 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
           ...(file.webViewLink ? { url: file.webViewLink } : undefined),
         });
       }
+      const unreadableNote =
+        unreadable > 0
+          ? unreadableMessage(unreadable, ctx.accountEmail)
+          : undefined;
       if (records.length === 0) {
-        return { ...base, message: NO_RECORD_MESSAGE, status: "no_record" };
+        return {
+          ...base,
+          message: unreadableNote ?? NO_RECORD_MESSAGE,
+          status: "no_record",
+        };
       }
-      return { ...base, records, status: "ok", truncated };
+      return {
+        ...base,
+        records,
+        status: "ok",
+        truncated,
+        ...(unreadableNote ? { message: unreadableNote } : undefined),
+      };
     },
   });
 }

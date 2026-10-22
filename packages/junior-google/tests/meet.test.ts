@@ -7,6 +7,7 @@ const REQUESTER = "alice@example.com";
 const DOC = "application/vnd.google-apps.document";
 const NOTES_ID = "1NotesAbCdEfGhIjKlMnOpQr";
 const FORGED_ID = "1ForgedAbCdEfGhIjKlMnOpQ";
+const DELETED_ID = "1DeletedAbCdEfGhIjKlMnOp";
 const NOTES_TITLE = "Weekly triage - 2026/10/12 10:01 PDT - Notes by Gemini";
 
 function meetTools(...responses: Response[]) {
@@ -141,6 +142,38 @@ describe("Google Meet transcripts", () => {
       message: expect.stringContaining("turn on transcription"),
       records: [],
       status: "no_record",
+    });
+
+    // An all-day event has only a date. A record that Junior cannot open does
+    // not hide the other records.
+    const allDay = meetTools(
+      Response.json({
+        ...event,
+        attachments: [
+          { fileId: DELETED_ID, mimeType: DOC, title: NOTES_TITLE },
+          event.attachments[0],
+        ],
+        end: { date: "2026-10-13" },
+        start: { date: "2026-10-12" },
+      }),
+      Response.json({ error: { code: 404 } }, { status: 404 }),
+      Response.json({
+        createdTime: "2026-10-12T17:31:00Z",
+        id: NOTES_ID,
+        mimeType: DOC,
+        name: NOTES_TITLE,
+        owners: [{ emailAddress: "bob@example.com" }],
+      }),
+      new Response("# Notes", {
+        headers: { "content-type": "text/markdown" },
+      }),
+    );
+    expect(
+      await allDay.run("readMeetingTranscript", { eventId: "event1" }),
+    ).toMatchObject({
+      message: expect.stringContaining("cannot be opened"),
+      records: [{ content: "# Notes", kind: "notes" }],
+      status: "ok",
     });
   });
 
