@@ -12,7 +12,10 @@ import { sumUtcHoursIntoSixHours } from "../reporting-window";
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
 const ACTIVITY_DAYS = 90;
-/** Most recent code changes listed on one People profile. */
+/**
+ * Code changes listed on one People profile. Open changes sort first so a
+ * stale open change is not cut off by newer completed changes.
+ */
 const PERSON_CHANGE_LIMIT = 100;
 
 const summaryRowSchema = z
@@ -501,7 +504,10 @@ export async function readPersonCodeOverview(args: {
         eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
       )
       .where(changeScopeFilter({ userId: args.userId }))
-      .orderBy(desc(juniorCodeChanges.updatedAt))
+      .orderBy(
+        desc(sql`${juniorCodeChanges.state} = 'open'`),
+        desc(juniorCodeChanges.updatedAt),
+      )
       .limit(PERSON_CHANGE_LIMIT),
   ]);
   return codePersonReportSchema.parse({

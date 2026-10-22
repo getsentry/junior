@@ -6,12 +6,11 @@ import {
   timeRangeBucketUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
-import { Card } from "../../components/layout/Card";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "../code/CodeActivityChart";
-import { CodeChangeRow } from "../code/CodeChangeRow";
+import { ProfileCodeChanges } from "./ProfileCodeChanges";
 
 function mergeRate(value: number | undefined): string {
   return value === undefined ? "—" : `${Math.round(value * 100)}%`;
@@ -90,16 +89,10 @@ export function ProfileCodeActivity(props: {
         range={props.range}
       />
       {props.report.changes.length > 0 ? (
-        <Card as="section">
-          <div className="border-b border-dashboard-border-subtle px-4 py-3 font-display text-lg text-dashboard-text">
-            Recent changes
-          </div>
-          <div>
-            {props.report.changes.map((change) => (
-              <CodeChangeRow change={change} key={change.id} />
-            ))}
-          </div>
-        </Card>
+        <ProfileCodeChanges
+          changes={props.report.changes}
+          generatedAt={props.report.generatedAt}
+        />
       ) : null}
     </section>
   );
