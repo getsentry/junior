@@ -16,7 +16,7 @@ export interface GoogleToolContext {
   allowedDomains: string[];
   egress: PluginEgress;
   /** Holds full meeting records that are too long to return inline. */
-  sandbox: Pick<PluginSandbox, "root" | "writeFile">;
+  sandbox: Pick<PluginSandbox, "root" | "run" | "writeFile">;
   users: {
     resolveActor(): Promise<{ user?: User } | undefined>;
     resolveTimezone(): Promise<string>;

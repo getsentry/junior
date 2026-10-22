@@ -15,7 +15,11 @@ const NOTES_TITLE = "Weekly triage - 2026/10/12 10:01 PDT - Notes by Gemini";
 function meetTools(...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const sandbox = { root: "/vercel/sandbox", writeFile: vi.fn() };
+  const sandbox = {
+    root: "/vercel/sandbox",
+    run: vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "" })),
+    writeFile: vi.fn(),
+  };
   const tools = googlePlugin().hooks!.tools!({
     egress: { fetch },
     sandbox,

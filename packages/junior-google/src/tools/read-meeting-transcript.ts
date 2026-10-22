@@ -149,6 +149,21 @@ async function readRecordFile(
   return response;
 }
 
+/** Save the full text of a long record in the sandbox and return its path. */
+async function saveFullRecord(
+  ctx: GoogleToolContext,
+  eventId: string,
+  fileId: string,
+  text: string,
+): Promise<string> {
+  const directory = `${ctx.sandbox.root}/meetings/${eventId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  // If mkdir fails, writeFile fails and reports the error.
+  await ctx.sandbox.run({ args: ["-p", "--", directory], cmd: "mkdir" });
+  const path = `${directory}/${fileId}.md`;
+  await ctx.sandbox.writeFile({ content: text, path });
+  return path;
+}
+
 function isInvited(event: CalendarEvent, email: string): boolean {
   return (
     event.organizer?.email?.toLowerCase() === email ||
@@ -313,12 +328,9 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
         // in the sandbox, so Junior can read all of it in parts.
         const path =
           content.length < text.length
-            ? `${ctx.sandbox.root}/meetings/${eventId.replace(/[^A-Za-z0-9_-]/g, "_")}/${fileId}.md`
+            ? await saveFullRecord(ctx, eventId, fileId, text)
             : undefined;
-        if (path) {
-          truncated = true;
-          await ctx.sandbox.writeFile({ content: text, path });
-        }
+        truncated ||= path !== undefined;
         records.push({
           content,
           kind: meetingRecordKind(file.name) ?? "document",
