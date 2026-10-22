@@ -52,7 +52,9 @@ sandbox.
   Conversations. Slack grants stay keyed by Slack user id and are managed from
   Slack App Home or the slash command.
 - A dashboard connection has no Conversation to resume. The callback stores the
-  token and does not publish Slack App Home.
+  token, links the provider identity to the viewer's user, and does not publish
+  Slack App Home. Disconnect removes that provider identity. See
+  `../identities/README.md`.
 - MCP plugins are not listed yet. Their authorization attempts are bound to a
   Conversation.
 

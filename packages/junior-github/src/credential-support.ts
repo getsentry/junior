@@ -457,7 +457,9 @@ function createCredentialLease(
     type: "lease",
     lease: {
       ...(input.account ? { account: input.account } : undefined),
-      ...(input.authorization ? { authorization: input.authorization } : undefined),
+      ...(input.authorization
+        ? { authorization: input.authorization }
+        : undefined),
       expiresAt: new Date(input.expiresAtMs).toISOString(),
       headerTransforms: (
         input.domains ??
@@ -594,6 +596,42 @@ export async function resolveUserAccount(
     label: login.trim(),
     ...(url ? { url } : undefined),
   };
+}
+
+/**
+ * List the email addresses GitHub verified for the user OAuth token.
+ *
+ * GitHub App user tokens need the App's "Email addresses" user permission.
+ * Return an empty list when the App does not have it.
+ */
+export async function listVerifiedUserEmails(
+  tokens: PluginStoredTokens,
+): Promise<string[]> {
+  let emails: unknown;
+  try {
+    emails = await githubRequest("https://api.github.com", "/user/emails", {
+      token: tokens.accessToken,
+    });
+  } catch (error) {
+    if (
+      error instanceof GitHubRequestError &&
+      (error.status === 403 || error.status === 404)
+    ) {
+      return [];
+    }
+    throw error;
+  }
+  if (!Array.isArray(emails)) {
+    throw new Error("GitHub user emails response is invalid");
+  }
+  return emails.flatMap((entry) =>
+    isRecord(entry) &&
+    entry.verified === true &&
+    typeof entry.email === "string" &&
+    entry.email.trim()
+      ? [entry.email.trim()]
+      : [],
+  );
 }
 
 async function tokensWithAccount(

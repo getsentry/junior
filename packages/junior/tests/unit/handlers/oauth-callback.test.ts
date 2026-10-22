@@ -547,6 +547,9 @@ describe("oauth callback handler", () => {
     expect(stored.scope).toBeUndefined();
     expect(resolvePluginOAuthAccountMock).toHaveBeenCalledWith({
       provider: "github",
+      tokenResponse: expect.objectContaining({
+        access_token: "github-user-token",
+      }),
       tokens: expect.objectContaining({
         accessToken: "github-user-token",
         refreshToken: "github-refresh-token",
