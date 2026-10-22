@@ -92,7 +92,11 @@ export function ProfileCodeChanges(props: {
         </div>
       ) : (
         <div className="p-4">
-          <EmptyTelemetry>No changes match these filters.</EmptyTelemetry>
+          <EmptyTelemetry>
+            {state && inDateRange.length > 0
+              ? `No ${state} changes. Set State to All to see ${inDateRange.length} more.`
+              : "No changes match these filters."}
+          </EmptyTelemetry>
         </div>
       )}
     </Card>
