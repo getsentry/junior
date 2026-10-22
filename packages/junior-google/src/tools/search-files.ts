@@ -8,6 +8,7 @@ import {
   GOOGLE_FILE_TYPES,
   googleFileMimeType,
   googleFileType,
+  meetingRecordKind,
 } from "./files";
 import {
   googleApiError,
@@ -113,7 +114,8 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
         target: "searchGoogleFiles" as const,
         files: files.flatMap((file) => {
           const type = googleFileType(file.mimeType);
-          return type
+          // Meet records are read only through readMeetingTranscript.
+          return type && !meetingRecordKind(file.name)
             ? [
                 {
                   fileId: file.id,
