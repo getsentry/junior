@@ -9,13 +9,16 @@ const NOTES_ID = "1NotesAbCdEfGhIjKlMnOpQr";
 const FORGED_ID = "1ForgedAbCdEfGhIjKlMnOpQ";
 const DELETED_ID = "1DeletedAbCdEfGhIjKlMnOp";
 const AGENDA_ID = "1AgendaAbCdEfGhIjKlMnOp";
+const LONG_NOTES = `# Notes\n\n${"**Bob:** Next topic.\n".repeat(6_000)}`;
 const NOTES_TITLE = "Weekly triage - 2026/10/12 10:01 PDT - Notes by Gemini";
 
 function meetTools(...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
+  const sandbox = { root: "/vercel/sandbox", writeFile: vi.fn() };
   const tools = googlePlugin().hooks!.tools!({
     egress: { fetch },
+    sandbox,
     users: {
       resolveActor: async () => ({
         user: { email: REQUESTER, id: "user-1", identities: [] },
@@ -27,7 +30,7 @@ function meetTools(...responses: Response[]) {
     tools[name]!.execute!(tools[name]!.prepareArguments!(input), {
       toolCallId: "call-1",
     });
-  return { fetch, run };
+  return { fetch, run, sandbox };
 }
 
 // Bob organizes the meeting and invited Junior and Alice.
@@ -157,7 +160,7 @@ describe("Google Meet transcripts", () => {
 
     // An all-day event has only a date. A record that Junior cannot open does
     // not hide the other records. A record title in another language is
-    // still read.
+    // still read. A long record is saved in full to the sandbox.
     const allDay = meetTools(
       Response.json({
         ...event,
@@ -176,7 +179,7 @@ describe("Google Meet transcripts", () => {
         name: "Weekly triage - 12.10.2026 - Notizen von Gemini",
         owners: [{ emailAddress: "bob@example.com" }],
       }),
-      new Response("# Notes", {
+      new Response(LONG_NOTES, {
         headers: { "content-type": "text/markdown" },
       }),
     );
@@ -184,8 +187,19 @@ describe("Google Meet transcripts", () => {
       await allDay.run("readMeetingTranscript", { eventId: "event1" }),
     ).toMatchObject({
       message: expect.stringContaining("cannot be opened"),
-      records: [{ content: "# Notes", kind: "document" }],
+      records: [
+        {
+          content: LONG_NOTES.slice(0, 100_000),
+          kind: "document",
+          path: `/vercel/sandbox/meetings/event1/${NOTES_ID}.md`,
+        },
+      ],
       status: "ok",
+      truncated: true,
+    });
+    expect(allDay.sandbox.writeFile).toHaveBeenCalledWith({
+      content: LONG_NOTES,
+      path: `/vercel/sandbox/meetings/event1/${NOTES_ID}.md`,
     });
   });
 

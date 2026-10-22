@@ -75,9 +75,14 @@ Gmail and Drive writes are out of scope.
   meeting, is not read. It does not require a title format, because Meet can
   change the titles and they differ by language. The title only sets `kind`.
   Google can take from some minutes to a few hours after the call to attach
-  the records, so an automation must allow for this delay. The result marks the text as untrusted. The tool only
-  reads. Junior acts on what was said only when the requester or an
-  automation asks for it.
+  the records, so an automation must allow for this delay. The result marks
+  the text as untrusted. The tool only reads. Junior acts on what was said
+  only when the requester or an automation asks for it.
+- A transcript of a long meeting can be megabytes. The result returns at
+  most 100,000 characters inline. The tool saves the full text of each cut
+  record to a Markdown file in the Conversation sandbox, under `meetings/`,
+  and returns its `path`. Junior then reads or searches the full file in
+  parts. Drive cannot export a Doc larger than 10 MB.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.

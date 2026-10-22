@@ -77,6 +77,7 @@ export function googlePlugin(): PluginRegistration {
           accountEmail: config.accountEmail,
           allowedDomains: config.allowedDomains,
           egress: ctx.egress,
+          sandbox: ctx.sandbox,
           users: ctx.users,
         };
         return {
