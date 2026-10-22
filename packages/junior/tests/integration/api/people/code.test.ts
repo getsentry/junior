@@ -99,6 +99,15 @@ describe("people code API", () => {
         mergeRate: 1,
         open: 0,
       });
+      expect(report.changes).toEqual([
+        expect.objectContaining({
+          number: 11,
+          repository: "getsentry/junior",
+          state: "merged",
+          title: "Alice change",
+          url: "https://github.com/getsentry/junior/pull/11",
+        }),
+      ]);
       expect(report.activityDays).toHaveLength(90);
       expect(report.activityDays.at(-3)).toEqual({
         closed: 0,

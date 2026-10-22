@@ -6,10 +6,12 @@ import {
   timeRangeBucketUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
+import { Card } from "../../components/layout/Card";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "../code/CodeActivityChart";
+import { CodeChangeRow } from "../code/CodeChangeRow";
 
 function mergeRate(value: number | undefined): string {
   return value === undefined ? "—" : `${Math.round(value * 100)}%`;
@@ -28,13 +30,14 @@ function costUsd(value: number | undefined): string {
 function hasCodeActivity(report: CodePersonReport): boolean {
   const summary = report.summary;
   return (
+    report.changes.length > 0 ||
     summary.created + summary.merged + summary.closed > 0 ||
     (summary.costUsd ?? 0) > 0 ||
     report.activityDays.some((day) => day.created + day.merged + day.closed > 0)
   );
 }
 
-/** Render person-scoped native code change activity. */
+/** Render person-scoped native code change activity and recent code changes. */
 export function ProfileCodeActivity(props: {
   range: TimeRangeDays;
   report: CodePersonReport;
@@ -86,6 +89,18 @@ export function ProfileCodeActivity(props: {
         })}
         range={props.range}
       />
+      {props.report.changes.length > 0 ? (
+        <Card as="section">
+          <div className="border-b border-dashboard-border-subtle px-4 py-3 font-display text-lg text-dashboard-text">
+            Recent changes
+          </div>
+          <div>
+            {props.report.changes.map((change) => (
+              <CodeChangeRow change={change} key={change.id} />
+            ))}
+          </div>
+        </Card>
+      ) : null}
     </section>
   );
 }

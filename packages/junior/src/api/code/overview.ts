@@ -12,6 +12,8 @@ import { sumUtcHoursIntoSixHours } from "../reporting-window";
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
 const ACTIVITY_DAYS = 90;
+/** Most recent code changes listed on one People profile. */
+const PERSON_CHANGE_LIMIT = 100;
 
 const summaryRowSchema = z
   .object({
@@ -480,22 +482,33 @@ export async function readCodeOverview(nowMs = Date.now()) {
 }
 
 /**
- * Read person-scoped code activity linked through conversation actors on
- * Junior-owned code changes.
+ * Read person-scoped code activity and recent code changes linked through
+ * conversation actors on Junior-owned code changes.
  */
 export async function readPersonCodeOverview(args: {
   nowMs?: number;
   userId: string;
 }) {
   const nowMs = args.nowMs ?? Date.now();
-  const windows = await readCodeWindows({
-    nowMs,
-    userId: args.userId,
-  });
+  const db = getDb();
+  const [windows, changes] = await Promise.all([
+    readCodeWindows({ nowMs, userId: args.userId }),
+    db
+      .select(codeChangeReportColumns)
+      .from(juniorCodeChanges)
+      .innerJoin(
+        juniorCodeRepositories,
+        eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
+      )
+      .where(changeScopeFilter({ userId: args.userId }))
+      .orderBy(desc(juniorCodeChanges.updatedAt))
+      .limit(PERSON_CHANGE_LIMIT),
+  ]);
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
+    changes: changes.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),
