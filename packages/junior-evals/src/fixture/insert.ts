@@ -19,10 +19,7 @@ import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
-import {
-  SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
-  type ScheduledAutomation,
-} from "@/chat/scheduled-automations/types";
+import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { fixtureId } from "./ids";
 import type { SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
@@ -134,7 +131,6 @@ export async function insertScheduledAutomation(args: {
     creatorIdentityId: identity.id,
     credentialMode: args.credentialMode ?? "creator",
     destination: args.destination,
-    executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
     nextRunAtMs: args.due ? nowMs : nowMs + 7 * 24 * 60 * 60 * 1000,
     outcomes: (args.sendTo ?? [args.destination]).map((destination) => ({
       action: "send_message",

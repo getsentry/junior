@@ -246,7 +246,7 @@ export async function getWritableTask(args: {
 /** Project scheduled automation state into the stable model-facing result shape. */
 export function compactTask(
   task: ScheduledAutomation,
-  requesterSlackUserId?: string,
+  isCreator: boolean,
 ): CompactTaskResult {
   return compactTaskResultSchema.parse({
     id: task.id,
@@ -279,7 +279,7 @@ export function compactTask(
     },
     conversationAccess: task.conversationAccess,
     credentialMode: task.credentialMode,
-    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
+    isCreator,
     createdBy: {
       name: task.createdBy.fullName ?? null,
       username: task.createdBy.userName ?? null,
@@ -305,9 +305,9 @@ export function compactTask(
 export async function scheduleAutomationToolResult(
   conversationId: string,
   task: ScheduledAutomation,
-  requesterSlackUserId?: string,
+  isCreator: boolean,
 ) {
-  const automation = compactTask(task, requesterSlackUserId);
+  const automation = compactTask(task, isCreator);
   const title =
     automation.title ??
     fallbackShortTitle(automation.instruction, "Scheduled automation");

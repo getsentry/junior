@@ -30,6 +30,7 @@ import {
   resolveTaskTitle,
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -160,7 +161,10 @@ export function createEventAutomationTool(
             context.conversationId,
             existing,
             catalog,
-            actor.userId,
+            isRequesterAutomationCreator(
+              await context.resolveActorIdentity?.(),
+              existing,
+            ),
           );
         }
       }
@@ -209,11 +213,12 @@ export function createEventAutomationTool(
           ...(match ? { match } : undefined),
         },
       });
+      const created = await createEventAutomation(db, task);
       return eventAutomationToolResult(
         context.conversationId,
-        await createEventAutomation(db, task),
+        created,
         catalog,
-        actor.userId,
+        created.creatorIdentityId === identity.id,
       );
     },
   });

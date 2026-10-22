@@ -1,6 +1,7 @@
 import { automationRevision } from "@/chat/automations/revision";
 import { removedCardSchema } from "@/chat/conversations/cards";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -57,7 +58,13 @@ export function createSlackScheduleDeleteAutomationTool(
         plugin: "junior",
       }).remove("object", automationId);
       return {
-        automation: compactTask(next, context.actor?.userId),
+        automation: compactTask(
+          next,
+          isRequesterAutomationCreator(
+            await context.users.resolveActor(),
+            lookup,
+          ),
+        ),
         removedCards: [{ plugin: "junior", key: automationId }],
       };
     },

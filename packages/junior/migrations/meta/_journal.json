@@ -414,6 +414,13 @@
       "when": 1792331274207,
       "tag": "0058_automation_creator_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792400744430,
+      "tag": "0059_scheduled_automation_drop_execution_actor",
+      "breakpoints": true
     }
   ]
 }

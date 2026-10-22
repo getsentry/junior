@@ -12,6 +12,7 @@ import {
 } from "@/chat/services/short-title";
 import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
 import { requireRequesterMention } from "@/chat/automations/requester-mention";
+import { isRequesterAutomationCreator } from "@/chat/automations/creator";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
@@ -22,7 +23,6 @@ import {
   scheduleIntentSchema,
 } from "../schedule-intent";
 import { scheduledAutomationAttributes } from "../telemetry";
-import { SCHEDULED_AUTOMATION_SYSTEM_ACTOR } from "../types";
 import type { ScheduledAutomation } from "../types";
 import {
   buildTaskId,
@@ -127,7 +127,10 @@ export function createSlackScheduleCreateAutomationTool(
         return scheduleAutomationToolResult(
           context.conversationId,
           existing,
-          actor.slackUserId,
+          isRequesterAutomationCreator(
+            await context.users.resolveActor(),
+            existing,
+          ),
         );
       }
 
@@ -187,7 +190,6 @@ export function createSlackScheduleCreateAutomationTool(
         conversationAccess,
         credentialMode: input.credentialMode ?? "creator",
         destination,
-        executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
         nextRunAtMs: compiled.nextRunAtMs,
         originalRequest: context.userText,
         schedule: compiled.schedule,
@@ -219,7 +221,7 @@ export function createSlackScheduleCreateAutomationTool(
       return scheduleAutomationToolResult(
         context.conversationId,
         committed,
-        actor.slackUserId,
+        committed.creatorIdentityId === identity.id,
       );
     },
   });
