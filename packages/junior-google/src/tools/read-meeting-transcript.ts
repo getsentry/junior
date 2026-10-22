@@ -100,8 +100,6 @@ const eventSchema = z.object({
   attendees: z
     .array(googleAttendeeSchema.extend({ self: z.boolean().optional() }))
     .optional(),
-  end: z.object({ dateTime: z.string().optional() }),
-  id: z.string(),
   organizer: z
     .object({ email: z.string().optional(), self: z.boolean().optional() })
     .optional(),
@@ -127,10 +125,6 @@ const recordFileSchema = z.object({
 
 const NO_RECORD_MESSAGE =
   "No transcript or Gemini notes are attached to this event yet. Someone in the call must turn on transcription or Gemini notes, and Google can take from some minutes to a few hours after the call ends to attach them. Google does not share them with invitees when more than 200 people in the organizer's domain are invited.";
-
-function unreadableMessage(count: number, accountEmail: string): string {
-  return `${count} attached Meet record(s) cannot be opened by Junior's Google account (${accountEmail}). The Doc may be deleted, or not shared with invitees. Ask the organizer to share it with that account.`;
-}
 
 function eventStartMs(start: CalendarEvent["start"]): number {
   if (start.dateTime) return Date.parse(start.dateTime);
@@ -222,11 +216,8 @@ async function readInvitedEvent(
   const event = eventSchema.parse(response.body);
   const juniorInvited =
     event.organizer?.self === true ||
-    (event.attendees ?? []).some(
-      (attendee) =>
-        attendee.self === true ||
-        attendee.email.toLowerCase() === ctx.accountEmail,
-    );
+    (event.attendees ?? []).some((attendee) => attendee.self === true) ||
+    isInvited(event, ctx.accountEmail);
   if (!juniorInvited) {
     throw new PluginToolInputError(
       "Junior is not invited to this meeting, so it cannot read its transcript.",
@@ -242,15 +233,11 @@ async function readInvitedEvent(
 
 /**
  * Read the Google Meet transcript and Gemini notes of a meeting that Junior
- * is invited to.
+ * and the requester are invited to.
  *
- * Google attaches the records to the Calendar event and shares them with the
- * invitees in the organizer's domain. Meet can change the record titles, and
- * they differ by language, so the tool does not require a title format.
  * Anyone who can edit an event can attach any Doc, so the tool reads only
- * attached Docs that the organizer owns and that were made after the meeting
- * started. The tool only reads. Record text is
- * speech from the call, so the result marks it as untrusted.
+ * attached Docs that the organizer owns and that were made for this meeting.
+ * The package README explains how Google shares the records.
  */
 export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -351,7 +338,7 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
       }
       const unreadableNote =
         unreadable > 0
-          ? unreadableMessage(unreadable, ctx.accountEmail)
+          ? `${unreadable} attached Meet record(s) cannot be opened by Junior's Google account (${ctx.accountEmail}). The Doc may be deleted, or not shared with invitees. Ask the organizer to share it with that account.`
           : undefined;
       if (records.length === 0) {
         return {
