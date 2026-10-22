@@ -24,6 +24,7 @@ import {
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import {
+  GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
   GITHUB_ISSUE_EVENTS,
   GITHUB_ISSUE_IDENTIFIER,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
@@ -164,6 +165,7 @@ export function githubPlugin(
           identifier: GITHUB_ISSUE_IDENTIFIER,
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
+          matchFields: GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
         },
         {
           type: "pull_request",
@@ -194,7 +196,10 @@ export function githubPlugin(
             ...GITHUB_ISSUE_SUGGESTED_EVENTS,
             ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
           ],
-          matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          matchFields: {
+            ...GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+            ...GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          },
           guidance: gitHubPullRequestEventGuidance(
             options.pullRequestEvents?.guidance,
           ),

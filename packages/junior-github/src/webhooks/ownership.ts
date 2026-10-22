@@ -40,3 +40,17 @@ export function botUserIdFromEmail(
 ): number | undefined {
   return parseGitHubBotIdentity(value)?.userId;
 }
+
+/**
+ * Check whether text mentions the bot encoded in the configured bot email.
+ * GitHub mentions use the App slug, the bot login without `[bot]`.
+ */
+export function mentionsBotLogin(
+  text: string,
+  botEmail: string | undefined,
+): boolean {
+  const slug = botLoginFromEmail(botEmail)?.replace(/\[bot\]$/i, "");
+  if (!slug) return false;
+  const escaped = slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\w-])@${escaped}(?![\\w-])`, "i").test(text);
+}
