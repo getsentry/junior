@@ -1,4 +1,4 @@
-import { logException, logInfo, logWarn } from "@/chat/logging";
+import { logAudit, logException, logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
@@ -170,15 +170,23 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.egressId
+      ? { "app.sandbox.egress_id": input.egressId }
+      : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.grantName ? { "app.grant.name": input.grantName } : undefined),
-    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : undefined),
-    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : undefined),
+    ...(input.grantAccess
+      ? { "app.grant.access": input.grantAccess }
+      : undefined),
+    ...(input.grantReason
+      ? { "app.grant.reason": input.grantReason }
+      : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status ? { "http.response.status_code": input.status } : undefined),
+    ...(input.status
+      ? { "http.response.status_code": input.status }
+      : undefined),
   };
 }
 
@@ -270,7 +278,37 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
   );
 }
 
+/**
+ * Name whose authority the request used. A system actor with a delegated
+ * subject used that person's credentials for the bound Automation.
+ */
+function credentialAttributes(
+  context: SandboxEgressCredentialContext,
+): Record<string, unknown> {
+  const { actor } = context.credentials;
+  const attributes: Record<string, unknown> = {
+    "app.credential.actor.type": "type" in actor ? "user" : "system",
+    "app.credential.actor.id": "type" in actor ? actor.userId : actor.name,
+  };
+  const subject =
+    "subject" in context.credentials ? context.credentials.subject : undefined;
+  if (subject) {
+    attributes["app.credential.subject.id"] = subject.userId;
+    attributes["app.credential.subject.allowed_when"] = subject.allowedWhen;
+    if ("taskId" in subject) {
+      attributes["app.task.id"] = subject.taskId;
+    }
+  }
+  return attributes;
+}
+
+/**
+ * Record one forwarded provider request. Write-grant requests are audit
+ * events, so they reach Sentry in production. Other requests log only outside
+ * production.
+ */
 function logSandboxEgressUpstreamRequest(input: {
+  credentialContext: SandboxEgressCredentialContext;
   egressId: string;
   grantAccess?: "read" | "write";
   grantName: string;
@@ -280,11 +318,13 @@ function logSandboxEgressUpstreamRequest(input: {
   upstream: Response;
   upstreamUrl: URL;
 }): void {
-  if (!shouldLogSandboxEgressInfo()) {
+  const isWrite = input.grantAccess === "write";
+  if (!isWrite && !shouldLogSandboxEgressInfo()) {
     return;
   }
 
-  logInfo("sandbox.egress.upstream.requested", {
+  (isWrite ? logAudit : logInfo)("sandbox.egress.upstream.requested", {
+    ...credentialAttributes(input.credentialContext),
     ...egressAttributes({
       egressId: input.egressId,
       grantAccess: input.grantAccess,
@@ -563,7 +603,9 @@ async function recordSandboxAuthRequired(input: {
     provider: input.provider,
     grant: input.grant,
     kind: input.kind ?? "auth_required",
-    ...(input.authorization ? { authorization: input.authorization } : undefined),
+    ...(input.authorization
+      ? { authorization: input.authorization }
+      : undefined),
     message: input.message,
   });
 }
@@ -687,7 +729,9 @@ export async function executeCredentialedEgressRequest(input: {
   const recordPermissionDenied =
     deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
-  async function resolveLease(): Promise<SandboxEgressCredentialLease | Response> {
+  async function resolveLease(): Promise<
+    SandboxEgressCredentialLease | Response
+  > {
     try {
       return await issueCredentialLease(
         provider,
@@ -792,8 +836,7 @@ export async function executeCredentialedEgressRequest(input: {
       return intercepted;
     }
 
-    const requestBody =
-      body instanceof ArrayBuffer ? body.slice(0) : body;
+    const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
     const upstream = await fetchImpl(upstreamUrl, {
       method: request.method,
       headers,
@@ -839,6 +882,7 @@ export async function executeCredentialedEgressRequest(input: {
       });
     }
     logSandboxEgressUpstreamRequest({
+      credentialContext,
       egressId: activeEgressId,
       grantAccess: lease.grant.access,
       grantName: lease.grant.name,

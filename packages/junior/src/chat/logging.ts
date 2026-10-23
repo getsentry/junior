@@ -217,8 +217,18 @@ function getSentryEnvironment(): string {
     .toLowerCase();
 }
 
-function shouldSuppressInfoLog(level: LogLevel): boolean {
-  return getSentryEnvironment() === "production" && level === "info";
+/** Marks an audit event. Sentry keeps it in production. */
+const AUDIT_LOG_ATTRIBUTE = "app.log.audit";
+
+function shouldSuppressInfoLog(
+  level: LogLevel,
+  attributes: LogAttributes,
+): boolean {
+  return (
+    getSentryEnvironment() === "production" &&
+    level === "info" &&
+    attributes[AUDIT_LOG_ATTRIBUTE] !== true
+  );
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
@@ -643,7 +653,7 @@ function emitSentry(
   body: string,
   attributes: LogAttributes,
 ): void {
-  if (shouldSuppressInfoLog(level)) {
+  if (shouldSuppressInfoLog(level, attributes)) {
     return;
   }
 
@@ -1539,6 +1549,20 @@ export function logInfo(
   attributes: Record<string, unknown> = {},
 ): void {
   log.info(eventName, attributes);
+}
+
+/**
+ * Emit an audit event: an info event that Sentry also keeps in production.
+ *
+ * Use it only to record who caused an external side effect and why. Other
+ * info events stay out of Sentry in production. Sentry log retention is not
+ * durable audit storage.
+ */
+export function logAudit(
+  eventName: string,
+  attributes: Record<string, unknown> = {},
+): void {
+  log.info(eventName, { ...attributes, [AUDIT_LOG_ATTRIBUTE]: true });
 }
 
 /**

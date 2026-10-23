@@ -127,6 +127,16 @@ fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task
 sort=-timestamp
 ```
 
+Credentialed provider writes, with whose authority they used. Write-grant
+egress requests are audit events (`app.log.audit:true`), so Sentry keeps them
+in production. Other info events stay out of Sentry in production.
+
+```text
+dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
+fields=timestamp,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code,app.credential.actor.id,app.credential.subject.id,app.credential.subject.allowed_when,app.task.id,trace_id
+sort=-timestamp
+```
+
 Auth, credential, and resume failures.
 
 ```text
@@ -258,6 +268,13 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
 `app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
+
+Sandbox egress events: `sandbox.egress.upstream.requested` is logged for every
+forwarded request outside production. In production, it is logged only for
+write grants, as an audit event. Attributes: `app.provider.name`,
+`app.grant.name`, `app.grant.access`, `app.credential.actor.type`,
+`app.credential.actor.id`, `app.credential.subject.id`,
+`app.credential.subject.allowed_when`, `app.task.id`, `app.log.audit`
 
 ### Scheduled automations
 
