@@ -185,7 +185,9 @@ describe("scheduled automation heartbeat", () => {
       db,
       `sched_plugin_1:${TEST_RUN_AT_MS}`,
     );
+    // The run stores the Automation version that it dispatched.
     expect(running).toMatchObject({
+      automationVersion: 1,
       status: "running",
       dispatchId: expect.any(String),
     });
@@ -226,6 +228,7 @@ describe("scheduled automation heartbeat", () => {
     await runAuthorizedHeartbeat();
 
     await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
+      automationVersion: 1,
       status: "completed",
       resultMessageTs: "1700000000.000001",
     });
