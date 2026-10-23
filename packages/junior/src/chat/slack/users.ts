@@ -120,6 +120,36 @@ export async function lookupSlackUserProfile(
   return normalizeUser(user);
 }
 
+/**
+ * Check that one Slack user is a current human member of a workspace.
+ *
+ * A user that Slack cannot find is not a member. Other lookup errors
+ * propagate.
+ */
+export async function isActiveSlackWorkspaceMember(
+  userId: SlackUserId,
+  teamId: string,
+): Promise<boolean> {
+  let user: SlackUserProfile;
+  try {
+    user = await lookupSlackUserProfile(userId);
+  } catch (error: unknown) {
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "user_not_found"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+  return (
+    user.id === userId &&
+    user.team_id === teamId &&
+    !user.is_deleted &&
+    !user.is_bot
+  );
+}
+
 /** Look up a Slack user by email. Returns null when no user matches. */
 export async function lookupSlackUserByEmail(
   email: string,

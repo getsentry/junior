@@ -38,3 +38,7 @@ the account. The person must start the connection from Slack or the web UI.
 Provider handles and subject IDs always remain identity-scoped. Display names
 are presentation data and must never be used to link identities or grant
 authority.
+
+Identity dispatch lets a plugin route start private work for the person behind
+a linked provider account. It matches only the exact account id from this
+linking flow. See `chat/agent-dispatch/README.md`.

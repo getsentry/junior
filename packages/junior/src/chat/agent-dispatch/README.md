@@ -21,6 +21,37 @@ credential subject, Source, Destination, and plugin metadata from the dispatch
 record. The Turn saves Actor for later Runs. The dispatch record remains the
 authority for the other facts until their owning contract changes.
 
+## Identity Dispatch
+
+A plugin webhook route can start private work for one person with
+`ctx.agent.dispatchForIdentity`. The plugin gives the provider account id of
+that person. Core uses the plugin name as the provider. A plugin cannot name an
+Identity of another provider.
+
+Core starts work only when all of these rules are true:
+
+1. Junior has a Slack bot, and Slack `auth.test` gives the bot team id.
+2. The provider is not a core Identity namespace (`junior` or `slack`).
+3. One Identity has this provider, an empty tenant, this exact account id,
+   kind `user`, and a linked user.
+4. That user has exactly one Slack Identity in the bot team.
+5. Slack `users.info` shows that Slack user in the bot team. The user is not
+   deleted and is not a bot.
+
+If one rule is false, core returns `not_linked`. It starts no work and calls no
+model. Missing Slack setup also returns `not_linked`, because core cannot find
+a current Slack member. Other lookup and storage errors propagate to the route.
+
+When all rules are true, core opens the bot DM with that Slack user. It then
+creates a normal plugin dispatch to the DM with `private` visibility. The
+dispatch has the `private-direct-conversation` credential subject for that
+Slack user. Core binds and checks this subject with the same code as heartbeat
+dispatches. The idempotency key has the same scope as other dispatches of that
+plugin.
+
+Only identities that the OAuth account-linking flow linked count. Provider
+handles, emails from content, and display names never start this work.
+
 ## Conversation Title
 
 A dispatched run has no human message. The run input is a bot-authored user
@@ -54,7 +85,8 @@ holding that lock.
 
 ## Boundaries
 
-- `context.ts` exposes the authorized core and plugin dispatch entry points.
+- `context.ts` exposes the authorized core and plugin dispatch entry points,
+  which include Identity dispatch for plugin routes.
 - `store.ts` owns dispatch records, projections, and mailbox-append recovery
   receipts.
 - `work.ts` adapts dispatches to conversation work and projects durable turn
@@ -66,4 +98,5 @@ holding that lock.
 
 Representative behavior coverage lives in
 `tests/integration/agent-dispatch-work.test.ts`; local transition and authority
-contracts live in `tests/component/agent-dispatch-worker.test.ts`.
+contracts live in `tests/component/agent-dispatch-worker.test.ts`. Identity
+dispatch coverage lives in `tests/integration/identity-dispatch.test.ts`.

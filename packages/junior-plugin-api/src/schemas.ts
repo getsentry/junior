@@ -352,6 +352,20 @@ export const replyAttributionSchema = z
   })
   .strict();
 
+/**
+ * Plugin route request to start private work for the person behind one
+ * provider Identity. Core binds the provider to the calling plugin.
+ */
+export const identityDispatchOptionsSchema = z
+  .object({
+    idempotencyKey: nonBlankStringSchema.pipe(z.string().max(512)),
+    input: nonBlankStringSchema.pipe(z.string().max(32_000)),
+    replyAttribution: replyAttributionSchema.optional(),
+    /** Provider account id stored by the OAuth account-linking flow. */
+    subjectId: exactNonBlankStringSchema.pipe(z.string().max(255)),
+  })
+  .strict();
+
 /** Plugin dispatch request accepted by Junior core. */
 export const dispatchOptionsSchema = z
   .object({
