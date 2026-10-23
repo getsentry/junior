@@ -8,13 +8,30 @@ const TITLE_CONTEXT_TIMEOUT_MS = 5_000;
 const TITLE_CONTEXT_MAX_LINES = 5;
 const TITLE_CONTEXT_LINE_MAX_LENGTH = 200;
 
+/** Pick one plugin's string config values and drop the plugin name prefix. */
+function pluginConfig(
+  pluginName: string,
+  configuration: Record<string, unknown>,
+): Record<string, string> {
+  const prefix = `${pluginName}.`;
+  return Object.fromEntries(
+    Object.entries(configuration).flatMap(([key, value]) =>
+      key.startsWith(prefix) && typeof value === "string"
+        ? [[key.slice(prefix.length), value]]
+        : [],
+    ),
+  );
+}
+
 /**
  * Collect plugin facts, such as linked issue titles, for one new
- * Conversation title. Fails open: a failed plugin adds no facts.
+ * Conversation title. `configuration` holds config values by full key.
+ * Fails open: a failed plugin adds no facts.
  */
-export async function getPluginConversationTitleContext(
-  text: string,
-): Promise<string[]> {
+export async function getPluginConversationTitleContext(args: {
+  configuration: Record<string, unknown>;
+  text: string;
+}): Promise<string[]> {
   const signal = AbortSignal.timeout(TITLE_CONTEXT_TIMEOUT_MS);
   // Stop waiting at the deadline even when a hook ignores the signal.
   const timedOut = new Promise<never>((_, reject) => {
@@ -31,11 +48,12 @@ export async function getPluginConversationTitleContext(
       try {
         const lines = await Promise.race([
           hook({
+            config: pluginConfig(plugin.manifest.name, args.configuration),
             db: getDb(),
             log: createPluginLogger(plugin.manifest.name),
             plugin: { name: plugin.manifest.name },
             signal,
-            text,
+            text: args.text,
           }),
           timedOut,
         ]);

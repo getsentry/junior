@@ -249,25 +249,37 @@ export function githubPlugin(
     hooks: {
       async conversationTitleContext(ctx) {
         return await loadGitHubConversationTitleContext({
+          config: ctx.config,
           log: ctx.log,
           text: ctx.text,
-          loadObject: async (link) => {
+          loadObject: async (reference) => {
+            const { collection, permissions } = (
+              {
+                commit: {
+                  collection: "commits",
+                  permissions: { contents: "read" },
+                },
+                issue: {
+                  collection: "issues",
+                  permissions: { issues: "read" },
+                },
+                pull_request: {
+                  collection: "pulls",
+                  permissions: { pull_requests: "read" },
+                },
+              } as const
+            )[reference.kind];
             // Read one object with a token scoped to its repository.
             const token = await issueInstallationToken({
               appIdEnv,
               privateKeyEnv,
               installationIdEnv,
-              permissions:
-                link.kind === "pull_request"
-                  ? { pull_requests: "read" }
-                  : { issues: "read" },
-              repositories: [link.name],
+              permissions,
+              repositories: [reference.name],
             });
-            const collection =
-              link.kind === "pull_request" ? "pulls" : "issues";
             return await githubRequest(
               "https://api.github.com",
-              `/repos/${encodeURIComponent(link.owner)}/${encodeURIComponent(link.name)}/${collection}/${link.number}`,
+              `/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
               { signal: ctx.signal, token: token.token },
             );
           },
