@@ -226,6 +226,14 @@ describe("finishAutomationRun", () => {
     await expect(
       finish(true, { result: "send_message" }),
     ).rejects.toMatchObject({ name: "ToolInputError" });
+    // A blank thread reply names the reply, not the valid message.
+    await expect(
+      finish(true, {
+        result: "send_message",
+        message: "Weekly digest",
+        threadReplies: ["Cocoa: quiet week", "  "],
+      }),
+    ).rejects.toThrow("Every threadReplies item must be non-empty.");
     await expect(finish(true, { result: "no_action" })).rejects.toMatchObject({
       name: "ToolInputError",
     });

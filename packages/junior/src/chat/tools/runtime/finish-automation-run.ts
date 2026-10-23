@@ -65,9 +65,11 @@ export function createFinishAutomationRunTool(options: {
       const parsed = automationResultSchema.safeParse(input);
       if (!parsed.success) {
         throw new ToolInputError(
-          input.result === "send_message"
-            ? "send_message requires a non-empty message."
-            : `${input.result} requires a non-empty reason.`,
+          input.result !== "send_message"
+            ? `${input.result} requires a non-empty reason.`
+            : typeof input.message === "string" && input.message.trim()
+              ? "Every threadReplies item must be non-empty."
+              : "send_message requires a non-empty message.",
         );
       }
       // A message that is only the old no-reply marker posts nothing.
