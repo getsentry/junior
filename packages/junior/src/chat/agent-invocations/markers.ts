@@ -4,6 +4,7 @@
  * The child Conversation gets `message` events for its input and its result,
  * because a child has no Location that records visible messages.
  */
+import type { Actor } from "@/chat/actor";
 import { getConversationEventStore } from "@/chat/db";
 import { getAgentInvocationMessageId } from "./store";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
@@ -16,10 +17,12 @@ const SUBAGENT_KIND = "agent";
  * record its input as a user message in the child Conversation. The dashboard
  * pairs the parent event with `subagent_ended` to show the child and its
  * status. It must be written before the child mailbox append, so the child
- * cannot end first.
+ * cannot end first. `onBehalfOf` of a parent task goes on the child message
+ * (see `on-behalf-of.ts`).
  */
 export async function recordSubagentStarted(
   invocation: AgentInvocation,
+  onBehalfOf?: Actor,
 ): Promise<void> {
   const eventStore = getConversationEventStore();
   // The mailbox input has the same id, so the child Turn links to it.
@@ -32,6 +35,7 @@ export async function recordSubagentStarted(
         messageId,
         role: "user",
         text: invocation.input,
+        ...(onBehalfOf ? { meta: { onBehalfOf } } : undefined),
       },
       createdAtMs: invocation.createdAtMs,
     },

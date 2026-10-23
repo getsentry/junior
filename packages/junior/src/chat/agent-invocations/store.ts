@@ -480,57 +480,6 @@ export async function createAgentInvocation(
   });
 }
 
-/**
- * Create or replay the agent invocation that gives one input to a child
- * Conversation: a result or message from its own child agent, or its own
- * watch events. It continues that Conversation for the same parent as
- * `latest`, and for the same Actor and credentials unless `runAs` sets them.
- * It skips the queue and active-count checks because it continues work that
- * already passed them.
- */
-export async function createAgentInvocationFromLatest(
-  args: {
-    input: string;
-    invocationId: string;
-    latest: AgentInvocation;
-    /** Actor, credentials, and Source for watch events. */
-    runAs?: Pick<AgentInvocation, "actor" | "credentialContext" | "source">;
-  },
-  nowMs = Date.now(),
-): Promise<AgentInvocation> {
-  const { invocationId } = args;
-  await getSqlExecutor()
-    .db()
-    .insert(juniorAgentInvocations)
-    .values({
-      invocationId,
-      parentConversationId: args.latest.parentConversationId,
-      childConversationId: args.latest.childConversationId,
-      agentName: args.latest.agentName ?? null,
-      input: args.input,
-      actor: (args.runAs ?? args.latest).actor,
-      credentialContext: (args.runAs ?? args.latest).credentialContext ?? null,
-      source: args.runAs?.source ?? { kind: "agent_invocation" },
-      destination: args.latest.destination,
-      modelProfile: args.latest.modelProfile ?? null,
-      reasoningLevel: args.latest.reasoningLevel ?? null,
-      status: "pending",
-      mailboxStatus: "pending",
-      createdAt: new Date(nowMs),
-      updatedAt: new Date(nowMs),
-      terminalAt: null,
-    })
-    .onConflictDoNothing();
-  const invocation = await getAgentInvocation(invocationId);
-  if (
-    !invocation ||
-    invocation.childConversationId !== args.latest.childConversationId
-  ) {
-    throw new Error(`Agent invocation creation raced for ${invocationId}`);
-  }
-  return invocation;
-}
-
 /** Find a direct child agent of one parent by name or child Conversation id. */
 export async function findChildAgentConversationId(args: {
   parentConversationId: string;

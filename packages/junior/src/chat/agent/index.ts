@@ -50,7 +50,7 @@ import {
   recordTurnRoute,
 } from "@/chat/conversations/projection";
 import {
-  agentInstructionProvenance,
+  agentInstructionProvenanceFor,
   contextProvenance,
   instructionActors,
   instructionProvenanceFor,
@@ -491,10 +491,11 @@ async function executeAgentRunInPrivacyContext(
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
     // A child agent's input is a parent agent task or another agent's
-    // output. An agent wrote it, so it has no Actor.
+    // output. An agent wrote it, so it has no Actor. It records whose work it
+    // is, so the child's next Turn keeps that Actor.
     const childAgent = Boolean(run.parentConversationId);
     const turnStartProvenance = childAgent
-      ? agentInstructionProvenance
+      ? agentInstructionProvenanceFor(run.onBehalfOf)
       : instructionProvenanceFor(actor);
     const committedInstructionProvenance: ConversationMessageProvenance[] = [
       ...(existingSessionRecord?.piMessageProvenance ?? []),
