@@ -57,6 +57,7 @@ import {
   prepareCommitMsgHook,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
+import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import {
   githubGrantForEgress,
@@ -246,6 +247,32 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      async conversationTitleContext(ctx) {
+        return await loadGitHubConversationTitleContext({
+          log: ctx.log,
+          text: ctx.text,
+          loadObject: async (link) => {
+            // Read one object with a token scoped to its repository.
+            const token = await issueInstallationToken({
+              appIdEnv,
+              privateKeyEnv,
+              installationIdEnv,
+              permissions:
+                link.kind === "pull_request"
+                  ? { pull_requests: "read" }
+                  : { issues: "read" },
+              repositories: [link.name],
+            });
+            const collection =
+              link.kind === "pull_request" ? "pulls" : "issues";
+            return await githubRequest(
+              "https://api.github.com",
+              `/repos/${encodeURIComponent(link.owner)}/${encodeURIComponent(link.name)}/${collection}/${link.number}`,
+              { signal: ctx.signal, token: token.token },
+            );
+          },
+        });
+      },
       conversationSidebar(ctx) {
         return {
           annotationsByConversationId: Object.fromEntries(

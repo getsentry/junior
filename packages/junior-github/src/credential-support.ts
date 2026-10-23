@@ -40,6 +40,7 @@ export type GitHubGrant = PluginGrant & {
 interface GitHubRequestParams {
   body?: unknown;
   method?: string;
+  signal?: AbortSignal;
   token: string;
 }
 
@@ -276,6 +277,7 @@ export async function githubRequest(
       ...(params.body ? { "Content-Type": "application/json" } : undefined),
     },
     ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
+    signal: params.signal,
   });
 
   const text = await response.text();
