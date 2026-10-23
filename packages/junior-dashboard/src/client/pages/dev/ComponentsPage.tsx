@@ -1,4 +1,5 @@
 import { FormNotice } from "../../components/FormNotice";
+import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
@@ -191,6 +192,7 @@ function FoundationsGalleryPage() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("deploy failure");
 
   return (
     <GalleryShell
@@ -470,6 +472,12 @@ function FoundationsGalleryPage() {
             aria-label="Disabled text input"
             disabled
             value="read only"
+          />
+          <SearchInput
+            label="Search conversations"
+            onChange={setSearchQuery}
+            placeholder="Search conversations…"
+            value={searchQuery}
           />
         </div>
       </Fixture>
