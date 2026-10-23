@@ -51,6 +51,11 @@ export interface FormatMarkdownHookContext {
 
 /** First human message of a new Conversation, given before title generation. */
 export interface ConversationTitleContextHookContext extends PluginContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key. For example, `repo` for the `github.repo` config key.
+   */
+  config: Record<string, string>;
   /** Ends the hook when the host stops waiting for title context. */
   signal: AbortSignal;
   text: string;
