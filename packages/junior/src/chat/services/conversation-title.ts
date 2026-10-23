@@ -2,6 +2,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
+import { getPluginConversationTitleContext } from "@/chat/plugins/conversation-title-context";
 import { getThreadTitleSourceMessage } from "@/chat/services/conversation-memory";
 import {
   fallbackShortTitle,
@@ -99,7 +100,17 @@ async function ensureConversationTitleOnce(args: {
     const kind = humanMessage ? "conversation" : "run";
     let title: string | undefined;
     try {
-      title = await generateShortTitle({ completeText, kind, sourceText });
+      // Run input is task boilerplate; only human messages link objects.
+      const context =
+        kind === "conversation"
+          ? await getPluginConversationTitleContext(sourceText)
+          : undefined;
+      title = await generateShortTitle({
+        completeText,
+        context,
+        kind,
+        sourceText,
+      });
     } catch (error) {
       logWarn("conversation.title.generation.failed", {
         "exception.message":

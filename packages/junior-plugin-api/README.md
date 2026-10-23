@@ -48,6 +48,9 @@ reports, and other typed hook surfaces exported by this package.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
 - `formatMarkdown` is a pure text rewrite into ordinary Markdown before delivery.
+- `conversationTitleContext` returns short facts about objects that the first
+  human message links, such as an issue number and title. Only the title model
+  sees them. Junior bounds the wait and ignores a failed hook.
 - User prompt hooks for durable turns may emit registered structured events
   through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
