@@ -38,6 +38,9 @@ Each failure seen in production has one realistic case:
   `evals/integration/scheduler/delivery.eval.ts`.
 - "me" does not reach the creator (#2014): the creator mention case in
   `evals/integration/scheduler/delivery.eval.ts`.
+- A reminder that says "post in this channel" ends as `misconfigured`
+  because no Slack posting tool exists: the post-in-this-channel case in
+  `delivery.eval.ts`.
 - Unattended runs ask questions, or post when a condition is not met, and the
   silence marker leaks into Slack (#2014, #1741): the condition cases in
   `evals/integration/coding/event-automations/delivery.eval.ts`.
