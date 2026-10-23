@@ -265,4 +265,69 @@ describe("cloneRepository", () => {
     );
     expect(run).toHaveBeenCalledTimes(3);
   });
+
+  it("supports blobless shallow clone with --filter=blob:none", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const tool = createGitHubCloneRepositoryTool(context(run));
+
+    const result = await tool.execute!(
+      { repo: "getsentry/junior", blobless: true },
+      {} as never,
+    );
+
+    expect(run).toHaveBeenNthCalledWith(3, {
+      cmd: "git",
+      args: [
+        "clone",
+        "--quiet",
+        "--depth=1",
+        "--filter=blob:none",
+        "--",
+        "https://github.com/getsentry/junior.git",
+        "repos/junior",
+      ],
+      cwd: "/vercel/sandbox",
+      signal: expect.any(AbortSignal),
+    });
+    expect(result).toMatchObject({
+      path: "/vercel/sandbox/repos/junior",
+      repo: "getsentry/junior",
+    });
+  });
+
+  it("accepts custom timeoutSeconds for clone operations", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const tool = createGitHubCloneRepositoryTool(context(run));
+
+    const result = await tool.execute!(
+      { repo: "getsentry/junior", timeoutSeconds: 250 },
+      {} as never,
+    );
+
+    expect(run).toHaveBeenNthCalledWith(3, {
+      cmd: "git",
+      args: [
+        "clone",
+        "--quiet",
+        "--depth=1",
+        "--",
+        "https://github.com/getsentry/junior.git",
+        "repos/junior",
+      ],
+      cwd: "/vercel/sandbox",
+      signal: expect.any(AbortSignal),
+    });
+    expect(result).toMatchObject({
+      path: "/vercel/sandbox/repos/junior",
+      repo: "getsentry/junior",
+    });
+  });
 });
