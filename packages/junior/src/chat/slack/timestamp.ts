@@ -16,3 +16,11 @@ export function parseSlackMessageTs(
   const parsed = slackMessageTsSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
+
+/**
+ * Write a time in milliseconds as a Slack timestamp, for input that has no
+ * Slack message of its own, such as a submitted form.
+ */
+export function slackMessageTsFromMs(ms: number): SlackMessageTs {
+  return slackMessageTsSchema.parse((ms / 1000).toFixed(6));
+}

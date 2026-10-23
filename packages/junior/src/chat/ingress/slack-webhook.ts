@@ -63,16 +63,16 @@ import {
 } from "@/chat/ingress/message-router";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { slackMessageAttributes } from "./slack-message-telemetry";
-import {
-  getWorkspaceTeamId,
-  runWithWorkspaceTeamId,
-} from "@/chat/slack/workspace-context";
+import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
+import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
+import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
+import { slackUserInputAnswerNote } from "@/chat/slack/user-input";
+import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
@@ -126,16 +126,6 @@ const IGNORED_MESSAGE_SUBTYPES = new Set([
   "ekm_access_denied",
   "tombstone",
 ]);
-
-class SlackEventPersistenceError extends Error {
-  readonly cause: unknown;
-
-  constructor(cause: unknown) {
-    super("Slack event durable persistence failed");
-    this.name = "SlackEventPersistenceError";
-    this.cause = cause;
-  }
-}
 
 export interface SlackWebhookServices {
   getUserTokenStore?: () => UserTokenStore;
@@ -312,12 +302,13 @@ async function persistSlackMessage(args: {
       conversationId,
       state: args.state,
     });
-    if (
-      !saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
-    ) {
+    const kept =
+      saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId) ===
+      true;
+    if (!kept) {
       await receipt?.stop();
     }
-    throw new SlackEventPersistenceError(error);
+    throw new SlackEventPersistenceError(error, kept);
   });
 }
 
@@ -562,17 +553,31 @@ async function routeParsedMessage(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
-  await persistSlackMessage({
-    adapter: args.adapter,
-    installation: args.installation,
-    message,
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    receivedAtMs: args.receivedAtMs,
-    route,
-    state: args.state,
-  });
+  const persist = () =>
+    persistSlackMessage({
+      adapter: args.adapter,
+      installation: args.installation,
+      message,
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      receivedAtMs: args.receivedAtMs,
+      route,
+      state: args.state,
+    });
+  // A message to Junior answers an open question in its thread, like a click.
+  await (route !== "mention"
+    ? persist()
+    : persistSlackUserInputReply({
+        channelId: args.event.channel,
+        claimedBy: message.author.userId,
+        isSaved: (e) => e instanceof SlackEventPersistenceError && e.saved,
+        note: (request) =>
+          slackUserInputAnswerNote({ request, userId: message.author.userId }),
+        persist,
+        state: args.state,
+        threadTs: args.event.thread_ts,
+      }));
 }
 
 async function handleSlackEvent(args: {
@@ -724,17 +729,6 @@ async function handleSlackEvent(args: {
   );
 }
 
-function requireSlackPayloadUserId(
-  value: string | null | undefined,
-  source: string,
-): string {
-  const userId = parseActorUserId(value);
-  if (!userId) {
-    throw new Error(`${source} is missing a Slack user id`);
-  }
-  return userId;
-}
-
 async function handleSlashCommandForm(args: {
   adapter: SlackAdapter;
   form: SlackSlashCommandForm;
@@ -762,52 +756,47 @@ async function handleSlashCommandForm(args: {
   );
 }
 
-async function handleInteractivePayload(args: {
-  payload: SlackInteractivePayload;
-  userTokenStore: UserTokenStore;
+/**
+ * Persist one Slack input as a mention under the thread's ingress lock.
+ * Slack does not retry interactions. Saved input still runs through heartbeat
+ * recovery, so a failed queue send after the append does not reject it.
+ */
+async function persistSlackMentionWithLock(args: {
+  adapter: SlackAdapter;
+  installation: SlackInstallationContext;
+  message: Message;
+  services: SlackWebhookServices;
+  state: StateAdapter;
 }): Promise<void> {
-  if (args.payload.type !== "block_actions") {
-    return;
+  const { message, threadId } = normalizeMessageThreadId(args.message);
+  let routed: Awaited<ReturnType<typeof withLock<void>>>;
+  try {
+    routed = await withLock(
+      args.state,
+      `slack:ingress:${threadId}`,
+      () =>
+        persistSlackMessage({
+          adapter: args.adapter,
+          installation: args.installation,
+          message,
+          conversationStore: args.services.conversationStore,
+          queue: args.services.queue,
+          receivedAtMs: Date.now(),
+          route: "mention",
+          state: args.state,
+        }),
+      { keepAlive: true, waitMs: 10_000 },
+    );
+  } catch (error) {
+    if (error instanceof SlackEventPersistenceError && error.saved) {
+      logException(error.cause, "slack.event.wake.failed");
+      return;
+    }
+    throw error;
   }
-  const action = args.payload.actions?.find(
-    (candidate) => candidate.action_id === "app_home_disconnect",
-  );
-  const provider = action?.selected_option?.value ?? action?.value;
-  if (!provider) {
-    return;
+  if (!routed.acquired) {
+    throw new Error("Could not acquire Slack ingress lock");
   }
-  const userId = requireSlackPayloadUserId(
-    args.payload.user?.id,
-    "Slack app home disconnect payload",
-  );
-
-  await withSpan(
-    "chat.app_home_disconnect",
-    "chat.app_home_disconnect",
-    { userId: userId },
-    async () => {
-      try {
-        await unlinkProvider(
-          userId,
-          provider,
-          args.userTokenStore,
-          getWorkspaceTeamId(),
-        );
-      } catch (error) {
-        logException(error, "app_home.disconnect_unlink.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-
-      try {
-        await publishAppHomeView(getSlackClient(), userId, args.userTokenStore);
-      } catch (error) {
-        logException(error, "app_home.disconnect_publish.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-    },
-  );
 }
 
 function installationFromInteractive(
@@ -894,8 +883,18 @@ async function handleSlackForm(args: {
             installation,
             state,
             task: () =>
-              handleInteractivePayload({
+              handleSlackInteractivePayload({
+                adapter,
                 payload,
+                persistMessage: (message) =>
+                  persistSlackMentionWithLock({
+                    adapter,
+                    installation,
+                    message,
+                    services: args.services,
+                    state,
+                  }),
+                state,
                 userTokenStore: getUserTokenStore(args.services),
               }),
           }),
