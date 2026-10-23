@@ -614,6 +614,18 @@ describe("sandbox egress proxy composition", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not read already-consumed OPTIONS preflight body", async () => {
+    setSandboxEgressUserActor();
+    mockSentryLease();
+    // Replicate the runtime pre-consuming the preflight body before our handler.
+    const req = egressRequest({ method: "OPTIONS", body: "" });
+    await req.arrayBuffer(); // req.bodyUsed is now true
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+    const response = await proxy(req, fetchMock as typeof fetch);
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("issues separate user credentials per actor", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
