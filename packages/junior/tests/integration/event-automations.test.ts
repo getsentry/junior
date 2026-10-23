@@ -354,6 +354,7 @@ describe("event automations", () => {
       runIds.map((id) =>
         expect.objectContaining({
           id,
+          automationVersion: 1,
           conversationId: `agent-dispatch:${id}`,
           status: "running",
         }),

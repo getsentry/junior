@@ -7,24 +7,28 @@ import {
   existingConversationId,
   recordAutomationExecution,
 } from "@/chat/automations/execution-stats";
+import { automationVersionOf } from "@/chat/automations/versions";
+import type { EventAutomation } from "@/chat/event-automations/types";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
 
 /**
- * Record a dispatched event automation run and link its Conversation when it
- * exists. The dispatch can finish before this write, so a stored run, or a
- * retry of the same Event, keeps the row it has.
+ * Record a dispatched event automation run with the Automation version it ran,
+ * and link its Conversation when it exists. The dispatch can finish before
+ * this write, so a stored run, or a retry of the same Event, keeps the row it
+ * has.
  */
 export async function recordEventAutomationRunStarted(
   db: JuniorDatabase,
-  args: { automationId: string; dispatchId: string; nowMs: number },
+  args: { automation: EventAutomation; dispatchId: string; nowMs: number },
 ): Promise<void> {
   await db
     .insert(juniorAutomationRuns)
     .values({
       id: args.dispatchId,
-      automationId: args.automationId,
+      automationId: args.automation.id,
+      automationVersion: automationVersionOf(args.automation),
       conversationId: existingConversationId(
         getDispatchConversationId({ id: args.dispatchId }),
       ),

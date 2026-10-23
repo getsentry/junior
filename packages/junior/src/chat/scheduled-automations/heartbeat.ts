@@ -404,6 +404,7 @@ export async function runScheduledAutomationHeartbeat(args: {
       dispatchId: dispatch.id,
       nowMs: args.nowMs,
       runId: run.id,
+      task,
     });
     logInfo(
       "scheduled_automation.run.dispatched",

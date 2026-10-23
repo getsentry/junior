@@ -163,7 +163,7 @@ export async function ingestEventAutomations(
         },
       });
       await recordEventAutomationRunStarted(db, {
-        automationId: task.id,
+        automation: task,
         dispatchId: dispatch.id,
         nowMs,
       });
