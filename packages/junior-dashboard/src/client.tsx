@@ -22,18 +22,18 @@ class DashboardErrorBoundary extends Component<
   { children: ReactNode },
   ErrorBoundaryState
 > {
-  state: ErrorBoundaryState = { error: null };
+  override state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     const stack = error.stack ?? errorInfo.componentStack;
     window.__JUNIOR_DASHBOARD_SHOW_ERROR__?.(stack ? new Error(stack) : error);
   }
 
-  render() {
+  override render() {
     if (this.state.error) {
       return <DashboardErrorPanel error={this.state.error} />;
     }

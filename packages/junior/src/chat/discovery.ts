@@ -241,10 +241,6 @@ export function resolveHomeDir(
     resolvedCwd,
     options?.projectRoots,
   );
-  if (candidates.length === 0) {
-    return directApp;
-  }
-
   candidates.sort((left, right) => {
     const leftScore = scoreAppCandidate(left);
     const rightScore = scoreAppCandidate(right);
@@ -262,15 +258,15 @@ export function resolveHomeDir(
     }
     return left.localeCompare(right);
   });
-  return candidates[0];
+  return candidates[0] ?? directApp;
 }
 
-function resolveContentRoots(subdir: "data" | "skills" | "plugins"): string[] {
+function resolveContentRoot(subdir: "data" | "skills" | "plugins"): string {
   if (subdir === "data") {
-    return [homeDir()];
+    return homeDir();
   }
 
-  return [path.join(homeDir(), subdir)];
+  return path.join(homeDir(), subdir);
 }
 
 /** Return the built-in skills directory in source and packaged builds. */
@@ -292,7 +288,7 @@ export function builtInSkillsDir(): string {
 
 /** Return the data directory (same as homeDir). */
 export function dataDir(): string {
-  return resolveContentRoots("data")[0];
+  return resolveContentRoot("data");
 }
 
 /** Return the path to the SOUL.md file. */
@@ -312,27 +308,27 @@ export function descriptionPath(): string {
 
 /** Return the skills directory path. */
 export function skillsDir(): string {
-  return resolveContentRoots("skills")[0];
+  return resolveContentRoot("skills");
 }
 
 /** Return the plugins directory path. */
 export function pluginsDir(): string {
-  return resolveContentRoots("plugins")[0];
+  return resolveContentRoot("plugins");
 }
 
 /** Return all unique data root directories. */
 export function dataRoots(): string[] {
-  return unique(resolveContentRoots("data"));
+  return unique([resolveContentRoot("data")]);
 }
 
 /** Return all unique skill root directories. */
 export function skillRoots(): string[] {
-  return unique([builtInSkillsDir(), ...resolveContentRoots("skills")]);
+  return unique([builtInSkillsDir(), resolveContentRoot("skills")]);
 }
 
 /** Return all unique plugin root directories. */
 export function pluginRoots(): string[] {
-  return unique(resolveContentRoots("plugins"));
+  return unique([resolveContentRoot("plugins")]);
 }
 
 /** Return candidate paths where SOUL.md might be found. */

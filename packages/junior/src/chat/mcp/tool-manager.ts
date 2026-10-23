@@ -347,10 +347,13 @@ export class McpToolManager {
   >();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
 
+  private readonly options: McpToolManagerOptions;
+
   constructor(
     plugins: PluginDefinition[],
-    private readonly options: McpToolManagerOptions = {},
+    options: McpToolManagerOptions = {},
   ) {
+    this.options = options;
     for (const plugin of plugins) {
       if (plugin.manifest.mcp) {
         this.pluginsByProvider.set(plugin.manifest.name, plugin);

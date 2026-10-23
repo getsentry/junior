@@ -494,7 +494,7 @@ export async function processPluginTask(
 ): Promise<void> {
   await withPluginTaskLock(pluginTaskId(message), async () => {
     const resolved = findPluginTask(message);
-    if (!resolved) {
+    if (!resolved?.task) {
       throw new Error(
         `Plugin task "${message.plugin}.${message.name}" is not registered`,
       );

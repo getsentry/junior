@@ -116,14 +116,15 @@
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
+    "@typescript/typescript6": "6.0.2",
     "@vitest/coverage-v8": "4.1.7",
     "dependency-cruiser": "^17.4.0",
     "drizzle-kit": "catalog:",
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
     "oxlint": "^1.79.0",
-    "tsdown": "0.23.0",
-    "typescript": "^6.0.3",
+    "tsdown": "0.23.1",
+    "typescript": "^7.0.2",
     "vercel": "^54.4.0",
     "vitest": "^4.1.7"
   }

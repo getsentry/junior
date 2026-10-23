@@ -470,7 +470,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "slack:D999:1718800099.000000",
           locationId: "other-location",
           userId: "U123",
-        }).memory_listMemories.execute!({}, {}),
+        }).memory_listMemories!.execute!({}, {}),
       ).resolves.toEqual({
         memories: [
           expect.objectContaining({ id: privateMemory.memory.id }),
@@ -556,7 +556,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       expect(tools).toHaveProperty("memory_createMemory");
       await expect(
-        tools.memory_listMemories.execute!({}, {}),
+        tools.memory_listMemories!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -568,7 +568,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_searchMemories.execute!({ query: "personal recall" }, {}),
+        tools.memory_searchMemories!.execute!({ query: "personal recall" }, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -577,7 +577,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_createMemory.execute!(
+        tools.memory_createMemory!.execute!(
           {
             content: "I prefer terse status updates.",
             scope: "public",

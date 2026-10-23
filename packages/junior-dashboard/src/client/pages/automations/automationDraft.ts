@@ -53,7 +53,7 @@ export function scheduleDraft(
       ...fields,
       timezone: value.schedule.timezone,
       time: `${String(time.hour).padStart(2, "0")}:${String(time.minute).padStart(2, "0")}`,
-      weekdays: days?.map((day) => weekdays[day]),
+      weekdays: days?.flatMap((day) => weekdays[day] ?? []),
     };
   }
   if (value.nextRunAtMs) {

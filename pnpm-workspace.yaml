@@ -26,6 +26,12 @@ overrides:
   tldts: 7.0.30
   ws: 8.20.1
   yaml: ^2.9.0
+packageExtensions:
+  dependency-cruiser:
+    dependencies:
+      # TypeScript 7 has no compiler API. dependency-cruiser needs it to parse
+      # TypeScript sources, and finds no TypeScript files without it.
+      typescript: npm:@typescript/typescript6@6.0.2
 peerDependencyRules:
   allowedVersions:
     vitest-evals>ai: ">=4"

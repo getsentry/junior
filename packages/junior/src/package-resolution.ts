@@ -89,17 +89,18 @@ export function isValidPackageName(packageName: string): boolean {
     return false;
   }
 
-  const parts = packageName.split("/");
-  if (parts[0].startsWith("@")) {
+  const [scopeOrName = "", name, ...rest] = packageName.split("/");
+  if (scopeOrName.startsWith("@")) {
     return (
-      parts.length === 2 &&
-      parts[0].length > 1 &&
-      isValidPackageSegment(parts[0].slice(1)) &&
-      isValidPackageSegment(parts[1])
+      name !== undefined &&
+      rest.length === 0 &&
+      scopeOrName.length > 1 &&
+      isValidPackageSegment(scopeOrName.slice(1)) &&
+      isValidPackageSegment(name)
     );
   }
 
-  return parts.length === 1 && isValidPackageSegment(parts[0]);
+  return name === undefined && isValidPackageSegment(scopeOrName);
 }
 
 function findPackageRoot(entryPath: string): string | undefined {
