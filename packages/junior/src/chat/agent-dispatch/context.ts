@@ -1,15 +1,24 @@
-import type {
-  HeartbeatHookContext,
-  PluginRegistration,
+import {
+  identityDispatchOptionsSchema,
+  type HeartbeatHookContext,
+  type IdentityDispatchOptions,
+  type IdentityDispatchResult,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
   bindEventAutomationCredentialSubject,
   bindScheduledAutomationCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { createEventTeamIdResolver } from "@/chat/events/workspace";
+import { findLinkedSlackUserId } from "@/chat/identities/sql";
+import { logInfo } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
+import { parseSlackUserId } from "@/chat/slack/ids";
+import { openSlackDirectMessage } from "@/chat/slack/outbound";
+import { isActiveSlackWorkspaceMember } from "@/chat/slack/users";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   createOrGetDispatch,
@@ -125,6 +134,84 @@ export function createHeartbeatContext(args: {
         });
       },
     },
+  };
+}
+
+// Core owns these Identity namespaces. They are not accounts from a plugin's
+// OAuth account-linking flow, so they never start Identity dispatches.
+const CORE_IDENTITY_PROVIDERS = new Set(["junior", "slack"]);
+
+/**
+ * Build the plugin route entry point that starts private DM work for the
+ * person behind one provider Identity.
+ *
+ * The provider is always the calling plugin. Work starts only when the
+ * Identity is linked to exactly one Slack user in the bot's workspace and that
+ * user is a current human member. Without a Slack bot, nothing is linked.
+ */
+export function createIdentityDispatcher(args: {
+  conversationWorkQueue: () => ConversationWorkQueue;
+}): (
+  plugin: string,
+  options: IdentityDispatchOptions,
+) => Promise<IdentityDispatchResult> {
+  const resolveSlackTeamId = createEventTeamIdResolver();
+  const notLinked = (plugin: string, reason: string) => {
+    logInfo("dispatch.identity.not_linked", {
+      "app.plugin.name": plugin,
+      "app.dispatch.identity.reason": reason,
+    });
+    return { status: "not_linked" } as const;
+  };
+
+  return async (plugin, options) => {
+    const request = identityDispatchOptionsSchema.parse(options);
+    if (CORE_IDENTITY_PROVIDERS.has(plugin)) {
+      return notLinked(plugin, "core_provider");
+    }
+    const teamId = await resolveSlackTeamId();
+    if (!teamId) {
+      return notLinked(plugin, "no_slack_bot");
+    }
+    const slackUserId = parseSlackUserId(
+      await findLinkedSlackUserId(getSqlExecutor(), {
+        provider: plugin,
+        providerSubjectId: request.subjectId,
+        slackTeamId: teamId,
+      }),
+    );
+    if (!slackUserId) {
+      return notLinked(plugin, "no_single_link");
+    }
+    if (!(await isActiveSlackWorkspaceMember(slackUserId, teamId))) {
+      return notLinked(plugin, "inactive_member");
+    }
+
+    const dispatchOptions: SlackDispatchOptions = {
+      idempotencyKey: request.idempotencyKey,
+      credentialSubject: {
+        type: "user",
+        userId: slackUserId,
+        allowedWhen: "private-direct-conversation",
+      },
+      destination: {
+        platform: "slack",
+        teamId,
+        channelId: await openSlackDirectMessage(slackUserId),
+      },
+      destinationVisibility: "private",
+      input: request.input,
+      ...(request.replyAttribution
+        ? { replyAttribution: request.replyAttribution }
+        : undefined),
+    };
+    validateDispatchOptions(dispatchOptions);
+    return await dispatch({
+      conversationWorkQueue: args.conversationWorkQueue(),
+      nowMs: Date.now(),
+      options: bindDispatchCredentialSubject(dispatchOptions, plugin),
+      plugin,
+    });
   };
 }
 

@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { PluginContext, User } from "./context";
-import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
+import type {
+  Dispatch,
+  DispatchOptions,
+  DispatchResult,
+  IdentityDispatchOptions,
+  IdentityDispatchResult,
+} from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { EventPublisher } from "./events";
@@ -156,6 +162,17 @@ export type PluginRouteApp = {
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {
+  agent: {
+    /**
+     * Start private work in a Slack DM for the person behind one Identity of
+     * this plugin's provider. Core starts work only when the Identity is linked
+     * through the OAuth account-linking flow to exactly one current Slack
+     * member. Otherwise it returns `not_linked` and calls no model.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
+  };
   annotations: PluginConversationAnnotations;
   /** Provider-neutral write boundary for Junior's native code index. */
   codeChanges: CodeChangePublisher;

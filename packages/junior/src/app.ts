@@ -107,6 +107,7 @@ import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/context";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
@@ -463,7 +464,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         configuredPlugins?.registrations ?? [],
       );
     }
-    pluginRoutes = getPluginRoutes({ events });
+    pluginRoutes = getPluginRoutes({
+      dispatchForIdentity: createIdentityDispatcher({
+        conversationWorkQueue: () => conversationWorkQueue,
+      }),
+      events,
+    });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }
