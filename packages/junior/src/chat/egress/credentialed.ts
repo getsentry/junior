@@ -279,8 +279,9 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
 }
 
 /**
- * Name whose authority the request used. A system actor with a delegated
- * subject used that person's credentials for the bound Automation.
+ * Name whose authority the request used, and the Conversation it acted for. A
+ * system actor with a delegated subject used that person's credentials for the
+ * bound Automation.
  */
 function credentialAttributes(
   context: SandboxEgressCredentialContext,
@@ -290,6 +291,9 @@ function credentialAttributes(
     "app.credential.actor.type": "type" in actor ? "user" : "system",
     "app.credential.actor.id": "type" in actor ? actor.userId : actor.name,
   };
+  if (context.conversationId) {
+    attributes["gen_ai.conversation.id"] = context.conversationId;
+  }
   const subject =
     "subject" in context.credentials ? context.credentials.subject : undefined;
   if (subject) {

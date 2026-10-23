@@ -266,6 +266,7 @@ export async function wireAgentTools(
     traceContext: args.spanContext,
     tracePropagation: args.run.environment?.sandboxTracePropagation,
     egressSignals: args.run.environment?.sandboxEgressSignals,
+    conversationId: args.run.conversationId,
     credentialEgress: args.run.credentialContext,
     actor: args.currentActor,
     locationConfiguration: args.run.environment?.locationConfiguration,
@@ -364,6 +365,7 @@ export async function wireAgentTools(
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
+      conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       pluginAuth: {
         async handleAuthRequired(signal) {

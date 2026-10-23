@@ -133,7 +133,7 @@ in production. Other info events stay out of Sentry in production.
 
 ```text
 dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
-fields=timestamp,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code,app.credential.actor.id,app.credential.subject.id,app.credential.subject.allowed_when,app.task.id,trace_id
+fields=timestamp,gen_ai.conversation.id,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code,app.credential.actor.id,app.credential.subject.id,app.credential.subject.allowed_when,app.task.id
 sort=-timestamp
 ```
 
@@ -274,7 +274,8 @@ forwarded request outside production. In production, it is logged only for
 write grants, as an audit event. Attributes: `app.provider.name`,
 `app.grant.name`, `app.grant.access`, `app.credential.actor.type`,
 `app.credential.actor.id`, `app.credential.subject.id`,
-`app.credential.subject.allowed_when`, `app.task.id`, `app.log.audit`
+`app.credential.subject.allowed_when`, `app.task.id`,
+`gen_ai.conversation.id`, `app.log.audit`
 
 ### Scheduled automations
 
