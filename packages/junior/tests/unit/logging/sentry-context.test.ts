@@ -105,11 +105,8 @@ describe("Sentry context", () => {
       "messaging.destination.name",
       "C123",
     );
-    expect(sentry.setTag).not.toHaveBeenCalledWith("enduser.id", "U123");
-    expect(sentry.setTag).not.toHaveBeenCalledWith(
-      "enduser.pseudo.id",
-      "alice",
-    );
+    expect(sentry.setTag).not.toHaveBeenCalledWith("user.id", "U123");
+    expect(sentry.setTag).not.toHaveBeenCalledWith("user.name", "alice");
     expect(sentry.setTag).not.toHaveBeenCalledWith("app.run.id", "run_123");
   });
 
@@ -147,13 +144,14 @@ describe("Sentry context", () => {
       "gen_ai.conversation.id",
       "thread_123",
     );
-    expect(scope.setTag).not.toHaveBeenCalledWith("enduser.id", "U123");
-    expect(scope.setTag).not.toHaveBeenCalledWith("enduser.pseudo.id", "alice");
+    expect(scope.setTag).not.toHaveBeenCalledWith("user.id", "U123");
+    expect(scope.setTag).not.toHaveBeenCalledWith("user.name", "alice");
     expect(scope.setContext).toHaveBeenCalledWith(
       "app",
       expect.objectContaining({
-        "enduser.id": "U123",
-        "enduser.pseudo.id": "alice",
+        "user.id": "U123",
+        "user.name": "alice",
+        "user.email": "alice@example.com",
       }),
     );
   });

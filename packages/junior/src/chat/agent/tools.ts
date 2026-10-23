@@ -266,6 +266,7 @@ export async function wireAgentTools(
     traceContext: args.spanContext,
     tracePropagation: args.run.environment?.sandboxTracePropagation,
     egressSignals: args.run.environment?.sandboxEgressSignals,
+    conversationId: args.run.conversationId,
     credentialEgress: args.run.credentialContext,
     actor: args.currentActor,
     locationConfiguration: args.run.environment?.locationConfiguration,

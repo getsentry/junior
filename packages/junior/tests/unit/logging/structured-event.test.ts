@@ -1,13 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EmittedLogRecord } from "@/chat/logging";
 
-async function loadLoggingModule() {
+/** Sentry logger methods that a test observes. */
+interface SentryLoggerStub {
+  info?: (body: string, attributes: Record<string, unknown>) => void;
+}
+
+async function loadLoggingModule(sentryLogger: SentryLoggerStub = {}) {
   vi.resetModules();
   vi.doMock("@/chat/sentry", () => ({
     captureException: () => undefined,
     captureMessage: () => undefined,
     getActiveSpan: () => ({ sampled: true }),
-    logger: {},
+    logger: sentryLogger,
     setTag: () => undefined,
     setUser: () => undefined,
     spanToJSON: () => ({
@@ -21,6 +26,7 @@ async function loadLoggingModule() {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   vi.resetModules();
   vi.doUnmock("@/chat/sentry");
@@ -65,6 +71,30 @@ describe("structured log events", () => {
         }),
       }),
     ]);
+  });
+
+  it("sends audit events to Sentry in production but not other info events", async () => {
+    vi.stubEnv("SENTRY_ENVIRONMENT", "production");
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const info = vi.fn();
+    const { logAudit, logInfo } = await loadLoggingModule({ info });
+
+    logInfo("sandbox.egress.upstream.requested", {
+      "app.grant.access": "read",
+    });
+    logAudit("sandbox.egress.upstream.requested", {
+      "app.grant.access": "write",
+    });
+
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(
+      "sandbox.egress.upstream.requested",
+      expect.objectContaining({
+        "app.grant.access": "write",
+        "app.log.audit": true,
+      }),
+    );
   });
 
   it("rejects non-namespaced application event names", async () => {

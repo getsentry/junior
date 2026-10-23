@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  credentialLogContext,
   credentialUserSubjectId,
   parseCredentialContext,
 } from "@/chat/credentials/context";
@@ -39,6 +40,35 @@ describe("credential context", () => {
         actor: { platform: "system", name: "scheduler" },
       }),
     ).toBeUndefined();
+  });
+
+  it("logs the delegated owner as the accountable user of a system run", () => {
+    expect(
+      credentialLogContext({ actor: { type: "user", userId: "U123" } }),
+    ).toEqual({ userId: "U123", actorType: "user", actorId: "U123" });
+    expect(
+      credentialLogContext({
+        actor: { platform: "system", name: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "scheduled-automation",
+          taskId: "task-1",
+          binding: {
+            type: "scheduled-automation",
+            plugin: "scheduler",
+            taskId: "task-1",
+            signature: "v1=test",
+          },
+        },
+      }),
+    ).toEqual({
+      userId: "U123",
+      actorType: "system",
+      actorId: "scheduler",
+      taskId: "task-1",
+      credentialAllowedWhen: "scheduled-automation",
+    });
   });
 
   it("parses untrusted egress contexts with the same actor rules", () => {

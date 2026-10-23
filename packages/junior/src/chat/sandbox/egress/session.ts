@@ -156,6 +156,7 @@ function getSandboxEgressSecret(): string {
  * which Junior actor and credential context that VM is allowed to use.
  */
 export function createSandboxEgressCredentialToken(input: {
+  conversationId?: string;
   credentials: CredentialContext;
   egressId: string;
   ttlMs?: number;
@@ -163,6 +164,9 @@ export function createSandboxEgressCredentialToken(input: {
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
   const now = Date.now();
   const context: SandboxEgressCredentialContext = {
+    ...(input.conversationId
+      ? { conversationId: input.conversationId }
+      : undefined),
     credentials: input.credentials,
     egressId: input.egressId,
     expiresAtMs: now + ttlMs,
