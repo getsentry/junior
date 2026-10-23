@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { createConnection } from "node:net";
 import { once } from "node:events";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { startEvalEgress } from "../../src/eval-egress";
 
 const originalPath = process.env.PATH;
@@ -13,6 +13,7 @@ const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (originalPath === undefined) delete process.env.PATH;
   else process.env.PATH = originalPath;
   if (originalAttemptMarker === undefined) {
@@ -32,6 +33,32 @@ afterEach(() => {
 });
 
 describe("eval egress", () => {
+  it("serves the CI tunnel route on its port without a Quick Tunnel", async () => {
+    vi.stubEnv("JUNIOR_EVAL_EGRESS_URL", "https://sentry-ci-test.example.com");
+    vi.stubEnv("JUNIOR_EVAL_EGRESS_PORT", "18787");
+    // cloudflared must not run: the CI script owns the connector.
+    vi.stubEnv("PATH", "");
+    const verifiedUrls: string[] = [];
+    const egress = await startEvalEgress({
+      verifyPublicUrl: async (url) => {
+        verifiedUrls.push(url);
+      },
+    });
+    try {
+      expect(verifiedUrls).toEqual(["https://sentry-ci-test.example.com"]);
+      expect(egress.baseUrl).toBe("https://sentry-ci-test.example.com");
+      expect(new URL(egress.controlUrl).port).toBe("18787");
+      await expect(
+        fetch("http://127.0.0.1:18787/health").then((response) => response.ok),
+      ).resolves.toBe(true);
+      await expect(
+        fetch(egress.stateUrl).then((response) => response.status),
+      ).resolves.toBe(401);
+    } finally {
+      await egress.close();
+    }
+  });
+
   it("retries a failed Quick Tunnel allocation through teardown", async () => {
     let resetCount = 0;
     const resetTimes: number[] = [];

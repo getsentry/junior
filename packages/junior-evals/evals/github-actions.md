@@ -2,7 +2,41 @@
 
 Use this when you want PR evals to run in GitHub Actions.
 
-The workflow installs a pinned, checksum-verified `cloudflared` binary and starts a unique Quick Tunnel for each eval job. No Cloudflare account secret or fixed public hostname is required.
+The workflow installs a pinned, checksum-verified `cloudflared` binary. Each behavioral and integration job gets its own account-backed Cloudflare Tunnel. Guardian and Router jobs do not use a tunnel. Local evals still use a Quick Tunnel.
+
+## Cloudflare Tunnel
+
+`scripts/eval-tunnel.sh` owns the tunnel of a job. It uses the [`cf` CLI](https://github.com/cloudflare/cf) for the Cloudflare API and follows the [remote tunnel API steps](https://developers.cloudflare.com/tunnel/get-started/):
+
+1. Create a remotely managed tunnel named `sentry-ci-<random>`.
+2. Route `sentry-ci-<random>.sentry.cool` to `127.0.0.1:18787`. Other hostnames get 404.
+3. Create a proxied CNAME record for that hostname.
+4. Start `cloudflared` with the tunnel token.
+5. Wait until both Cloudflare nameservers serve the record. This can take minutes. The script asks the nameservers directly, because an early recursive lookup can cache NXDOMAIN for 30 minutes.
+6. Run the eval command. Global setup (`src/eval-egress.ts`) serves the proxy on the port and checks it through public HTTPS.
+7. Remove the record and the tunnel.
+
+The eval command does not get the Cloudflare variables, and `cloudflared` does not get the API token. This prevents mistakes. It is not isolation: all code in the job runs as the same user, so all of it must be trusted.
+
+If the runner stops the script before step 7, the `Remove eval tunnel` step removes the tunnel and the record. If the runner is lost, remove the inactive `sentry-ci-<random>` tunnel and its CNAME record in the Cloudflare dashboard.
+
+### Credentials
+
+Make an account-owned API token with two permissions:
+
+- **Cloudflare Tunnel Write**, for the account. The dashboard label is **Argo Tunnel (Legacy) → Edit**. CI still makes remotely managed tunnels.
+- **DNS Write**, for the `sentry.cool` zone only. The dashboard label is **DNS → Edit**.
+
+In **Settings → Secrets and variables → Actions** of the repository, set:
+
+- Secret `CLOUDFLARE_API_TOKEN`: the token.
+- Variable `CLOUDFLARE_ACCOUNT_ID`: the account ID.
+- Variable `CLOUDFLARE_ZONE_ID`: the zone ID of `sentry.cool`.
+- Variable `CLOUDFLARE_TUNNEL_BASE_DOMAIN`: `sentry.cool`. Use the zone name: Universal SSL covers only one label below it.
+
+Fork PRs do not get these secrets. Do not change the workflows to `pull_request_target`.
+
+To rotate the token, make a new one with the same permissions, update the secret, and check one eval run. Then revoke the old token.
 
 ## Required Secrets
 
