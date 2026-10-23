@@ -19,6 +19,11 @@ import { mswServer } from "./msw";
 const ORIGINAL_ENV = { ...process.env };
 
 const db = {};
+// Git sends the GitHub token placeholder so sandbox egress adds credentials.
+const GIT_AUTH_CONFIG = [
+  "-c",
+  "http.https://github.com/.extraHeader=Authorization: Basic eC1hY2Nlc3MtdG9rZW46Z2hwX2hvc3RfbWFuYWdlZF9jcmVkZW50aWFs",
+];
 
 class TestTokenStore {
   private refreshLock = Promise.resolve();
@@ -3386,6 +3391,7 @@ Conversation: \`local:test:old-conversation\`
       "commit.gpgsign",
       "credential.helper",
       "http.emptyAuth",
+      "http.https://github.com/.extraHeader",
     ]);
   });
 
@@ -3424,6 +3430,7 @@ Conversation: \`local:test:old-conversation\`
       ["-C", "repos/sentry", "rev-parse", "--is-inside-work-tree"],
       ["-rf", "--", "repos/sentry"],
       [
+        ...GIT_AUTH_CONFIG,
         "clone",
         "--quiet",
         "--",
@@ -3434,6 +3441,7 @@ Conversation: \`local:test:old-conversation\`
       ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
       ["-rf", "--", "repos/junior"],
       [
+        ...GIT_AUTH_CONFIG,
         "clone",
         "--quiet",
         "--",
@@ -3513,6 +3521,7 @@ Conversation: \`local:test:old-conversation\`
       [
         "-c",
         "credential.helper=",
+        ...GIT_AUTH_CONFIG,
         "-C",
         "repos/junior",
         "fetch",
@@ -3525,7 +3534,7 @@ Conversation: \`local:test:old-conversation\`
       ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/stable"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
-    expect(runs.some((args) => args[0] === "clone")).toBe(false);
+    expect(runs.some((args) => args.includes("clone"))).toBe(false);
   });
 
   it("refreshes a valid checkout without an upstream and preserves setup outputs", async () => {
@@ -3656,6 +3665,7 @@ Conversation: \`local:test:old-conversation\`
       ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
       ["-rf", "--", "repos/junior"],
       [
+        ...GIT_AUTH_CONFIG,
         "clone",
         "--quiet",
         "--",
@@ -3692,7 +3702,7 @@ Conversation: \`local:test:old-conversation\`
             if (input.args?.includes("--symbolic-full-name")) {
               return { exitCode: 1, stderr: "", stdout: "" };
             }
-            if (input.args?.[0] === "clone") {
+            if (input.args?.includes("clone")) {
               cloneAttempts += 1;
               if (cloneAttempts === 1) {
                 return { exitCode: 130, stderr: "interrupted", stdout: "" };

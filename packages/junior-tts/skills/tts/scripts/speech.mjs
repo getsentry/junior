@@ -58,12 +58,14 @@ export async function generateSpeech(text, output, delivery = "playful") {
   const file = await open(path, "wx", 0o600);
   let completed = false;
   try {
-    // The plugin's host proxy supplies Authorization. Never read a key here.
+    // The placeholder asks the host proxy to supply the real Authorization.
+    // Never read a key here.
     const response = await fetch(ENDPOINT, {
       method: "POST",
       redirect: "error",
       signal: AbortSignal.timeout(120_000),
       headers: {
+        Authorization: "Bearer host_managed_credential",
         "Content-Type": "application/json",
         "ai-gateway-protocol-version": "0.0.1",
         "ai-speech-model-specification-version": "4",

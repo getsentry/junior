@@ -1,6 +1,9 @@
 import { logException, logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
-import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
+import {
+  egressRequestHeaders,
+  egressResponseHeaders,
+} from "@/chat/egress/headers";
 import {
   hasSandboxEgressLeaseTransformForHost,
   sandboxEgressCredentialLease,
@@ -16,10 +19,7 @@ import {
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress/session";
-import {
-  shouldPropagateSandboxEgressTrace,
-  type SandboxEgressTracePropagationConfig,
-} from "@/chat/sandbox/egress/tracing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
   EgressAuthRequired,
   EgressPolicyDenied,
@@ -39,33 +39,6 @@ import {
 // persistence and auth/permission signal storage stay in their caller-specific
 // adapters until a second host/plugin caller needs a different storage surface.
 
-const HOP_BY_HOP_HEADERS = new Set([
-  "connection",
-  "host",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-const PROXY_ONLY_HEADERS = new Set([
-  "vercel-sandbox-oidc-token",
-  "vercel-forwarded-host",
-  "vercel-forwarded-scheme",
-  "vercel-forwarded-port",
-  "vercel-forwarded-path",
-]);
-const TRACE_PROPAGATION_HEADERS = new Set([
-  "baggage",
-  "sentry-trace",
-  "traceparent",
-]);
-const DECODED_RESPONSE_HEADERS = new Set([
-  "content-encoding",
-  "content-length",
-]);
 const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
 const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
 const GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
@@ -170,15 +143,23 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.egressId
+      ? { "app.sandbox.egress_id": input.egressId }
+      : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.grantName ? { "app.grant.name": input.grantName } : undefined),
-    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : undefined),
-    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : undefined),
+    ...(input.grantAccess
+      ? { "app.grant.access": input.grantAccess }
+      : undefined),
+    ...(input.grantReason
+      ? { "app.grant.reason": input.grantReason }
+      : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status ? { "http.response.status_code": input.status } : undefined),
+    ...(input.status
+      ? { "http.response.status_code": input.status }
+      : undefined),
   };
 }
 
@@ -459,70 +440,6 @@ async function responseTextWithinLimit(
   return new TextDecoder().decode(combined);
 }
 
-/**
- * Build the upstream request headers.
- *
- * Sandbox/proxy-only headers are stripped so they cannot leak to providers, and
- * trace headers are preserved only for hosts opted into trace propagation.
- * Credential lease transforms win last because they are the host-issued
- * authority for provider auth headers.
- */
-function requestHeaders(
-  request: Request,
-  lease: SandboxEgressCredentialLease,
-  upstreamHost: string,
-  tracePropagation: SandboxEgressTracePropagationConfig,
-): Headers {
-  const headers = new Headers();
-  const mayPropagateTrace = shouldPropagateSandboxEgressTrace(
-    upstreamHost,
-    tracePropagation,
-  );
-  request.headers.forEach((value, key) => {
-    const normalized = key.toLowerCase();
-    if (
-      HOP_BY_HOP_HEADERS.has(normalized) ||
-      PROXY_ONLY_HEADERS.has(normalized)
-    ) {
-      return;
-    }
-    if (TRACE_PROPAGATION_HEADERS.has(normalized) && !mayPropagateTrace) {
-      return;
-    }
-    headers.append(key, value);
-  });
-
-  for (const transform of lease.headerTransforms) {
-    if (!matchesSandboxEgressDomain(upstreamHost, transform.domain)) {
-      continue;
-    }
-    for (const [key, value] of Object.entries(transform.headers)) {
-      if (
-        TRACE_PROPAGATION_HEADERS.has(key.toLowerCase()) &&
-        !mayPropagateTrace
-      ) {
-        continue;
-      }
-      headers.set(key, value);
-    }
-  }
-  return headers;
-}
-
-function responseHeaders(upstream: Response): Headers {
-  const headers = new Headers();
-  upstream.headers.forEach((value, key) => {
-    const normalized = key.toLowerCase();
-    if (
-      !HOP_BY_HOP_HEADERS.has(normalized) &&
-      !DECODED_RESPONSE_HEADERS.has(normalized)
-    ) {
-      headers.append(key, value);
-    }
-  });
-  return headers;
-}
-
 function leaseLogAttributes(input: {
   egressId: string;
   lease: SandboxEgressCredentialLease;
@@ -563,7 +480,9 @@ async function recordSandboxAuthRequired(input: {
     provider: input.provider,
     grant: input.grant,
     kind: input.kind ?? "auth_required",
-    ...(input.authorization ? { authorization: input.authorization } : undefined),
+    ...(input.authorization
+      ? { authorization: input.authorization }
+      : undefined),
     message: input.message,
   });
 }
@@ -588,6 +507,86 @@ async function recordSandboxPermissionDenied(input: {
     ...(input.provider === "github"
       ? githubPermissionHeaders(input.upstream)
       : undefined),
+  });
+}
+
+/** Read the request body once, or return the Junior error for an unreadable body. */
+async function readEgressRequestBody(input: {
+  activeEgressId: string;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<ArrayBuffer | undefined | Response> {
+  const { activeEgressId, provider, request, upstreamUrl } = input;
+  try {
+    return await requestBodyBytes(request);
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw error;
+    }
+    return unreadableBodyResponse(
+      logException(error, "sandbox.egress.request_body.unreadable", {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: 500,
+        }),
+        ...routingAttributes(request, upstreamUrl),
+      }),
+    );
+  }
+}
+
+/**
+ * Forward one verified sandbox egress request without provider credentials.
+ *
+ * Use this for requests that do not carry a credential placeholder, such as
+ * browser traffic. The request keeps its own auth headers and cookies. No grant
+ * is selected and no credential lease is issued.
+ */
+export async function forwardEgressRequestWithoutCredentials(input: {
+  activeEgressId: string;
+  deps: Pick<CredentialedEgressDeps, "fetch" | "tracePropagation">;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<Response> {
+  const { activeEgressId, deps, provider, request, upstreamUrl } = input;
+  const body = await readEgressRequestBody(input);
+  if (body instanceof Response) {
+    return body;
+  }
+  const upstream = await (deps.fetch ?? fetch)(upstreamUrl, {
+    method: request.method,
+    headers: egressRequestHeaders(
+      request,
+      undefined,
+      upstreamUrl.hostname,
+      deps.tracePropagation ?? {},
+    ),
+    ...(body !== undefined ? { body } : undefined),
+    redirect: "manual",
+  });
+  if (shouldLogSandboxEgressInfo()) {
+    logInfo("sandbox.egress.upstream.passthrough", {
+      ...egressAttributes({
+        egressId: activeEgressId,
+        host: upstreamUrl.hostname,
+        method: request.method,
+        path: upstreamUrl.pathname,
+        provider,
+        status: upstream.status,
+      }),
+      ...routingAttributes(request, upstreamUrl),
+    });
+  }
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: egressResponseHeaders(upstream),
   });
 }
 
@@ -618,26 +617,9 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
-  let body: ArrayBuffer | undefined;
-  try {
-    body = await requestBodyBytes(request);
-  } catch (error) {
-    if (!(error instanceof TypeError)) {
-      throw error;
-    }
-    return unreadableBodyResponse(
-      logException(error, "sandbox.egress.request_body.unreadable", {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          host: upstreamUrl.hostname,
-          method: request.method,
-          path: upstreamUrl.pathname,
-          provider,
-          status: 500,
-        }),
-        ...routingAttributes(request, upstreamUrl),
-      }),
-    );
+  const body = await readEgressRequestBody(input);
+  if (body instanceof Response) {
+    return body;
   }
   const bodyForGrantSelection = githubBodyInspection({
     provider,
@@ -687,7 +669,9 @@ export async function executeCredentialedEgressRequest(input: {
   const recordPermissionDenied =
     deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
-  async function resolveLease(): Promise<SandboxEgressCredentialLease | Response> {
+  async function resolveLease(): Promise<
+    SandboxEgressCredentialLease | Response
+  > {
     try {
       return await issueCredentialLease(
         provider,
@@ -773,7 +757,7 @@ export async function executeCredentialedEgressRequest(input: {
   let retriedAfter403 = false;
 
   while (true) {
-    const headers = requestHeaders(
+    const headers = egressRequestHeaders(
       request,
       lease,
       upstreamUrl.hostname,
@@ -792,8 +776,7 @@ export async function executeCredentialedEgressRequest(input: {
       return intercepted;
     }
 
-    const requestBody =
-      body instanceof ArrayBuffer ? body.slice(0) : body;
+    const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
     const upstream = await fetchImpl(upstreamUrl, {
       method: request.method,
       headers,
@@ -918,7 +901,7 @@ export async function executeCredentialedEgressRequest(input: {
       return new Response(upstream.body, {
         status: upstream.status,
         statusText: upstream.statusText,
-        headers: responseHeaders(upstream),
+        headers: egressResponseHeaders(upstream),
       });
     }
 
@@ -939,7 +922,7 @@ export async function executeCredentialedEgressRequest(input: {
     return new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
-      headers: responseHeaders(upstream),
+      headers: egressResponseHeaders(upstream),
     });
   }
 }

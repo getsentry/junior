@@ -26,6 +26,10 @@ credentials, plugins, skills, and operational telemetry.
   a security edge.
 - Tool-native auth environment variables may contain non-secret placeholders
   only. The proxy applies real authorization headers after verification.
+- The proxy adds credentials only to a request that sends a placeholder in an
+  auth header. Every placeholder contains `host_managed_credential`. The proxy
+  forwards other requests without credentials, so a browser keeps its own
+  login. The placeholder is public, so this check is not a security edge.
 
 The implementation lives in
 `packages/junior/src/chat/sandbox/egress/` and

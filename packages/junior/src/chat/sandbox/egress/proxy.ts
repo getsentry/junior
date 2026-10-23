@@ -1,8 +1,10 @@
 import { logWarn, withSpan } from "@/chat/logging";
 import {
   executeCredentialedEgressRequest,
+  forwardEgressRequestWithoutCredentials,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
+import { hasHostManagedCredentialPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
@@ -65,12 +67,16 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.egressId
+      ? { "app.sandbox.egress_id": input.egressId }
+      : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status ? { "http.response.status_code": input.status } : undefined),
+    ...(input.status
+      ? { "http.response.status_code": input.status }
+      : undefined),
   };
 }
 
@@ -362,13 +368,23 @@ export async function proxySandboxEgressRequest(
     upstreamUrl.hostname,
     deps.tracePropagation ?? {},
     async () =>
-      await executeCredentialedEgressRequest({
-        activeEgressId,
-        credentialContext,
-        deps,
-        provider,
-        request,
-        upstreamUrl,
-      }),
+      // Only clients that send a credential placeholder get provider
+      // credentials. Other clients, such as a browser, keep their own login.
+      hasHostManagedCredentialPlaceholder(request.headers)
+        ? await executeCredentialedEgressRequest({
+            activeEgressId,
+            credentialContext,
+            deps,
+            provider,
+            request,
+            upstreamUrl,
+          })
+        : await forwardEgressRequestWithoutCredentials({
+            activeEgressId,
+            deps,
+            provider,
+            request,
+            upstreamUrl,
+          }),
   );
 }
