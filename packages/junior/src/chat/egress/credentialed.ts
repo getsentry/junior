@@ -279,40 +279,11 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
 }
 
 /**
- * Name whose authority the request used, and the Conversation it acted for. A
- * system actor with a delegated subject used that person's credentials for the
- * bound Automation.
- */
-function credentialAttributes(
-  context: SandboxEgressCredentialContext,
-): Record<string, unknown> {
-  const { actor } = context.credentials;
-  const attributes: Record<string, unknown> = {
-    "app.credential.actor.type": "type" in actor ? "user" : "system",
-    "app.credential.actor.id": "type" in actor ? actor.userId : actor.name,
-  };
-  if (context.conversationId) {
-    attributes["gen_ai.conversation.id"] = context.conversationId;
-  }
-  const subject =
-    "subject" in context.credentials ? context.credentials.subject : undefined;
-  if (subject) {
-    attributes["app.credential.subject.id"] = subject.userId;
-    attributes["app.credential.subject.allowed_when"] = subject.allowedWhen;
-    if ("taskId" in subject) {
-      attributes["app.task.id"] = subject.taskId;
-    }
-  }
-  return attributes;
-}
-
-/**
  * Record one forwarded provider request. Write-grant requests are audit
  * events, so they reach Sentry in production. Other requests log only outside
  * production.
  */
 function logSandboxEgressUpstreamRequest(input: {
-  credentialContext: SandboxEgressCredentialContext;
   egressId: string;
   grantAccess?: "read" | "write";
   grantName: string;
@@ -328,7 +299,6 @@ function logSandboxEgressUpstreamRequest(input: {
   }
 
   (isWrite ? logAudit : logInfo)("sandbox.egress.upstream.requested", {
-    ...credentialAttributes(input.credentialContext),
     ...egressAttributes({
       egressId: input.egressId,
       grantAccess: input.grantAccess,
@@ -886,7 +856,6 @@ export async function executeCredentialedEgressRequest(input: {
       });
     }
     logSandboxEgressUpstreamRequest({
-      credentialContext,
       egressId: activeEgressId,
       grantAccess: lease.grant.access,
       grantName: lease.grant.name,

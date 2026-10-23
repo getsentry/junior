@@ -25,7 +25,6 @@ interface PluginEgressAuth {
 }
 
 interface PluginEgressDeps {
-  conversationId?: string;
   credentialContext?: CredentialContext;
   fetch?: typeof fetch;
   pluginAuth: PluginEgressAuth;
@@ -33,10 +32,8 @@ interface PluginEgressDeps {
 
 function credentialContextForPluginEgress(
   credentialContext: CredentialContext,
-  conversationId: string | undefined,
 ): SandboxEgressCredentialContext {
   return {
-    ...(conversationId ? { conversationId } : undefined),
     credentials: credentialContext,
     contextId: randomUUID(),
     egressId: `plugin-egress:${randomUUID()}`,
@@ -47,10 +44,7 @@ function credentialContextForPluginEgress(
 /** Create host-owned provider egress for plugin runtime tools. */
 export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
   const credentialContext = deps.credentialContext
-    ? credentialContextForPluginEgress(
-        deps.credentialContext,
-        deps.conversationId,
-      )
+    ? credentialContextForPluginEgress(deps.credentialContext)
     : undefined;
 
   return {

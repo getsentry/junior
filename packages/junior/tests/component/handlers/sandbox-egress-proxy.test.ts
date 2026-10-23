@@ -60,6 +60,7 @@ vi.mock("@/chat/sentry", () => ({
   continueTrace: continueTraceMock,
   getActiveSpan: () => undefined,
   logger: loggerMock,
+  setUser: vi.fn(),
   spanToJSON: () => ({}),
   startSpan: startSpanMock,
 }));

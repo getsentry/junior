@@ -365,7 +365,6 @@ export async function wireAgentTools(
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
-      conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       pluginAuth: {
         async handleAuthRequired(signal) {

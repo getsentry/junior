@@ -180,8 +180,10 @@ const CONSOLE_PRIORITY_INDEX: Map<string, number> = new Map(
 const CONSOLE_ALWAYS_HIDDEN_KEYS = new Set([
   "gen_ai.agent.name",
   "app.platform",
-  "enduser.id",
-  "enduser.pseudo.id",
+  "user.id",
+  "user.name",
+  "user.email",
+  "user.full_name",
   "http.request.method",
   "messaging.system",
   "url.full",
