@@ -415,7 +415,9 @@ check, and Slack Delivery read that field. They do not check the Source.
   each outcome and says if it is the creator's direct message or a channel.
 - The run has no Delivery port, so final assistant text is never delivered.
 - The run ends with one `finishAutomationRun` call. `send_message` posts the
-  declared message to the stored outcomes. `no_action` posts nothing.
+  declared message to the stored outcomes. Each of its optional
+  `threadReplies` posts as its own reply in the thread under that message.
+  `no_action` posts nothing.
   `misconfigured` records a blocked dispatch with the declared reason. A
   blocked dispatch sets the Scheduled automation or Event automation to
   `blocked` with that reason. It does not run again until its creator resumes

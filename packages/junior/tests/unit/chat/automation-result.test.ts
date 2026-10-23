@@ -121,8 +121,30 @@ describe("automation run result", () => {
       finishedRunReply(result, {
         declaresResult: true,
         outcomes: [{ action: "send_message" }],
-      }),
+      })?.text,
     ).toBe("The digest.");
+  });
+
+  it("posts declared thread replies with the declared message", () => {
+    const result = automationTurnResult({
+      newMessages: [
+        declared({
+          result: "send_message",
+          message: "Weekly digest",
+          threadReplies: ["Cocoa: quiet week", "Java: one fix"],
+        }),
+      ],
+    });
+
+    expect(
+      finishedRunReply(result, {
+        declaresResult: true,
+        outcomes: [{ action: "send_message" }],
+      }),
+    ).toEqual({
+      text: "Weekly digest",
+      threadReplies: ["Cocoa: quiet week", "Java: one fix"],
+    });
   });
 
   it("keeps a result that an earlier slice saved when a later slice errs", () => {
@@ -173,7 +195,7 @@ describe("automation run result", () => {
         finishedRunReply(turn, {
           declaresResult: true,
           outcomes: [{ action: "send_message" }],
-        }),
+        })?.text,
       ).toBe(posted);
       expect(runDispatchOutcome(turn)).toEqual(dispatch);
     },
@@ -185,7 +207,10 @@ describe("automation run result", () => {
       text: "I ran into an internal error.",
     };
 
-    expect(finishedRunReply(failed, undefined)).toBe(failed.text);
+    expect(finishedRunReply(failed, undefined)).toEqual({
+      text: failed.text,
+      threadReplies: [],
+    });
     expect(finishedRunReply(failed, { declaresResult: true })).toBeUndefined();
   });
 });

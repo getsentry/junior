@@ -18,15 +18,24 @@ import { sanitizeAssistantText } from "@/chat/services/assistant-reply";
 /** Model-facing tool that ends an Automation run. */
 export const FINISH_AUTOMATION_RUN_TOOL_NAME = "finishAutomationRun";
 
+/** Most thread replies one declared message can carry. */
+export const MAX_AUTOMATION_THREAD_REPLIES = 10;
+
+const declaredText = z
+  .string()
+  .transform(sanitizeAssistantText)
+  .pipe(z.string().min(1));
+
 /** One declared result for an Automation run. */
 export const automationResultSchema = z.discriminatedUnion("result", [
   z.object({
     result: z.literal("send_message"),
     // The declared message gets the same cleanup as a chat reply.
-    message: z
-      .string()
-      .transform(sanitizeAssistantText)
-      .pipe(z.string().min(1)),
+    message: declaredText,
+    threadReplies: z
+      .array(declaredText)
+      .max(MAX_AUTOMATION_THREAD_REPLIES)
+      .optional(),
   }),
   z.object({
     result: z.literal("no_action"),
@@ -55,11 +64,18 @@ export function deliversFinalText(dispatch: RunDispatch): boolean {
   return dispatch?.outcomes?.length !== 0 && !dispatch?.declaresResult;
 }
 
+/** Text that a finished run posts, plus replies in the thread under it. */
+export type FinishedRunReply = {
+  text: string;
+  threadReplies: readonly string[];
+};
+
 /**
- * Return the text to post after a run ends, if any. A chat Turn already
+ * Return what to post after a run ends, if anything. A chat Turn already
  * delivered a successful reply, so it posts only its failure reply. An
- * Automation run posts only a declared message. It never posts a failure
- * reply to its outcomes. The failed execution shows on the Automation.
+ * Automation run posts only a declared message and its thread replies. It
+ * never posts a failure reply to its outcomes. The failed execution shows on
+ * the Automation.
  */
 export function finishedRunReply(
   result: {
@@ -68,14 +84,19 @@ export function finishedRunReply(
     text: string;
   },
   dispatch: RunDispatch,
-): string | undefined {
+): FinishedRunReply | undefined {
   if (!dispatch?.declaresResult) {
-    return result.diagnostics.outcome === "success" ? undefined : result.text;
+    return result.diagnostics.outcome === "success"
+      ? undefined
+      : { text: result.text, threadReplies: [] };
   }
   return result.diagnostics.outcome === "success" &&
     result.automation?.result === "send_message" &&
     dispatch.outcomes?.length !== 0
-    ? result.text
+    ? {
+        text: result.text,
+        threadReplies: result.automation.threadReplies ?? [],
+      }
     : undefined;
 }
 

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { automationResultSchema } from "@/chat/automation-result";
+import {
+  automationResultSchema,
+  MAX_AUTOMATION_THREAD_REPLIES,
+} from "@/chat/automation-result";
 import { isNoReplyMarker } from "@/chat/no-reply";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -39,6 +42,13 @@ export function createFinishAutomationRunTool(options: {
               .string()
               .optional()
               .describe("Required for send_message. The text to post."),
+            threadReplies: z
+              .array(z.string())
+              .max(MAX_AUTOMATION_THREAD_REPLIES)
+              .optional()
+              .describe(
+                "Optional for send_message. Each item posts as its own reply in the thread under the message, in order. Use it to keep the message short and put each section of a long digest in its own reply.",
+              ),
           }
         : undefined),
       reason: z

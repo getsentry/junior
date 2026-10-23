@@ -499,6 +499,7 @@ async function resumeSlackTurnInContext(
     /** Post and record one completed assistant message for the resumed turn. */
     const deliverAssistantMessage = async (
       reply: AssistantMessage | string,
+      threadReplies: readonly string[] = [],
     ): Promise<void> => {
       const message = typeof reply === "string" ? undefined : reply;
       const text =
@@ -521,6 +522,7 @@ async function resumeSlackTurnInContext(
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
                 text,
+                threadReplies,
                 threadTs: outcome.destination.threadTs,
               })),
             );
@@ -532,6 +534,7 @@ async function resumeSlackTurnInContext(
             conversationId: runArgs.conversationId,
             replyAttribution: runArgs.run?.dispatch?.replyAttribution,
             text,
+            threadReplies,
             threadTs: runArgs.threadTs,
           });
         }
@@ -549,7 +552,7 @@ async function resumeSlackTurnInContext(
         conversation: deliveryState.conversation,
         sessionId: deliveryState.sessionId,
         source: "slack",
-        text,
+        text: [text, ...threadReplies].join("\n\n"),
         userMessageId: deliveryState.userMessageId,
       });
       if (messageTs) {
@@ -639,9 +642,12 @@ async function resumeSlackTurnInContext(
       const dispatchErrorMessage = run.dispatch
         ? dispatchResult.errorMessage
         : undefined;
-      const replyText = finishedRunReply(reply, run.dispatch);
-      if (replyText !== undefined) {
-        await deliverAssistantMessage(replyText);
+      const finishedReply = finishedRunReply(reply, run.dispatch);
+      if (finishedReply !== undefined) {
+        await deliverAssistantMessage(
+          finishedReply.text,
+          finishedReply.threadReplies,
+        );
       }
       runResultHandled = true;
 

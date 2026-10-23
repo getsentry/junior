@@ -92,6 +92,27 @@ describe("sendSlackReply", () => {
     );
   });
 
+  it("posts each thread reply as its own post under the first message", async () => {
+    const messageTs = await sendSlackReply({
+      channelId: "C123",
+      conversationId: "agent-dispatch:dispatch-1",
+      text: "Weekly digest",
+      threadReplies: ["**Cocoa**\nQuiet week", "**Java**\nOne fix"],
+    });
+
+    const posts = getCapturedSlackApiCalls("chat.postMessage");
+    expect(posts.map((post) => post.params.text)).toEqual([
+      "Weekly digest",
+      expect.stringContaining("**Cocoa**"),
+      expect.stringContaining("**Java**"),
+    ]);
+    expect(posts[0]?.params).not.toHaveProperty("thread_ts");
+    expect(posts.slice(1).map((post) => post.params.thread_ts)).toEqual([
+      messageTs[0],
+      messageTs[0],
+    ]);
+  });
+
   it("keeps the original thread for every chunk", async () => {
     const messageTs = await sendSlackReply({
       channelId: "C123",

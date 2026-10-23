@@ -27,10 +27,17 @@ export async function sendSlackReply(args: {
   conversationId: string;
   replyAttribution?: ReplyAttribution;
   text: string;
+  /** Each item posts as its own reply in the thread under `text`. */
+  threadReplies?: readonly string[];
   threadTs?: string;
 }): Promise<string[]> {
-  const posts: Array<{ text: string; cards: SlackCard[] }> =
-    splitSlackReplyText(args.text).map((text) => ({ text, cards: [] }));
+  // Split each part on its own so a thread reply always starts a new post.
+  const posts: Array<{ text: string; cards: SlackCard[] }> = [
+    args.text,
+    ...(args.threadReplies ?? []),
+  ]
+    .flatMap((part) => splitSlackReplyText(part))
+    .map((text) => ({ text, cards: [] }));
   const cards = (args.cards ?? []).map((card) =>
     renderSlackCard(card, args.conversationId),
   );

@@ -807,6 +807,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         const deliverAssistantMessage = async (
           reply: AssistantMessage | string,
           terminalDispatchOutcome?: "blocked" | "failed",
+          threadReplies: readonly string[] = [],
         ): Promise<void> => {
           const agentMessage = typeof reply === "string" ? undefined : reply;
           const text =
@@ -835,6 +836,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   replyAttribution:
                     options.execution?.dispatch?.replyAttribution,
                   text,
+                  threadReplies,
                   threadTs: outcome.destination.threadTs,
                 });
                 slackMessageTs.push(...messageIds);
@@ -852,6 +854,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
+                threadReplies,
                 ...(threadTs ? { threadTs } : undefined),
               });
               messageDestinations.push(
@@ -887,7 +890,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             conversation: preparedState.conversation,
             sessionId: turnId,
             source: "slack",
-            text,
+            text: [text, ...threadReplies].join("\n\n"),
             userMessageId: preparedState.userMessageId,
           });
           if (slackTs) {
@@ -1196,7 +1199,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               options.execution?.dispatch,
             );
             if (reply !== undefined) {
-              await deliverAssistantMessage(reply);
+              await deliverAssistantMessage(
+                reply.text,
+                undefined,
+                reply.threadReplies,
+              );
             }
             const turnResult = runDispatchOutcome(finalResult);
             runResultHandled = true;
