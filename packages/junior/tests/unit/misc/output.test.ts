@@ -236,6 +236,34 @@ describe("splitSlackReplyText", () => {
     expect(chunks.join("")).toBe(text);
   });
 
+  it("counts link labels, not URLs, toward the inline budget", () => {
+    const url = `https://example.com/?q=${"x".repeat(900)}`;
+    const text = Array.from(
+      { length: 8 },
+      (_, i) => `- [Query ${i + 1}](${url})`,
+    ).join("\n");
+
+    expect(text.length).toBeGreaterThan(slackOutputPolicy.maxInlineChars);
+    expect(splitSlackReplyText(text)).toEqual([text]);
+  });
+
+  it("splits at Slack's markdown block limit without breaking links", () => {
+    const url = `https://example.com/?q=${"x".repeat(1900)}`;
+    const links = Array.from(
+      { length: 12 },
+      (_, i) => `[Query ${i + 1}](${url})`,
+    );
+    const chunks = splitSlackReplyText(links.join("\n"));
+
+    expect(chunks).toHaveLength(2);
+    expect(
+      chunks.every(
+        (chunk) => chunk.length <= slackOutputPolicy.maxMarkdownBlockChars,
+      ),
+    ).toBe(true);
+    expect(chunks.join("\n").split("\n").filter(Boolean)).toEqual(links);
+  });
+
   it("marks interrupted final replies explicitly", () => {
     const chunks = splitSlackReplyText("Partial output", {
       interrupted: true,
