@@ -41,14 +41,13 @@ authority.
 
 ## Slack Sign-In
 
-With the experimental `slack-sign-in` feature, a Slack identity must have
-`signed_in_at` before Slack ingress accepts its mentions and DMs.
-`chat/sign-in.ts` owns the Google sign-in that sets it. It does not need the
-dashboard.
+With the experimental `slack-sign-in` feature, Slack ingress accepts mentions
+and DMs only when the user of the Slack identity has a verified Google
+identity. `chat/sign-in.ts` owns the Google sign-in that links it. It does not
+need the dashboard, and other features can reuse the Google identity.
 
 - Ingress saves the Slack identity with its Slack profile email. Then it stores
   one sign-in state for that Slack identity and sends a private Google link.
-- The callback checks the dashboard allowlist. Then it marks only that Slack
-  identity, and only when it already links to the user with the Google email.
-  Sign-in never links a new identity, so a forwarded link cannot sign in
-  another Slack account.
+- The callback checks the dashboard allowlist. Then it links the Google
+  identity only when the user of that Slack identity has the same email. A
+  forwarded link cannot give another person's Slack account access.

@@ -273,6 +273,7 @@ describe("Slack webhook auth boundary", () => {
           email: googleEmail,
           email_verified: true,
           iss: "https://accounts.google.com",
+          sub: `google-${googleEmail}`,
         };
         const payload = Buffer.from(JSON.stringify(claims)).toString(
           "base64url",
@@ -336,7 +337,7 @@ describe("Slack webhook auth boundary", () => {
     expect((await signInAs("someone@example.com")).status).toBe(403);
     expect(queue.queuedMessages()).toEqual([]);
 
-    // The account that matches the Slack email signs in once.
+    // The matching account links a Google identity that later checks reuse.
     expect((await signInAs("testuser@example.com")).status).toBe(200);
     const prompts = getCapturedSlackApiCalls("chat.postMessage").length;
     expect((await send()).status).toBe(200);
