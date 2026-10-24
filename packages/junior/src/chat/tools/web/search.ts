@@ -17,6 +17,22 @@ function asString(value: unknown): string | undefined {
     : undefined;
 }
 
+/**
+ * Read the page text of one search result. The AI Gateway returns
+ * `excerpts` as a list, where the provider tool type declares one `excerpt`.
+ */
+function readExcerpt(result: Record<string, unknown>): string {
+  const excerpts = Array.isArray(result.excerpts)
+    ? result.excerpts.flatMap((excerpt) => asString(excerpt) ?? [])
+    : [];
+  return (
+    asString(result.excerpt) ??
+    (excerpts.length > 0 ? excerpts.join("\n\n") : undefined) ??
+    asString(result.snippet) ??
+    ""
+  );
+}
+
 function parseSearchResults(
   toolResults: unknown,
   maxResults: number,
@@ -48,7 +64,7 @@ function parseSearchResults(
       parsedResults.push({
         title: asString(result.title) ?? url,
         url,
-        snippet: asString(result.excerpt) ?? asString(result.snippet) ?? "",
+        snippet: readExcerpt(result),
       });
 
       if (parsedResults.length >= maxResults) {
