@@ -537,8 +537,11 @@ test("groups the signed-in profile and session actions in the header", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
+  // Sign-out reloads the dashboard. Wait for it so the test ends idle.
+  const reloaded = page.waitForEvent("load");
   await page.getByRole("button", { name: "Log out" }).click();
   await signOutRequest;
+  await reloaded;
 });
 
 test("inspects and copies a child agent transcript", async ({
