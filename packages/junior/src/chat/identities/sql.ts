@@ -315,15 +315,15 @@ export async function deleteProviderIdentityForUser(
     );
 }
 
-/** Return whether one Slack identity has completed dashboard sign-in. */
-export async function isSlackIdentitySignedIn(
+/** Read the user linked to one Slack identity. */
+export async function findSlackIdentityUserId(
   executor: JuniorSqlDatabase,
   slackTeamId: string,
   slackUserId: string,
-): Promise<boolean> {
+): Promise<string | undefined> {
   const rows = await executor
     .db()
-    .select({ signedInAt: juniorIdentities.signedInAt })
+    .select({ userId: juniorIdentities.userId })
     .from(juniorIdentities)
     .where(
       and(
@@ -334,44 +334,35 @@ export async function isSlackIdentitySignedIn(
       ),
     )
     .limit(1);
-  return Boolean(rows[0]?.signedInAt);
+  return rows[0]?.userId ?? undefined;
 }
 
 /**
- * Mark one Slack identity as signed in when its user has this verified email.
- *
- * The Slack identity must already link to the user whose primary email is the
- * signed-in email. Sign-in never links a new identity, so a forwarded sign-in
- * link cannot sign in another Slack account. Return whether a row matched.
+ * Return whether the user of one Slack identity has a verified identity from
+ * another provider.
  */
-export async function markSlackIdentitySignedIn(
+export async function slackUserHasVerifiedIdentity(
   executor: JuniorSqlDatabase,
-  args: { email: string; slackTeamId: string; slackUserId: string },
+  args: { provider: string; slackTeamId: string; slackUserId: string },
 ): Promise<boolean> {
-  const email = normalizeIdentityEmail(args.email);
-  if (!email) return false;
-  const now = new Date();
+  const userId = await findSlackIdentityUserId(
+    executor,
+    args.slackTeamId,
+    args.slackUserId,
+  );
+  if (!userId) return false;
   const rows = await executor
     .db()
-    .update(juniorIdentities)
-    .set({ signedInAt: now, updatedAt: now })
+    .select({ id: juniorIdentities.id })
+    .from(juniorIdentities)
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.providerTenantId, args.slackTeamId),
-        eq(juniorIdentities.providerSubjectId, args.slackUserId),
+        eq(juniorIdentities.provider, args.provider),
+        eq(juniorIdentities.userId, userId),
         eq(juniorIdentities.emailVerified, true),
-        inArray(
-          juniorIdentities.userId,
-          executor
-            .db()
-            .select({ id: juniorUsers.id })
-            .from(juniorUsers)
-            .where(eq(juniorUsers.primaryEmailNormalized, email)),
-        ),
       ),
     )
-    .returning({ id: juniorIdentities.id });
+    .limit(1);
   return rows.length > 0;
 }

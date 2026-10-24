@@ -221,7 +221,8 @@ uses the same Google OAuth client and allowlist as the dashboard:
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and
 `JUNIOR_DASHBOARD_GOOGLE_DOMAINS` or `JUNIOR_DASHBOARD_ALLOWED_EMAILS`. Add
 `<base-url>/api/sign-in/callback` as an authorized redirect URI on the Google
-OAuth client. The Google email must match the Slack profile email. Passive
+OAuth client. The Google email must match the Slack profile email. Junior
+links the Google identity to the user, so the check passes later. Passive
 thread replies are not checked yet.
 
 `operator-tools` adds `runOperatorSql` to non-public Conversations. The tool

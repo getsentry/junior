@@ -3,19 +3,27 @@
  *
  * Junior owns this OAuth flow, so it works without the dashboard. Slack sends
  * a person here the first time they mention Junior. The callback checks the
- * Google account against the same allowlist as the dashboard.
+ * Google account against the same allowlist as the dashboard. Then it links
+ * the Google identity to the person's user, so later checks can reuse it.
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
 import { botConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
-import { markSlackIdentitySignedIn } from "@/chat/identities/sql";
+import {
+  findSlackIdentityUserId,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
+import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { escapeXml } from "@/chat/xml";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 
 export const SIGN_IN_CALLBACK_PATH = "/api/sign-in/callback";
+
+/** Provider of the identity that a sign-in links to the user. */
+export const SIGN_IN_IDENTITY_PROVIDER = "google";
 
 const AUTHORIZE_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -44,6 +52,7 @@ const idTokenClaimsSchema = z.object({
   email: z.string(),
   email_verified: z.boolean().optional(),
   iss: z.string(),
+  sub: z.string().min(1),
 });
 
 function stateKey(state: string): string {
@@ -135,10 +144,10 @@ function page(title: string, message: string, status: number): Response {
 // The token response comes straight from Google over TLS, so the identity
 // token claims are trusted without a signature check (OpenID Connect Core
 // 3.1.3.7).
-async function verifiedGoogleEmail(
+async function verifiedGoogleAccount(
   code: string,
   codeVerifier: string,
-): Promise<string | undefined> {
+): Promise<{ email: string; subject: string } | undefined> {
   const { clientId, clientSecret } = clientCredentials();
   const response = await fetch(TOKEN_ENDPOINT, {
     body: new URLSearchParams({
@@ -171,10 +180,13 @@ async function verifiedGoogleEmail(
   ) {
     return undefined;
   }
-  return claims.email.trim().toLowerCase();
+  return { email: claims.email.trim().toLowerCase(), subject: claims.sub };
 }
 
-/** Finish one Google sign-in and mark the Slack user who started it. */
+/**
+ * Finish one Google sign-in and link the Google identity to the user of the
+ * Slack identity that started it.
+ */
 export async function handleSignInCallback(args: {
   allowlist: SignInAllowlist;
   request: Request;
@@ -196,14 +208,15 @@ export async function handleSignInCallback(args: {
   // One state starts one sign-in.
   await args.state.delete(stateKey(stateParam));
 
-  const email = await verifiedGoogleEmail(code, stored.data.codeVerifier);
-  if (!email) {
+  const account = await verifiedGoogleAccount(code, stored.data.codeVerifier);
+  if (!account) {
     return page(
       "Sign-in failed",
       "Google did not return a verified account. Try again.",
       400,
     );
   }
+  const { email } = account;
   if (!isAllowed(email, args.allowlist)) {
     return page(
       "Account not allowed",
@@ -211,18 +224,29 @@ export async function handleSignInCallback(args: {
       403,
     );
   }
-  const signedIn = await markSlackIdentitySignedIn(getSqlExecutor(), {
-    email,
-    slackTeamId: stored.data.slackTeamId,
-    slackUserId: stored.data.slackUserId,
-  });
-  if (!signedIn) {
+  // Link only when the Slack identity's user owns this Google email. A
+  // forwarded link then cannot give another person's Slack account access.
+  const executor = getSqlExecutor();
+  const slackUserId = await findSlackIdentityUserId(
+    executor,
+    stored.data.slackTeamId,
+    stored.data.slackUserId,
+  );
+  const user = await findUserByEmailFromSql(executor.db(), email);
+  if (!slackUserId || user?.id !== slackUserId) {
     return page(
       "Slack account does not match",
       `Your Slack email is not ${email}. Sign in with the account that matches your Slack email.`,
       403,
     );
   }
+  await upsertLinkedIdentity(executor, slackUserId, {
+    kind: "user",
+    provider: SIGN_IN_IDENTITY_PROVIDER,
+    providerSubjectId: account.subject,
+    email,
+    emailVerified: true,
+  });
   return page(
     "You are signed in",
     "Return to Slack and send your message again.",
