@@ -58,9 +58,14 @@ export function fallbackShortTitle(
   return normalizeShortTitle(firstLine) || fallback;
 }
 
-/** Generate a short title with the fast model, or return undefined on failure. */
+/**
+ * Generate a short title with the fast model, or return undefined on failure.
+ * `context` holds facts about objects that the source text links, such as
+ * issue titles.
+ */
 export async function generateShortTitle(args: {
   completeText: typeof completeText;
+  context?: string[];
   kind: ShortTitleKind;
   sourceText: string;
   signal?: AbortSignal;
@@ -82,6 +87,17 @@ export async function generateShortTitle(args: {
             ...TITLE_PROMPTS[args.kind],
             "",
             `${SOURCE_LABELS[args.kind]}: ${sourceText.slice(0, SOURCE_TEXT_MAX_LENGTH[args.kind])}`,
+            // Add this block only with context, so other title requests stay
+            // the same.
+            ...(args.context?.length
+              ? [
+                  "",
+                  "Linked objects:",
+                  ...args.context.map((line) => `- ${line}`),
+                  "",
+                  "When the message refers to a linked object, name it by its number and title, for example: Fix #123: Login fails on Safari.",
+                ]
+              : []),
           ].join("\n"),
           timestamp: Date.now(),
         },

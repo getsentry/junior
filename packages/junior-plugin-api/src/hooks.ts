@@ -1,3 +1,4 @@
+import type { PluginContext } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type {
   ConversationSidebarHookContext,
@@ -48,7 +49,28 @@ export interface FormatMarkdownHookContext {
   text: string;
 }
 
+/** First human message of a new Conversation, given before title generation. */
+export interface ConversationTitleContextHookContext extends PluginContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key. For example, `repo` for the `github.repo` config key.
+   */
+  config: Record<string, string>;
+  /** Ends the hook when the host stops waiting for title context. */
+  signal: AbortSignal;
+  text: string;
+}
+
 export interface PluginHooks {
+  /**
+   * Return short facts that help name a new Conversation, such as
+   * `owner/repo#123: Issue title` for a linked issue. Junior shows these facts
+   * only to the title model. Return nothing when the message has no known
+   * objects.
+   */
+  conversationTitleContext?(
+    ctx: ConversationTitleContextHookContext,
+  ): Promise<string[] | undefined> | string[] | undefined;
   conversationSidebar?(
     ctx: ConversationSidebarHookContext,
   ): Promise<ConversationSidebarResult> | ConversationSidebarResult;

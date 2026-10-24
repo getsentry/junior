@@ -57,6 +57,7 @@ import {
   prepareCommitMsgHook,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
+import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import {
   githubGrantForEgress,
@@ -252,6 +253,44 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      async conversationTitleContext(ctx) {
+        return await loadGitHubConversationTitleContext({
+          config: ctx.config,
+          log: ctx.log,
+          text: ctx.text,
+          loadObject: async (reference) => {
+            const { collection, permissions } = (
+              {
+                commit: {
+                  collection: "commits",
+                  permissions: { contents: "read" },
+                },
+                issue: {
+                  collection: "issues",
+                  permissions: { issues: "read" },
+                },
+                pull_request: {
+                  collection: "pulls",
+                  permissions: { pull_requests: "read" },
+                },
+              } as const
+            )[reference.kind];
+            // Read one object with a token scoped to its repository.
+            const token = await issueInstallationToken({
+              appIdEnv,
+              privateKeyEnv,
+              installationIdEnv,
+              permissions,
+              repositories: [reference.name],
+            });
+            return await githubRequest(
+              "https://api.github.com",
+              `/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
+              { signal: ctx.signal, token: token.token },
+            );
+          },
+        });
+      },
       conversationSidebar(ctx) {
         return {
           annotationsByConversationId: Object.fromEntries(
