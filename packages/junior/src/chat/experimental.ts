@@ -6,6 +6,7 @@
 export const EXPERIMENTAL_FEATURES = [
   "operator-tools",
   "passive-routing",
+  "slack-sign-in",
   "subagents",
 ] as const;
 

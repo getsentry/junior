@@ -1,6 +1,10 @@
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { handleSlackSignInPage, SLACK_SIGN_IN_PATH } from "@/api/slack-sign-in";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb, getConversationEventStore } from "@/chat/db";
+import { setExperimentalFeatures } from "@/chat/experimental";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -15,6 +19,7 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
+import { SUITE_EXPERIMENTAL } from "../../fixtures/experimental-setup";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { usersInfoOk } from "../../fixtures/slack/factories/api";
@@ -253,6 +258,73 @@ describe("Slack webhook auth boundary", () => {
     expect(queue.queuedMessages()).toHaveLength(5);
     expect(getCapturedSlackApiCalls("users.info")).toHaveLength(6);
     await state.disconnect();
+  });
+
+  it("asks Slack users to sign in before their first Turn", async () => {
+    setExperimentalFeatures({ ...SUITE_EXPERIMENTAL, "slack-sign-in": true });
+    const previousLinks = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      const state = createMemoryState();
+      await state.connect();
+      const adapter = createSlackAdapterFixture();
+      const queue = createConversationWorkQueueTestAdapter();
+      const services = {
+        getSlackAdapter: () => adapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      };
+      let sequence = 1;
+      const send = async () =>
+        await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            slackEventsApiEnvelope({
+              eventType: "message",
+              channel: "D123",
+              user: "U123",
+              ts: `1712345.${String(sequence++).padStart(6, "0")}`,
+              threadTs: "1712345.000001",
+              text: "hello",
+            }),
+          ),
+          services,
+        });
+
+      expect((await send()).status).toBe(200);
+      expect(queue.queuedMessages()).toEqual([]);
+      const prompt = getCapturedSlackApiCalls("chat.postEphemeral").at(-1);
+      expect(prompt?.params).toMatchObject({ channel: "D123", user: "U123" });
+      expect(String(prompt?.params.text)).toContain(
+        `https://junior.example.com${SLACK_SIGN_IN_PATH}`,
+      );
+
+      // Another Google account cannot sign in this Slack account.
+      const other = await resolveViewerUser("someone@example.com");
+      expect(
+        (await handleSlackSignInPage({ agentName: "junior", user: other! }))
+          .status,
+      ).toBe(403);
+      expect((await send()).status).toBe(200);
+      expect(queue.queuedMessages()).toEqual([]);
+
+      // The Google account that matches the Slack email signs in once.
+      const owner = await resolveViewerUser("testuser@example.com");
+      expect(
+        (await handleSlackSignInPage({ agentName: "junior", user: owner! }))
+          .status,
+      ).toBe(200);
+      const prompts = getCapturedSlackApiCalls("chat.postEphemeral").length;
+      expect((await send()).status).toBe(200);
+      expect(queue.queuedMessages()).toHaveLength(1);
+      expect(getCapturedSlackApiCalls("chat.postEphemeral")).toHaveLength(
+        prompts,
+      );
+      await state.disconnect();
+    } finally {
+      setDashboardConversationLinkOptions(previousLinks);
+    }
   });
 
   it.each(["message", "factory"] as const)(

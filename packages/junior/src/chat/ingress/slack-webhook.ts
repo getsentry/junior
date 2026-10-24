@@ -62,6 +62,7 @@ import {
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { hasSlackSignIn } from "@/chat/ingress/slack-sign-in";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import {
   getWorkspaceTeamId,
@@ -536,6 +537,9 @@ async function routeParsedMessage(args: {
     });
     return;
   }
+
+  // Passive thread messages are not checked for sign-in yet.
+  if (route === "mention" && !(await hasSlackSignIn(args))) return;
 
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.

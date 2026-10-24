@@ -73,6 +73,12 @@ function resolveDashboardPath(segmentPath: string): string | undefined {
   return `${baseURL}${path}`;
 }
 
+/** Build the absolute URL of one host route when the core dashboard is enabled. */
+export function getDashboardRouteLink(path: string): string | undefined {
+  if (!dashboardConversationLinkOptions) return undefined;
+  return `${resolveDashboardBaseURL(dashboardConversationLinkOptions)}${path}`;
+}
+
 /** Build the dashboard conversation URL when the core dashboard is enabled. */
 export function getDashboardConversationLink(
   conversationId: string,

@@ -314,3 +314,53 @@ export async function deleteProviderIdentityForUser(
       ),
     );
 }
+
+/** Return whether one Slack identity has completed dashboard sign-in. */
+export async function isSlackIdentitySignedIn(
+  executor: JuniorSqlDatabase,
+  slackTeamId: string,
+  slackUserId: string,
+): Promise<boolean> {
+  const rows = await executor
+    .db()
+    .select({ signedInAt: juniorIdentities.signedInAt })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, slackTeamId),
+        eq(juniorIdentities.providerSubjectId, slackUserId),
+      ),
+    )
+    .limit(1);
+  return Boolean(rows[0]?.signedInAt);
+}
+
+/**
+ * Mark the Slack identities of one signed-in user as signed in.
+ *
+ * Only identities already linked to the user through a verified email match.
+ * Sign-in never links a new Slack identity, so a shared sign-in link cannot
+ * grant access to another Slack account.
+ */
+export async function markSlackIdentitiesSignedIn(
+  executor: JuniorSqlDatabase,
+  userId: string,
+): Promise<number> {
+  const now = new Date();
+  const rows = await executor
+    .db()
+    .update(juniorIdentities)
+    .set({ signedInAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.userId, userId),
+        eq(juniorIdentities.emailVerified, true),
+      ),
+    )
+    .returning({ id: juniorIdentities.id });
+  return rows.length;
+}
