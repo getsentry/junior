@@ -1,10 +1,9 @@
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleSlackSignInPage, SLACK_SIGN_IN_PATH } from "@/api/slack-sign-in";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { http, HttpResponse } from "msw";
 import { closeDb, getConversationEventStore } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { handleSignInCallback } from "@/chat/sign-in";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -29,6 +28,7 @@ import {
   queueSlackApiResponse,
   queueSlackApiError,
 } from "../../msw/handlers/slack-api";
+import { mswServer } from "../../msw/server";
 
 const SIGNING_SECRET = "test-signing-secret";
 
@@ -260,71 +260,89 @@ describe("Slack webhook auth boundary", () => {
     await state.disconnect();
   });
 
-  it("asks Slack users to sign in before their first Turn", async () => {
+  it("asks Slack users to sign in with Google before their first Turn", async () => {
     setExperimentalFeatures({ ...SUITE_EXPERIMENTAL, "slack-sign-in": true });
-    const previousLinks = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
-    try {
-      const state = createMemoryState();
-      await state.connect();
-      const adapter = createSlackAdapterFixture();
-      const queue = createConversationWorkQueueTestAdapter();
-      const services = {
-        getSlackAdapter: () => adapter,
-        queue,
-        runtime: createNoopSlackWebhookRuntime(),
+    vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    let googleEmail = "";
+    mswServer.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        const claims = {
+          aud: "google-client",
+          email: googleEmail,
+          email_verified: true,
+          iss: "https://accounts.google.com",
+        };
+        const payload = Buffer.from(JSON.stringify(claims)).toString(
+          "base64url",
+        );
+        return HttpResponse.json({ id_token: `e30.${payload}.sig` });
+      }),
+    );
+    const state = createMemoryState();
+    await state.connect();
+    const adapter = createSlackAdapterFixture();
+    const queue = createConversationWorkQueueTestAdapter();
+    const services = {
+      getSlackAdapter: () => adapter,
+      queue,
+      runtime: createNoopSlackWebhookRuntime(),
+      state,
+    };
+    let sequence = 1;
+    const send = async () =>
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEventsApiEnvelope({
+            eventType: "message",
+            channel: "D123",
+            user: "U123",
+            ts: `1712345.${String(sequence++).padStart(6, "0")}`,
+            threadTs: "1712345.000001",
+            text: "hello",
+          }),
+        ),
+        services,
+      });
+    // Each blocked message sends a new private link. Finish it as one account.
+    const signInAs = async (email: string) => {
+      expect((await send()).status).toBe(200);
+      const prompt = getCapturedSlackApiCalls("chat.postMessage").at(-1);
+      expect(prompt?.params).toMatchObject({ channel: "D123" });
+      const link = new URL(
+        /<(https:\/\/accounts\.google\.com[^|>]+)/
+          .exec(String(prompt?.params.text))![1]!
+          .replaceAll("&amp;", "&"),
+      );
+      expect(link.searchParams.get("redirect_uri")).toBe(
+        "https://junior.example.com/api/sign-in/callback",
+      );
+      googleEmail = email;
+      const callback = new URL(
+        "https://junior.example.com/api/sign-in/callback",
+      );
+      callback.searchParams.set("state", link.searchParams.get("state")!);
+      callback.searchParams.set("code", "google-code");
+      return await handleSignInCallback({
+        allowlist: { domains: ["example.com"], emails: [] },
+        request: new Request(callback),
         state,
-      };
-      let sequence = 1;
-      const send = async () =>
-        await handleSlackWebhookAndFlush({
-          request: slackWebhookRequest(
-            slackEventsApiEnvelope({
-              eventType: "message",
-              channel: "D123",
-              user: "U123",
-              ts: `1712345.${String(sequence++).padStart(6, "0")}`,
-              threadTs: "1712345.000001",
-              text: "hello",
-            }),
-          ),
-          services,
-        });
+      });
+    };
 
-      expect((await send()).status).toBe(200);
-      expect(queue.queuedMessages()).toEqual([]);
-      const prompt = getCapturedSlackApiCalls("chat.postEphemeral").at(-1);
-      expect(prompt?.params).toMatchObject({ channel: "D123", user: "U123" });
-      expect(String(prompt?.params.text)).toContain(
-        `https://junior.example.com${SLACK_SIGN_IN_PATH}`,
-      );
+    // Accounts outside the allowlist, or another person's account, fail.
+    expect((await signInAs("testuser@contractor.dev")).status).toBe(403);
+    expect((await signInAs("someone@example.com")).status).toBe(403);
+    expect(queue.queuedMessages()).toEqual([]);
 
-      // Another Google account cannot sign in this Slack account.
-      const other = await resolveViewerUser("someone@example.com");
-      expect(
-        (await handleSlackSignInPage({ agentName: "junior", user: other! }))
-          .status,
-      ).toBe(403);
-      expect((await send()).status).toBe(200);
-      expect(queue.queuedMessages()).toEqual([]);
-
-      // The Google account that matches the Slack email signs in once.
-      const owner = await resolveViewerUser("testuser@example.com");
-      expect(
-        (await handleSlackSignInPage({ agentName: "junior", user: owner! }))
-          .status,
-      ).toBe(200);
-      const prompts = getCapturedSlackApiCalls("chat.postEphemeral").length;
-      expect((await send()).status).toBe(200);
-      expect(queue.queuedMessages()).toHaveLength(1);
-      expect(getCapturedSlackApiCalls("chat.postEphemeral")).toHaveLength(
-        prompts,
-      );
-      await state.disconnect();
-    } finally {
-      setDashboardConversationLinkOptions(previousLinks);
-    }
+    // The account that matches the Slack email signs in once.
+    expect((await signInAs("testuser@example.com")).status).toBe(200);
+    const prompts = getCapturedSlackApiCalls("chat.postMessage").length;
+    expect((await send()).status).toBe(200);
+    expect(queue.queuedMessages()).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(prompts);
+    await state.disconnect();
   });
 
   it.each(["message", "factory"] as const)(

@@ -116,7 +116,12 @@ import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
-import { handleSlackSignInPage, SLACK_SIGN_IN_PATH } from "@/api/slack-sign-in";
+import {
+  handleSignInCallback,
+  resolveSignInAllowlist,
+  SIGN_IN_CALLBACK_PATH,
+  type SignInAllowlist,
+} from "@/chat/sign-in";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -437,6 +442,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }),
   });
   let sandboxEgressTracePropagationDomains: string[] = [];
+  let signInAllowlist: SignInAllowlist | undefined;
   try {
     sandboxEgressTracePropagationDomains =
       normalizeSandboxEgressTracePropagationDomains(
@@ -444,11 +450,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     setSandboxResourceConfig(options?.sandbox);
     setExperimentalFeatures(options?.experimental);
-    if (
-      isExperimentalFeatureEnabled("slack-sign-in") &&
-      (!dashboard || dashboard.disabled)
-    ) {
-      throw new Error("experimental.slack-sign-in requires the dashboard");
+    if (isExperimentalFeatureEnabled("slack-sign-in")) {
+      signInAllowlist = resolveSignInAllowlist(dashboard);
+      if (!signInAllowlist.domains.length && !signInAllowlist.emails.length) {
+        throw new Error(
+          "experimental.slack-sign-in requires allowed Google domains or emails",
+        );
+      }
     }
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
@@ -568,14 +576,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
           },
         ]
       : [];
-  if (isExperimentalFeatureEnabled("slack-sign-in")) {
-    authenticatedRoutes.push({
-      handler: (_request, user) =>
-        handleSlackSignInPage({ agentName: botConfig.userName, user }),
-      method: "GET",
-      path: SLACK_SIGN_IN_PATH,
-    });
-  }
   try {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
@@ -643,6 +643,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       conversationWorkQueue,
     });
   });
+
+  if (signInAllowlist) {
+    const allowlist = signInAllowlist;
+    app.get(SIGN_IN_CALLBACK_PATH, (c) =>
+      handleSignInCallback({
+        allowlist,
+        request: c.req.raw,
+        state: getStateAdapter(),
+      }),
+    );
+  }
 
   app.get("/api/internal/sandbox-egress/signals", (c) => {
     return sandboxEgressSignalsGET(c.req.raw);
