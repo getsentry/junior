@@ -65,6 +65,7 @@ describe("userLookup", () => {
           display_name: "David Cramer",
           title: "Co-founder & CTO",
           email: "david@sentry.io",
+          avatar_url: "https://avatars.slack-edge.com/U039RR91S_512.png",
           is_bot: false,
           is_deleted: false,
           mention: "<@U039RR91S>",
