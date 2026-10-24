@@ -314,3 +314,55 @@ export async function deleteProviderIdentityForUser(
       ),
     );
 }
+
+/** Read the user linked to one Slack identity. */
+export async function findSlackIdentityUserId(
+  executor: JuniorSqlDatabase,
+  slackTeamId: string,
+  slackUserId: string,
+): Promise<string | undefined> {
+  const rows = await executor
+    .db()
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, slackTeamId),
+        eq(juniorIdentities.providerSubjectId, slackUserId),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.userId ?? undefined;
+}
+
+/**
+ * Return whether the user of one Slack identity has a verified identity from
+ * another provider.
+ */
+export async function slackUserHasVerifiedIdentity(
+  executor: JuniorSqlDatabase,
+  args: { provider: string; slackTeamId: string; slackUserId: string },
+): Promise<boolean> {
+  const userId = await findSlackIdentityUserId(
+    executor,
+    args.slackTeamId,
+    args.slackUserId,
+  );
+  if (!userId) return false;
+  const rows = await executor
+    .db()
+    .select({ id: juniorIdentities.id })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, args.provider),
+        eq(juniorIdentities.userId, userId),
+        eq(juniorIdentities.emailVerified, true),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}

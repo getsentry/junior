@@ -38,3 +38,16 @@ the account. The person must start the connection from Slack or the web UI.
 Provider handles and subject IDs always remain identity-scoped. Display names
 are presentation data and must never be used to link identities or grant
 authority.
+
+## Slack Sign-In
+
+With the experimental `slack-sign-in` feature, Slack ingress accepts mentions
+and DMs only when the user of the Slack identity has a verified Google
+identity. `chat/sign-in.ts` owns the Google sign-in that links it. It does not
+need the dashboard, and other features can reuse the Google identity.
+
+- Ingress saves the Slack identity with its Slack profile email. Then it stores
+  one sign-in state for that Slack identity and sends a private Google link.
+- The callback checks the dashboard allowlist. Then it links the Google
+  identity only when the user of that Slack identity has the same email. A
+  forwarded link cannot give another person's Slack account access.

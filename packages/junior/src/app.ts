@@ -26,6 +26,7 @@ import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import {
   getExperimentalFeatures,
+  isExperimentalFeatureEnabled,
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
@@ -115,6 +116,12 @@ import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
+import {
+  handleSignInCallback,
+  resolveSignInAllowlist,
+  SIGN_IN_CALLBACK_PATH,
+  type SignInAllowlist,
+} from "@/chat/sign-in";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -435,6 +442,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }),
   });
   let sandboxEgressTracePropagationDomains: string[] = [];
+  let signInAllowlist: SignInAllowlist | undefined;
   try {
     sandboxEgressTracePropagationDomains =
       normalizeSandboxEgressTracePropagationDomains(
@@ -442,6 +450,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     setSandboxResourceConfig(options?.sandbox);
     setExperimentalFeatures(options?.experimental);
+    if (isExperimentalFeatureEnabled("slack-sign-in")) {
+      signInAllowlist = resolveSignInAllowlist(dashboard);
+      if (!signInAllowlist.domains.length && !signInAllowlist.emails.length) {
+        throw new Error(
+          "experimental.slack-sign-in requires allowed Google domains or emails",
+        );
+      }
+    }
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
     // Start from the defaults so this app cannot inherit an earlier app's
@@ -627,6 +643,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       conversationWorkQueue,
     });
   });
+
+  if (signInAllowlist) {
+    const allowlist = signInAllowlist;
+    app.get(SIGN_IN_CALLBACK_PATH, (c) =>
+      handleSignInCallback({
+        allowlist,
+        request: c.req.raw,
+        state: getStateAdapter(),
+      }),
+    );
+  }
 
   app.get("/api/internal/sandbox-egress/signals", (c) => {
     return sandboxEgressSignalsGET(c.req.raw);
