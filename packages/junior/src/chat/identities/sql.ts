@@ -338,16 +338,18 @@ export async function isSlackIdentitySignedIn(
 }
 
 /**
- * Mark the Slack identities of one signed-in user as signed in.
+ * Mark one Slack identity as signed in when its user has this verified email.
  *
- * Only identities already linked to the user through a verified email match.
- * Sign-in never links a new Slack identity, so a shared sign-in link cannot
- * grant access to another Slack account.
+ * The Slack identity must already link to the user whose primary email is the
+ * signed-in email. Sign-in never links a new identity, so a forwarded sign-in
+ * link cannot sign in another Slack account. Return whether a row matched.
  */
-export async function markSlackIdentitiesSignedIn(
+export async function markSlackIdentitySignedIn(
   executor: JuniorSqlDatabase,
-  userId: string,
-): Promise<number> {
+  args: { email: string; slackTeamId: string; slackUserId: string },
+): Promise<boolean> {
+  const email = normalizeIdentityEmail(args.email);
+  if (!email) return false;
   const now = new Date();
   const rows = await executor
     .db()
@@ -357,10 +359,19 @@ export async function markSlackIdentitiesSignedIn(
       and(
         eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.userId, userId),
+        eq(juniorIdentities.providerTenantId, args.slackTeamId),
+        eq(juniorIdentities.providerSubjectId, args.slackUserId),
         eq(juniorIdentities.emailVerified, true),
+        inArray(
+          juniorIdentities.userId,
+          executor
+            .db()
+            .select({ id: juniorUsers.id })
+            .from(juniorUsers)
+            .where(eq(juniorUsers.primaryEmailNormalized, email)),
+        ),
       ),
     )
     .returning({ id: juniorIdentities.id });
-  return rows.length;
+  return rows.length > 0;
 }
