@@ -23,7 +23,6 @@ const TITLE_PROMPTS: Record<ShortTitleKind, string[]> = {
   conversation: [
     "Generate a concise 5-8 word conversation title from the first user message below.",
     "Capture the user's main request.",
-    "When the message links an object listed under Linked objects, name it by its number and title, for example: Fix #123: Login fails on Safari.",
     "Reply with ONLY the title, with no quotes or trailing punctuation.",
   ],
   run: [
@@ -88,11 +87,15 @@ export async function generateShortTitle(args: {
             ...TITLE_PROMPTS[args.kind],
             "",
             `${SOURCE_LABELS[args.kind]}: ${sourceText.slice(0, SOURCE_TEXT_MAX_LENGTH[args.kind])}`,
+            // Add this block only with context, so other title requests stay
+            // the same.
             ...(args.context?.length
               ? [
                   "",
                   "Linked objects:",
                   ...args.context.map((line) => `- ${line}`),
+                  "",
+                  "When the message refers to a linked object, name it by its number and title, for example: Fix #123: Login fails on Safari.",
                 ]
               : []),
           ].join("\n"),
