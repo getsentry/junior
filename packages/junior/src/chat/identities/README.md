@@ -38,3 +38,15 @@ the account. The person must start the connection from Slack or the web UI.
 Provider handles and subject IDs always remain identity-scoped. Display names
 are presentation data and must never be used to link identities or grant
 authority.
+
+## Slack Sign-In
+
+With the experimental `slack-sign-in` feature, a Slack identity must have
+`signed_in_at` before Slack ingress accepts its mentions and DMs. The dashboard
+page at `/_junior/slack/sign-in` sets it after Google sign-in.
+
+- The page marks only Slack identities that are already linked to the signed-in
+  user through a verified email. It never links a new identity, so a forwarded
+  link cannot sign in another Slack account.
+- Ingress saves the Slack identity with its Slack profile email before it sends
+  the sign-in link, so the page can find the identity on the first sign-in.

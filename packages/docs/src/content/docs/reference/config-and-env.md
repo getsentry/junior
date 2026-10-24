@@ -168,6 +168,9 @@ const app = await createApp({
     // database directly and skip Conversation privacy checks. Enable them only
     // on isolated deployments, such as Previews behind deployment protection.
     "operator-tools": true,
+    // Ask each Slack user to sign in to the dashboard once before Junior
+    // replies to their mentions and DMs. Requires the dashboard.
+    "slack-sign-in": true,
   },
 });
 ```
@@ -210,6 +213,13 @@ pre-stable surface.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
+
+`slack-sign-in` makes each Slack user sign in once with the dashboard Google
+account before Junior starts work from their mentions or DMs. Until then,
+Junior drops the message and sends the user a private sign-in link. The Slack
+account matches only when its Slack profile email is the same as the Google
+account email, so the dashboard allowlist also controls who can use Junior in
+Slack. Passive thread replies are not checked yet.
 
 `operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
 runs one SQL statement against the app database and returns up to 200 rows.

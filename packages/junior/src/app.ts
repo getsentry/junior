@@ -26,6 +26,7 @@ import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import {
   getExperimentalFeatures,
+  isExperimentalFeatureEnabled,
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
@@ -115,6 +116,7 @@ import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
+import { handleSlackSignInPage, SLACK_SIGN_IN_PATH } from "@/api/slack-sign-in";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -442,6 +444,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     setSandboxResourceConfig(options?.sandbox);
     setExperimentalFeatures(options?.experimental);
+    if (
+      isExperimentalFeatureEnabled("slack-sign-in") &&
+      (!dashboard || dashboard.disabled)
+    ) {
+      throw new Error("experimental.slack-sign-in requires the dashboard");
+    }
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
     // Start from the defaults so this app cannot inherit an earlier app's
@@ -560,6 +568,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
           },
         ]
       : [];
+  if (isExperimentalFeatureEnabled("slack-sign-in")) {
+    authenticatedRoutes.push({
+      handler: (_request, user) =>
+        handleSlackSignInPage({ agentName: botConfig.userName, user }),
+      method: "GET",
+      path: SLACK_SIGN_IN_PATH,
+    });
+  }
   try {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
