@@ -1458,7 +1458,7 @@ export async function recordConversationExecution(args: {
   });
 }
 
-/** Record that a wake-up nudge was accepted for the conversation. */
+/** Record that a wake-up nudge is on its way for the conversation. */
 export async function markConversationWorkEnqueued(args: {
   conversationId: string;
   nowMs?: number;
@@ -1480,6 +1480,29 @@ export async function markConversationWorkEnqueued(args: {
           lastEnqueuedAtMs: nowMs,
         },
         nowMs,
+      ),
+    );
+  });
+}
+
+/** Remove the wake marker of a nudge that the queue did not accept. */
+export async function clearConversationWorkEnqueued(args: {
+  conversationId: string;
+  enqueuedAtMs: number;
+  state?: StateAdapter;
+}): Promise<void> {
+  await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (current?.execution.lastEnqueuedAtMs !== args.enqueuedAtMs) {
+      return;
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        { ...current.execution, lastEnqueuedAtMs: undefined },
+        args.enqueuedAtMs,
       ),
     );
   });
