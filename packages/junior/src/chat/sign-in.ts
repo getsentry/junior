@@ -76,6 +76,22 @@ function redirectUri(): string {
   return `${baseUrl}${SIGN_IN_CALLBACK_PATH}`;
 }
 
+// Read a list the same way as the dashboard: a JSON string array or comma
+// separated values.
+function readEnvList(name: string): string[] {
+  const value = process.env[name]?.trim() ?? "";
+  if (!value.startsWith("[")) return value.split(",");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    throw new Error(`${name} must be a JSON string array`, { cause: error });
+  }
+  const list = z.array(z.string()).safeParse(parsed);
+  if (!list.success) throw new Error(`${name} must be a JSON string array`);
+  return list.data;
+}
+
 /**
  * Resolve the sign-in allowlist. Use the same values as the dashboard: its
  * options when set, else its environment variables.
@@ -84,7 +100,7 @@ export function resolveSignInAllowlist(
   options: { allowedEmails?: string[]; allowedGoogleDomains?: string[] } = {},
 ): SignInAllowlist {
   const list = (values: string[] | undefined, name: string) =>
-    (values ?? (process.env[name] ?? "").split(","))
+    (values ?? readEnvList(name))
       .map((value) => value.trim().toLowerCase())
       .filter(Boolean);
   return {
