@@ -31,6 +31,7 @@ import type {
 import type {
   AfterMcpToolHookContext,
   BeforeToolExecuteHookContext,
+  PluginEgress,
   PluginToolDefinition,
   SandboxPrepareHookContext,
   ToolRegistrationHookContext,
@@ -56,6 +57,11 @@ export interface ConversationTitleContextHookContext extends PluginContext {
    * short key. For example, `repo` for the `github.repo` config key.
    */
   config: Record<string, string>;
+  /**
+   * Host-owned provider egress for title reads. It uses Junior's system
+   * identity, so it never uses a user's credentials or starts authorization.
+   */
+  egress: PluginEgress;
   /** Ends the hook when the host stops waiting for title context. */
   signal: AbortSignal;
   text: string;

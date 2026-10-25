@@ -1,4 +1,6 @@
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
+import { createPluginEgress } from "@/chat/egress/plugin";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -7,6 +9,13 @@ import { createPluginLogger } from "@/chat/plugins/logging";
 const TITLE_CONTEXT_TIMEOUT_MS = 5_000;
 const TITLE_CONTEXT_MAX_LINES = 5;
 const TITLE_CONTEXT_LINE_MAX_LENGTH = 200;
+// Title work runs outside the Turn, so it has no requester credentials. Reads
+// go through credentialed egress as this system Actor. It cannot use user
+// credentials, and a credential that it cannot get only drops the facts.
+const CONVERSATION_TITLE_SYSTEM_ACTOR = {
+  platform: "system",
+  name: "conversation-title",
+} as const;
 
 /** Pick one plugin's string config values and drop the plugin name prefix. */
 function pluginConfig(
@@ -33,6 +42,13 @@ export async function getPluginConversationTitleContext(args: {
   text: string;
 }): Promise<string[]> {
   const signal = AbortSignal.timeout(TITLE_CONTEXT_TIMEOUT_MS);
+  const egress = createPluginEgress({
+    credentialContext: credentialContextForActor(
+      CONVERSATION_TITLE_SYSTEM_ACTOR,
+    ),
+    // Title context is optional. It must never ask anyone to authorize.
+    pluginAuth: { async handleAuthRequired() {} },
+  });
   // Stop waiting at the deadline even when a hook ignores the signal.
   const timedOut = new Promise<never>((_, reject) => {
     signal.addEventListener("abort", () => reject(signal.reason), {
@@ -50,6 +66,7 @@ export async function getPluginConversationTitleContext(args: {
           hook({
             config: pluginConfig(plugin.manifest.name, args.configuration),
             db: getDb(),
+            egress,
             log: createPluginLogger(plugin.manifest.name),
             plugin: { name: plugin.manifest.name },
             signal,

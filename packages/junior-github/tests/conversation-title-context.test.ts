@@ -1,8 +1,10 @@
+import type { PluginEgress } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import {
   type GitHubReference,
   loadGitHubConversationTitleContext,
 } from "../src/conversation-title-context";
+import { githubPlugin } from "../src/index";
 
 const log = { error: vi.fn(), info: vi.fn(), warn: vi.fn() };
 
@@ -106,5 +108,59 @@ describe("GitHub conversation title context", () => {
       "github.conversation_title_context.load_failed",
       expect.objectContaining({ "exception.message": "Not Found" }),
     );
+  });
+
+  it("reads objects only through host egress", async () => {
+    // A direct GitHub request here would skip egress policy and audit.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const egress: PluginEgress = {
+      fetch: vi.fn(async ({ request }) =>
+        Response.json(
+          request.url.endsWith("/pulls/42")
+            ? { title: "Add title context" }
+            : { title: "Titles ignore issues" },
+        ),
+      ),
+    };
+
+    await expect(
+      githubPlugin().hooks?.conversationTitleContext?.({
+        config: { repo: "getsentry/junior" },
+        db: {},
+        egress,
+        log,
+        plugin: { name: "github" },
+        signal: new AbortController().signal,
+        text: "Fix #1583 with PR 42",
+      }),
+    ).resolves.toEqual([
+      "getsentry/junior#1583: Titles ignore issues",
+      "getsentry/junior#42: Add title context",
+    ]);
+    expect(
+      vi
+        .mocked(egress.fetch)
+        .mock.calls.map(([input]) => [
+          input.provider,
+          input.operation,
+          input.request.method,
+          input.request.url,
+        ]),
+    ).toEqual([
+      [
+        "github",
+        "github.issue.get",
+        "GET",
+        "https://api.github.com/repos/getsentry/junior/issues/1583",
+      ],
+      [
+        "github",
+        "github.pull.get",
+        "GET",
+        "https://api.github.com/repos/getsentry/junior/pulls/42",
+      ],
+    ]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });

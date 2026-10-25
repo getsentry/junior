@@ -253,35 +253,40 @@ export function githubPlugin(
           log: ctx.log,
           text: ctx.text,
           loadObject: async (reference) => {
-            const { collection, permissions } = (
+            const { collection, operation } = (
               {
                 commit: {
                   collection: "commits",
-                  permissions: { contents: "read" },
+                  operation: "github.commit.get",
                 },
-                issue: {
-                  collection: "issues",
-                  permissions: { issues: "read" },
-                },
+                issue: { collection: "issues", operation: "github.issue.get" },
                 pull_request: {
                   collection: "pulls",
-                  permissions: { pull_requests: "read" },
+                  operation: "github.pull.get",
                 },
               } as const
             )[reference.kind];
-            // Read one object with a token scoped to its repository.
-            const token = await issueInstallationToken({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              permissions,
-              repositories: [reference.name],
+            // Read through host egress so policy, grants, and audit apply.
+            const response = await ctx.egress.fetch({
+              provider: "github",
+              operation,
+              request: new Request(
+                `https://api.github.com/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
+                {
+                  headers: {
+                    Accept: "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  signal: ctx.signal,
+                },
+              ),
             });
-            return await githubRequest(
-              "https://api.github.com",
-              `/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
-              { signal: ctx.signal, token: token.token },
-            );
+            if (!response.ok) {
+              throw new Error(
+                `GitHub ${reference.kind} lookup failed with HTTP ${response.status}`,
+              );
+            }
+            return await response.json();
           },
         });
       },
