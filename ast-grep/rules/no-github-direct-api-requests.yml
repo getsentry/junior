@@ -1,0 +1,23 @@
+id: no-github-direct-api-requests
+language: TypeScript
+severity: error
+message: Read and write GitHub through host egress (`ctx.egress.fetch`). A direct token or request skips egress policy, grant selection, the shared credential lease, and egress audit logs.
+note: Only credential issuing (`issueCredential`, `credential-support.ts`) and GitHub webhook routes (`routes`, `webhooks/`) may call GitHub directly. They run without a Turn or an egress context.
+files:
+  - packages/junior-github/src/**/*.ts
+ignores:
+  - packages/junior-github/src/credential-support.ts
+  - packages/junior-github/src/webhooks/**
+rule:
+  kind: call_expression
+  has:
+    field: function
+    kind: identifier
+    regex: ^(fetch|githubRequest|issueInstallationCredential|issueInstallationToken)$
+  not:
+    inside:
+      kind: method_definition
+      has:
+        field: name
+        regex: ^(issueCredential|routes)$
+      stopBy: end

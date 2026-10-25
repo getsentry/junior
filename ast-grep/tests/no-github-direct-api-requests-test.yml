@@ -1,0 +1,10 @@
+id: no-github-direct-api-requests
+valid:
+  - "const response = await ctx.egress.fetch({ provider: 'github', operation, request });"
+  - "const hooks = { routes(ctx) { return issueInstallationToken({ repositories: [name] }); } };"
+  - "const hooks = { async issueCredential(ctx) { return await issueInstallationCredential(options); } };"
+invalid:
+  - "const hooks = { async conversationTitleContext(ctx) { const token = await issueInstallationToken({ repositories: [name] }); } };"
+  - "const hooks = { tools(ctx) { return githubRequest('https://api.github.com', path, { token }); } };"
+  - "async function loadIssue() { return await fetch('https://api.github.com/repos/o/r/issues/1'); }"
+  - "const hooks = { async sandboxPrepare(ctx) { return await issueInstallationCredential(options); } };"
