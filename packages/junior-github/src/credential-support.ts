@@ -750,7 +750,7 @@ async function refreshUserTokensWithLock(
 }
 
 /** Issue a bounded GitHub user credential for an approved grant. */
-export async function issueUserCredential(
+async function issueUserCredential(
   ctx: IssueCredentialHookContext,
   options: UserCredentialOptions,
 ): Promise<PluginCredentialResult> {
@@ -864,7 +864,7 @@ export async function issueInstallationToken(
 }
 
 /** Issue a bounded GitHub App installation credential. */
-export async function issueInstallationCredential(
+async function issueInstallationCredential(
   options: InstallationCredentialOptions,
 ): Promise<PluginCredentialResult> {
   const token = await issueInstallationToken(options);
@@ -872,6 +872,54 @@ export async function issueInstallationCredential(
     token: token.token,
     expiresAtMs: token.expiresAtMs,
   });
+}
+
+interface GitHubCredentialOptions
+  extends InstallationCredentialBaseOptions, UserCredentialOptions {
+  /** Declared read permissions, or a loader for the installed ones. */
+  readPermissions:
+    | { permissions: GitHubAppPermissions }
+    | { loadPermissions: LoadInstallationReadPermissions };
+}
+
+/**
+ * Issue the credential for one GitHub grant that host egress selected. Only
+ * the `issueCredential` hook may call this. Other code reads and writes GitHub
+ * through host egress.
+ */
+export async function issueGitHubCredential(
+  ctx: IssueCredentialHookContext,
+  options: GitHubCredentialOptions,
+): Promise<PluginCredentialResult> {
+  const installation = {
+    appIdEnv: options.appIdEnv,
+    installationIdEnv: options.installationIdEnv,
+    privateKeyEnv: options.privateKeyEnv,
+  };
+  try {
+    if (ctx.grant.name === "installation-read") {
+      return await issueInstallationCredential({
+        ...installation,
+        ...options.readPermissions,
+      });
+    }
+    if (ctx.grant.name === "installation-write") {
+      // Use the full installed App permissions. Repo allowlisting stays in
+      // egress policy, not in per-request token minting.
+      return await issueInstallationCredential(installation);
+    }
+    if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
+      return await issueUserCredential(ctx, options);
+    }
+  } catch (error) {
+    if (error instanceof GitHubPluginSetupError) {
+      return credentialUnavailable(error.message);
+    }
+    throw error;
+  }
+  throw new Error(
+    `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,
+  );
 }
 
 /** Cache the installation's read permissions for one lease period. */

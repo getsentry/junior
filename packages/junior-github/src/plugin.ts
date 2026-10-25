@@ -13,11 +13,11 @@ import {
   readGrantPermissions,
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
-import {
-  pullRequestCommentReactionsPath,
-  pullRequestFeedbackReactionContent,
-} from "./tools/update-pull-request-feedback.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import {
+  loadPullRequestCommitPages,
+  markPullRequestFeedbackReviewing,
+} from "./webhooks/installation-requests.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
   GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
@@ -70,14 +70,8 @@ import {
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   GITHUB_INSTALLATION_ID_ENV,
-  USER_TOKEN_GRANTS,
-  GitHubPluginSetupError,
   createPermissionCache,
-  credentialUnavailable,
-  githubRequest,
-  issueInstallationCredential,
-  issueInstallationToken,
-  issueUserCredential,
+  issueGitHubCredential,
   listVerifiedUserEmails,
   normalizeScopeList,
   readEnv,
@@ -287,31 +281,10 @@ export function githubPlugin(
         };
       },
       routes(ctx) {
-        /** Read pages of a pull request's commits with a read-only token. */
-        const loadPullRequestCommitPage = async (pullRequest: {
-          number: number;
-          repositoryFullName: string;
-        }) => {
-          const [owner, name, ...extra] =
-            pullRequest.repositoryFullName.split("/");
-          if (!owner || !name || extra.length > 0) {
-            throw new Error(
-              "GitHub pull request commits received an invalid repository name",
-            );
-          }
-          const token = await issueInstallationToken({
-            appIdEnv,
-            privateKeyEnv,
-            installationIdEnv,
-            permissions: { pull_requests: "read" },
-            repositories: [name],
-          });
-          return async (page: number, perPage: number) =>
-            await githubRequest(
-              "https://api.github.com",
-              `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}/commits?per_page=${perPage}&page=${page}`,
-              { token: token.token },
-            );
+        const installationEnv = {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
         };
         return [
           createGitHubWebhookRoute({
@@ -321,7 +294,10 @@ export function githubPlugin(
             classifyPullRequestCommits: async (pullRequest) =>
               await classifyGitHubPullRequestCommitComposition({
                 botEmail: requireEnv(botEmailEnv),
-                loadPage: await loadPullRequestCommitPage(pullRequest),
+                loadPage: await loadPullRequestCommitPages(
+                  installationEnv,
+                  pullRequest,
+                ),
               }),
             codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
@@ -330,39 +306,14 @@ export function githubPlugin(
             loadPullRequestPeople: async (pullRequest) =>
               await loadGitHubPullRequestPeople({
                 logins: pullRequest.logins,
-                loadPage: await loadPullRequestCommitPage(pullRequest),
+                loadPage: await loadPullRequestCommitPages(
+                  installationEnv,
+                  pullRequest,
+                ),
               }),
             log: ctx.log,
-            markFeedbackReviewing: async ({ commentId, commentKind, repo }) => {
-              const [owner, name, ...extra] = repo.split("/");
-              if (!owner || !name || extra.length > 0) {
-                throw new Error(
-                  "GitHub pull request feedback received an invalid repository name",
-                );
-              }
-              const token = await issueInstallationToken({
-                appIdEnv,
-                privateKeyEnv,
-                installationIdEnv,
-                repositories: [name],
-              });
-              await githubRequest(
-                "https://api.github.com",
-                pullRequestCommentReactionsPath({
-                  owner,
-                  name,
-                  commentKind,
-                  commentId,
-                }),
-                {
-                  body: {
-                    content: pullRequestFeedbackReactionContent("reviewing"),
-                  },
-                  method: "POST",
-                  token: token.token,
-                },
-              );
-            },
+            markFeedbackReviewing: async (target) =>
+              await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
@@ -455,42 +406,17 @@ export function githubPlugin(
           : account;
       },
       async issueCredential(ctx) {
-        try {
-          if (ctx.grant.name === "installation-read") {
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              ...(declaredReadPermissions
-                ? { permissions: declaredReadPermissions }
-                : { loadPermissions: loadReadPermissions }),
-            });
-          }
-          if (ctx.grant.name === "installation-write") {
-            // Use the full installed App permissions. Repo allowlisting stays in
-            // egress policy, not in per-request token minting.
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-            });
-          }
-          if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
-            return await issueUserCredential(ctx, {
-              clientIdEnv,
-              clientSecretEnv,
-              userScope,
-            });
-          }
-        } catch (error) {
-          if (error instanceof GitHubPluginSetupError) {
-            return credentialUnavailable(error.message);
-          }
-          throw error;
-        }
-        throw new Error(
-          `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,
-        );
+        return await issueGitHubCredential(ctx, {
+          appIdEnv,
+          clientIdEnv,
+          clientSecretEnv,
+          installationIdEnv,
+          privateKeyEnv,
+          readPermissions: declaredReadPermissions
+            ? { permissions: declaredReadPermissions }
+            : { loadPermissions: loadReadPermissions },
+          userScope,
+        });
       },
     },
   });

@@ -74,6 +74,49 @@
   },
   "overrides": [
     {
+      "files": ["**/junior-github/src/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/credential-support.js"],
+                "importNames": ["githubRequest", "issueInstallationToken"],
+                "message": "Read and write GitHub through host egress (ctx.egress.fetch), so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only webhook handling in src/webhooks/ may call GitHub directly."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "fetch",
+            "message": "Read and write GitHub through host egress (ctx.egress.fetch), so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "globalThis",
+            "property": "fetch",
+            "message": "Read and write GitHub through host egress (ctx.egress.fetch), so egress policy, grant selection, the shared credential lease, and egress audit logs apply. Only src/credential-support.ts may call fetch."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "**/junior-github/src/credential-support.ts",
+        "**/junior-github/src/webhooks/**/*.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-globals": "off",
+        "no-restricted-properties": "off"
+      }
+    },
+    {
       "files": ["src/chat/pi/client.ts"],
       "rules": {
         "no-restricted-imports": "off"
