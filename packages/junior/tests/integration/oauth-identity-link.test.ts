@@ -74,4 +74,36 @@ describe("oauth identity link", () => {
       ]),
     );
   });
+
+  it("does not link a plugin OAuth account as a native Google identity", async () => {
+    await createEvalOAuthAccountApp(
+      { id: "google-sub-1", verifiedEmails: ["person@example.com"] },
+      "google",
+    );
+    await resolveViewerUser("person@example.com");
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U0TEST", email: "person@example.com" }),
+    });
+    await getStateAdapter().set("oauth-state:google-plugin-link", {
+      actor: { platform: "slack", teamId: "T0TEST", userId: "U0TEST" },
+      provider: "google",
+      userId: "U0TEST",
+    });
+
+    const response = await handleOAuthCallback(
+      new Request(
+        "https://junior.example.com/api/oauth/callback/google?state=google-plugin-link&code=eval-oauth-code",
+      ),
+      "google",
+      testWaitUntil,
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    const providers = await getSqlExecutor()
+      .db()
+      .select({ provider: juniorIdentities.provider })
+      .from(juniorIdentities);
+    expect(providers).not.toContainEqual({ provider: "google" });
+  });
 });

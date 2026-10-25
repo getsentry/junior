@@ -11,6 +11,7 @@ import type { StateAdapter } from "chat";
 import { z } from "zod";
 import { botConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
+import { GOOGLE_IDENTITY_PROVIDER } from "@/chat/identities/identity";
 import {
   findSlackIdentityUserId,
   upsertLinkedIdentity,
@@ -21,9 +22,6 @@ import { escapeXml } from "@/chat/xml";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 
 export const SIGN_IN_CALLBACK_PATH = "/api/sign-in/callback";
-
-/** Provider of the identity that a sign-in links to the user. */
-export const SIGN_IN_IDENTITY_PROVIDER = "google";
 
 const AUTHORIZE_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -242,7 +240,7 @@ export async function handleSignInCallback(args: {
   }
   await upsertLinkedIdentity(executor, slackUserId, {
     kind: "user",
-    provider: SIGN_IN_IDENTITY_PROVIDER,
+    provider: GOOGLE_IDENTITY_PROVIDER,
     providerSubjectId: account.subject,
     email,
     emailVerified: true,

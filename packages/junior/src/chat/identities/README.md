@@ -16,6 +16,21 @@ timezone to this column. The scheduler and plugin tools use it, through
 `ctx.users.resolveTimezone()`. See the Timezones section in
 `chat/scheduled-automations/README.md`.
 
+## Native Identities
+
+Core owns two identity providers: `slack` and `google`. Other checks trust
+these identities, so only core links them. `isNativeIdentityProvider()` in
+`identity.ts` lists them.
+
+- A Slack identity has the Slack team ID as its tenant and the Slack user ID as
+  its subject.
+- A Google identity has an empty tenant and the Google OIDC `sub` as its
+  subject. Google sign-in in `chat/sign-in.ts` links it, with the verified
+  Google email. One Google account is one row, so every feature that reads the
+  `google` identity sees the same account.
+- The Google Workspace plugin is not a Google identity. It stores Junior's own
+  Workspace account in its own table.
+
 ## OAuth Account Links
 
 When a person connects a provider account, the OAuth callback links the
@@ -32,6 +47,8 @@ the account. The person must start the connection from Slack or the web UI.
 - A verified email that matches the linked user is saved on the provider
   identity. Other verified emails are not saved. Verified emails are never
   stored with the OAuth tokens.
+- A plugin OAuth account never links under a native identity provider name.
+  The tokens are still stored.
 - Linking is best effort. A failure keeps the stored tokens and logs
   `oauth.callback.identity_link.failed`.
 
