@@ -18,6 +18,7 @@ export interface SlackUserProfile {
   email?: string;
   status_text?: string;
   status_emoji?: string;
+  avatar_url?: string;
   is_bot: boolean;
   is_deleted: boolean;
   timezone?: string;
@@ -74,6 +75,7 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     email: raw.profile?.email || undefined,
     status_text: raw.profile?.status_text ?? undefined,
     status_emoji: raw.profile?.status_emoji ?? undefined,
+    avatar_url: raw.profile?.image_512 || undefined,
     is_bot: raw.is_bot ?? false,
     is_deleted: raw.deleted ?? false,
     timezone: raw.tz || undefined,
