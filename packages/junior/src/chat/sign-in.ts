@@ -225,20 +225,20 @@ export async function handleSignInCallback(args: {
   // Link only when the Slack identity's user owns this Google email. A
   // forwarded link then cannot give another person's Slack account access.
   const executor = getSqlExecutor();
-  const slackUserId = await findSlackIdentityUserId(
+  const userId = await findSlackIdentityUserId(
     executor,
     stored.data.slackTeamId,
     stored.data.slackUserId,
   );
   const user = await findUserByEmailFromSql(executor.db(), email);
-  if (!slackUserId || user?.id !== slackUserId) {
+  if (!userId || user?.id !== userId) {
     return page(
       "Slack account does not match",
       `Your Slack email is not ${email}. Sign in with the account that matches your Slack email.`,
       403,
     );
   }
-  await upsertLinkedIdentity(executor, slackUserId, {
+  await upsertLinkedIdentity(executor, userId, {
     kind: "user",
     provider: GOOGLE_IDENTITY_PROVIDER,
     providerSubjectId: account.subject,

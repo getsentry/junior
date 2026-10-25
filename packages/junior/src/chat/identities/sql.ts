@@ -1,14 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
+  GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
   type IdentityUpsert,
   type StoredIdentity,
 } from "./identity";
 
 type IdentityRow = typeof juniorIdentities.$inferSelect;
+
+const googleIdentity = alias(juniorIdentities, "google_identity");
 
 function dateFromMs(ms: number): Date {
   return new Date(ms);
@@ -337,30 +341,29 @@ export async function findSlackIdentityUserId(
   return rows[0]?.userId ?? undefined;
 }
 
-/**
- * Return whether the user of one Slack identity has a verified identity from
- * another provider.
- */
-export async function slackUserHasVerifiedIdentity(
+/** Return whether the user of one Slack identity has a verified Google identity. */
+export async function slackUserHasGoogleIdentity(
   executor: JuniorSqlDatabase,
-  args: { provider: string; slackTeamId: string; slackUserId: string },
+  slackTeamId: string,
+  slackUserId: string,
 ): Promise<boolean> {
-  const userId = await findSlackIdentityUserId(
-    executor,
-    args.slackTeamId,
-    args.slackUserId,
-  );
-  if (!userId) return false;
   const rows = await executor
     .db()
-    .select({ id: juniorIdentities.id })
+    .select({ id: googleIdentity.id })
     .from(juniorIdentities)
+    .innerJoin(
+      googleIdentity,
+      eq(googleIdentity.userId, juniorIdentities.userId),
+    )
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, args.provider),
-        eq(juniorIdentities.userId, userId),
-        eq(juniorIdentities.emailVerified, true),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, slackTeamId),
+        eq(juniorIdentities.providerSubjectId, slackUserId),
+        eq(googleIdentity.kind, "user"),
+        eq(googleIdentity.provider, GOOGLE_IDENTITY_PROVIDER),
+        eq(googleIdentity.emailVerified, true),
       ),
     )
     .limit(1);

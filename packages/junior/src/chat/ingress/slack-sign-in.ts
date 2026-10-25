@@ -3,9 +3,8 @@ import { botConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { SlackInboundEvent } from "@/chat/ingress/slack-payload";
-import { GOOGLE_IDENTITY_PROVIDER } from "@/chat/identities/identity";
 import {
-  slackUserHasVerifiedIdentity,
+  slackUserHasGoogleIdentity,
   upsertIdentity,
 } from "@/chat/identities/sql";
 import type { SlackInstallationContext } from "@/chat/slack/adapter-context";
@@ -35,15 +34,7 @@ export async function hasSlackSignIn(args: {
   const userId = parseSlackUserId(args.event.user);
   if (!teamId || !channelId || !userId) return false;
   const executor = getSqlExecutor();
-  if (
-    await slackUserHasVerifiedIdentity(executor, {
-      provider: GOOGLE_IDENTITY_PROVIDER,
-      slackTeamId: teamId,
-      slackUserId: userId,
-    })
-  ) {
-    return true;
-  }
+  if (await slackUserHasGoogleIdentity(executor, teamId, userId)) return true;
 
   const profile = await lookupSlackUserProfile(userId);
   await upsertIdentity(executor, {

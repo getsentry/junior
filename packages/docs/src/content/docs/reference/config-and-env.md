@@ -223,7 +223,7 @@ uses the same Google OAuth client and allowlist as the dashboard:
 `<base-url>/api/sign-in/callback` as an authorized redirect URI on the Google
 OAuth client. The Google email must match the Slack profile email. Junior
 links the Google identity to the user, so the check passes later. Passive
-thread replies are not checked yet.
+thread replies, slash commands, and Slack actions are not checked yet.
 
 `operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
 runs one SQL statement against the app database and returns up to 200 rows.
