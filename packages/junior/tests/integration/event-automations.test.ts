@@ -343,6 +343,14 @@ describe("event automations", () => {
         }),
       ]),
     );
+    // Each dispatch Source names its Automation and run.
+    for (const dispatch of dispatches) {
+      expect(dispatch!.source).toEqual({
+        kind: "event_automation",
+        automationId: expect.any(String),
+        automationRunId: dispatch!.id,
+      });
+    }
     // Each dispatch starts one run that links its Conversation.
     const readRuns = () =>
       db

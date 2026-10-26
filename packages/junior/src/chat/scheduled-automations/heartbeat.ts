@@ -364,6 +364,7 @@ export async function runScheduledAutomationHeartbeat(args: {
     let dispatch;
     try {
       dispatch = await dispatchScheduledAutomation({
+        automationId: task.id,
         conversationWorkQueue: args.conversationWorkQueue,
         nowMs: args.nowMs,
         options: {

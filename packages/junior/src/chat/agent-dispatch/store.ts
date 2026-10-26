@@ -163,7 +163,11 @@ function normalizeMetadata(
 
 const DISPATCH_ID_PREFIX = "agent-dispatch:";
 
-function buildDispatchId(plugin: string, idempotencyKey: string): string {
+/** Return the stable dispatch id for one plugin idempotency key. */
+export function buildDispatchId(
+  plugin: string,
+  idempotencyKey: string,
+): string {
   const digest = createHash("sha256")
     .update(plugin)
     .update("\0")

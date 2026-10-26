@@ -6,6 +6,7 @@ import {
   type Actor,
   type PluginLogger,
   type PluginEgress,
+  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -181,11 +182,13 @@ function githubGraphqlErrorMessage(payload: unknown): string {
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdatePullRequestTool(ctx: {
   actor?: Actor;
+  automationLink?: { url: string };
   conversationId?: string;
   egress: PluginEgress;
   log: PluginLogger;
   events: { canSubscribe: boolean };
   slack?: { conversationLink?: { url?: string } };
+  source?: Source;
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
   };

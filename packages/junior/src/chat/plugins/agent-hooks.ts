@@ -46,7 +46,10 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import {
+  getDashboardConversationLink,
+  getDashboardTaskLink,
+} from "@/chat/dashboard-link";
 import { createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
@@ -701,9 +704,18 @@ export function getPluginTools(
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
+    const automationUrl =
+      (context.source.kind === "event_automation" ||
+        context.source.kind === "scheduled_automation") &&
+      context.source.automationId
+        ? getDashboardTaskLink(context.source.automationId)
+        : undefined;
     const common = {
       ...basePluginContext(plugin),
       annotations,
+      ...(automationUrl
+        ? { automationLink: { url: automationUrl } }
+        : undefined),
       conversationId: context.conversationId,
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
