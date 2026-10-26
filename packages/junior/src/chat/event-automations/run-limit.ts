@@ -4,11 +4,11 @@
  * The cap applies to each Automation, not to a trigger type. A noisy trigger
  * blocks only the Automation that it fires. Each run costs a full agent Turn,
  * and Event automations do not use the consecutive automated-turn limit.
- * `botConfig.maxEventAutomationRunsPerHour` sets the cap.
+ * `botConfig.maxEventAutomationRunsPerMinute` sets the cap.
  *
  * Each run appends one entry with its run key to a short list in the state
- * adapter. Then it counts the run keys from the last hour up to the first entry
- * with its own key. The append is atomic, so the list order decides which runs
+ * adapter. Then it counts the run keys from the last minute up to the first
+ * entry with its own key. The append is atomic, so the list order decides which runs
  * fit, even when Events arrive at the same moment. The first runs up to the cap
  * pass, and the rest are refused. A provider retry has the same run key, so it
  * gets the same answer and does not count again. No lock and no
@@ -25,7 +25,7 @@ const RUN_LIST_PREFIX = "junior:event_automation_runs:v1";
 const RUN_LIST_BURST_ROOM = 100;
 
 /** Length of the rolling window for the run limit. */
-export const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 60 * 1000;
+export const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 1000;
 
 // A reset entry marks a resume or revive. Runs before it do not count.
 const runEntrySchema = z.union([
@@ -40,7 +40,7 @@ function runListKey(automationId: string): string {
 }
 
 function runListMaxLength(): number {
-  return botConfig.maxEventAutomationRunsPerHour + RUN_LIST_BURST_ROOM;
+  return botConfig.maxEventAutomationRunsPerMinute + RUN_LIST_BURST_ROOM;
 }
 
 async function appendRunEntry(
@@ -58,13 +58,13 @@ async function appendRunEntry(
 /** Reason stored on an Event automation that the run limit blocked. */
 export function eventAutomationRunLimitReason(): string {
   return (
-    `This automation reached its limit of ${botConfig.maxEventAutomationRunsPerHour} runs per hour. ` +
+    `This automation reached its limit of ${botConfig.maxEventAutomationRunsPerMinute} runs per minute. ` +
     "Check that its trigger is not too broad, then resume it."
   );
 }
 
 /**
- * Count one run of an Event automation, or refuse when its hour is full.
+ * Count one run of an Event automation, or refuse when its minute is full.
  *
  * `runKey` is the dispatch idempotency key, so a provider retry of the same
  * Event does not count again.
@@ -92,8 +92,8 @@ export async function admitEventAutomationRun(args: {
   entries.forEach((entry, index) => {
     if ("reset" in entry) lastReset = index;
   });
-  // A full list whose oldest entry is from this hour may have dropped runs
-  // from this hour. Then the hour is full, until a reset entry.
+  // A full list whose oldest entry is from this minute may have dropped runs
+  // from this minute. Then the minute is full, until a reset entry.
   const oldest = entries[0];
   const full =
     lastReset === -1 &&
@@ -108,12 +108,13 @@ export async function admitEventAutomationRun(args: {
       runKeys.add(entry.id);
     }
     if (entry.id === args.runKey) {
-      return full || runKeys.size > botConfig.maxEventAutomationRunsPerHour
+      return full || runKeys.size > botConfig.maxEventAutomationRunsPerMinute
         ? "limited"
         : "allowed";
     }
   }
-  // More Events than the burst room arrived after this one, so the hour is full.
+  // More Events than the burst room arrived after this one, so the minute is
+  // full.
   return "limited";
 }
 
