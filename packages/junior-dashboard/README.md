@@ -9,9 +9,9 @@ name, through dashboard settings.
 
 - `createDashboardApp` mounts the dashboard routes and receives host
   configuration through `JuniorDashboardOptions`.
-- Core owns the Better Auth session and passes it in as `auth`. Slack sign-in
-  uses the same session. Dashboard routes fail closed when identity or required
-  configuration is missing.
+- Core owns the Better Auth session and passes it in as `auth`. Core accepts
+  only Google Workspace accounts on the allowed domains. Dashboard routes fail
+  closed when identity or required configuration is missing.
 - The installable shell is static only: a public web app manifest, theme color,
   and install icon. There is no service worker and no offline app shell cache.
 - API schemas under `src/api/` define the client/server boundary.

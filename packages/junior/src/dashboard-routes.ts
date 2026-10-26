@@ -16,10 +16,6 @@ export interface JuniorDashboardOptions {
   authPath?: string;
   /** Require a dashboard browser session before serving dashboard pages and APIs. */
   authRequired?: boolean;
-  /** Exact Google account emails allowed to open the dashboard. */
-  allowedEmails?: string[];
-  /** Google Workspace domains allowed to open the dashboard. */
-  allowedGoogleDomains?: string[];
   /** Browser route prefix for the dashboard shell. */
   basePath?: string;
   /** Public deployment origin used for auth callbacks and external links. */
@@ -38,7 +34,9 @@ export interface JuniorDashboardOptions {
 
 export interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   agentName?: string;
-  /** Google sign-in session that the dashboard shares with Slack. */
+  /** The app's `allowedDomains`. Dashboard auth requires at least one. */
+  allowedDomains: string[];
+  /** Google sign-in session of the dashboard. */
   auth?: SignInAuth;
   authenticatedRoutes?: readonly AuthenticatedRoute[];
   conversationWorkQueue?: ConversationWorkQueue;
@@ -69,6 +67,7 @@ const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 
 /** Mount the dashboard app on the dashboard-owned host paths. */
 export async function createDashboardRouteRegistrations(args: {
+  allowedDomains: string[];
   auth: SignInAuth | undefined;
   authenticatedRoutes: readonly AuthenticatedRoute[];
   conversationWorkQueue: ConversationWorkQueue;
@@ -83,6 +82,7 @@ export async function createDashboardRouteRegistrations(args: {
   const createDashboardApp =
     args.createDashboardApp ?? (await loadDashboardAppFactory());
   return dashboardRouteRegistrations({
+    allowedDomains: args.allowedDomains,
     auth: args.auth,
     authenticatedRoutes: args.authenticatedRoutes,
     conversationWorkQueue: args.conversationWorkQueue,
@@ -310,6 +310,7 @@ function dashboardOwnedRoutePath(
 }
 
 function dashboardRouteRegistrations(args: {
+  allowedDomains: string[];
   auth: SignInAuth | undefined;
   authenticatedRoutes: readonly AuthenticatedRoute[];
   conversationWorkQueue: ConversationWorkQueue;
@@ -322,6 +323,7 @@ function dashboardRouteRegistrations(args: {
     const dashboardOptions: JuniorDashboardRuntimeOptions = {
       ...args.dashboard,
       agentName: botConfig.userName,
+      allowedDomains: args.allowedDomains,
       ...(args.auth ? { auth: args.auth } : undefined),
       authenticatedRoutes: args.authenticatedRoutes,
       conversationWorkQueue: args.conversationWorkQueue,

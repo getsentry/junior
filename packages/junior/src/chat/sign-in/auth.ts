@@ -1,25 +1,52 @@
 /**
- * Google sign-in session shared by the dashboard and Slack.
+ * Google sign-in session for the dashboard.
  *
  * Better Auth runs the Google OAuth flow and keeps the browser session in an
- * encrypted cookie. Each sign-in also saves the native Google identity with its
- * sign-in time, so Slack can check a recent sign-in without the browser.
+ * encrypted cookie. With allowed domains, only Google Workspace accounts on
+ * those domains can sign in. Each sign-in also saves the native Google
+ * identity.
  */
 import { createAuthMiddleware } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
+import { decodeJwt } from "jose";
+import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-import {
-  isSignInAllowed,
-  readEnvList,
-  resolveSignInAllowlist,
-  type SignInAllowlist,
-} from "./allowlist";
+import { isAllowedDomain, readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
+
+// Claims Junior reads from the Google ID token. Google sets `hd` only for
+// Google Workspace accounts, so it proves the account belongs to the domain.
+// The email domain does not: a personal Google account can use any email.
+const googleClaimsSchema = z.object({
+  sub: z.string().min(1),
+  email: z.string().optional(),
+  email_verified: z.boolean().optional(),
+  hd: z.string().optional(),
+  name: z.string().optional(),
+  picture: z.string().optional(),
+});
+
+/**
+ * Read Google ID token claims. Returns undefined for a malformed token, so
+ * Better Auth redirects with `unable_to_get_user_info` instead of a 500.
+ */
+function readGoogleClaims(
+  idToken: string,
+): z.infer<typeof googleClaimsSchema> | undefined {
+  let payload: unknown;
+  try {
+    payload = decodeJwt(idToken);
+  } catch {
+    return undefined;
+  }
+  const parsed = googleClaimsSchema.safeParse(payload);
+  return parsed.success ? parsed.data : undefined;
+}
 
 /** Verified Google account of one browser session. */
 export interface SignInSession {
@@ -37,10 +64,11 @@ export interface SignInAuth {
   ): Promise<Response>;
 }
 
-/** Settings for the shared Google sign-in session. */
+/** Settings for the dashboard Google sign-in session. */
 export interface SignInAuthConfig {
   agentName: string;
-  allowlist: SignInAllowlist;
+  /** Google Workspace domains that may sign in. Empty allows every account. */
+  allowedDomains: string[];
   authPath: string;
   baseURL: string;
   googleClientId?: string;
@@ -52,8 +80,6 @@ export interface SignInAuthConfig {
 
 /** Dashboard options that also configure the sign-in session. */
 export interface SignInAuthOptions {
-  allowedEmails?: string[];
-  allowedGoogleDomains?: string[];
   authPath?: string;
   baseURL?: string;
   sessionMaxAgeSeconds?: number;
@@ -76,6 +102,7 @@ function withHttps(host: string): string {
 /** Resolve sign-in settings from dashboard options and environment. */
 export function resolveSignInAuthConfig(
   agentName: string,
+  allowedDomains: string[],
   options: SignInAuthOptions = {},
 ): SignInAuthConfig {
   const authPath = `/${trimSlashes(options.authPath?.trim() || DEFAULT_AUTH_PATH, true)}`;
@@ -87,7 +114,7 @@ export function resolveSignInAuthConfig(
   );
   return {
     agentName,
-    allowlist: resolveSignInAllowlist(options),
+    allowedDomains,
     authPath,
     baseURL,
     sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
@@ -114,11 +141,16 @@ function createBetterAuth(config: SignInAuthConfig) {
   );
   const sessionMaxAgeSeconds =
     config.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE_SECONDS;
-  // Google rejects other accounts when `hd` is set, so set it only when the
-  // allowlist is one domain.
-  const { domains, emails } = config.allowlist;
+  // `hd` limits the Google account chooser: to the one allowed domain, or to
+  // Workspace accounts when more than one domain is allowed. It is only a
+  // hint, so `getUserInfo` checks the `hd` claim.
+  const { allowedDomains } = config;
   const hostedDomain =
-    domains.length === 1 && emails.length === 0 ? domains[0] : undefined;
+    allowedDomains.length === 0
+      ? undefined
+      : allowedDomains.length === 1
+        ? allowedDomains[0]
+        : "*";
   return betterAuth({
     appName: config.agentName,
     baseURL: config.baseURL,
@@ -137,12 +169,23 @@ function createBetterAuth(config: SignInAuthConfig) {
         ),
         hd: hostedDomain,
         prompt: "select_account",
-        mapProfileToUser(profile) {
+        // Replaces Better Auth's default, which can check only one `hd`.
+        // The ID token comes from Google's token endpoint over TLS, or was
+        // verified by `verifyIdToken` first.
+        async getUserInfo(token) {
+          if (!token.idToken) return null;
+          const claims = readGoogleClaims(token.idToken);
+          if (!claims) return null;
+          if (!isAllowedDomain(claims.hd, allowedDomains)) return null;
           return {
-            email: profile.email,
-            emailVerified: profile.email_verified,
-            image: profile.picture,
-            name: profile.name,
+            user: {
+              id: claims.sub,
+              email: claims.email,
+              emailVerified: claims.email_verified === true,
+              image: claims.picture,
+              name: claims.name,
+            },
+            data: claims,
           };
         },
       },
@@ -163,18 +206,13 @@ function createBetterAuth(config: SignInAuthConfig) {
       },
     },
     hooks: {
-      // Save each allowed Google sign-in, so Slack can check it later.
+      // Save the native Google identity of each sign-in. `getUserInfo`
+      // already rejected accounts outside the allowed domains.
       after: createAuthMiddleware(async (ctx) => {
         const created = ctx.context.newSession;
         if (!created || !ctx.path.startsWith("/callback/")) return;
         const email = normalizeIdentityEmail(created.user.email);
-        if (
-          !created.user.emailVerified ||
-          !email ||
-          !isSignInAllowed(email, config.allowlist)
-        ) {
-          return;
-        }
+        if (!created.user.emailVerified || !email) return;
         const accounts = await ctx.context.internalAdapter.findAccounts(
           created.user.id,
         );
@@ -195,8 +233,8 @@ function createBetterAuth(config: SignInAuthConfig) {
 }
 
 /**
- * Create the shared Google sign-in session. Better Auth starts on first use,
- * so apps that never sign in need no Google credentials.
+ * Create the Google sign-in session. Better Auth starts on first use, so apps
+ * that never sign in need no Google credentials.
  */
 export function createSignInAuth(config: SignInAuthConfig): SignInAuth {
   let auth: ReturnType<typeof createBetterAuth> | undefined;

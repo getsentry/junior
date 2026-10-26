@@ -25,8 +25,8 @@ these identities, so only core links them. `isNativeIdentityProvider()` in
 - A Slack identity has the Slack team ID as its tenant and the Slack user ID as
   its subject.
 - A Google identity has an empty tenant and the Google OIDC `sub` as its
-  subject. Each allowed Google sign-in, from Slack or the dashboard, saves it
-  with the verified Google email and sets `signed_in_at`. One Google account is
+  subject. Each dashboard Google sign-in saves it with the verified Google
+  email and sets `signed_in_at`. One Google account is
   one row, so every feature that reads the `google` identity sees the same
   account.
 - The Google Workspace plugin is not a Google identity. It stores Junior's own
@@ -57,23 +57,15 @@ Provider handles and subject IDs always remain identity-scoped. Display names
 are presentation data and must never be used to link identities or grant
 authority.
 
-## Slack Sign-In
+## Allowed Domains
 
-With the experimental `slack-sign-in` feature, Slack ingress accepts mentions
-and DMs only when the user of the Slack identity has a Google identity with a
-recent `signed_in_at`. The default limit is 7 days
-(`slack.signInMaxAgeDays`). `chat/sign-in/` owns the sign-in. It does not need
-the dashboard.
+`chat/sign-in/allowlist.ts` owns one list of allowed domains for Slack and the
+dashboard. An empty list allows every domain.
 
-- `chat/sign-in/auth.ts` owns the one Better Auth instance. Slack and the
-  dashboard use it, so they share one browser session and one Google callback.
-  Core mounts its routes when the dashboard is not mounted.
-- After each Google callback, a Better Auth hook saves the Google identity when
-  the verified email is on the dashboard allowlist.
-- Ingress saves the Slack identity with its Slack profile email. Then it stores
-  one sign-in state for that Slack identity and sends a private link to
-  `/api/sign-in/slack`.
-- That page reads the shared session. It starts one Google sign-in when there is
-  no session or no recent sign-in. It succeeds only when the user of the Slack
-  identity has the session email. A forwarded link cannot give another
-  person's Slack account access.
+- Slack ingress starts a Turn from a mention or DM only when the email of the
+  author's Slack profile is on an allowed domain
+  (`chat/ingress/slack-allowed-domain.ts`).
+- `chat/sign-in/auth.ts` owns the one Better Auth instance of the dashboard. It
+  accepts a Google sign-in only when the verified `hd` claim is an allowed
+  domain. After each Google callback, a Better Auth hook saves the Google
+  identity.
