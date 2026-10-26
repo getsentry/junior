@@ -4,11 +4,12 @@ import {
   downloadPrivateSlackFile,
   getFilePermalink,
   getSlackClient,
-  isConversationScopedChannel,
   normalizeSlackConversationId,
   withSlackRetries,
 } from "@/chat/slack/client";
 import { extractCanvasId } from "@/chat/slack/canvas-references";
+import { getConversationInfo } from "@/chat/slack/channel";
+import { parseSlackChannelId, type SlackChannelId } from "@/chat/slack/ids";
 import {
   normalizeCanvasMarkdown,
   type CanvasMarkdownNormalization,
@@ -34,9 +35,10 @@ export interface CanvasReadResult {
 
 /**
  * Create a standalone Slack canvas owned by the bot and best-effort grant write
- * access to the active channel. Standalone canvases (`canvases.create`) are not
- * subject to the one-per-channel limit of `conversations.canvases.create`, so
- * the bot can produce multiple canvases in the same channel/thread.
+ * access to the participants of the active conversation. Standalone canvases
+ * (`canvases.create`) are not subject to the one-per-channel limit of
+ * `conversations.canvases.create`, so the bot can produce multiple canvases in
+ * the same channel/thread.
  */
 export async function createCanvas(
   input: CanvasCreateInput,
@@ -81,11 +83,11 @@ export async function createCanvas(
   }
 
   // Standalone canvases are bot-owned and not visible to anyone else until
-  // explicit access is granted. Best-effort grant write access to the active
-  // conversation (C/G/D) so the humans in the channel or DM can actually see
-  // and edit the canvas the bot just produced.
-  if (normalizedChannelId && isConversationScopedChannel(normalizedChannelId)) {
-    await grantChannelCanvasAccess(result.canvas_id, normalizedChannelId);
+  // explicit access is granted. Best-effort grant write access to the
+  // participants of the active conversation so they can see and edit it.
+  const accessChannelId = parseSlackChannelId(normalizedChannelId);
+  if (accessChannelId) {
+    await grantConversationCanvasAccess(result.canvas_id, accessChannelId);
   }
 
   let permalink: string | undefined;
@@ -101,35 +103,87 @@ export async function createCanvas(
   };
 }
 
-async function grantChannelCanvasAccess(
+type CanvasAccessTarget =
+  | { kind: "channel"; channelIds: [string] }
+  | { kind: "user"; userIds: [string, ...string[]] };
+
+// Slack caps `channel_ids` and `user_ids` at 20 entries per call.
+const MAX_CANVAS_ACCESS_IDS = 20;
+
+/**
+ * Slack rejects DM and group DM IDs in `canvases.access.set` with
+ * `invalid_arguments`, so those conversations grant access to their human
+ * members instead of the conversation.
+ */
+async function resolveCanvasAccessTarget(
+  channelId: SlackChannelId,
+): Promise<CanvasAccessTarget | undefined> {
+  if (channelId.startsWith("C")) {
+    return { kind: "channel", channelIds: [channelId] };
+  }
+  if (channelId.startsWith("G")) {
+    const info = await getConversationInfo(channelId);
+    if (!info.isMpim) {
+      return { kind: "channel", channelIds: [channelId] };
+    }
+  }
+
+  const client = getSlackClient();
+  const [members, auth] = await Promise.all([
+    withSlackRetries(
+      () => client.conversations.members({ channel: channelId }),
+      3,
+      { action: "conversations.members", idempotent: true },
+    ),
+    withSlackRetries(() => client.auth.test(), 3, {
+      action: "auth.test",
+      idempotent: true,
+    }),
+  ]);
+  // The bot already owns the canvas. Do not change its access level.
+  const [first, ...rest] = (members.members ?? [])
+    .filter((userId) => userId !== auth.user_id)
+    .slice(0, MAX_CANVAS_ACCESS_IDS);
+  return first ? { kind: "user", userIds: [first, ...rest] } : undefined;
+}
+
+async function grantConversationCanvasAccess(
   canvasId: string,
-  channelId: string,
+  channelId: SlackChannelId,
 ): Promise<void> {
   const client = getSlackClient();
+  const attributes = {
+    "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
+    "app.slack.canvas.channel_id_prefix": channelId.slice(0, 1),
+    "app.slack.canvas.access_level": "write",
+  };
   try {
+    const target = await resolveCanvasAccessTarget(channelId);
+    if (!target) {
+      return;
+    }
     await withSlackRetries(
       () =>
         client.canvases.access.set({
           canvas_id: canvasId,
           access_level: "write",
-          channel_ids: [channelId],
+          ...(target.kind === "channel"
+            ? { channel_ids: target.channelIds }
+            : { user_ids: target.userIds }),
         }),
       3,
       {
         action: "canvases.access.set",
         attributes: {
-          "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
-          "app.slack.canvas.channel_id_prefix": channelId.slice(0, 1),
-          "app.slack.canvas.access_level": "write",
+          ...attributes,
+          "app.slack.canvas.access_target": target.kind,
         },
       },
     );
   } catch {
     logWarn("slack.canvas.access_set.failed", {
       "app.slack.action": "canvases.access.set",
-      "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
-      "app.slack.canvas.channel_id_prefix": channelId.slice(0, 1),
-      "app.slack.canvas.access_level": "write",
+      ...attributes,
     });
   }
 }
