@@ -30,12 +30,10 @@ export async function isSlackAuthorDomainAllowed(args: {
 
   const profile = await lookupSlackUserProfile(userId);
   const email = profile.email?.toLowerCase();
+  const separator = email?.lastIndexOf("@") ?? -1;
+  const domain = separator > 0 ? email?.slice(separator + 1) : undefined;
   const allowed =
-    profile.id === userId &&
-    isAllowedDomain(
-      email?.slice(email.lastIndexOf("@") + 1),
-      args.allowedDomains,
-    );
+    profile.id === userId && isAllowedDomain(domain, args.allowedDomains);
   if (!allowed) {
     // A Slack app without `users:read.email` sees no email and blocks all.
     logWarn("slack.allowed_domain.rejected", {

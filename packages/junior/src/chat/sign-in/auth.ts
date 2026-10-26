@@ -64,7 +64,7 @@ export interface SignInAuth {
   ): Promise<Response>;
 }
 
-/** Settings for the shared Google sign-in session. */
+/** Settings for the dashboard Google sign-in session. */
 export interface SignInAuthConfig {
   agentName: string;
   /** Google Workspace domains that may sign in. Empty allows every account. */

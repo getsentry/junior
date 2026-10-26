@@ -6,10 +6,7 @@
  */
 import { z } from "zod";
 
-/**
- * Read a list env var the same way as the dashboard: a JSON string array or
- * comma-separated values.
- */
+/** Read a list env var: a JSON string array or comma-separated values. */
 export function readEnvList(name: string): string[] | undefined {
   const value = process.env[name]?.trim();
   if (!value) return undefined;

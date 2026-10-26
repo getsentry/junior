@@ -4,7 +4,7 @@ import type { DashboardSession } from "./api/schema";
 export type DashboardUser = DashboardSession["user"];
 export type { DashboardSession };
 
-/** Google sign-in session that core shares with Slack. */
+/** Google sign-in session that core owns. */
 export interface DashboardAuth {
   handler(request: Request): Promise<Response>;
   getSession(request: Request): Promise<DashboardSession | null>;

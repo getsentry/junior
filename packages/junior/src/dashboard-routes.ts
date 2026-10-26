@@ -36,7 +36,7 @@ export interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   agentName?: string;
   /** The app's `allowedDomains`. Dashboard auth requires at least one. */
   allowedDomains: string[];
-  /** Google sign-in session that the dashboard shares with Slack. */
+  /** Google sign-in session of the dashboard. */
   auth?: SignInAuth;
   authenticatedRoutes?: readonly AuthenticatedRoute[];
   conversationWorkQueue?: ConversationWorkQueue;

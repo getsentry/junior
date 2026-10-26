@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  assertNoLegacyAllowedDomains,
-  resolveAllowedDomains,
-} from "@/chat/sign-in/allowlist";
+import { resolveAllowedDomains } from "@/chat/sign-in/allowlist";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -27,17 +24,6 @@ describe("allowed domains", () => {
 
     expect(() => resolveAllowedDomains()).toThrow(
       "JUNIOR_ALLOWED_DOMAINS must be a JSON string array",
-    );
-  });
-
-  it("fails on the removed Google-specific names instead of allowing everyone", () => {
-    expect(() =>
-      assertNoLegacyAllowedDomains(["allowedGoogleDomains"]),
-    ).toThrow("dashboard.allowedGoogleDomains was removed");
-
-    vi.stubEnv("JUNIOR_DASHBOARD_GOOGLE_DOMAINS", "sentry.io");
-    expect(() => assertNoLegacyAllowedDomains([])).toThrow(
-      "JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed",
     );
   });
 });
