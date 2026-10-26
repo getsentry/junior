@@ -23,7 +23,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
-    "ai": "^6.0.190",
+    "ai": "^7.0.153",
     "chat": "4.29.0",
     "hono": "^4.12.27",
     "msw": "^2.14.6",

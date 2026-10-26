@@ -1,4 +1,4 @@
-import { completeObject, completeText } from "@/chat/pi/client";
+import { completeDecision, completeText } from "@/chat/pi/client";
 import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
@@ -86,8 +86,8 @@ export function createJuniorRuntimeServices(
     executeTurn: async (run, saveResult) =>
       await executeTurn(agentRunner, run, saveResult),
     subscribedReplyPolicy: createSubscribedReplyPolicy({
-      completeObject:
-        overrides.subscribedReplyPolicy?.completeObject ?? completeObject,
+      completeDecision:
+        overrides.subscribedReplyPolicy?.completeDecision ?? completeDecision,
     }),
     visionContext,
   };

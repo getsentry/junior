@@ -46,7 +46,7 @@ const RECORDING_RULES: RecordingRule[] = [
     // image generation and web search before the proxy.
     name: "model",
     match: { method: "POST", url: "https://ai-gateway.vercel.sh/" },
-    // AI SDK gateway requests, such as `/v3/ai/language-model`, name the
+    // AI SDK gateway requests, such as `/v4/ai/language-model`, name the
     // model in a header, not in the body.
     keyHeaders: [
       "ai-language-model-id",

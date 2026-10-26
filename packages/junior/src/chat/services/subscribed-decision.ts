@@ -1,8 +1,11 @@
-import { z } from "zod";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { estimateTextTokens } from "@/chat/services/context-budget";
 import { isProviderRetryError } from "@/chat/services/provider-error";
-import { buildSubscribedReplyRouterPolicy } from "@/chat/services/subscribed-reply-router-policy";
+import {
+  buildSubscribedReplyRouterQuestions,
+  type SubscribedReplyRoute,
+  type SubscribedReplyRouterQuestions,
+} from "@/chat/services/subscribed-reply-router-policy";
 
 /** Why the subscribed-thread router chose to reply or stay silent. */
 export const SubscribedReplyReason = {
@@ -61,29 +64,7 @@ interface RouterEvidence {
   omittedEntries: number;
 }
 
-const replyDecisionSchema = z
-  .object({
-    should_reply: z
-      .boolean()
-      .describe("Whether Junior should respond to this thread message."),
-    should_unsubscribe: z
-      .boolean()
-      .describe(
-        "Whether Junior should unsubscribe from this thread because the user clearly asked it to stop participating.",
-      ),
-    confidence: z
-      .number()
-      .min(0)
-      .max(1)
-      .describe("Classifier confidence from 0 to 1."),
-    reason: z
-      .string()
-      .describe("Short reason for the decision; use an empty string if none."),
-  })
-  .strict();
-
 const ROUTER_CONFIDENCE_THRESHOLD = 0.7;
-const ROUTER_CLASSIFIER_MAX_TOKENS = 400;
 const MAX_MESSAGE_TRANSCRIPT_TOKENS = 10_000;
 const MAX_MESSAGE_ENTRY_TOKENS = 2_000;
 const RECENT_ASSISTANT_ENTRY_LIMIT = 40;
@@ -437,21 +418,23 @@ export function getSubscribedReplyPreflightDecision(args: {
   };
 }
 
-/** Decide whether to reply to a message in a subscribed thread using an LLM classifier. */
+/** Decide whether to reply to a message in a subscribed thread using a decision model. */
 export async function decideSubscribedThreadReply(args: {
   botUserName: string;
   modelId: string;
   input: SubscribedDecisionInput;
-  completeObject: (args: {
+  completeDecision: (args: {
     modelId: string;
-    schema: typeof replyDecisionSchema;
-    maxTokens: number;
-    temperature: number;
-    system: string;
-    prompt: string;
+    state: string;
+    questions: SubscribedReplyRouterQuestions;
     metadata: Record<string, string>;
-    promptName?: string;
-  }) => Promise<{ costUsd?: number; object: unknown }>;
+    promptName: string;
+  }) => Promise<{
+    answers: {
+      route: { choice: string; probabilities?: Record<string, number> };
+    };
+    costUsd?: number;
+  }>;
   logClassifierFailure: (
     error: unknown,
     input: SubscribedDecisionInput,
@@ -523,13 +506,10 @@ export async function decideSubscribedThreadReply(args: {
   }
 
   try {
-    const result = await args.completeObject({
+    const result = await args.completeDecision({
       modelId: args.modelId,
-      schema: replyDecisionSchema,
-      maxTokens: ROUTER_CLASSIFIER_MAX_TOKENS,
-      temperature: 0,
-      system: buildSubscribedReplyRouterPolicy(args.botUserName),
-      prompt: buildRouterPrompt(rawText, evidence),
+      state: buildRouterPrompt(rawText, evidence),
+      questions: buildSubscribedReplyRouterQuestions(args.botUserName),
       metadata: {
         modelId: args.modelId,
         threadId: args.input.context.threadId ?? "",
@@ -539,61 +519,11 @@ export async function decideSubscribedThreadReply(args: {
       },
       promptName: "junior.passive_reply_route",
     });
-
-    const parsed = replyDecisionSchema.parse(result.object);
-    const reason = parsed.reason?.trim() || "classifier";
-    if (parsed.should_unsubscribe) {
-      if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
-        return {
-          ...(result.costUsd !== undefined
-            ? { costUsd: result.costUsd }
-            : undefined),
-          shouldReply: false,
-          reason: SubscribedReplyReason.LowConfidence,
-          reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
-        };
-      }
-
-      return {
-        ...(result.costUsd !== undefined
-          ? { costUsd: result.costUsd }
-          : undefined),
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: reason,
-      };
-    }
-
-    if (!parsed.should_reply) {
-      return {
-        ...(result.costUsd !== undefined
-          ? { costUsd: result.costUsd }
-          : undefined),
-        shouldReply: false,
-        reason: SubscribedReplyReason.SideConversation,
-        reasonDetail: reason,
-      };
-    }
-
-    if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
-      return {
-        ...(result.costUsd !== undefined
-          ? { costUsd: result.costUsd }
-          : undefined),
-        shouldReply: false,
-        reason: SubscribedReplyReason.LowConfidence,
-        reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
-      };
-    }
-
     return {
       ...(result.costUsd !== undefined
         ? { costUsd: result.costUsd }
         : undefined),
-      shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: reason,
+      ...routeDecisionResult(result.answers.route),
     };
   } catch (error) {
     if (isProviderRetryError(error)) {
@@ -605,4 +535,48 @@ export async function decideSubscribedThreadReply(args: {
       reason: SubscribedReplyReason.ClassifierError,
     };
   }
+}
+
+function isSubscribedReplyRoute(value: string): value is SubscribedReplyRoute {
+  return value === "reply" || value === "stay_quiet" || value === "unsubscribe";
+}
+
+function routeDecisionResult(answer: {
+  choice: string;
+  probabilities?: Record<string, number>;
+}): SubscribedDecisionResult {
+  const route = answer.choice;
+  if (!isSubscribedReplyRoute(route)) {
+    throw new Error(`Decision model returned unknown route: ${route}`);
+  }
+  // A provider without probabilities still returns its most likely choice.
+  const probability = answer.probabilities?.[route] ?? 1;
+  const detail = `${route} p=${probability.toFixed(2)}`;
+  if (route === "stay_quiet") {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.SideConversation,
+      reasonDetail: detail,
+    };
+  }
+  if (probability < ROUTER_CONFIDENCE_THRESHOLD) {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.LowConfidence,
+      reasonDetail: detail,
+    };
+  }
+  if (route === "unsubscribe") {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: detail,
+    };
+  }
+  return {
+    shouldReply: true,
+    reason: SubscribedReplyReason.Classifier,
+    reasonDetail: detail,
+  };
 }
