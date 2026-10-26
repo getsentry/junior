@@ -321,6 +321,7 @@ async function requestBodyBytes(
   if (
     request.method === "GET" ||
     request.method === "HEAD" ||
+    request.method === "OPTIONS" ||
     request.body === null
   ) {
     return undefined;
