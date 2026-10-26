@@ -10,10 +10,18 @@ test("counts physical lines", () => {
 });
 
 test("reports an oversized file without an exception", () => {
-  assert.deepEqual(
-    checkFileLengths([{ path: "src/large.ts", lines: 1_001 }], {}, 1_000),
-    ["src/large.ts: 1001 lines exceeds the 1000-line limit"],
+  const [error, ...rest] = checkFileLengths(
+    [{ path: "src/large.ts", lines: 1_001 }],
+    {},
+    1_000,
   );
+  assert.deepEqual(rest, []);
+  assert.match(
+    error,
+    /^src\/large\.ts: 1001 lines exceeds the 1000-line limit\. /,
+  );
+  assert.match(error, /Split it into smaller modules/);
+  assert.match(error, /Do not delete code/);
 });
 
 test("accepts an oversized file with a reason", () => {
