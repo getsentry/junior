@@ -2,15 +2,15 @@
  * Service accounts.
  *
  * A plugin can declare an optional install-wide provider account, often a
- * bot, that Junior itself uses. In the default `fallback` mode, the
- * credential order for one request is:
+ * bot, that Junior itself uses. By default, the credential order for one
+ * request is:
  *
  * 1. The Actor's own connection, when it exists.
  * 2. The plugin's service account, when an Admin connected it and this
  *    policy allows the request.
  * 3. Otherwise, the Actor must connect their own account.
  *
- * In `only` mode, Junior uses only the service account. It ignores Actor
+ * With `user-oauth: false`, Junior uses only the service account. It ignores Actor
  * connections and never asks an Actor to connect. Until an Admin connects
  * the account, the plugin is not available.
  *
@@ -55,15 +55,15 @@ export function serviceAccountAllows(
 export function serviceAccountOnly(
   manifest: Pick<PluginManifest, "serviceAccount">,
 ): boolean {
-  return manifest.serviceAccount?.mode === "only";
+  return manifest.serviceAccount?.userOAuth === false;
 }
 
 /** Admin-safe status of one plugin's service account. Never includes tokens. */
 export interface ServiceAccountStatus {
   provider: string;
   displayName: string;
-  /** `only` means Actors cannot use their own connection. */
-  mode: "fallback" | "only";
+  /** False when Actors cannot use their own connection. */
+  userOAuth: boolean;
   /** MCP tools that the account may call. */
   mcpTools: string[];
   connected: boolean;
@@ -88,7 +88,7 @@ export async function getServiceAccountStatus(
   return {
     provider: manifest.name,
     displayName: manifest.displayName,
-    mode: serviceAccountOnly(manifest) ? "only" : "fallback",
+    userOAuth: !serviceAccountOnly(manifest),
     mcpTools: manifest.serviceAccount?.mcpTools ?? [],
     connected: Boolean(credentials),
     ...(credentials

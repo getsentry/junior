@@ -44,14 +44,14 @@ The model is the same for every provider:
 3. The service account serves an Actor without their own connection, but
    only for requests that the plugin's `service-account` policy allows.
    Other requests still ask the Actor to connect.
-4. A plugin can set `mode: only`. Then Junior uses only the service account.
+4. A plugin can set `user-oauth: false`. Then Junior uses only the service account.
    It ignores Actor connections and never asks an Actor to connect. The
    policy must cover everything the plugin exposes. Until an Admin connects
    the account, the plugin is not available.
 
 - `service-account.ts` owns the policy check, `serviceAccountAllows`. A
   surface must ask it before it uses the shared account.
-- `serviceAccountOnly` reports `mode: only`. A surface must check it before
+- `serviceAccountOnly` reports `user-oauth: false`. A surface must check it before
   it falls back to Actor auth or asks an Actor to connect.
 - Each surface enforces the policy where it sees the request. MCP calls run
   on the host, so the tool manager checks each tool against `mcp-tools`.

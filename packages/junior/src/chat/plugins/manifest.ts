@@ -254,7 +254,7 @@ const mcpOauthClientSourceSchema = z
 // silently widening or narrowing what the shared account may do.
 const serviceAccountSourceSchema = z
   .object({
-    mode: z.enum(["fallback", "only"]).optional(),
+    "user-oauth": z.boolean().optional(),
     "mcp-tools": nonEmptyStringArraySchema("mcp-tools"),
   })
   .strict();
@@ -1142,8 +1142,8 @@ function normalizeServiceAccount(
       `Plugin ${name} service-account.mcp-tools must be listed in mcp.allowed-tools: ${undeclared.join(", ")}`,
     );
   }
-  const mode = result.data.mode;
-  if (mode === "only") {
+  const userOAuth = result.data["user-oauth"];
+  if (userOAuth === false) {
     // No Actor connection exists to call a tool that the account may not,
     // so every tool that the plugin loads must be in the policy.
     const policyTools = new Set(mcpTools);
@@ -1152,11 +1152,11 @@ function normalizeServiceAccount(
     ].filter((tool) => !policyTools.has(tool));
     if (uncovered.length > 0) {
       throw new Error(
-        `Plugin ${name} service-account mode only requires every loaded MCP tool in service-account.mcp-tools: ${uncovered.join(", ")}`,
+        `Plugin ${name} service-account.user-oauth false requires every loaded MCP tool in service-account.mcp-tools: ${uncovered.join(", ")}`,
       );
     }
   }
-  return { ...(mode ? { mode } : undefined), mcpTools };
+  return { ...(userOAuth === false ? { userOAuth } : undefined), mcpTools };
 }
 
 function parseManifestSource(

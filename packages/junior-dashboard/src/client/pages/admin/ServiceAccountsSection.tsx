@@ -45,15 +45,13 @@ export function useServiceAccounts() {
 }
 
 function statusText(account: ServiceAccount): string {
-  const usage =
-    account.mode === "only"
-      ? `Everyone uses this account. People cannot connect their own ${account.displayName} account.`
-      : `People who have not connected their own ${account.displayName} account use this account.`;
+  const usage = !account.userOAuth
+    ? `Everyone uses this account. People cannot connect their own ${account.displayName} account.`
+    : `People who have not connected their own ${account.displayName} account use this account.`;
   if (!account.connected) {
-    const blocked =
-      account.mode === "only"
-        ? ` ${account.displayName} is not available until you connect it.`
-        : "";
+    const blocked = !account.userOAuth
+      ? ` ${account.displayName} is not available until you connect it.`
+      : "";
     return `Not connected.${blocked} ${usage} Sign in as the shared account, not as yourself.`;
   }
   const by = account.connectedBy ?? "the CLI";
@@ -162,14 +160,14 @@ export function ServiceAccountsSection(props: {
                     tone={
                       account.connected
                         ? "success"
-                        : account.mode === "only"
+                        : !account.userOAuth
                           ? "warning"
                           : "neutral"
                     }
                   >
                     {account.connected ? "connected" : "not connected"}
                   </StatusChip>
-                  {account.mode === "only" ? (
+                  {!account.userOAuth ? (
                     <StatusChip size="compact" tone="neutral">
                       shared only
                     </StatusChip>

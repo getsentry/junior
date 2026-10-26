@@ -84,8 +84,8 @@ per-user OAuth.
 
 ### Use only the service account
 
-To stop people from connecting their own Notion accounts, set the service
-account to `only` mode in your plugin list. Then everyone uses the shared
+To stop people from connecting their own Notion accounts, turn off user
+OAuth for the service account in your plugin list. Then everyone uses the shared
 account, and Junior never sends a Notion connect link. The shared account
 must cover every Notion tool that Junior loads, so also limit the tools:
 
@@ -95,7 +95,7 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
     notion: {
       mcp: { allowedTools: ["notion-search", "notion-fetch"] },
       serviceAccount: {
-        mode: "only",
+        userOAuth: false,
         mcpTools: ["notion-search", "notion-fetch"],
       },
     },

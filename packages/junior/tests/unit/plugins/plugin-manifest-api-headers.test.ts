@@ -601,10 +601,15 @@ describe("plugin manifest API headers", () => {
       "Plugin example service-account",
     ],
     [
-      "only mode and a loaded tool outside its policy",
+      "user OAuth off and a loaded tool outside its policy",
       ["  allowed-tools:", "    - search", "    - create"],
-      ["service-account:", "  mode: only", "  mcp-tools:", "    - search"],
-      "Plugin example service-account mode only requires every loaded MCP tool in service-account.mcp-tools: create",
+      [
+        "service-account:",
+        "  user-oauth: false",
+        "  mcp-tools:",
+        "    - search",
+      ],
+      "Plugin example service-account.user-oauth false requires every loaded MCP tool in service-account.mcp-tools: create",
     ],
   ])(
     "rejects a service account with %s",

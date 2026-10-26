@@ -96,17 +96,18 @@ export interface PluginMcpConfig {
  * An Admin connects the service account one time on the dashboard Admin
  * page. Each request surface enforces its own part of this policy.
  *
- * - `fallback`, the default: per-actor OAuth stays the default, and an
- *   Actor's own connection always wins. An Actor without their own
- *   connection uses the service account for requests that this policy
- *   allows. Other requests ask the Actor to connect their own account.
- * - `only`: Junior uses only the service account. It never asks an Actor to
- *   connect and ignores their own connections. Until an Admin connects the
- *   account, the plugin is not available.
+ * By default, per-actor OAuth stays on, and an Actor's own connection
+ * always wins. An Actor without their own connection uses the service
+ * account for requests that this policy allows. Other requests ask the
+ * Actor to connect their own account.
+ *
+ * With `userOAuth: false`, Junior uses only the service account. It never
+ * asks an Actor to connect and ignores their own connections. Until an
+ * Admin connects the account, the plugin is not available.
  */
 export interface PluginServiceAccountConfig {
-  /** Whether Actors can also use their own connection. Defaults to `fallback`. */
-  mode?: "fallback" | "only";
+  /** Set false to turn off per-actor OAuth for the plugin. Defaults to true. */
+  userOAuth?: boolean;
   /** MCP tools that the account may call. Each must be in `mcp.allowedTools`. */
   mcpTools: string[];
 }

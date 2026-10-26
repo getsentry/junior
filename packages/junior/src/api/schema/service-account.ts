@@ -4,7 +4,7 @@ export const serviceAccountSchema = z
   .object({
     provider: z.string(),
     displayName: z.string(),
-    mode: z.enum(["fallback", "only"]),
+    userOAuth: z.boolean(),
     mcpTools: z.array(z.string()),
     connected: z.boolean(),
     connectedAt: z.string().optional(),

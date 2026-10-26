@@ -47,7 +47,7 @@ const onlyPlugin: PluginDefinition = {
   manifest: {
     ...plugin.manifest,
     mcp: { ...plugin.manifest.mcp!, allowedTools: ["search"] },
-    serviceAccount: { mode: "only", mcpTools: ["search"] },
+    serviceAccount: { userOAuth: false, mcpTools: ["search"] },
   },
 };
 

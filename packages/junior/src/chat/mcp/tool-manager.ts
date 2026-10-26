@@ -292,7 +292,7 @@ export interface McpToolManagerOptions {
    * Return the plugin's service account auth, or undefined to use the actor's
    * own auth. A service account client calls only the tools that
    * `serviceAccountAllows` permits. Other tools use the actor's own client.
-   * A plugin in `only` mode never uses the actor's own auth.
+   * A plugin with `user-oauth: false` never uses the actor's own auth.
    */
   serviceAccountProviderFactory?: (
     plugin: PluginDefinition,
