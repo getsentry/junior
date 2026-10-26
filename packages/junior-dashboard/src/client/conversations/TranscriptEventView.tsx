@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 
+import { renderMentionText } from "./transcriptMentions";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
@@ -16,7 +17,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
   const heading = (
     <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
-        <HighlightText text={summary} />
+        {renderMentionText(summary, "event-summary")}
       </span>
       {props.message.eventType ? (
         <span className="break-all rounded-md border border-dashboard-border px-1.5 py-0.5 font-mono text-2xs leading-none text-dashboard-text-muted">

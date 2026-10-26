@@ -214,7 +214,18 @@ describe("conversation detail API", () => {
     });
     await getConversationEventStore().append(conversationId, [
       {
+        // Gives UNEW1234 a Junior identity with no name.
         createdAtMs: 2,
+        data: {
+          messageId: "user-1",
+          meta: { author: { userId: "UNEW1234" } },
+          role: "user",
+          text: "ship it",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
         data: {
           messageId: "reply-1",
           role: "assistant",
@@ -228,7 +239,8 @@ describe("conversation detail API", () => {
       viewer: testViewer("owner@example.com"),
     });
     const message = detail?.events.find(
-      (event) => event.data.type === "message",
+      (event) =>
+        event.data.type === "message" && event.data.messageId === "reply-1",
     );
     expect(message?.data).toMatchObject({
       mentions: [
@@ -238,7 +250,7 @@ describe("conversation detail API", () => {
           fullName: "Owner Person",
           slackUserId: "UOWNER1",
         },
-        // Users Junior has not seen get a name from Slack, but no link.
+        // A user with no name in Junior gets one from Slack, but no link.
         {
           fullName: "New Person",
           slackUserId: "UNEW1234",

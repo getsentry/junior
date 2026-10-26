@@ -71,16 +71,20 @@ async function resolveSlackMentions(
     });
   }
 
-  // People Junior has not seen still get a name, but no profile link.
-  const unknown = userIds.filter((id) => !people.has(id));
-  if (tenantId && unknown.length > 0) {
+  // Ask Slack for a name when Junior has none. Keep any known profile email.
+  const unnamed = userIds.filter((id) => {
+    const person = people.get(id);
+    return !person?.fullName && !person?.slackUserName;
+  });
+  if (tenantId && unnamed.length > 0) {
     const profiles = await Promise.all(
-      unknown.map((id) => lookupSlackUser(tenantId, id)),
+      unnamed.map((id) => lookupSlackUser(tenantId, id)),
     );
-    unknown.forEach((id, index) => {
+    unnamed.forEach((id, index) => {
       const profile = profiles[index];
       if (!profile?.fullName && !profile?.userName) return;
       people.set(id, {
+        ...people.get(id),
         slackUserId: id,
         ...(profile.fullName ? { fullName: profile.fullName } : undefined),
         ...(profile.userName ? { slackUserName: profile.userName } : undefined),

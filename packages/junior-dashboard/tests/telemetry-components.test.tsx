@@ -490,9 +490,19 @@ describe("dashboard canonical-event components", () => {
             { fullName: "Riley Park", slackUserId: "U456" },
           ],
         }),
+        event(1, {
+          type: "message",
+          messageId: "event-1",
+          role: "user",
+          eventType: "pull_request.merged",
+          trustedSummary: "<@U456> merged PR #42.",
+          text: "PR merged.",
+          mentions: [{ fullName: "Riley Park", slackUserId: "U456" }],
+        }),
       ]),
     );
 
+    expect(html).toContain("@Riley Park</span> merged PR #42.");
     expect(html).not.toContain("&lt;@");
     expect(html).not.toContain("&lt;#");
     expect(html).toMatch(
