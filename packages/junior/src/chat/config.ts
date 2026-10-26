@@ -264,7 +264,7 @@ const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
   DEFAULT_MODEL_PROFILES.handoff.modelId,
 ).id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
-const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
+const DEFAULT_DECISION_MODEL_ID = "openai/gpt-6-luna-decisions";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
