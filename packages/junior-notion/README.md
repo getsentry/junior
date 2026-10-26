@@ -18,6 +18,8 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-notion"]);
 
 This package does not use `NOTION_TOKEN` or a shared workspace integration. Each user connects their own Notion account the first time Junior calls a Notion MCP tool. Junior sends the OAuth link privately and resumes the thread automatically after the user authorizes.
 
+Optionally, a Junior admin can connect a Notion service account with `junior service-account connect notion`. Users who have not connected Notion then use that account for `notion-search` and `notion-fetch`. Write tools still ask the user to connect their own account.
+
 The package exposes a deliberately limited Notion MCP surface:
 
 - `notion-search`
@@ -40,7 +42,8 @@ This package uses Notion MCP search and fetch rather than the older REST helper 
 ## Auth model
 
 - Notion MCP requires user-based OAuth and does not support bearer token authentication.
-- This package is not suitable for fully headless or unattended automation.
+- Without a service account, this package is not suitable for fully headless or unattended automation. With one, automations can read but not write.
+- Anyone who can talk to Junior can read what the service account can read.
 - Users can disconnect from Junior App Home with `Unlink`, or by asking Junior to disconnect Notion.
 - Existing OAuth connections may need reauthorization if Notion requires additional scopes for write tools.
 

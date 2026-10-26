@@ -74,6 +74,19 @@ export interface PluginMcpOAuthClientConfig {
   scope?: string;
 }
 
+/**
+ * Optional provider account that Junior itself uses for this MCP server.
+ *
+ * An admin connects it one time with `junior service-account connect`. Until
+ * then, it has no effect. After that, an actor who has not connected their own
+ * account uses the service account for `allowedTools`. Other tools still ask
+ * the actor to connect their own account.
+ */
+export interface PluginMcpServiceAccountConfig {
+  /** Read tools that the service account may call. Each must be in `mcp.allowedTools`. */
+  allowedTools: string[];
+}
+
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
@@ -83,6 +96,8 @@ export interface PluginMcpConfig {
   headers?: Record<string, string>;
   /** Per-actor OAuth with a pre-registered client instead of dynamic client registration. */
   oauthClient?: PluginMcpOAuthClientConfig;
+  /** Shared read access through an admin-connected account. */
+  serviceAccount?: PluginMcpServiceAccountConfig;
   transport: "http";
   url: string;
   /** Provider tools hidden from the model and callable only by plugin-owned wrapper tools. */

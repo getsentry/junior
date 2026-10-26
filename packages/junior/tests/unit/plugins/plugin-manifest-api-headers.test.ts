@@ -568,6 +568,48 @@ describe("plugin manifest API headers", () => {
     ).toThrow(message);
   });
 
+  it.each([
+    [
+      "a tool outside mcp.allowed-tools",
+      ["  allowed-tools:", "    - search"],
+      ["  service-account:", "    allowed-tools:", "      - create"],
+      "Plugin example mcp.service-account.allowed-tools must be listed in mcp.allowed-tools: create",
+    ],
+    [
+      "bot auth",
+      [
+        "  allowed-tools:",
+        "    - search",
+        "  auth:",
+        "    issuer: https://junior.example.com",
+        "    key-id: junior-1",
+        "    private-key-env: EXAMPLE_KEY",
+      ],
+      ["  service-account:", "    allowed-tools:", "      - search"],
+      "Plugin example mcp.service-account must not be combined with auth or oauth-client",
+    ],
+  ])(
+    "rejects an MCP service account with %s",
+    (_name, mcpLines, serviceAccountLines, message) => {
+      expect(() =>
+        parsePluginManifest(
+          [
+            "name: example",
+            "display-name: Example",
+            "description: Example MCP access",
+            "env-vars:",
+            "  EXAMPLE_KEY:",
+            "mcp:",
+            "  url: https://mcp.example.com/mcp",
+            ...mcpLines,
+            ...serviceAccountLines,
+          ].join("\n"),
+          "/tmp/example",
+        ),
+      ).toThrow(message);
+    },
+  );
+
   it("rejects command env references that reuse MCP header env vars", () => {
     expect(() =>
       parsePluginManifest(

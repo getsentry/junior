@@ -161,6 +161,28 @@ mcp:
   URL. `client_id`, `scope`, `state`, `redirect_uri`, and `response_type` are
   reserved.
 
+## MCP service account
+
+Use `mcp.service-account` to let an actor without their own connection read
+through one account that Junior itself uses.
+
+```yaml
+mcp:
+  url: https://mcp.example.com/mcp
+  allowed-tools:
+    - search
+    - fetch
+    - create-page
+  service-account:
+    allowed-tools:
+      - search
+      - fetch
+```
+
+- It has no effect until an admin runs
+  `junior service-account connect <plugin-name>`.
+- List only read tools. Other tools still use the actor's own OAuth.
+
 ## Parser traps
 
 - `api-headers` requires `domains`.
@@ -176,6 +198,8 @@ mcp:
 - `mcp.oauth-client` env vars must be declared in `env-vars` and must not
   declare defaults.
 - `mcp` must not declare both `auth` and `oauth-client`.
+- `mcp.service-account.allowed-tools` must be listed in `mcp.allowed-tools`,
+  and `service-account` must not be combined with `auth` or `oauth-client`.
 - `Authorization` is reserved inside `oauth-bearer` `credentials.api-headers`.
 - `target.config-key` must be listed in `config-keys`.
 - System dependencies must not declare `version`.

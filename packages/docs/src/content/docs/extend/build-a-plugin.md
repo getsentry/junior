@@ -109,6 +109,47 @@ Set the client redirect URI to
 plugin read-only. `authorize-params` adds provider-specific parameters to the
 authorization URL. Do not declare both `mcp.auth` and `mcp.oauth-client`.
 
+### MCP service accounts
+
+A plugin can let Junior read with its own provider account. Then people who
+have not connected their own account still get read access. Declare
+`mcp.service-account` with the read tools that this account may call:
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  allowed-tools:
+    - search
+    - fetch
+    - create-page
+  service-account:
+    allowed-tools:
+      - search
+      - fetch
+```
+
+Each tool in `service-account.allowed-tools` must also be in
+`mcp.allowed-tools`. You cannot combine `mcp.service-account` with `mcp.auth`
+or `mcp.oauth-client`.
+
+The declaration has no effect until a Junior admin connects the account:
+
+```bash
+junior service-account connect my-provider
+```
+
+Run the command on a machine with a browser and the deployment `REDIS_URL`.
+Sign in as the account that Junior uses, not as yourself. Use
+`junior service-account status my-provider` and
+`junior service-account disconnect my-provider` to check or remove it.
+
+When the account is connected, Junior uses it only for an actor who has not
+connected their own account. It uses it only for the listed tools. Other
+tools ask the actor to connect their own account, as before. An actor's own
+connection always wins. Everyone who can talk to Junior can read what the
+service account can read, so give that account only the access that all of
+them may have.
+
 ## Runtime dependencies
 
 If a skill needs a CLI or system package inside the sandbox, declare that in `plugin.yaml`:

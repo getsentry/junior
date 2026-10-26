@@ -10,3 +10,7 @@ mcp:
     - notion-create-pages
     - notion-update-page
     - notion-move-pages
+  service-account:
+    allowed-tools:
+      - notion-search
+      - notion-fetch

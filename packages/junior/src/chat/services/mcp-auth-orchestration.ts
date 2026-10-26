@@ -13,8 +13,13 @@ import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
   patchMcpAuthSession,
 } from "@/chat/mcp/auth-store";
+import {
+  createMcpServiceAccountClientProvider,
+  getMcpServiceAccountCredentials,
+} from "@/chat/mcp/service-account";
 import {
   authorizationId,
   type OAuthAuthorization,
@@ -73,6 +78,10 @@ export interface McpAuthOrchestration {
   authProviderFactory: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
+  /** Return the plugin's service account when the actor has no connection of their own. */
+  serviceAccountProviderFactory: (
+    plugin: PluginDefinition,
+  ) => Promise<OAuthClientProvider | undefined>;
   onAuthorizationRequired: (
     provider: string,
     context?: McpAuthorizationContext,
@@ -127,6 +136,26 @@ export function createMcpAuthOrchestration(
     });
     authSessionIdsByProvider.set(plugin.manifest.name, provider.authSessionId);
     return provider;
+  };
+
+  const serviceAccountProviderFactory = async (
+    plugin: PluginDefinition,
+  ): Promise<OAuthClientProvider | undefined> => {
+    const provider = plugin.manifest.name;
+    if (!plugin.manifest.mcp?.serviceAccount) {
+      return undefined;
+    }
+    // An actor's own connection can see and do more, so it always wins.
+    if (
+      input.actorId &&
+      (await getMcpStoredOAuthCredentials(input.actorId, provider))?.tokens
+    ) {
+      return undefined;
+    }
+    const credentials = await getMcpServiceAccountCredentials(provider);
+    return credentials
+      ? createMcpServiceAccountClientProvider(provider, credentials)
+      : undefined;
   };
 
   const onAuthorizationRequired = async (
@@ -255,6 +284,7 @@ export function createMcpAuthOrchestration(
 
   return {
     authProviderFactory,
+    serviceAccountProviderFactory,
     onAuthorizationRequired,
     getPendingPause: () => pendingPause,
   };

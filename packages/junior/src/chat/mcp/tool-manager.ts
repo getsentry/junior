@@ -283,6 +283,14 @@ export interface McpToolManagerOptions {
     | OAuthClientProvider
     | undefined
     | Promise<OAuthClientProvider | undefined>;
+  /**
+   * Return the plugin's service account auth, or undefined to use the actor's
+   * own auth. A service account client calls only the plugin's declared
+   * service account tools. Other tools use the actor's own client.
+   */
+  serviceAccountProviderFactory?: (
+    plugin: PluginDefinition,
+  ) => Promise<OAuthClientProvider | undefined>;
   fetch?: typeof fetch;
   onAuthorizationRequired?: (
     provider: string,
@@ -341,6 +349,9 @@ export class McpToolManager {
   private readonly activeProviders = new Set<string>();
   private readonly authorizationPendingProviders = new Set<string>();
   private readonly clientsByProvider = new Map<string, PluginMcpClient>();
+  /** Actor clients for tools that a provider's service account may not call. */
+  private readonly actorClientsByProvider = new Map<string, PluginMcpClient>();
+  private readonly serviceAccountProviders = new Set<string>();
   private readonly clientPromisesByProvider = new Map<
     string,
     Promise<PluginMcpClient>
@@ -426,7 +437,10 @@ export class McpToolManager {
   async close(): Promise<void> {
     let firstError: unknown;
 
-    for (const client of this.clientsByProvider.values()) {
+    for (const client of [
+      ...this.clientsByProvider.values(),
+      ...this.actorClientsByProvider.values(),
+    ]) {
       try {
         await client.close();
       } catch (error) {
@@ -435,6 +449,8 @@ export class McpToolManager {
     }
 
     this.clientsByProvider.clear();
+    this.actorClientsByProvider.clear();
+    this.serviceAccountProviders.clear();
     this.toolsByProvider.clear();
     this.activeProviders.clear();
     this.authorizationPendingProviders.clear();
@@ -526,15 +542,48 @@ export class McpToolManager {
   private async createClient(
     plugin: PluginDefinition,
   ): Promise<PluginMcpClient> {
-    const authProvider = this.options.authProviderFactory
-      ? await this.options.authProviderFactory(plugin)
-      : undefined;
-    const client = new PluginMcpClient(plugin, {
+    const serviceAccount =
+      await this.options.serviceAccountProviderFactory?.(plugin);
+    if (serviceAccount) {
+      this.serviceAccountProviders.add(plugin.manifest.name);
+    }
+    const client = await this.newClient(plugin, serviceAccount);
+    this.clientsByProvider.set(plugin.manifest.name, client);
+    return client;
+  }
+
+  private async newClient(
+    plugin: PluginDefinition,
+    serviceAccount?: OAuthClientProvider,
+  ): Promise<PluginMcpClient> {
+    const authProvider =
+      serviceAccount ?? (await this.options.authProviderFactory?.(plugin));
+    return new PluginMcpClient(plugin, {
       ...(authProvider ? { authProvider } : undefined),
       ...(this.options.fetch ? { fetch: this.options.fetch } : undefined),
     });
-    this.clientsByProvider.set(plugin.manifest.name, client);
-    return client;
+  }
+
+  /** Pick the client for one call: the service account for its tools, else the actor. */
+  private async clientForTool(
+    plugin: PluginDefinition,
+    client: PluginMcpClient,
+    toolName: string,
+  ): Promise<PluginMcpClient> {
+    const provider = plugin.manifest.name;
+    if (
+      !this.serviceAccountProviders.has(provider) ||
+      plugin.manifest.mcp?.serviceAccount?.allowedTools.includes(toolName)
+    ) {
+      return client;
+    }
+    const existing = this.actorClientsByProvider.get(provider);
+    if (existing) {
+      return existing;
+    }
+    const actorClient = await this.newClient(plugin);
+    this.actorClientsByProvider.set(provider, actorClient);
+    return actorClient;
   }
 
   private toManagedTool(
@@ -597,7 +646,12 @@ export class McpToolManager {
           {},
           async () => {
             try {
-              const result = await client.callTool(
+              const callClient = await this.clientForTool(
+                plugin,
+                client,
+                tool.name,
+              );
+              const result = await callClient.callTool(
                 tool.name,
                 resolvedArgs,
                 options?.signal,
@@ -711,6 +765,8 @@ export class McpToolManager {
 
     this.authorizationPendingProviders.add(provider);
     this.clientsByProvider.delete(provider);
+    this.actorClientsByProvider.delete(provider);
+    this.serviceAccountProviders.delete(provider);
     this.toolsByProvider.delete(provider);
     this.activeProviders.delete(provider);
     return true;

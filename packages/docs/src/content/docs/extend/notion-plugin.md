@@ -50,8 +50,36 @@ No plugin config is required.
 - No `NOTION_TOKEN` or shared integration secret is required.
 - Each user completes OAuth the first time Junior calls a Notion MCP tool on their behalf.
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
-- Notion MCP requires user-based OAuth and does not support bearer token authentication, so this plugin is not suitable for fully headless automation.
+- Notion MCP requires user-based OAuth and does not support bearer token authentication. Without a service account, this plugin is not suitable for fully headless automation.
 - Existing OAuth connections may need reauthorization if Notion requires additional scopes for write tools.
+
+## Optional service account
+
+A Junior admin can connect one Notion account that Junior itself uses, for
+example `junior@example.com`. Then people who have not connected Notion can
+search and fetch pages without OAuth. Scheduled automations can read Notion
+too.
+
+1. Create the Notion account and add it to your workspace. Give it only the
+   pages and teamspaces that everyone who can talk to Junior may read.
+2. On a machine with a browser and the deployment `REDIS_URL`, run:
+
+   ```bash
+   junior service-account connect notion
+   ```
+
+3. Open the link and sign in to Notion as that account, not as yourself.
+4. Run `junior service-account status notion` to confirm the connection.
+
+The service account calls only `notion-search` and `notion-fetch`. To create,
+update, or move pages, Junior still asks the person to connect their own
+Notion account. After they connect, Junior uses their account for all Notion
+tools.
+
+To remove the account, run `junior service-account disconnect notion`. Then
+remove Junior's connection in the Notion account settings to revoke the grant.
+If Notion revokes the grant, Junior removes the account and falls back to
+per-user OAuth.
 
 ## What users can do
 
@@ -68,6 +96,7 @@ No plugin config is required.
 - Write tools go through Junior's normal MCP action review path.
 - Database deletion, schema redesign, and other broad administrative operations stay out of scope.
 - Permission failures remain user-scoped. Junior can only act on Notion content the authenticated user can access.
+- With a service account, anyone who can talk to Junior can read what that account can read.
 
 ## Verify
 

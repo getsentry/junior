@@ -37,6 +37,10 @@ Canonical words used across Junior's code and documentation.
 - **Admin**: a user with the Junior-wide admin role. Only the `junior admin`
   CLI grants or revokes it. Plugins use it for setup that other users must not
   reach. Do not add plugin-specific admin lists.
+- **Service account**: a provider account that Junior itself uses for one
+  MCP plugin. An Admin connects it with `junior service-account connect`.
+  Junior uses it only for the read tools that the plugin declares, and only
+  for an Actor who has not connected their own account.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are

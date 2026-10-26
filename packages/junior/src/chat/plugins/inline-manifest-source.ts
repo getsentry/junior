@@ -78,6 +78,13 @@ export function mcpOauthClientSource(
   return result;
 }
 
+/** Convert a camelCase `mcp.serviceAccount` block to its plugin.yaml source keys. */
+export function mcpServiceAccountSource(
+  serviceAccount: NonNullable<PluginMcpConfig["serviceAccount"]>,
+): ManifestSource {
+  return { "allowed-tools": serviceAccount.allowedTools };
+}
+
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   if (mcp === undefined || !isRecord(mcp)) {
     return mcp;
@@ -95,6 +102,11 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   );
   setDefined(result, "allowed-tools", mcp.allowedTools);
   setDefined(result, "wrapped-tools", mcp.wrappedTools);
+  setDefined(
+    result,
+    "service-account",
+    mcp.serviceAccount && mcpServiceAccountSource(mcp.serviceAccount),
+  );
   return result;
 }
 

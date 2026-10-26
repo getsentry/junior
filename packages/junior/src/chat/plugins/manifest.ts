@@ -19,6 +19,7 @@ import {
   inlineManifestSource,
   mcpAuthSource,
   mcpOauthClientSource,
+  mcpServiceAccountSource,
 } from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -248,6 +249,12 @@ const mcpOauthClientSourceSchema = z
   })
   .passthrough();
 
+const mcpServiceAccountSourceSchema = z
+  .object({
+    "allowed-tools": nonEmptyStringArraySchema("allowed-tools"),
+  })
+  .passthrough();
+
 const mcpSourceSchema = z
   .object({
     transport: nonEmptyTrimmedString
@@ -261,6 +268,7 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
+    "service-account": mcpServiceAccountSourceSchema.optional(),
   })
   .passthrough();
 
@@ -395,6 +403,12 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
+      setDefined(
+        mcp,
+        "service-account",
+        config.mcp.serviceAccount &&
+          mcpServiceAccountSource(config.mcp.serviceAccount),
+      );
       result.mcp = mcp;
     }
   }
@@ -1047,6 +1061,24 @@ function normalizeMcp(
       `Plugin ${name} mcp.oauth-client.client-secret-env`,
     );
   }
+  const serviceAccount = result.data["service-account"];
+  if (serviceAccount) {
+    // The connect flow registers its own client, and bot auth has no user.
+    if (result.data.auth || oauthClient) {
+      throw new Error(
+        `Plugin ${name} mcp.service-account must not be combined with auth or oauth-client`,
+      );
+    }
+    const allowedTools = new Set(result.data["allowed-tools"] ?? []);
+    const undeclared = serviceAccount["allowed-tools"].filter(
+      (tool) => !allowedTools.has(tool),
+    );
+    if (undeclared.length > 0) {
+      throw new Error(
+        `Plugin ${name} mcp.service-account.allowed-tools must be listed in mcp.allowed-tools: ${undeclared.join(", ")}`,
+      );
+    }
+  }
   const oauthClientAuthorizeParams = oauthClient?.["authorize-params"]
     ? normalizeStringMap(
         oauthClient["authorize-params"],
@@ -1085,6 +1117,11 @@ function normalizeMcp(
       : undefined),
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
+      : undefined),
+    ...(serviceAccount
+      ? {
+          serviceAccount: { allowedTools: serviceAccount["allowed-tools"] },
+        }
       : undefined),
   } satisfies PluginMcpConfig;
 }
