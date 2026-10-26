@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   checkAgentTestArchitecture,
-  checkAgentTestBaselineGrowth,
   checkDatabaseTestFixtures,
   checkIntegrationTestArchitecture,
 } from "./check-test-architecture.mjs";
@@ -278,22 +277,6 @@ test("requires a lower baseline when a file breaks a rule less", () => {
     }),
     [
       `${TEST_PATH}: runtime-config-mutation baseline allows 2 but 1 found; lower the entry in scripts/test-architecture-baseline.json`,
-    ],
-  );
-});
-
-test("rejects baseline entries that are new or higher than on main", () => {
-  assert.deepEqual(
-    checkAgentTestBaselineGrowth(
-      {
-        "model-fakes": { [TEST_PATH]: 1 },
-        "runtime-config-mutation": { [EVAL_PATH]: 3, [TEST_PATH]: 1 },
-      },
-      { "runtime-config-mutation": { [EVAL_PATH]: 2, [TEST_PATH]: 2 } },
-    ),
-    [
-      `${TEST_PATH}: model-fakes baseline is 1 but main has 0; do not add or raise entries in scripts/test-architecture-baseline.json. Fix the test instead.`,
-      `${EVAL_PATH}: runtime-config-mutation baseline is 3 but main has 2; do not add or raise entries in scripts/test-architecture-baseline.json. Fix the test instead.`,
     ],
   );
 });

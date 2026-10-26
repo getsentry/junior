@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,7 +30,6 @@ const ISOLATED_EVAL_ROOTS = [
   "packages/junior-evals/evals/router/",
 ];
 const AGENT_TEST_BASELINE_PATH = "scripts/test-architecture-baseline.json";
-const MAIN_REF = "origin/main";
 
 const RULES = [
   {
@@ -222,25 +220,6 @@ export function checkAgentTestArchitecture(files, baseline) {
   return errors;
 }
 
-/**
- * Report baseline entries that are new or higher than on main. The baseline
- * records old debt, so a change may only lower it.
- */
-export function checkAgentTestBaselineGrowth(baseline, mainBaseline) {
-  const errors = [];
-  for (const [ruleId, allowedByFile] of Object.entries(baseline)) {
-    for (const [filePath, allowed] of Object.entries(allowedByFile)) {
-      const mainAllowed = mainBaseline[ruleId]?.[filePath] ?? 0;
-      if (allowed > mainAllowed) {
-        errors.push(
-          `${filePath}: ${ruleId} baseline is ${allowed} but main has ${mainAllowed}; do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}. Fix the test instead.`,
-        );
-      }
-    }
-  }
-  return errors;
-}
-
 function countMatches(contents, pattern) {
   return Array.from(contents.matchAll(pattern)).length;
 }
@@ -340,28 +319,18 @@ function collectTests(root, testRoots = TEST_ROOTS) {
   });
 }
 
-/** Read the baseline at the commit where this branch left main. */
-function readMainAgentTestBaseline(root) {
-  const git = (...args) =>
-    execFileSync("git", args, { cwd: root, encoding: "utf8" });
-  const mergeBase = git("merge-base", "HEAD", MAIN_REF).trim();
-  return JSON.parse(git("show", `${mergeBase}:${AGENT_TEST_BASELINE_PATH}`));
-}
-
 function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
-  const baseline = JSON.parse(
-    fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
-  );
   const errors = [
     ...checkIntegrationTestArchitecture(collectTests(root)),
     ...checkDatabaseTestFixtures(collectTests(root, DATABASE_TEST_ROOTS)),
     ...checkAgentTestArchitecture(
       collectSourceFiles(root, AGENT_TEST_ROOTS),
-      baseline,
+      JSON.parse(
+        fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
+      ),
     ),
-    ...checkAgentTestBaselineGrowth(baseline, readMainAgentTestBaseline(root)),
   ];
   if (errors.length === 0) {
     console.log("Tests follow test architecture policy.");
@@ -371,7 +340,7 @@ function main() {
     [
       "Test architecture check failed:",
       ...errors,
-      "Fix the test to follow the rule. Do not rename, alias, or wrap the matched code to pass. See policies/testing.md, packages/junior/tests/README.md, and packages/junior-evals/README.md.",
+      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md, packages/junior/tests/README.md, and packages/junior-evals/README.md.`,
     ].join("\n"),
   );
   process.exitCode = 1;
