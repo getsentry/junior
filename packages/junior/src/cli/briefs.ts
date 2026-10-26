@@ -23,7 +23,8 @@ import {
 } from "@/chat/briefs/snapshot";
 import { defaultModelId } from "@/chat/model-profile";
 import { completeObject } from "@/chat/pi/client";
-import { CLI_USAGE } from "./run";
+import { apiUrl, fetchJson } from "./api-client";
+import { CLI_USAGE, optionValue } from "./run";
 
 type PullOptions = {
   baseUrl: string;
@@ -39,14 +40,6 @@ type RunOptions = {
   snapshots: string[];
   turnByTurn: boolean;
 };
-
-function optionValue(argv: string[], index: number, option: string): string {
-  const value = argv[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${option} requires a value`);
-  }
-  return value;
-}
 
 function parsePullOptions(argv: string[]): PullOptions {
   const conversationIds: string[] = [];
@@ -118,30 +111,6 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
 async function configuredDefaultModelId(): Promise<string> {
   const { botConfig } = await import("@/chat/config");
   return defaultModelId(botConfig);
-}
-
-function apiUrl(baseUrl: string, pathname: string): URL {
-  const base = new URL(baseUrl);
-  base.pathname = `${base.pathname.replace(/\/*$/, "")}/`;
-  base.search = "";
-  base.hash = "";
-  return new URL(pathname.replace(/^\//, ""), base);
-}
-
-async function fetchJson(url: URL, token: string): Promise<unknown> {
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${token}`,
-    },
-  });
-  if (!response.ok) {
-    const body = (await response.text()).trim().slice(0, 500);
-    throw new Error(
-      `Dashboard request failed (${response.status} ${response.statusText})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return await response.json();
 }
 
 async function pullSnapshot(

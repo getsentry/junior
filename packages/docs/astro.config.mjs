@@ -173,6 +173,7 @@ export default defineConfig({
             { label: "junior admin", link: "/cli/admin/" },
             { label: "junior chat", link: "/cli/chat/" },
             { label: "junior briefs", link: "/cli/briefs/" },
+            { label: "junior conversations", link: "/cli/conversations/" },
             { label: "junior check", link: "/cli/check/" },
             {
               label: "junior snapshot create",
