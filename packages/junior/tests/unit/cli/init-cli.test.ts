@@ -36,6 +36,7 @@ function removeExampleOnlyServerConfig(source: string): string {
         "",
       )
       .replace('  import("./dashboard.ts"),\n', "")
+      .replace('  allowedDomains: ["sentry.io"],\n', "")
       .replace(/  dashboard: \{[\s\S]*?  \},\n  plugins,/, "  plugins,")
       .replace(/  configDefaults: \{[\s\S]*?  \},\n/, ""),
   );

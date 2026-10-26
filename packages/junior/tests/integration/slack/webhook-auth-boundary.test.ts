@@ -268,11 +268,8 @@ describe("Slack webhook auth boundary", () => {
     });
     const waitUntil = slack.waitUntil();
     const app = await createApp({
+      allowedDomains: ["example.com", "example.org"],
       conversationWorkQueue: () => queue,
-      dashboard: {
-        allowedGoogleDomains: ["example.com", "example.org"],
-        disabled: true,
-      },
       experimental: SUITE_EXPERIMENTAL,
       waitUntil: waitUntil.fn,
     });

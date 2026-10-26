@@ -90,13 +90,12 @@ If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 | `GOOGLE_CLIENT_SECRET` | Yes      | Google OAuth client secret.                                           |
 | `BETTER_AUTH_SECRET`   | No       | Optional override for dashboard cookies. Defaults to `JUNIOR_SECRET`. |
 
-Configure allowed Google Workspace domains in `createApp({ dashboard })` and `juniorNitro({ dashboard })` for normal deployments. Set these optional policy variables when you prefer environment-managed dashboard authorization:
+Dashboard auth requires at least one [allowed domain](#allowed-domains). Set these optional policy variables when you prefer environment-managed dashboard authorization:
 
-| Variable                              | Required | Purpose                                                                                    |
-| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------ |
-| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`     | No       | Comma-separated or JSON array of allowed domains. See [Allowed domains](#allowed-domains). |
-| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                              |
-| `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures.    |
+| Variable                              | Required | Purpose                                                                                 |
+| ------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                           |
+| `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures. |
 
 For local/demo dashboard visual QA, set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` to replace conversation API responses with sample fixtures.
 
@@ -212,9 +211,17 @@ already joined. Leave it unset in production unless you are testing that path.
 
 ## Allowed domains
 
-`dashboard.allowedGoogleDomains` (or `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`) is one
-list of domains for Slack and the dashboard. It is optional, but we recommend
-it. Junior logs a warning at startup when it is empty.
+`createApp({ allowedDomains })` is one list of domains for Slack and the
+dashboard. When the option is unset, Junior reads `JUNIOR_ALLOWED_DOMAINS`, a
+comma-separated or JSON array of domains. It is optional, but we recommend it.
+Junior logs a warning at startup when it is empty.
+
+```ts title="server.ts"
+export default await createApp({
+  allowedDomains: ["sentry.io"],
+  plugins,
+});
+```
 
 - **Slack:** Junior starts work from a mention or DM only when the email of the
   author's Slack profile is on an allowed domain. Slack verifies that email.
@@ -227,6 +234,10 @@ it. Junior logs a warning at startup when it is empty.
   accounts. Dashboard auth requires at least one domain.
 
 When the list is empty, every member of the Slack workspace can use Junior.
+
+The old `dashboard.allowedGoogleDomains` option and
+`JUNIOR_DASHBOARD_GOOGLE_DOMAINS` variable were removed. Junior fails at
+startup when either is set, so a stale config cannot silently allow everyone.
 
 `operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
 runs one SQL statement against the app database and returns up to 200 rows.

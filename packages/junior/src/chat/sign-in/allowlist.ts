@@ -1,7 +1,8 @@
 /**
- * Domains that may use Junior. Google sign-ins must come from a Google
- * Workspace account on one of these domains, and Slack authors must have a
- * Slack profile email on one of them. The dashboard and Slack use one list.
+ * Domains that may use Junior. Slack authors must have a Slack profile email
+ * on one of them, and dashboard Google sign-ins must come from a Google
+ * Workspace account whose `hd` claim is one of them. Slack and the dashboard
+ * share one list.
  */
 import { z } from "zod";
 
@@ -25,23 +26,36 @@ export function readEnvList(name: string): string[] | undefined {
 }
 
 /**
- * Resolve the allowed domains: the dashboard option when set, else its
- * environment variable. An empty list allows every domain.
+ * Resolve the allowed domains: the `createApp` option when set, else
+ * `JUNIOR_ALLOWED_DOMAINS`. An empty list allows every domain.
  */
-export function resolveAllowedDomains(
-  options: { allowedGoogleDomains?: string[] } = {},
-): string[] {
+export function resolveAllowedDomains(allowedDomains?: string[]): string[] {
   return [
     ...new Set(
-      (
-        options.allowedGoogleDomains ??
-        readEnvList("JUNIOR_DASHBOARD_GOOGLE_DOMAINS") ??
-        []
-      )
+      (allowedDomains ?? readEnvList("JUNIOR_ALLOWED_DOMAINS") ?? [])
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean),
     ),
   ];
+}
+
+/**
+ * Fail startup on the removed Google-specific names. Ignoring them would
+ * leave the list empty, which lets every Slack workspace member in.
+ */
+export function assertNoLegacyAllowedDomains(
+  dashboardOptionKeys: readonly string[],
+) {
+  if (dashboardOptionKeys.includes("allowedGoogleDomains")) {
+    throw new Error(
+      "dashboard.allowedGoogleDomains was removed; set createApp({ allowedDomains }) instead",
+    );
+  }
+  if (process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS?.trim()) {
+    throw new Error(
+      "JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed; set JUNIOR_ALLOWED_DOMAINS instead",
+    );
+  }
 }
 
 /** Return whether a verified domain may use Junior. An empty list allows all. */

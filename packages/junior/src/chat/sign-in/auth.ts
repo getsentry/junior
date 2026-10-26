@@ -14,11 +14,7 @@ import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { recordGoogleSignIn } from "@/chat/identities/sql";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-import {
-  isAllowedDomain,
-  readEnvList,
-  resolveAllowedDomains,
-} from "./allowlist";
+import { isAllowedDomain, readEnvList } from "./allowlist";
 
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
@@ -67,7 +63,6 @@ export interface SignInAuthConfig {
 
 /** Dashboard options that also configure the sign-in session. */
 export interface SignInAuthOptions {
-  allowedGoogleDomains?: string[];
   authPath?: string;
   baseURL?: string;
   sessionMaxAgeSeconds?: number;
@@ -90,6 +85,7 @@ function withHttps(host: string): string {
 /** Resolve sign-in settings from dashboard options and environment. */
 export function resolveSignInAuthConfig(
   agentName: string,
+  allowedDomains: string[],
   options: SignInAuthOptions = {},
 ): SignInAuthConfig {
   const authPath = `/${trimSlashes(options.authPath?.trim() || DEFAULT_AUTH_PATH, true)}`;
@@ -101,7 +97,7 @@ export function resolveSignInAuthConfig(
   );
   return {
     agentName,
-    allowedDomains: resolveAllowedDomains(options),
+    allowedDomains,
     authPath,
     baseURL,
     sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,

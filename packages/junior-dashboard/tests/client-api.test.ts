@@ -117,7 +117,7 @@ describe("dashboard client API", () => {
       user: { email: "dev@example.com", emailVerified: true },
     });
     const app = createDashboardApp({
-      allowedGoogleDomains: ["example.com"],
+      allowedDomains: ["example.com"],
       mockConversations: true,
       auth: {
         ...sessionAuth,

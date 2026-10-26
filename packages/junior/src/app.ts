@@ -121,7 +121,10 @@ import {
   type SignInAuth,
   type SignInAuthConfig,
 } from "@/chat/sign-in/auth";
-import { resolveAllowedDomains } from "@/chat/sign-in/allowlist";
+import {
+  assertNoLegacyAllowedDomains,
+  resolveAllowedDomains,
+} from "@/chat/sign-in/allowlist";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -147,6 +150,14 @@ export interface JuniorAppOptions extends BotModelConfig {
    * default-model call per completed Turn. Disabled by default.
    */
   briefs?: { enabled?: boolean };
+  /**
+   * Domains that may use Junior. Slack checks the email domain of the
+   * author's Slack profile. Dashboard Google sign-in checks the `hd` claim of
+   * the Google Workspace account. Defaults to `JUNIOR_ALLOWED_DOMAINS`.
+   * Recommended. Dashboard auth requires at least one. Empty lets every
+   * Slack workspace member use Junior.
+   */
+  allowedDomains?: string[];
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -466,15 +477,20 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       setCrossActorMidRunMode(options.slack.crossActorMidRunMode);
     }
     // One domain list for Slack authors and dashboard sign-ins.
-    allowedDomains = resolveAllowedDomains(dashboard);
+    assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
+    allowedDomains = resolveAllowedDomains(options?.allowedDomains);
     if (allowedDomains.length === 0) {
       logWarn("app.allowed_domains.unset", {
         "app.reason":
-          "dashboard.allowedGoogleDomains is empty, so any Slack workspace member can use Junior",
+          "allowedDomains is empty, so any Slack workspace member can use Junior",
       });
     }
     if (dashboard && !dashboard.disabled) {
-      signInConfig = resolveSignInAuthConfig(botConfig.userName, dashboard);
+      signInConfig = resolveSignInAuthConfig(
+        botConfig.userName,
+        allowedDomains,
+        dashboard,
+      );
     }
     if (shouldValidatePluginCatalog) {
       pluginCatalogRuntime.getSignature();
@@ -624,6 +640,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   mountRoutes(
     app,
     await createDashboardRouteRegistrations({
+      allowedDomains,
       auth: signInAuth,
       authenticatedRoutes,
       conversationWorkQueue,

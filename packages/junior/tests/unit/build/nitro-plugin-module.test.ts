@@ -449,7 +449,7 @@ describe("juniorNitro plugin modules", () => {
     };
 
     juniorNitro({
-      dashboard: { allowedGoogleDomains: ["sentry.io"] },
+      dashboard: { basePath: "/ops" },
     }).nitro.setup(nitro);
 
     expect(rollupBeforeHooks).toHaveLength(1);

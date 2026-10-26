@@ -17,7 +17,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
-    allowedGoogleDomains: ["sentry.io"],
+    allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
 }
@@ -224,7 +224,7 @@ describe("dashboard shell routes", () => {
   it("serves the installable shell manifest without auth", async () => {
     const app = createDashboardApp({
       agentName: "Marky",
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null),
       basePath: "/ops",
     });
