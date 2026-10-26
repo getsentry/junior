@@ -31,6 +31,23 @@ const googleClaimsSchema = z.object({
   picture: z.string().optional(),
 });
 
+/**
+ * Read Google ID token claims. Returns undefined for a malformed token, so
+ * Better Auth redirects with `unable_to_get_user_info` instead of a 500.
+ */
+function readGoogleClaims(
+  idToken: string,
+): z.infer<typeof googleClaimsSchema> | undefined {
+  let payload: unknown;
+  try {
+    payload = decodeJwt(idToken);
+  } catch {
+    return undefined;
+  }
+  const parsed = googleClaimsSchema.safeParse(payload);
+  return parsed.success ? parsed.data : undefined;
+}
+
 /** Verified Google account of one browser session. */
 export interface SignInSession {
   user: { email: string; emailVerified: boolean; name?: string };
@@ -157,9 +174,8 @@ function createBetterAuth(config: SignInAuthConfig) {
         // verified by `verifyIdToken` first.
         async getUserInfo(token) {
           if (!token.idToken) return null;
-          const parsed = googleClaimsSchema.safeParse(decodeJwt(token.idToken));
-          if (!parsed.success) return null;
-          const claims = parsed.data;
+          const claims = readGoogleClaims(token.idToken);
+          if (!claims) return null;
           if (!isAllowedDomain(claims.hd, allowedDomains)) return null;
           return {
             user: {

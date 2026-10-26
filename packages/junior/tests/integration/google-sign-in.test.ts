@@ -19,22 +19,26 @@ function createAuth(allowedDomains: string[]) {
   });
 }
 
-// Fake Google: the token endpoint returns an ID token with these claims.
-function useGoogleAccount(claims: { email: string; hd?: string }) {
+// Fake Google: the token endpoint returns this ID token.
+function useGoogleIdToken(idToken: string) {
   mswServer.use(
-    http.post("https://oauth2.googleapis.com/token", () => {
-      const payload = Buffer.from(
-        JSON.stringify({
-          aud: "google-client",
-          email_verified: true,
-          iss: "https://accounts.google.com",
-          sub: `google-${claims.email}`,
-          ...claims,
-        }),
-      ).toString("base64url");
-      return HttpResponse.json({ id_token: `e30.${payload}.sig` });
-    }),
+    http.post("https://oauth2.googleapis.com/token", () =>
+      HttpResponse.json({ id_token: idToken }),
+    ),
   );
+}
+
+function useGoogleAccount(claims: { email: string; hd?: string }) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      aud: "google-client",
+      email_verified: true,
+      iss: "https://accounts.google.com",
+      sub: `google-${claims.email}`,
+      ...claims,
+    }),
+  ).toString("base64url");
+  useGoogleIdToken(`e30.${payload}.sig`);
 }
 
 function cookieHeader(response: Response): string {
@@ -96,6 +100,11 @@ describe("Google sign-in", () => {
       expect(rejected.location).toContain("error=unable_to_get_user_info");
       expect(await auth.getSession(rejected.session)).toBeNull();
     }
+
+    // A malformed ID token is a normal sign-in error, not a server error.
+    useGoogleIdToken("not-a-jwt");
+    const malformed = await signIn(auth);
+    expect(malformed.location).toContain("error=unable_to_get_user_info");
 
     useGoogleAccount({ email: "person@example.org", hd: "example.org" });
     const accepted = await signIn(auth);
