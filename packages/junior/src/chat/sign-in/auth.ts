@@ -60,6 +60,15 @@ export interface SignInAuthOptions {
   trustedOrigins?: string[];
 }
 
+// Loop instead of a regex, so many slashes cannot make it slow.
+function trimSlashes(value: string, leading: boolean): string {
+  let start = 0;
+  let end = value.length;
+  while (leading && start < end && value[start] === "/") start += 1;
+  while (end > start && value[end - 1] === "/") end -= 1;
+  return value.slice(start, end);
+}
+
 function withHttps(host: string): string {
   return /^https?:\/\//.test(host) ? host : `https://${host}`;
 }
@@ -69,10 +78,13 @@ export function resolveSignInAuthConfig(
   agentName: string,
   options: SignInAuthOptions = {},
 ): SignInAuthConfig {
-  const authPath = `/${(options.authPath?.trim() || DEFAULT_AUTH_PATH).replace(/^\/+|\/+$/g, "")}`;
-  const baseURL = withHttps(
-    options.baseURL?.trim() || resolveBaseUrl() || "http://localhost:3000",
-  ).replace(/\/+$/, "");
+  const authPath = `/${trimSlashes(options.authPath?.trim() || DEFAULT_AUTH_PATH, true)}`;
+  const baseURL = trimSlashes(
+    withHttps(
+      options.baseURL?.trim() || resolveBaseUrl() || "http://localhost:3000",
+    ),
+    false,
+  );
   return {
     agentName,
     allowlist: resolveSignInAllowlist(options),
