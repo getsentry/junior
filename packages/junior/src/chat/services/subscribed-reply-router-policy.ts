@@ -31,6 +31,8 @@ Assess conversation floor ownership and whether the latest message continues wor
 - If one or more humans spoke after ${assistantName}, the floor is human-to-human unless the latest message turns back to ${assistantName} or clearly continues work ${assistantName} was already handling.
 - Shared topic vocabulary alone does not give ${assistantName} the floor.
 - Explicit @mentions of another person usually mean the floor is not with ${assistantName}, unless the message also clearly asks ${assistantName} to act.
+- A message that starts by addressing another person by name, such as "Alex, ..." or "Sam, ...", is aimed at that person, not at ${assistantName}.
+- After one human addresses another human, later messages from either of them stay in that human exchange until one of them clearly turns back to ${assistantName}. This includes "can you ..." requests and same-topic questions.
 
 # Reply Policy
 - route=reply when the latest message is explicitly aimed at ${assistantName}.
@@ -58,8 +60,8 @@ export function buildSubscribedReplyRouterQuestions(assistantName: string) {
       type: "choice",
       instructions: buildSubscribedReplyRouterPolicy(assistantName),
       criteria: {
-        reply: `${assistantName} should reply to the latest message.`,
-        stay_quiet: `${assistantName} should stay silent and remain in the thread.`,
+        reply: `The latest message is aimed at ${assistantName}. It addresses ${assistantName}, or it continues ${assistantName}'s latest answer, question, or plan and no human-to-human exchange started after it.`,
+        stay_quiet: `The latest message is aimed at another person or at the room. It addresses someone else by name or @mention, continues a human-to-human exchange, only shares topic words with earlier ${assistantName} messages, or is an acknowledgment or status chatter.`,
         unsubscribe: `The latest message clearly tells ${assistantName} to stop or leave the thread.`,
       } satisfies Record<SubscribedReplyRoute, string>,
     },
