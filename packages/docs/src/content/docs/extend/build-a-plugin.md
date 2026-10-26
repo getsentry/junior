@@ -137,16 +137,19 @@ service-account:
 - Junior rejects keys that it does not enforce, so a typo cannot change what
   the account may do.
 
-The declaration has no effect until a Junior admin connects the account:
+The declaration has no effect until a Junior admin connects the account. In
+the dashboard, open **Admin**, find the plugin under **Service accounts**, and
+click **Connect**. Sign in as the account that Junior uses, not as yourself.
+The same card shows who connected the account and lets an admin disconnect it.
+
+If the dashboard is not available, an operator can use the CLI on a machine
+with a browser and the deployment `REDIS_URL`:
 
 ```bash
 junior service-account connect my-provider
+junior service-account status my-provider
+junior service-account disconnect my-provider
 ```
-
-Run the command on a machine with a browser and the deployment `REDIS_URL`.
-Sign in as the account that Junior uses, not as yourself. Use
-`junior service-account status my-provider` and
-`junior service-account disconnect my-provider` to check or remove it.
 
 When the account is connected, Junior uses it only for an actor who has not
 connected their own account, and only for requests that the policy allows.

@@ -181,8 +181,8 @@ service-account:
     - fetch
 ```
 
-- It has no effect until an admin runs
-  `junior service-account connect <plugin-name>`.
+- It has no effect until an admin connects the account on the dashboard
+  Admin page, or runs `junior service-account connect <plugin-name>`.
 - `mcp-tools` lists the MCP tools that the account may call. List only what
   everyone who can talk to Junior may do, usually read tools. Other tools
   still use the actor's own OAuth.

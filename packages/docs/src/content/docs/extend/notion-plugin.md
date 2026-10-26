@@ -62,21 +62,22 @@ too.
 
 1. Create the Notion account and add it to your workspace. Give it only the
    pages and teamspaces that everyone who can talk to Junior may read.
-2. On a machine with a browser and the deployment `REDIS_URL`, run:
+2. In the Junior dashboard, open **Admin**. Under **Service accounts**, click
+   **Connect** on Notion. Only Junior admins see this section.
+3. Sign in to Notion as that account, not as yourself.
+4. Return to the Admin page. Notion shows as connected, with the admin who
+   connected it.
 
-   ```bash
-   junior service-account connect notion
-   ```
-
-3. Open the link and sign in to Notion as that account, not as yourself.
-4. Run `junior service-account status notion` to confirm the connection.
+If the dashboard is not available, run `junior service-account connect notion`
+on a machine with a browser and the deployment `REDIS_URL`.
 
 The service account calls only `notion-search` and `notion-fetch`. To create,
 update, or move pages, Junior still asks the person to connect their own
 Notion account. After they connect, Junior uses their account for all Notion
 tools.
 
-To remove the account, run `junior service-account disconnect notion`. Then
+To remove the account, click **Disconnect** on the Admin page, or run
+`junior service-account disconnect notion`. Then
 remove Junior's connection in the Notion account settings to revoke the grant.
 If Notion revokes the grant, Junior removes the account and falls back to
 per-user OAuth.

@@ -3,17 +3,19 @@
  *
  * Connecting a service account gives everyone who can talk to Junior the
  * access that the plugin's service account policy allows, to what that
- * account can see. Like `junior admin`, it runs only out
- * of band, against the deployment state store. Slack never sees the sign-in
- * link or any token.
+ * account can see. The dashboard Admin page is the main way to connect one.
+ * This CLI is the out-of-band fallback. It runs against the deployment state
+ * store, and Slack never sees the sign-in link or any token.
  */
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
-  connectMcpServiceAccount,
-  deleteMcpServiceAccountCredentials,
-  getMcpServiceAccountCredentials,
-} from "@/chat/mcp/service-account";
+  disconnectServiceAccount,
+  finishServiceAccountSignIn,
+  getServiceAccountStatus,
+  serviceAccountPlugins,
+  startServiceAccountSignIn,
+} from "@/chat/credentials/service-account";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -83,10 +85,9 @@ function requireServiceAccountPlugin(
   if (plugin?.manifest.serviceAccount) {
     return plugin;
   }
-  const supported = pluginCatalogRuntime
-    .getProviders()
-    .filter((candidate) => candidate.manifest.serviceAccount)
-    .map((candidate) => candidate.manifest.name);
+  const supported = serviceAccountPlugins(
+    pluginCatalogRuntime.getProviders(),
+  ).map((candidate) => candidate.manifest.name);
   console.error(
     `Plugin "${name}" does not support a service account.` +
       (supported.length ? ` Supported plugins: ${supported.join(", ")}.` : ""),
@@ -98,22 +99,27 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
   const provider = plugin.manifest.name;
   const loopback = await listenForCallback();
   try {
-    await connectMcpServiceAccount({
+    const { authorizationUrl } = await startServiceAccountSignIn({
       plugin,
       redirectUrl: loopback.redirectUrl,
-      authorize: async (authorizationUrl) => {
-        console.log(
-          [
-            `Open this URL in a browser on this machine. Sign in as the account Junior should use for ${provider}, not as yourself:`,
-            "",
-            authorizationUrl.toString(),
-            "",
-            `Waiting for the redirect to ${loopback.redirectUrl} ...`,
-          ].join("\n"),
-        );
-        return await loopback.waitForCallback();
-      },
     });
+    console.log(
+      [
+        `Open this URL in a browser on this machine. Sign in as the account Junior should use for ${provider}, not as yourself:`,
+        "",
+        authorizationUrl.toString(),
+        "",
+        `Waiting for the redirect to ${loopback.redirectUrl} ...`,
+      ].join("\n"),
+    );
+    const result = await finishServiceAccountSignIn({
+      callback: await loopback.waitForCallback(),
+      plugin,
+    });
+    if (!result.ok) {
+      console.error(result.message);
+      return 1;
+    }
   } finally {
     loopback.close();
   }
@@ -125,19 +131,18 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
 }
 
 async function runStatus(plugin: PluginDefinition): Promise<number> {
-  const provider = plugin.manifest.name;
-  const credentials = await getMcpServiceAccountCredentials(provider);
+  const status = await getServiceAccountStatus(plugin);
   console.log(
-    credentials
-      ? `The ${provider} service account is connected since ${new Date(credentials.connectedAtMs).toISOString()}.`
-      : `The ${provider} service account is not connected.`,
+    status.connectedAt
+      ? `The ${status.provider} service account is connected since ${status.connectedAt}.`
+      : `The ${status.provider} service account is not connected.`,
   );
   return 0;
 }
 
 async function runDisconnect(plugin: PluginDefinition): Promise<number> {
   const provider = plugin.manifest.name;
-  await deleteMcpServiceAccountCredentials(provider);
+  await disconnectServiceAccount(plugin);
   console.log(
     `Removed the ${provider} service account from Junior. To revoke the grant, remove Junior's connection in the ${provider} account settings.`,
   );

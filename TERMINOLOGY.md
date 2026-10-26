@@ -38,8 +38,8 @@ Canonical words used across Junior's code and documentation.
   CLI grants or revokes it. Plugins use it for setup that other users must not
   reach. Do not add plugin-specific admin lists.
 - **Service account**: an optional provider account, often a bot, that Junior
-  itself uses for one plugin. An Admin connects it with
-  `junior service-account connect`. Per-Actor OAuth stays the default. Junior
+  itself uses for one plugin. An Admin connects it on the dashboard Admin
+  page, or with `junior service-account connect`. Per-Actor OAuth stays the default. Junior
   uses the service account only for an Actor who has not connected their own
   account, and only for requests that the plugin's `service-account` policy
   allows.

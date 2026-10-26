@@ -1,26 +1,27 @@
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mswServer } from "../../msw/server";
+import {
+  SERVICE_ACCOUNT_MCP_CODE,
+  SERVICE_ACCOUNT_MCP_URL,
+  useServiceAccountMcpServer,
+} from "../../fixtures/service-account-mcp";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import {
   deleteMcpStoredOAuthCredentials,
   putMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import {
-  connectMcpServiceAccount,
   deleteMcpServiceAccountCredentials,
+  finishMcpServiceAccountSignIn,
   getMcpServiceAccountCredentials,
+  startMcpServiceAccountSignIn,
 } from "@/chat/mcp/service-account";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 
-const ORIGIN = "https://service-account-mcp.example.test";
-const MCP_URL = `${ORIGIN}/mcp`;
 const PROVIDER = "docs-mcp";
-const AUTHORIZATION_CODE = "service-account-code";
 const ACTOR_ID = "U123";
 
 const plugin: PluginDefinition = {
@@ -32,134 +33,26 @@ const plugin: PluginDefinition = {
     configKeys: [],
     mcp: {
       transport: "http",
-      url: MCP_URL,
+      url: SERVICE_ACCOUNT_MCP_URL,
       allowedTools: ["search", "create"],
     },
     serviceAccount: { mcpTools: ["search"] },
   },
 };
 
-/**
- * Serve an MCP server with dynamic client registration and rotating refresh
- * tokens. Each tool call returns the access token that it received.
- */
-function useServiceAccountMcpServer() {
-  const accessTokens = new Set<string>();
-  const refreshTokens = new Set<string>();
-  let issued = 0;
-  const issue = () => {
-    issued += 1;
-    const tokens = {
-      access_token: `access-${issued}`,
-      refresh_token: `refresh-${issued}`,
-    };
-    accessTokens.add(tokens.access_token);
-    refreshTokens.add(tokens.refresh_token);
-    return HttpResponse.json({
-      ...tokens,
-      token_type: "Bearer",
-      expires_in: 3600,
-    });
-  };
-
-  mswServer.use(
-    http.get(MCP_URL, () => new HttpResponse(null, { status: 405 })),
-    http.post(MCP_URL, async ({ request }) => {
-      const token = request.headers
-        .get("authorization")
-        ?.replace(/^Bearer /, "");
-      if (!token || !accessTokens.has(token)) {
-        return new HttpResponse(null, {
-          status: 401,
-          headers: {
-            "WWW-Authenticate": `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/mcp"`,
-          },
-        });
-      }
-      const message = (await request.json()) as {
-        id?: unknown;
-        method: string;
-      };
-      if (message.method === "notifications/initialized") {
-        return new HttpResponse(null, { status: 202 });
-      }
-      const result =
-        message.method === "initialize"
-          ? {
-              protocolVersion: "2025-03-26",
-              capabilities: { tools: {} },
-              serverInfo: { name: PROVIDER, version: "1.0.0" },
-            }
-          : message.method === "tools/list"
-            ? {
-                tools: ["search", "create"].map((name) => ({
-                  name,
-                  inputSchema: { type: "object", properties: {} },
-                })),
-              }
-            : { content: [{ type: "text", text: token }] };
-      return HttpResponse.json({ jsonrpc: "2.0", id: message.id, result });
-    }),
-    http.get(`${ORIGIN}/.well-known/oauth-protected-resource/mcp`, () =>
-      HttpResponse.json({
-        resource: MCP_URL,
-        authorization_servers: [ORIGIN],
-      }),
-    ),
-    http.get(`${ORIGIN}/.well-known/oauth-authorization-server`, () =>
-      HttpResponse.json({
-        issuer: ORIGIN,
-        authorization_endpoint: `${ORIGIN}/authorize`,
-        token_endpoint: `${ORIGIN}/token`,
-        registration_endpoint: `${ORIGIN}/register`,
-        response_types_supported: ["code"],
-        code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["none"],
-      }),
-    ),
-    http.post(`${ORIGIN}/register`, async ({ request }) => {
-      const body = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json({ ...body, client_id: "registered-client" });
-    }),
-    http.post(`${ORIGIN}/token`, async ({ request }) => {
-      const params = new URLSearchParams(await request.text());
-      if (
-        params.get("grant_type") === "authorization_code" &&
-        params.get("code") === AUTHORIZATION_CODE
-      ) {
-        return issue();
-      }
-      const refreshToken = params.get("refresh_token");
-      if (
-        params.get("grant_type") === "refresh_token" &&
-        refreshToken &&
-        refreshTokens.delete(refreshToken)
-      ) {
-        return issue();
-      }
-      return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
-    }),
-  );
-
-  return {
-    expireAccessTokens: () => accessTokens.clear(),
-    revokeGrant: () => {
-      accessTokens.clear();
-      refreshTokens.clear();
-    },
-  };
-}
-
 async function connectServiceAccount(): Promise<void> {
-  await connectMcpServiceAccount({
+  const { authorizationUrl } = await startMcpServiceAccountSignIn({
     plugin,
     redirectUrl: "http://127.0.0.1:8765/oauth/callback",
-    authorize: async (authorizationUrl) =>
-      new URLSearchParams({
-        code: AUTHORIZATION_CODE,
-        state: authorizationUrl.searchParams.get("state") ?? "",
-      }),
   });
+  const result = await finishMcpServiceAccountSignIn({
+    callback: new URLSearchParams({
+      code: SERVICE_ACCOUNT_MCP_CODE,
+      state: authorizationUrl.searchParams.get("state") ?? "",
+    }),
+    plugin,
+  });
+  expect(result.ok).toBe(true);
 }
 
 /** Actor OAuth with no stored tokens, so every call needs authorization. */

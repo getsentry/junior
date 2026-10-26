@@ -3,9 +3,9 @@
  *
  * This is the MCP surface of a plugin's service account. See
  * `@/chat/credentials/service-account` for the credential order and the
- * policy. An Admin connects the account with
- * `junior service-account connect <plugin>`. The credential stays on the
- * host. The sandbox and the model never get it.
+ * policy. An Admin connects the account from the dashboard Admin page, or
+ * with `junior service-account connect <plugin>`. The credential stays on
+ * the host. The sandbox and the model never get it.
  */
 import { randomUUID } from "node:crypto";
 import {
@@ -24,11 +24,15 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const SERVICE_ACCOUNT_KEY_PREFIX = "junior:mcp_service_account";
+const SIGN_IN_KEY_PREFIX = "junior:mcp_service_account_sign_in";
+const SIGN_IN_TTL_MS = 10 * 60 * 1000;
 
 /** Stored OAuth state for one plugin's service account. */
 export interface McpServiceAccountCredentials {
   clientInformation: OAuthClientInformationMixed;
   connectedAtMs: number;
+  /** Email of the Admin who connected the account. Missing for CLI connections. */
+  connectedBy?: string;
   discoveryState?: OAuthDiscoveryState;
   /** Redirect URI registered for the client. The SDK refreshes tokens only for clients with one. */
   redirectUrl: string;
@@ -60,6 +64,9 @@ function parseCredentials(
       clientInformation:
         parsed.clientInformation as OAuthClientInformationMixed,
       connectedAtMs: parsed.connectedAtMs,
+      ...(typeof parsed.connectedBy === "string"
+        ? { connectedBy: parsed.connectedBy }
+        : undefined),
       ...(isRecord(parsed.discoveryState)
         ? {
             // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
@@ -193,79 +200,206 @@ export function createMcpServiceAccountClientProvider(
   };
 }
 
-/**
- * Sign in to a plugin's MCP server as its service account and save the grant.
- *
- * The caller owns the browser step and the redirect listener. Whoever signs
- * in decides which account Junior uses, so only Junior admins may run this.
- */
-export async function connectMcpServiceAccount(input: {
-  /** Show the sign-in URL and wait for the redirect query parameters. */
-  authorize: (authorizationUrl: URL) => Promise<URLSearchParams>;
-  plugin: PluginDefinition;
+/** Pending MCP service account sign-in, kept until the OAuth callback. */
+interface McpServiceAccountSignIn {
+  clientInformation: OAuthClientInformationMixed;
+  codeVerifier: string;
+  discoveryState?: OAuthDiscoveryState;
+  provider: string;
   redirectUrl: string;
-}): Promise<McpServiceAccountCredentials> {
-  const mcp = input.plugin.manifest.mcp;
-  const provider = input.plugin.manifest.name;
-  if (!mcp || !input.plugin.manifest.serviceAccount) {
-    throw new Error(`Plugin "${provider}" does not support a service account`);
-  }
+  /** Email of the Admin who started the sign-in. Only they may finish it. */
+  startedBy?: string;
+}
 
-  const state = randomUUID();
-  let authorizationUrl: URL | undefined;
-  let clientInformation: OAuthClientInformationMixed | undefined;
-  let codeVerifier: string | undefined;
-  let discoveryState: OAuthDiscoveryState | undefined;
-  let tokens: OAuthTokens | undefined;
-  const signIn: OAuthClientProvider = {
+function signInKey(state: string): string {
+  return `${SIGN_IN_KEY_PREFIX}:${state}`;
+}
+
+function parseSignIn(value: unknown): McpServiceAccountSignIn | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (
+      !isRecord(parsed) ||
+      !isRecord(parsed.clientInformation) ||
+      typeof parsed.codeVerifier !== "string" ||
+      typeof parsed.provider !== "string" ||
+      typeof parsed.redirectUrl !== "string"
+    ) {
+      return undefined;
+    }
+    return {
+      clientInformation:
+        parsed.clientInformation as OAuthClientInformationMixed,
+      codeVerifier: parsed.codeVerifier,
+      ...(isRecord(parsed.discoveryState)
+        ? {
+            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
+          }
+        : undefined),
+      provider: parsed.provider,
+      redirectUrl: parsed.redirectUrl,
+      ...(typeof parsed.startedBy === "string"
+        ? { startedBy: parsed.startedBy }
+        : undefined),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Result of finishing a sign-in. A failure message is safe to show the Admin. */
+export type McpServiceAccountSignInResult =
+  | { ok: true; credentials: McpServiceAccountCredentials }
+  | { ok: false; message: string };
+
+/** Build an OAuth client provider that keeps sign-in state in memory. */
+function signInProvider(input: {
+  pending?: McpServiceAccountSignIn;
+  redirectUrl: string;
+  state?: string;
+}) {
+  const captured: {
+    authorizationUrl?: URL;
+    clientInformation?: OAuthClientInformationMixed;
+    codeVerifier?: string;
+    discoveryState?: OAuthDiscoveryState;
+    tokens?: OAuthTokens;
+  } = {
+    clientInformation: input.pending?.clientInformation,
+    codeVerifier: input.pending?.codeVerifier,
+    discoveryState: input.pending?.discoveryState,
+  };
+  const provider: OAuthClientProvider = {
     redirectUrl: input.redirectUrl,
     clientMetadata: clientMetadata(input.redirectUrl),
-    state: () => state,
-    clientInformation: () => clientInformation,
+    ...(input.state ? { state: () => input.state as string } : undefined),
+    clientInformation: () => captured.clientInformation,
     saveClientInformation: (next) => {
-      clientInformation = next;
+      captured.clientInformation = next;
     },
-    tokens: () => tokens,
+    tokens: () => captured.tokens,
     saveTokens: (next) => {
-      tokens = next;
+      captured.tokens = next;
     },
-    discoveryState: () => discoveryState,
+    discoveryState: () => captured.discoveryState,
     saveDiscoveryState: (next) => {
-      discoveryState = next;
+      captured.discoveryState = next;
     },
     redirectToAuthorization: (url) => {
-      authorizationUrl = url;
+      captured.authorizationUrl = url;
     },
     saveCodeVerifier: (next) => {
-      codeVerifier = next;
+      captured.codeVerifier = next;
     },
     codeVerifier: () => {
-      if (!codeVerifier) {
+      if (!captured.codeVerifier) {
         throw new Error("Missing MCP OAuth code verifier");
       }
-      return codeVerifier;
+      return captured.codeVerifier;
     },
   };
+  return { captured, provider };
+}
 
-  if ((await auth(signIn, { serverUrl: mcp.url })) !== "REDIRECT") {
+function requireServiceAccountMcp(plugin: PluginDefinition) {
+  const mcp = plugin.manifest.mcp;
+  if (!mcp || !plugin.manifest.serviceAccount) {
+    throw new Error(
+      `Plugin "${plugin.manifest.name}" does not support a service account`,
+    );
+  }
+  return mcp;
+}
+
+/**
+ * Start a service account sign-in and return the provider sign-in URL.
+ *
+ * The pending sign-in is single use and expires after a short time. Whoever
+ * signs in decides which account Junior uses, so only Junior admins may start
+ * it.
+ */
+export async function startMcpServiceAccountSignIn(input: {
+  plugin: PluginDefinition;
+  redirectUrl: string;
+  startedBy?: string;
+}): Promise<{ authorizationUrl: URL }> {
+  const mcp = requireServiceAccountMcp(input.plugin);
+  const provider = input.plugin.manifest.name;
+  const state = randomUUID();
+  const signIn = signInProvider({ redirectUrl: input.redirectUrl, state });
+  if ((await auth(signIn.provider, { serverUrl: mcp.url })) !== "REDIRECT") {
     throw new Error(`${provider} did not start an OAuth sign-in`);
   }
-  if (!authorizationUrl) {
+  const { authorizationUrl, clientInformation, codeVerifier, discoveryState } =
+    signIn.captured;
+  if (!authorizationUrl || !clientInformation || !codeVerifier) {
     throw new Error(`${provider} did not return an authorization URL`);
   }
-  const callback = await input.authorize(authorizationUrl);
-  if (callback.get("state") !== state) {
-    throw new Error("OAuth callback state does not match this sign-in");
+  await getStateAdapter().set(
+    signInKey(state),
+    JSON.stringify({
+      clientInformation,
+      codeVerifier,
+      ...(discoveryState ? { discoveryState } : undefined),
+      provider,
+      redirectUrl: input.redirectUrl,
+      ...(input.startedBy ? { startedBy: input.startedBy } : undefined),
+    } satisfies McpServiceAccountSignIn),
+    SIGN_IN_TTL_MS,
+  );
+  return { authorizationUrl };
+}
+
+/**
+ * Finish a service account sign-in from the OAuth callback parameters.
+ *
+ * It accepts only a pending sign-in for the same plugin that the same Admin
+ * started. It then saves the grant as the plugin's service account.
+ */
+export async function finishMcpServiceAccountSignIn(input: {
+  callback: URLSearchParams;
+  connectedBy?: string;
+  plugin: PluginDefinition;
+}): Promise<McpServiceAccountSignInResult> {
+  const mcp = requireServiceAccountMcp(input.plugin);
+  const provider = input.plugin.manifest.name;
+  const state = input.callback.get("state");
+  const pending = state
+    ? parseSignIn(await getStateAdapter().get(signInKey(state)))
+    : undefined;
+  if (
+    !state ||
+    !pending ||
+    pending.provider !== provider ||
+    pending.startedBy !== input.connectedBy
+  ) {
+    return {
+      ok: false,
+      message: "This sign-in expired or did not start here. Start it again.",
+    };
   }
-  const error = callback.get("error");
+  await getStateAdapter().delete(signInKey(state));
+  const error = input.callback.get("error");
   if (error) {
-    throw new Error(`${provider} rejected the sign-in: ${error}`);
+    return {
+      ok: false,
+      message: `${provider} did not finish the sign-in (${error}).`,
+    };
   }
-  const authorizationCode = callback.get("code");
+  const authorizationCode = input.callback.get("code");
   if (!authorizationCode) {
-    throw new Error("OAuth callback has no authorization code");
+    return {
+      ok: false,
+      message: `${provider} did not return an authorization code.`,
+    };
   }
-  await auth(signIn, { serverUrl: mcp.url, authorizationCode });
+  const signIn = signInProvider({ pending, redirectUrl: pending.redirectUrl });
+  await auth(signIn.provider, { serverUrl: mcp.url, authorizationCode });
+  const { clientInformation, discoveryState, tokens } = signIn.captured;
   if (!clientInformation || !tokens) {
     throw new Error(`${provider} did not issue tokens`);
   }
@@ -273,10 +407,11 @@ export async function connectMcpServiceAccount(input: {
   const credentials: McpServiceAccountCredentials = {
     clientInformation,
     connectedAtMs: Date.now(),
+    ...(input.connectedBy ? { connectedBy: input.connectedBy } : undefined),
     ...(discoveryState ? { discoveryState } : undefined),
-    redirectUrl: input.redirectUrl,
+    redirectUrl: pending.redirectUrl,
     tokens,
   };
   await putMcpServiceAccountCredentials(provider, credentials);
-  return credentials;
+  return { ok: true, credentials };
 }

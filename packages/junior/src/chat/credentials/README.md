@@ -38,8 +38,9 @@ A plugin can declare an optional install-wide provider account, often a bot.
 The model is the same for every provider:
 
 1. Per-Actor OAuth is the default. An Actor's own connection always wins.
-2. An Admin can connect one service account per plugin with
-   `junior service-account connect <plugin>`. Until then, it has no effect.
+2. An Admin can connect one service account per plugin from the dashboard
+   Admin page. The `junior service-account connect <plugin>` CLI is a
+   fallback. Until then, it has no effect.
 3. The service account serves an Actor without their own connection, but
    only for requests that the plugin's `service-account` policy allows.
    Other requests still ask the Actor to connect.
@@ -57,6 +58,12 @@ The model is the same for every provider:
   provider account should see only what all of them may see.
 - Unknown policy keys fail manifest validation. A key that no surface
   enforces must not be accepted.
+- `service-account.ts` also owns the connect flow. The dashboard routes in
+  `api/service-accounts/` and the CLI both call it. Whoever signs in picks
+  the account that everyone falls back to, so every dashboard route,
+  including the OAuth callback, requires an Admin. A pending sign-in is
+  single-use, expires after 10 minutes, and finishes only for the Admin who
+  started it.
 
 ## OAuth Flow
 

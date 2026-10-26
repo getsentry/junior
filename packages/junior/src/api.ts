@@ -8,6 +8,7 @@ import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
+import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
@@ -85,6 +86,7 @@ export function createJuniorApi(
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
+  app.route("/api/service-accounts", createServiceAccountRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
