@@ -632,10 +632,10 @@ export async function archiveExpiredMemoryBatch(args: {
   return { archivedCount: archivedIds.length };
 }
 
-function denseRanks<T>(
+function withDenseRanks<T>(
   values: T[],
   key: (value: T) => string | number,
-): number[] {
+): Array<{ rank: number; value: T }> {
   let previous: string | number | undefined;
   let rank = 0;
   return values.map((value, index) => {
@@ -644,7 +644,7 @@ function denseRanks<T>(
       rank = index + 1;
       previous = current;
     }
-    return rank;
+    return { rank, value };
   });
 }
 
@@ -659,13 +659,14 @@ async function embedOne(
   const result = embeddingResultSchema.parse(
     await embedder.embedTexts({ texts: [normalized] }),
   );
-  if (result.vectors.length !== 1) {
+  const [vector] = result.vectors;
+  if (result.vectors.length !== 1 || !vector) {
     throw new Error("Embedding provider returned an unexpected vector count.");
   }
   return {
     model: result.model,
     provider: result.provider,
-    vector: result.vectors[0],
+    vector,
   };
 }
 
@@ -1110,11 +1111,12 @@ async function searchVisibleLexicalMemories(args: {
     .from(candidates)
     .orderBy(desc(textRank), desc(candidates.observedAtMs), asc(candidates.id))
     .limit(args.limit);
-  const ranks = denseRanks(rows, (row) => Number(row.textRank));
-  return rows.map((row, index) => ({
-    lexical: { rank: ranks[index] },
-    memory: parseMemoryRow(row.memory),
-  }));
+  return withDenseRanks(rows, (row) => Number(row.textRank)).map(
+    ({ rank, value: row }) => ({
+      lexical: { rank },
+      memory: parseMemoryRow(row.memory),
+    }),
+  );
 }
 
 /** Search active visible records with pgvector cosine distance. */
@@ -1167,25 +1169,26 @@ async function searchVisibleVectorMemories(args: {
       asc(juniorMemoryMemories.id),
     )
     .limit(args.limit);
-  const ranks = denseRanks(rows, (row) => Number(row.distance));
-  return rows.flatMap((row, index) => {
-    const distanceValue = Number(row.distance);
-    if (
-      row.distance === null ||
-      !Number.isFinite(distanceValue) ||
-      hashEmbeddedContent(row.memory.content) !== row.contentHash
-    ) {
-      return [];
-    }
-    return [
-      {
-        memory: parseMemoryRow(row.memory),
-        vector: {
-          rank: ranks[index],
+  return withDenseRanks(rows, (row) => Number(row.distance)).flatMap(
+    ({ rank, value: row }) => {
+      const distanceValue = Number(row.distance);
+      if (
+        row.distance === null ||
+        !Number.isFinite(distanceValue) ||
+        hashEmbeddedContent(row.memory.content) !== row.contentHash
+      ) {
+        return [];
+      }
+      return [
+        {
+          memory: parseMemoryRow(row.memory),
+          vector: {
+            rank,
+          },
         },
-      },
-    ];
-  });
+      ];
+    },
+  );
 }
 
 /** Create a context-bound SQL-backed store for explicit memory operations. */

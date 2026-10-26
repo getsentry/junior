@@ -88,6 +88,7 @@ function findNextMarkdownLink(
       start: linkStart,
     };
   }
+  return undefined;
 }
 
 function findMarkdownLinkSyntaxRanges(
@@ -148,6 +149,7 @@ function readMarkdownDestination(
     const href = text.slice(start, index);
     return href ? { end: index + 1, href } : undefined;
   }
+  return undefined;
 }
 
 function findCommonMarkAutolinks(
@@ -199,6 +201,7 @@ function findNextBareLink(
       start: match.index,
     };
   }
+  return undefined;
 }
 
 function findBareLinks(

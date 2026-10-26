@@ -113,13 +113,15 @@ interface ActiveContextCompactionArgs {
 
 /** Raised when Junior cannot compact history below the active model's hard ceiling. */
 export class ContextInputLimitExceededError extends Error {
-  constructor(
-    readonly estimatedTokens: number,
-    readonly inputLimitTokens: number,
-  ) {
+  readonly estimatedTokens: number;
+  readonly inputLimitTokens: number;
+
+  constructor(estimatedTokens: number, inputLimitTokens: number) {
     super(
       `Agent context is ${estimatedTokens} estimated input tokens, above the ${inputLimitTokens} token limit`,
     );
+    this.estimatedTokens = estimatedTokens;
+    this.inputLimitTokens = inputLimitTokens;
     this.name = "ContextInputLimitExceededError";
   }
 }

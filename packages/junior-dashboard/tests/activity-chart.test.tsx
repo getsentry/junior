@@ -286,10 +286,10 @@ describe("SystemMetricCharts average line", () => {
     expect(
       formatCacheShare(summary.input.cacheCreationTokens, summary.total),
     ).toBe("11.1%");
-    const missing = { ...days[0], cacheCreationTokens: undefined };
+    const missing = { ...days[0]!, cacheCreationTokens: undefined };
     expect(cacheInputTotal(missing)).toBeUndefined();
-    expect(summarizeCacheInput([missing, days[1]]).total).toBeUndefined();
-    expect(summarizeCacheInput([missing, days[1]]).incompletePeriods).toBe(1);
+    expect(summarizeCacheInput([missing, days[1]!]).total).toBeUndefined();
+    expect(summarizeCacheInput([missing, days[1]!]).incompletePeriods).toBe(1);
     const zeroWrites = { ...days[0], cacheCreationTokens: 0 };
     expect(cacheInputTotal(zeroWrites)).toBe(1_000_000_000);
     expect(formatCacheShare(0, cacheInputTotal(zeroWrites))).toBe("0.0%");

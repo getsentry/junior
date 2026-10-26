@@ -120,9 +120,10 @@ function applyAttribution(body: string, label: string | undefined): string {
     `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
   );
   const existingMatch = normalizedBody.match(existing);
-  const existingLabels = existingMatch
-    ? parseExistingLabels(existingMatch[1])
-    : [];
+  const existingLabels =
+    existingMatch?.[1] !== undefined
+      ? parseExistingLabels(existingMatch[1])
+      : [];
   const labels =
     label && !existingLabels.includes(label)
       ? [...existingLabels, label]

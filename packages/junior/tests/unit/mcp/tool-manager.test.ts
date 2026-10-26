@@ -29,10 +29,10 @@ vi.mock("@/chat/mcp/client", () => {
   }
 
   class MockPluginMcpClient {
-    constructor(
-      private readonly plugin: PluginDefinition,
-      options?: unknown,
-    ) {
+    private readonly plugin: PluginDefinition;
+
+    constructor(plugin: PluginDefinition, options?: unknown) {
+      this.plugin = plugin;
       if (clientSetupError.value) {
         throw clientSetupError.value;
       }
