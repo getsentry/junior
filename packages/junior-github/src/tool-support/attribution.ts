@@ -2,6 +2,7 @@ import type {
   Actor,
   Identity,
   PluginLogger,
+  Source,
   User,
 } from "@sentry/junior-plugin-api";
 
@@ -53,25 +54,50 @@ function cleanDisplayValue(
   return cleaned;
 }
 
+/** Name the Automation run that made this write. */
+function automationLabel(
+  source: Source | undefined,
+  automationUrl: string | undefined,
+): string | undefined {
+  if (
+    (source?.kind !== "event_automation" &&
+      source?.kind !== "scheduled_automation") ||
+    !source.automationId
+  ) {
+    return undefined;
+  }
+  const automation = `automation \`${source.automationId}\``;
+  const label = automationUrl
+    ? `[${automation}](${automationUrl})`
+    : automation;
+  return source.automationRunId
+    ? `${label} · Run ID \`${source.automationRunId}\``
+    : label;
+}
+
 /**
  * Resolve the requester display label through the host identity path first.
  *
- * Prefer a linked GitHub login as an `@` mention so GitHub subscribes the
- * requester. Otherwise use the linked user name, then the stored identity
- * name/handle, then the already-hydrated actor profile. Never publish a raw
- * actor id.
+ * Automation runs use the automation label. Other system actors get no label
+ * because their names are internal. For people, prefer a linked GitHub login
+ * as an `@` mention so GitHub subscribes the requester. Otherwise use the
+ * linked user name, then the stored identity name/handle, then the
+ * already-hydrated actor profile. Never publish a raw actor id.
  */
 function requesterLabel(args: {
   actor: Actor | undefined;
+  automationUrl?: string;
   identity?: Identity;
+  source?: Source;
   user?: User;
 }): string | undefined {
   const { actor, identity, user } = args;
-  if (!actor) {
-    return undefined;
+  const automation = automationLabel(args.source, args.automationUrl);
+  if (automation) {
+    return automation;
   }
-  if (actor.platform === "system") {
-    return `Junior system actor \`${actor.name}\``;
+  if (!actor || actor.platform === "system") {
+    return undefined;
   }
 
   const login = linkedGitHubLogin(user);
@@ -101,10 +127,11 @@ function parseExistingLabels(blockContents: string): string[] {
   }
   const withoutLeadIn = trimmed.replace(/^(?:Requested by|via)\s+/i, "");
   // Only split on a comma that starts the next label (bold markdown, a GitHub
-  // mention, a system-actor label, or a legacy repeated "via") so a display
-  // name that itself contains a comma is not broken into extra labels.
+  // mention, an automation label, a system-actor label, or a legacy repeated
+  // "via") so a display name that itself contains a comma is not broken into
+  // extra labels.
   return withoutLeadIn
-    .split(/,\s*(?=\*\*|@|Junior system actor `|via\s)/i)
+    .split(/,\s*(?=\*\*|@|\[?automation `|Junior system actor `|via\s)/i)
     .map((entry) => entry.trim().replace(/^via\s+/i, ""))
     .filter(Boolean);
 }
@@ -152,7 +179,9 @@ export async function appendGitHubRequesterAttribution(
   body: string,
   ctx: {
     actor?: Actor;
+    automationLink?: { url: string };
     log: PluginLogger;
+    source?: Source;
     users: {
       resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
     };
@@ -178,7 +207,9 @@ export async function appendGitHubRequesterAttribution(
     body,
     requesterLabel({
       actor: ctx.actor,
+      automationUrl: ctx.automationLink?.url,
       identity: resolved?.identity,
+      source: ctx.source,
       user: resolved?.user,
     }),
   );

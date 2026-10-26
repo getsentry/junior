@@ -154,6 +154,7 @@ export async function ingestEventAutomations(
             }
           : undefined;
       const dispatch = await dispatchEventAutomation({
+        automationId: task.id,
         conversationWorkQueue: options.queue,
         nowMs,
         options: {
