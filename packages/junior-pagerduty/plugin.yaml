@@ -1,0 +1,14 @@
+name: pagerduty
+display-name: PagerDuty
+description: Read-only PagerDuty on-call, schedule, escalation, service, and incident lookups through the PagerDuty REST API
+
+# Junior injects a deployment-level PagerDuty REST API key on sandbox requests
+# to the US API host. Use a read-only key. The sandbox never sees the real key.
+env-vars:
+  PAGERDUTY_API_KEY:
+
+domains:
+  - api.pagerduty.com
+
+api-headers:
+  Authorization: Token token=${PAGERDUTY_API_KEY}

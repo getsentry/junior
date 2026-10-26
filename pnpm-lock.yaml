@@ -675,6 +675,8 @@ importers:
 
   packages/junior-octolens: {}
 
+  packages/junior-pagerduty: {}
+
   packages/junior-plugin-api:
     dependencies:
       commander:
