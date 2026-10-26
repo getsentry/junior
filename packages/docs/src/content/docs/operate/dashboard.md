@@ -34,7 +34,7 @@ import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins";
 
 export default await createApp({
-  allowedDomains: ["sentry.io"],
+  allowedDomains: ["example.com"],
   dashboard: {
     trustedOrigins: ["https://<your-domain>"],
   },

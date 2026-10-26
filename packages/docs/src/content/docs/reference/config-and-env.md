@@ -218,7 +218,7 @@ Junior logs a warning at startup when it is empty.
 
 ```ts title="server.ts"
 export default await createApp({
-  allowedDomains: ["sentry.io"],
+  allowedDomains: ["example.com"],
   plugins,
 });
 ```
