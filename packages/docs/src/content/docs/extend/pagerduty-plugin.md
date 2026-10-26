@@ -46,7 +46,7 @@ PagerDuty REST API key for read-only requests.
 - **Required:** Yes
 - **Environment override:** `PAGERDUTY_API_KEY`
 
-Use a read-only General Access REST API key. A user API key for a dedicated read-only PagerDuty user also works.
+Use an account-level General Access REST API key with **Read-only API Key** enabled. An admin or account owner creates it in **Integrations > Developer Tools > API Access Keys**.
 
 </details>
 

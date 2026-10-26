@@ -24,7 +24,7 @@ Set a PagerDuty REST API key in the Junior deployment environment:
 PAGERDUTY_API_KEY=...
 ```
 
-Use a read-only General Access REST API key, or a user API key for a dedicated read-only PagerDuty user.
+Use an account-level General Access REST API key with **Read-only API Key** enabled. An admin or account owner creates it in **Integrations > Developer Tools > API Access Keys**.
 
 ## Auth model
 
