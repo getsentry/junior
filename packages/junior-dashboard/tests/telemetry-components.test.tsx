@@ -471,6 +471,36 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Morgan Lee");
   });
 
+  it("renders Slack mention tokens as readable names", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "user-1",
+          role: "user",
+          text: "watch this PR",
+          actorIdentity: {
+            fullName: "Taylor Chen",
+            slackUserId: "U123",
+            slackUserName: "taylor",
+          },
+        }),
+        event(1, {
+          type: "message",
+          messageId: "assistant-1",
+          role: "assistant",
+          text: "<@U123> merged. cc <@U999> in <#C42|proj-junior>",
+        }),
+      ]),
+    );
+
+    expect(html).not.toContain("&lt;@");
+    expect(html).not.toContain("&lt;#");
+    expect(html).toContain("@Taylor Chen");
+    expect(html).toContain("@U999");
+    expect(html).toContain("#proj-junior");
+  });
+
   it("shows a Slack icon for Slack-origin messages only", () => {
     const slackHtml = renderTranscript(
       conversation(

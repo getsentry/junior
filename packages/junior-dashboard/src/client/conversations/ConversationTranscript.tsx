@@ -43,6 +43,7 @@ import { transcriptEmptyClass } from "./transcriptStyles";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptRow, TranscriptRows } from "./TranscriptRows";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
+import { TranscriptMentionNamesProvider } from "./transcriptMentions";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -85,14 +86,16 @@ export const ConversationTranscriptView = memo(
 
     return (
       <TranscriptTimestampProvider>
-        <section className="min-w-0 pt-1">
-          <SegmentEvents
-            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-            conversation={props.conversation}
-            messages={messages}
-            responding={props.responding}
-          />
-        </section>
+        <TranscriptMentionNamesProvider messages={messages}>
+          <section className="min-w-0 pt-1">
+            <SegmentEvents
+              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+              conversation={props.conversation}
+              messages={messages}
+              responding={props.responding}
+            />
+          </section>
+        </TranscriptMentionNamesProvider>
       </TranscriptTimestampProvider>
     );
   },
