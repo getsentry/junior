@@ -3,6 +3,7 @@ import {
   completeAgentInvocation,
   createAgentInvocation,
   getAgentInvocation,
+  getAgentInvocationIdForEvents,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
 } from "@/chat/agent-invocations/store";
@@ -13,6 +14,10 @@ import {
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { createAgentInvocationWorker } from "@/chat/agent-invocations/work";
 import type { AgentRun } from "@/chat/agent/types";
+import { credentialContextForActor } from "@/chat/credentials/context";
+import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -132,8 +137,12 @@ describe("nested agent invocations", () => {
         ...slackInvocationInput,
         idempotencyKey: "nested-child",
       });
+      const userCredentials = credentialContextForActor(
+        slackInvocationInput.actor,
+      );
       const helper = await createAgentInvocation({
         ...slackInvocationInput,
+        credentialContext: userCredentials,
         idempotencyKey: "nested-helper",
         parentConversationId: child.childConversationId,
       });
@@ -184,10 +193,53 @@ describe("nested agent invocations", () => {
         "Grand helper fact: 42.",
       );
       expect(grandResult).toMatchObject({ parentMailboxStatus: "pending" });
+      // A timer fires on the helper first. Its agent invocation runs as the
+      // event system Actor with the grants of that one timer.
+      const timerMessage = createEventInboundMessage({
+        event: {
+          eventKey: "helper-timer",
+          eventType: "timer.fired",
+          identifier: "helper-timer",
+          namespace: "junior",
+          occurredAtMs: 1,
+          trustedSummary: "Timer fired",
+        },
+        // The burst window has passed.
+        receivedAtMs: 0,
+        subscription: {
+          conversationId: helper.childConversationId,
+          credentialSubject: bindTimerWatchCredentialSubject({
+            conversationId: helper.childConversationId,
+            userId: slackInvocationInput.actor.userId,
+            watchId: "helper-timer",
+          }),
+          id: "helper-timer",
+        },
+        text: "Check the grand helper.",
+      });
+      await startAgentInvocationsForChildInput(
+        context(helper.childConversationId, [timerMessage]),
+        { queue, state },
+      );
+      const timerInvocation = (await getAgentInvocation(
+        getAgentInvocationIdForEvents(timerMessage.inboundMessageId),
+      ))!;
+      expect(timerInvocation).toMatchObject({
+        actor: EVENT_SYSTEM_ACTOR,
+        credentialContext: {
+          subject: expect.objectContaining({ allowedWhen: "timer-watch" }),
+        },
+      });
+      await expect(
+        complete(timerInvocation.invocationId, "Still waiting."),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      // The result that arrives after the timer continues the helper's task.
+      // It does not take the event Actor or the timer's grants.
       const helperContinuation = await sendToChild(grandResult);
       expect(helperContinuation).toMatchObject({
         actor: slackInvocationInput.actor,
         childConversationId: helper.childConversationId,
+        credentialContext: userCredentials,
         input: expect.stringContaining("Grand helper fact: 42."),
         parentConversationId: child.childConversationId,
         status: "pending",

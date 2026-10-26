@@ -3,6 +3,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRun, SpawnAgent, SpawnAgentInput } from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { taskOnBehalfOf } from "./on-behalf-of";
 import { createAndEnqueueAgentInvocation } from "./work";
 
 type SpawnOptions = {
@@ -45,7 +46,7 @@ export function bindSpawnAgent(
           : undefined),
         ...(input.title ? { title: input.title } : undefined),
       },
-      { ...options, queue },
+      { ...options, onBehalfOf: taskOnBehalfOf(run, actor), queue },
     );
     return {
       childConversationId: invocation.childConversationId,
