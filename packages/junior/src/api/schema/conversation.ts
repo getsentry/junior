@@ -321,6 +321,8 @@ const conversationReportMessageEventDataSchema = z
     role: z.enum(["assistant", "system", "user"]),
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
+    /** People mentioned in the text, resolved when the event is read. */
+    mentions: z.array(actorIdentitySchema).optional(),
     eventType: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
@@ -340,12 +342,12 @@ const conversationReportMessageEventDataSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity || data.cards || data.attachments)
+      (data.actorIdentity || data.mentions || data.cards || data.attachments)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, or attachments",
+          "redacted messages must not expose actor identity, mentions, cards, or attachments",
       });
     }
   });

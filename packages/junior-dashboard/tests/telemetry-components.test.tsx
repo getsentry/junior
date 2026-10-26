@@ -79,9 +79,11 @@ function conversation(
 function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} />
-      </TranscriptSearchProvider>
+      <MemoryRouter>
+        <TranscriptSearchProvider query="">
+          <ConversationTranscriptView conversation={detail} />
+        </TranscriptSearchProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -471,32 +473,33 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Morgan Lee");
   });
 
-  it("renders Slack mention tokens as readable names", () => {
+  it("renders Slack mention tokens as names and profile links", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
           type: "message",
-          messageId: "user-1",
-          role: "user",
-          text: "watch this PR",
-          actorIdentity: {
-            fullName: "Taylor Chen",
-            slackUserId: "U123",
-            slackUserName: "taylor",
-          },
-        }),
-        event(1, {
-          type: "message",
           messageId: "assistant-1",
           role: "assistant",
-          text: "<@U123> merged. cc <@U999> in <#C42|proj-junior>",
+          text: "<@U123> merged. cc <@U456> <@U999> in <#C42|proj-junior>",
+          mentions: [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
         }),
       ]),
     );
 
     expect(html).not.toContain("&lt;@");
     expect(html).not.toContain("&lt;#");
-    expect(html).toContain("@Taylor Chen");
+    expect(html).toMatch(
+      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>@Taylor Chen<\/a>/,
+    );
+    expect(html).not.toMatch(/<a [^>]*>@Riley Park/);
+    expect(html).toContain("@Riley Park");
     expect(html).toContain("@U999");
     expect(html).toContain("#proj-junior");
   });

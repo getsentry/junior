@@ -7,6 +7,7 @@ import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
 import { readConversationEventPage } from "./event-page";
+import { attachMessageMentions } from "./message-mentions";
 import { readConversationRecordFromSql } from "./list";
 import {
   conversationEventHistory,
@@ -170,6 +171,11 @@ async function readConversationDetailFromSql(
           limit: options.limit,
         })
       : { events: [] };
+  const events = await attachMessageMentions(
+    executor,
+    conversationId,
+    page.events,
+  );
   const metrics = metricsByConversation.get(conversationId);
   const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
   const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
@@ -192,7 +198,7 @@ async function readConversationDetailFromSql(
         }
       : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
-    events: page.events,
+    events,
     modelUsage,
     participants: participantsByConversation.get(conversationId) ?? [],
     ...(sourceTask ? { sourceTask } : undefined),

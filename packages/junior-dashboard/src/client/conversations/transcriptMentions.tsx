@@ -1,6 +1,10 @@
 import { createContext, useContext, type ReactNode } from "react";
+import { Link } from "react-router";
+import type { ActorIdentity } from "@sentry/junior/api/schema";
 
+import { peoplePath } from "../format";
 import type { TranscriptViewMessage } from "../types";
+import { TRANSCRIPT_ANCHOR_CLASS } from "./transcriptMarkdownLinks";
 import { HighlightText } from "./transcriptSearch";
 
 type TranscriptMention = {
@@ -14,26 +18,25 @@ type TranscriptMention = {
 // Matches the user and channel tokens that core keeps in message text.
 const SLACK_MENTION_RE = /<([@#])([A-Z0-9]+)(?:\|([^<>]*))?>/g;
 
-const TranscriptMentionNames = createContext<ReadonlyMap<string, string>>(
-  new Map(),
-);
+const TranscriptMentionPeople = createContext<
+  ReadonlyMap<string, ActorIdentity>
+>(new Map());
 
-/** Share Slack user names that are known from transcript message actors. */
-export function TranscriptMentionNamesProvider(props: {
+/** Share the people that the API resolved for mentions in one transcript. */
+export function TranscriptMentionPeopleProvider(props: {
   children: ReactNode;
   messages: readonly TranscriptViewMessage[];
 }) {
-  const names = new Map<string, string>();
+  const people = new Map<string, ActorIdentity>();
   for (const message of props.messages) {
-    const actor = message.actorIdentity;
-    const id = actor?.slackUserId?.trim();
-    const name = actor?.fullName?.trim() || actor?.slackUserName?.trim();
-    if (id && name && !names.has(id)) names.set(id, name);
+    for (const person of message.mentions ?? []) {
+      if (person.slackUserId) people.set(person.slackUserId, person);
+    }
   }
   return (
-    <TranscriptMentionNames.Provider value={names}>
+    <TranscriptMentionPeople.Provider value={people}>
       {props.children}
-    </TranscriptMentionNames.Provider>
+    </TranscriptMentionPeople.Provider>
   );
 }
 
@@ -77,15 +80,25 @@ function findMentions(text: string): TranscriptMention[] {
 }
 
 function MentionView(props: { mention: TranscriptMention }) {
-  const names = useContext(TranscriptMentionNames);
+  const people = useContext(TranscriptMentionPeople);
   const { id, label, sigil } = props.mention;
-  const name = (sigil === "@" ? names.get(id) : undefined) ?? label ?? id;
+  const person = sigil === "@" ? people.get(id) : undefined;
+  const name = person?.fullName ?? person?.slackUserName ?? label ?? id;
+  const text = <HighlightText text={`${sigil}${name.replace(/^[@#]/, "")}`} />;
+  if (person?.email) {
+    return (
+      <Link
+        className={TRANSCRIPT_ANCHOR_CLASS}
+        title={id}
+        to={peoplePath(person.email)}
+      >
+        {text}
+      </Link>
+    );
+  }
   return (
-    <span
-      className="rounded-[0.25rem] bg-dashboard-accent/15 px-0.5 font-medium text-dashboard-accent-text"
-      title={id}
-    >
-      <HighlightText text={`${sigil}${name.replace(/^[@#]/, "")}`} />
+    <span className="font-medium text-dashboard-accent-text" title={id}>
+      {text}
     </span>
   );
 }
