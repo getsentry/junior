@@ -20,7 +20,8 @@ import type { StateAdapter } from "chat";
  * The user of the Slack identity must have signed in with Google, in Slack or
  * in the dashboard, within `signIn.maxAgeMs`. When it has not, save the Slack
  * identity with the email from the Slack profile, so the sign-in page can match
- * it. Then send the user a private sign-in link and drop the message.
+ * it, and check again. Then send the user a private sign-in link and drop the
+ * message.
  */
 export async function hasSlackSignIn(args: {
   event: SlackInboundEvent;
@@ -34,15 +35,14 @@ export async function hasSlackSignIn(args: {
   const userId = parseSlackUserId(args.event.user);
   if (!teamId || !channelId || !userId) return false;
   const executor = getSqlExecutor();
-  if (
-    await slackUserHasGoogleSignIn(executor, {
-      signedInSince: new Date(Date.now() - args.signIn.maxAgeMs),
+  const signedInSince = new Date(Date.now() - args.signIn.maxAgeMs);
+  const hasSignIn = () =>
+    slackUserHasGoogleSignIn(executor, {
+      signedInSince,
       slackTeamId: teamId,
       slackUserId: userId,
-    })
-  ) {
-    return true;
-  }
+    });
+  if (await hasSignIn()) return true;
 
   const profile = await lookupSlackUserProfile(userId);
   await upsertIdentity(executor, {
@@ -57,6 +57,9 @@ export async function hasSlackSignIn(args: {
       : undefined),
     metadata: { platform: "slack" },
   });
+  // The first Slack message links the Slack identity to its user. That user
+  // may already have a recent dashboard sign-in.
+  if (await hasSignIn()) return true;
 
   const link = await createSlackSignInUrl({
     baseURL: args.signIn.baseURL,

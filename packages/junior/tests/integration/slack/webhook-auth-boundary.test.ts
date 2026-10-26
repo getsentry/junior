@@ -392,6 +392,20 @@ describe("Slack webhook auth boundary", () => {
       return Object.assign(visit, { cookies });
     };
 
+    // A dashboard sign-in before the first Slack message counts for Slack.
+    const browser = createBrowser();
+    const home = await browser(`${baseURL}/auth/login`, "testuser@example.com");
+    expect(await home.text()).toBe("dashboard");
+    // The session cookie never carries the Google account or its tokens.
+    expect([...browser.cookies.keys()].join()).not.toContain("account");
+    expect((await send()).status).toBe(200);
+    expect(queue.queuedMessages()).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+
+    // After the max age, Slack asks again.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 8 * 24 * 60 * 60 * 1000);
+
     // Accounts outside the allowlist, or another person's account, fail.
     expect(
       (await createBrowser()(await sendBlocked(), "testuser@contractor.dev"))
@@ -401,20 +415,9 @@ describe("Slack webhook auth boundary", () => {
       (await createBrowser()(await sendBlocked(), "someone@example.com"))
         .status,
     ).toBe(403);
-    expect(queue.queuedMessages()).toEqual([]);
-
-    // A dashboard sign-in by the Slack user's account also counts for Slack.
-    const browser = createBrowser();
-    const home = await browser(`${baseURL}/auth/login`, "testuser@example.com");
-    expect(await home.text()).toBe("dashboard");
-    // The session cookie never carries the Google account or its tokens.
-    expect([...browser.cookies.keys()].join()).not.toContain("account");
-    expect((await send()).status).toBe(200);
     expect(queue.queuedMessages()).toHaveLength(1);
 
-    // After the max age, Slack asks again, and the Slack page signs in.
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(Date.now() + 8 * 24 * 60 * 60 * 1000);
+    // The Slack page signs in the matching account.
     const link = await sendBlocked();
     const visits = googleVisits;
     expect((await browser(link, "testuser@example.com")).status).toBe(200);
