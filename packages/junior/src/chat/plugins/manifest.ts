@@ -12,6 +12,7 @@ import type {
   PluginNpmRuntimeDependency,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
+  PluginServiceAccountConfig,
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
@@ -19,7 +20,7 @@ import {
   inlineManifestSource,
   mcpAuthSource,
   mcpOauthClientSource,
-  mcpServiceAccountSource,
+  serviceAccountSource,
 } from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -249,11 +250,13 @@ const mcpOauthClientSourceSchema = z
   })
   .passthrough();
 
-const mcpServiceAccountSourceSchema = z
+// Strict, so a typo or an unsupported surface fails loudly instead of
+// silently widening or narrowing what the shared account may do.
+const serviceAccountSourceSchema = z
   .object({
-    "allowed-tools": nonEmptyStringArraySchema("allowed-tools"),
+    "mcp-tools": nonEmptyStringArraySchema("mcp-tools"),
   })
-  .passthrough();
+  .strict();
 
 const mcpSourceSchema = z
   .object({
@@ -268,7 +271,6 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
-    "service-account": mcpServiceAccountSourceSchema.optional(),
   })
   .passthrough();
 
@@ -323,6 +325,11 @@ const manifestSourceSchema = z
       })
       .optional(),
     oauth: z
+      .record(z.string(), z.unknown(), {
+        error: "must be an object",
+      })
+      .optional(),
+    "service-account": z
       .record(z.string(), z.unknown(), {
         error: "must be an object",
       })
@@ -403,12 +410,6 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
-      setDefined(
-        mcp,
-        "service-account",
-        config.mcp.serviceAccount &&
-          mcpServiceAccountSource(config.mcp.serviceAccount),
-      );
       result.mcp = mcp;
     }
   }
@@ -433,6 +434,11 @@ function manifestConfigPatch(
       result.oauth = oauth;
     }
   }
+  setDefined(
+    result,
+    "service-account",
+    config.serviceAccount && serviceAccountSource(config.serviceAccount),
+  );
   if (config.target !== undefined) {
     if (!config.target) {
       result.target = null;
@@ -1061,24 +1067,6 @@ function normalizeMcp(
       `Plugin ${name} mcp.oauth-client.client-secret-env`,
     );
   }
-  const serviceAccount = result.data["service-account"];
-  if (serviceAccount) {
-    // The connect flow registers its own client, and bot auth has no user.
-    if (result.data.auth || oauthClient) {
-      throw new Error(
-        `Plugin ${name} mcp.service-account must not be combined with auth or oauth-client`,
-      );
-    }
-    const allowedTools = new Set(result.data["allowed-tools"] ?? []);
-    const undeclared = serviceAccount["allowed-tools"].filter(
-      (tool) => !allowedTools.has(tool),
-    );
-    if (undeclared.length > 0) {
-      throw new Error(
-        `Plugin ${name} mcp.service-account.allowed-tools must be listed in mcp.allowed-tools: ${undeclared.join(", ")}`,
-      );
-    }
-  }
   const oauthClientAuthorizeParams = oauthClient?.["authorize-params"]
     ? normalizeStringMap(
         oauthClient["authorize-params"],
@@ -1118,12 +1106,42 @@ function normalizeMcp(
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
-    ...(serviceAccount
-      ? {
-          serviceAccount: { allowedTools: serviceAccount["allowed-tools"] },
-        }
-      : undefined),
   } satisfies PluginMcpConfig;
+}
+
+/**
+ * Validate the service account policy against the surfaces it names.
+ *
+ * Each policy entry must be something the plugin already exposes, so the
+ * shared account can never reach more than an Actor's own connection.
+ */
+function normalizeServiceAccount(
+  data: Record<string, unknown>,
+  mcp: PluginMcpConfig | undefined,
+  name: string,
+): PluginServiceAccountConfig {
+  const result = serviceAccountSourceSchema.safeParse(data);
+  if (!result.success) {
+    throw new Error(
+      issueMessage(result.error, `Plugin ${name} service-account`),
+    );
+  }
+  const mcpTools = result.data["mcp-tools"];
+  // The connect command registers its own OAuth client, and signed bot auth
+  // has no per-actor account to replace.
+  if (!mcp || mcp.auth || mcp.oauthClient) {
+    throw new Error(
+      `Plugin ${name} service-account.mcp-tools requires mcp without auth or oauth-client`,
+    );
+  }
+  const allowedTools = new Set(mcp.allowedTools ?? []);
+  const undeclared = mcpTools.filter((tool) => !allowedTools.has(tool));
+  if (undeclared.length > 0) {
+    throw new Error(
+      `Plugin ${name} service-account.mcp-tools must be listed in mcp.allowed-tools: ${undeclared.join(", ")}`,
+    );
+  }
+  return { mcpTools };
 }
 
 function parseManifestSource(
@@ -1193,6 +1211,11 @@ function parseManifestSource(
         `Plugin ${String(parsedSource.name ?? "unknown")} oauth must be an object`,
       );
     }
+    if (path === "service-account") {
+      throw new Error(
+        `Plugin ${String(parsedSource.name ?? "unknown")} service-account must be an object`,
+      );
+    }
     if (path === "target") {
       throw new Error(
         `Plugin ${String(parsedSource.name ?? "unknown")} target must be an object`,
@@ -1251,6 +1274,9 @@ function parseManifestSource(
     ? normalizeRuntimePostinstall(data["runtime-postinstall"], data.name)
     : undefined;
   const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
+  const serviceAccount = data["service-account"]
+    ? normalizeServiceAccount(data["service-account"], mcp, data.name)
+    : undefined;
 
   const manifest: PluginManifest = {
     name: data.name,
@@ -1265,6 +1291,7 @@ function parseManifestSource(
     ...(runtimeDependencies ? { runtimeDependencies } : undefined),
     ...(runtimePostinstall ? { runtimePostinstall } : undefined),
     ...(mcp ? { mcp } : undefined),
+    ...(serviceAccount ? { serviceAccount } : undefined),
   };
 
   if (data.oauth) {

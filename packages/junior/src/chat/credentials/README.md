@@ -32,6 +32,32 @@ sandbox.
   sandbox session, and expiry as applicable.
 - Real credentials remain in host storage and host-applied request headers.
 
+## Service Accounts
+
+A plugin can declare an optional install-wide provider account, often a bot.
+The model is the same for every provider:
+
+1. Per-Actor OAuth is the default. An Actor's own connection always wins.
+2. An Admin can connect one service account per plugin with
+   `junior service-account connect <plugin>`. Until then, it has no effect.
+3. The service account serves an Actor without their own connection, but
+   only for requests that the plugin's `service-account` policy allows.
+   Other requests still ask the Actor to connect.
+
+- `service-account.ts` owns the policy check, `serviceAccountAllows`. A
+  surface must ask it before it uses the shared account.
+- Each surface enforces the policy where it sees the request. MCP calls run
+  on the host, so the tool manager checks each tool against `mcp-tools`.
+- A new surface adds one policy key and one request kind to
+  `serviceAccountAllows`. Sandbox egress should use the grant `access` that
+  it already selects for each request, so the proxy never signs a write with
+  a read-only account.
+- The service account usually has fewer provider permissions than a person.
+  Everyone who can talk to Junior can use what the policy allows, so the
+  provider account should see only what all of them may see.
+- Unknown policy keys fail manifest validation. A key that no surface
+  enforces must not be accepted.
+
 ## OAuth Flow
 
 1. A provider reports that a user-bound grant is required.

@@ -572,8 +572,8 @@ describe("plugin manifest API headers", () => {
     [
       "a tool outside mcp.allowed-tools",
       ["  allowed-tools:", "    - search"],
-      ["  service-account:", "    allowed-tools:", "      - create"],
-      "Plugin example mcp.service-account.allowed-tools must be listed in mcp.allowed-tools: create",
+      ["service-account:", "  mcp-tools:", "    - create"],
+      "Plugin example service-account.mcp-tools must be listed in mcp.allowed-tools: create",
     ],
     [
       "bot auth",
@@ -585,11 +585,23 @@ describe("plugin manifest API headers", () => {
         "    key-id: junior-1",
         "    private-key-env: EXAMPLE_KEY",
       ],
-      ["  service-account:", "    allowed-tools:", "      - search"],
-      "Plugin example mcp.service-account must not be combined with auth or oauth-client",
+      ["service-account:", "  mcp-tools:", "    - search"],
+      "Plugin example service-account.mcp-tools requires mcp without auth or oauth-client",
+    ],
+    [
+      "a policy key that no surface enforces",
+      ["  allowed-tools:", "    - search"],
+      [
+        "service-account:",
+        "  mcp-tools:",
+        "    - search",
+        "  access:",
+        "    - write",
+      ],
+      "Plugin example service-account",
     ],
   ])(
-    "rejects an MCP service account with %s",
+    "rejects a service account with %s",
     (_name, mcpLines, serviceAccountLines, message) => {
       expect(() =>
         parsePluginManifest(

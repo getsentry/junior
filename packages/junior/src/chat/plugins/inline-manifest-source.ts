@@ -1,4 +1,8 @@
-import type { PluginManifest, PluginMcpConfig } from "./types";
+import type {
+  PluginManifest,
+  PluginMcpConfig,
+  PluginServiceAccountConfig,
+} from "./types";
 
 type ManifestSource = Record<string, unknown>;
 
@@ -78,11 +82,11 @@ export function mcpOauthClientSource(
   return result;
 }
 
-/** Convert a camelCase `mcp.serviceAccount` block to its plugin.yaml source keys. */
-export function mcpServiceAccountSource(
-  serviceAccount: NonNullable<PluginMcpConfig["serviceAccount"]>,
+/** Convert a camelCase `serviceAccount` block to its plugin.yaml source keys. */
+export function serviceAccountSource(
+  serviceAccount: PluginServiceAccountConfig,
 ): ManifestSource {
-  return { "allowed-tools": serviceAccount.allowedTools };
+  return { "mcp-tools": serviceAccount.mcpTools };
 }
 
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
@@ -102,11 +106,6 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   );
   setDefined(result, "allowed-tools", mcp.allowedTools);
   setDefined(result, "wrapped-tools", mcp.wrappedTools);
-  setDefined(
-    result,
-    "service-account",
-    mcp.serviceAccount && mcpServiceAccountSource(mcp.serviceAccount),
-  );
   return result;
 }
 
@@ -176,6 +175,11 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "runtime-postinstall", manifest.runtimePostinstall);
   setDefined(result, "mcp", inlineMcpSource(manifest.mcp));
   setDefined(result, "oauth", inlineOauthSource(manifest.oauth));
+  setDefined(
+    result,
+    "service-account",
+    manifest.serviceAccount && serviceAccountSource(manifest.serviceAccount),
+  );
   setDefined(
     result,
     "target",

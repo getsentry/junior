@@ -1,11 +1,11 @@
 /**
- * MCP service accounts.
+ * MCP service account credentials.
  *
- * A plugin can declare `mcp.serviceAccount`. An admin then connects one
- * provider account that Junior itself uses, with
- * `junior service-account connect <plugin>`. An actor who has not connected
- * their own account uses this account for the declared read tools. The
- * credential stays on the host. The sandbox and the model never get it.
+ * This is the MCP surface of a plugin's service account. See
+ * `@/chat/credentials/service-account` for the credential order and the
+ * policy. An Admin connects the account with
+ * `junior service-account connect <plugin>`. The credential stays on the
+ * host. The sandbox and the model never get it.
  */
 import { randomUUID } from "node:crypto";
 import {
@@ -207,7 +207,7 @@ export async function connectMcpServiceAccount(input: {
 }): Promise<McpServiceAccountCredentials> {
   const mcp = input.plugin.manifest.mcp;
   const provider = input.plugin.manifest.name;
-  if (!mcp?.serviceAccount) {
+  if (!mcp || !input.plugin.manifest.serviceAccount) {
     throw new Error(`Plugin "${provider}" does not support a service account`);
   }
 

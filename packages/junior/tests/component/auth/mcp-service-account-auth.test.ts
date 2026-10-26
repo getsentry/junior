@@ -34,8 +34,8 @@ const plugin: PluginDefinition = {
       transport: "http",
       url: MCP_URL,
       allowedTools: ["search", "create"],
-      serviceAccount: { allowedTools: ["search"] },
     },
+    serviceAccount: { mcpTools: ["search"] },
   },
 };
 

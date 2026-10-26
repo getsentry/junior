@@ -109,11 +109,12 @@ Set the client redirect URI to
 plugin read-only. `authorize-params` adds provider-specific parameters to the
 authorization URL. Do not declare both `mcp.auth` and `mcp.oauth-client`.
 
-### MCP service accounts
+### Service accounts
 
-A plugin can let Junior read with its own provider account. Then people who
-have not connected their own account still get read access. Declare
-`mcp.service-account` with the read tools that this account may call:
+Per-user OAuth is the default. A plugin can also let Junior use one shared
+provider account, often a bot, for people who have not connected their own
+account. This account usually has fewer permissions than a person. The
+plugin declares a `service-account` policy that lists what the account may do:
 
 ```yaml title="plugin.yaml"
 mcp:
@@ -122,15 +123,19 @@ mcp:
     - search
     - fetch
     - create-page
-  service-account:
-    allowed-tools:
-      - search
-      - fetch
+
+service-account:
+  mcp-tools:
+    - search
+    - fetch
 ```
 
-Each tool in `service-account.allowed-tools` must also be in
-`mcp.allowed-tools`. You cannot combine `mcp.service-account` with `mcp.auth`
-or `mcp.oauth-client`.
+- `mcp-tools` lists the MCP tools that the service account may call. Each
+  tool must also be in `mcp.allowed-tools`. Junior calls MCP servers from the
+  host, so it checks each tool call against this list.
+- You cannot combine `mcp-tools` with `mcp.auth` or `mcp.oauth-client`.
+- Junior rejects keys that it does not enforce, so a typo cannot change what
+  the account may do.
 
 The declaration has no effect until a Junior admin connects the account:
 
@@ -144,9 +149,9 @@ Sign in as the account that Junior uses, not as yourself. Use
 `junior service-account disconnect my-provider` to check or remove it.
 
 When the account is connected, Junior uses it only for an actor who has not
-connected their own account. It uses it only for the listed tools. Other
-tools ask the actor to connect their own account, as before. An actor's own
-connection always wins. Everyone who can talk to Junior can read what the
+connected their own account, and only for requests that the policy allows.
+Other requests ask the actor to connect their own account, as before. An
+actor's own connection always wins. Everyone who can talk to Junior can read what the
 service account can read, so give that account only the access that all of
 them may have.
 

@@ -74,19 +74,6 @@ export interface PluginMcpOAuthClientConfig {
   scope?: string;
 }
 
-/**
- * Optional provider account that Junior itself uses for this MCP server.
- *
- * An admin connects it one time with `junior service-account connect`. Until
- * then, it has no effect. After that, an actor who has not connected their own
- * account uses the service account for `allowedTools`. Other tools still ask
- * the actor to connect their own account.
- */
-export interface PluginMcpServiceAccountConfig {
-  /** Read tools that the service account may call. Each must be in `mcp.allowedTools`. */
-  allowedTools: string[];
-}
-
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
@@ -96,12 +83,26 @@ export interface PluginMcpConfig {
   headers?: Record<string, string>;
   /** Per-actor OAuth with a pre-registered client instead of dynamic client registration. */
   oauthClient?: PluginMcpOAuthClientConfig;
-  /** Shared read access through an admin-connected account. */
-  serviceAccount?: PluginMcpServiceAccountConfig;
   transport: "http";
   url: string;
   /** Provider tools hidden from the model and callable only by plugin-owned wrapper tools. */
   wrappedTools?: string[];
+}
+
+/**
+ * Optional install-wide provider account, often a bot, that Junior itself
+ * uses for one plugin.
+ *
+ * Per-actor OAuth stays the default, and an Actor's own connection always
+ * wins. An Admin connects the service account one time with
+ * `junior service-account connect <plugin>`. After that, an Actor without
+ * their own connection uses it, but only for requests that this policy
+ * allows. Each request surface enforces its own part of the policy. Other
+ * requests still ask the Actor to connect their own account.
+ */
+export interface PluginServiceAccountConfig {
+  /** MCP tools that the account may call. Each must be in `mcp.allowedTools`. */
+  mcpTools: string[];
 }
 
 export interface PluginEnvVarDeclaration {
@@ -123,6 +124,7 @@ export interface PluginManifest {
   oauth?: PluginOAuthConfig;
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
+  serviceAccount?: PluginServiceAccountConfig;
   target?: {
     commandFlags?: string[];
     configKey: string;

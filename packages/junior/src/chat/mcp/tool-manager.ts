@@ -23,6 +23,7 @@ import {
 } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { toGenAiPayloadMetadata } from "@/chat/conversation-privacy";
+import { serviceAccountAllows } from "@/chat/credentials/service-account";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   McpAuthorizationRequiredError,
@@ -285,8 +286,8 @@ export interface McpToolManagerOptions {
     | Promise<OAuthClientProvider | undefined>;
   /**
    * Return the plugin's service account auth, or undefined to use the actor's
-   * own auth. A service account client calls only the plugin's declared
-   * service account tools. Other tools use the actor's own client.
+   * own auth. A service account client calls only the tools that
+   * `serviceAccountAllows` permits. Other tools use the actor's own client.
    */
   serviceAccountProviderFactory?: (
     plugin: PluginDefinition,
@@ -573,7 +574,7 @@ export class McpToolManager {
     const provider = plugin.manifest.name;
     if (
       !this.serviceAccountProviders.has(provider) ||
-      plugin.manifest.mcp?.serviceAccount?.allowedTools.includes(toolName)
+      serviceAccountAllows(plugin.manifest, { mcpTool: toolName })
     ) {
       return client;
     }

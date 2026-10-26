@@ -82,8 +82,8 @@ describe("Notion plugin package", () => {
       url: "https://mcp.notion.com/mcp",
     });
     expect(providers[0]?.manifest.mcp?.allowedTools).toEqual(allowedTools);
-    expect(providers[0]?.manifest.mcp?.serviceAccount).toEqual({
-      allowedTools: ["notion-search", "notion-fetch"],
+    expect(providers[0]?.manifest.serviceAccount).toEqual({
+      mcpTools: ["notion-search", "notion-fetch"],
     });
 
     listToolsMock.mockResolvedValue([

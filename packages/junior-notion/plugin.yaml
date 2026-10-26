@@ -10,7 +10,10 @@ mcp:
     - notion-create-pages
     - notion-update-page
     - notion-move-pages
-  service-account:
-    allowed-tools:
-      - notion-search
-      - notion-fetch
+
+# Optional shared read account. It has no effect until an admin runs
+# `junior service-account connect notion`.
+service-account:
+  mcp-tools:
+    - notion-search
+    - notion-fetch

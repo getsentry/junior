@@ -1,8 +1,9 @@
 /**
- * Operator CLI for MCP service accounts.
+ * Operator CLI for plugin service accounts.
  *
- * Connecting a service account gives everyone who can talk to Junior read
- * access to what that account can see. Like `junior admin`, it runs only out
+ * Connecting a service account gives everyone who can talk to Junior the
+ * access that the plugin's service account policy allows, to what that
+ * account can see. Like `junior admin`, it runs only out
  * of band, against the deployment state store. Slack never sees the sign-in
  * link or any token.
  */
@@ -79,12 +80,12 @@ function requireServiceAccountPlugin(
   name: string,
 ): PluginDefinition | undefined {
   const plugin = pluginCatalogRuntime.getDefinition(name);
-  if (plugin?.manifest.mcp?.serviceAccount) {
+  if (plugin?.manifest.serviceAccount) {
     return plugin;
   }
   const supported = pluginCatalogRuntime
-    .getMcpProviders()
-    .filter((candidate) => candidate.manifest.mcp?.serviceAccount)
+    .getProviders()
+    .filter((candidate) => candidate.manifest.serviceAccount)
     .map((candidate) => candidate.manifest.name);
   console.error(
     `Plugin "${name}" does not support a service account.` +
@@ -116,7 +117,7 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
   } finally {
     loopback.close();
   }
-  const tools = plugin.manifest.mcp?.serviceAccount?.allowedTools ?? [];
+  const tools = plugin.manifest.serviceAccount?.mcpTools ?? [];
   console.log(
     `Connected the ${provider} service account. Actors who have not connected ${provider} now use it for: ${tools.join(", ")}.`,
   );
