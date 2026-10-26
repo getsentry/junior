@@ -5,10 +5,11 @@
  * core owned, like `junior`. Anyone in the channel writes the Event text, so an
  * automation can watch only its own channel and always uses system credentials.
  */
-import type {
-  Event,
-  EventInput,
-  PluginEvents,
+import {
+  eventMatchFieldsSchema,
+  type Event,
+  type EventInput,
+  type PluginEvents,
 } from "@sentry/junior-plugin-api";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -22,6 +23,14 @@ export const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
 const CHANNEL_RESOURCE_TYPE = "channel";
 const MESSAGE_POSTED_EVENT = "message.posted";
 const CHANNEL_ID_PATTERN = /^[CG][A-Z0-9]{2,}$/;
+
+const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  userId: {
+    kind: "string",
+    description:
+      "Slack user ID of the message author. Required to run on bot posts, such as alert bots.",
+  },
+});
 
 /** Event registration for new top-level Slack channel messages. */
 export function slackChannelMessageEvents(): Pick<
@@ -38,9 +47,10 @@ export function slackChannelMessageEvents(): Pick<
         },
         supportedEvents: [MESSAGE_POSTED_EVENT],
         suggestedEvents: [],
+        matchFields: CHANNEL_MESSAGE_MATCH_FIELDS,
         guidance: {
           [MESSAGE_POSTED_EVENT]:
-            "A person posted a new top-level message in this channel. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
+            "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in userId. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
         },
       },
     ],
@@ -82,8 +92,8 @@ export function requireSlackChannelMessageScope(
 /**
  * Build the Event for one new top-level channel message, or nothing.
  *
- * Thread replies and bot posts, including Slackbot, do not count. Bots can
- * post often and use up the run limit of the automation.
+ * Thread replies and Slackbot posts do not count. Other bot posts are marked
+ * with `postedByBot`, so only automations that name the bot can run on them.
  */
 export function slackChannelMessageEvent(input: {
   botId?: string;
@@ -94,28 +104,40 @@ export function slackChannelMessageEvent(input: {
   ts: string;
   userId: string;
 }): EventInput | undefined {
-  if (
-    input.botId ||
-    input.subtype === "bot_message" ||
-    input.userId === "USLACKBOT"
-  ) {
-    return undefined;
-  }
+  if (input.userId === "USLACKBOT") return undefined;
   if (input.threadTs && input.threadTs !== input.ts) return undefined;
   if (!CHANNEL_ID_PATTERN.test(input.channelId)) return undefined;
+  const postedByBot = Boolean(input.botId || input.subtype === "bot_message");
   return {
     eventKey: `${input.channelId}:${input.ts}`,
     eventType: MESSAGE_POSTED_EVENT,
     identifier: input.channelId,
     occurredAtMs: Math.floor(Number(input.ts) * 1000),
-    trustedSummary: `<@${input.userId}> posted a new message in <#${input.channelId}>.`,
+    trustedSummary: `${postedByBot ? "The bot " : ""}<@${input.userId}> posted a new message in <#${input.channelId}>.`,
     data: {
       channelId: input.channelId,
       messageTs: input.ts,
       userId: input.userId,
+      ...(postedByBot ? { postedByBot: true } : undefined),
     },
     ...(input.text?.trim() ? { untrustedText: input.text } : undefined),
   };
+}
+
+/**
+ * Decide whether a channel-message Event may run one automation.
+ *
+ * A bot post runs only automations whose match names its author in `userId`.
+ * Bots can post often and would use up the run limit of every other
+ * automation in the channel.
+ */
+export function slackChannelMessageRunsAutomation(
+  event: Event,
+  automation: EventAutomation,
+): boolean {
+  if (event.namespace !== SLACK_EVENT_NAMESPACE) return true;
+  if (event.data?.postedByBot !== true) return true;
+  return automation.trigger.match?.userId !== undefined;
 }
 
 /** Return the source message thread for a channel-message run. */

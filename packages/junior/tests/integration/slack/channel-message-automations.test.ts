@@ -37,13 +37,17 @@ const TEAM_ID = "T123";
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
-function trigger(identifier = "current_channel") {
+function trigger(
+  identifier = "current_channel",
+  match?: Record<string, string>,
+) {
   return {
     namespace: "slack",
     identifier,
     resourceType: "channel",
     label: "New messages in #discuss-integration",
     events: ["message.posted"],
+    ...(match ? { match } : undefined),
   };
 }
 
@@ -52,6 +56,7 @@ async function postChannelMessage(input: {
   channel?: string;
   threadTs?: string;
   ts: string;
+  user?: string;
 }) {
   const state = getStateAdapter();
   await state.connect();
@@ -179,6 +184,52 @@ describe("Slack channel-message automations", () => {
     expect(
       await getEventAutomation(fixture.sql.db(), automation.id),
     ).toMatchObject({ credentialMode: "system" });
+  });
+
+  it("runs for bot posts only when its match names the bot", async () => {
+    const catalog = getEventCatalog();
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    const { automation } = (await execute(
+      createEventAutomationTool(channelContext, catalog),
+      {
+        instruction: "Triage each new alert.",
+        title: "Triage alerts",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger("current_channel", { userId: "U777" }),
+      },
+    )) as { automation: { id: string } };
+
+    // A post from another bot does not run it.
+    await postChannelMessage({
+      botId: "B888",
+      ts: "1712346.0001",
+      user: "U888",
+    });
+    expect(queue.sentRecords()).toEqual([]);
+
+    // A post from the named bot runs it and replies in the alert thread.
+    await postChannelMessage({
+      botId: "B777",
+      ts: "1712346.0002",
+      user: "U777",
+    });
+    const sent = queue.sentRecords();
+    expect(sent).toHaveLength(1);
+    const dispatch = await getDispatchRecord(
+      sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch).toMatchObject({
+      destination: { channelId: "C123", threadTs: "1712346.0002" },
+      metadata: { eventAutomationId: automation.id },
+    });
   });
 
   it("watches only the channel where the automation posts", async () => {
