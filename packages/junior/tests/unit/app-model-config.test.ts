@@ -77,8 +77,7 @@ describe("createApp profiles", () => {
       fastModelId: "anthropic/claude-haiku-4.5",
       limits: {
         contextWindowTokens: 2_000,
-        eventAutomationRunWindowMs: 60 * 60 * 1000,
-        maxEventAutomationRuns: 2,
+        eventAutomationRunLimit: { maxRuns: 2, windowMs: 60 * 60 * 1000 },
         maxToolCallsPerTurn: 3,
       },
       slack: {

@@ -644,16 +644,13 @@ export interface RuntimeLimits {
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
   maxConsecutiveAutomatedTurns?: number;
-  /**
-   * Runs one Event automation can start in one rolling
-   * `eventAutomationRunWindowMs` window. The default is 10.
-   */
-  maxEventAutomationRuns?: number;
-  /**
-   * Length of the rolling Event automation run window, in ms. The default,
-   * 60000, is one minute.
-   */
-  eventAutomationRunWindowMs?: number;
+  /** Runs one Event automation can start in a rolling window. */
+  eventAutomationRunLimit?: {
+    /** Runs allowed in one window. The default is 10. */
+    maxRuns?: number;
+    /** Window length in ms. The default, 60000, is one minute. */
+    windowMs?: number;
+  };
   /** Run slices one turn may use. */
   maxSlicesPerTurn?: number;
   /** Tool calls one turn may make. */
@@ -750,16 +747,17 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
       limits.maxConsecutiveAutomatedTurns,
     );
   }
-  if (limits?.maxEventAutomationRuns !== undefined) {
+  const runLimit = limits?.eventAutomationRunLimit;
+  if (runLimit?.maxRuns !== undefined) {
     bot.maxEventAutomationRuns = requirePositiveLimit(
-      "maxEventAutomationRuns",
-      limits.maxEventAutomationRuns,
+      "eventAutomationRunLimit.maxRuns",
+      runLimit.maxRuns,
     );
   }
-  if (limits?.eventAutomationRunWindowMs !== undefined) {
+  if (runLimit?.windowMs !== undefined) {
     bot.eventAutomationRunWindowMs = requirePositiveLimit(
-      "eventAutomationRunWindowMs",
-      limits.eventAutomationRunWindowMs,
+      "eventAutomationRunLimit.windowMs",
+      runLimit.windowMs,
     );
   }
   if (limits?.maxSlicesPerTurn !== undefined) {

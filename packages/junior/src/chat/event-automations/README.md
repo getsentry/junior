@@ -61,7 +61,7 @@ Deletion keeps the row and execution history.
 Each Event automation can start at most `botConfig.maxEventAutomationRuns`
 runs in a rolling `botConfig.eventAutomationRunWindowMs` window
 (`run-limit.ts`). The defaults are 10 runs and one minute. A host sets them with
-`createApp({ limits: { maxEventAutomationRuns, eventAutomationRunWindowMs } })`.
+`createApp({ limits: { eventAutomationRunLimit: { maxRuns, windowMs } } })`.
 The limit applies to one Automation, not to its trigger or
 namespace. Another Automation on the same trigger keeps its own count. Event
 automations do not use the consecutive automated-turn limit, so this limit is
