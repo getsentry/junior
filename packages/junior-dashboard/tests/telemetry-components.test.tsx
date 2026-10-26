@@ -91,7 +91,6 @@ function renderTranscript(detail: ConversationTranscript): string {
 function systemData(): SystemData {
   return {
     config: {
-      allowedEmailCount: 0,
       allowedGoogleDomainCount: 0,
       authPath: "/api/auth",
       authRequired: false,

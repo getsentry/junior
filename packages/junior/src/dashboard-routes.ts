@@ -16,9 +16,12 @@ export interface JuniorDashboardOptions {
   authPath?: string;
   /** Require a dashboard browser session before serving dashboard pages and APIs. */
   authRequired?: boolean;
-  /** Exact Google account emails allowed to open the dashboard. */
-  allowedEmails?: string[];
-  /** Google Workspace domains allowed to open the dashboard. */
+  /**
+   * Domains that may use Junior: Google Workspace domains for dashboard
+   * sign-in and Slack profile email domains for Slack. Recommended. The
+   * dashboard needs it when `authRequired` is on. Empty lets every Slack
+   * workspace member use Junior.
+   */
   allowedGoogleDomains?: string[];
   /** Browser route prefix for the dashboard shell. */
   basePath?: string;

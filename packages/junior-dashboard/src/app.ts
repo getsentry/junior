@@ -79,7 +79,6 @@ export interface JuniorDashboardOptions {
   authPath?: string;
   authRequired?: boolean;
   allowedGoogleDomains?: string[];
-  allowedEmails?: string[];
   auth?: DashboardAuth;
   componentGallery?: boolean;
   mockConversations?: boolean;
@@ -163,8 +162,6 @@ function resolveDashboardOptions(
     allowedGoogleDomains:
       options.allowedGoogleDomains ??
       readEnvList("JUNIOR_DASHBOARD_GOOGLE_DOMAINS"),
-    allowedEmails:
-      options.allowedEmails ?? readEnvList("JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
     componentGallery:
       options.componentGallery ??
       readEnvFlag("JUNIOR_DASHBOARD_COMPONENT_GALLERY"),
@@ -405,7 +402,6 @@ export function createDashboardApp(
     DEFAULT_AUTH_PATH,
   );
   const allowedDomains = normalizeValues(options.allowedGoogleDomains);
-  const allowedEmails = normalizeValues(options.allowedEmails);
   const agentName = options.agentName?.trim() || "Junior";
 
   const authRequired = options.authRequired !== false;
@@ -415,17 +411,11 @@ export function createDashboardApp(
     canonicalBaseURL = resolveDashboardBaseURL({ baseURL: configuredBaseURL });
   }
 
-  if (
-    authRequired &&
-    allowedDomains.length === 0 &&
-    allowedEmails.length === 0
-  ) {
-    throw new Error(
-      "Junior dashboard auth requires allowedGoogleDomains or allowedEmails",
-    );
+  if (authRequired && allowedDomains.length === 0) {
+    throw new Error("Junior dashboard auth requires allowedGoogleDomains");
   }
 
-  // Core owns the Google sign-in session and shares it with Slack.
+  // Core owns the Google sign-in session.
   const auth = options.auth;
   if (authRequired && !auth) {
     throw new Error("Junior dashboard auth requires the core sign-in session");
@@ -448,10 +438,7 @@ export function createDashboardApp(
       return Response.redirect(returnUrl, 302);
     }
     const session = await auth.getSession(c.req.raw);
-    if (
-      session &&
-      dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)
-    ) {
+    if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
       return Response.redirect(returnUrl, 302);
     }
     return auth.signInWithGoogle(c.req.raw, returnUrl);
@@ -540,7 +527,7 @@ export function createDashboardApp(
         componentGallery: options.componentGallery,
       });
     }
-    if (!dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)) {
+    if (!dashboardSessionIsAuthorized(session, allowedDomains)) {
       return forbidden(c.req.raw, agentName);
     }
     const sanitizedSession = sanitizeDashboardSession(session);
@@ -621,7 +608,6 @@ export function createDashboardApp(
   );
   app.get("/api/config", () => {
     return jsonResponse(dashboardConfigSchema, {
-      allowedEmailCount: allowedEmails.length,
       allowedGoogleDomainCount: allowedDomains.length,
       authRequired,
       authPath,

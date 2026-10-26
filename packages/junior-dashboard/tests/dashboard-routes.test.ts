@@ -27,7 +27,6 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
     allowedGoogleDomains: ["sentry.io"],
-    allowedEmails: ["admin@example.com"],
     auth: auth(session),
   });
 }
@@ -260,7 +259,7 @@ describe("dashboard routes", () => {
 
   it("starts sign-in when the auth prefix overlaps the login route", async () => {
     const app = createDashboardApp({
-      allowedEmails: ["admin@example.com"],
+      allowedGoogleDomains: ["sentry.io"],
       auth: auth(null),
       authPath: "/auth",
     });
@@ -561,7 +560,7 @@ describe("dashboard routes", () => {
   it("preserves the enabled component gallery path through login", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
-      allowedEmails: ["admin@example.com"],
+      allowedGoogleDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
       }),
@@ -598,7 +597,6 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get(DASHBOARD_VERSION_HEADER)).toBe(JUNIOR_VERSION);
     expect(await response.json()).toEqual({
-      allowedEmailCount: 1,
       allowedGoogleDomainCount: 1,
       authRequired: true,
       authPath: "/api/auth",
@@ -625,25 +623,10 @@ describe("dashboard routes", () => {
     expect(await response.json()).toEqual({ error: "forbidden" });
   });
 
-  it("allows explicitly configured email exceptions", async () => {
+  it("requires a verified email on an allowed domain", async () => {
     const app = dashboard({
       user: {
-        email: "admin@example.com",
-        emailVerified: true,
-      },
-    });
-
-    const response = await app.fetch(
-      new Request("http://localhost/api/runtime"),
-    );
-
-    expect(response.status).toBe(200);
-  });
-
-  it("requires verified email for explicitly configured email exceptions", async () => {
-    const app = dashboard({
-      user: {
-        email: "admin@example.com",
+        email: "person@sentry.io",
         emailVerified: false,
       },
     });
@@ -657,9 +640,6 @@ describe("dashboard routes", () => {
 
   it("resolves auth policy from env when dashboard options omit allowlists", async () => {
     process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS = "sentry.io, example.com";
-    process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = JSON.stringify([
-      "admin@example.com",
-    ]);
     process.env.JUNIOR_DASHBOARD_TRUSTED_ORIGINS = "https://junior.example.com";
     process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS = "true";
 
@@ -678,19 +658,18 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      allowedEmailCount: 1,
       allowedGoogleDomainCount: 2,
       authRequired: true,
     });
   });
 
   it("fails clearly when list env JSON is malformed", async () => {
-    process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = '["admin@example.com"';
+    process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS = '["sentry.io"';
 
     expect(() =>
       createDashboardApp({
         authRequired: false,
       }),
-    ).toThrow("JUNIOR_DASHBOARD_ALLOWED_EMAILS must be a JSON string array");
+    ).toThrow("JUNIOR_DASHBOARD_GOOGLE_DOMAINS must be a JSON string array");
   });
 });

@@ -25,19 +25,22 @@ export function dashboardBearerSession(email: string): DashboardSession {
   return { user: { email, emailVerified: true } };
 }
 
-/** Check the dashboard allowlist against one verified session. */
+/**
+ * Check the allowed domains against one verified session. Core accepts a
+ * Google sign-in only for a Workspace account on an allowed domain. This
+ * check also applies a changed list to existing sessions and personal tokens.
+ */
 export function dashboardSessionIsAuthorized(
   session: DashboardSession,
   allowedDomains: string[],
-  allowedEmails: string[],
 ): boolean {
   const email = session.user.email.toLowerCase();
   const separator = email.lastIndexOf("@");
   const domain = separator > 0 ? email.slice(separator + 1) : undefined;
   return Boolean(
     session.user.emailVerified &&
-    (allowedEmails.includes(email) ||
-      (domain !== undefined && allowedDomains.includes(domain))),
+    domain !== undefined &&
+    allowedDomains.includes(domain),
   );
 }
 

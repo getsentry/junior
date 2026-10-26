@@ -69,7 +69,7 @@ export async function startDashboardE2eServer(
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
-    allowedEmails: ["dev@example.com"],
+    allowedGoogleDomains: ["example.com"],
     auth: {
       async getSession() {
         return {

@@ -59,8 +59,7 @@ import {
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
-import { hasSlackSignIn } from "@/chat/ingress/slack-sign-in";
-import type { SlackSignIn } from "@/chat/sign-in/slack";
+import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -136,8 +135,8 @@ export interface SlackWebhookServices {
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
   conversationStore?: ConversationStore;
-  /** Set when Slack use needs a recent Google sign-in. */
-  signIn?: SlackSignIn;
+  /** Email domains Slack authors need to start a Turn. Empty allows all. */
+  allowedDomains?: readonly string[];
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -449,7 +448,7 @@ async function routeParsedMessage(args: {
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
-  signIn: SlackSignIn | undefined;
+  allowedDomains: readonly string[];
   state: StateAdapter;
 }): Promise<void> {
   if (shouldIgnoreMessage(args.message)) {
@@ -534,8 +533,18 @@ async function routeParsedMessage(args: {
     return;
   }
 
-  // Passive thread messages are not checked for sign-in yet.
-  if (route === "mention" && !(await hasSlackSignIn(args))) return;
+  // Passive thread messages are not checked for the allowed domains yet.
+  if (
+    route === "mention" &&
+    !(await isSlackAuthorDomainAllowed({
+      allowedDomains: args.allowedDomains,
+      state: args.state,
+      teamId: args.installation.teamId,
+      user: args.event.user,
+    }))
+  ) {
+    return;
+  }
 
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
@@ -711,7 +720,7 @@ async function handleSlackEvent(args: {
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
-                signIn: args.services.signIn,
+                allowedDomains: args.services.allowedDomains ?? [],
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },

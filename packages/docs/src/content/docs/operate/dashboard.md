@@ -13,7 +13,7 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior. Junior core owns its Better Auth session. With the experimental `slack-sign-in` feature, Slack uses the same session, so a dashboard sign-in also counts as a recent Slack sign-in.
+Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior. Junior core owns its Better Auth session. The allowed Google domains also limit who can use Junior in Slack. See [Allowed domains](/reference/config-and-env/#allowed-domains).
 
 ## Install
 
@@ -69,7 +69,6 @@ You can also provide the same authorization policy through deployment environmen
 | Variable                           | Purpose                                                       |
 | ---------------------------------- | ------------------------------------------------------------- |
 | `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`  | Comma-separated or JSON array of allowed Google domains.      |
-| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`  | Comma-separated or JSON array of explicit email allowlist.    |
 | `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` | Comma-separated or JSON array of Better Auth trusted origins. |
 | `JUNIOR_DASHBOARD_AUTH_REQUIRED`   | Set to `false` only for explicit local dashboard auth bypass. |
 

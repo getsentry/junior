@@ -92,12 +92,11 @@ If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 
 Configure allowed Google Workspace domains in `createApp({ dashboard })` and `juniorNitro({ dashboard })` for normal deployments. Set these optional policy variables when you prefer environment-managed dashboard authorization:
 
-| Variable                              | Required | Purpose                                                                                 |
-| ------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`     | No       | Comma-separated or JSON array of allowed Google domains.                                |
-| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`     | No       | Comma-separated or JSON array of explicit email allowlist.                              |
-| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                           |
-| `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures. |
+| Variable                              | Required | Purpose                                                                                    |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`     | No       | Comma-separated or JSON array of allowed domains. See [Allowed domains](#allowed-domains). |
+| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                              |
+| `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures.    |
 
 For local/demo dashboard visual QA, set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` to replace conversation API responses with sample fixtures.
 
@@ -168,9 +167,6 @@ const app = await createApp({
     // database directly and skip Conversation privacy checks. Enable them only
     // on isolated deployments, such as Previews behind deployment protection.
     "operator-tools": true,
-    // Ask each Slack user for a recent Google sign-in before Junior
-    // replies to their mentions and DMs.
-    "slack-sign-in": true,
   },
 });
 ```
@@ -214,20 +210,23 @@ pre-stable surface.
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
 
-`slack-sign-in` makes each Slack user sign in with Google before Junior starts
-work from their mentions or DMs. Until then, Junior drops the message and sends
-the user a private sign-in link. A sign-in counts for 7 days. Set
-`slack.signInMaxAgeDays` to change this number. A dashboard sign-in counts too:
-Slack and the dashboard use one Better Auth session, so a person who signed in
-to one of them does not sign in again for the other.
+## Allowed domains
 
-The dashboard is not required. Sign-in uses the same Google OAuth client,
-allowlist, and callback as the dashboard: `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `JUNIOR_DASHBOARD_GOOGLE_DOMAINS` or
-`JUNIOR_DASHBOARD_ALLOWED_EMAILS`, and `<base-url>/api/auth/callback/google` as
-an authorized redirect URI. The Google email must match the Slack profile
-email. Passive thread replies, slash commands, and Slack actions are not checked
-yet.
+`dashboard.allowedGoogleDomains` (or `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`) is one
+list of domains for Slack and the dashboard. It is optional, but we recommend
+it. Junior logs a warning at startup when it is empty.
+
+- **Slack:** Junior starts work from a mention or DM only when the email of the
+  author's Slack profile is on an allowed domain. Slack verifies that email.
+  Junior drops other messages and does not reply. Passive thread replies, slash
+  commands, and Slack actions are not checked yet.
+- **Dashboard:** Google sign-in accepts only Google Workspace accounts on an
+  allowed domain. Junior checks the verified `hd` claim of the Google ID token,
+  not the email. With one domain, Junior also sends it to Google as the `hd`
+  hint. With more domains, it sends `hd=*`, so Google shows only Workspace
+  accounts. Dashboard auth requires at least one domain.
+
+When the list is empty, every member of the Slack workspace can use Junior.
 
 `operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
 runs one SQL statement against the app database and returns up to 200 rows.

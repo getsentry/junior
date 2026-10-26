@@ -33,7 +33,6 @@ export const dashboardProfileUpdateSchema = z
 
 export const dashboardConfigSchema = z
   .object({
-    allowedEmailCount: z.number(),
     allowedGoogleDomainCount: z.number(),
     authRequired: z.boolean(),
     authPath: z.string(),

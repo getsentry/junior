@@ -1,11 +1,9 @@
-/** Google accounts that may sign in. The dashboard uses the same list. */
+/**
+ * Domains that may use Junior. Google sign-ins must come from a Google
+ * Workspace account on one of these domains, and Slack authors must have a
+ * Slack profile email on one of them. The dashboard and Slack use one list.
+ */
 import { z } from "zod";
-
-/** Google accounts that may sign in. Empty lists allow nobody. */
-export interface SignInAllowlist {
-  domains: string[];
-  emails: string[];
-}
 
 /**
  * Read a list env var the same way as the dashboard: a JSON string array or
@@ -27,30 +25,30 @@ export function readEnvList(name: string): string[] | undefined {
 }
 
 /**
- * Resolve the sign-in allowlist. Use the same values as the dashboard: its
- * options when set, else its environment variables.
+ * Resolve the allowed domains: the dashboard option when set, else its
+ * environment variable. An empty list allows every domain.
  */
-export function resolveSignInAllowlist(
-  options: { allowedEmails?: string[]; allowedGoogleDomains?: string[] } = {},
-): SignInAllowlist {
-  const list = (values: string[] | undefined, name: string) =>
-    (values ?? readEnvList(name) ?? [])
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean);
-  return {
-    domains: list(
-      options.allowedGoogleDomains,
-      "JUNIOR_DASHBOARD_GOOGLE_DOMAINS",
+export function resolveAllowedDomains(
+  options: { allowedGoogleDomains?: string[] } = {},
+): string[] {
+  return [
+    ...new Set(
+      (
+        options.allowedGoogleDomains ??
+        readEnvList("JUNIOR_DASHBOARD_GOOGLE_DOMAINS") ??
+        []
+      )
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean),
     ),
-    emails: list(options.allowedEmails, "JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
-  };
+  ];
 }
 
-/** Return whether a normalized Google email is on the allowlist. */
-export function isSignInAllowed(
-  email: string,
-  allowlist: SignInAllowlist,
+/** Return whether a verified domain may use Junior. An empty list allows all. */
+export function isAllowedDomain(
+  domain: string | undefined,
+  allowedDomains: readonly string[],
 ): boolean {
-  const domain = email.slice(email.lastIndexOf("@") + 1);
-  return allowlist.emails.includes(email) || allowlist.domains.includes(domain);
+  if (allowedDomains.length === 0) return true;
+  return Boolean(domain && allowedDomains.includes(domain.toLowerCase()));
 }
