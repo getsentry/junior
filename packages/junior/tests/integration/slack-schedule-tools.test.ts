@@ -1992,7 +1992,7 @@ describe("Slack schedule tool wiring via createTools", () => {
       // Create a task through the real wired tool.
       const result = await executeRegisteredTool<{
         automation: { id: string };
-      }>(tools.slackScheduleCreateAutomation, {
+      }>(tools.slackScheduleCreateAutomation!, {
         instruction: "Wiring test: post a weekly digest.",
         schedule: {
           kind: "recurring",
@@ -2066,7 +2066,7 @@ describe("Slack schedule tool wiring via createTools", () => {
       );
 
       await expect(
-        executeRegisteredTool(tools.slackScheduleCreateAutomation, {
+        executeRegisteredTool(tools.slackScheduleCreateAutomation!, {
           instruction: "Post a weekly digest.",
           schedule: {
             kind: "recurring",
@@ -2078,12 +2078,12 @@ describe("Slack schedule tool wiring via createTools", () => {
         }),
       ).rejects.toThrow("No active Slack conversation is available.");
       await expect(
-        executeRegisteredTool(tools.slackScheduleDeleteAutomation, {
+        executeRegisteredTool(tools.slackScheduleDeleteAutomation!, {
           automationId: "sched_missing",
         }),
       ).rejects.toThrow("No active Slack conversation is available.");
       await expect(
-        executeRegisteredTool(tools.createEventAutomation, {
+        executeRegisteredTool(tools.createEventAutomation!, {
           instruction: "Summarize new channel messages.",
           trigger: {
             namespace: "slack",

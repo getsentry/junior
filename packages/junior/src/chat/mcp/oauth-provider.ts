@@ -53,10 +53,28 @@ function requireEnv(name: string): string {
 export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   readonly clientMetadata: OAuthClientMetadata;
 
+  readonly authSessionId: string;
+  private readonly callbackUrl: string;
+  private readonly sessionContext:
+    | Omit<
+        McpAuthSessionState,
+        | "schemaVersion"
+        | "authSessionId"
+        | "authorizationUrl"
+        | "codeVerifier"
+        | "createdAtMs"
+        | "updatedAtMs"
+      >
+    | undefined;
+  private readonly runCredentialMutation:
+    | (<T>(mutation: () => Promise<T>) => Promise<T>)
+    | undefined;
+  private readonly oauthClient: PluginMcpOAuthClientConfig | undefined;
+
   constructor(
-    readonly authSessionId: string,
-    private readonly callbackUrl: string,
-    private readonly sessionContext?: Omit<
+    authSessionId: string,
+    callbackUrl: string,
+    sessionContext?: Omit<
       McpAuthSessionState,
       | "schemaVersion"
       | "authSessionId"
@@ -65,11 +83,14 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
       | "createdAtMs"
       | "updatedAtMs"
     >,
-    private readonly runCredentialMutation?: <T>(
-      mutation: () => Promise<T>,
-    ) => Promise<T>,
-    private readonly oauthClient?: PluginMcpOAuthClientConfig,
+    runCredentialMutation?: <T>(mutation: () => Promise<T>) => Promise<T>,
+    oauthClient?: PluginMcpOAuthClientConfig,
   ) {
+    this.authSessionId = authSessionId;
+    this.callbackUrl = callbackUrl;
+    this.sessionContext = sessionContext;
+    this.runCredentialMutation = runCredentialMutation;
+    this.oauthClient = oauthClient;
     this.clientMetadata = createClientMetadata(callbackUrl);
   }
 

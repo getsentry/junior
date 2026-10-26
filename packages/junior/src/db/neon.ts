@@ -23,10 +23,13 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   private savepointId = 0;
   private isolatedQueryId = 0;
 
-  constructor(
-    private readonly pool: Pool,
-    private readonly connectionString: string,
-  ) {}
+  private readonly pool: Pool;
+  private readonly connectionString: string;
+
+  constructor(pool: Pool, connectionString: string) {
+    this.pool = pool;
+    this.connectionString = connectionString;
+  }
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {

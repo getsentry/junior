@@ -335,7 +335,6 @@ function getSlackConversationParam(
 }
 
 function validateSlackApiRequest(
-  method: SlackApiMethod,
   params: Record<string, unknown>,
 ): SlackMockHttpResponse | undefined {
   const conversation = getSlackConversationParam(params);
@@ -447,7 +446,7 @@ export const slackApiHandlers = [
       params: requestBody,
     });
 
-    const validationResponse = validateSlackApiRequest(rawMethod, requestBody);
+    const validationResponse = validateSlackApiRequest(requestBody);
     if (validationResponse) {
       return toHttpResponse(validationResponse);
     }

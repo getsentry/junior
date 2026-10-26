@@ -338,7 +338,11 @@ function assertSameConversationDestination(args: {
 }
 
 export class SqlStore implements ConversationStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async getConversationIdByProviderConversation(
     args: ProviderConversationReference,

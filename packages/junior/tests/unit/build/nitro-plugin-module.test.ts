@@ -453,7 +453,7 @@ describe("juniorNitro plugin modules", () => {
     }).nitro.setup(nitro);
 
     expect(rollupBeforeHooks).toHaveLength(1);
-    await rollupBeforeHooks[0]({}, { plugins: buildPlugins });
+    await rollupBeforeHooks[0]!({}, { plugins: buildPlugins });
     expect(buildPlugins).toHaveLength(1);
     await buildPlugins[0]?.writeBundle?.();
 

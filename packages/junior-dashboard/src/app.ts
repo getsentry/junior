@@ -517,6 +517,7 @@ export function createDashboardApp(
       c.set("viewer", viewer);
     }
     await next();
+    return undefined;
   };
 
   app.use("*", requireAuth);

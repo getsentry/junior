@@ -1292,12 +1292,13 @@ function sanitizeOperationalReport(args: {
               OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
             ) ?? String(categoryIndex + 1),
           values: Object.fromEntries(
-            seriesEntries.map(({ sanitizedSeries, sourceKey }) => [
-              sanitizedSeries.key,
-              Number.isFinite(category.values[sourceKey])
-                ? category.values[sourceKey]
-                : 0,
-            ]),
+            seriesEntries.map(({ sanitizedSeries, sourceKey }) => {
+              const value = category.values[sourceKey];
+              return [
+                sanitizedSeries.key,
+                value !== undefined && Number.isFinite(value) ? value : 0,
+              ];
+            }),
           ),
         }));
       const sanitizedWidget: NonNullable<

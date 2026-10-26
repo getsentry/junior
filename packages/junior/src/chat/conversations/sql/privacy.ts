@@ -40,10 +40,11 @@ async function readRootCandidate(
     )
     .where(eq(juniorConversations.conversationId, conversationId));
   const row = rows[0];
-  return row?.requestedRootConversationId !== null &&
-    (row?.requestedParentConversationId !== null ||
-      row?.requestedRootConversationId === row?.requestedConversationId) &&
-    row?.rootConversationId === row.requestedRootConversationId &&
+  return row !== undefined &&
+    row.requestedRootConversationId !== null &&
+    (row.requestedParentConversationId !== null ||
+      row.requestedRootConversationId === row.requestedConversationId) &&
+    row.rootConversationId === row.requestedRootConversationId &&
     row.rootRootConversationId === row.rootConversationId &&
     row.rootParentConversationId === null &&
     row.rootDestinationId !== null

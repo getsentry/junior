@@ -472,7 +472,7 @@ describe("conversation event list API", () => {
     for (const [conversationId, cursor] of [
       [firstConversationId, tampered],
       [secondConversationId, previousCursor],
-    ]) {
+    ] as const) {
       const response = await app.request(
         `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(cursor)}`,
       );

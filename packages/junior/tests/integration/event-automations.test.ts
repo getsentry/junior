@@ -465,7 +465,7 @@ describe("event automations", () => {
         { queue, teamId },
       );
 
-      const [{ conversationId }] = queue.sentRecords();
+      const { conversationId } = queue.sentRecords()[0]!;
       expect(conversationId).toBeDefined();
       const dispatch = await getDispatchRecord(
         conversationId!.replace(/^agent-dispatch:/, ""),
@@ -683,7 +683,7 @@ describe("event automations", () => {
       ),
     ).resolves.toEqual({ dispatched: 1 });
 
-    const [{ conversationId }] = queue.sentRecords();
+    const { conversationId } = queue.sentRecords()[0]!;
     const dispatch = await getDispatchRecord(
       conversationId!.replace(/^agent-dispatch:/, ""),
     );

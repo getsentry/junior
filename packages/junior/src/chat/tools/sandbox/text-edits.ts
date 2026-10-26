@@ -214,8 +214,7 @@ export function validateAndApplyTextEdits(
   });
 
   const matchedEdits: MatchedEdit[] = [];
-  for (let index = 0; index < normalizedEdits.length; index += 1) {
-    const edit = normalizedEdits[index];
+  for (const [index, edit] of normalizedEdits.entries()) {
     const matchIndex = content.indexOf(edit.oldText);
     if (matchIndex === -1) {
       throw new ToolInputError(
@@ -237,9 +236,11 @@ export function validateAndApplyTextEdits(
   }
 
   matchedEdits.sort((a, b) => a.matchIndex - b.matchIndex);
-  for (let index = 1; index < matchedEdits.length; index += 1) {
+  for (const [index, current] of matchedEdits.entries()) {
     const previous = matchedEdits[index - 1];
-    const current = matchedEdits[index];
+    if (!previous) {
+      continue;
+    }
     if (previous.matchIndex + previous.matchLength > current.matchIndex) {
       throw new ToolInputError(
         `edits[${previous.editIndex}] and edits[${current.editIndex}] overlap in ${targetName}. Merge overlapping replacements into one edit.`,
@@ -248,8 +249,7 @@ export function validateAndApplyTextEdits(
   }
 
   let newContent = content;
-  for (let index = matchedEdits.length - 1; index >= 0; index -= 1) {
-    const edit = matchedEdits[index];
+  for (const edit of [...matchedEdits].reverse()) {
     newContent =
       newContent.slice(0, edit.matchIndex) +
       edit.newText +

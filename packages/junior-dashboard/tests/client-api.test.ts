@@ -12,7 +12,6 @@ import {
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 import { personalSpendRefreshDelay } from "../src/client/api";
-import { fetchDashboardJson } from "../src/client/http";
 import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {

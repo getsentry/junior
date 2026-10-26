@@ -258,7 +258,7 @@ function routePatternMatchesConcretePath(
   const patternSegments = routeSegments(pattern);
   const pathSegments = routeSegments(concretePath);
   for (let index = 0; index < patternSegments.length; index += 1) {
-    const segment = patternSegments[index];
+    const segment = patternSegments[index] ?? "";
     if (segment === "**" || segment === "*") {
       return true;
     }
