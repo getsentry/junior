@@ -5,6 +5,14 @@ import { fileLengthExceptions } from "./file-length-exceptions.mjs";
 
 export const MAX_CODE_FILE_LINES = 1_000;
 
+// Agents read this text as the fix instruction, so it must name the intended
+// fix and the shortcuts that only hide the size.
+const SPLIT_GUIDANCE =
+  "Split it into smaller modules or test files at a clear feature, " +
+  "ownership, or behavior boundary. Do not delete code, comments, or tests, " +
+  "compress formatting, or add a file-length exception to pass. " +
+  "See policies/correctness-complexity.md.";
+
 const CODE_EXTENSIONS = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -55,7 +63,7 @@ export function checkFileLengths(
       continue;
     }
     errors.push(
-      `${file.path}: ${file.lines} lines exceeds the ${maxLines}-line limit`,
+      `${file.path}: ${file.lines} lines exceeds the ${maxLines}-line limit. ${SPLIT_GUIDANCE}`,
     );
   }
 
