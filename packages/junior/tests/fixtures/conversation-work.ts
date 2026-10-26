@@ -462,13 +462,8 @@ export async function createConversationWorkSlackHarness(
     services: {
       agentRunner,
       subscribedReplyPolicy: {
-        completeObject: async ({ schema }) => ({
-          object: schema.parse({
-            should_reply: false,
-            should_unsubscribe: false,
-            confidence: 1,
-            reason: "side_conversation",
-          }),
+        completeDecision: async () => ({
+          answers: { route: { choice: "stay_quiet" } },
         }),
       },
       visionContext: {

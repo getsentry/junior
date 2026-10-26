@@ -77,6 +77,8 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotModelConfig {
+  /** Decision model used by the passive reply router. */
+  decisionModelId?: string;
   /** Model used for embeddings. */
   embeddingModelId?: string;
   /** Model used for low-cost structured and utility calls. */
@@ -94,6 +96,7 @@ export interface BotModelConfig {
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
+  decisionModelId: string;
   defaultProfile: ModelProfile;
   embeddingModelId: string;
   fastModelId: string;
@@ -261,6 +264,7 @@ const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
   DEFAULT_MODEL_PROFILES.handoff.modelId,
 ).id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
+const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
@@ -502,6 +506,8 @@ function readBotConfig(
       reasoningLevel === undefined
         ? undefined
         : parseTurnReasoningLevel(reasoningLevel),
+    decisionModelId:
+      toOptionalTrimmed(env.AI_DECISION_MODEL) ?? DEFAULT_DECISION_MODEL_ID,
     fastModelId,
     guardianModelId,
     imageGenerationModelId:
@@ -825,6 +831,13 @@ export interface SlackReactionConfig {
 
 /** Apply model overrides from createApp(). */
 export function setBotModelConfig(config: BotModelConfig): void {
+  if (config.decisionModelId !== undefined) {
+    botConfig.decisionModelId = requireModelId(
+      "decisionModelId",
+      config.decisionModelId,
+      toOptionalTrimmed,
+    );
+  }
   if (config.embeddingModelId !== undefined) {
     botConfig.embeddingModelId = requireModelId(
       "embeddingModelId",

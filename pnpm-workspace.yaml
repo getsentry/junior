@@ -18,7 +18,7 @@ overrides:
   "@earendil-works/pi-agent-core>@earendil-works/pi-ai": 0.85.1
   "@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   "@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
-  ai: 6.0.190
+  ai: 7.0.153
   "astro>vite": 8.0.14
   "@swc/core": 1.15.33
   linkify-it: 5.0.0

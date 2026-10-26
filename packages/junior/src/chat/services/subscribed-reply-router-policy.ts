@@ -1,3 +1,6 @@
+/** One passive reply route that the decision model can choose. */
+export type SubscribedReplyRoute = "reply" | "stay_quiet" | "unsubscribe";
+
 /**
  * Passive subscribed-thread reply router policy.
  *
@@ -9,11 +12,9 @@
  * This router judges one inbound Slack message from bounded visible
  * user/assistant thread evidence and decides whether Junior should reply.
  */
-export function buildSubscribedReplyRouterPolicy(
-  assistantName: string,
-): string {
+function buildSubscribedReplyRouterPolicy(assistantName: string): string {
   return `You are judging whether the Slack assistant named ${assistantName} should reply to one latest message in a subscribed thread.
-Assess conversation floor ownership and whether the latest message continues work ${assistantName} was already doing. Derive should_reply and should_unsubscribe only after that assessment. Your primary objective is to re-engage when the thread is still talking to ${assistantName}, while staying quiet for human-to-human side conversation.
+Assess conversation floor ownership and whether the latest message continues work ${assistantName} was already doing. Choose the route only after that assessment. Your primary objective is to re-engage when the thread is still talking to ${assistantName}, while staying quiet for human-to-human side conversation.
 
 # Evidence Handling
 - Core-supplied routing signals and the assistant name are authoritative facts.
@@ -32,22 +33,40 @@ Assess conversation floor ownership and whether the latest message continues wor
 - Explicit @mentions of another person usually mean the floor is not with ${assistantName}, unless the message also clearly asks ${assistantName} to act.
 
 # Reply Policy
-- should_reply=true when the latest message is explicitly aimed at ${assistantName}.
-- should_reply=true when the latest message is a natural follow-up to ${assistantName}'s prior question, answer, analysis, plan, or requested next step.
+- route=reply when the latest message is explicitly aimed at ${assistantName}.
+- route=reply when the latest message is a natural follow-up to ${assistantName}'s prior question, answer, analysis, plan, or requested next step.
 - Natural follow-ups include questions, corrections, added constraints, choices, requests to act, and topic-specific continuations, even without words like "you" or "${assistantName}".
-- Terse continuations such as "which one?", "why?", "what about auth?", "is that the right approach?", or "can you check on this?" can be should_reply=true when they continue ${assistantName}'s immediately preceding contribution.
-- Attachment-only messages can be should_reply=true when the thread context makes them a continuation of work ${assistantName} was doing.
-- should_reply=false for acknowledgments, reactions, status chatter, and team coordination that do not ask ${assistantName} to continue.
-- should_reply=false when the latest message is plainly human-to-human, even if it discusses the same project.
+- Terse continuations such as "which one?", "why?", "what about auth?", "is that the right approach?", or "can you check on this?" can be route=reply when they continue ${assistantName}'s immediately preceding contribution.
+- Attachment-only messages can be route=reply when the thread context makes them a continuation of work ${assistantName} was doing.
+- route=stay_quiet for acknowledgments, reactions, status chatter, and team coordination that do not ask ${assistantName} to continue.
+- route=stay_quiet when the latest message is plainly human-to-human, even if it discusses the same project.
 
 # Unsubscribe Policy
-- should_unsubscribe=true when the latest message clearly tells ${assistantName} to stop or leave the thread.
-- If should_unsubscribe=true, should_reply must be false.
+- route=unsubscribe when the latest message clearly tells ${assistantName} to stop or leave the thread.
 - Ordinary disagreement, correction, or "not yet" is not an unsubscribe.
 
 # Decision Policy
-- Prefer should_reply=true for clear continuations of ${assistantName}'s work.
-- Prefer should_reply=false for clear side conversation.
-- Use low confidence only for genuinely ambiguous floor ownership. Do not lower confidence merely because the assistant was addressed implicitly.
-- Keep the reason to one concise sentence under 160 characters grounded in floor ownership or continuity.`;
+- Prefer route=reply for clear continuations of ${assistantName}'s work.
+- Prefer route=stay_quiet for clear side conversation.
+- Spread probability across routes only for genuinely ambiguous floor ownership. Do not lower the reply probability merely because the assistant was addressed implicitly.`;
 }
+
+/** Build the decision question for one passive subscribed-thread message. */
+export function buildSubscribedReplyRouterQuestions(assistantName: string) {
+  return {
+    route: {
+      type: "choice",
+      instructions: buildSubscribedReplyRouterPolicy(assistantName),
+      criteria: {
+        reply: `${assistantName} should reply to the latest message.`,
+        stay_quiet: `${assistantName} should stay silent and remain in the thread.`,
+        unsubscribe: `The latest message clearly tells ${assistantName} to stop or leave the thread.`,
+      } satisfies Record<SubscribedReplyRoute, string>,
+    },
+  } as const;
+}
+
+/** Decision questions sent by the passive subscribed-thread reply router. */
+export type SubscribedReplyRouterQuestions = ReturnType<
+  typeof buildSubscribedReplyRouterQuestions
+>;
