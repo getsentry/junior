@@ -209,54 +209,33 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/pi/client", () => ({
+vi.mock("@/chat/pi/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   GEN_AI_PROVIDER_NAME: "test-provider",
   GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
   GEN_AI_SERVER_PORT: 443,
-  completeObject: async ({ prompt }: { prompt: string }) => {
-    const instructionMatch = prompt.match(
+  completeDecision: async ({ state }: { state: string }) => {
+    const instructionMatch = state.match(
       /<current-instruction>\n([\s\S]*?)\n<\/current-instruction>/,
     );
     const instruction = instructionMatch?.[1] ?? "";
+    const route = (reasoningLevel: string) => ({
+      answers: {
+        profile: { type: "choice", choice: "standard" },
+        reasoning_level: { type: "choice", choice: reasoningLevel },
+      },
+    });
 
-    if (prompt.includes("TypeError: x is undefined")) {
-      return {
-        object: {
-          reasoning_level: "high",
-          profile: "standard",
-          confidence: 1,
-          reason: "attachment stack trace",
-        },
-      };
+    if (state.includes("TypeError: x is undefined")) {
+      return route("high");
     }
     if (instruction === "hello") {
-      return {
-        object: {
-          reasoning_level: "none",
-          profile: "standard",
-          confidence: 1,
-          reason: "ack",
-        },
-      };
+      return route("none");
     }
     if (instruction === "fix the failing test in chat") {
-      return {
-        object: {
-          reasoning_level: "high",
-          profile: "standard",
-          confidence: 1,
-          reason: "code change request",
-        },
-      };
+      return route("high");
     }
-    return {
-      object: {
-        reasoning_level: "medium",
-        profile: "standard",
-        confidence: 1,
-        reason: "test-router",
-      },
-    };
+    return route("medium");
   },
   getGatewayApiKey: () => undefined,
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),

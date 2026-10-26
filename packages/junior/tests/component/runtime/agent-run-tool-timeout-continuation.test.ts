@@ -18,12 +18,10 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/pi/client")>();
   return {
     ...actual,
-    completeObject: async () => ({
-      object: {
-        reasoning_level: "medium",
-        profile: "standard",
-        confidence: 1,
-        reason: "test-router",
+    completeDecision: async () => ({
+      answers: {
+        profile: { type: "choice", choice: "standard" },
+        reasoning_level: { type: "choice", choice: "medium" },
       },
     }),
   };
@@ -249,14 +247,14 @@ describe("tool timeout continuation composition", () => {
     const conversationId = "local:test:tool-timeout-continuation";
     const turnId = "turn-tool-timeout-continuation";
     const request = {
-  conversationId: conversationId,
-  turnId: turnId,
-  instruction:   {
-  text: "Run the targeted test and create the PR.",
-  },
-  destination: { platform: "local" as const, conversationId },
-  source: createLocalSource(conversationId),
-};
+      conversationId: conversationId,
+      turnId: turnId,
+      instruction: {
+        text: "Run the targeted test and create the PR.",
+      },
+      destination: { platform: "local" as const, conversationId },
+      source: createLocalSource(conversationId),
+    };
 
     const suspendedPromise = executeAgentRun({
       ...request,

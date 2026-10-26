@@ -9,7 +9,7 @@ import {
   type DescribeEvalOptions,
   type JsonValue,
 } from "vitest-evals";
-import { completeObject } from "@/chat/pi/client";
+import { completeDecision } from "@/chat/pi/client";
 import {
   DEFAULT_MODEL_PROFILES,
   type ModelProfileConfig,
@@ -48,11 +48,12 @@ async function routeTask(
     : timeoutSignal;
 
   return selectTurnRoute({
-    completeObject: (args) => completeObject({ ...args, signal: routeSignal }),
+    completeDecision: (args) =>
+      completeDecision({ ...args, signal: routeSignal }),
     conversationContext: input.conversationContext,
     currentProfile: input.currentProfile ?? "standard",
-    fastModelId: botConfig.fastModelId,
     messageText: input.messageText,
+    modelId: botConfig.decisionModelId,
     profiles: input.profiles ?? DEFAULT_MODEL_PROFILES,
   });
 }
@@ -106,7 +107,7 @@ export const routerHarness = createHarness<RouterEvalInput, RouterEvalOutput>({
       ],
       usage: {
         provider: "vercel-ai-gateway",
-        model: botConfig.fastModelId,
+        model: botConfig.decisionModelId,
         ...(route.costUsd !== undefined
           ? { metadata: { costUsd: route.costUsd } }
           : {}),

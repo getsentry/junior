@@ -64,7 +64,7 @@ import {
 } from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
-  completeObject,
+  completeDecision,
   completeText,
   getGatewayApiKey,
   resolveGatewayModel,
@@ -657,7 +657,7 @@ async function executeAgentRunInPrivacyContext(
       // unfinished work there or move a new request to another profile.
       const lastProfile = await loadLastModelProfile({ conversationId });
       turnRoute = await selectTurnRoute({
-        completeObject,
+        completeDecision,
         conversationContext: input.conversationContext,
         context: {
           threadId: conversationId,
@@ -670,8 +670,8 @@ async function executeAgentRunInPrivacyContext(
             ? lastProfile
             : botConfig.defaultProfile,
         currentTurnBlocks: routerBlocks,
-        fastModelId: botConfig.fastModelId,
         messageText: userInput,
+        modelId: botConfig.decisionModelId,
         profiles: botConfig.profiles,
       });
       const routedProfileReasoningLevel = profileConfig(
