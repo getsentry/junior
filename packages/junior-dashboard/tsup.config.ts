@@ -114,7 +114,6 @@ export default defineConfig({
     "@sentry/junior/api",
     "@sentry/junior/api/schema",
     "@sentry/junior/instrumentation",
-    "better-auth",
     "hono",
   ],
 });

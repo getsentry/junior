@@ -13,7 +13,7 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior, but its Better Auth session only protects dashboard routes.
+Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior. Junior core owns its Better Auth session. With the experimental `slack-sign-in` feature, Slack uses the same session, so a dashboard sign-in also counts as a recent Slack sign-in.
 
 ## Install
 

@@ -1,14 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
+  GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
   type IdentityUpsert,
   type StoredIdentity,
 } from "./identity";
 
 type IdentityRow = typeof juniorIdentities.$inferSelect;
+
+const googleIdentity = alias(juniorIdentities, "google_identity");
 
 function dateFromMs(ms: number): Date {
   return new Date(ms);
@@ -313,4 +317,87 @@ export async function deleteProviderIdentityForUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
+}
+
+/** Read the user linked to one Slack identity. */
+export async function findSlackIdentityUserId(
+  executor: JuniorSqlDatabase,
+  slackTeamId: string,
+  slackUserId: string,
+): Promise<string | undefined> {
+  const rows = await executor
+    .db()
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, slackTeamId),
+        eq(juniorIdentities.providerSubjectId, slackUserId),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.userId ?? undefined;
+}
+
+/**
+ * Save one Google sign-in. Link the Google identity to the user of its
+ * verified email, and set its sign-in time.
+ */
+export async function recordGoogleSignIn(
+  executor: JuniorSqlDatabase,
+  account: { displayName?: string; email: string; subject: string },
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  const stored = await upsertIdentity(
+    executor,
+    {
+      kind: "user",
+      provider: GOOGLE_IDENTITY_PROVIDER,
+      providerSubjectId: account.subject,
+      email: account.email,
+      emailVerified: true,
+      displayName: account.displayName,
+    },
+    nowMs,
+  );
+  await executor
+    .db()
+    .update(juniorIdentities)
+    .set({ signedInAt: dateFromMs(nowMs) })
+    .where(eq(juniorIdentities.id, stored.id));
+  return stored;
+}
+
+/**
+ * Return whether the user of one Slack identity signed in with Google at or
+ * after `signedInSince`.
+ */
+export async function slackUserHasGoogleSignIn(
+  executor: JuniorSqlDatabase,
+  args: { signedInSince: Date; slackTeamId: string; slackUserId: string },
+): Promise<boolean> {
+  const rows = await executor
+    .db()
+    .select({ id: googleIdentity.id })
+    .from(juniorIdentities)
+    .innerJoin(
+      googleIdentity,
+      eq(googleIdentity.userId, juniorIdentities.userId),
+    )
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, args.slackTeamId),
+        eq(juniorIdentities.providerSubjectId, args.slackUserId),
+        eq(googleIdentity.kind, "user"),
+        eq(googleIdentity.provider, GOOGLE_IDENTITY_PROVIDER),
+        eq(googleIdentity.emailVerified, true),
+        gte(googleIdentity.signedInAt, args.signedInSince),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }

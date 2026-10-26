@@ -16,6 +16,22 @@ timezone to this column. The scheduler and plugin tools use it, through
 `ctx.users.resolveTimezone()`. See the Timezones section in
 `chat/scheduled-automations/README.md`.
 
+## Native Identities
+
+Core owns two identity providers: `slack` and `google`. Other checks trust
+these identities, so only core links them. `isNativeIdentityProvider()` in
+`identity.ts` lists them.
+
+- A Slack identity has the Slack team ID as its tenant and the Slack user ID as
+  its subject.
+- A Google identity has an empty tenant and the Google OIDC `sub` as its
+  subject. Each allowed Google sign-in, from Slack or the dashboard, saves it
+  with the verified Google email and sets `signed_in_at`. One Google account is
+  one row, so every feature that reads the `google` identity sees the same
+  account.
+- The Google Workspace plugin is not a Google identity. It stores Junior's own
+  Workspace account in its own table.
+
 ## OAuth Account Links
 
 When a person connects a provider account, the OAuth callback links the
@@ -32,9 +48,32 @@ the account. The person must start the connection from Slack or the web UI.
 - A verified email that matches the linked user is saved on the provider
   identity. Other verified emails are not saved. Verified emails are never
   stored with the OAuth tokens.
+- A plugin OAuth account never links under a native identity provider name.
+  The tokens are still stored.
 - Linking is best effort. A failure keeps the stored tokens and logs
   `oauth.callback.identity_link.failed`.
 
 Provider handles and subject IDs always remain identity-scoped. Display names
 are presentation data and must never be used to link identities or grant
 authority.
+
+## Slack Sign-In
+
+With the experimental `slack-sign-in` feature, Slack ingress accepts mentions
+and DMs only when the user of the Slack identity has a Google identity with a
+recent `signed_in_at`. The default limit is 7 days
+(`slack.signInMaxAgeDays`). `chat/sign-in/` owns the sign-in. It does not need
+the dashboard.
+
+- `chat/sign-in/auth.ts` owns the one Better Auth instance. Slack and the
+  dashboard use it, so they share one browser session and one Google callback.
+  Core mounts its routes when the dashboard is not mounted.
+- After each Google callback, a Better Auth hook saves the Google identity when
+  the verified email is on the dashboard allowlist.
+- Ingress saves the Slack identity with its Slack profile email. Then it stores
+  one sign-in state for that Slack identity and sends a private link to
+  `/api/sign-in/slack`.
+- That page reads the shared session. It starts one Google sign-in when there is
+  no session or no recent sign-in. It succeeds only when the user of the Slack
+  identity has the session email. A forwarded link cannot give another
+  person's Slack account access.
