@@ -42,12 +42,14 @@ const MAX_TOOL_CALLS_PER_TURN = 1000;
  */
 const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
 /**
- * Max runs one Event automation can start in a rolling hour. Each run is a
- * full agent turn, and Event automations skip the consecutive automated-turn
- * limit. Kept low so a broad trigger, such as every message in a channel,
- * blocks quickly instead of starting a turn for each Event.
+ * Max runs one Event automation can start in one rolling run window. Each run
+ * is a full agent turn, and Event automations skip the consecutive
+ * automated-turn limit. Kept low so a broad trigger, such as every message in
+ * a channel, blocks quickly instead of starting a turn for each Event.
  */
-const MAX_EVENT_AUTOMATION_RUNS_PER_HOUR = 10;
+const MAX_EVENT_AUTOMATION_RUNS = 10;
+/** Length of the rolling window for the Event automation run limit. */
+const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 1000;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -108,7 +110,8 @@ export interface BotConfig {
   maxToolCallsPerTurn: number;
   maxTurnCostUsd: number;
   maxConsecutiveAutomatedTurns: number;
-  maxEventAutomationRunsPerHour: number;
+  maxEventAutomationRuns: number;
+  eventAutomationRunWindowMs: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -520,7 +523,8 @@ function readBotConfig(
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxTurnCostUsd: MAX_TURN_COST_USD,
     maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
-    maxEventAutomationRunsPerHour: MAX_EVENT_AUTOMATION_RUNS_PER_HOUR,
+    maxEventAutomationRuns: MAX_EVENT_AUTOMATION_RUNS,
+    eventAutomationRunWindowMs: EVENT_AUTOMATION_RUN_WINDOW_MS,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
@@ -640,8 +644,13 @@ export interface RuntimeLimits {
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
   maxConsecutiveAutomatedTurns?: number;
-  /** Runs one Event automation can start in a rolling hour. */
-  maxEventAutomationRunsPerHour?: number;
+  /** Runs one Event automation can start in a rolling window. */
+  eventAutomationRunLimit?: {
+    /** Runs allowed in one window. The default is 10. */
+    maxRuns?: number;
+    /** Window length in ms. The default, 60000, is one minute. */
+    windowMs?: number;
+  };
   /** Run slices one turn may use. */
   maxSlicesPerTurn?: number;
   /** Tool calls one turn may make. */
@@ -738,10 +747,17 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
       limits.maxConsecutiveAutomatedTurns,
     );
   }
-  if (limits?.maxEventAutomationRunsPerHour !== undefined) {
-    bot.maxEventAutomationRunsPerHour = requirePositiveLimit(
-      "maxEventAutomationRunsPerHour",
-      limits.maxEventAutomationRunsPerHour,
+  const runLimit = limits?.eventAutomationRunLimit;
+  if (runLimit?.maxRuns !== undefined) {
+    bot.maxEventAutomationRuns = requirePositiveLimit(
+      "eventAutomationRunLimit.maxRuns",
+      runLimit.maxRuns,
+    );
+  }
+  if (runLimit?.windowMs !== undefined) {
+    bot.eventAutomationRunWindowMs = requirePositiveLimit(
+      "eventAutomationRunLimit.windowMs",
+      runLimit.windowMs,
     );
   }
   if (limits?.maxSlicesPerTurn !== undefined) {

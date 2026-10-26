@@ -56,7 +56,7 @@ A Slack channel-message automation runs for each new top-level message in the ch
 
 If the plugin is disabled, the automation remains visible but cannot receive events until a compatible plugin is enabled again. Each plugin page lists the resources and events it can publish.
 
-Each event automation can start at most 10 runs in an hour. Set `limits.maxEventAutomationRunsPerHour` in `createApp()` to change this number. The limit applies to that one automation, so other automations on the same trigger keep running. When an automation reaches the limit, Junior blocks it and sends its creator a direct message. Resume the automation after you narrow its trigger.
+Each event automation can start at most 10 runs in a rolling minute. Set `limits.eventAutomationRunLimit` in `createApp()` to change the count (`maxRuns`) and the window (`windowMs`), for example 100 runs per hour. The limit applies to that one automation, so other automations on the same trigger keep running. When an automation reaches the limit, Junior blocks it and sends its creator a direct message. Resume the automation after you narrow its trigger.
 
 ## Access and Delivery
 
