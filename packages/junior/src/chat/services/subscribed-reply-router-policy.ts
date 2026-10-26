@@ -31,8 +31,8 @@ Assess conversation floor ownership and whether the latest message continues wor
 - If one or more humans spoke after ${assistantName}, the floor is human-to-human unless the latest message turns back to ${assistantName} or clearly continues work ${assistantName} was already handling.
 - Shared topic vocabulary alone does not give ${assistantName} the floor.
 - Explicit @mentions of another person usually mean the floor is not with ${assistantName}, unless the message also clearly asks ${assistantName} to act.
-- A message that starts by addressing another person by name, such as "Alex, ..." or "Sam, ...", is aimed at that person, not at ${assistantName}.
-- After one human addresses another human, later messages from either of them stay in that human exchange until one of them clearly turns back to ${assistantName}. This includes "can you ..." requests and same-topic questions.
+- A message that starts by addressing another person by name is aimed at that person, not at ${assistantName}.
+- After one human addresses another human, later messages from either of them stay in that human exchange until one of them clearly turns back to ${assistantName}.
 
 # Reply Policy
 - route=reply when the latest message is explicitly aimed at ${assistantName}.
