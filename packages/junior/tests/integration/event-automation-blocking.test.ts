@@ -6,7 +6,6 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { botConfig } from "@/chat/config";
-import { EVENT_AUTOMATION_RUN_WINDOW_MS } from "@/chat/event-automations/run-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
@@ -163,7 +162,7 @@ describe("event automation blocking", () => {
         queue,
         teamId,
       });
-    const maxRuns = botConfig.maxEventAutomationRunsPerMinute;
+    const maxRuns = botConfig.maxEventAutomationRuns;
     const fill = async (prefix: string, count: number, nowMs: number) => {
       for (let index = 0; index < count; index += 1) {
         expect(await ingest(`${prefix}-${index}`, nowMs)).toEqual({
@@ -183,7 +182,8 @@ describe("event automation blocking", () => {
     });
 
     // Old runs leave the rolling window.
-    const nextWindowMs = firstWindowMs + EVENT_AUTOMATION_RUN_WINDOW_MS + 1;
+    const nextWindowMs =
+      firstWindowMs + botConfig.eventAutomationRunWindowMs + 1;
     await fill("github:next", maxRuns, nextWindowMs);
 
     // A second automation on the same trigger has its own count.

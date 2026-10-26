@@ -125,8 +125,9 @@ export async function ingestEventAutomations(
             },
             extra: {
               "app.event.event_type": event.eventType,
-              "app.event_automation.max_runs_per_minute":
-                botConfig.maxEventAutomationRunsPerMinute,
+              "app.event_automation.max_runs": botConfig.maxEventAutomationRuns,
+              "app.event_automation.run_window_ms":
+                botConfig.eventAutomationRunWindowMs,
               "app.event_automation.resource_type": task.trigger.resourceType,
               "app.task.id": task.id,
             },

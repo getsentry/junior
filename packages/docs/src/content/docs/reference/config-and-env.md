@@ -183,8 +183,10 @@ By default, only the root Conversation can start child agents. Set
 example, `1` lets a child agent start child agents, and those cannot start more.
 
 Each event automation can start at most 10 runs in a rolling minute. Set
-`limits.maxEventAutomationRunsPerMinute` to change this number. The window is
-always one minute. When an automation reaches the limit, Junior blocks it, sends
+`limits.maxEventAutomationRuns` to change the count. Set
+`limits.eventAutomationRunWindowMs` to change the window. For example,
+`{ maxEventAutomationRuns: 100, eventAutomationRunWindowMs: 3_600_000 }` allows
+100 runs per hour. When an automation reaches the limit, Junior blocks it, sends
 its creator a direct message, and reports a warning issue to Sentry.
 
 Each turn can spend at most $100 of model cost and make at most 1,000 tool

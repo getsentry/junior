@@ -77,7 +77,8 @@ describe("createApp profiles", () => {
       fastModelId: "anthropic/claude-haiku-4.5",
       limits: {
         contextWindowTokens: 2_000,
-        maxEventAutomationRunsPerMinute: 2,
+        eventAutomationRunWindowMs: 60 * 60 * 1000,
+        maxEventAutomationRuns: 2,
         maxToolCallsPerTurn: 3,
       },
       slack: {
@@ -90,7 +91,8 @@ describe("createApp profiles", () => {
       contextWindowTokens: 2_000,
       crossActorMidRunMode: "steer",
       defaultProfile: "gpt-5",
-      maxEventAutomationRunsPerMinute: 2,
+      eventAutomationRunWindowMs: 60 * 60 * 1000,
+      maxEventAutomationRuns: 2,
       maxToolCallsPerTurn: 3,
     });
 
@@ -101,8 +103,8 @@ describe("createApp profiles", () => {
       crossActorMidRunMode: originalBotConfig.crossActorMidRunMode,
       defaultProfile: originalBotConfig.defaultProfile,
       fastModelId: originalBotConfig.fastModelId,
-      maxEventAutomationRunsPerMinute:
-        originalBotConfig.maxEventAutomationRunsPerMinute,
+      eventAutomationRunWindowMs: originalBotConfig.eventAutomationRunWindowMs,
+      maxEventAutomationRuns: originalBotConfig.maxEventAutomationRuns,
       maxToolCallsPerTurn: originalBotConfig.maxToolCallsPerTurn,
       profiles: originalBotConfig.profiles,
     });
