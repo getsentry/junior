@@ -11,7 +11,7 @@ type TableAlignment = "left" | "center" | "right" | null;
 
 type MarkdownBlock =
   | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
-  | { type: "list"; ordered: boolean; items: string[] }
+  | { type: "list"; ordered: boolean; items: string[]; start?: number }
   | {
       type: "table";
       alignments: TableAlignment[];
@@ -33,11 +33,11 @@ export function TranscriptMarkdown(props: {
       className={cn(
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.compact
-          ? "font-sans text-base leading-7"
+          ? "font-sans text-base leading-relaxed"
           : "font-sans text-sm leading-6 md:leading-7",
       )}
     >
-      <div className="grid min-w-0 gap-2">
+      <div className={cn("grid min-w-0", props.compact ? "gap-3" : "gap-2")}>
         {blocks.map((block, index) => (
           <MarkdownBlockView block={block} key={index} />
         ))}
@@ -50,7 +50,7 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
   switch (props.block.type) {
     case "heading": {
       const className = cn(
-        "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text",
+        "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text [&:not(:first-child)]:mt-1 [&+*]:-mt-1",
         props.block.level <= 2 ? "text-[1.05em]" : "text-[1em]",
       );
       const content = renderInlineMarkdown(props.block.text);
@@ -74,9 +74,10 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
       return (
         <ListTag
           className={cn(
-            "m-0 grid min-w-0 list-outside gap-1 pl-5 text-dashboard-text",
+            "m-0 grid min-w-0 list-outside gap-1.5 pl-6 text-dashboard-text marker:text-dashboard-text-muted",
             props.block.ordered ? "list-decimal" : "list-disc",
           )}
+          start={props.block.start}
         >
           {props.block.items.map((item, index) => (
             <li className="min-w-0 pl-1" key={index}>
@@ -122,6 +123,7 @@ function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
       const ordered = isOrderedListItem(line);
       const unordered = isUnorderedListItem(line);
       if (ordered || unordered) {
+        const start = ordered ? Number(/\d+/.exec(line)?.[0]) : undefined;
         const items: string[] = [];
         while (
           index < lines.length &&
@@ -131,13 +133,18 @@ function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
         ) {
           items.push(
             (lines[index] ?? "").replace(
-              ordered ? /^\s*\d+\.\s+/ : /^\s*[-*+]\s+/,
+              ordered ? ORDERED_LIST_MARKER : UNORDERED_LIST_MARKER,
               "",
             ),
           );
           index += 1;
         }
-        blocks.push({ items, ordered, type: "list" });
+        blocks.push({
+          items,
+          ordered,
+          start: start === 1 ? undefined : start,
+          type: "list",
+        });
         continue;
       }
 
@@ -323,6 +330,11 @@ function splitTableRow(line: string): string[] {
 }
 
 function matchHeading(line: string): MarkdownBlock | undefined {
+  // Agents often write a bold-only line as a section label. Give it heading
+  // spacing so the section reads as a group.
+  if (/^\s*(?:\*\*[^*]+\*\*|__[^_]+__):?\s*$/.test(line)) {
+    return { level: 3, text: line.trim(), type: "heading" };
+  }
   const match = /^(#{1,6})\s+(.+)$/.exec(line);
   if (!match) return undefined;
   return {
@@ -332,12 +344,16 @@ function matchHeading(line: string): MarkdownBlock | undefined {
   };
 }
 
+// Slack-style replies use "•" bullets and "1)" numbers; render them as lists.
+const UNORDERED_LIST_MARKER = /^\s*[-*+•◦]\s+(?=\S)/;
+const ORDERED_LIST_MARKER = /^\s*\d+[.)]\s+(?=\S)/;
+
 function isUnorderedListItem(line: string): boolean {
-  return /^\s*[-*+]\s+\S/.test(line);
+  return UNORDERED_LIST_MARKER.test(line);
 }
 
 function isOrderedListItem(line: string): boolean {
-  return /^\s*\d+\.\s+\S/.test(line);
+  return ORDERED_LIST_MARKER.test(line);
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {

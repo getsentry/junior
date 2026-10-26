@@ -264,6 +264,19 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Handling:");
     expect(html).toContain("<ul");
     expect(html.match(/<li/g)).toHaveLength(2);
+
+    const slackHtml = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown
+          text={"Checking:\n• first item\n• second item\n2) next step"}
+        />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(slackHtml.match(/<li/g)).toHaveLength(3);
+    expect(slackHtml).not.toContain("•");
+    expect(slackHtml).toContain('<ol class="');
+    expect(slackHtml).toContain('start="2"');
   });
 
   it("renders typed tool states in the component gallery", () => {
