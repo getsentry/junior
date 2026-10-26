@@ -17,8 +17,9 @@ import { answerWebSearch } from "./web";
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
 const GATEWAY_CHAT_COMPLETIONS_URL =
   "https://ai-gateway.vercel.sh/v1/chat/completions";
+// A valid 1x1 PNG. The agent can view it, so the model must decode it.
 const STUB_PNG_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH3cAAAAASUVORK5CYII=";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 
 /** Whether a request asks the gateway to generate an image. */
 async function isImageGeneration(request: Request): Promise<boolean> {
