@@ -321,7 +321,6 @@ const conversationReportMessageEventDataSchema = z
     role: z.enum(["assistant", "system", "user"]),
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
-    /** People mentioned in the text, resolved when the event is read. */
     mentions: z.array(actorIdentitySchema).optional(),
     eventType: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
