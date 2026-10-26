@@ -186,6 +186,9 @@ service-account:
 - `mcp-tools` lists the MCP tools that the account may call. List only what
   everyone who can talk to Junior may do, usually read tools. Other tools
   still use the actor's own OAuth.
+- `mode: only` turns off the actor's own OAuth for the plugin. Every
+  `mcp.allowed-tools` and `mcp.wrapped-tools` entry must then be in
+  `mcp-tools`. The default is `mode: fallback`.
 
 ## Parser traps
 

@@ -7,6 +7,7 @@ import {
   useServiceAccountMcpServer,
 } from "../../fixtures/service-account-mcp";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
+import { McpServiceAccountRequiredError } from "@/chat/mcp/errors";
 import {
   deleteMcpStoredOAuthCredentials,
   putMcpStoredOAuthCredentials,
@@ -37,6 +38,16 @@ const plugin: PluginDefinition = {
       allowedTools: ["search", "create"],
     },
     serviceAccount: { mcpTools: ["search"] },
+  },
+};
+
+/** The same plugin, but Actors cannot use their own connection. */
+const onlyPlugin: PluginDefinition = {
+  ...plugin,
+  manifest: {
+    ...plugin.manifest,
+    mcp: { ...plugin.manifest.mcp!, allowedTools: ["search"] },
+    serviceAccount: { mode: "only", mcpTools: ["search"] },
   },
 };
 
@@ -77,7 +88,11 @@ function unconnectedActorAuth(): OAuthClientProvider {
   };
 }
 
-function createManager(onAuthorizationRequired = vi.fn()) {
+function createManager(
+  onAuthorizationRequired = vi.fn(),
+  managedPlugin = plugin,
+  authProviderFactory = unconnectedActorAuth,
+) {
   const mcpAuth = createMcpAuthOrchestration({
     abortAgent: vi.fn(),
     actorId: ACTOR_ID,
@@ -88,8 +103,8 @@ function createManager(onAuthorizationRequired = vi.fn()) {
   });
   return {
     mcpAuth,
-    manager: new McpToolManager([plugin], {
-      authProviderFactory: unconnectedActorAuth,
+    manager: new McpToolManager([managedPlugin], {
+      authProviderFactory,
       serviceAccountProviderFactory: mcpAuth.serviceAccountProviderFactory,
       onAuthorizationRequired,
     }),
@@ -142,6 +157,47 @@ describe("MCP service account auth", () => {
     } finally {
       await manager.close();
     }
+  });
+
+  it("uses only the service account when the plugin allows no actor connections", async () => {
+    useServiceAccountMcpServer();
+    const onAuthorizationRequired = vi.fn(async () => false);
+    const actorAuth = vi.fn(unconnectedActorAuth);
+    await putMcpStoredOAuthCredentials(ACTOR_ID, PROVIDER, {
+      tokens: { access_token: "actor-token", token_type: "Bearer" },
+    });
+
+    const unconnected = createManager(
+      onAuthorizationRequired,
+      onlyPlugin,
+      actorAuth,
+    ).manager;
+    try {
+      await expect(
+        unconnected.activateProvider(PROVIDER),
+      ).rejects.toBeInstanceOf(McpServiceAccountRequiredError);
+    } finally {
+      await unconnected.close();
+    }
+
+    await connectServiceAccount();
+    const connected = createManager(
+      onAuthorizationRequired,
+      onlyPlugin,
+      actorAuth,
+    ).manager;
+    try {
+      await connected.activateProvider(PROVIDER);
+      await expect(
+        tool(connected, "search").execute({}),
+      ).resolves.toMatchObject({
+        content: [{ type: "text", text: "access-1" }],
+      });
+    } finally {
+      await connected.close();
+    }
+    expect(actorAuth).not.toHaveBeenCalled();
+    expect(onAuthorizationRequired).not.toHaveBeenCalled();
   });
 
   it("refreshes the shared token and disconnects once the provider revokes the grant", async () => {

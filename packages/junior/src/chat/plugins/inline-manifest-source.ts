@@ -86,7 +86,9 @@ export function mcpOauthClientSource(
 export function serviceAccountSource(
   serviceAccount: PluginServiceAccountConfig,
 ): ManifestSource {
-  return { "mcp-tools": serviceAccount.mcpTools };
+  const result: ManifestSource = { "mcp-tools": serviceAccount.mcpTools };
+  setDefined(result, "mode", serviceAccount.mode);
+  return result;
 }
 
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {

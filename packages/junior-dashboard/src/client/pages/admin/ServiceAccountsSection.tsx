@@ -45,11 +45,19 @@ export function useServiceAccounts() {
 }
 
 function statusText(account: ServiceAccount): string {
+  const usage =
+    account.mode === "only"
+      ? `Everyone uses this account. People cannot connect their own ${account.displayName} account.`
+      : `People who have not connected their own ${account.displayName} account use this account.`;
   if (!account.connected) {
-    return `Not connected. Sign in as the shared ${account.displayName} account, not as yourself.`;
+    const blocked =
+      account.mode === "only"
+        ? ` ${account.displayName} is not available until you connect it.`
+        : "";
+    return `Not connected.${blocked} ${usage} Sign in as the shared account, not as yourself.`;
   }
   const by = account.connectedBy ?? "the CLI";
-  return `Connected by ${by} ${formatRelativeTime(account.connectedAt)}.`;
+  return `Connected by ${by} ${formatRelativeTime(account.connectedAt)}. ${usage}`;
 }
 
 /**
@@ -118,8 +126,8 @@ export function ServiceAccountsSection(props: {
         Service accounts
       </h2>
       <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
-        A shared account that people use until they connect their own. It can do
-        only what its plugin allows, usually read. Everyone who can talk to{" "}
+        A shared account that Junior uses for a plugin. It can do only what its
+        plugin allows, usually read. Everyone who can talk to{" "}
         {getDashboardAgentName()} can use it, so give it only access that all of
         them may have.
       </p>
@@ -151,10 +159,21 @@ export function ServiceAccountsSection(props: {
                   </p>
                   <StatusChip
                     size="compact"
-                    tone={account.connected ? "success" : "neutral"}
+                    tone={
+                      account.connected
+                        ? "success"
+                        : account.mode === "only"
+                          ? "warning"
+                          : "neutral"
+                    }
                   >
                     {account.connected ? "connected" : "not connected"}
                   </StatusChip>
+                  {account.mode === "only" ? (
+                    <StatusChip size="compact" tone="neutral">
+                      shared only
+                    </StatusChip>
+                  ) : null}
                 </div>
                 <p className="mt-1 mb-0 break-words text-xs text-dashboard-text-muted">
                   {statusText(account)}

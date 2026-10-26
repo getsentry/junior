@@ -34,6 +34,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   getMcpAwareTelemetryMessage,
   getMcpProviderErrorAttributes,
+  McpServiceAccountRequiredError,
 } from "@/chat/mcp/errors";
 import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
@@ -544,8 +545,16 @@ export async function wireAgentTools(
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
       }
-      if (await mcpToolManager.activateProvider(provider)) {
-        await args.recordConnectedMcpProvider(provider);
+      try {
+        if (await mcpToolManager.activateProvider(provider)) {
+          await args.recordConnectedMcpProvider(provider);
+        }
+      } catch (error) {
+        // An Admin disconnected a required service account since the last
+        // turn. Leave the provider off; searchMcpTools reports why on use.
+        if (!(error instanceof McpServiceAccountRequiredError)) {
+          throw error;
+        }
       }
       if (mcpAuth.getPendingPause()) {
         args.resume.captureHistoryBeforePrompt(args.preAgentPromptMessages());

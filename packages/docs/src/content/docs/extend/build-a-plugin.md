@@ -133,6 +133,11 @@ service-account:
 - `mcp-tools` lists the MCP tools that the service account may call. Each
   tool must also be in `mcp.allowed-tools`. Junior calls MCP servers from the
   host, so it checks each tool call against this list.
+- `mode` is `fallback` by default. Set `mode: only` when people must not use
+  their own accounts. Then Junior uses only the service account, never asks
+  a person to connect, and ignores connections that people already made.
+  Every tool in `mcp.allowed-tools` must also be in `mcp-tools`. Until an
+  admin connects the account, the plugin is not available.
 - You cannot combine `mcp-tools` with `mcp.auth` or `mcp.oauth-client`.
 - Junior rejects keys that it does not enforce, so a typo cannot change what
   the account may do.

@@ -11,8 +11,8 @@ mcp:
     - notion-update-page
     - notion-move-pages
 
-# Optional shared read account. It has no effect until an admin runs
-# `junior service-account connect notion`.
+# Optional shared read account. It has no effect until an admin connects it
+# on the dashboard Admin page.
 service-account:
   mcp-tools:
     - notion-search

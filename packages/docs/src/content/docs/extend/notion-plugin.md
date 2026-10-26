@@ -82,6 +82,31 @@ remove Junior's connection in the Notion account settings to revoke the grant.
 If Notion revokes the grant, Junior removes the account and falls back to
 per-user OAuth.
 
+### Use only the service account
+
+To stop people from connecting their own Notion accounts, set the service
+account to `only` mode in your plugin list. Then everyone uses the shared
+account, and Junior never sends a Notion connect link. The shared account
+must cover every Notion tool that Junior loads, so also limit the tools:
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
+  manifests: {
+    notion: {
+      mcp: { allowedTools: ["notion-search", "notion-fetch"] },
+      serviceAccount: {
+        mode: "only",
+        mcpTools: ["notion-search", "notion-fetch"],
+      },
+    },
+  },
+});
+```
+
+Until an admin connects the account, Junior tells people that Notion is not
+available yet. If Notion revokes the grant, Notion stays unavailable until an
+admin connects the account again.
+
 ## What users can do
 
 - Search for a page or data source by title-style query.

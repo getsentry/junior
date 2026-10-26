@@ -121,6 +121,7 @@ describe("service accounts API", () => {
       {
         connected: false,
         displayName: "Docs",
+        mode: "fallback",
         mcpTools: ["search"],
         provider: "docs-mcp",
       },

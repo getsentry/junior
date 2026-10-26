@@ -8,6 +8,7 @@
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import { serviceAccountOnly } from "@/chat/credentials/service-account";
 import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
@@ -145,8 +146,10 @@ export function createMcpAuthOrchestration(
     if (!plugin.manifest.serviceAccount) {
       return undefined;
     }
-    // An actor's own connection can see and do more, so it always wins.
+    // An actor's own connection can see and do more, so it wins unless the
+    // plugin uses only its service account.
     if (
+      !serviceAccountOnly(plugin.manifest) &&
       input.actorId &&
       (await getMcpStoredOAuthCredentials(input.actorId, provider))?.tokens
     ) {

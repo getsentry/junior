@@ -23,7 +23,10 @@ import {
 } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { toGenAiPayloadMetadata } from "@/chat/conversation-privacy";
-import { serviceAccountAllows } from "@/chat/credentials/service-account";
+import {
+  serviceAccountAllows,
+  serviceAccountOnly,
+} from "@/chat/credentials/service-account";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   McpAuthorizationRequiredError,
@@ -35,6 +38,7 @@ import {
   getMcpAwareTelemetryMessage,
   getMcpAwareErrorType,
   getMcpProviderErrorAttributes,
+  McpServiceAccountRequiredError,
   McpToolError,
 } from "./errors";
 
@@ -288,6 +292,7 @@ export interface McpToolManagerOptions {
    * Return the plugin's service account auth, or undefined to use the actor's
    * own auth. A service account client calls only the tools that
    * `serviceAccountAllows` permits. Other tools use the actor's own client.
+   * A plugin in `only` mode never uses the actor's own auth.
    */
   serviceAccountProviderFactory?: (
     plugin: PluginDefinition,
@@ -557,6 +562,12 @@ export class McpToolManager {
     plugin: PluginDefinition,
     serviceAccount?: OAuthClientProvider,
   ): Promise<PluginMcpClient> {
+    if (!serviceAccount && serviceAccountOnly(plugin.manifest)) {
+      throw new McpServiceAccountRequiredError(
+        plugin.manifest.name,
+        plugin.manifest.displayName,
+      );
+    }
     const authProvider =
       serviceAccount ?? (await this.options.authProviderFactory?.(plugin));
     return new PluginMcpClient(plugin, {
@@ -753,6 +764,15 @@ export class McpToolManager {
     error: McpAuthorizationRequiredError,
     context?: McpAuthorizationContext,
   ): Promise<boolean> {
+    const plugin = this.pluginsByProvider.get(provider);
+    if (plugin && serviceAccountOnly(plugin.manifest)) {
+      // The shared account lost its grant. Never ask the actor to connect.
+      this.forgetProvider(provider);
+      throw new McpServiceAccountRequiredError(
+        provider,
+        plugin.manifest.displayName,
+      );
+    }
     if (!this.options.onAuthorizationRequired) {
       return false;
     }
@@ -765,12 +785,16 @@ export class McpToolManager {
     }
 
     this.authorizationPendingProviders.add(provider);
+    this.forgetProvider(provider);
+    return true;
+  }
+
+  private forgetProvider(provider: string): void {
     this.clientsByProvider.delete(provider);
     this.actorClientsByProvider.delete(provider);
     this.serviceAccountProviders.delete(provider);
     this.toolsByProvider.delete(provider);
     this.activeProviders.delete(provider);
-    return true;
   }
 
   /** Return all active ManagedMcpTool objects, optionally filtered by provider. */
