@@ -45,7 +45,8 @@ function readAuthor(meta: unknown): {
   };
 }
 
-async function loadConversationSlackTenantId(
+/** Read the Slack workspace that owns a conversation, when it has one. */
+export async function loadConversationSlackTenantId(
   executor: JuniorSqlDatabase,
   conversationId: string,
 ): Promise<string | undefined> {

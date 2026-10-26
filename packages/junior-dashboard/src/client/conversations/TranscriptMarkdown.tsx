@@ -5,6 +5,7 @@ import {
   findTranscriptMarkdownLinks,
   TRANSCRIPT_ANCHOR_CLASS,
 } from "./transcriptMarkdownLinks";
+import { renderMentionText } from "./transcriptMentions";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 type TableAlignment = "left" | "center" | "right" | null;
@@ -451,10 +452,10 @@ function renderLinkText(text: string, keyBase: string): ReactNode[] {
   for (const link of links) {
     if (link.start > cursor) {
       nodes.push(
-        <HighlightText
-          key={`${keyBase}-s-${part++}`}
-          text={text.slice(cursor, link.start)}
-        />,
+        ...renderMentionText(
+          text.slice(cursor, link.start),
+          `${keyBase}-s-${part++}`,
+        ),
       );
     }
     nodes.push(
@@ -467,7 +468,7 @@ function renderLinkText(text: string, keyBase: string): ReactNode[] {
 
   if (cursor < text.length) {
     nodes.push(
-      <HighlightText key={`${keyBase}-s-${part}`} text={text.slice(cursor)} />,
+      ...renderMentionText(text.slice(cursor), `${keyBase}-s-${part}`),
     );
   }
   return nodes;

@@ -122,6 +122,8 @@ export type TranscriptViewMessage = {
   trustedSummary?: string;
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
+  /** People mentioned in the message text. */
+  mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */
   context?: boolean;
   /** Stable history/message id used to drop pending rows after commit. */
