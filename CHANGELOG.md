@@ -1,4 +1,23 @@
 # Changelog
+## 0.258.0
+
+### New Features ✨
+
+- (auth) Replace Slack sign-in with an allowed domain list by @sentry-junior in [#2229](https://github.com/getsentry/junior/pull/2229)
+- (automations) Default event automation runs to 10 per minute with a configurable window by @sentry-junior in [#2237](https://github.com/getsentry/junior/pull/2237)
+- (pagerduty) Add read-only PagerDuty plugin by @sentry-junior in [#2236](https://github.com/getsentry/junior/pull/2236)
+
+### Bug Fixes 🐛
+
+- (egress) Skip body reading for OPTIONS requests by @sentry in [#2199](https://github.com/getsentry/junior/pull/2199)
+- (github) Attribute automation writes to the Automation run by @sentry-junior in [#2235](https://github.com/getsentry/junior/pull/2235)
+- (lint) Steer file-length failures toward module splits by @sentry-junior in [#2227](https://github.com/getsentry/junior/pull/2227)
+
+### Internal Changes 🔧
+
+- (evals) Bump cloudflared to 2026.10.4 by @sentry-junior in [#2239](https://github.com/getsentry/junior/pull/2239)
+- (ts) Upgrade to TypeScript 7 with strict compiler checks by @sentry-junior in [#2171](https://github.com/getsentry/junior/pull/2171)
+
 ## 0.257.0
 
 ### New Features ✨
