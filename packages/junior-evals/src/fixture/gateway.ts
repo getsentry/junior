@@ -6,8 +6,9 @@
  * reacts. It never changes a model request or its response, and it never
  * writes a model answer. A test can make the provider reject one agent
  * request with `rejectNextModelRequest()`. Two requests are not model requests. Image generation is a third-party image API, so the
- * observer answers it with a 1x1 PNG. `webSearch` is a third-party search
- * provider, so `web.ts` answers it with the results of the test.
+ * observer answers it with a 1x1 PNG, or with the image of
+ * `mockGeneratedImage()`. `webSearch` is a third-party search provider, so
+ * `web.ts` answers it with the results of the test.
  */
 import { bypass, http, HttpResponse, passthrough } from "msw";
 import { onTestFinished } from "vitest";
@@ -28,6 +29,20 @@ async function isImageGeneration(request: Request): Promise<boolean> {
   return (
     Array.isArray(payload.modalities) && payload.modalities.includes("image")
   );
+}
+
+let generatedImageDataUrl = STUB_PNG_DATA_URL;
+
+/**
+ * Set the PNG that image generation returns in this test. Use it when the
+ * agent can check the image, for example after an edit. A 1x1 PNG does not
+ * look like the result, so the agent may try again.
+ */
+export function mockGeneratedImage(png: Buffer): void {
+  generatedImageDataUrl = `data:image/png;base64,${png.toString("base64")}`;
+  onTestFinished(() => {
+    generatedImageDataUrl = STUB_PNG_DATA_URL;
+  });
 }
 
 let rejectedModelRequests = 0;
@@ -124,7 +139,9 @@ export function installGatewayObserver(): GatewayObserver {
         return HttpResponse.json({
           choices: [
             {
-              message: { images: [{ image_url: { url: STUB_PNG_DATA_URL } }] },
+              message: {
+                images: [{ image_url: { url: generatedImageDataUrl } }],
+              },
             },
           ],
         });
