@@ -132,6 +132,10 @@ jobs:
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.lint_config == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # test-architecture:check compares its baseline with the merge base on main.
+          fetch-depth: 0
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm lint
 

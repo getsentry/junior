@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,7 @@ const ISOLATED_EVAL_ROOTS = [
   "packages/junior-evals/evals/router/",
 ];
 const AGENT_TEST_BASELINE_PATH = "scripts/test-architecture-baseline.json";
+const MAIN_REF = "origin/main";
 
 const RULES = [
   {
@@ -202,7 +204,9 @@ export function checkAgentTestArchitecture(files, baseline) {
       const allowed = allowedByFile[filePath] ?? 0;
       if (actual > allowed) {
         errors.push(
-          `${filePath}: ${rule.message} (${actual} found, ${allowed} allowed)`,
+          allowed === 0
+            ? `${filePath}: ${rule.message} (${actual} found)`
+            : `${filePath}: ${rule.message} (${actual} found; its baseline is ${allowed} and can only go down)`,
         );
       }
     }
@@ -211,6 +215,25 @@ export function checkAgentTestArchitecture(files, baseline) {
       if (actual < allowed) {
         errors.push(
           `${filePath}: ${rule.id} baseline allows ${allowed} but ${actual} found; lower the entry in ${AGENT_TEST_BASELINE_PATH}`,
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * Report baseline entries that are new or higher than on main. The baseline
+ * records old debt, so a change may only lower it.
+ */
+export function checkAgentTestBaselineGrowth(baseline, mainBaseline) {
+  const errors = [];
+  for (const [ruleId, allowedByFile] of Object.entries(baseline)) {
+    for (const [filePath, allowed] of Object.entries(allowedByFile)) {
+      const mainAllowed = mainBaseline[ruleId]?.[filePath] ?? 0;
+      if (allowed > mainAllowed) {
+        errors.push(
+          `${filePath}: ${ruleId} baseline is ${allowed} but main has ${mainAllowed}; do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}. Fix the test instead.`,
         );
       }
     }
@@ -233,9 +256,7 @@ export function checkIntegrationTestArchitecture(files) {
       }
       const actual = countMatches(file.contents, rule.pattern);
       if (actual > 0) {
-        errors.push(
-          `${file.path}: ${rule.message} (${actual} found, 0 allowed)`,
-        );
+        errors.push(`${file.path}: ${rule.message} (${actual} found)`);
       }
     }
   }
@@ -253,7 +274,7 @@ export function checkDatabaseTestFixtures(files) {
     );
     if (directFixtureImports > 0) {
       errors.push(
-        `${file.path}: database tests must import fixtures through tests/fixtures/sql (${directFixtureImports} found, 0 allowed)`,
+        `${file.path}: database tests must import fixtures through tests/fixtures/sql (${directFixtureImports} found)`,
       );
     }
     const legacyFixtures = countMatches(
@@ -262,7 +283,7 @@ export function checkDatabaseTestFixtures(files) {
     );
     if (legacyFixtures > 0) {
       errors.push(
-        `${file.path}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (${legacyFixtures} found, 0 allowed)`,
+        `${file.path}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (${legacyFixtures} found)`,
       );
     }
     const emptyFixtures = countMatches(
@@ -271,7 +292,7 @@ export function checkDatabaseTestFixtures(files) {
     );
     if (emptyFixtures > 0 && !EMPTY_DATABASE_TESTS.has(file.path)) {
       errors.push(
-        `${file.path}: only migration contract tests may use empty Junior SQL fixtures (${emptyFixtures} found, 0 allowed)`,
+        `${file.path}: only migration contract tests may use empty Junior SQL fixtures (${emptyFixtures} found)`,
       );
     }
   }
@@ -319,24 +340,40 @@ function collectTests(root, testRoots = TEST_ROOTS) {
   });
 }
 
+/** Read the baseline at the commit where this branch left main. */
+function readMainAgentTestBaseline(root) {
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  const mergeBase = git("merge-base", "HEAD", MAIN_REF).trim();
+  return JSON.parse(git("show", `${mergeBase}:${AGENT_TEST_BASELINE_PATH}`));
+}
+
 function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
+  const baseline = JSON.parse(
+    fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
+  );
   const errors = [
     ...checkIntegrationTestArchitecture(collectTests(root)),
     ...checkDatabaseTestFixtures(collectTests(root, DATABASE_TEST_ROOTS)),
     ...checkAgentTestArchitecture(
       collectSourceFiles(root, AGENT_TEST_ROOTS),
-      JSON.parse(
-        fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
-      ),
+      baseline,
     ),
+    ...checkAgentTestBaselineGrowth(baseline, readMainAgentTestBaseline(root)),
   ];
   if (errors.length === 0) {
     console.log("Tests follow test architecture policy.");
     return;
   }
-  console.error(["Test architecture check failed:", ...errors].join("\n"));
+  console.error(
+    [
+      "Test architecture check failed:",
+      ...errors,
+      "Fix the test to follow the rule. Do not rename, alias, or wrap the matched code to pass. See policies/testing.md, packages/junior/tests/README.md, and packages/junior-evals/README.md.",
+    ].join("\n"),
+  );
   process.exitCode = 1;
 }
 
