@@ -13,8 +13,16 @@ resources:
 - `/events` reads strictly before a `before` cursor and returns the next older
   bounded page.
 
-Cursors are opaque, HMAC-signed, and bound to one conversation and canonical
-event sequence. Callers must not derive or modify cursor positions.
+Event cursors are bound to one conversation and canonical event sequence.
+
+The conversation list returns at most 50 root conversations. `nextCursor` is
+present when more remain. Send it back as `cursor` to read the next page. A
+list cursor holds the `lastActivityAt` and `conversationId` of the last row, in
+the same order as the list. A conversation with new activity moves above the
+cursor, so later pages do not show it.
+
+All cursors are opaque and HMAC-signed. Callers must not derive or modify
+cursor positions.
 
 Canonical storage contains runtime and Pi-shaped events that are not a suitable
 REST contract. The reporting adapter projects those facts into normalized

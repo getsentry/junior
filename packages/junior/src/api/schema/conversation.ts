@@ -75,6 +75,7 @@ export const conversationFeedQuerySchema = z
       .transform((value) => value.toLowerCase())
       .optional(),
     codeRepositoryId: z.string().uuid().optional(),
+    cursor: z.string().min(1).optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
@@ -852,6 +853,7 @@ export const conversationEventPageSchema = z
 export const conversationFeedSchema = z
   .object({
     conversations: z.array(conversationSummaryReportSchema),
+    nextCursor: z.string().min(1).optional(),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
   })
