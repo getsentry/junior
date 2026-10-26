@@ -29,6 +29,8 @@ export const juniorIdentities = pgTable(
     userId: text("user_id").references(() => juniorUsers.id),
     emailNormalized: text("email_normalized"),
     emailVerified: boolean("email_verified").notNull().default(false),
+    // Last Google sign-in for a native Google identity. Null otherwise.
+    signedInAt: timestamptz("signed_in_at"),
   },
   (table) => [
     uniqueIndex("junior_identities_provider_subject_uidx").on(

@@ -1,10 +1,9 @@
-/** Require Google sign-in before a Slack user can start a Turn. */
+/** Require a recent Google sign-in before a Slack user can start a Turn. */
 import { botConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { SlackInboundEvent } from "@/chat/ingress/slack-payload";
 import {
-  slackUserHasGoogleIdentity,
+  slackUserHasGoogleSignIn,
   upsertIdentity,
 } from "@/chat/identities/sql";
 import type { SlackInstallationContext } from "@/chat/slack/adapter-context";
@@ -12,29 +11,38 @@ import { parseSlackUserId } from "@/chat/slack/ids";
 import { formatSlackLink } from "@/chat/slack/mrkdwn";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { deliverPrivateMessage } from "@/chat/oauth-flow";
-import { createSlackSignInUrl } from "@/chat/sign-in";
+import { createSlackSignInUrl, type SlackSignIn } from "@/chat/sign-in/slack";
 import type { StateAdapter } from "chat";
 
 /**
  * Return whether this Slack user may start work.
  *
- * The user of the Slack identity must have a linked Google identity. When it
- * does not, save the Slack identity with the email from the Slack profile, so
- * the sign-in callback can match it. Then send the user a private sign-in link
- * and drop the message.
+ * The user of the Slack identity must have signed in with Google, in Slack or
+ * in the dashboard, within `signIn.maxAgeMs`. When it has not, save the Slack
+ * identity with the email from the Slack profile, so the sign-in page can match
+ * it. Then send the user a private sign-in link and drop the message.
  */
 export async function hasSlackSignIn(args: {
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
+  signIn: SlackSignIn | undefined;
   state: StateAdapter;
 }): Promise<boolean> {
-  if (!isExperimentalFeatureEnabled("slack-sign-in")) return true;
+  if (!args.signIn) return true;
   const teamId = args.installation.teamId;
   const channelId = args.event.channel;
   const userId = parseSlackUserId(args.event.user);
   if (!teamId || !channelId || !userId) return false;
   const executor = getSqlExecutor();
-  if (await slackUserHasGoogleIdentity(executor, teamId, userId)) return true;
+  if (
+    await slackUserHasGoogleSignIn(executor, {
+      signedInSince: new Date(Date.now() - args.signIn.maxAgeMs),
+      slackTeamId: teamId,
+      slackUserId: userId,
+    })
+  ) {
+    return true;
+  }
 
   const profile = await lookupSlackUserProfile(userId);
   await upsertIdentity(executor, {
@@ -51,6 +59,7 @@ export async function hasSlackSignIn(args: {
   });
 
   const link = await createSlackSignInUrl({
+    baseURL: args.signIn.baseURL,
     slackTeamId: teamId,
     slackUserId: userId,
     state: args.state,
@@ -59,7 +68,7 @@ export async function hasSlackSignIn(args: {
     channelId,
     ...(args.event.thread_ts ? { threadTs: args.event.thread_ts } : undefined),
     userId,
-    text: `${formatSlackLink(link, `Sign in to use ${botConfig.userName}`)}. Sign in once with your work Google account, then send your message again.`,
+    text: `${formatSlackLink(link, `Sign in to use ${botConfig.userName}`)}. Sign in with your work Google account, then send your message again.`,
   });
   return false;
 }

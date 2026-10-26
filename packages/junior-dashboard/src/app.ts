@@ -25,11 +25,9 @@ import {
   dashboardProfileUpdateSchema,
 } from "./api/schema";
 import {
-  createDashboardAuth,
   dashboardBearerSession,
   dashboardPersonalBearerToken,
   dashboardSessionIsAuthorized,
-  resolveGoogleHostedDomainHint,
   sanitizeDashboardSession,
   verifiedDashboardSessionEmail,
   type DashboardAuth,
@@ -82,8 +80,6 @@ export interface JuniorDashboardOptions {
   authRequired?: boolean;
   allowedGoogleDomains?: string[];
   allowedEmails?: string[];
-  sessionMaxAgeSeconds?: number;
-  trustedOrigins?: string[];
   auth?: DashboardAuth;
   componentGallery?: boolean;
   mockConversations?: boolean;
@@ -169,8 +165,6 @@ function resolveDashboardOptions(
       readEnvList("JUNIOR_DASHBOARD_GOOGLE_DOMAINS"),
     allowedEmails:
       options.allowedEmails ?? readEnvList("JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
-    trustedOrigins:
-      options.trustedOrigins ?? readEnvList("JUNIOR_DASHBOARD_TRUSTED_ORIGINS"),
     componentGallery:
       options.componentGallery ??
       readEnvFlag("JUNIOR_DASHBOARD_COMPONENT_GALLERY"),
@@ -431,17 +425,11 @@ export function createDashboardApp(
     );
   }
 
-  const auth = authRequired
-    ? (options.auth ??
-      createDashboardAuth({
-        agentName,
-        authPath,
-        baseURL: options.baseURL,
-        trustedOrigins: options.trustedOrigins ?? [],
-        googleHostedDomain: resolveGoogleHostedDomainHint(allowedDomains),
-        sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
-      }))
-    : undefined;
+  // Core owns the Google sign-in session and shares it with Slack.
+  const auth = options.auth;
+  if (authRequired && !auth) {
+    throw new Error("Junior dashboard auth requires the core sign-in session");
+  }
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
   app.use("*", async (c, next) => {
@@ -456,7 +444,7 @@ export function createDashboardApp(
       authenticatedRoutes,
       componentGallery: options.componentGallery,
     });
-    if (!auth) {
+    if (!authRequired || !auth) {
       return Response.redirect(returnUrl, 302);
     }
     const session = await auth.getSession(c.req.raw);

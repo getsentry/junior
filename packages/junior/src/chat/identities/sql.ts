@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
@@ -341,11 +341,42 @@ export async function findSlackIdentityUserId(
   return rows[0]?.userId ?? undefined;
 }
 
-/** Return whether the user of one Slack identity has a verified Google identity. */
-export async function slackUserHasGoogleIdentity(
+/**
+ * Save one Google sign-in. Link the Google identity to the user of its
+ * verified email, and set its sign-in time.
+ */
+export async function recordGoogleSignIn(
   executor: JuniorSqlDatabase,
-  slackTeamId: string,
-  slackUserId: string,
+  account: { displayName?: string; email: string; subject: string },
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  const stored = await upsertIdentity(
+    executor,
+    {
+      kind: "user",
+      provider: GOOGLE_IDENTITY_PROVIDER,
+      providerSubjectId: account.subject,
+      email: account.email,
+      emailVerified: true,
+      displayName: account.displayName,
+    },
+    nowMs,
+  );
+  await executor
+    .db()
+    .update(juniorIdentities)
+    .set({ signedInAt: dateFromMs(nowMs) })
+    .where(eq(juniorIdentities.id, stored.id));
+  return stored;
+}
+
+/**
+ * Return whether the user of one Slack identity signed in with Google at or
+ * after `signedInSince`.
+ */
+export async function slackUserHasGoogleSignIn(
+  executor: JuniorSqlDatabase,
+  args: { signedInSince: Date; slackTeamId: string; slackUserId: string },
 ): Promise<boolean> {
   const rows = await executor
     .db()
@@ -359,11 +390,12 @@ export async function slackUserHasGoogleIdentity(
       and(
         eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.providerTenantId, slackTeamId),
-        eq(juniorIdentities.providerSubjectId, slackUserId),
+        eq(juniorIdentities.providerTenantId, args.slackTeamId),
+        eq(juniorIdentities.providerSubjectId, args.slackUserId),
         eq(googleIdentity.kind, "user"),
         eq(googleIdentity.provider, GOOGLE_IDENTITY_PROVIDER),
         eq(googleIdentity.emailVerified, true),
+        gte(googleIdentity.signedInAt, args.signedInSince),
       ),
     )
     .limit(1);

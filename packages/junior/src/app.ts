@@ -117,11 +117,17 @@ import {
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
 import {
-  handleSignInCallback,
-  resolveSignInAllowlist,
-  SIGN_IN_CALLBACK_PATH,
-  type SignInAllowlist,
-} from "@/chat/sign-in";
+  createSignInAuth,
+  resolveSignInAuthConfig,
+  type SignInAuth,
+  type SignInAuthConfig,
+} from "@/chat/sign-in/auth";
+import {
+  DEFAULT_SLACK_SIGN_IN_MAX_AGE_DAYS,
+  handleSlackSignIn,
+  SLACK_SIGN_IN_PATH,
+  type SlackSignIn,
+} from "@/chat/sign-in/slack";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -177,6 +183,12 @@ export interface JuniorAppOptions extends BotModelConfig {
      * `JUNIOR_CROSS_ACTOR_MID_RUN_MODE` or `follow_up`.
      */
     crossActorMidRunMode?: CrossActorMidRunMode;
+    /**
+     * With `experimental["slack-sign-in"]`, how many days a Google sign-in,
+     * in Slack or the dashboard, lets a person use Junior in Slack.
+     * Defaults to 7.
+     */
+    signInMaxAgeDays?: number;
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
@@ -442,7 +454,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }),
   });
   let sandboxEgressTracePropagationDomains: string[] = [];
-  let signInAllowlist: SignInAllowlist | undefined;
+  let signInConfig: SignInAuthConfig | undefined;
+  let slackSignIn: SlackSignIn | undefined;
   try {
     sandboxEgressTracePropagationDomains =
       normalizeSandboxEgressTracePropagationDomains(
@@ -450,14 +463,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     setSandboxResourceConfig(options?.sandbox);
     setExperimentalFeatures(options?.experimental);
-    if (isExperimentalFeatureEnabled("slack-sign-in")) {
-      signInAllowlist = resolveSignInAllowlist(dashboard);
-      if (!signInAllowlist.domains.length && !signInAllowlist.emails.length) {
-        throw new Error(
-          "experimental.slack-sign-in requires allowed Google domains or emails",
-        );
-      }
-    }
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
     // Start from the defaults so this app cannot inherit an earlier app's
@@ -471,6 +476,27 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setSlackReactionConfig(options?.slack ?? {});
     if (options?.slack?.crossActorMidRunMode) {
       setCrossActorMidRunMode(options.slack.crossActorMidRunMode);
+    }
+    const dashboardMounted = Boolean(dashboard && !dashboard.disabled);
+    if (isExperimentalFeatureEnabled("slack-sign-in") || dashboardMounted) {
+      signInConfig = resolveSignInAuthConfig(botConfig.userName, dashboard);
+    }
+    if (signInConfig && isExperimentalFeatureEnabled("slack-sign-in")) {
+      const { allowlist } = signInConfig;
+      if (!allowlist.domains.length && !allowlist.emails.length) {
+        throw new Error(
+          "experimental.slack-sign-in requires allowed Google domains or emails",
+        );
+      }
+      const maxAgeDays =
+        options?.slack?.signInMaxAgeDays ?? DEFAULT_SLACK_SIGN_IN_MAX_AGE_DAYS;
+      if (!(maxAgeDays > 0)) {
+        throw new Error("slack.signInMaxAgeDays must be greater than 0");
+      }
+      slackSignIn = {
+        baseURL: signInConfig.baseURL,
+        maxAgeMs: maxAgeDays * 24 * 60 * 60 * 1000,
+      };
     }
     if (shouldValidatePluginCatalog) {
       pluginCatalogRuntime.getSignature();
@@ -586,10 +612,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     restoreRuntimeConfig();
     throw error;
   }
-  const slackWebhookServices = createProductionSlackWebhookServices({
-    queue: conversationWorkQueue,
-    services: runtimeServiceOverrides,
-  });
+  // One Google sign-in session for the dashboard and Slack.
+  const signInAuth: SignInAuth | undefined = signInConfig
+    ? createSignInAuth(signInConfig)
+    : undefined;
+  const slackWebhookServices = {
+    ...createProductionSlackWebhookServices({
+      queue: conversationWorkQueue,
+      services: runtimeServiceOverrides,
+    }),
+    ...(slackSignIn ? { signIn: slackSignIn } : undefined),
+  };
 
   const app = new Hono();
 
@@ -613,9 +646,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   mountRoutes(
     app,
     await createDashboardRouteRegistrations({
+      auth: signInAuth,
       authenticatedRoutes,
       conversationWorkQueue,
-      dashboard,
+      // Keep dashboard redirects on the origin of the sign-in callback.
+      dashboard:
+        dashboard && signInConfig
+          ? { ...dashboard, baseURL: signInConfig.baseURL }
+          : dashboard,
       createDashboardApp: virtualConfig?.createDashboardApp,
       pluginRoutes: pluginApiRoutes,
     }),
@@ -644,11 +682,21 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     });
   });
 
-  if (signInAllowlist) {
-    const allowlist = signInAllowlist;
-    app.get(SIGN_IN_CALLBACK_PATH, (c) =>
-      handleSignInCallback({
+  if (signInAuth && signInConfig && slackSignIn) {
+    const auth = signInAuth;
+    // The dashboard serves the sign-in routes when it is mounted.
+    if (!dashboard || dashboard.disabled) {
+      app.on(["GET", "POST"], `${signInConfig.authPath}/*`, (c) =>
+        auth.handler(c.req.raw),
+      );
+    }
+    const { allowlist } = signInConfig;
+    const signIn = slackSignIn;
+    app.get(SLACK_SIGN_IN_PATH, (c) =>
+      handleSlackSignIn({
         allowlist,
+        auth,
+        signIn,
         request: c.req.raw,
         state: getStateAdapter(),
       }),

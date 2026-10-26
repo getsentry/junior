@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { PluginRouteMethod, User } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
+import type { SignInAuth } from "@/chat/sign-in/auth";
 import type {
   PluginApiRouteRegistration,
   PluginRouteRegistration,
@@ -37,6 +38,8 @@ export interface JuniorDashboardOptions {
 
 export interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   agentName?: string;
+  /** Google sign-in session that the dashboard shares with Slack. */
+  auth?: SignInAuth;
   authenticatedRoutes?: readonly AuthenticatedRoute[];
   conversationWorkQueue?: ConversationWorkQueue;
   pluginRoutes?: PluginApiRouteRegistration[];
@@ -66,6 +69,7 @@ const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 
 /** Mount the dashboard app on the dashboard-owned host paths. */
 export async function createDashboardRouteRegistrations(args: {
+  auth: SignInAuth | undefined;
   authenticatedRoutes: readonly AuthenticatedRoute[];
   conversationWorkQueue: ConversationWorkQueue;
   dashboard: JuniorDashboardOptions | undefined;
@@ -79,6 +83,7 @@ export async function createDashboardRouteRegistrations(args: {
   const createDashboardApp =
     args.createDashboardApp ?? (await loadDashboardAppFactory());
   return dashboardRouteRegistrations({
+    auth: args.auth,
     authenticatedRoutes: args.authenticatedRoutes,
     conversationWorkQueue: args.conversationWorkQueue,
     dashboard: args.dashboard,
@@ -305,6 +310,7 @@ function dashboardOwnedRoutePath(
 }
 
 function dashboardRouteRegistrations(args: {
+  auth: SignInAuth | undefined;
   authenticatedRoutes: readonly AuthenticatedRoute[];
   conversationWorkQueue: ConversationWorkQueue;
   dashboard: JuniorDashboardOptions;
@@ -316,6 +322,7 @@ function dashboardRouteRegistrations(args: {
     const dashboardOptions: JuniorDashboardRuntimeOptions = {
       ...args.dashboard,
       agentName: botConfig.userName,
+      ...(args.auth ? { auth: args.auth } : undefined),
       authenticatedRoutes: args.authenticatedRoutes,
       conversationWorkQueue: args.conversationWorkQueue,
       pluginRoutes: args.pluginRoutes,

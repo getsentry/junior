@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { closeDb, getConversationEventStore } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
-import { handleSignInCallback } from "@/chat/sign-in";
+import { createSignInAuth } from "@/chat/sign-in/auth";
+import { handleSlackSignIn } from "@/chat/sign-in/slack";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -260,18 +261,31 @@ describe("Slack webhook auth boundary", () => {
     await state.disconnect();
   });
 
-  it("asks Slack users to sign in with Google before their first Turn", async () => {
+  it("asks Slack users for a recent Google sign-in shared with the dashboard", async () => {
     setExperimentalFeatures({ ...SUITE_EXPERIMENTAL, "slack-sign-in": true });
-    vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
-    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    const baseURL = "https://junior.example.com";
+    // Two domains, so Google does not limit accounts with `hd`.
+    const allowlist = { domains: ["example.com", "example.org"], emails: [] };
+    const auth = createSignInAuth({
+      agentName: "junior",
+      allowlist,
+      authPath: "/api/auth",
+      baseURL,
+      googleClientId: "google-client",
+      googleClientSecret: "google-secret",
+      secret: "0123456789abcdef0123456789abcdef",
+      trustedOrigins: [],
+    });
+    const signIn = { baseURL, maxAgeMs: 7 * 24 * 60 * 60 * 1000 };
     let googleEmail = "";
+    let googleVisits = 0;
     mswServer.use(
       http.post("https://oauth2.googleapis.com/token", () => {
         const claims = {
           aud: "google-client",
           email: googleEmail,
           email_verified: true,
+          hd: googleEmail.split("@")[1],
           iss: "https://accounts.google.com",
           sub: `google-${googleEmail}`,
         };
@@ -289,6 +303,7 @@ describe("Slack webhook auth boundary", () => {
       getSlackAdapter: () => adapter,
       queue,
       runtime: createNoopSlackWebhookRuntime(),
+      signIn,
       state,
     };
     let sequence = 1;
@@ -306,43 +321,112 @@ describe("Slack webhook auth boundary", () => {
         ),
         services,
       });
-    // Each blocked message sends a new private link. Finish it as one account.
-    const signInAs = async (email: string) => {
+    const sendBlocked = async () => {
+      const prompts = getCapturedSlackApiCalls("chat.postMessage").length;
       expect((await send()).status).toBe(200);
-      const prompt = getCapturedSlackApiCalls("chat.postMessage").at(-1);
-      expect(prompt?.params).toMatchObject({ channel: "D123" });
-      const link = new URL(
-        /<(https:\/\/accounts\.google\.com[^|>]+)/
-          .exec(String(prompt?.params.text))![1]!
-          .replaceAll("&amp;", "&"),
-      );
-      expect(link.searchParams.get("redirect_uri")).toBe(
-        "https://junior.example.com/api/sign-in/callback",
-      );
-      googleEmail = email;
-      const callback = new URL(
-        "https://junior.example.com/api/sign-in/callback",
-      );
-      callback.searchParams.set("state", link.searchParams.get("state")!);
-      callback.searchParams.set("code", "google-code");
-      return await handleSignInCallback({
-        allowlist: { domains: ["example.com"], emails: [] },
-        request: new Request(callback),
-        state,
-      });
+      const calls = getCapturedSlackApiCalls("chat.postMessage");
+      expect(calls).toHaveLength(prompts + 1);
+      expect(calls.at(-1)?.params).toMatchObject({ channel: "D123" });
+      return /<([^|>]+)\|/
+        .exec(String(calls.at(-1)?.params.text))![1]!
+        .replaceAll("&amp;", "&");
+    };
+    // A browser with one cookie jar. Google signs in as `email`.
+    const createBrowser = () => {
+      const cookies = new Map<string, string>();
+      const request = (url: string) =>
+        new Request(url, {
+          headers: {
+            cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; "),
+          },
+        });
+      const route = async (url: URL): Promise<Response> => {
+        if (url.origin === "https://accounts.google.com") {
+          googleVisits += 1;
+          const back = new URL(url.searchParams.get("redirect_uri")!);
+          back.searchParams.set("state", url.searchParams.get("state")!);
+          back.searchParams.set("code", "google-code");
+          return Response.redirect(back, 302);
+        }
+        if (url.pathname.startsWith("/api/auth/")) {
+          return await auth.handler(request(url.toString()));
+        }
+        if (url.pathname === "/api/sign-in/slack") {
+          return await handleSlackSignIn({
+            allowlist,
+            auth,
+            request: request(url.toString()),
+            signIn,
+            state,
+          });
+        }
+        // Like the dashboard login: use the session, or sign in with Google.
+        if (url.pathname === "/auth/login") {
+          if (await auth.getSession(request(url.toString()))) {
+            return Response.redirect(`${baseURL}/`, 302);
+          }
+          return await auth.signInWithGoogle(
+            request(url.toString()),
+            `${baseURL}/`,
+          );
+        }
+        return new Response("dashboard");
+      };
+      const visit = async (start: string, email: string) => {
+        googleEmail = email;
+        let url = new URL(start);
+        for (;;) {
+          const response = await route(url);
+          for (const cookie of response.headers.getSetCookie()) {
+            const [pair] = cookie.split(";");
+            const name = pair!.slice(0, pair!.indexOf("="));
+            const value = pair!.slice(pair!.indexOf("=") + 1);
+            if (value && !/max-age=0/i.test(cookie)) cookies.set(name, value);
+            else cookies.delete(name);
+          }
+          const location = response.headers.get("location");
+          if (!location) return response;
+          url = new URL(location, url);
+        }
+      };
+      return Object.assign(visit, { cookies });
     };
 
     // Accounts outside the allowlist, or another person's account, fail.
-    expect((await signInAs("testuser@contractor.dev")).status).toBe(403);
-    expect((await signInAs("someone@example.com")).status).toBe(403);
+    expect(
+      (await createBrowser()(await sendBlocked(), "testuser@contractor.dev"))
+        .status,
+    ).toBe(403);
+    expect(
+      (await createBrowser()(await sendBlocked(), "someone@example.com"))
+        .status,
+    ).toBe(403);
     expect(queue.queuedMessages()).toEqual([]);
 
-    // The matching account links a Google identity that later checks reuse.
-    expect((await signInAs("testuser@example.com")).status).toBe(200);
-    const prompts = getCapturedSlackApiCalls("chat.postMessage").length;
+    // A dashboard sign-in by the Slack user's account also counts for Slack.
+    const browser = createBrowser();
+    const home = await browser(`${baseURL}/auth/login`, "testuser@example.com");
+    expect(await home.text()).toBe("dashboard");
+    // The session cookie never carries the Google account or its tokens.
+    expect([...browser.cookies.keys()].join()).not.toContain("account");
     expect((await send()).status).toBe(200);
     expect(queue.queuedMessages()).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(prompts);
+
+    // After the max age, Slack asks again, and the Slack page signs in.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 8 * 24 * 60 * 60 * 1000);
+    const link = await sendBlocked();
+    const visits = googleVisits;
+    expect((await browser(link, "testuser@example.com")).status).toBe(200);
+    expect(googleVisits).toBe(visits + 1);
+    expect((await send()).status).toBe(200);
+    expect(queue.queuedMessages()).toHaveLength(2);
+
+    // The dashboard uses the session from the Slack page.
+    expect(
+      await (await browser(`${baseURL}/auth/login`, "x@example.com")).text(),
+    ).toBe("dashboard");
+    expect(googleVisits).toBe(visits + 1);
     await state.disconnect();
   });
 
