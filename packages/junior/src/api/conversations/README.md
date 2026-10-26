@@ -19,7 +19,8 @@ The conversation list returns at most 50 root conversations. `nextCursor` is
 present when more remain. Send it back as `cursor` to read the next page. A
 list cursor holds the `lastActivityAt` and `conversationId` of the last row, in
 the same order as the list. A conversation with new activity moves above the
-cursor, so later pages do not show it.
+cursor, so later pages do not show it. The cursor holds only a position. Send
+the same filters with `cursor` as in the first request.
 
 All cursors are opaque and HMAC-signed. Callers must not derive or modify
 cursor positions.
