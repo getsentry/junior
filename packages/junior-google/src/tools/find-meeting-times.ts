@@ -19,7 +19,7 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_WINDOW_MS = 14 * DAY_MS;
 const DEFAULT_WINDOW_MS = 7 * DAY_MS;
-/** Past free/busy that Junior reads to learn when each person meets. */
+/** Past events that Junior reads to learn when each person meets. */
 const HISTORY_MS = 21 * DAY_MS;
 /** Days that must reach a time before it counts as normal for the person. */
 const HISTORY_MIN_DAYS = 3;
@@ -103,7 +103,7 @@ const outputSchema = pluginToolOutputSchema.extend({
           fromMeetings: z
             .boolean()
             .describe(
-              "True when the hours go past 09:00-17:00 because the person often had meetings outside them in the last 3 weeks.",
+              "True when the hours go past 09:00-17:00 because the person often had meetings with other people outside them in the last 3 weeks.",
             ),
           workdayEnd: z.string(),
           workdayStart: z.string(),
@@ -128,7 +128,26 @@ const freeBusyResponseSchema = z.object({
   ),
 });
 
-const calendarTimeZoneSchema = z.object({ timeZone: z.string().optional() });
+const calendarHistorySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        attendees: z
+          .array(
+            z.object({
+              email: z.string().optional(),
+              responseStatus: z.string().optional(),
+            }),
+          )
+          .optional(),
+        end: z.object({ dateTime: z.string().optional() }),
+        start: z.object({ dateTime: z.string().optional() }),
+        transparency: z.string().optional(),
+      }),
+    )
+    .default([]),
+  timeZone: z.string().optional(),
+});
 
 interface LocalParts {
   date: string;
@@ -192,27 +211,23 @@ export interface SlotAttendee {
 }
 
 /**
- * Learn a person's hours from the busy times on their past weekdays.
+ * Learn a person's hours from their past meetings on weekdays.
  *
  * Google does not expose the working hours people set in Calendar. Instead,
  * when at least three past weekdays had a meeting that started before 09:00
  * or ended after 17:00, the hours grow to include that time. They never
- * shrink, because a free morning does not mean the person is away. Busy
- * blocks that cross local midnight, such as out-of-office days, are ignored.
+ * shrink, because a free morning does not mean the person is away. Meetings
+ * that cross local midnight are ignored.
  */
 function workingHoursFromMeetings(input: {
-  busy: Interval[];
-  nowMs: number;
+  meetings: Interval[];
   timeZone: string;
 }): WorkingHours {
   const format = localFormat(input.timeZone);
   const days = new Map<string, { end: number; start: number }>();
-  for (const busy of input.busy) {
-    if (busy.endMs > input.nowMs || busy.startMs < input.nowMs - HISTORY_MS) {
-      continue;
-    }
-    const start = localParts(busy.startMs, format);
-    const end = localParts(busy.endMs, format);
+  for (const meeting of input.meetings) {
+    const start = localParts(meeting.startMs, format);
+    const end = localParts(meeting.endMs, format);
     if (
       start.date !== end.date ||
       start.weekday === "Sat" ||
@@ -393,21 +408,33 @@ export function findFreeSlots(input: {
 }
 
 /**
- * Read the time zone of one person's calendar.
+ * Read the time zone and recent meetings of one person's calendar.
  *
- * Google does not expose people's working hours, so the calendar time zone is
- * the closest signal. Returns undefined when Junior's account cannot see the
+ * A meeting is a busy, timed event with at least one other attendee that the
+ * person did not decline. Blocks that people hold alone, such as "do not
+ * schedule", focus time, or personal events, are not meetings. When Google
+ * sharing shows Junior only free/busy, events have no attendees, so Junior
+ * learns no meetings. Returns undefined when Junior's account cannot see the
  * calendar.
  */
-async function calendarTimeZone(
+async function readCalendar(
   ctx: GoogleToolContext,
   email: string,
-): Promise<string | undefined> {
+): Promise<{ meetings: Interval[]; timeZone?: string } | undefined> {
+  const nowMs = Date.now();
   const response = await googleApiRequest(ctx, {
     operation: "google.calendar.events.list",
     path: `/calendar/v3/calendars/${encodeURIComponent(email)}/events`,
     // No `timeZone` parameter: Google then answers with the calendar's own.
-    query: { fields: "timeZone", maxResults: "1" },
+    query: {
+      fields:
+        "timeZone,items(start/dateTime,end/dateTime,transparency,attendees(email,responseStatus))",
+      maxResults: "250",
+      orderBy: "startTime",
+      singleEvents: "true",
+      timeMax: new Date(nowMs).toISOString(),
+      timeMin: new Date(nowMs - HISTORY_MS).toISOString(),
+    },
   });
   if (response.status === 403 || response.status === 404) {
     return undefined;
@@ -415,15 +442,39 @@ async function calendarTimeZone(
   if (response.status !== 200) {
     throw googleApiError("google.calendar.events.list", response);
   }
-  const { timeZone } = calendarTimeZoneSchema.parse(response.body);
-  return timeZone && isTimeZone(timeZone) ? timeZone : undefined;
+  const { items, timeZone } = calendarHistorySchema.parse(response.body);
+  const meetings = items.flatMap((event) => {
+    const attendees = event.attendees ?? [];
+    const self = attendees.find(
+      (attendee) => attendee.email?.toLowerCase() === email,
+    );
+    if (
+      !event.start.dateTime ||
+      !event.end.dateTime ||
+      event.transparency === "transparent" ||
+      attendees.length < 2 ||
+      self?.responseStatus === "declined"
+    ) {
+      return [];
+    }
+    return [
+      {
+        endMs: Date.parse(event.end.dateTime),
+        startMs: Date.parse(event.start.dateTime),
+      },
+    ];
+  });
+  return {
+    meetings,
+    ...(timeZone && isTimeZone(timeZone) ? { timeZone } : undefined),
+  };
 }
 
 /**
  * Find times when everyone is free and inside their working hours.
  *
- * Uses free/busy data and each calendar's time zone only. Past free/busy
- * shows who often meets outside 09:00-17:00.
+ * Uses free/busy data, each calendar's time zone, and the times of each
+ * person's meetings in the last 3 weeks.
  */
 export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -434,7 +485,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Working hours are 09:00-17:00, made longer for people who often had meetings outside them in the last 3 weeks; `checked` shows the hours used for each person. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Working hours are 09:00-17:00, made longer for people who often had meetings with others outside them in the last 3 weeks; `checked` shows the hours used for each person. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -471,18 +522,17 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       const everyone = [...attendees, ...optionalAttendees];
       requireAllowedEmails(everyone, ctx.allowedDomains);
 
-      const [response, ...timeZones] = await Promise.all([
+      const [response, ...histories] = await Promise.all([
         googleApiRequest(ctx, {
           body: {
             items: everyone.map((id) => ({ id })),
             timeMax: new Date(timeMaxMs).toISOString(),
-            // Past weeks show when each person usually meets.
-            timeMin: new Date(Date.now() - HISTORY_MS).toISOString(),
+            timeMin: new Date(timeMinMs).toISOString(),
           },
           operation: "google.calendar.freebusy.query",
           path: "/calendar/v3/freeBusy",
         }),
-        ...everyone.map((email) => calendarTimeZone(ctx, email)),
+        ...everyone.map((email) => readCalendar(ctx, email)),
       ]);
       if (response.status !== 200) {
         throw googleApiError("google.calendar.freebusy.query", response);
@@ -503,14 +553,14 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           unavailable.push({ email, reason: error ?? "notFound" });
           return;
         }
-        const calendarZone = timeZones[index];
+        const history = histories[index];
+        const calendarZone = history?.timeZone;
         const busy = calendar.busy.map((interval) => ({
           endMs: Date.parse(interval.end),
           startMs: Date.parse(interval.start),
         }));
         const learned = workingHoursFromMeetings({
-          busy,
-          nowMs: Date.now(),
+          meetings: history?.meetings ?? [],
           timeZone: calendarZone ?? timeZone,
         });
         const workingHours = {

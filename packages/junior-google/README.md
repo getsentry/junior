@@ -12,17 +12,18 @@ Gmail and Drive writes are out of scope.
 
 - `findMeetingTimes` finds times when every required attendee is free and
   inside working hours (09:00 to 17:00 by default) in the time zone of their
-  own calendar. It reads free/busy data and calendar time zones only. It never
-  reads event titles or details.
-- `findMeetingTimes` also reads the last 3 weeks of free/busy data. When at
-  least 3 past weekdays had a meeting before 09:00 or after 17:00 for a
-  person, their hours grow to include that time. For example, a person in
-  London who often has calls until 22:00 can be offered an afternoon in Los
-  Angeles. The hours never shrink. A time of day that the requester asks for
-  replaces these hours. Optional attendees do not block a slot.
-  Slots where they are free come first, and each slot names the optional
-  attendees who are busy or off hours. Slots are spread across days and
-  across each day, so the requester gets a real choice.
+  own calendar. It reads free/busy data, calendar time zones, and the times
+  and attendees of past events. It never reads event titles or descriptions,
+  and it returns open slots only.
+- `findMeetingTimes` also reads each person's events from the last 3 weeks.
+  It counts only meetings: timed, busy events with at least one other
+  attendee that the person did not decline. Blocks that people hold alone,
+  such as "do not schedule" or focus time, do not count. When at least 3
+  past weekdays had a meeting before 09:00 or after 17:00, the person's hours
+  grow to include that time. For example, a person in London who often has
+  calls until 22:00 can be offered an afternoon in Los Angeles. The hours
+  never shrink. A time of day that the requester asks for replaces these
+  hours. Free/busy still marks every busy block, including holds, as busy.
 - Every Calendar tool takes an optional `timeZone` for the times it reads and
   shows. Without it, the tool uses the requester's timezone from
   `ctx.users.resolveTimezone()`, so Junior does not have to ask for one.
@@ -196,9 +197,10 @@ variables are set. The Admin page shows **Not configured** until then.
 - `readGoogleSheet` does not return formulas, notes on cells, or charts.
   `readGoogleSlides` does not describe images or charts.
 - Google does not expose the working hours that people set in Calendar.
-  Junior uses each calendar's time zone, 09:00 to 17:00, and the times when
-  each person had meetings in the last 3 weeks instead. A busy block can be
-  a personal event, so late or early blocks can also grow the hours.
+  Junior uses each calendar's time zone, 09:00 to 17:00, and the times of
+  each person's meetings in the last 3 weeks instead. When a calendar is
+  shared as free/busy only, Junior cannot see attendees, so that person gets
+  09:00 to 17:00.
 - Junior cannot find or book meeting rooms. Room discovery needs the Admin
   SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
   admin role on Junior's account. Room emails are also outside the allowed

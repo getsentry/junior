@@ -191,31 +191,53 @@ describe("Google Calendar tools", () => {
     });
   });
 
-  it("searches later hours for people who often meet late", async () => {
+  it("searches later hours for people who often meet others late", async () => {
     // Now is Thursday 2026-10-08 12:00 UTC. London is UTC+1, Los Angeles
-    // UTC-7. Bob had calls until 22:00 London on three past weekdays.
-    const lateCall = (date: string) => ({
-      start: `${date}T19:00:00Z`,
-      end: `${date}T21:00:00Z`,
+    // UTC-7. Bob had calls with Alice until 22:00 London on three weekdays.
+    const event = (
+      date: string,
+      start: string,
+      end: string,
+      attendees: Array<{ email: string; responseStatus?: string }>,
+    ) => ({
+      attendees,
+      end: { dateTime: `${date}T${end}:00Z` },
+      start: { dateTime: `${date}T${start}:00Z` },
     });
+    const call = (date: string) =>
+      event(date, "19:00", "21:00", [
+        { email: REQUESTER },
+        { email: "bob@example.com" },
+      ]);
     const { fetch, tools } = calendarTools(
       Response.json({
         calendars: {
           [REQUESTER]: { busy: [] },
-          "bob@example.com": {
-            busy: [
-              lateCall("2026-09-29"),
-              lateCall("2026-10-01"),
-              lateCall("2026-10-06"),
-              // A weekend call and an out-of-office week do not count.
-              lateCall("2026-10-03"),
-              { start: "2026-09-21T23:00:00Z", end: "2026-09-26T23:00:00Z" },
-            ],
-          },
+          "bob@example.com": { busy: [] },
         },
       }),
       Response.json({ timeZone: LA }),
-      Response.json({ timeZone: "Europe/London" }),
+      Response.json({
+        items: [
+          call("2026-09-29"),
+          call("2026-10-01"),
+          call("2026-10-06"),
+          // A call on a weekend does not count.
+          call("2026-10-03"),
+          // Do-not-schedule blocks that Bob holds alone are not meetings.
+          ...["2026-09-30", "2026-10-02", "2026-10-05"].map((date) =>
+            event(date, "06:00", "08:00", []),
+          ),
+          // Neither are late calls that Bob declined.
+          ...["2026-09-30", "2026-10-02", "2026-10-05"].map((date) =>
+            event(date, "21:00", "22:00", [
+              { email: REQUESTER },
+              { email: "bob@example.com", responseStatus: "declined" },
+            ]),
+          ),
+        ],
+        timeZone: "Europe/London",
+      }),
     );
 
     const result = await tools.findMeetingTimes!.execute!(
@@ -229,10 +251,10 @@ describe("Google Calendar tools", () => {
       { toolCallId: "call-late" },
     );
 
-    // Free/busy covers the last 3 weeks, so Junior can see when people meet.
-    expect((await fetch.mock.calls[0]![0].request.json()).timeMin).toBe(
-      "2026-09-17T12:00:00.000Z",
-    );
+    // Junior reads the last 3 weeks of each person's events.
+    const history = new URL(fetch.mock.calls[2]![0].request.url).searchParams;
+    expect(history.get("timeMin")).toBe("2026-09-17T12:00:00.000Z");
+    expect(history.get("timeMax")).toBe("2026-10-08T12:00:00.000Z");
     // With 09:00-17:00 for both, Los Angeles and London share no time.
     // Bob's hours now run to 22:00 London, which is 14:00 in Los Angeles.
     expect(result).toMatchObject({
