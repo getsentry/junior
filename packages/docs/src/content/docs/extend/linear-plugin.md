@@ -33,11 +33,57 @@ Register `linearPlugin()` so Junior loads the webhook route.
 ## Auth model
 
 - No `LINEAR_API_KEY`, shared workspace token, or custom OAuth app is required for the default setup.
+- An admin can also connect an optional read-only [service account](#optional-service-account) for people who have not connected Linear.
 - Each user completes Linear's MCP OAuth flow the first time Junior calls a Linear MCP tool on their behalf.
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
 - Webhooks use a separate Linear webhook secret. They do not use the user's MCP OAuth grant.
 
 Junior uses Linear's hosted MCP tools for reads and writes. When an issue is created through that path, Junior links it to the current conversation.
+
+## Optional service account
+
+A Junior admin can connect one Linear account that Junior itself uses, for
+example `junior@example.com`. Then people who have not connected Linear can
+find and read issues without OAuth. Scheduled automations can read Linear too.
+
+1. Create the Linear account and add it to your workspace. Give it only the
+   teams that everyone who can talk to Junior may read.
+2. In the Junior dashboard, open **Admin**. Under **Service accounts**, click
+   **Connect** on Linear. Only Junior admins see this section.
+3. Sign in to Linear as that account, not as yourself.
+4. Return to the Admin page. Linear shows as connected, with the admin who
+   connected it.
+
+If the dashboard is not available, run `junior service-account connect linear`
+on a machine with a browser and the deployment `REDIS_URL`.
+
+The Linear plugin lists only Linear's read tools for the service account,
+such as `get_issue`, `list_issues`, `list_comments`, `list_projects`, and
+`list_teams`. To create or update issues, comments, projects, or documents,
+Junior still asks the person to connect their own Linear account. After they
+connect, Junior uses their account for all Linear tools.
+
+To remove the account, click **Disconnect** on the Admin page, or run
+`junior service-account disconnect linear`. If Linear revokes the grant,
+Junior removes the account and falls back to per-user OAuth.
+
+### Use only the service account
+
+To stop people from connecting their own Linear accounts, turn off user OAuth
+in your plugin list. Then everyone uses the shared account, and Junior never
+sends a Linear connect link. Junior hides the Linear tools that the service
+account does not list, so only reads stay available:
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([linearPlugin()], {
+  manifests: {
+    linear: { accounts: { userOAuth: false } },
+  },
+});
+```
+
+Until an admin connects the account, Junior tells people that Linear is not
+available yet.
 
 ## Config
 
