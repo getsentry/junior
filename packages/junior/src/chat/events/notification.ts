@@ -3,7 +3,7 @@ import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
-import { renderTaskInput } from "@/chat/task-input";
+import { renderTaskInput, type EventDoneBy } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -49,6 +49,8 @@ export function renderEventNotificationText(
   >,
   /** Mentions resolved from the Event people. */
   people: readonly string[] = [],
+  /** Resolved person who did what the Event describes. */
+  doneBy?: EventDoneBy,
 ): string {
   // Resource type guidance applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
@@ -65,6 +67,7 @@ export function renderEventNotificationText(
     .join(" ");
   return renderTaskInput({
     about: subscription.label,
+    doneBy,
     people,
     instructions: subscription.intent,
     guidance,
@@ -199,6 +202,8 @@ export function createEventInboundMessage(input: {
  * user Turn, later wakes stay quiet until a user message clears the pause.
  */
 export async function enqueueEventNotification(args: {
+  /** Resolved person who did what the Event describes. */
+  doneBy?: EventDoneBy;
   event: EventNotification;
   /** Mentions resolved from the Event people. */
   people?: readonly string[];
@@ -238,6 +243,7 @@ export async function enqueueEventNotification(args: {
     args.subscription,
     args.event,
     args.people,
+    args.doneBy,
   );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({

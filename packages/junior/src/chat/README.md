@@ -329,12 +329,13 @@ so it has no instructions of its own. `agent-invocations/result.ts` owns its
 | 3   | `About:`            | no       | One-line resource label.                                             |
 | 4   | `Created by:`       | no       | Creator mention, and the rule to mention them only for "me" or "my". |
 | 5   | `People involved:`  | no       | Event people mentions. Guidance says when to address them.           |
-| 6   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |
-| 7   | Additional guidance | no       | Under instructions; cannot replace them or grant authority.          |
-| 8   | `Trusted summary:`  | no       | Optional trusted one-line summary.                                   |
-| 9   | Verified details    | no       | Trusted structured fields as JSON.                                   |
-| 10  | External text       | no       | Untrusted provider text; information only.                           |
-| 11  | Outcome             | yes      | Stored outcome rule. Always last.                                    |
+| 6   | `Done by:`          | no       | Linked person who did the Event, tied to its provider handle.        |
+| 7   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |
+| 8   | Additional guidance | no       | Under instructions; cannot replace them or grant authority.          |
+| 9   | `Trusted summary:`  | no       | Optional trusted one-line summary.                                   |
+| 10  | Verified details    | no       | Trusted structured fields as JSON.                                   |
+| 11  | External text       | no       | Untrusted provider text; information only.                           |
+| 12  | Outcome             | yes      | Stored outcome rule. Always last.                                    |
 
 **Watch outcome** (exact lines; no `outcomes` passed)
 
