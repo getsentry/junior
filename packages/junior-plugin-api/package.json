@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-plugin-api",
-  "version": "0.256.0",
+  "version": "0.259.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -26,16 +26,16 @@
     "zod": "catalog:"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsup.config.ts",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsdown.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.79.0",
     "oxlint": "^1.79.0",
-    "tsup": "^8.5.1",
-    "typescript": "^6.0.3"
+    "tsdown": "0.23.1",
+    "typescript": "^7.0.2"
   }
 }

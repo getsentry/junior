@@ -4,6 +4,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
+  GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
   type IdentityUpsert,
   type StoredIdentity,
@@ -354,4 +355,33 @@ export async function deleteProviderIdentityForUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
+}
+
+/**
+ * Save one Google sign-in. Link the Google identity to the user of its
+ * verified email, and set its sign-in time.
+ */
+export async function recordGoogleSignIn(
+  executor: JuniorSqlDatabase,
+  account: { displayName?: string; email: string; subject: string },
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  const stored = await upsertIdentity(
+    executor,
+    {
+      kind: "user",
+      provider: GOOGLE_IDENTITY_PROVIDER,
+      providerSubjectId: account.subject,
+      email: account.email,
+      emailVerified: true,
+      displayName: account.displayName,
+    },
+    nowMs,
+  );
+  await executor
+    .db()
+    .update(juniorIdentities)
+    .set({ signedInAt: dateFromMs(nowMs) })
+    .where(eq(juniorIdentities.id, stored.id));
+  return stored;
 }

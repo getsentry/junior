@@ -48,6 +48,11 @@ async function runAdmin(argv: string[]): Promise<number> {
   return await mod.runAdmin(argv);
 }
 
+async function runServiceAccount(argv: string[]): Promise<number> {
+  const mod = await import("./service-account");
+  return await mod.runServiceAccount(argv);
+}
+
 async function runBriefs(argv: string[]): Promise<number> {
   const mod = await import("./briefs");
   return await mod.runBriefs(argv);
@@ -84,6 +89,7 @@ export async function runMain(
   const exitCode = await runCli(argv, {
     runAdmin,
     runBriefs,
+    runServiceAccount,
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,
     runSnapshotCreate,

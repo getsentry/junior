@@ -1,4 +1,3 @@
-import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import {
@@ -21,25 +20,14 @@ function makeInput(
   };
 }
 
-function classify(
-  object: {
-    should_reply: boolean;
-    should_unsubscribe: boolean;
-    confidence: number;
-    reason: string;
-  },
-  input = makeInput(),
-  completeObject: Parameters<
-    typeof decideSubscribedThreadReply
-  >[0]["completeObject"] = vi.fn(async () => ({ costUsd: 0.00023, object })),
-) {
-  return decideSubscribedThreadReply({
-    botUserName: "junior",
-    modelId: "router-model",
-    input,
-    completeObject,
-    logClassifierFailure: vi.fn(),
-  });
+type CompleteDecision = Parameters<
+  typeof decideSubscribedThreadReply
+>[0]["completeDecision"];
+
+function routeAnswer(choice: string, probability: number) {
+  return {
+    answers: { route: { choice, probabilities: { [choice]: probability } } },
+  };
 }
 
 describe("subscribed reply decision", () => {
@@ -52,7 +40,7 @@ describe("subscribed reply decision", () => {
 
   it("skips non-mention replies when passive-routing is off", async () => {
     setExperimentalFeatures(undefined);
-    const completeObject = vi.fn();
+    const completeDecision = vi.fn();
 
     await expect(
       decideSubscribedThreadReply({
@@ -63,7 +51,7 @@ describe("subscribed reply decision", () => {
           text: "what did you just say?",
           isExplicitMention: false,
         }),
-        completeObject,
+        completeDecision,
         logClassifierFailure: vi.fn(),
       }),
     ).resolves.toEqual({
@@ -71,12 +59,12 @@ describe("subscribed reply decision", () => {
       reason: SubscribedReplyReason.PassiveDisabled,
       reasonDetail: "passive-routing",
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeDecision).not.toHaveBeenCalled();
   });
 
   it("still replies to explicit mentions when passive routing is off", async () => {
     setExperimentalFeatures(undefined);
-    const completeObject = vi.fn();
+    const completeDecision = vi.fn();
 
     await expect(
       decideSubscribedThreadReply({
@@ -87,14 +75,14 @@ describe("subscribed reply decision", () => {
           text: "please continue",
           isExplicitMention: true,
         }),
-        completeObject,
+        completeDecision,
         logClassifierFailure: vi.fn(),
       }),
     ).resolves.toEqual({
       shouldReply: true,
       reason: SubscribedReplyReason.ExplicitMention,
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeDecision).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -105,7 +93,7 @@ describe("subscribed reply decision", () => {
     "ok enough for now !stop thanks",
     "<@U0APP> keep going unless I say !stop later",
   ])("unsubscribes for %s without the classifier", async (text) => {
-    const completeObject = vi.fn();
+    const completeDecision = vi.fn();
 
     await expect(
       decideSubscribedThreadReply({
@@ -116,7 +104,7 @@ describe("subscribed reply decision", () => {
           text,
           isExplicitMention: text.startsWith("<@U0APP>"),
         }),
-        completeObject,
+        completeDecision,
         logClassifierFailure: vi.fn(),
       }),
     ).resolves.toEqual({
@@ -125,7 +113,7 @@ describe("subscribed reply decision", () => {
       reason: SubscribedReplyReason.ThreadOptOut,
       reasonDetail: "!stop",
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeDecision).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -146,7 +134,7 @@ describe("subscribed reply decision", () => {
       isExplicitMention: false,
     },
   ])("unsubscribes when the whole message is $name", async (fixture) => {
-    const completeObject = vi.fn();
+    const completeDecision = vi.fn();
 
     await expect(
       decideSubscribedThreadReply({
@@ -157,7 +145,7 @@ describe("subscribed reply decision", () => {
           text: fixture.text,
           isExplicitMention: fixture.isExplicitMention ?? true,
         }),
-        completeObject,
+        completeDecision,
         logClassifierFailure: vi.fn(),
       }),
     ).resolves.toEqual({
@@ -166,7 +154,7 @@ describe("subscribed reply decision", () => {
       reason: SubscribedReplyReason.ThreadOptOut,
       reasonDetail: "stop",
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeDecision).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -176,7 +164,7 @@ describe("subscribed reply decision", () => {
     "stop spamming",
     "please continue with the PR checks",
   ])("does not treat %s as stop", async (text) => {
-    const completeObject = vi.fn();
+    const completeDecision = vi.fn();
 
     await expect(
       decideSubscribedThreadReply({
@@ -187,14 +175,14 @@ describe("subscribed reply decision", () => {
           text,
           isExplicitMention: true,
         }),
-        completeObject,
+        completeDecision,
         logClassifierFailure: vi.fn(),
       }),
     ).resolves.toEqual({
       shouldReply: true,
       reason: SubscribedReplyReason.ExplicitMention,
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeDecision).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -241,89 +229,68 @@ describe("subscribed reply decision", () => {
 
   it.each([
     {
-      name: "a negative decision",
-      object: {
-        should_reply: false,
-        should_unsubscribe: false,
-        confidence: 0.95,
-        reason: "status chatter",
-      },
+      name: "a stay-quiet decision",
+      choice: "stay_quiet",
+      probability: 0.95,
       expected: {
         costUsd: 0.00023,
         shouldReply: false,
         reason: SubscribedReplyReason.SideConversation,
-        reasonDetail: "status chatter",
+        reasonDetail: "stay_quiet p=0.95",
       },
     },
     {
       name: "a confident unsubscribe",
-      object: {
-        should_reply: false,
-        should_unsubscribe: true,
-        confidence: 0.95,
-        reason: "stop participating",
-      },
+      choice: "unsubscribe",
+      probability: 0.95,
       expected: {
         costUsd: 0.00023,
         shouldReply: false,
         shouldUnsubscribe: true,
         reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: "stop participating",
+        reasonDetail: "unsubscribe p=0.95",
       },
     },
     {
       name: "a low-confidence reply",
-      object: {
-        should_reply: true,
-        should_unsubscribe: false,
-        confidence: 0.65,
-        reason: "maybe follow-up",
-      },
+      choice: "reply",
+      probability: 0.65,
       expected: {
         costUsd: 0.00023,
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,
-        reasonDetail: "0.65: maybe follow-up",
+        reasonDetail: "reply p=0.65",
       },
     },
     {
       name: "a confident reply",
-      object: {
-        should_reply: true,
-        should_unsubscribe: false,
-        confidence: 0.95,
-        reason: "direct question",
-      },
+      choice: "reply",
+      probability: 0.95,
       expected: {
         costUsd: 0.00023,
         shouldReply: true,
         reason: SubscribedReplyReason.Classifier,
-        reasonDetail: "direct question",
+        reasonDetail: "reply p=0.95",
       },
     },
   ])("maps $name onto the runtime decision contract", async (fixture) => {
-    const completeObject = vi.fn<
-      Parameters<typeof decideSubscribedThreadReply>[0]["completeObject"]
-    >(async () => ({ costUsd: 0.00023, object: fixture.object }));
-
     await expect(
-      classify(fixture.object, makeInput(), completeObject),
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput(),
+        completeDecision: vi.fn<CompleteDecision>(async () => ({
+          ...routeAnswer(fixture.choice, fixture.probability),
+          costUsd: 0.00023,
+        })),
+        logClassifierFailure: vi.fn(),
+      }),
     ).resolves.toEqual(fixture.expected);
-    expect(
-      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
-    ).toEqual([]);
   });
 
   it("projects guardian-style user/assistant evidence without tool lines", async () => {
-    const completeObject = vi.fn(
-      async (_request: { prompt: string; system: string }) => ({
-        object: {
-          should_reply: true,
-          should_unsubscribe: false,
-          confidence: 0.72,
-          reason: "natural continuation",
-        },
-      }),
+    const completeDecision = vi.fn<CompleteDecision>(async () =>
+      routeAnswer("reply", 0.72),
     );
 
     await expect(
@@ -345,45 +312,44 @@ describe("subscribed reply decision", () => {
             "</thread-context>",
           ].join("\n"),
         }),
-        completeObject,
+        completeDecision,
         logClassifierFailure: vi.fn(),
       }),
     ).resolves.toEqual({
       shouldReply: true,
       reason: SubscribedReplyReason.Classifier,
-      reasonDetail: "natural continuation",
+      reasonDetail: "reply p=0.72",
     });
 
-    expect(completeObject).toHaveBeenCalledWith(
+    expect(completeDecision).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxTokens: 400,
+        modelId: "router-model",
         promptName: "junior.passive_reply_route",
-        prompt: expect.stringContaining(">>> TRANSCRIPT START"),
-        system: expect.stringContaining("# Evidence Handling"),
+        state: expect.stringContaining(">>> TRANSCRIPT START"),
       }),
     );
-    const call = completeObject.mock.calls[0]?.[0];
-    expect(call?.prompt).toContain(
-      "user David: investigate the passive router",
-    );
-    expect(call?.prompt).toContain(
+    const call = completeDecision.mock.calls[0]?.[0];
+    expect(call?.state).toContain("user David: investigate the passive router");
+    expect(call?.state).toContain(
       "assistant junior: the confidence gate looks too strict",
     );
-    expect(call?.prompt).toContain(">>> LATEST MESSAGE START");
-    expect(call?.prompt).not.toContain("must-not-reach-router");
-    expect(call?.system).toContain("Conversation Floor");
-    expect(call?.system).toContain("untrusted evidence");
+    expect(call?.state).toContain(">>> LATEST MESSAGE START");
+    expect(call?.state).not.toContain("must-not-reach-router");
+    const question = call?.questions.route;
+    expect(question?.type).toBe("choice");
+    expect(Object.keys(question?.criteria ?? {})).toEqual([
+      "reply",
+      "stay_quiet",
+      "unsubscribe",
+    ]);
+    expect(question?.instructions).toContain("Conversation Floor");
+    expect(question?.instructions).toContain("untrusted evidence");
   });
 
   it("keeps first and recent user anchors with recent assistant evidence", async () => {
-    const completeObject = vi.fn(async (_request: { prompt: string }) => ({
-      object: {
-        should_reply: false,
-        should_unsubscribe: false,
-        confidence: 0.9,
-        reason: "human side conversation",
-      },
-    }));
+    const completeDecision = vi.fn<CompleteDecision>(async () =>
+      routeAnswer("stay_quiet", 0.9),
+    );
     const middle = Array.from({ length: 12 }, (_, index) => {
       const filler = "x".repeat(8_000);
       return `[user] Person ${index}: ${index}-${filler}`;
@@ -400,20 +366,20 @@ describe("subscribed reply decision", () => {
           "[user] David: latest request",
         ].join("\n"),
       }),
-      completeObject,
+      completeDecision,
       logClassifierFailure: vi.fn(),
     });
 
-    const prompt = completeObject.mock.calls[0]?.[0].prompt;
-    expect(prompt).toBeDefined();
-    expect(prompt).toContain("user David: original request");
-    expect(prompt).toContain("assistant junior: latest answer");
-    expect(prompt).toContain("user David: latest request");
-    expect(prompt).toContain("Omitted earlier transcript entries:");
-    expect(prompt).not.toContain("user Person 0:");
+    const state = completeDecision.mock.calls[0]?.[0].state;
+    expect(state).toBeDefined();
+    expect(state).toContain("user David: original request");
+    expect(state).toContain("assistant junior: latest answer");
+    expect(state).toContain("user David: latest request");
+    expect(state).toContain("Omitted earlier transcript entries:");
+    expect(state).not.toContain("user Person 0:");
   });
 
-  it("fails closed when the classifier result is invalid", async () => {
+  it("fails closed when the decision model returns an unknown route", async () => {
     const logClassifierFailure = vi.fn();
     const input = makeInput();
 
@@ -422,9 +388,9 @@ describe("subscribed reply decision", () => {
         botUserName: "junior",
         modelId: "router-model",
         input,
-        completeObject: vi.fn(async () => ({
-          object: { should_reply: "yes" },
-        })),
+        completeDecision: vi.fn<CompleteDecision>(async () =>
+          routeAnswer("maybe", 1),
+        ),
         logClassifierFailure,
       }),
     ).resolves.toEqual({

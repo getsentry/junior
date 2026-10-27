@@ -29,7 +29,10 @@ import {
 } from "@/chat/event-automations/run-limit";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import { botConfig } from "@/chat/config";
-import { slackChannelMessageReplyThreadTs } from "@/chat/slack/channel-message-events";
+import {
+  slackChannelMessageReplyThreadTs,
+  slackChannelMessageRunsAutomation,
+} from "@/chat/slack/channel-message-events";
 import { logWarn } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
@@ -87,7 +90,9 @@ export async function ingestEventAutomations(
   const event = eventSchema.parse(input);
   const db = getDb();
   const nowMs = options.nowMs ?? Date.now();
-  const tasks = await findMatchingEventAutomations(db, event, options.teamId);
+  const tasks = (
+    await findMatchingEventAutomations(db, event, options.teamId)
+  ).filter((task) => slackChannelMessageRunsAutomation(event, task));
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {
@@ -120,8 +125,9 @@ export async function ingestEventAutomations(
             },
             extra: {
               "app.event.event_type": event.eventType,
-              "app.event_automation.max_runs_per_hour":
-                botConfig.maxEventAutomationRunsPerHour,
+              "app.event_automation.max_runs": botConfig.maxEventAutomationRuns,
+              "app.event_automation.run_window_ms":
+                botConfig.eventAutomationRunWindowMs,
               "app.event_automation.resource_type": task.trigger.resourceType,
               "app.task.id": task.id,
             },
@@ -149,6 +155,7 @@ export async function ingestEventAutomations(
             }
           : undefined;
       const dispatch = await dispatchEventAutomation({
+        automationId: task.id,
         conversationWorkQueue: options.queue,
         nowMs,
         options: {

@@ -31,6 +31,35 @@ function clip(value: string, maxLength: number | undefined): string {
   return maxLength === undefined ? value : value.slice(0, maxLength);
 }
 
+/** The linked person who did what an Event describes. */
+export interface EventDoneBy {
+  /** Slack mention of the person. */
+  mention: string;
+  /** Provider handle that the Event text uses for the same person. */
+  handle?: string;
+}
+
+/**
+ * Connect the mention to the provider handle in the Event text. Without this,
+ * the agent can mention a person and then name them again by handle as if
+ * they were someone else.
+ */
+function doneByLine(doneBy: EventDoneBy, people: readonly string[]): string {
+  const mention = oneLine(doneBy.mention);
+  const handle = doneBy.handle ? oneLine(doneBy.handle) : undefined;
+  return [
+    `Done by: ${mention}. This person did what this Event describes.`,
+    ...(handle
+      ? [`The Event calls them "${handle}". That is the same person.`]
+      : []),
+    ...(people.includes(mention)
+      ? [
+          `They are also in People involved. Write to them as "you"${handle ? `, and do not also call them "${handle}"` : ""}.`,
+        ]
+      : []),
+  ].join(" ");
+}
+
 /**
  * Render agent input for a task run.
  *
@@ -48,6 +77,8 @@ export function renderTaskInput(args: {
   creator?: string;
   /** Mentions of the people involved in an Event. Guidance says when to address them. */
   people?: readonly string[];
+  /** Linked person who did what the Event describes. */
+  doneBy?: EventDoneBy;
   /** Plugin guidance scoped under the instructions. */
   guidance?: string;
   /** Trusted one-line summary, when available. */
@@ -81,6 +112,7 @@ export function renderTaskInput(args: {
         ]
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),
+    ...(args.doneBy ? [doneByLine(args.doneBy, people)] : []),
     `Instructions: ${instructions}`,
   ];
 

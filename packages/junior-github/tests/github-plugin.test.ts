@@ -62,6 +62,7 @@ class TestTokenStore {
 type TestActor = {
   email?: string;
   fullName?: string;
+  name?: string;
   platform?: string;
   teamId?: string;
   userId?: string;
@@ -343,6 +344,7 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
+  source?: ToolRegistrationHookContext["source"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
   subscribe?: ToolRegistrationHookContext["events"]["subscribe"];
 }) {
@@ -360,7 +362,7 @@ function githubToolsContext(input?: {
     ...(input?.actor ? { actor: input.actor } : undefined),
     conversationId,
     destination: { platform: "local" as const, conversationId },
-    source: {
+    source: input?.source ?? {
       kind: "local" as const,
       visibility: "private" as const,
       conversationId,
@@ -1026,6 +1028,38 @@ describe("github plugin", () => {
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
+  it("attributes automation writes to the Automation run", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = {
+      ...githubToolsContext({
+        actor: { platform: "system", name: "junior" },
+        conversationId: "agent-dispatch:dispatch_1",
+        source: {
+          kind: "event_automation",
+          automationId: "evt_1",
+          automationRunId: "dispatch_1",
+        },
+      }),
+      automationLink: { url: "https://junior.example.com/automations/evt_1" },
+    };
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-automation" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",
     });
   });
 

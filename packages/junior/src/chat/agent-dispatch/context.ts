@@ -13,14 +13,16 @@ import {
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createEventTeamIdResolver } from "@/chat/events/workspace";
 import { findLinkedSlackUserId } from "@/chat/identities/sql";
+import { isSlackProfileDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { logInfo } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { openSlackDirectMessage } from "@/chat/slack/outbound";
-import { isActiveSlackWorkspaceMember } from "@/chat/slack/users";
+import { lookupActiveSlackWorkspaceMember } from "@/chat/slack/users";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
+  buildDispatchId,
   createOrGetDispatch,
   getPluginDispatchProjection,
   isTerminalDispatchStatus,
@@ -146,10 +148,12 @@ const CORE_IDENTITY_PROVIDERS = new Set(["junior", "slack"]);
  * person behind one provider Identity.
  *
  * The provider is always the calling plugin. Work starts only when the
- * Identity is linked to exactly one Slack user in the bot's workspace and that
- * user is a current human member. Without a Slack bot, nothing is linked.
+ * Identity is linked to exactly one Slack user in the bot's workspace, that
+ * user is a current human member, and the user's Slack email is on the allowed
+ * domains, as for Slack ingress. Without a Slack bot, nothing is linked.
  */
 export function createIdentityDispatcher(args: {
+  allowedDomains: readonly string[];
   conversationWorkQueue: () => ConversationWorkQueue;
 }): (
   plugin: string,
@@ -183,8 +187,12 @@ export function createIdentityDispatcher(args: {
     if (!slackUserId) {
       return notLinked(plugin, "no_single_link");
     }
-    if (!(await isActiveSlackWorkspaceMember(slackUserId, teamId))) {
+    const member = await lookupActiveSlackWorkspaceMember(slackUserId, teamId);
+    if (!member) {
       return notLinked(plugin, "inactive_member");
+    }
+    if (!isSlackProfileDomainAllowed(member, args.allowedDomains)) {
+      return notLinked(plugin, "domain_not_allowed");
     }
 
     const dispatchOptions: SlackDispatchOptions = {
@@ -217,6 +225,7 @@ export function createIdentityDispatcher(args: {
 
 /** Create and enqueue one core-owned event automation dispatch. */
 export async function dispatchEventAutomation(args: {
+  automationId: string;
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
@@ -244,7 +253,12 @@ export async function dispatchEventAutomation(args: {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
-    source: { kind: "event_automation" },
+    source: {
+      kind: "event_automation",
+      automationId: args.automationId,
+      // An event automation run id is its dispatch id.
+      automationRunId: buildDispatchId(plugin, unboundOptions.idempotencyKey),
+    },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,
@@ -256,6 +270,7 @@ export async function dispatchEventAutomation(args: {
 
 /** Create and enqueue one core-owned scheduled automation dispatch. */
 export async function dispatchScheduledAutomation(args: {
+  automationId: string;
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
@@ -283,7 +298,12 @@ export async function dispatchScheduledAutomation(args: {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
-    source: { kind: "scheduled_automation" },
+    source: {
+      kind: "scheduled_automation",
+      automationId: args.automationId,
+      // A scheduled automation run id is its idempotency key.
+      automationRunId: unboundOptions.idempotencyKey,
+    },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,

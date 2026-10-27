@@ -58,6 +58,13 @@ Conversation has no `agentTree`.
 Message attachments can appear after the source file finishes storing. Clients
 must compare attachment metadata as well as event sequence on refresh.
 
+Message text keeps Slack user mentions as `<@U123>`. The event log does not
+store who they are. Each read resolves them into `mentions` on the message:
+known Junior identities first, then a cached Slack lookup. So names stay
+current and old Conversations also get names. `email` is set only for a linked,
+verified Junior user, because it is the People profile route. A mention without
+`email` has no profile to link to.
+
 Other projections are append-only: later canonical facts produce new observations
 instead of changing previously returned events. Clients reduce observations by
 stable identity. A terminal tool or subagent observation includes its start

@@ -54,6 +54,7 @@ import {
   upsertLinkedIdentity,
 } from "@/chat/identities/sql";
 import { identityFromActor } from "@/chat/conversations/sql/actor-identity";
+import { isNativeIdentityProvider } from "@/chat/identities/identity";
 import type { SlackActor, WebActor } from "@/chat/actor";
 import type { PluginProviderAccount } from "@sentry/junior-plugin-api";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
@@ -410,6 +411,7 @@ export async function GET(
   const linkActor = stored.actor;
   if (
     account &&
+    !isNativeIdentityProvider(provider) &&
     (linkActor?.platform === "slack" || linkActor?.platform === "web")
   ) {
     await runBestEffort(

@@ -154,6 +154,13 @@ export {
   startConnectionResponseSchema,
 } from "./schema/connection";
 export {
+  disconnectServiceAccountResponseSchema,
+  serviceAccountListSchema,
+  serviceAccountParamsSchema,
+  serviceAccountSchema,
+  startServiceAccountSignInResponseSchema,
+} from "./schema/service-account";
+export {
   createPersonalTokenBodySchema,
   createdPersonalTokenSchema,
   personalTokenListSchema,

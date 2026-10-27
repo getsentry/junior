@@ -206,7 +206,11 @@ describe("scheduled automation heartbeat", () => {
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
-    expect(dispatchRecord?.source).toEqual({ kind: "scheduled_automation" });
+    expect(dispatchRecord?.source).toEqual({
+      kind: "scheduled_automation",
+      automationId: "sched_plugin_1",
+      automationRunId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
+    });
     expect(dispatchRecord?.metadata).toMatchObject({
       runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
       schedule: "Once at noon",

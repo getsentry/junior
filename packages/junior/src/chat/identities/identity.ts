@@ -1,3 +1,20 @@
+/**
+ * Provider of the native Google identity. Core links it through Google
+ * sign-in. Its tenant is empty and its subject is the Google OIDC `sub`.
+ */
+export const GOOGLE_IDENTITY_PROVIDER = "google";
+
+const NATIVE_IDENTITY_PROVIDERS = new Set(["slack", GOOGLE_IDENTITY_PROVIDER]);
+
+/**
+ * Return whether only core may link identities for this provider. Plugin
+ * OAuth accounts must not link under these names, because other checks trust
+ * them.
+ */
+export function isNativeIdentityProvider(provider: string): boolean {
+  return NATIVE_IDENTITY_PROVIDERS.has(provider);
+}
+
 export type IdentityKind = "service" | "system" | "user";
 
 export interface IdentityUpsert {

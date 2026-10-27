@@ -37,6 +37,8 @@ Core starts work only when all of these rules are true:
 4. That user has exactly one Slack Identity in the bot team.
 5. Slack `users.info` shows that Slack user in the bot team. The user is not
    deleted and is not a bot.
+6. The email of that Slack profile is on the allowed domains, the same rule as
+   Slack ingress. An empty list allows every domain.
 
 If one rule is false, core returns `not_linked`. It starts no work and calls no
 model. Missing Slack setup also returns `not_linked`, because core cannot find

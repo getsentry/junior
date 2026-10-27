@@ -18,6 +18,7 @@ export interface SlackUserProfile {
   email?: string;
   status_text?: string;
   status_emoji?: string;
+  avatar_url?: string;
   is_bot: boolean;
   is_deleted: boolean;
   timezone?: string;
@@ -74,6 +75,7 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     email: raw.profile?.email || undefined,
     status_text: raw.profile?.status_text ?? undefined,
     status_emoji: raw.profile?.status_emoji ?? undefined,
+    avatar_url: raw.profile?.image_512 || undefined,
     is_bot: raw.is_bot ?? false,
     is_deleted: raw.deleted ?? false,
     timezone: raw.tz || undefined,
@@ -121,15 +123,15 @@ export async function lookupSlackUserProfile(
 }
 
 /**
- * Check that one Slack user is a current human member of a workspace.
+ * Look up one Slack user who is a current human member of a workspace.
  *
- * A user that Slack cannot find is not a member. Other lookup errors
- * propagate.
+ * Returns undefined for a user that Slack cannot find, a deleted user, a bot,
+ * or a user of another workspace. Other lookup errors propagate.
  */
-export async function isActiveSlackWorkspaceMember(
+export async function lookupActiveSlackWorkspaceMember(
   userId: SlackUserId,
   teamId: string,
-): Promise<boolean> {
+): Promise<SlackUserProfile | undefined> {
   let user: SlackUserProfile;
   try {
     user = await lookupSlackUserProfile(userId);
@@ -138,16 +140,16 @@ export async function isActiveSlackWorkspaceMember(
       error instanceof SlackActionError &&
       error.apiError === "user_not_found"
     ) {
-      return false;
+      return undefined;
     }
     throw error;
   }
-  return (
-    user.id === userId &&
+  return user.id === userId &&
     user.team_id === teamId &&
     !user.is_deleted &&
     !user.is_bot
-  );
+    ? user
+    : undefined;
 }
 
 /** Look up a Slack user by email. Returns null when no user matches. */

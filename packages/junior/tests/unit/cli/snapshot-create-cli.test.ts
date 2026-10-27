@@ -63,7 +63,7 @@ describe("snapshot create cli", () => {
     expect(logs).toContain(
       "Sandbox snapshot inputs: plugins=0 system_dependencies=0 npm_dependencies=0 postinstall_commands=0",
     );
-    await resolveMock.mock.calls[0][0].onProgress("resolve_start");
+    await resolveMock.mock.calls[0]![0].onProgress("resolve_start");
     expect(logs).toContain("Resolving sandbox snapshot profile...");
     expect(
       logs.some((line) => line.includes("resolve_outcome=no_profile")),

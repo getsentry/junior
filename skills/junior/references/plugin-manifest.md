@@ -161,6 +161,37 @@ mcp:
   URL. `client_id`, `scope`, `state`, `redirect_uri`, and `response_type` are
   reserved.
 
+## Accounts and service account
+
+Use top-level `accounts` to say which accounts Junior may use. Per-user OAuth
+stays the default, and the actor's own connection always wins.
+
+```yaml
+mcp:
+  url: https://mcp.example.com/mcp
+  allowed-tools:
+    - search
+    - fetch
+    - create-page
+
+accounts:
+  service-account: # omit for no service account
+    tools:
+      - search
+      - fetch
+  # user-oauth: false   # use only the service account
+```
+
+- The service account has no effect until an admin connects it on the
+  dashboard Admin page, or runs `junior service-account connect <plugin-name>`.
+- `service-account.tools` lists the MCP tools that the shared account may
+  call. List only what everyone who can talk to Junior may do, usually read
+  tools. An actor without their own connection uses the service account for
+  these tools. Other tools still use the actor's own OAuth.
+- `user-oauth: false` turns off the actor's own OAuth for the plugin. Junior
+  then hides every tool that `service-account.tools` does not list. The
+  default is `true`.
+
 ## Parser traps
 
 - `api-headers` requires `domains`.
@@ -176,6 +207,12 @@ mcp:
 - `mcp.oauth-client` env vars must be declared in `env-vars` and must not
   declare defaults.
 - `mcp` must not declare both `auth` and `oauth-client`.
+- `accounts.service-account.tools` entries must be in `mcp.allowed-tools` or
+  `mcp.wrapped-tools` when `allowed-tools` is set.
+- `accounts.service-account` must not be combined with `mcp.auth` or
+  `mcp.oauth-client`, and needs an `mcp` block.
+- `accounts.user-oauth: false` requires `accounts.service-account`.
+- `accounts` rejects unknown keys.
 - `Authorization` is reserved inside `oauth-bearer` `credentials.api-headers`.
 - `target.config-key` must be listed in `config-keys`.
 - System dependencies must not declare `version`.

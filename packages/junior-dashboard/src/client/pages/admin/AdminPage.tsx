@@ -6,15 +6,23 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { dashboardContainerClass } from "../../styles";
 import { pluginUserPagePath } from "../user/PluginUserPage";
+import {
+  ServiceAccountsSection,
+  useServiceAccounts,
+} from "./ServiceAccountsSection";
 
 /**
- * List admin-only plugin pages for a Junior admin.
+ * Show service accounts and admin-only plugin pages to a Junior admin.
  *
- * The server hides admin pages from other viewers and refuses to serve them,
- * so this page only arranges links.
+ * The server hides admin pages and service accounts from other viewers and
+ * refuses their requests, so this page only arranges them.
  */
 export function AdminPage(props: { pages: PluginUserPageLink[] }) {
   const adminPages = props.pages.filter((page) => page.navigation === "admin");
+  const serviceAccounts = useServiceAccounts();
+  const nothingToSet =
+    adminPages.length === 0 &&
+    serviceAccounts.data?.serviceAccounts.length === 0;
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
       <section className="mx-auto grid w-full max-w-3xl gap-6">
@@ -28,7 +36,8 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
           }
           title="Admin"
         />
-        {adminPages.length === 0 ? (
+        <ServiceAccountsSection accountsQuery={serviceAccounts} />
+        {nothingToSet ? (
           <Card padding="md">
             <div className="flex items-center gap-4">
               <div className="grid size-10 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
@@ -39,7 +48,7 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
               </p>
             </div>
           </Card>
-        ) : (
+        ) : adminPages.length === 0 ? null : (
           <div className="grid gap-3">
             {adminPages.map((page) => (
               <Link

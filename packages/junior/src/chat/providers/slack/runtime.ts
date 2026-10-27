@@ -442,7 +442,7 @@ export function createSlackTurnRuntime<
 
     return {
       start: async (
-        context: RuntimeLogContext,
+        _context: RuntimeLogContext,
         targetMessage: Message,
       ): Promise<ProcessingReaction> => {
         const channelId = getChannelId(thread, targetMessage);

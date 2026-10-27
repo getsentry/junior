@@ -25,11 +25,9 @@ import {
   dashboardProfileUpdateSchema,
 } from "./api/schema";
 import {
-  createDashboardAuth,
   dashboardBearerSession,
   dashboardPersonalBearerToken,
   dashboardSessionIsAuthorized,
-  resolveGoogleHostedDomainHint,
   sanitizeDashboardSession,
   verifiedDashboardSessionEmail,
   type DashboardAuth,
@@ -80,16 +78,14 @@ export interface JuniorDashboardOptions {
   baseURL?: string;
   authPath?: string;
   authRequired?: boolean;
-  allowedGoogleDomains?: string[];
-  allowedEmails?: string[];
-  sessionMaxAgeSeconds?: number;
-  trustedOrigins?: string[];
   auth?: DashboardAuth;
   componentGallery?: boolean;
   mockConversations?: boolean;
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
+  /** The app's `allowedDomains`, from core. Auth requires at least one. */
+  allowedDomains?: string[];
   authenticatedRoutes?: readonly AuthenticatedRoute[];
   /** The queue `createApp()` uses, so web input reaches the same worker. */
   conversationWorkQueue?: ConversationWorkQueue;
@@ -117,37 +113,6 @@ function normalizeValues(values: string[] | undefined): string[] {
   ];
 }
 
-/** Read dashboard list env vars as comma-separated strings or JSON arrays. */
-function readEnvList(name: string): string[] | undefined {
-  const value = process.env[name];
-  if (!value?.trim()) {
-    return undefined;
-  }
-
-  if (value.trim().startsWith("[")) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(value);
-    } catch (error) {
-      throw new Error(`${name} must be a JSON string array`, {
-        cause: error,
-      });
-    }
-    if (
-      !Array.isArray(parsed) ||
-      parsed.some((item) => typeof item !== "string")
-    ) {
-      throw new Error(`${name} must be a JSON string array`);
-    }
-    return parsed;
-  }
-
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 /** Read dashboard boolean env vars; only explicit true/false values apply. */
 function readEnvFlag(name: string): boolean | undefined {
   const value = process.env[name]?.trim();
@@ -164,13 +129,6 @@ function resolveDashboardOptions(
     ...options,
     authRequired:
       options.authRequired ?? readEnvFlag("JUNIOR_DASHBOARD_AUTH_REQUIRED"),
-    allowedGoogleDomains:
-      options.allowedGoogleDomains ??
-      readEnvList("JUNIOR_DASHBOARD_GOOGLE_DOMAINS"),
-    allowedEmails:
-      options.allowedEmails ?? readEnvList("JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
-    trustedOrigins:
-      options.trustedOrigins ?? readEnvList("JUNIOR_DASHBOARD_TRUSTED_ORIGINS"),
     componentGallery:
       options.componentGallery ??
       readEnvFlag("JUNIOR_DASHBOARD_COMPONENT_GALLERY"),
@@ -410,8 +368,7 @@ export function createDashboardApp(
     options.authPath ?? DEFAULT_AUTH_PATH,
     DEFAULT_AUTH_PATH,
   );
-  const allowedDomains = normalizeValues(options.allowedGoogleDomains);
-  const allowedEmails = normalizeValues(options.allowedEmails);
+  const allowedDomains = normalizeValues(options.allowedDomains);
   const agentName = options.agentName?.trim() || "Junior";
 
   const authRequired = options.authRequired !== false;
@@ -421,27 +378,15 @@ export function createDashboardApp(
     canonicalBaseURL = resolveDashboardBaseURL({ baseURL: configuredBaseURL });
   }
 
-  if (
-    authRequired &&
-    allowedDomains.length === 0 &&
-    allowedEmails.length === 0
-  ) {
-    throw new Error(
-      "Junior dashboard auth requires allowedGoogleDomains or allowedEmails",
-    );
+  if (authRequired && allowedDomains.length === 0) {
+    throw new Error("Junior dashboard auth requires allowedDomains");
   }
 
-  const auth = authRequired
-    ? (options.auth ??
-      createDashboardAuth({
-        agentName,
-        authPath,
-        baseURL: options.baseURL,
-        trustedOrigins: options.trustedOrigins ?? [],
-        googleHostedDomain: resolveGoogleHostedDomainHint(allowedDomains),
-        sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
-      }))
-    : undefined;
+  // Core owns the Google sign-in session.
+  const auth = options.auth;
+  if (authRequired && !auth) {
+    throw new Error("Junior dashboard auth requires the core sign-in session");
+  }
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
   app.use("*", async (c, next) => {
@@ -456,14 +401,11 @@ export function createDashboardApp(
       authenticatedRoutes,
       componentGallery: options.componentGallery,
     });
-    if (!auth) {
+    if (!authRequired || !auth) {
       return Response.redirect(returnUrl, 302);
     }
     const session = await auth.getSession(c.req.raw);
-    if (
-      session &&
-      dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)
-    ) {
+    if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
       return Response.redirect(returnUrl, 302);
     }
     return auth.signInWithGoogle(c.req.raw, returnUrl);
@@ -552,7 +494,7 @@ export function createDashboardApp(
         componentGallery: options.componentGallery,
       });
     }
-    if (!dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)) {
+    if (!dashboardSessionIsAuthorized(session, allowedDomains)) {
       return forbidden(c.req.raw, agentName);
     }
     const sanitizedSession = sanitizeDashboardSession(session);
@@ -575,6 +517,7 @@ export function createDashboardApp(
       c.set("viewer", viewer);
     }
     await next();
+    return undefined;
   };
 
   app.use("*", requireAuth);
@@ -633,8 +576,7 @@ export function createDashboardApp(
   );
   app.get("/api/config", () => {
     return jsonResponse(dashboardConfigSchema, {
-      allowedEmailCount: allowedEmails.length,
-      allowedGoogleDomainCount: allowedDomains.length,
+      allowedDomainCount: allowedDomains.length,
       authRequired,
       authPath,
       basePath,

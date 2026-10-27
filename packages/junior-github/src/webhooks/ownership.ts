@@ -11,10 +11,12 @@ function parseGitHubBotIdentity(
   value: string | undefined,
 ): GitHubBotIdentity | undefined {
   const match = GITHUB_BOT_NOREPLY_EMAIL.exec(value?.trim() ?? "");
-  if (!match?.groups) return undefined;
+  const login = match?.groups?.login;
+  const userId = match?.groups?.userId;
+  if (!login || !userId) return undefined;
   return {
-    login: match.groups.login,
-    userId: Number(match.groups.userId),
+    login,
+    userId: Number(userId),
   };
 }
 

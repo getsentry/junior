@@ -266,6 +266,7 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
           { status: 400 },
         );
       }
+      return undefined;
     }),
     async (context) => {
       const { id } = context.req.valid("param");

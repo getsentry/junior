@@ -23,7 +23,9 @@ describe("renderTaskInput", () => {
     const text = renderTaskInput({
       about: "GitHub PR getsentry/junior#691",
       creator: "<@U123>",
+      doneBy: { mention: "<@U456>", handle: "octocat" },
       instructions: "Fix failed checks on this PR.",
+      people: ["<@U456>"],
       trustedSummary: "CI failed on workflow test.",
       verifiedDetails: { pullRequest: 691 },
       externalText: "Failed checks:\n- test",
@@ -36,6 +38,8 @@ describe("renderTaskInput", () => {
 
       About: GitHub PR getsentry/junior#691
       Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.
+      People involved: <@U456>
+      Done by: <@U456>. This person did what this Event describes. The Event calls them "octocat". That is the same person. They are also in People involved. Write to them as "you", and do not also call them "octocat".
       Instructions: Fix failed checks on this PR.
 
       Trusted summary: CI failed on workflow test.

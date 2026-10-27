@@ -45,10 +45,11 @@ describe("plugin route Identity dispatch", () => {
   let agent: RouteRegistrationHookContext["agent"];
   let queue: ConversationWorkQueueTestAdapter;
 
-  beforeEach(async () => {
+  async function startApp(allowedDomains?: string[]): Promise<void> {
     await disconnectStateAdapter();
     queue = createConversationWorkQueueTestAdapter();
     await createApp({
+      ...(allowedDomains ? { allowedDomains } : undefined),
       conversationWorkQueue: () => queue,
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -62,6 +63,10 @@ describe("plugin route Identity dispatch", () => {
         }),
       ]),
     });
+  }
+
+  beforeEach(async () => {
+    await startApp();
   });
 
   it("starts one private DM dispatch for a linked current Slack member", async () => {
@@ -153,6 +158,28 @@ describe("plugin route Identity dispatch", () => {
     expect(
       getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
     ).toEqual(["U456"]);
+    expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
+    expect(queue.sentRecords()).toEqual([]);
+  });
+
+  it("drops a linked member whose Slack email is not on the allowed domains", async () => {
+    await startApp(["example.com"]);
+    await seedSlackUser({
+      email: "someone@contractor.dev",
+      linked: { provider: "demo", subjectId: "1005" },
+      slackUserId: "U555",
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U555", email: "someone@contractor.dev" }),
+    });
+
+    await expect(
+      agent.dispatchForIdentity({
+        idempotencyKey: "delivery-1005",
+        input: "Look at demo issue 7.",
+        subjectId: "1005",
+      }),
+    ).resolves.toEqual({ status: "not_linked" });
     expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
     expect(queue.sentRecords()).toEqual([]);
   });

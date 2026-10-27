@@ -343,6 +343,14 @@ describe("event automations", () => {
         }),
       ]),
     );
+    // Each dispatch Source names its Automation and run.
+    for (const dispatch of dispatches) {
+      expect(dispatch!.source).toEqual({
+        kind: "event_automation",
+        automationId: expect.any(String),
+        automationRunId: dispatch!.id,
+      });
+    }
     // Each dispatch starts one run that links its Conversation.
     const readRuns = () =>
       db
@@ -465,7 +473,7 @@ describe("event automations", () => {
         { queue, teamId },
       );
 
-      const [{ conversationId }] = queue.sentRecords();
+      const { conversationId } = queue.sentRecords()[0]!;
       expect(conversationId).toBeDefined();
       const dispatch = await getDispatchRecord(
         conversationId!.replace(/^agent-dispatch:/, ""),
@@ -683,7 +691,7 @@ describe("event automations", () => {
       ),
     ).resolves.toEqual({ dispatched: 1 });
 
-    const [{ conversationId }] = queue.sentRecords();
+    const { conversationId } = queue.sentRecords()[0]!;
     const dispatch = await getDispatchRecord(
       conversationId!.replace(/^agent-dispatch:/, ""),
     );

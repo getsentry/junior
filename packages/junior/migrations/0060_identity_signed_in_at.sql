@@ -1,0 +1,1 @@
+ALTER TABLE "junior_identities" ADD COLUMN "signed_in_at" timestamp with time zone;

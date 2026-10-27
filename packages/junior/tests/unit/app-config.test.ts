@@ -806,7 +806,6 @@ describe("createApp plugin config", () => {
       functionMaxDurationSeconds: undefined,
       dashboard: {
         authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
         componentGallery: true,
       },
       pluginSet: defineJuniorPlugins([
@@ -915,7 +914,6 @@ describe("createApp plugin config", () => {
         createApp({
           dashboard: {
             authRequired: false,
-            allowedGoogleDomains: ["sentry.io"],
           },
           plugins: defineJuniorPlugins([
             defineJuniorPlugin({
@@ -959,7 +957,6 @@ describe("createApp plugin config", () => {
 
     await createApp({
       dashboard: {
-        allowedGoogleDomains: ["sentry.io"],
         authRequired: false,
         basePath: "/ops",
         baseURL: "https://junior.example.com",

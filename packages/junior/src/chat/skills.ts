@@ -144,7 +144,7 @@ export function parseSkillFile(
   expectedName?: string,
 ): { ok: true; skill: ParsedSkillFile } | { ok: false; error: string } {
   const match = FRONTMATTER_RE.exec(raw);
-  if (!match) {
+  if (match?.[1] === undefined) {
     return { ok: false, error: "Missing YAML frontmatter at start of file" };
   }
 
@@ -201,7 +201,9 @@ export function parseSkillFile(
       name: result.data.name,
       description: result.data.description,
       body: stripFrontmatter(raw),
-      ...(result.data.metadata ? { metadata: result.data.metadata } : undefined),
+      ...(result.data.metadata
+        ? { metadata: result.data.metadata }
+        : undefined),
       ...(result.data.compatibility !== undefined
         ? { compatibility: result.data.compatibility }
         : undefined),
@@ -436,7 +438,7 @@ export function parseSkillInvocation(
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const slashMatch = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(trimmed);
-  if (slashMatch) {
+  if (slashMatch?.[1]) {
     const skillName = slashMatch[1].toLowerCase();
     if (!availableSkills.some((skill) => skill.name === skillName)) {
       return null;
@@ -447,7 +449,10 @@ export function parseSkillInvocation(
 
   const dollarPattern = /(?:^|\s)\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
   for (const match of trimmed.matchAll(dollarPattern)) {
-    const skillName = match[1].toLowerCase();
+    const skillName = match[1]?.toLowerCase();
+    if (!skillName) {
+      continue;
+    }
     if (isCommonEnvironmentVariable(skillName)) {
       continue;
     }
