@@ -9,6 +9,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import type {
   ActorIdentity,
+  ConversationReportMessageEvent,
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
@@ -120,6 +121,8 @@ export type TranscriptViewMessage = {
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
+  /** Every Event when several arrived together in one message. */
+  events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
   /** People mentioned in the message text. */

@@ -19,10 +19,10 @@ import {
   conversationFeedSchema,
   conversationParamsSchema,
   conversationPendingMessagesReportSchema,
-  conversationStatsReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { validateRequest } from "../validation";

@@ -21,7 +21,13 @@ function mentionedSlackUserIds(text: string | undefined): string[] {
 function messageMentionText(
   data: Extract<ConversationReportEvent["data"], { type: "message" }>,
 ): string {
-  return [data.text, data.trustedSummary].filter(Boolean).join("\n");
+  return [
+    data.text,
+    data.trustedSummary,
+    ...(data.events ?? []).map((event) => event.trustedSummary),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**

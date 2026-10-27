@@ -12,6 +12,7 @@ import {
 } from "./event-model";
 import {
   conversationReportEventSchema,
+  conversationReportMessageEventSchema,
   type ConversationReportEvent,
   type ConversationReportEventData,
 } from "../schema/conversation";
@@ -301,6 +302,16 @@ export function conversationReportToolResultIds(
   ];
 }
 
+const storedMessageEventsSchema = z.array(conversationReportMessageEventSchema);
+
+/** Read the Events listed on a message that holds several Events. */
+function reportMessageEvents(
+  meta: Record<string, unknown> | undefined,
+): { events: z.output<typeof storedMessageEventsSchema> } | undefined {
+  const parsed = storedMessageEventsSchema.safeParse(meta?.events);
+  return parsed.success ? { events: parsed.data } : undefined;
+}
+
 function reportEventData(args: {
   canExposePayload: boolean;
   data: ConversationEvent["data"];
@@ -347,6 +358,7 @@ function reportEventData(args: {
         typeof data.meta?.trustedSummary === "string"
           ? { trustedSummary: data.meta.trustedSummary }
           : undefined),
+        ...(args.canExposePayload ? reportMessageEvents(data.meta) : undefined),
         ...(args.canExposePayload &&
         (data.meta?.cards || data.meta?.objectCards)
           ? { cards: readMessageCardRefs(data.meta) }

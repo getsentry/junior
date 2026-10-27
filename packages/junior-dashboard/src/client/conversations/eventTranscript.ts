@@ -219,6 +219,7 @@ export function transcriptMessagesFromEvents(
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),
+        ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),

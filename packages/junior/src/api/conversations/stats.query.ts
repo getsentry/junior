@@ -20,7 +20,7 @@ import type {
   ConversationStatsReport,
   GuardianMetricDay,
   GuardianStats,
-} from "../schema/conversation";
+} from "../schema/conversation-stats";
 import {
   WINDOW_SEVEN_DAY_HOURS,
   sumUtcHoursIntoSixHours,

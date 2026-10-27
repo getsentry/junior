@@ -4,6 +4,7 @@ import {
   EVENT_WAIT_MS,
 } from "@/chat/events/notification";
 import type { AgentRun } from "@/chat/agent/types";
+import { renderTaskInput } from "@/chat/task-input";
 import { getConversationEventStore } from "@/chat/db";
 import {
   appendAndEnqueueWebMessage,
@@ -75,8 +76,13 @@ describe("event wake delay", () => {
       conversationId,
       id: "resource-subscription-burst",
     };
-    const eventMessage = (sequence: number, receivedAtMs: number) =>
-      createEventInboundMessage({
+    const eventMessage = (sequence: number, receivedAtMs: number) => {
+      const task = {
+        about: "GitHub PR getsentry/junior#1563",
+        instructions: "Fix failed checks on this PR.",
+        trustedSummary: `Check ${sequence} failed`,
+      };
+      return createEventInboundMessage({
         event: {
           eventKey: `check-${sequence}`,
           eventType: "check_suite.completed",
@@ -88,8 +94,10 @@ describe("event wake delay", () => {
         },
         receivedAtMs,
         subscription,
-        text: `Check ${sequence} failed`,
+        task,
+        text: renderTaskInput(task),
       });
+    };
 
     await appendAndEnqueueInboundMessage({
       conversationStore,
@@ -169,23 +177,46 @@ describe("event wake delay", () => {
 
     const savedEvents =
       await getConversationEventStore().loadHistory(conversationId);
+    // Both Events are listed on the one message, not only the first.
     expect(
       savedEvents.find(
         (event) =>
           event.data.type === "message" &&
           event.data.meta?.eventType === "check_suite.completed",
       )?.data,
-    ).toMatchObject({ meta: { eventObjectType: "code_change" } });
-    const userMessages = (
-      await getConversationEventStore().loadHistory(conversationId)
-    ).flatMap((event) =>
+    ).toMatchObject({
+      meta: {
+        eventObjectType: "code_change",
+        events: [
+          {
+            eventType: "check_suite.completed",
+            label: "GitHub PR getsentry/junior#1563",
+            trustedSummary: "Check 1 failed",
+          },
+          {
+            eventType: "check_suite.completed",
+            label: "GitHub PR getsentry/junior#1563",
+            trustedSummary: "Check 2 failed",
+          },
+        ],
+      },
+    });
+    const userMessages = savedEvents.flatMap((event) =>
       event.data.type === "message" && event.data.role === "user"
         ? [event.data.text]
         : [],
     );
-    expect(userMessages).toEqual([
-      "Please check now",
-      "Check 1 failed\n\nCheck 2 failed",
-    ]);
+    expect(userMessages).toHaveLength(2);
+    expect(userMessages[0]).toBe("Please check now");
+    // One task message states the instructions once for both Events.
+    const batchText = userMessages[1]!;
+    expect(batchText).toContain("You received 2 events.");
+    expect(batchText.match(/Instructions: /g)).toHaveLength(1);
+    expect(batchText).toContain(
+      "Event 1: check_suite.completed\nTrusted summary: Check 1 failed",
+    );
+    expect(batchText).toContain(
+      "Event 2: check_suite.completed\nTrusted summary: Check 2 failed",
+    );
   });
 });
