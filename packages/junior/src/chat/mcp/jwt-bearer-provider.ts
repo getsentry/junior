@@ -33,12 +33,18 @@ function nonInteractive(): never {
   throw new Error("jwt-bearer MCP auth is non-interactive");
 }
 
-/** Build the OAuth client provider that signs jwt-bearer assertions for one bot MCP plugin. */
-export function createJwtBearerMcpClientProvider(
-  subject: string,
-  mcpUrl: string,
-  auth: NonNullable<PluginMcpConfig["auth"]>,
-): OAuthClientProvider {
+/** Build a bot MCP provider whose signed subject attributes the current run. */
+export function createJwtBearerMcpClientProvider({
+  clientName,
+  subject,
+  mcpUrl,
+  auth,
+}: {
+  clientName: string;
+  subject: string;
+  mcpUrl: string;
+  auth: NonNullable<PluginMcpConfig["auth"]>;
+}): OAuthClientProvider {
   let discovery: OAuthDiscoveryState | undefined;
   let clientInfo: OAuthClientInformationMixed | undefined;
   let tokens: OAuthTokens | undefined;
@@ -46,7 +52,7 @@ export function createJwtBearerMcpClientProvider(
   return {
     redirectUrl: undefined,
     clientMetadata: {
-      client_name: subject,
+      client_name: clientName,
       redirect_uris: ["http://localhost"],
       token_endpoint_auth_method: "none",
     },
@@ -67,7 +73,9 @@ export function createJwtBearerMcpClientProvider(
     codeVerifier: nonInteractive,
     prepareTokenRequest: async () => {
       if (!discovery) {
-        throw new Error("jwt-bearer token request requires discovered server metadata");
+        throw new Error(
+          "jwt-bearer token request requires discovered server metadata",
+        );
       }
       const privateKeyPem = process.env[auth.privateKeyEnv];
       if (!privateKeyPem) {
