@@ -1,33 +1,67 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { loadConversationSlackTenantId } from "@/chat/conversations/sql/event-actor";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
-import type {
-  ActorIdentity,
-  ConversationReportEvent,
-} from "../schema/conversation";
+import type { ActorIdentity } from "./schema/conversation";
 
-// Message text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
+// Display text keeps Slack user mentions as `<@U123>` or `<@U123|label>`.
 const SLACK_USER_MENTION_RE = /<@([UW][A-Z0-9]+)(?:\|[^<>]*)?>/g;
 
-function mentionedSlackUserIds(text: string | undefined): string[] {
-  if (!text) return [];
-  return [
-    ...new Set([...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!)),
-  ];
+/**
+ * Display text from one API object, such as one event or one Automation.
+ * `tenantId` is the Slack workspace of the mentions. Without it, only known
+ * Junior identities resolve.
+ */
+export type MentionSource = {
+  tenantId?: string;
+  texts: readonly (string | undefined)[];
+};
+
+function mentionedSlackUserIds(texts: MentionSource["texts"]): string[] {
+  const ids = texts.flatMap((text) =>
+    text ? [...text.matchAll(SLACK_USER_MENTION_RE)].map((m) => m[1]!) : [],
+  );
+  return [...new Set(ids)];
 }
 
-function messageMentionText(
-  data: Extract<ConversationReportEvent["data"], { type: "message" }>,
-): string {
-  return [
-    data.text,
-    data.trustedSummary,
-    ...(data.events ?? []).map((event) => event.trustedSummary),
-  ]
-    .filter(Boolean)
-    .join("\n");
+/**
+ * Resolve the people that each source mentions, in source order. Every API
+ * that returns display text uses this, so the dashboard can show the same
+ * names and People links everywhere. It does one identity query per Slack
+ * workspace.
+ */
+export async function resolveMentions(
+  executor: JuniorSqlDatabase,
+  sources: readonly MentionSource[],
+): Promise<ActorIdentity[][]> {
+  const idsBySource = sources.map((source) =>
+    mentionedSlackUserIds(source.texts),
+  );
+  const idsByTenant = new Map<string | undefined, Set<string>>();
+  sources.forEach((source, index) => {
+    if (idsBySource[index]!.length === 0) return;
+    const ids = idsByTenant.get(source.tenantId) ?? new Set<string>();
+    for (const id of idsBySource[index]!) ids.add(id);
+    idsByTenant.set(source.tenantId, ids);
+  });
+  const peopleByTenant = new Map(
+    await Promise.all(
+      [...idsByTenant].map(
+        async ([tenantId, ids]) =>
+          [
+            tenantId,
+            await readMentionedPeople(executor, tenantId, [...ids]),
+          ] as const,
+      ),
+    ),
+  );
+  return sources.map((source, index) => {
+    const people = peopleByTenant.get(source.tenantId);
+    return idsBySource[index]!.flatMap((id) => {
+      const person = people?.get(id);
+      return person ? [person] : [];
+    });
+  });
 }
 
 /**
@@ -35,15 +69,11 @@ function messageMentionText(
  * first. The email is set only for a linked, verified Junior user, because
  * that email is the People profile route.
  */
-async function resolveSlackMentions(
+async function readMentionedPeople(
   executor: JuniorSqlDatabase,
-  conversationId: string,
+  tenantId: string | undefined,
   userIds: string[],
 ): Promise<Map<string, ActorIdentity>> {
-  const tenantId = await loadConversationSlackTenantId(
-    executor,
-    conversationId,
-  );
   const rows = await executor
     .db()
     .select({
@@ -98,31 +128,4 @@ async function resolveSlackMentions(
     });
   }
   return people;
-}
-
-/** Attach the people that each visible message mentions, resolved at read time. */
-export async function attachMessageMentions(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-  events: ConversationReportEvent[],
-): Promise<ConversationReportEvent[]> {
-  const idsByIndex = events.map((event) =>
-    event.data.type === "message" && !event.data.redacted
-      ? mentionedSlackUserIds(messageMentionText(event.data))
-      : [],
-  );
-  const allIds = [...new Set(idsByIndex.flat())];
-  if (allIds.length === 0) return events;
-
-  const people = await resolveSlackMentions(executor, conversationId, allIds);
-  return events.map((event, index) => {
-    if (event.data.type !== "message") return event;
-    const mentions = idsByIndex[index]!.flatMap((id) => {
-      const person = people.get(id);
-      return person ? [person] : [];
-    });
-    return mentions.length > 0
-      ? { ...event, data: { ...event.data, mentions } }
-      : event;
-  });
 }

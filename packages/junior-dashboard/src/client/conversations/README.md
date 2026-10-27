@@ -34,6 +34,12 @@ shared controls and overlays.
   a person, so it stays collapsed behind "Show prompt".
 - `TranscriptAttachments` owns wrapping for both message attachments and file
   deliveries. `ImageAttachment` owns image previews.
+- Display text keeps Slack tokens such as `<@U123>` and `<#C123|name>`. The
+  API resolves the people in that text. It returns them as `mentions` next to
+  the object that owns the text: an event, an activity preview, a Brief, or an
+  Automation. Render this text with `TranscriptText` or `MentionText`. Both
+  require `mentions`, so a caller cannot forget them. Do not resolve names in
+  the dashboard, and do not rewrite tokens into links on the server.
 - `TranscriptTurnContextView` owns context content. The shared `Drawer` owns
   dismissal, focus trapping, focus return, scroll locking, and panel layout.
 

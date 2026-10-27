@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 
-import { renderMentionText } from "./transcriptMentions";
+import { MentionText } from "./transcriptMentions";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
@@ -30,6 +30,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
     (part) => part.type === "text" && part.redacted,
   );
   const events = props.message.events ?? [];
+  const mentions = props.message.mentions ?? [];
   const isBatch = events.length > 1;
   const summary = isBatch
     ? batchSummary(events)
@@ -38,7 +39,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
     <span className="flex min-w-0 flex-col gap-1">
       <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
-          {renderMentionText(summary, "event-summary")}
+          <MentionText mentions={mentions} text={summary} />
         </span>
         {!isBatch && props.message.eventType ? (
           <EventTypeChip eventType={props.message.eventType} />
@@ -52,10 +53,10 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
               className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted"
             >
               <span className="min-w-0 break-words">
-                {renderMentionText(
-                  event.trustedSummary ?? event.eventType,
-                  `event-summary-${index}`,
-                )}
+                <MentionText
+                  mentions={mentions}
+                  text={event.trustedSummary ?? event.eventType}
+                />
               </span>
               <EventTypeChip eventType={event.eventType} />
             </li>

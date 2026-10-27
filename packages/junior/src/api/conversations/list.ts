@@ -1,6 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
@@ -41,6 +41,7 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
+import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
 
 const CONVERSATION_FEED_LIMIT = 50;
@@ -396,6 +397,15 @@ export async function readConversationFeedFromSql(
     readConversationActivityPreviews(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
   ]);
+  const visibleActivityPreviews = await attachActivityPreviewMentions(
+    getSqlExecutor(),
+    new Map(
+      [...activityPreviewByConversation].filter(
+        ([conversationId]) =>
+          accessByConversation.get(conversationId)?.canViewPrivateContent,
+      ),
+    ),
+  );
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
       conversationId,
@@ -456,9 +466,9 @@ export async function readConversationFeedFromSql(
       const annotations = access?.canViewPrivateContent
         ? (annotationsByConversation.get(conversation.conversationId) ?? [])
         : [];
-      const activityPreview = access?.canViewPrivateContent
-        ? activityPreviewByConversation.get(conversation.conversationId)
-        : undefined;
+      const activityPreview = visibleActivityPreviews.get(
+        conversation.conversationId,
+      );
       const participants = access?.canViewPrivateContent
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;

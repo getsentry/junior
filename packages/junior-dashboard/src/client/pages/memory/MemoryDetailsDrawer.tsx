@@ -10,6 +10,10 @@ import type {
   PluginUserPageRecordAction,
 } from "../user/pluginUserPageData";
 
+// The memory plugin API does not resolve mentions yet, so memory text shows
+// Slack ids instead of names.
+const NO_MEMORY_MENTIONS: readonly [] = [];
+
 type MemoryActionMutation = UseMutationResult<
   void,
   Error,
@@ -86,10 +90,13 @@ export function MemoryDetailsDrawer(props: {
           <div className="mb-2 font-sans font-medium text-xs text-dashboard-text-muted">
             Memory
           </div>
-          <TranscriptText text={record.title} />
+          <TranscriptText mentions={NO_MEMORY_MENTIONS} text={record.title} />
           {record.description ? (
             <div className="mt-3">
-              <TranscriptText text={record.description} />
+              <TranscriptText
+                mentions={NO_MEMORY_MENTIONS}
+                text={record.description}
+              />
             </div>
           ) : null}
         </div>

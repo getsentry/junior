@@ -12,6 +12,7 @@ import {
 } from "@/chat/automations/edit-schema";
 import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z
   .object({
@@ -41,6 +42,8 @@ const automationSummaryBaseSchema = z.object({
   destination: automationDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),
+  /** People mentioned in the instruction, resolved at read time. */
+  mentions: z.array(actorIdentitySchema).optional(),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
   lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),

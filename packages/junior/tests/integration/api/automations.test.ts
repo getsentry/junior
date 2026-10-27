@@ -176,7 +176,7 @@ describe("Automations API", () => {
           platform: "slack",
           teamId: "T123",
         },
-        task: { text: "Post the public incident digest." },
+        task: { text: "Post the public incident digest for <@U456>." },
         updatedAtMs: nowMs + 2,
       });
       await createEventAutomation(fixture.sql.db(), {
@@ -369,6 +369,13 @@ describe("Automations API", () => {
               visibility: "public",
             }),
             id: "sched_public_tasks_api",
+            // Instructions resolve mentions like transcript messages do.
+            mentions: [
+              expect.objectContaining({
+                email: "aisha@example.com",
+                slackUserId: "U456",
+              }),
+            ],
             schedule: "Schedule unavailable",
             timezone: "UTC",
             kind: "scheduled",

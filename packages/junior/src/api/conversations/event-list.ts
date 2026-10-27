@@ -3,7 +3,7 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { readConversationAccessFromSql } from "./access";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
 import { readConversationEventPage } from "./event-page";
-import { attachMessageMentions } from "./message-mentions";
+import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
 import { conversationEventHistory } from "./projection";
 import { throwApiError } from "../http";
@@ -49,11 +49,11 @@ export async function readConversationEvents(
       : { events: [] };
 
   return conversationEventPageSchema.parse({
-    events: await attachMessageMentions(
-      getSqlExecutor(),
-      conversationId,
-      page.events,
-    ),
+    events: (
+      await attachConversationMentions(getSqlExecutor(), conversationId, {
+        events: page.events,
+      })
+    ).events,
     eventHistory: conversationEventHistory({
       canExposePayload,
       ...(transcriptPurgedAtMs === undefined

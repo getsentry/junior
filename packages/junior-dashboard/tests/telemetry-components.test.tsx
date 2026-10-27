@@ -51,8 +51,9 @@ function event(
   seq: number,
   data: ConversationReportEventData,
   createdAt = `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
+  mentions?: ConversationReportEvent["mentions"],
 ): ConversationReportEvent {
-  return { seq, createdAt, data };
+  return { seq, createdAt, data, ...(mentions ? { mentions } : undefined) };
 }
 
 function conversation(
@@ -233,6 +234,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <TranscriptText
+          mentions={[]}
           role="user"
           text="The function reads a const value and returns it."
         />
@@ -247,7 +249,11 @@ describe("dashboard canonical-event components", () => {
   it("renders fenced XML as highlighted code", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText role="user" text={"```xml\n<root />\n```"} />
+        <TranscriptText
+          mentions={[]}
+          role="user"
+          text={"```xml\n<root />\n```"}
+        />
       </QueryClientProvider>,
     );
 
@@ -477,12 +483,16 @@ describe("dashboard canonical-event components", () => {
   it("renders Slack mention tokens as names and profile links", () => {
     const html = renderTranscript(
       conversation([
-        event(0, {
-          type: "message",
-          messageId: "assistant-1",
-          role: "assistant",
-          text: "<@U123> merged. cc <@U456> <@U999> in <#C42|proj-junior>",
-          mentions: [
+        event(
+          0,
+          {
+            type: "message",
+            messageId: "assistant-1",
+            role: "assistant",
+            text: "<@U123> merged. cc <@U456> <@U999> in <#C42|proj-junior>",
+          },
+          undefined,
+          [
             {
               email: "taylor@example.com",
               fullName: "Taylor Chen",
@@ -490,16 +500,20 @@ describe("dashboard canonical-event components", () => {
             },
             { fullName: "Riley Park", slackUserId: "U456" },
           ],
-        }),
-        event(1, {
-          type: "message",
-          messageId: "event-1",
-          role: "user",
-          eventType: "pull_request.merged",
-          trustedSummary: "<@U456> merged PR #42.",
-          text: "PR merged.",
-          mentions: [{ fullName: "Riley Park", slackUserId: "U456" }],
-        }),
+        ),
+        event(
+          1,
+          {
+            type: "message",
+            messageId: "event-1",
+            role: "user",
+            eventType: "pull_request.merged",
+            trustedSummary: "<@U456> merged PR #42.",
+            text: "PR merged.",
+          },
+          undefined,
+          [{ fullName: "Riley Park", slackUserId: "U456" }],
+        ),
       ]),
     );
 
