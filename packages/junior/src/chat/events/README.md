@@ -104,11 +104,46 @@ Watches route events back into an existing conversation.
   `People involved:`. Core drops people that are unlinked or match more than
   one Slack user. If the lookup fails, core logs it and delivers the Event
   without people. People are only for mentions. They never grant authority.
+  Only a requester instruction adds user authorization. See "Requester
+  Instructions" below.
   Guidance says when to address them.
 - Resource types may declare optional app guidance per event type. Core inserts
   that text only for the matching resource type. The prompt applies it within
   the subscription intent or stored event automation instruction. Keep it separate
   from trusted data and untrusted provider content.
+
+## Requester Instructions
+
+A Watch can store its requester: the Slack user whose own message started the
+root Turn that created it (`watchRequester()` in `store.ts`). Event Turns,
+Automation runs, and child agents give no requester, because no person wrote
+their input. A Watch that one of them creates again replaces the record, so it
+also loses the requester.
+
+An Event can name the doer's immutable provider account id
+(`doneBy.subjectId`) and the text that the doer wrote (`doneByText`). The
+plugin removes text that the doer only quotes. `requester.ts` treats that text
+as the requester's instruction only when all of these are true:
+
+- The Event comes from a plugin route, so core has the allowed domains.
+- The doer's provider is the plugin that published the Event.
+- `findLinkedSlackMember()` finds the one Slack user linked to that exact
+  account id, and that user is a current member on an allowed domain. This is
+  the same check as Identity dispatch. Handles and emails never match.
+- That Slack user is the requester of the matched Watch, in the same Slack
+  workspace.
+
+Then core stores the instruction on the Event mailbox input and renders a
+`Requester instruction` section in the task input. The Turn saves it on the
+Message that started it, so a resumed Run keeps it. Action review sends it to
+Guardian in its own section, and only for an Event Source. Guardian treats it
+as a message from that person, with the same limits. The rest of the Event,
+such as other comments or quoted text, stays untrusted.
+
+The Turn still runs as the system Actor with the same credentials. A requester
+instruction adds user authorization for Guardian only. It never widens
+visibility or credential authority. A failed lookup delivers the Event without
+the instruction. Child agents do not get requester instructions yet.
 
 ## Timer Watches
 

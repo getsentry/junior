@@ -9,7 +9,7 @@ import {
   requireSupportedEventMatch,
   type EventCatalog,
 } from "@/chat/events/catalog";
-import { createWatch } from "@/chat/events/store";
+import { createWatch, watchRequester } from "@/chat/events/store";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
   RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
@@ -184,6 +184,7 @@ export function createWatchEventsTool(
         ...(match ? { match } : undefined),
         namespace: input.namespace.trim(),
         identifier: requireEventIdentifier(catalog, input),
+        requester: watchRequester(context),
         resourceType: input.resourceType.trim(),
       });
       const details = {

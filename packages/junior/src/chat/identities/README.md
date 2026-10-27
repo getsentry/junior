@@ -59,7 +59,9 @@ authority.
 
 Identity dispatch lets a plugin route start private work for the person behind
 a linked provider account. It matches only the exact account id from this
-linking flow. See `chat/agent-dispatch/README.md`.
+linking flow. See `chat/agent-dispatch/README.md`. Requester instructions use
+the same check (`linked-slack-member.ts`) to prove that an Event doer is the
+requester of a Watch. See `chat/events/README.md`.
 
 ## Allowed Domains
 

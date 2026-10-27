@@ -159,6 +159,54 @@ describe("tool action review", () => {
     expect(JSON.stringify(proposal)).not.toContain("must-not-reach-guardian");
   });
 
+  it("sends requester instructions to Guardian only for an Event Source", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "The requester asked for it.",
+      riskLevel: "low",
+      userAuthorization: "high",
+    }));
+    const tool = definition({ approvalMode: "review" });
+    const requesterInstructions = [
+      {
+        actor: {
+          email: "requester@example.com",
+          platform: "slack" as const,
+          teamId: "T123",
+          userId: "U123",
+        },
+        text: "File the follow-up issue.",
+      },
+    ];
+    const eventSource = {
+      kind: "event",
+      eventKey: "comment-1",
+      eventType: "pull_request.comment.created",
+      identifier: "getsentry/junior#1",
+      namespace: "github",
+    } as const;
+
+    for (const source of [eventSource, LOCAL_SOURCE]) {
+      await reviewToolAction(
+        `call-${source.kind}`,
+        "createIssue",
+        tool,
+        { repo: "getsentry/other" },
+        reviewContext({ review }, { requesterInstructions, source }),
+      );
+    }
+
+    expect(review.mock.calls[0]![0].requesterInstructions).toEqual([
+      {
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        text: "File the follow-up issue.",
+      },
+    ]);
+    expect(review.mock.calls[1]![0]).not.toHaveProperty(
+      "requesterInstructions",
+    );
+  });
+
   it("reviews auto actions when tool annotations are missing", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "allow",

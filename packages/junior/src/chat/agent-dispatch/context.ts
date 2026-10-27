@@ -10,17 +10,13 @@ import {
   bindScheduledAutomationCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { createEventTeamIdResolver } from "@/chat/events/workspace";
-import { isNativeIdentityProvider } from "@/chat/identities/identity";
-import { findLinkedSlackUserId } from "@/chat/identities/sql";
-import { isSlackProfileDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
+import { findLinkedSlackMember } from "@/chat/identities/linked-slack-member";
 import { logInfo } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
-import { parseSlackUserId } from "@/chat/slack/ids";
 import { openSlackDirectMessage } from "@/chat/slack/outbound";
-import { lookupActiveSlackWorkspaceMember } from "@/chat/slack/users";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buildDispatchId,
@@ -140,13 +136,6 @@ export function createHeartbeatContext(args: {
   };
 }
 
-// Core owns native identities and the email-keyed `junior` web identities.
-// They are not accounts from a plugin's OAuth account-linking flow, so they
-// never start Identity dispatches.
-function isCoreIdentityProvider(provider: string): boolean {
-  return provider === "junior" || isNativeIdentityProvider(provider);
-}
-
 /**
  * Build the plugin route entry point that starts private DM work for the
  * person behind one provider Identity.
@@ -174,30 +163,20 @@ export function createIdentityDispatcher(args: {
 
   return async (plugin, options) => {
     const request = identityDispatchOptionsSchema.parse(options);
-    if (isCoreIdentityProvider(plugin)) {
-      return notLinked(plugin, "core_provider");
-    }
     const teamId = await resolveSlackTeamId();
     if (!teamId) {
       return notLinked(plugin, "no_slack_bot");
     }
-    const slackUserId = parseSlackUserId(
-      await findLinkedSlackUserId(getSqlExecutor(), {
-        provider: plugin,
-        providerSubjectId: request.subjectId,
-        slackTeamId: teamId,
-      }),
-    );
-    if (!slackUserId) {
-      return notLinked(plugin, "no_single_link");
+    const member = await findLinkedSlackMember({
+      allowedDomains: args.allowedDomains,
+      provider: plugin,
+      providerSubjectId: request.subjectId,
+      slackTeamId: teamId,
+    });
+    if (member.status === "not_linked") {
+      return notLinked(plugin, member.reason);
     }
-    const member = await lookupActiveSlackWorkspaceMember(slackUserId, teamId);
-    if (!member) {
-      return notLinked(plugin, "inactive_member");
-    }
-    if (!isSlackProfileDomainAllowed(member, args.allowedDomains)) {
-      return notLinked(plugin, "domain_not_allowed");
-    }
+    const { slackUserId } = member;
 
     const dispatchOptions: SlackDispatchOptions = {
       idempotencyKey: request.idempotencyKey,

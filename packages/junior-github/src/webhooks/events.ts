@@ -66,12 +66,54 @@ function pullRequestAuthorData(
   return data;
 }
 
-/** The GitHub user who did what an Event describes, when GitHub names one. */
+/** A GitHub user who wrote a comment or a review. */
+const gitHubAuthorSchema = z
+  .object({
+    id: z.number().int().positive().optional(),
+    login: z.string().optional(),
+  })
+  .optional();
+
+/**
+ * Text that the author wrote, without Markdown quotes. A quote repeats text
+ * that someone else wrote, so it is never the author's own words. A line
+ * directly after a quote line continues that quote until a blank line.
+ */
+function ownText(text: string | null | undefined): string | undefined {
+  const lines: string[] = [];
+  let inQuote = false;
+  for (const line of text?.split(/\r?\n/) ?? []) {
+    if (/^ {0,3}>/.test(line)) {
+      inQuote = true;
+      continue;
+    }
+    if (inQuote && line.trim()) continue;
+    inQuote = false;
+    lines.push(line);
+  }
+  return lines.join("\n").trim() || undefined;
+}
+
+/**
+ * The GitHub user who did what an Event describes, when GitHub names one,
+ * and the text that they wrote. The numeric user id is the only value that
+ * core can match to a linked user.
+ */
 function gitHubDoneBy(
-  login: string | undefined,
-): Pick<EventInput, "doneBy"> | undefined {
-  const handle = login?.trim();
-  return handle ? { doneBy: { provider: "github", handle } } : undefined;
+  user: z.output<typeof gitHubAuthorSchema>,
+  text?: string | null,
+): Pick<EventInput, "doneBy" | "doneByText"> | undefined {
+  const handle = user?.login?.trim();
+  if (!handle) return undefined;
+  const doneByText = ownText(text);
+  return {
+    doneBy: {
+      provider: "github",
+      handle,
+      ...(user?.id ? { subjectId: String(user.id) } : undefined),
+    },
+    ...(doneByText ? { doneByText } : undefined),
+  };
 }
 
 /** Merge optional PR match values into one trusted data object. */
@@ -282,7 +324,7 @@ const issueCommentWebhookSchema = z.object({
   comment: z.object({
     body: z.string(),
     id: z.number(),
-    user: z.object({ login: z.string().optional() }).optional(),
+    user: gitHubAuthorSchema,
   }),
   issue: z.object({
     draft: z.boolean().optional(),
@@ -309,6 +351,10 @@ function normalizeIssueCommentEvents(
   if (!parsed.success || parsed.data.action !== "created") return [];
   const author = parsed.data.comment.user?.login;
   if (isBotLogin(author, botEmail)) return [];
+  const doneBy = gitHubDoneBy(
+    parsed.data.comment.user,
+    parsed.data.comment.body,
+  );
   const input = {
     number: parsed.data.issue.number,
     repo: parsed.data.repository.full_name,
@@ -333,7 +379,7 @@ function normalizeIssueCommentEvents(
         occurredAtMs: Date.now(),
         identifier: resource.identifier,
         trustedSummary: `${resource.label} received a comment${author ? ` from ${author}` : ""}.`,
-        ...gitHubDoneBy(author),
+        ...doneBy,
         ...(data ? { data } : undefined),
         untrustedText: parsed.data.comment.body,
       },
@@ -350,7 +396,7 @@ function normalizeIssueCommentEvents(
       occurredAtMs: Date.now(),
       identifier: issue.identifier,
       trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
-      ...gitHubDoneBy(author),
+      ...doneBy,
       untrustedText: parsed.data.comment.body,
     },
     {
@@ -359,7 +405,7 @@ function normalizeIssueCommentEvents(
       occurredAtMs: Date.now(),
       identifier: repository.identifier,
       trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
-      ...gitHubDoneBy(author),
+      ...doneBy,
       untrustedText: parsed.data.comment.body,
     },
   ];
@@ -443,7 +489,7 @@ const pullRequestReviewCommentWebhookSchema = z.object({
   comment: z.object({
     body: z.string(),
     id: z.number(),
-    user: z.object({ login: z.string().optional() }).optional(),
+    user: gitHubAuthorSchema,
   }),
   pull_request: z.object({
     draft: z.boolean().optional(),
@@ -499,7 +545,7 @@ function normalizePullRequestReviewCommentEvent(
       occurredAtMs: Date.now(),
       identifier: resource.identifier,
       trustedSummary: `${resource.label} received an inline review comment${author ? ` from ${author}` : ""}.`,
-      ...gitHubDoneBy(author),
+      ...gitHubDoneBy(parsed.data.comment.user, parsed.data.comment.body),
       ...(data ? { data } : undefined),
       untrustedText: parsed.data.comment.body,
     },
@@ -530,7 +576,7 @@ const pullRequestReviewWebhookSchema = z.object({
   review: z.object({
     body: z.string().optional().nullable(),
     state: z.string(),
-    user: z.object({ login: z.string().optional() }).optional(),
+    user: gitHubAuthorSchema,
   }),
 });
 
@@ -575,7 +621,7 @@ function normalizePullRequestReviewEvent(
         : eventType === "pull_request.review.changes_requested"
           ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
           : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
-    ...gitHubDoneBy(reviewer),
+    ...gitHubDoneBy(parsed.data.review.user, parsed.data.review.body),
     ...(data ? { data } : undefined),
     untrustedText: parsed.data.review.body ?? undefined,
   };

@@ -448,6 +448,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   const events = createEventAppPublisher({
+    allowedDomains: () => allowedDomains,
     conversationWork: () => ({
       ...getConversationWorkOptions(),
       queue: conversationWorkQueue,

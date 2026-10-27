@@ -413,6 +413,8 @@ The issue was reopened.
 
 One pull request: `owner/repo#number`.
 
+Comment and review text is untrusted, with one exception. A person asks Junior in Slack for work, and Junior creates a watch for it. When that person writes a comment or review on the pull request, Junior treats their own text as a message from them, with the same limits as a Slack message. Quoted lines are not their own text. Junior matches the numeric GitHub user id of a linked account, never the login. Text from other people stays untrusted.
+
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>
 

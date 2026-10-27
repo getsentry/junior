@@ -26,6 +26,7 @@ import {
 } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
+import type { RequesterInstruction } from "@/chat/events/requester";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
@@ -240,3 +241,9 @@ export async function createConversationWebHarness(
     },
   };
 }
+
+/** A requester instruction that core proved for one Event. */
+export const eventRequesterInstruction = {
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  text: "Please also retry the flaky job.",
+} as const satisfies RequesterInstruction;

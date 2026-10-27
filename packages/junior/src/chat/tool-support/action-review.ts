@@ -84,6 +84,15 @@ export interface RootConversation {
   truncated: boolean;
 }
 
+/**
+ * Text that core proved the requester of a Watch wrote in the Event that
+ * started this Turn. Guardian treats it as that person's message.
+ */
+export interface RequesterInstructionProposal {
+  actor: { platform: "slack"; teamId: string; userId: string };
+  text: string;
+}
+
 /** Exact model-review request; only core-supplied context carries authority. */
 export interface ToolActionProposal {
   context: {
@@ -114,6 +123,8 @@ export interface ToolActionProposal {
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
   priorRejectedActions?: ToolActionPriorRejection[];
+  /** Requester instructions of an Event Turn. Only core sets them. */
+  requesterInstructions?: RequesterInstructionProposal[];
   /** The root Conversation of a child agent. Only a child has it. */
   rootConversation?: RootConversation;
   tool: {
@@ -153,6 +164,11 @@ export interface ToolActionReviewContext {
   conversationId: string;
   credentialContext?: CredentialContext;
   destination: Destination;
+  /**
+   * Text in this Event Turn's input that core proved the requester of the
+   * Watch wrote. Core sends it only for an Event Source.
+   */
+  requesterInstructions?: readonly RequesterInstructionProposal[];
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
@@ -432,6 +448,19 @@ function buildProposal(
   const name = resolved?.name ?? toolName;
   const proposalDescription = tool.describeProposal?.(input);
   const credential = actionCredential(context.credentialContext);
+  // Only an Event Turn has a requester. Other Sources have the person's own
+  // messages as user intent.
+  const requesterInstructions =
+    context.source.kind === "event"
+      ? (context.requesterInstructions ?? []).map((instruction) => ({
+          actor: {
+            platform: "slack" as const,
+            teamId: instruction.actor.teamId,
+            userId: instruction.actor.userId,
+          },
+          text: instruction.text,
+        }))
+      : [];
   return {
     context: {
       actor: actionActor(context.actor),
@@ -449,6 +478,9 @@ function buildProposal(
             ...rejection,
           })),
         }
+      : undefined),
+    ...(requesterInstructions.length > 0
+      ? { requesterInstructions }
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     tool: {

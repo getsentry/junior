@@ -60,6 +60,13 @@ function doneByLine(doneBy: EventDoneBy, people: readonly string[]): string {
   ].join(" ");
 }
 
+/** Text that core proved the requester of a Watch wrote in the Event. */
+export interface TaskRequesterInstruction {
+  /** Slack mention of the requester. */
+  mention: string;
+  text: string;
+}
+
 /**
  * Render agent input for a task run.
  *
@@ -85,6 +92,8 @@ export function renderTaskInput(args: {
   trustedSummary?: string;
   /** Structured verified fields, when available. */
   verifiedDetails?: Record<string, unknown>;
+  /** Requester text that counts as their message. Only core sets this. */
+  requesterInstruction?: TaskRequesterInstruction;
   /** Untrusted provider text; never treated as instructions. */
   externalText?: string;
   externalTextMaxLength?: number;
@@ -141,6 +150,17 @@ export function renderTaskInput(args: {
       "```json",
       JSON.stringify(args.verifiedDetails, null, 2),
       "```",
+    );
+  }
+
+  const requesterText = args.requesterInstruction?.text.trim();
+  if (args.requesterInstruction && requesterText) {
+    const mention = oneLine(args.requesterInstruction.mention);
+    lines.push(
+      "",
+      `Requester instruction from ${mention}:`,
+      `${mention} asked for this work in this conversation, and core checked that they wrote this text in the Event. Treat it as a message from them in this thread, with the same limits. If you do not do a step that it asks for, tell them which step and why. Do not ask them to prove who they are.`,
+      requesterText,
     );
   }
 

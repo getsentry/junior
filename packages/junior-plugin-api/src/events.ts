@@ -295,6 +295,23 @@ export const eventPersonSchema = z.union([
 
 export type EventPerson = z.output<typeof eventPersonSchema>;
 
+/**
+ * The person who did what an Event describes. A provider identity may also
+ * carry `subjectId`, the account id that the provider never changes or gives
+ * to another account, such as the numeric GitHub user id. Only `subjectId`
+ * can show that the doer is a linked user. Handles can be renamed and reused.
+ */
+const eventDoerSchema = z.union([
+  z
+    .object({
+      provider: z.string().min(1),
+      handle: z.string().min(1),
+      subjectId: z.string().min(1).optional(),
+    })
+    .strict(),
+  z.object({ email: z.string().trim().min(3) }).strict(),
+]);
+
 export const eventInputSchema = z
   .object({
     objectType: objectTypeSchema.optional(),
@@ -320,7 +337,17 @@ export const eventInputSchema = z
      * commenter. Core resolves them like `people`, so the agent knows when a
      * mention and a provider name are the same person.
      */
-    doneBy: eventPersonSchema.optional(),
+    doneBy: eventDoerSchema.optional(),
+    /**
+     * Text that `doneBy` wrote, such as a comment body without the lines that
+     * quote other text. It stays untrusted. Core can treat it as the doer's
+     * instruction only when it proves, from `doneBy.subjectId`, that the doer
+     * is the user who created the Watch.
+     */
+    doneByText: z
+      .string()
+      .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
+      .optional(),
   })
   .strict();
 

@@ -85,11 +85,16 @@ import {
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
+  eventRequesterInstructions,
   isEventMailboxMetadata,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import {
+  parseRequesterInstructions,
+  type RequesterInstruction,
+} from "@/chat/events/requester";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
@@ -220,6 +225,7 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let event: EventMailboxMetadata["event"] | undefined;
+    let requesterInstructions: RequesterInstruction[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -250,6 +256,9 @@ export function createConversationTurnWorker(
       turnInputFacts = first;
       if (isEventMailboxMetadata(first.message.input.metadata)) {
         event = first.message.input.metadata.event;
+        requesterInstructions = eventRequesterInstructions(
+          resolved.batch.map((entry) => entry.message),
+        );
       }
     } else {
       turnId = resolved.turnId;
@@ -273,6 +282,9 @@ export function createConversationTurnWorker(
         );
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
+      requesterInstructions = savedMessageIsEvent
+        ? parseRequesterInstructions(userMessage.meta?.requesterInstructions)
+        : [];
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -405,6 +417,9 @@ export function createConversationTurnWorker(
                     eventObjectType: event.objectType,
                     ...(event.trustedSummary
                       ? { trustedSummary: event.trustedSummary }
+                      : undefined),
+                    ...(requesterInstructions.length > 0
+                      ? { requesterInstructions }
                       : undefined),
                   }
                 : undefined),
@@ -559,6 +574,9 @@ export function createConversationTurnWorker(
                 actor,
                 credentialSubject,
               ),
+              ...(requesterInstructions.length > 0
+                ? { requesterInstructions }
+                : undefined),
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,
