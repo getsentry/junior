@@ -120,6 +120,7 @@ describe("event wake delay", () => {
       people?: string[],
     ) =>
       enqueueEventNotification({
+        doneBy: people ? { handle: "dcramer", mention: people[0]! } : undefined,
         event: {
           eventKey,
           eventType,
@@ -269,13 +270,8 @@ describe("event wake delay", () => {
     expect(text).toContain(
       "- pull_request.review_comment.created: Reply on the thread.",
     );
-    expect(text).toContain(
-      [
-        "Event 1: pull_request.review.approved",
-        "Trusted summary: Approved by dcramer.",
-        "",
-        "Event 2: pull_request.review_comment.created",
-      ].join("\n"),
+    expect(text).toMatch(
+      /Event 1: pull_request\.review\.approved\nDone by: <@U123>\. [^\n]*"dcramer"[^\n]*\nTrusted summary: Approved by dcramer\.\n\nEvent 2: pull_request\.review_comment\.created/,
     );
     expect(text).toContain(
       [

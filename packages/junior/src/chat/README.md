@@ -405,8 +405,8 @@ writes one task input:
 - One group per Watch: `About:`, `People involved:`, and `Instructions:`
   appear once. Guidance follows, with one `- <event type>: <text>` line for
   each event type.
-- Then each Event: `Event N: <event type>`, its trusted summary, verified
-  details, and external text. Events are numbered by Watch group, then by
+- Then each Event: `Event N: <event type>`, its `Done by:` line, trusted
+  summary, verified details, and external text. Events are numbered by Watch group, then by
   arrival.
 - The outcome rule appears once, at the end.
 

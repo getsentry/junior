@@ -106,6 +106,7 @@ describe("renderTaskBatchInput", () => {
               eventType: "pull_request.review.approved",
               guidance: "Say who approved it.",
               trustedSummary: "Approved by dcramer.",
+              doneBy: { mention: "<@U123>", handle: "dcramer" },
             },
             {
               eventType: "pull_request.review_comment.created",
@@ -146,6 +147,7 @@ describe("renderTaskBatchInput", () => {
       - pull_request.review_comment.created: Resolve the thread after a fix.
 
       Event 1: pull_request.review.approved
+      Done by: <@U123>. This person did what this Event describes. The Event calls them "dcramer". That is the same person. They are also in People involved. Write to them as "you", and do not also call them "dcramer".
       Trusted summary: Approved by dcramer.
 
       Event 2: pull_request.review_comment.created
