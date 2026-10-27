@@ -88,8 +88,8 @@ export function slackContext(
 
 /**
  * Build the root section of a person's root Run from unlabeled evidence, as
- * core reads it: each visible message in order, then the current message.
- * Core persists the current message before the Run, so it is always last.
+ * core reads it: each visible message in order. Core persists the current
+ * message before the Run, so it is added last when the snapshot lacks it.
  */
 function personRoot(
   evidence: ToolActionEvidence | undefined,
@@ -101,8 +101,13 @@ function personRoot(
         ? [{ author: entry.role, text: entry.text }]
         : [],
   );
-  const last = messages.at(-1);
-  if (last?.author !== "user" || last.text !== userIntent) {
+  // A snapshot can already hold the current message, followed by steering
+  // that the user sent during the Turn. Core reads each message once.
+  if (
+    !messages.some(
+      (message) => message.author === "user" && message.text === userIntent,
+    )
+  ) {
     messages.push({ author: "user", text: userIntent });
   }
   return messages;
