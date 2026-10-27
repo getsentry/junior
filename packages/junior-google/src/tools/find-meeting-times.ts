@@ -140,8 +140,10 @@ const calendarHistorySchema = z.object({
             }),
           )
           .optional(),
-        end: z.object({ dateTime: z.string().optional() }),
-        start: z.object({ dateTime: z.string().optional() }),
+        // The field mask asks only for `dateTime`, so Google leaves out
+        // `start` and `end` of all-day events.
+        end: z.object({ dateTime: z.string().optional() }).optional(),
+        start: z.object({ dateTime: z.string().optional() }).optional(),
         transparency: z.string().optional(),
       }),
     )
@@ -448,21 +450,18 @@ async function readCalendar(
     const self = attendees.find(
       (attendee) => attendee.email?.toLowerCase() === email,
     );
+    const start = event.start?.dateTime;
+    const end = event.end?.dateTime;
     if (
-      !event.start.dateTime ||
-      !event.end.dateTime ||
+      !start ||
+      !end ||
       event.transparency === "transparent" ||
       attendees.length < 2 ||
       self?.responseStatus === "declined"
     ) {
       return [];
     }
-    return [
-      {
-        endMs: Date.parse(event.end.dateTime),
-        startMs: Date.parse(event.start.dateTime),
-      },
-    ];
+    return [{ endMs: Date.parse(end), startMs: Date.parse(start) }];
   });
   return {
     meetings,

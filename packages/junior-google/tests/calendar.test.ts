@@ -224,6 +224,9 @@ describe("Google Calendar tools", () => {
           call("2026-10-06"),
           // A call on a weekend does not count.
           call("2026-10-03"),
+          // Google leaves out `start` and `end` of all-day events, such as a
+          // working location, because the field mask asks for `dateTime`.
+          {},
           // Do-not-schedule blocks that Bob holds alone are not meetings.
           ...["2026-09-30", "2026-10-02", "2026-10-05"].map((date) =>
             event(date, "06:00", "08:00", []),
