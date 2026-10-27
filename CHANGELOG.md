@@ -1,4 +1,16 @@
 # Changelog
+## 0.259.0
+
+### New Features ✨
+
+- (linear) Allow an optional read-only service account by @sentry-junior in [#2249](https://github.com/getsentry/junior/pull/2249)
+- (plugins) Add optional service accounts for plugins by @sentry-junior in [#2245](https://github.com/getsentry/junior/pull/2245)
+- (slack) Route passive replies with a decision model by @sentry-junior in [#2238](https://github.com/getsentry/junior/pull/2238)
+
+### Internal Changes 🔧
+
+- (lint) Require GitHub plugin requests to use host egress by @sentry-junior in [#2222](https://github.com/getsentry/junior/pull/2222)
+
 ## 0.258.0
 
 ### New Features ✨
