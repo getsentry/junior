@@ -219,4 +219,200 @@ describe("event wake delay", () => {
       "Event 2: check_suite.completed\nTrusted summary: Check 2 failed",
     );
   });
+
+  it("merges Events from different Watches into one task message", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createConversationFixture();
+    const conversationId = createConversationId({
+      actorEmail: actor.email,
+      idempotencyKey: "event-mixed-1",
+    });
+    await recordWebConversationActivity({
+      actor,
+      conversationId,
+      conversationStore,
+      nowMs: 1,
+    });
+
+    const baseMs = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(baseMs);
+    const prWatch = {
+      about: "GitHub PR getsentry/junior#2245",
+      id: "watch-pr-maintain",
+      identifier: "getsentry/junior#2245",
+      instructions: "Maintain this pull request.",
+      namespace: "github",
+    };
+    // A second Watch on the same PR has its own instructions.
+    const prReleaseWatch = {
+      ...prWatch,
+      id: "watch-pr-release",
+      instructions: "Post release notes after merge.",
+    };
+    const deployWatch = {
+      about: "Vercel deployment junior-prod (production)",
+      id: "watch-deploy",
+      identifier: "prj_junior:production",
+      instructions: "Report deploy results.",
+      namespace: "vercel",
+    };
+    const eventMessage = (
+      watch: typeof prWatch,
+      eventKey: string,
+      eventType: string,
+      trustedSummary: string,
+      receivedAtMs: number,
+    ) => {
+      const task = {
+        about: watch.about,
+        instructions: watch.instructions,
+        trustedSummary,
+      };
+      return createEventInboundMessage({
+        event: {
+          eventKey,
+          eventType,
+          identifier: watch.identifier,
+          namespace: watch.namespace,
+          occurredAtMs: receivedAtMs,
+          trustedSummary,
+        },
+        receivedAtMs,
+        subscription: { conversationId, id: watch.id },
+        task,
+        text: renderTaskInput(task),
+      });
+    };
+    const messages = [
+      eventMessage(
+        prWatch,
+        "github:delivery-1:pull_request.review.approved",
+        "pull_request.review.approved",
+        "Approved by dcramer.",
+        baseMs,
+      ),
+      eventMessage(
+        deployWatch,
+        "vercel:hook-1:deployment.succeeded",
+        "deployment.succeeded",
+        "Deployment dpl_1 succeeded.",
+        baseMs + 100,
+      ),
+      eventMessage(
+        prWatch,
+        "github:delivery-2:pull_request.review_comment.created",
+        "pull_request.review_comment.created",
+        "Inline comment from cursor[bot].",
+        baseMs + 200,
+      ),
+      eventMessage(
+        prReleaseWatch,
+        "github:delivery-3:pull_request.merged",
+        "pull_request.merged",
+        "Merged by dcramer.",
+        baseMs + 300,
+      ),
+    ];
+    for (const message of messages) {
+      nowSpy.mockReturnValue(message.receivedAtMs);
+      await appendAndEnqueueInboundMessage({
+        conversationStore,
+        message,
+        queue,
+        queueDelayMs: EVENT_WAIT_MS,
+        state,
+      });
+    }
+    // A repeated delivery of the same Event for the same Watch is dropped.
+    nowSpy.mockReturnValue(baseMs + 400);
+    await expect(
+      appendAndEnqueueInboundMessage({
+        conversationStore,
+        message: messages[0]!,
+        queue,
+        queueDelayMs: EVENT_WAIT_MS,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "duplicate" });
+
+    const agentRuns: AgentRun[] = [];
+    const run = requireConversationTurn(
+      createConversationTurnWorker(
+        createModelAgentRunnerForRun((agentRun) => {
+          agentRuns.push(agentRun);
+          return createModelStream([{ type: "text", text: "Handled." }]);
+        }),
+      ),
+    );
+    nowSpy.mockReturnValue(baseMs + 60_000);
+    let status: string | undefined;
+    while (status !== "completed" && queue.sentRecords().length > 0) {
+      ({ status } = await processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run,
+        state,
+      }));
+    }
+    expect(status).toBe("completed");
+    expect(agentRuns).toHaveLength(1);
+
+    const savedEvents =
+      await getConversationEventStore().loadHistory(conversationId);
+    const userMessages = savedEvents.flatMap((event) =>
+      event.data.type === "message" && event.data.role === "user"
+        ? [event.data]
+        : [],
+    );
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]!.meta?.events).toEqual([
+      expect.objectContaining({
+        eventType: "pull_request.review.approved",
+        label: prWatch.about,
+      }),
+      expect.objectContaining({
+        eventType: "deployment.succeeded",
+        label: deployWatch.about,
+      }),
+      expect.objectContaining({
+        eventType: "pull_request.review_comment.created",
+        label: prWatch.about,
+      }),
+      expect.objectContaining({
+        eventType: "pull_request.merged",
+        label: prWatch.about,
+      }),
+    ]);
+    // Each Watch keeps its own instructions, and its Events stay together.
+    const text = userMessages[0]!.text;
+    expect(text).toContain("You received 4 events.");
+    expect(text.match(/Instructions: /g)).toHaveLength(3);
+    expect(text).toContain(
+      [
+        `About: ${prWatch.about}`,
+        `Instructions: ${prWatch.instructions}`,
+        "",
+        "Event 1: pull_request.review.approved",
+        "Trusted summary: Approved by dcramer.",
+        "",
+        "Event 2: pull_request.review_comment.created",
+      ].join("\n"),
+    );
+    expect(text).toContain(
+      [
+        `About: ${deployWatch.about}`,
+        `Instructions: ${deployWatch.instructions}`,
+        "",
+        "Event 3: deployment.succeeded",
+      ].join("\n"),
+    );
+    expect(text).toContain(
+      [
+        `About: ${prReleaseWatch.about}`,
+        `Instructions: ${prReleaseWatch.instructions}`,
+        "",
+        "Event 4: pull_request.merged",
+      ].join("\n"),
+    );
+  });
 });
