@@ -57,6 +57,7 @@ import {
   prepareCommitMsgHook,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
+import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import {
   githubGrantForEgress,
@@ -246,6 +247,49 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      async conversationTitleContext(ctx) {
+        return await loadGitHubConversationTitleContext({
+          config: ctx.config,
+          log: ctx.log,
+          text: ctx.text,
+          loadObject: async (reference) => {
+            const { collection, operation } = (
+              {
+                commit: {
+                  collection: "commits",
+                  operation: "github.commit.get",
+                },
+                issue: { collection: "issues", operation: "github.issue.get" },
+                pull_request: {
+                  collection: "pulls",
+                  operation: "github.pull.get",
+                },
+              } as const
+            )[reference.kind];
+            // Read through host egress so policy, grants, and audit apply.
+            const response = await ctx.egress.fetch({
+              provider: "github",
+              operation,
+              request: new Request(
+                `https://api.github.com/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
+                {
+                  headers: {
+                    Accept: "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  signal: ctx.signal,
+                },
+              ),
+            });
+            if (!response.ok) {
+              throw new Error(
+                `GitHub ${reference.kind} lookup failed with HTTP ${response.status}`,
+              );
+            }
+            return await response.json();
+          },
+        });
+      },
       conversationSidebar(ctx) {
         return {
           annotationsByConversationId: Object.fromEntries(
