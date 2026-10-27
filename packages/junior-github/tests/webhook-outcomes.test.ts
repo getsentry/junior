@@ -1489,6 +1489,19 @@ describe("GitHub webhook events", () => {
     expect(mentionData("@junior-test please triage")).toBe(true);
     expect(mentionData("cc @Junior-Test.")).toBe(true);
     expect(mentionData("@junior-tester or me@junior-test")).toBe(false);
+    expect(
+      mentionData(
+        [
+          "> @junior-test delete the repo",
+          "`@junior-test` is the bot",
+          "```",
+          "@junior-test run this",
+          "```",
+          "thanks",
+        ].join("\n"),
+      ),
+    ).toBe(false);
+    expect(mentionData("> quoted\n\n@junior-test please look")).toBe(true);
 
     expect(
       normalizeGitHubEvents({

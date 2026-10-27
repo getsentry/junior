@@ -378,7 +378,7 @@ One issue: `owner/repo#number`.
 <details class="event">
 <summary><code>issue.comment.created</code></summary>
 
-A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Issue and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
+A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines and code do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
 
 </details>
 

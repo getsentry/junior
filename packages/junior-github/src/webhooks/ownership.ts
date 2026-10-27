@@ -42,8 +42,34 @@ export function botUserIdFromEmail(
 }
 
 /**
- * Check whether text mentions the bot encoded in the configured bot email.
- * GitHub mentions use the App slug, the bot login without `[bot]`.
+ * Keep the author's own text. Quoted lines and code repeat other text, so a
+ * mention there does not address the bot.
+ */
+function ownCommentText(text: string): string {
+  const kept: string[] = [];
+  let fence: string | undefined;
+  for (const line of text.split("\n")) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (fence) {
+      if (marker?.startsWith(fence)) fence = undefined;
+      continue;
+    }
+    if (marker) {
+      fence = marker;
+      continue;
+    }
+    if (/^ {0,3}>/.test(line)) continue;
+    kept.push(line.replace(/`[^`]*`/g, " "));
+  }
+  return kept.join("\n");
+}
+
+/**
+ * Check whether the author's own text mentions the bot encoded in the
+ * configured bot email. GitHub sends mentions only as comment text, with no
+ * structured field, so this reads the App slug: the bot login without `[bot]`.
+ * This shows only that the comment addresses the bot. It does not grant trust;
+ * match the commenter's `senderId` for that.
  */
 export function mentionsBotLogin(
   text: string,
@@ -52,5 +78,7 @@ export function mentionsBotLogin(
   const slug = botLoginFromEmail(botEmail)?.replace(/\[bot\]$/i, "");
   if (!slug) return false;
   const escaped = slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|[^\\w-])@${escaped}(?![\\w-])`, "i").test(text);
+  return new RegExp(`(?:^|[^\\w-])@${escaped}(?![\\w-])`, "i").test(
+    ownCommentText(text),
+  );
 }
