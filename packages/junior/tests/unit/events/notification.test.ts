@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import {
   createEventInboundMessage,
-  renderEventNotificationText,
+  eventTaskFacts,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
+import { renderTaskInput } from "@/chat/task-input";
 
 describe("event notification framing", () => {
   it("passes subscription facts into shared task framing", () => {
-    const text = renderEventNotificationText(
+    const facts = eventTaskFacts(
       {
         intent: "Fix failed checks on this PR.",
         label: "GitHub PR getsentry/junior#691",
@@ -22,6 +23,7 @@ describe("event notification framing", () => {
         untrustedText: "Failed checks:\n- test",
       },
     );
+    const text = renderTaskInput(facts);
 
     expect(text).toContain("[task]");
     expect(text).toContain("About: GitHub PR getsentry/junior#691");

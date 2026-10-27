@@ -395,6 +395,28 @@ The live renderer emits verified details as a fenced `json` block. The example
 above indents the object so this README stays valid Markdown. Unit snapshots
 show the exact fence.
 
+**Event batch**
+
+Watch Events that arrive in one wait window share one Turn. With one Event, the
+Turn input is that Event's task input. With several, `renderTaskBatchInput`
+writes one task input:
+
+- After the origin line: `You received N events.`
+- One group per Watch: `About:`, `People involved:`, and `Instructions:`
+  appear once. Guidance follows, with one `- <event type>: <text>` line for
+  each event type.
+- Then each Event: `Event N: <event type>`, its `Done by:` line, trusted
+  summary, verified details, and external text. Events are numbered by Watch group, then by
+  arrival.
+- The outcome rule appears once, at the end.
+
+Mailbox input saves the task facts for each Watch Event, so the batch input is
+written when the Turn starts. Root and child Conversations use the same batch
+input. Input without task facts, such as a child agent result or input queued
+before facts were saved, keeps its own text after the task input. The count
+and `meta.events` on the conversation message include only the Watch Events,
+so they always agree.
+
 When the outline changes: update this section, `task-input.ts`, and the unit
 snapshots together. Do not restate the outline in call-site prompts.
 

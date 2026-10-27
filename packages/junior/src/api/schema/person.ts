@@ -1,9 +1,9 @@
 import { z } from "zod";
 import {
   actorIdentitySchema,
-  conversationStatsItemSchema,
   conversationSummaryReportSchema,
 } from "./conversation";
+import { conversationStatsItemSchema } from "./conversation-stats";
 
 export const personParamsSchema = z
   .object({ email: z.string().trim().min(1) })
