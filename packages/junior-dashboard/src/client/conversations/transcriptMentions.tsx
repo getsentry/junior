@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { peoplePath } from "../format";
-import type { TranscriptViewMessage } from "../types";
+import { cn } from "../styles";
 import { TRANSCRIPT_ANCHOR_CLASS } from "./transcriptMarkdownLinks";
 import { HighlightText } from "./transcriptSearch";
 
@@ -22,16 +22,14 @@ const TranscriptMentionPeople = createContext<
   ReadonlyMap<string, ActorIdentity>
 >(new Map());
 
-/** Share the people that the API resolved for mentions in one transcript. */
+/** Share the people that the API resolved for mentions in one transcript or preview. */
 export function TranscriptMentionPeopleProvider(props: {
   children: ReactNode;
-  messages: readonly TranscriptViewMessage[];
+  mentions: readonly ActorIdentity[];
 }) {
   const people = new Map<string, ActorIdentity>();
-  for (const message of props.messages) {
-    for (const person of message.mentions ?? []) {
-      if (person.slackUserId) people.set(person.slackUserId, person);
-    }
+  for (const person of props.mentions) {
+    if (person.slackUserId) people.set(person.slackUserId, person);
   }
   return (
     <TranscriptMentionPeople.Provider value={people}>
@@ -88,7 +86,8 @@ function MentionView(props: { mention: TranscriptMention }) {
   if (person?.email) {
     return (
       <Link
-        className={TRANSCRIPT_ANCHOR_CLASS}
+        // Previews sit in cards that disable pointer events on their text.
+        className={cn("pointer-events-auto", TRANSCRIPT_ANCHOR_CLASS)}
         title={id}
         to={peoplePath(person.email)}
       >

@@ -23,6 +23,10 @@ import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
 import {
+  renderMentionText,
+  TranscriptMentionPeopleProvider,
+} from "./transcriptMentions";
+import {
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
@@ -265,7 +269,16 @@ function ConversationCard(props: {
       </div>
       {conversation.activityPreview ? (
         <p className="relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle pointer-events-none">
-          {formatConversationActivityPreview(conversation.activityPreview.text)}
+          <TranscriptMentionPeopleProvider
+            mentions={conversation.activityPreview.mentions ?? []}
+          >
+            {renderMentionText(
+              formatConversationActivityPreview(
+                conversation.activityPreview.text,
+              ),
+              `${conversation.id}-preview`,
+            )}
+          </TranscriptMentionPeopleProvider>
         </p>
       ) : (
         <p className="relative z-[1] m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted pointer-events-none">

@@ -259,6 +259,7 @@ const conversationAnnotationReportSchema =
 export const conversationActivityPreviewSchema = z
   .object({
     createdAt: z.string().datetime(),
+    mentions: z.array(actorIdentitySchema).optional(),
     role: z.enum(["assistant", "user"]),
     text: z.string().min(1),
   })

@@ -5,6 +5,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type {
   ActorIdentity,
+  ConversationActivityPreview,
   ConversationReportEvent,
 } from "../schema/conversation";
 
@@ -100,6 +101,16 @@ async function resolveSlackMentions(
   return people;
 }
 
+function mentionedPeople(
+  ids: string[],
+  people: ReadonlyMap<string, ActorIdentity>,
+): ActorIdentity[] {
+  return ids.flatMap((id) => {
+    const person = people.get(id);
+    return person ? [person] : [];
+  });
+}
+
 /** Attach the people that each visible message mentions, resolved at read time. */
 export async function attachMessageMentions(
   executor: JuniorSqlDatabase,
@@ -117,12 +128,34 @@ export async function attachMessageMentions(
   const people = await resolveSlackMentions(executor, conversationId, allIds);
   return events.map((event, index) => {
     if (event.data.type !== "message") return event;
-    const mentions = idsByIndex[index]!.flatMap((id) => {
-      const person = people.get(id);
-      return person ? [person] : [];
-    });
+    const mentions = mentionedPeople(idsByIndex[index]!, people);
     return mentions.length > 0
       ? { ...event, data: { ...event.data, mentions } }
       : event;
   });
+}
+
+/** Attach the people that each activity preview mentions, resolved at read time. */
+export async function attachActivityPreviewMentions(
+  executor: JuniorSqlDatabase,
+  previews: ReadonlyMap<string, ConversationActivityPreview>,
+): Promise<Map<string, ConversationActivityPreview>> {
+  return new Map(
+    await Promise.all(
+      [...previews].map(async ([conversationId, preview]) => {
+        const ids = mentionedSlackUserIds(preview.text);
+        if (ids.length === 0) return [conversationId, preview] as const;
+        const people = await resolveSlackMentions(
+          executor,
+          conversationId,
+          ids,
+        );
+        const mentions = mentionedPeople(ids, people);
+        return [
+          conversationId,
+          mentions.length > 0 ? { ...preview, mentions } : preview,
+        ] as const;
+      }),
+    ),
+  );
 }

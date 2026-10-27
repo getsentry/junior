@@ -86,7 +86,9 @@ export const ConversationTranscriptView = memo(
 
     return (
       <TranscriptTimestampProvider>
-        <TranscriptMentionPeopleProvider messages={messages}>
+        <TranscriptMentionPeopleProvider
+          mentions={messages.flatMap((message) => message.mentions ?? [])}
+        >
           <section className="min-w-0 pt-1">
             <SegmentEvents
               onOpenSubagentTranscript={props.onOpenSubagentTranscript}

@@ -676,7 +676,7 @@ describe("conversation list API", () => {
           emailVerified: true,
           kind: "user",
           provider: "slack",
-          providerSubjectId: "U-PARTICIPANT",
+          providerSubjectId: "UPARTICIPANT1",
           providerTenantId: "T1",
           updatedAt: new Date(1_000),
           userId: participantUserId!,
@@ -696,7 +696,7 @@ describe("conversation list API", () => {
                 author: {
                   fullName: "Participant",
                   isBot: false,
-                  userId: "U-PARTICIPANT",
+                  userId: "UPARTICIPANT1",
                   userName: "participant",
                 },
                 explicitMention: true,
@@ -714,7 +714,7 @@ describe("conversation list API", () => {
             payload: {
               messageId: "1786500342.616840",
               role: "assistant",
-              text: "I updated the links and checked the result.",
+              text: "<@UPARTICIPANT1> I updated the links and checked the result.",
             },
             seq: 1,
             type: "message",
@@ -744,8 +744,16 @@ describe("conversation list API", () => {
       expect(feed.conversations[0]).toMatchObject({
         activityPreview: {
           createdAt: new Date(5_400).toISOString(),
+          // Previews resolve mentions like transcript messages do.
+          mentions: [
+            {
+              email: "participant@example.com",
+              fullName: "Participant",
+              slackUserId: "UPARTICIPANT1",
+            },
+          ],
           role: "assistant",
-          text: "I updated the links and checked the result.",
+          text: "<@UPARTICIPANT1> I updated the links and checked the result.",
         },
         actorIdentity: expect.objectContaining({
           slackUserId: "U-OWNER",
@@ -760,7 +768,7 @@ describe("conversation list API", () => {
           expect.objectContaining({
             email: "participant@example.com",
             fullName: "Participant",
-            slackUserId: "U-PARTICIPANT",
+            slackUserId: "UPARTICIPANT1",
           }),
         ],
       });
