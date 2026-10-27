@@ -48,7 +48,7 @@ describe("guardian eval helpers", () => {
     expect(snapshot).not.toHaveProperty("priorRejectedActions");
   });
 
-  it("moves a person's messages into the root and keeps tool evidence", () => {
+  it("copies a person's messages into the root and keeps the evidence", () => {
     const tool = {
       description: "Delete a workspace.",
       name: "delete-eval-workspace",
@@ -87,6 +87,8 @@ describe("guardian eval helpers", () => {
     });
     expect(snapshot.evidence).toEqual({
       entries: [
+        { role: "user", text: "Check preview-42." },
+        { role: "assistant", text: "preview-42 is idle." },
         { role: "tool listWorkspaces result", text: "preview-42: idle" },
       ],
       omittedEntries: 0,

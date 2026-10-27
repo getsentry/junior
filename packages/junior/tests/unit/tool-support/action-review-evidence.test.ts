@@ -56,10 +56,6 @@ describe("tool action review evidence", () => {
       omittedEntries: 0,
     });
     expect(JSON.stringify(evidence)).not.toContain("Hidden chain");
-    // A root Run reads the messages from its root Conversation instead.
-    expect(
-      buildToolActionEvidence(transcript, { messageEntries: false }).entries,
-    ).toEqual(evidence.entries.slice(2));
   });
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {

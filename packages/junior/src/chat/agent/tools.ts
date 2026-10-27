@@ -445,11 +445,8 @@ export async function wireAgentTools(
       destination: toolRoute.destination,
       source: runSource,
       userIntent: args.currentUserIntent,
-      evidence: ({ messageEntries }) =>
-        buildToolActionEvidence(args.currentAgentMessages(), {
-          childAgent,
-          messageEntries,
-        }),
+      evidence: () =>
+        buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
       // The root Conversation labels each message with its real author, so
       // the Actor's earlier messages can authorize. A child has no message
       // from a person, so this is its only authority. A root Run of a system

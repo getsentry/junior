@@ -159,44 +159,6 @@ describe("tool action review", () => {
     expect(JSON.stringify(proposal)).not.toContain("must-not-reach-guardian");
   });
 
-  it("gives a root Run each message once, from the labeled root Conversation", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "allow",
-      reason: "Matches the request.",
-      riskLevel: "low",
-      userAuthorization: "high",
-    }));
-    const evidence = vi.fn(
-      ({ messageEntries }: { messageEntries: boolean }) => ({
-        entries: messageEntries
-          ? [{ role: "user" as const, text: "Run the weekly report." }]
-          : [],
-        omittedEntries: 0,
-      }),
-    );
-    const rootConversation = {
-      messages: [{ author: "user" as const, text: "Run the weekly report." }],
-      truncated: false,
-    };
-
-    await reviewToolAction(
-      "tool-call",
-      "generateReport",
-      definition({ approvalMode: "review" }),
-      { reportId: "weekly" },
-      reviewContext(
-        { review },
-        { evidence, rootConversation: async () => rootConversation },
-      ),
-    );
-
-    expect(evidence).toHaveBeenCalledWith({ messageEntries: false });
-    expect(review.mock.calls[0]![0]).toMatchObject({
-      evidence: { entries: [] },
-      rootConversation,
-    });
-  });
-
   it("reviews auto actions when tool annotations are missing", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "allow",

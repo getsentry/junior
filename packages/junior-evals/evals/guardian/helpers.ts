@@ -6,7 +6,7 @@
  *
  * A person's root Run gets the shape that core sends: the visible messages
  * in an author-labeled root section, ending with the current message, and
- * evidence with only tool calls and results.
+ * the full evidence, which keeps the order of messages and tool calls.
  */
 import {
   CHILD_AGENT_USER_INTENT,
@@ -133,19 +133,9 @@ export function proposal(input: {
   const root = personRun
     ? (input.root ?? personRoot(input.evidence, input.context.userIntent))
     : input.root;
-  // With a root section, the evidence of a root Run keeps only tool entries.
-  const evidence =
-    personRun && input.evidence
-      ? {
-          ...input.evidence,
-          entries: input.evidence.entries.filter(
-            (entry) => entry.role !== "user" && entry.role !== "assistant",
-          ),
-        }
-      : input.evidence;
   return {
     context: input.context,
-    ...(evidence ? { evidence } : {}),
+    ...(input.evidence ? { evidence: input.evidence } : {}),
     input: input.input,
     ...(input.priorRejectedActions && input.priorRejectedActions.length > 0
       ? { priorRejectedActions: input.priorRejectedActions }

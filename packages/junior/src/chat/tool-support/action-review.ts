@@ -161,12 +161,7 @@ export interface ToolActionReviewContext {
   destination: Destination;
   source: Source;
   userIntent?: () => string;
-  /**
-   * Build bounded transcript evidence. `messageEntries: false` leaves out
-   * user and assistant text when the root Conversation already has them
-   * with authors. Tool calls and results stay.
-   */
-  evidence?: (options: { messageEntries: boolean }) => ToolActionEvidence;
+  evidence?: () => ToolActionEvidence;
   /** Read the root Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
 }
@@ -452,16 +447,7 @@ function buildProposal(
       source: context.source,
       userIntent: context.userIntent(),
     },
-    ...(context.evidence
-      ? {
-          // In a root Run, the root Conversation has each visible message
-          // with its real author, so the evidence leaves out the same text.
-          evidence: context.evidence({
-            messageEntries:
-              context.childAgent === true || !rootConversation?.messages.length,
-          }),
-        }
-      : undefined),
+    ...(context.evidence ? { evidence: context.evidence() } : undefined),
     input,
     ...(priorRejections.length > 0
       ? {

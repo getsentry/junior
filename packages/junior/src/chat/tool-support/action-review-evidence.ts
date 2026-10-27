@@ -70,15 +70,12 @@ function contentText(content: unknown): string {
     .join("\n");
 }
 
-function assistantEntries(
-  message: PiMessage,
-  messageEntries: boolean,
-): EvidenceEntry[] {
+function assistantEntries(message: PiMessage): EvidenceEntry[] {
   if (!isAssistantMessage(message)) {
     return [];
   }
   const entries: EvidenceEntry[] = [];
-  const text = messageEntries ? extractAssistantText(message).trim() : "";
+  const text = extractAssistantText(message).trim();
   if (text) {
     entries.push({ role: "assistant", text });
   }
@@ -112,19 +109,18 @@ function assistantEntries(
 
 function collectEvidenceEntries(
   messages: readonly PiMessage[],
-  messageEntries: boolean,
 ): EvidenceEntry[] {
   const entries: EvidenceEntry[] = [];
   for (const message of messages) {
     if (message.role === "user") {
-      const text = messageEntries ? getUserMessageInstructionText(message) : "";
+      const text = getUserMessageInstructionText(message);
       if (text) {
         entries.push({ role: "user", text });
       }
       continue;
     }
     if (isAssistantMessage(message)) {
-      entries.push(...assistantEntries(message, messageEntries));
+      entries.push(...assistantEntries(message));
       continue;
     }
     if (isToolResultMessage(message)) {
@@ -144,18 +140,13 @@ function collectEvidenceEntries(
  * Project the Codex Guardian transcript selection into structured evidence.
  * In a child agent, no person writes a message: each user-role message is a
  * parent agent task or another agent's output, so it gets the `parent agent`
- * role. `messageEntries: false` leaves out user and assistant text and keeps
- * tool calls and results, for a Run whose root Conversation already shows
- * the messages with their authors.
+ * role.
  */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],
-  options: { childAgent?: boolean; messageEntries?: boolean } = {},
+  options: { childAgent?: boolean } = {},
 ): ToolActionEvidence {
-  const candidates = collectEvidenceEntries(
-    messages,
-    options.messageEntries ?? true,
-  ).map((entry) => {
+  const candidates = collectEvidenceEntries(messages).map((entry) => {
     const text = truncateText(
       entry.text,
       isToolEntry(entry) ? MAX_TOOL_ENTRY_TOKENS : MAX_MESSAGE_ENTRY_TOKENS,

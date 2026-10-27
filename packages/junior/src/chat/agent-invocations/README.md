@@ -241,9 +241,10 @@ rewrite these events. Nothing is copied into the child, and nothing new is
 stored.
 
 A root Run of a person reads its own Conversation the same way, with the same
-labels, so the Actor's earlier messages can authorize an action. That evidence
-then leaves out its unlabeled user and assistant text and keeps tool calls and
-results, so Guardian reads each message once. A root Run of a system Actor,
+labels, so the Actor's earlier messages can authorize an action. The evidence
+still has the unlabeled messages. It is the only place that shows the order of
+the messages and the tool calls, such as a push that came after a request.
+Guardian takes the author of a message only from the root section. A root Run of a system Actor,
 such as an Event Turn, does not read it. The person's messages would get the
 `other person` label there, so it keeps the unlabeled evidence.
 
