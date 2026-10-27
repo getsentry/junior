@@ -1,3 +1,5 @@
+import { lexer, type Token, type Tokens } from "marked";
+
 const GITHUB_BOT_NOREPLY_EMAIL =
   /^(?<userId>[1-9]\d*)\+(?<login>[^@]+\[bot\])@users\.noreply\.github\.com$/i;
 
@@ -43,27 +45,43 @@ export function botUserIdFromEmail(
   return parseGitHubBotIdentity(value)?.userId;
 }
 
+// Quotes and code repeat other text, so a mention there does not address the
+// bot. HTML is not shown as text.
+const SKIPPED_TOKEN_TYPES = new Set(["blockquote", "code", "codespan", "html"]);
+
 /**
- * Keep the author's own text. Quoted lines and code repeat other text, so a
- * mention there does not address the bot.
+ * Collect the text of Markdown tokens outside quotes, code, and HTML. Join
+ * inline tokens with no separator, so `me@bot` stays one word.
+ */
+function ownTokenText(tokens: readonly Token[], separator = ""): string {
+  return tokens
+    .map((token): string => {
+      if (SKIPPED_TOKEN_TYPES.has(token.type)) return " ";
+      // `Token` includes a generic token, so `type` does not narrow it.
+      if (token.type === "list") {
+        return (token as Tokens.List).items
+          .map((item) => ownTokenText(item.tokens, "\n"))
+          .join("\n");
+      }
+      if (token.type === "table") {
+        const table = token as Tokens.Table;
+        return [table.header, ...table.rows]
+          .flat()
+          .map((cell) => ownTokenText(cell.tokens))
+          .join(" ");
+      }
+      if ("tokens" in token && token.tokens) return ownTokenText(token.tokens);
+      return "text" in token ? token.text : token.raw;
+    })
+    .join(separator);
+}
+
+/**
+ * Keep the author's own text. A GitHub-flavored Markdown parser finds the
+ * quotes and code, the same as GitHub when it renders the comment.
  */
 function ownCommentText(text: string): string {
-  const kept: string[] = [];
-  let fence: string | undefined;
-  for (const line of text.split("\n")) {
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-    if (fence) {
-      if (marker?.startsWith(fence)) fence = undefined;
-      continue;
-    }
-    if (marker) {
-      fence = marker;
-      continue;
-    }
-    if (/^ {0,3}>/.test(line)) continue;
-    kept.push(line.replace(/`[^`]*`/g, " "));
-  }
-  return kept.join("\n");
+  return ownTokenText(lexer(text, { gfm: true }), "\n");
 }
 
 /**
