@@ -84,6 +84,8 @@ export type TranscriptViewContextEventPart = {
 };
 
 export type TranscriptViewStructuredEventPart = {
+  /** People mentioned in the preview and details, resolved by the API. */
+  mentions?: ActorIdentity[];
   name: string;
   namespace: string;
   presentation: ConversationEventPresentation;

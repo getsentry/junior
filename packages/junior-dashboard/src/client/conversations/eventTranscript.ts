@@ -389,6 +389,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "structured_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             namespace: data.namespace,
             name: data.name,
             version: data.version,
