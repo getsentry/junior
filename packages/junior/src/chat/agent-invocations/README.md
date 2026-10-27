@@ -242,7 +242,8 @@ stored.
 
 A root Run reads its own Conversation the same way, with the same labels, so
 the Actor's earlier messages can authorize an action. That evidence then
-leaves out its unlabeled user messages, so Guardian reads each one once.
+leaves out its unlabeled user and assistant text and keeps tool calls and
+results, so Guardian reads each message once.
 
 - Only a root message whose author has the same Actor identity as the child
   is labeled `user`. It is compared by platform, team, and user id. When

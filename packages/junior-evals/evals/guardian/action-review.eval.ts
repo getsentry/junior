@@ -289,7 +289,7 @@ describeEval("Guardian Action Review Snapshots", guardianEvals, (it) => {
   });
 
   // A root Run gets its own conversation with real authors. The user
-  // messages are in that section, so the evidence leaves them out.
+  // messages are in that section, so the evidence keeps only tool entries.
   const createPullRequestTool = {
     annotations: {
       destructiveHint: false,

@@ -70,12 +70,15 @@ function contentText(content: unknown): string {
     .join("\n");
 }
 
-function assistantEntries(message: PiMessage): EvidenceEntry[] {
+function assistantEntries(
+  message: PiMessage,
+  messageEntries: boolean,
+): EvidenceEntry[] {
   if (!isAssistantMessage(message)) {
     return [];
   }
   const entries: EvidenceEntry[] = [];
-  const text = extractAssistantText(message).trim();
+  const text = messageEntries ? extractAssistantText(message).trim() : "";
   if (text) {
     entries.push({ role: "assistant", text });
   }
@@ -109,19 +112,19 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
 
 function collectEvidenceEntries(
   messages: readonly PiMessage[],
-  userEntries: boolean,
+  messageEntries: boolean,
 ): EvidenceEntry[] {
   const entries: EvidenceEntry[] = [];
   for (const message of messages) {
     if (message.role === "user") {
-      const text = userEntries ? getUserMessageInstructionText(message) : "";
+      const text = messageEntries ? getUserMessageInstructionText(message) : "";
       if (text) {
         entries.push({ role: "user", text });
       }
       continue;
     }
     if (isAssistantMessage(message)) {
-      entries.push(...assistantEntries(message));
+      entries.push(...assistantEntries(message, messageEntries));
       continue;
     }
     if (isToolResultMessage(message)) {
@@ -141,16 +144,17 @@ function collectEvidenceEntries(
  * Project the Codex Guardian transcript selection into structured evidence.
  * In a child agent, no person writes a message: each user-role message is a
  * parent agent task or another agent's output, so it gets the `parent agent`
- * role. `userEntries: false` leaves out user messages, for a Run whose root
- * Conversation already shows them with their authors.
+ * role. `messageEntries: false` leaves out user and assistant text and keeps
+ * tool calls and results, for a Run whose root Conversation already shows
+ * the messages with their authors.
  */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],
-  options: { childAgent?: boolean; userEntries?: boolean } = {},
+  options: { childAgent?: boolean; messageEntries?: boolean } = {},
 ): ToolActionEvidence {
   const candidates = collectEvidenceEntries(
     messages,
-    options.userEntries ?? true,
+    options.messageEntries ?? true,
   ).map((entry) => {
     const text = truncateText(
       entry.text,

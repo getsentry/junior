@@ -156,10 +156,11 @@ export interface ToolActionReviewContext {
   source: Source;
   userIntent?: () => string;
   /**
-   * Build bounded transcript evidence. `userEntries: false` leaves out user
-   * messages when the root Conversation already has them with authors.
+   * Build bounded transcript evidence. `messageEntries: false` leaves out
+   * user and assistant text when the root Conversation already has them
+   * with authors. Tool calls and results stay.
    */
-  evidence?: (options: { userEntries: boolean }) => ToolActionEvidence;
+  evidence?: (options: { messageEntries: boolean }) => ToolActionEvidence;
   /** Read the root Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
 }
@@ -447,10 +448,10 @@ function buildProposal(
     },
     ...(context.evidence
       ? {
-          // In a root Run, the root Conversation has each user message with
-          // its real author, so the evidence leaves out the same messages.
+          // In a root Run, the root Conversation has each visible message
+          // with its real author, so the evidence leaves out the same text.
           evidence: context.evidence({
-            userEntries:
+            messageEntries:
               context.childAgent === true || !rootConversation?.messages.length,
           }),
         }

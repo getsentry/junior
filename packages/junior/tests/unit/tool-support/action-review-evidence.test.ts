@@ -9,7 +9,7 @@ function piMessage(value: unknown): PiMessage {
 
 describe("tool action review evidence", () => {
   it("keeps user, assistant, tool-call, and tool-result evidence without reasoning", () => {
-    const evidence = buildToolActionEvidence([
+    const transcript = [
       {
         role: "user",
         content: [{ type: "text", text: "Create the weekly report." }],
@@ -34,7 +34,8 @@ describe("tool action review evidence", () => {
         content: [{ type: "text", text: "The weekly report exists." }],
         isError: false,
       },
-    ].map((value) => piMessage(value)));
+    ].map((value) => piMessage(value));
+    const evidence = buildToolActionEvidence(transcript);
 
     expect(evidence).toEqual({
       entries: [
@@ -55,6 +56,10 @@ describe("tool action review evidence", () => {
       omittedEntries: 0,
     });
     expect(JSON.stringify(evidence)).not.toContain("Hidden chain");
+    // A root Run reads the messages from its root Conversation instead.
+    expect(
+      buildToolActionEvidence(transcript, { messageEntries: false }).entries,
+    ).toEqual(evidence.entries.slice(2));
   });
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {
@@ -63,14 +68,10 @@ describe("tool action review evidence", () => {
         role: "user",
         content: [{ type: "text", text: "first-request" }],
       },
-      ...Array.from(
-        { length: 12 },
-        (_, index) =>
-          ({
-            role: "user",
-            content: [{ type: "text", text: `${index}-${"x".repeat(8_000)}` }],
-          }),
-      ),
+      ...Array.from({ length: 12 }, (_, index) => ({
+        role: "user",
+        content: [{ type: "text", text: `${index}-${"x".repeat(8_000)}` }],
+      })),
       {
         role: "assistant",
         content: [
@@ -95,7 +96,9 @@ describe("tool action review evidence", () => {
       },
     ];
 
-    const evidence = buildToolActionEvidence(messageFixtures.map((value) => piMessage(value)));
+    const evidence = buildToolActionEvidence(
+      messageFixtures.map((value) => piMessage(value)),
+    );
 
     expect(evidence.entries[0]).toEqual({
       role: "user",
