@@ -20,7 +20,7 @@ import type { Conversation } from "@/chat/conversations/store";
 import type {
   RootConversation,
   RootConversationMessage,
-} from "@/chat/guardian/gate";
+} from "@/chat/guardian/proposal";
 
 /** Most root messages that Guardian reads, newest first. Codex uses 16. */
 const MAX_ROOT_MESSAGES = 16;

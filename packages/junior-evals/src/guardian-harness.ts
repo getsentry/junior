@@ -16,7 +16,7 @@ import type {
   ToolActionDecision,
   ToolActionProposal,
   ToolActionReviewDecision,
-} from "@/chat/guardian/gate";
+} from "@/chat/guardian/proposal";
 
 const GUARDIAN_EVAL_TIMEOUT_MS = 60_000;
 

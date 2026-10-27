@@ -8,7 +8,7 @@ import type {
   ToolActionDecision,
   ToolActionEvidence,
   ToolActionProposal,
-} from "@/chat/guardian/gate";
+} from "@/chat/guardian/proposal";
 import type { ToolActionPriorRejection } from "@/chat/guardian/history";
 
 const LOCAL_CONVERSATION_ID = "local:guardian-eval";

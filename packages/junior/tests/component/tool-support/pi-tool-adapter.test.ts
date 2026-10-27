@@ -6,8 +6,8 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import {
   createToolActionReview,
   type ToolActionReview,
-  type ToolActionReviewer,
 } from "@/chat/guardian/gate";
+import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";

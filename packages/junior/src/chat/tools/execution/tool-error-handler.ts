@@ -58,7 +58,9 @@ function getToolErrorAttributes(
     ...(error.detailLine !== undefined
       ? { "app.slack.detail_line": error.detailLine }
       : undefined),
-    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : undefined),
+    ...(error.detailRule
+      ? { "app.slack.detail_rule": error.detailRule }
+      : undefined),
   };
 }
 

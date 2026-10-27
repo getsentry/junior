@@ -1,13 +1,18 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import { z } from "zod";
+import {
+  RISK_LEVELS,
+  USER_AUTHORIZATION_LEVELS,
+} from "@/chat/guardian/proposal";
 
-const MAX_VISIBLE_HISTORY_CHARS = 12_000;
+/** Most characters of serialized prior rejections that Guardian sees. */
+const MAX_PRIOR_REJECTION_CHARS = 12_000;
 const priorRejectionSchema = z
   .object({
     decision: z.enum(["ask", "deny"]),
     input: z.record(z.string(), z.unknown()),
     reason: z.string().min(1),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    riskLevel: z.enum(RISK_LEVELS).optional(),
     tool: z
       .object({
         annotations: z.record(z.string(), z.unknown()).optional(),
@@ -32,7 +37,7 @@ const priorRejectionSchema = z
           .optional(),
       })
       .strict(),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
+    userAuthorization: z.enum(USER_AUTHORIZATION_LEVELS).optional(),
   })
   .strict();
 export type ToolActionPriorRejection = z.output<typeof priorRejectionSchema>;
@@ -42,8 +47,8 @@ const rejectionMarkerSchema = z
     decision: z.enum(["ask", "deny"]),
     priorRejection: priorRejectionSchema,
     reason: z.string().min(1),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
+    riskLevel: z.enum(RISK_LEVELS).optional(),
+    userAuthorization: z.enum(USER_AUTHORIZATION_LEVELS).optional(),
     version: z.literal(1),
   })
   .strict();
@@ -106,6 +111,24 @@ export function projectToolActionRejection<
 }
 
 /**
+ * Add one rejection to the prior rejections that Guardian sees, and drop the
+ * oldest ones until the list fits the character budget. The gate and the
+ * restore from history use this, so both keep the same window.
+ */
+export function addPriorRejection(
+  rejections: ToolActionPriorRejection[],
+  rejection: ToolActionPriorRejection,
+): void {
+  rejections.push(rejection);
+  while (
+    rejections.length > 0 &&
+    JSON.stringify(rejections).length > MAX_PRIOR_REJECTION_CHARS
+  ) {
+    rejections.shift();
+  }
+}
+
+/**
  * Restore compact Guardian rejection state from the durable Pi transcript.
  *
  * Tool results are not general Guardian evidence. Only core-generated action
@@ -126,13 +149,7 @@ export function restoreToolActionRejections(
     if (!rejection) {
       continue;
     }
-    priorRejections.push(rejection.priorRejection);
-    while (
-      priorRejections.length > 0 &&
-      JSON.stringify(priorRejections).length > MAX_VISIBLE_HISTORY_CHARS
-    ) {
-      priorRejections.shift();
-    }
+    addPriorRejection(priorRejections, rejection.priorRejection);
   }
 
   return priorRejections;

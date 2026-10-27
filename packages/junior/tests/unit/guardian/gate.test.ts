@@ -6,8 +6,8 @@ import {
   ToolActionReviewUnavailableError,
   type ToolActionReview,
   type ToolActionReviewContext,
-  type ToolActionReviewer,
 } from "@/chat/guardian/gate";
+import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 
 const LOCAL_SOURCE = {
   kind: "local",

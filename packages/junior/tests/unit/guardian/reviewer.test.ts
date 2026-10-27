@@ -6,7 +6,7 @@ import {
   guardianPrompt,
 } from "@/chat/guardian/reviewer";
 import { ProviderError } from "@/chat/services/provider-error";
-import type { ToolActionProposal } from "@/chat/guardian/gate";
+import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ZodType } from "zod";
 
 const mocks = vi.hoisted(() => ({
