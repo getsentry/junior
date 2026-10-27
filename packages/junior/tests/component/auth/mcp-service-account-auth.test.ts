@@ -128,8 +128,28 @@ describe("MCP service account auth", () => {
 
   it("reads through the service account and sends other tools to the actor's own connection", async () => {
     useServiceAccountMcpServer();
-    await connectServiceAccount();
     const onAuthorizationRequired = vi.fn(async () => false);
+
+    // A declared service account that no admin connected yet changes nothing.
+    const unconnected = createManager(onAuthorizationRequired);
+    try {
+      await expect(
+        unconnected.mcpAuth.serviceAccountProviderFactory(plugin),
+      ).resolves.toBeUndefined();
+      await expect(
+        unconnected.manager.activateProvider(PROVIDER),
+      ).rejects.toBeInstanceOf(McpAuthorizationRequiredError);
+      expect(onAuthorizationRequired).toHaveBeenCalledWith(
+        PROVIDER,
+        expect.any(McpAuthorizationRequiredError),
+        undefined,
+      );
+    } finally {
+      await unconnected.manager.close();
+    }
+    onAuthorizationRequired.mockClear();
+
+    await connectServiceAccount();
     const { manager, mcpAuth } = createManager(onAuthorizationRequired);
 
     try {
