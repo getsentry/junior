@@ -43,6 +43,7 @@ async function seedSlackUser(args: {
 
 describe("plugin route Identity dispatch", () => {
   let agent: RouteRegistrationHookContext["agent"];
+  let googleAgent: RouteRegistrationHookContext["agent"];
   let queue: ConversationWorkQueueTestAdapter;
 
   async function startApp(allowedDomains?: string[]): Promise<void> {
@@ -57,6 +58,20 @@ describe("plugin route Identity dispatch", () => {
           hooks: {
             routes(ctx) {
               agent = ctx.agent;
+              return [];
+            },
+          },
+        }),
+        // A plugin that shares a native provider name.
+        defineJuniorPlugin({
+          manifest: {
+            name: "google",
+            displayName: "Google",
+            description: "Google",
+          },
+          hooks: {
+            routes(ctx) {
+              googleAgent = ctx.agent;
               return [];
             },
           },
@@ -141,10 +156,23 @@ describe("plugin route Identity dispatch", () => {
       linked: { provider: "demo", subjectId: "1004" },
       slackUserId: "U778",
     });
+    // Core links native Google sign-in identities, not plugin OAuth.
+    await seedSlackUser({
+      email: "signed-in@example.com",
+      linked: { provider: "google", subjectId: "google-sub-1" },
+      slackUserId: "U333",
+    });
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({ userId: "U456", deleted: true }),
     });
 
+    await expect(
+      googleAgent.dispatchForIdentity({
+        idempotencyKey: "delivery-google",
+        input: "Look at demo issue 7.",
+        subjectId: "google-sub-1",
+      }),
+    ).resolves.toEqual({ status: "not_linked" });
     for (const subjectId of ["2001", "octocat", "1003", "1004"]) {
       await expect(
         agent.dispatchForIdentity({

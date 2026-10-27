@@ -12,6 +12,7 @@ import {
 } from "@/chat/credentials/subject";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createEventTeamIdResolver } from "@/chat/events/workspace";
+import { isNativeIdentityProvider } from "@/chat/identities/identity";
 import { findLinkedSlackUserId } from "@/chat/identities/sql";
 import { isSlackProfileDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { logInfo } from "@/chat/logging";
@@ -139,9 +140,12 @@ export function createHeartbeatContext(args: {
   };
 }
 
-// Core owns these Identity namespaces. They are not accounts from a plugin's
-// OAuth account-linking flow, so they never start Identity dispatches.
-const CORE_IDENTITY_PROVIDERS = new Set(["junior", "slack"]);
+// Core owns native identities and the email-keyed `junior` web identities.
+// They are not accounts from a plugin's OAuth account-linking flow, so they
+// never start Identity dispatches.
+function isCoreIdentityProvider(provider: string): boolean {
+  return provider === "junior" || isNativeIdentityProvider(provider);
+}
 
 /**
  * Build the plugin route entry point that starts private DM work for the
@@ -170,7 +174,7 @@ export function createIdentityDispatcher(args: {
 
   return async (plugin, options) => {
     const request = identityDispatchOptionsSchema.parse(options);
-    if (CORE_IDENTITY_PROVIDERS.has(plugin)) {
+    if (isCoreIdentityProvider(plugin)) {
       return notLinked(plugin, "core_provider");
     }
     const teamId = await resolveSlackTeamId();

@@ -31,7 +31,8 @@ Identity of another provider.
 Core starts work only when all of these rules are true:
 
 1. Junior has a Slack bot, and Slack `auth.test` gives the bot team id.
-2. The provider is not a core Identity namespace (`junior` or `slack`).
+2. The provider is not a core Identity namespace: `junior` or a native
+   provider such as `slack` or `google`.
 3. One Identity has this provider, an empty tenant, this exact account id,
    kind `user`, and a linked user.
 4. That user has exactly one Slack Identity in the bot team.
