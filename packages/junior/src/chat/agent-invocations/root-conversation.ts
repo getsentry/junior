@@ -18,16 +18,20 @@ import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
 import type { Conversation } from "@/chat/conversations/store";
-import type {
-  RootConversation,
-  RootConversationMessage,
+import {
+  ROOT_LINE_BREAK,
+  type RootConversation,
+  type RootConversationMessage,
 } from "@/chat/tool-support/action-review";
 
-/** Most root messages that Guardian reads, newest first. Codex uses 16. */
+/**
+ * Most root context messages that Guardian reads, newest first. Codex uses
+ * 16. Messages that can authorize do not count toward this number.
+ */
 const MAX_ROOT_MESSAGES = 16;
 /** Most characters of one root message. */
 const MAX_ROOT_MESSAGE_CHARS = 4_000;
-/** Most characters of all root messages together. */
+/** Most characters of all root messages together, with their labels. */
 const MAX_ROOT_CONVERSATION_CHARS = 24_000;
 /** Message events read from the log. Edits and skipped messages use some. */
 const MAX_ROOT_MESSAGE_EVENTS = 64;
@@ -124,6 +128,22 @@ function messageLabel(
   return author?.platform === "system" ? "automation" : "user";
 }
 
+/** Characters of one message as Guardian reads it, with a label per line. */
+function renderedChars(message: RootConversationMessage): number {
+  const lines = message.text.split("\n").length;
+  return message.text.length + lines * (message.author.length + 2);
+}
+
+/** Only these labels can authorize an action. */
+function canAuthorize(message: RootConversationMessage): boolean {
+  return message.author === "user" || message.author === "automation";
+}
+
+/** Use one line break, so a label cannot hide inside another line. */
+function normalizeLines(text: string): string {
+  return text.split(ROOT_LINE_BREAK).join("\n");
+}
+
 function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
     return text;
@@ -217,7 +237,7 @@ export async function readRootConversation(args: {
       : pinnedRead?.data;
   const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {
-    const text = data.text.trim();
+    const text = normalizeLines(data.text).trim();
     // A message that Junior did not answer still counts. It can hold a
     // restriction or a revocation.
     if (!text || data.messageId === opening?.messageId) {
@@ -231,7 +251,7 @@ export async function readRootConversation(args: {
   }
   // The opening message is not one of the newest messages, so it does not
   // count toward their number. Its characters do count.
-  const openingText = opening?.text.trim();
+  const openingText = opening ? normalizeLines(opening.text).trim() : "";
   const pinned: RootConversationMessage[] =
     opening && openingText
       ? [
@@ -241,18 +261,59 @@ export async function readRootConversation(args: {
           },
         ]
       : [];
-  const messages: RootConversationMessage[] = [];
-  let chars = pinned[0]?.text.length ?? 0;
-  for (const message of [...all].reverse()) {
-    if (
-      messages.length >= MAX_ROOT_MESSAGES ||
-      chars + message.text.length > MAX_ROOT_CONVERSATION_CHARS
-    ) {
+  // Messages that can authorize come first, newest first, so a later
+  // restriction or revocation stays when the read is cut. Context messages
+  // fill the rest, newest first.
+  const kept = new Set<number>();
+  let chars = pinned[0] ? renderedChars(pinned[0]) : 0;
+  for (let index = all.length - 1; index >= 0; index -= 1) {
+    const message = all[index]!;
+    if (!canAuthorize(message)) {
+      continue;
+    }
+    // Stop at the first one that does not fit. An older message must never
+    // stay when a newer one that can narrow it is cut.
+    if (chars + renderedChars(message) > MAX_ROOT_CONVERSATION_CHARS) {
       break;
     }
-    messages.unshift({ author: message.author, text: message.text });
-    chars += message.text.length;
+    kept.add(index);
+    chars += renderedChars(message);
   }
+  let contextMessages = 0;
+  for (let index = all.length - 1; index >= 0; index -= 1) {
+    const message = all[index]!;
+    if (canAuthorize(message) || contextMessages >= MAX_ROOT_MESSAGES) {
+      continue;
+    }
+    if (chars + renderedChars(message) > MAX_ROOT_CONVERSATION_CHARS) {
+      continue;
+    }
+    kept.add(index);
+    chars += renderedChars(message);
+    contextMessages += 1;
+  }
+  // Keep the event order. A note marks each gap, so a reply is not read as
+  // the answer to a message that is not shown.
+  const messages: RootConversationMessage[] = [];
+  let omitted = 0;
+  const addGapNote = () => {
+    if (omitted > 0) {
+      messages.push({
+        author: "system",
+        text: `[${omitted} ${omitted === 1 ? "message is" : "messages are"} not shown here. A reply after this note may answer one of them.]`,
+      });
+      omitted = 0;
+    }
+  };
+  for (const [index, message] of all.entries()) {
+    if (!kept.has(index)) {
+      omitted += 1;
+      continue;
+    }
+    addGapNote();
+    messages.push({ author: message.author, text: message.text });
+  }
+  addGapNote();
   // When the opening message is older than the page, only messages between
   // it and the page are missing.
   const firstSeq = page.events[0]?.seq;
@@ -269,6 +330,6 @@ export async function readRootConversation(args: {
         ).events.length > 0;
   return {
     messages: [...pinned, ...messages],
-    truncated: hasOlder || orphanEdits.size > 0 || messages.length < all.length,
+    truncated: hasOlder || orphanEdits.size > 0 || kept.size < all.length,
   };
 }

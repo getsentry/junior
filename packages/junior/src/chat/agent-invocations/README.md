@@ -240,10 +240,12 @@ When Guardian reviews an action of a child, `root-conversation.ts` walks
 rewrite these events. Nothing is copied into the child, and nothing new is
 stored.
 
-A root Run reads its own Conversation the same way, with the same labels, so
-the Actor's earlier messages can authorize an action. That evidence then
-leaves out its unlabeled user and assistant text and keeps tool calls and
-results, so Guardian reads each message once.
+A root Run of a person reads its own Conversation the same way, with the same
+labels, so the Actor's earlier messages can authorize an action. That evidence
+then leaves out its unlabeled user and assistant text and keeps tool calls and
+results, so Guardian reads each message once. A root Run of a system Actor,
+such as an Event Turn, does not read it. The person's messages would get the
+`other person` label there, so it keeps the unlabeled evidence.
 
 - Only a root message whose author has the same Actor identity as the child
   is labeled `user`. It is compared by platform, team, and user id. When
@@ -266,12 +268,18 @@ results, so Guardian reads each message once.
   revocation, counts.
 - Grandchildren and children started by a result Turn read the same root,
   with no special case.
-- The read is bounded: the newest 16 messages and 24,000 characters. A cut
+- The read is bounded to 24,000 characters, with the label of each line
+  counted. Messages that can authorize come first, newest first, so a later
+  restriction or revocation stays when older messages are cut. The newest 16
+  context messages fill the rest. Each gap gets a note in its place, so a
+  reply is not read as the answer to a message that is not shown. A cut also
   adds an explicit notice.
+- Every kind of line break becomes one line break, so text cannot hide a
+  second label inside one line.
 - The opening message of the root is always in the read and comes first. For
   an Automation run root, it is the run's instruction, loaded by its message
   id. For another root, it is the oldest message, which usually holds the
-  original request. It is not one of the 16 messages.
+  original request. It is not one of the 16 context messages.
 - A message keeps the position of its original event. An edit changes only
   its text. An edit of a message older than the read is left out, so an edit
   never moves a message after a newer one, such as a revocation.

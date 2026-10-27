@@ -452,12 +452,19 @@ export async function wireAgentTools(
         }),
       // The root Conversation labels each message with its real author, so
       // the Actor's earlier messages can authorize. A child has no message
-      // from a person, so this is its only authority. Read for each action.
-      rootConversation: async () =>
-        await readRootConversation({
-          actor: args.currentActor,
-          conversationId: args.run.conversationId,
-        }),
+      // from a person, so this is its only authority. A root Run of a system
+      // Actor, such as an event Turn, is not the author of the person's
+      // messages, so it keeps only the unlabeled evidence. Read for each
+      // action.
+      ...(childAgent || args.currentActor?.platform !== "system"
+        ? {
+            rootConversation: async () =>
+              await readRootConversation({
+                actor: args.currentActor,
+                conversationId: args.run.conversationId,
+              }),
+          }
+        : undefined),
     },
     onDecision: ({ toolCallId, toolName, decision }) =>
       recordGuardianActionReviewed({
