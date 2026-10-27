@@ -1,7 +1,7 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as googleSqlSchema from "./db/schema";
-import { juniorGoogleAccounts, juniorGoogleWorkingHours } from "./db/schema";
+import { juniorGoogleAccounts } from "./db/schema";
 
 export type GoogleDb = PgDatabase<PgQueryResultHKT, typeof googleSqlSchema>;
 
@@ -66,48 +66,4 @@ export function googleAccountStatus(record: GoogleAccountRecord) {
     connectedBy: record.connectedBy,
     scope: record.scope,
   };
-}
-
-/** Working hours as 24-hour `HH:MM` in the person's calendar time zone. */
-export interface WorkingHours {
-  workdayEnd: string;
-  workdayStart: string;
-}
-
-/** Read the saved working hours of these people, by email. */
-export async function getWorkingHours(
-  db: GoogleDb,
-  emails: string[],
-): Promise<Map<string, WorkingHours>> {
-  if (emails.length === 0) return new Map();
-  const rows = await db
-    .select()
-    .from(juniorGoogleWorkingHours)
-    .where(inArray(juniorGoogleWorkingHours.email, emails));
-  return new Map(
-    rows.map((row) => [
-      row.email,
-      { workdayEnd: row.workdayEnd, workdayStart: row.workdayStart },
-    ]),
-  );
-}
-
-/** Create or replace one person's saved working hours. */
-export async function saveWorkingHours(
-  db: GoogleDb,
-  email: string,
-  hours: WorkingHours,
-): Promise<void> {
-  const record = { ...hours, email, updatedAtMs: Date.now() };
-  await db
-    .insert(juniorGoogleWorkingHours)
-    .values(record)
-    .onConflictDoUpdate({
-      target: juniorGoogleWorkingHours.email,
-      set: {
-        workdayEnd: record.workdayEnd,
-        workdayStart: record.workdayStart,
-        updatedAtMs: record.updatedAtMs,
-      },
-    });
 }

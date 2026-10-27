@@ -8,15 +8,12 @@ import {
 import { z } from "zod";
 import { emailDomain } from "../config";
 import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
-import type { GoogleDb } from "../store";
 
 /** Runtime capabilities the Google tools use. */
 export interface GoogleToolContext {
   /** The Workspace account Junior acts as, in lowercase. */
   accountEmail: string;
   allowedDomains: string[];
-  /** Holds the working hours that people save with `setWorkingHours`. */
-  db: GoogleDb;
   egress: PluginEgress;
   /** Holds full meeting records that are too long to return inline. */
   sandbox: Pick<PluginSandbox, "root" | "run" | "writeFile">;
@@ -31,17 +28,6 @@ export const emailListSchema = (max: number) =>
     .array(z.string().trim().toLowerCase().pipe(z.email()))
     .max(max)
     .describe("Attendee email addresses.");
-
-/** A 24-hour `HH:MM` local clock time. */
-export const clockTimeSchema = z
-  .string()
-  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM");
-
-/** Minutes after local midnight for a 24-hour `HH:MM` clock time. */
-export function clockMinutes(value: string): number {
-  const [hours = 0, minutes = 0] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-}
 
 export const timeZoneSchema = z
   .string()

@@ -6,25 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { recurrenceRule } from "../src/tools/create-event";
 import { findFreeSlots } from "../src/tools/find-meeting-times";
-import { createGoogleDb, stubGoogleEnv } from "./fixture";
+import { stubGoogleEnv } from "./fixture";
 
 const REQUESTER = "alice@example.com";
 
-let fixture: Awaited<ReturnType<typeof createGoogleDb>>;
-
 function calendarTools(...responses: Response[]) {
-  return calendarToolsAs(REQUESTER, ...responses);
-}
-
-function calendarToolsAs(requester: string, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const tools = googlePlugin().hooks!.tools!({
-    db: fixture.db(),
     egress: { fetch },
     users: {
       resolveActor: async () => ({
-        user: { email: requester, id: "user-1", identities: [] },
+        user: { email: REQUESTER, id: "user-1", identities: [] },
       }),
       resolveTimezone: async () => "America/Los_Angeles",
     },
@@ -71,8 +64,8 @@ describe("findFreeSlots", () => {
   });
 
   it("keeps slots inside each attendee's own working hours", () => {
-    // Monday 2026-10-12. Los Angeles (UTC-7) works 08:00-17:00 and London
-    // (UTC+1) works 08:00-16:30, so they share only 08:00-08:30 in LA.
+    // Monday 2026-10-12. With 08:00-17:00 hours, Los Angeles (UTC-7) and
+    // London (UTC+1) share only 08:00-09:00 in Los Angeles.
     const workingHours = { workdayEnd: "17:00", workdayStart: "08:00" };
     const slots = findFreeSlots({
       attendees: [
@@ -88,7 +81,7 @@ describe("findFreeSlots", () => {
           email: "bob@example.com",
           required: true,
           timeZone: "Europe/London",
-          workingHours: { workdayEnd: "16:30", workdayStart: "08:00" },
+          workingHours,
         },
         {
           busy: [],
@@ -98,7 +91,7 @@ describe("findFreeSlots", () => {
           workingHours,
         },
       ],
-      durationMinutes: 30,
+      durationMinutes: 60,
       maxResults: 3,
       timeMaxMs: Date.parse("2026-10-13T00:00:00Z"),
       timeMinMs: Date.parse("2026-10-12T00:00:00Z"),
@@ -109,7 +102,7 @@ describe("findFreeSlots", () => {
       {
         // 08:00 LA, 16:00 London, 00:00 Tuesday Tokyo.
         startMs: Date.parse("2026-10-12T15:00:00Z"),
-        endMs: Date.parse("2026-10-12T15:30:00Z"),
+        endMs: Date.parse("2026-10-12T16:00:00Z"),
         optionalConflicts: ["dana@example.com"],
       },
     ]);
@@ -128,16 +121,14 @@ describe("recurrenceRule", () => {
 });
 
 describe("Google Calendar tools", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     stubGoogleEnv();
-    fixture = await createGoogleDb();
     vi.useFakeTimers({ now: Date.parse("2026-10-08T12:00:00Z") });
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
-    await fixture.close();
   });
 
   it("checks the requester and attendees in their own time zones, and reports people it could not check", async () => {
@@ -200,56 +191,56 @@ describe("Google Calendar tools", () => {
     });
   });
 
-  it("searches inside the working hours that each person saved for themselves", async () => {
-    const bob = calendarToolsAs("bob@example.com");
-    await expect(
-      bob.tools.setWorkingHours!.execute!(
-        bob.tools.setWorkingHours!.prepareArguments!({
-          workdayEnd: "23:00",
-          workdayStart: "07:30",
-        }),
-        { toolCallId: "call-hours" },
-      ),
-    ).resolves.toMatchObject({
-      email: "bob@example.com",
-      workdayEnd: "23:00",
-      workdayStart: "07:30",
+  it("searches later hours for people who often meet late", async () => {
+    // Now is Thursday 2026-10-08 12:00 UTC. London is UTC+1, Los Angeles
+    // UTC-7. Bob had calls until 22:00 London on three past weekdays.
+    const lateCall = (date: string) => ({
+      start: `${date}T19:00:00Z`,
+      end: `${date}T21:00:00Z`,
     });
-    expect(bob.fetch).not.toHaveBeenCalled();
-
-    const search = (input: Record<string, unknown>) => {
-      const { tools } = calendarTools(
-        Response.json({
-          calendars: {
-            [REQUESTER]: { busy: [] },
-            "bob@example.com": { busy: [] },
+    const { fetch, tools } = calendarTools(
+      Response.json({
+        calendars: {
+          [REQUESTER]: { busy: [] },
+          "bob@example.com": {
+            busy: [
+              lateCall("2026-09-29"),
+              lateCall("2026-10-01"),
+              lateCall("2026-10-06"),
+              // A weekend call and an out-of-office week do not count.
+              lateCall("2026-10-03"),
+              { start: "2026-09-21T23:00:00Z", end: "2026-09-26T23:00:00Z" },
+            ],
           },
-        }),
-        Response.json({ timeZone: LA }),
-        Response.json({ timeZone: "Europe/London" }),
-      );
-      return tools.findMeetingTimes!.execute!(
-        tools.findMeetingTimes!.prepareArguments!({
-          attendees: ["bob@example.com"],
-          maxResults: 2,
-          timeMax: "2026-10-13T00:00:00Z",
-          timeMin: "2026-10-12T00:00:00Z",
-          timeZone: LA,
-          ...input,
-        }),
-        { toolCallId: "call-search" },
-      );
-    };
+        },
+      }),
+      Response.json({ timeZone: LA }),
+      Response.json({ timeZone: "Europe/London" }),
+    );
 
-    // Monday 2026-10-12. Los Angeles is 8 hours behind London. With 09:00 to
-    // 17:00 for both, they share no time. Bob's saved hours run to 23:00
-    // London, which is 15:00 in Los Angeles.
-    await expect(search({})).resolves.toMatchObject({
+    const result = await tools.findMeetingTimes!.execute!(
+      tools.findMeetingTimes!.prepareArguments!({
+        attendees: ["bob@example.com"],
+        maxResults: 2,
+        timeMax: "2026-10-13T00:00:00Z",
+        timeMin: "2026-10-12T00:00:00Z",
+        timeZone: LA,
+      }),
+      { toolCallId: "call-late" },
+    );
+
+    // Free/busy covers the last 3 weeks, so Junior can see when people meet.
+    expect((await fetch.mock.calls[0]![0].request.json()).timeMin).toBe(
+      "2026-09-17T12:00:00.000Z",
+    );
+    // With 09:00-17:00 for both, Los Angeles and London share no time.
+    // Bob's hours now run to 22:00 London, which is 14:00 in Los Angeles.
+    expect(result).toMatchObject({
       checked: [
         {
           email: REQUESTER,
           workingHours: {
-            saved: false,
+            fromMeetings: false,
             workdayEnd: "17:00",
             workdayStart: "09:00",
           },
@@ -257,30 +248,15 @@ describe("Google Calendar tools", () => {
         {
           email: "bob@example.com",
           workingHours: {
-            saved: true,
-            workdayEnd: "23:00",
-            workdayStart: "07:30",
+            fromMeetings: true,
+            workdayEnd: "22:00",
+            workdayStart: "09:00",
           },
         },
       ],
       slots: [
         { start: "2026-10-12T16:00:00.000Z" },
-        { end: "2026-10-12T22:00:00.000Z" },
-      ],
-    });
-
-    // A requested time of day narrows saved hours but never widens them.
-    await expect(
-      search({ workdayEnd: "23:30", workdayStart: "12:00" }),
-    ).resolves.toMatchObject({
-      checked: [
-        { workingHours: { workdayEnd: "23:30", workdayStart: "12:00" } },
-        { workingHours: { workdayEnd: "23:00", workdayStart: "12:00" } },
-      ],
-      // 12:00 to 15:00 in Los Angeles; 20:00 to 23:00 in London.
-      slots: [
-        { start: "2026-10-12T19:00:00.000Z" },
-        { end: "2026-10-12T22:00:00.000Z" },
+        { end: "2026-10-12T21:00:00.000Z" },
       ],
     });
   });
