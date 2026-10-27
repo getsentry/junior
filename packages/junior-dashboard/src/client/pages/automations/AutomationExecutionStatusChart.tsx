@@ -15,9 +15,9 @@ import {
 import { Card } from "../../components/layout/Card";
 
 const series = [
-  { color: "#6ee7b7", key: "completed", label: "Completed" },
-  { color: "#fda4af", key: "failed", label: "Failed" },
-  { color: "#fcd34d", key: "blocked", label: "Blocked" },
+  { color: "var(--color-emerald-300)", key: "completed", label: "Completed" },
+  { color: "var(--color-rose-300)", key: "failed", label: "Failed" },
+  { color: "var(--color-amber-300)", key: "blocked", label: "Blocked" },
 ] as const;
 
 /** Render one automation's terminal executions by status over a trailing window. */

@@ -24,8 +24,7 @@ export function LocationDirectoryActivityChart(props: {
   days: LocationActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
-  const perBucket =
-    `Conversations per ${timeRangeBucketPerLabel(bucketUnit)}`;
+  const perBucket = `Conversations per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const maximum = Math.max(
@@ -42,17 +41,23 @@ export function LocationDirectoryActivityChart(props: {
   return (
     <Card>
       <CardHeader
-        description={
-          `${timeRangeBucketAdjective(bucketUnit)} public volume compared with private activity in aggregate.`
-        }
+        description={`${timeRangeBucketAdjective(bucketUnit)} public volume compared with private activity in aggregate.`}
         title={perBucket}
         trailing={
           <ChartLegend
             ariaLabel="Conversation visibility legend"
             inline
             items={[
-              { color: "#22d3ee", key: "public", label: "public" },
-              { color: "#fbbf24", key: "private", label: "private" },
+              {
+                color: "var(--color-cyan-400)",
+                key: "public",
+                label: "public",
+              },
+              {
+                color: "var(--color-amber-400)",
+                key: "private",
+                label: "private",
+              },
             ]}
           />
         }
@@ -70,13 +75,13 @@ export function LocationDirectoryActivityChart(props: {
               [
                 {
                   count: day.publicConversations,
-                  fill: "#22d3ee",
+                  fill: "var(--color-cyan-400)",
                   key: "public",
                   x: groupX,
                 },
                 {
                   count: day.privateConversations,
-                  fill: "#fbbf24",
+                  fill: "var(--color-amber-400)",
                   key: "private",
                   x: groupX + barWidth + gap,
                 },

@@ -18,7 +18,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 
-const COST_COLOR = "#67e8f9";
+const COST_COLOR = "var(--color-cyan-300)";
 
 /** Render linked conversation spend for completed automation executions. */
 export function AutomationCostChart(props: {
@@ -103,7 +103,7 @@ export function AutomationCostChart(props: {
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-slate-200)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

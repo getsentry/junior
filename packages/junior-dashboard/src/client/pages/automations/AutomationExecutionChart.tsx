@@ -18,7 +18,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { formatActivityChartAverage } from "../../format";
 
-const EXECUTION_COLOR = "#fbbf24";
+const EXECUTION_COLOR = "var(--color-amber-400)";
 
 /** Render completed automation executions over a trailing window. */
 export function AutomationExecutionChart(props: {
@@ -95,7 +95,7 @@ export function AutomationExecutionChart(props: {
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-slate-200)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

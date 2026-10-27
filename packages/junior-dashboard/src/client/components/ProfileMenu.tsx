@@ -22,6 +22,7 @@ import { formatCostSummary, peoplePath } from "../format";
 import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import { ThemeSwitcher } from "./ThemeSwitcher";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -302,6 +303,7 @@ export function ProfileMenu({
         >
           Log out
         </button>
+        <ThemeSwitcher className="px-3 py-2" />
       </nav>
     );
   }
@@ -405,6 +407,7 @@ export function ProfileMenu({
           id="profile-popover"
         >
           {identityBlock}
+          <ThemeSwitcher className="border-b border-dashboard-border-strong px-2.5 py-2" />
           {menuLinks(() => setOpen(false))}
         </div>
       ) : null}
