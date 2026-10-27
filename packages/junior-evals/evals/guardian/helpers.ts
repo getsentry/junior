@@ -5,6 +5,7 @@
  * proposals realistic and free of eval-shaped instructions in userIntent.
  */
 import type {
+  RootConversationMessage,
   ToolActionDecision,
   ToolActionEvidence,
   ToolActionProposal,
@@ -86,6 +87,8 @@ export function proposal(input: {
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
   priorRejectedActions?: ToolActionPriorRejection[];
+  /** Author-labeled root Conversation, as core reads it at review time. */
+  root?: RootConversationMessage[];
   tool: ToolActionProposal["tool"];
 }): ToolActionProposal {
   return {
@@ -94,6 +97,9 @@ export function proposal(input: {
     input: input.input,
     ...(input.priorRejectedActions && input.priorRejectedActions.length > 0
       ? { priorRejectedActions: input.priorRejectedActions }
+      : {}),
+    ...(input.root
+      ? { rootConversation: { messages: input.root, truncated: false } }
       : {}),
     tool: input.tool,
   };
