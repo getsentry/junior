@@ -332,7 +332,6 @@ const conversationReportMessageEventDataSchema = z
     role: z.enum(["assistant", "system", "user"]),
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
-    mentions: z.array(actorIdentitySchema).optional(),
     eventType: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
@@ -354,16 +353,12 @@ const conversationReportMessageEventDataSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity ||
-        data.mentions ||
-        data.cards ||
-        data.attachments ||
-        data.events)
+      (data.actorIdentity || data.cards || data.attachments || data.events)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, mentions, cards, attachments, or events",
+          "redacted messages must not expose actor identity, cards, attachments, or events",
       });
     }
   });
@@ -636,6 +631,8 @@ export const conversationReportEventSchema = z
     seq: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
     data: conversationReportEventDataSchema,
+    /** People mentioned in the event text, resolved at read time. */
+    mentions: z.array(actorIdentitySchema).optional(),
     model: z
       .object({
         modelId: z.string().min(1),
@@ -822,6 +819,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     brief: z
       .object({
         content: conversationBriefSchema,
+        /** People mentioned in the Brief text, resolved at read time. */
+        mentions: z.array(actorIdentitySchema).optional(),
         updatedAt: z.string().datetime(),
         version: z.number().int().positive(),
       })

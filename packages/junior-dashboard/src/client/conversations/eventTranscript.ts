@@ -37,6 +37,7 @@ function eventMessage(
     role,
     sourceSeq: event.seq,
     timestamp: eventTimestamp(event),
+    ...(event.mentions ? { mentions: event.mentions } : undefined),
   };
 }
 
@@ -213,7 +214,6 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),
-        ...(data.mentions ? { mentions: data.mentions } : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
@@ -416,6 +416,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "context_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             event:
               data.type === "handoff"
                 ? {

@@ -44,7 +44,11 @@ export function TranscriptContextEventView(props: {
             Continuation summary
           </summary>
           <div className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted">
-            <TranscriptText role="system" text={event.summary} />
+            <TranscriptText
+              mentions={props.part.mentions ?? []}
+              role="system"
+              text={event.summary}
+            />
           </div>
         </details>
       ) : null}

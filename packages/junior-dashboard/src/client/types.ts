@@ -52,6 +52,8 @@ export type TranscriptViewSubagentPart = {
 };
 
 export type TranscriptViewContextEventPart = {
+  /** People mentioned in the summary, resolved by the API. */
+  mentions?: ActorIdentity[];
   event:
     | {
         createdAt: string;
@@ -125,7 +127,7 @@ export type TranscriptViewMessage = {
   events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
-  /** People mentioned in the message text. */
+  /** People mentioned in the event text, resolved by the API. */
   mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */
   context?: boolean;

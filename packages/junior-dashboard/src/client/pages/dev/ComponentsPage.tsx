@@ -733,6 +733,7 @@ function TranscriptsGalleryPage() {
               Junior
             </span>
             <TranscriptText
+              mentions={[]}
               role="assistant"
               text={
                 "Your reminder is set.\n\nI'll remind you to drink water every 30 minutes until you ask me to stop."
@@ -793,10 +794,10 @@ function TranscriptsGalleryPage() {
         <TranscriptMarkdown text={GFM_SAMPLE} />
       </Fixture>
       <Fixture title="TranscriptText assistant">
-        <TranscriptText role="assistant" text={MIXED_ASSISTANT} />
+        <TranscriptText mentions={[]} role="assistant" text={MIXED_ASSISTANT} />
       </Fixture>
       <Fixture title="TranscriptText user">
-        <TranscriptText role="user" text={EVENT_NOTIFICATION} />
+        <TranscriptText mentions={[]} role="user" text={EVENT_NOTIFICATION} />
       </Fixture>
       <Fixture title="Tool calls">
         <ToolCallGallery />

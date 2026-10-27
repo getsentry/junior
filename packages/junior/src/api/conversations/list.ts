@@ -41,7 +41,7 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
-import { attachActivityPreviewMentions } from "./message-mentions";
+import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
 
 const CONVERSATION_FEED_LIMIT = 50;

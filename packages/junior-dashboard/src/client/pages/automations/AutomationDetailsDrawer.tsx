@@ -88,7 +88,10 @@ export function AutomationDetailsDrawer(props: {
           <h3 className="mt-0 mb-2 text-sm font-medium text-dashboard-text-muted">
             What to do
           </h3>
-          <TranscriptText text={automation.instruction} />
+          <TranscriptText
+            mentions={automation.mentions ?? []}
+            text={automation.instruction}
+          />
         </div>
         <AutomationLifecycle
           key={`${automation.kind}:${automation.id}`}
