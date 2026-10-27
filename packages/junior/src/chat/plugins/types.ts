@@ -1,4 +1,5 @@
 import type {
+  PluginAccountsConfig,
   PluginMcpConfig,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -7,11 +8,12 @@ import type {
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
 export type {
+  PluginAccountsConfig,
+  PluginServiceAccountConfig,
   PluginNpmRuntimeDependency,
   PluginMcpConfig,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
-  PluginServiceAccountConfig,
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "@sentry/junior-plugin-api";
@@ -68,7 +70,7 @@ export interface PluginManifest {
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
   mcp?: PluginMcpConfig;
   oauth?: PluginOAuthConfig;
-  serviceAccount?: PluginServiceAccountConfig;
+  accounts?: PluginAccountsConfig;
   target?: {
     type: string;
     configKey: string;
@@ -133,7 +135,10 @@ export interface PluginManifestConfig {
     wrappedTools?: string[] | null;
   } | null;
   oauth?: PluginOAuthConfigPatch | null;
-  serviceAccount?: PluginServiceAccountConfig | null;
+  accounts?: {
+    userOAuth?: boolean | null;
+    serviceAccount?: PluginServiceAccountConfig | null;
+  } | null;
   target?: {
     type?: string;
     configKey?: string;

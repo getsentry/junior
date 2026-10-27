@@ -90,26 +90,32 @@ export interface PluginMcpConfig {
 }
 
 /**
- * Optional install-wide provider account, often a bot, that Junior itself
- * uses for one plugin.
+ * Which provider accounts Junior may use for one plugin.
  *
- * An Admin connects the service account one time on the dashboard Admin
- * page. Each request surface enforces its own part of this policy.
+ * By default, each Actor connects their own account with per-actor OAuth.
+ * A plugin can also allow an optional install-wide service account, often a
+ * bot. An Admin connects it one time on the dashboard Admin page.
  *
- * By default, per-actor OAuth stays on, and an Actor's own connection
- * always wins. An Actor without their own connection uses the service
- * account for requests that this policy allows. Other requests ask the
- * Actor to connect their own account.
+ * An Actor's own connection always wins. An Actor without their own
+ * connection uses the service account for what it lists. Other requests ask
+ * the Actor to connect their own account.
  *
  * With `userOAuth: false`, Junior uses only the service account. It never
- * asks an Actor to connect and ignores their own connections. Until an
- * Admin connects the account, the plugin is not available.
+ * asks an Actor to connect, ignores their own connections, and hides tools
+ * that the service account does not list. Until an Admin connects the
+ * account, the plugin is not available.
  */
-export interface PluginServiceAccountConfig {
+export interface PluginAccountsConfig {
   /** Set false to turn off per-actor OAuth for the plugin. Defaults to true. */
   userOAuth?: boolean;
-  /** MCP tools that the account may call. Each must be in `mcp.allowedTools`. */
-  mcpTools: string[];
+  /** Optional service account and what it may use. Omit for none. */
+  serviceAccount?: PluginServiceAccountConfig;
+}
+
+/** What one plugin's service account may use. */
+export interface PluginServiceAccountConfig {
+  /** MCP tools that the account may call. Each must be loaded by `mcp`. */
+  tools: string[];
 }
 
 export interface PluginEnvVarDeclaration {
@@ -118,6 +124,7 @@ export interface PluginEnvVarDeclaration {
 }
 
 export interface PluginManifest {
+  accounts?: PluginAccountsConfig;
   apiHeaders?: Record<string, string>;
   commandEnv?: Record<string, string>;
   configKeys?: string[];
@@ -131,7 +138,6 @@ export interface PluginManifest {
   oauth?: PluginOAuthConfig;
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
-  serviceAccount?: PluginServiceAccountConfig;
   target?: {
     commandFlags?: string[];
     configKey: string;

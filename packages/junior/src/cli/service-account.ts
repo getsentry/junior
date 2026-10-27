@@ -82,7 +82,7 @@ function requireServiceAccountPlugin(
   name: string,
 ): PluginDefinition | undefined {
   const plugin = pluginCatalogRuntime.getDefinition(name);
-  if (plugin?.manifest.serviceAccount) {
+  if (plugin?.manifest.accounts?.serviceAccount) {
     return plugin;
   }
   const supported = serviceAccountPlugins(
@@ -123,9 +123,13 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
   } finally {
     loopback.close();
   }
-  const tools = plugin.manifest.serviceAccount?.mcpTools ?? [];
+  const tools = (plugin.manifest.accounts?.serviceAccount?.tools ?? []).join(
+    ", ",
+  );
   console.log(
-    `Connected the ${provider} service account. Actors who have not connected ${provider} now use it for: ${tools.join(", ")}.`,
+    plugin.manifest.accounts?.userOAuth === false
+      ? `Connected the ${provider} service account. Everyone now uses it for: ${tools}.`
+      : `Connected the ${provider} service account. Actors who have not connected ${provider} now use it for: ${tools}.`,
   );
   return 0;
 }

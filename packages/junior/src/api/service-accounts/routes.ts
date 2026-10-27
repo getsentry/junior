@@ -39,7 +39,7 @@ function callbackUrl(request: Request, provider: string): string {
 
 function requirePlugin(provider: string): PluginDefinition {
   const plugin = pluginCatalogRuntime.getDefinition(provider);
-  if (!plugin?.manifest.serviceAccount) {
+  if (!plugin?.manifest.accounts?.serviceAccount) {
     throwApiError(404, "Service account not found.");
   }
   return plugin;

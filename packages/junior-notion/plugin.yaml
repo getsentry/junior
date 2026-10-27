@@ -13,7 +13,8 @@ mcp:
 
 # Optional shared read account. It has no effect until an admin connects it
 # on the dashboard Admin page.
-service-account:
-  mcp-tools:
-    - notion-search
-    - notion-fetch
+accounts:
+  service-account:
+    tools:
+      - notion-search
+      - notion-fetch

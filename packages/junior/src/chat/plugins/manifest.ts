@@ -12,15 +12,15 @@ import type {
   PluginNpmRuntimeDependency,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
-  PluginServiceAccountConfig,
+  PluginAccountsConfig,
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
 import {
+  accountsSource,
   inlineManifestSource,
   mcpAuthSource,
   mcpOauthClientSource,
-  serviceAccountSource,
 } from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -250,12 +250,15 @@ const mcpOauthClientSourceSchema = z
   })
   .passthrough();
 
-// Strict, so a typo or an unsupported surface fails loudly instead of
-// silently widening or narrowing what the shared account may do.
-const serviceAccountSourceSchema = z
+// Strict, so a typo fails loudly instead of silently widening or narrowing
+// which accounts Junior may use.
+const accountsSourceSchema = z
   .object({
     "user-oauth": z.boolean().optional(),
-    "mcp-tools": nonEmptyStringArraySchema("mcp-tools"),
+    "service-account": z
+      .object({ tools: nonEmptyStringArraySchema("tools") })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -330,7 +333,7 @@ const manifestSourceSchema = z
         error: "must be an object",
       })
       .optional(),
-    "service-account": z
+    accounts: z
       .record(z.string(), z.unknown(), {
         error: "must be an object",
       })
@@ -435,11 +438,9 @@ function manifestConfigPatch(
       result.oauth = oauth;
     }
   }
-  setDefined(
-    result,
-    "service-account",
-    config.serviceAccount && serviceAccountSource(config.serviceAccount),
-  );
+  if (config.accounts !== undefined) {
+    result.accounts = config.accounts && accountsSource(config.accounts);
+  }
   if (config.target !== undefined) {
     if (!config.target) {
       result.target = null;
@@ -1111,52 +1112,54 @@ function normalizeMcp(
 }
 
 /**
- * Validate the service account policy against the surfaces it names.
- *
- * Each policy entry must be something the plugin already exposes, so the
- * shared account can never reach more than an Actor's own connection.
+ * Validate which accounts the plugin may use against the surfaces that
+ * support them. Today only MCP OAuth stores a service account.
  */
-function normalizeServiceAccount(
+function normalizeAccounts(
   data: Record<string, unknown>,
   mcp: PluginMcpConfig | undefined,
   name: string,
-): PluginServiceAccountConfig {
-  const result = serviceAccountSourceSchema.safeParse(data);
+): PluginAccountsConfig | undefined {
+  const result = accountsSourceSchema.safeParse(data);
   if (!result.success) {
+    throw new Error(issueMessage(result.error, `Plugin ${name} accounts`));
+  }
+  const userOAuth = result.data["user-oauth"];
+  const serviceAccount = result.data["service-account"];
+  if (userOAuth === false && !serviceAccount) {
     throw new Error(
-      issueMessage(result.error, `Plugin ${name} service-account`),
+      `Plugin ${name} accounts.user-oauth false requires accounts.service-account`,
     );
   }
-  const mcpTools = result.data["mcp-tools"];
-  // The connect command registers its own OAuth client, and signed bot auth
+  if (!serviceAccount) {
+    return undefined;
+  }
+  // The connect flow registers its own OAuth client, and signed bot auth
   // has no per-actor account to replace.
   if (!mcp || mcp.auth || mcp.oauthClient) {
     throw new Error(
-      `Plugin ${name} service-account.mcp-tools requires mcp without auth or oauth-client`,
+      `Plugin ${name} accounts.service-account requires mcp without auth or oauth-client`,
     );
   }
-  const allowedTools = new Set(mcp.allowedTools ?? []);
-  const undeclared = mcpTools.filter((tool) => !allowedTools.has(tool));
-  if (undeclared.length > 0) {
-    throw new Error(
-      `Plugin ${name} service-account.mcp-tools must be listed in mcp.allowed-tools: ${undeclared.join(", ")}`,
+  // An empty allow-list loads every tool, so only a set list can be checked.
+  if (mcp.allowedTools) {
+    const loadedTools = new Set([
+      ...mcp.allowedTools,
+      ...(mcp.wrappedTools ?? []),
+    ]);
+    const unknownTools = serviceAccount.tools.filter(
+      (tool) => !loadedTools.has(tool),
     );
-  }
-  const userOAuth = result.data["user-oauth"];
-  if (userOAuth === false) {
-    // No Actor connection exists to call a tool that the account may not,
-    // so every tool that the plugin loads must be in the policy.
-    const policyTools = new Set(mcpTools);
-    const uncovered = [
-      ...new Set([...allowedTools, ...(mcp.wrappedTools ?? [])]),
-    ].filter((tool) => !policyTools.has(tool));
-    if (uncovered.length > 0) {
+    if (unknownTools.length > 0) {
       throw new Error(
-        `Plugin ${name} service-account.user-oauth false requires every loaded MCP tool in service-account.mcp-tools: ${uncovered.join(", ")}`,
+        `Plugin ${name} accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownTools.join(", ")}`,
       );
     }
   }
-  return { ...(userOAuth === false ? { userOAuth } : undefined), mcpTools };
+  return {
+    ...(userOAuth === false ? { userOAuth } : undefined),
+    serviceAccount: { tools: serviceAccount.tools },
+  };
 }
 
 function parseManifestSource(
@@ -1226,9 +1229,9 @@ function parseManifestSource(
         `Plugin ${String(parsedSource.name ?? "unknown")} oauth must be an object`,
       );
     }
-    if (path === "service-account") {
+    if (path === "accounts") {
       throw new Error(
-        `Plugin ${String(parsedSource.name ?? "unknown")} service-account must be an object`,
+        `Plugin ${String(parsedSource.name ?? "unknown")} accounts must be an object`,
       );
     }
     if (path === "target") {
@@ -1289,8 +1292,8 @@ function parseManifestSource(
     ? normalizeRuntimePostinstall(data["runtime-postinstall"], data.name)
     : undefined;
   const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
-  const serviceAccount = data["service-account"]
-    ? normalizeServiceAccount(data["service-account"], mcp, data.name)
+  const accounts = data.accounts
+    ? normalizeAccounts(data.accounts, mcp, data.name)
     : undefined;
 
   const manifest: PluginManifest = {
@@ -1306,7 +1309,7 @@ function parseManifestSource(
     ...(runtimeDependencies ? { runtimeDependencies } : undefined),
     ...(runtimePostinstall ? { runtimePostinstall } : undefined),
     ...(mcp ? { mcp } : undefined),
-    ...(serviceAccount ? { serviceAccount } : undefined),
+    ...(accounts ? { accounts } : undefined),
   };
 
   if (data.oauth) {

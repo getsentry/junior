@@ -31,7 +31,7 @@ async function createServiceAccountApp(): Promise<void> {
             url: SERVICE_ACCOUNT_MCP_URL,
             allowedTools: ["search", "create"],
           },
-          serviceAccount: { mcpTools: ["search"] },
+          accounts: { serviceAccount: { tools: ["search"] } },
         },
       }),
     ]),
@@ -122,7 +122,7 @@ describe("service accounts API", () => {
         connected: false,
         displayName: "Docs",
         userOAuth: true,
-        mcpTools: ["search"],
+        tools: ["search"],
         provider: "docs-mcp",
       },
     ]);

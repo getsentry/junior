@@ -143,7 +143,7 @@ export function createMcpAuthOrchestration(
     plugin: PluginDefinition,
   ): Promise<OAuthClientProvider | undefined> => {
     const provider = plugin.manifest.name;
-    if (!plugin.manifest.serviceAccount) {
+    if (!plugin.manifest.accounts?.serviceAccount) {
       return undefined;
     }
     // An actor's own connection can see and do more, so it wins unless the

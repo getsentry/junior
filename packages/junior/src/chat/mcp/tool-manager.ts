@@ -290,9 +290,10 @@ export interface McpToolManagerOptions {
     | Promise<OAuthClientProvider | undefined>;
   /**
    * Return the plugin's service account auth, or undefined to use the actor's
-   * own auth. A service account client calls only the tools that
-   * `serviceAccountAllows` permits. Other tools use the actor's own client.
-   * A plugin with `user-oauth: false` never uses the actor's own auth.
+   * own auth. A service account client calls only the tools that its
+   * `accounts.service-account.tools` lists. Other tools use the actor's own
+   * client. A plugin with `accounts.user-oauth: false` never uses the
+   * actor's own auth.
    */
   serviceAccountProviderFactory?: (
     plugin: PluginDefinition,
@@ -417,8 +418,12 @@ export class McpToolManager {
 
     try {
       const client = await this.getClient(plugin);
-      const tools = this.filterListedTools(plugin, await client.listTools());
-      this.assertWrappedToolsAvailable(plugin, tools);
+      const listedTools = this.filterListedTools(
+        plugin,
+        await client.listTools(),
+      );
+      this.assertWrappedToolsAvailable(plugin, listedTools);
+      const tools = this.filterServiceAccountOnlyTools(plugin, listedTools);
       this.toolsByProvider.set(
         provider,
         tools.map((tool) => this.toManagedTool(plugin, client, tool)),
@@ -520,6 +525,22 @@ export class McpToolManager {
     }
   }
 
+  /**
+   * Hide tools that the service account does not list when no Actor
+   * connection exists to call them.
+   */
+  private filterServiceAccountOnlyTools(
+    plugin: PluginDefinition,
+    tools: PluginMcpListedTool[],
+  ): PluginMcpListedTool[] {
+    if (!serviceAccountOnly(plugin.manifest)) {
+      return tools;
+    }
+    return tools.filter((tool) =>
+      serviceAccountAllows(plugin.manifest, { tool: tool.name }),
+    );
+  }
+
   private async getClient(plugin: PluginDefinition): Promise<PluginMcpClient> {
     const existing = this.clientsByProvider.get(plugin.manifest.name);
     if (existing) {
@@ -585,9 +606,14 @@ export class McpToolManager {
     const provider = plugin.manifest.name;
     if (
       !this.serviceAccountProviders.has(provider) ||
-      serviceAccountAllows(plugin.manifest, { mcpTool: toolName })
+      serviceAccountAllows(plugin.manifest, { tool: toolName })
     ) {
       return client;
+    }
+    if (serviceAccountOnly(plugin.manifest)) {
+      throw new McpToolError(
+        `${plugin.manifest.displayName} tool ${toolName} is not available: Junior's shared ${plugin.manifest.displayName} account cannot use it`,
+      );
     }
     const existing = this.actorClientsByProvider.get(provider);
     if (existing) {

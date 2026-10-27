@@ -71,7 +71,8 @@ too.
 If the dashboard is not available, run `junior service-account connect notion`
 on a machine with a browser and the deployment `REDIS_URL`.
 
-The service account calls only `notion-search` and `notion-fetch`. To create,
+The Notion plugin lists only `notion-search` and `notion-fetch` for the
+service account, so it calls only those tools. To create,
 update, or move pages, Junior still asks the person to connect their own
 Notion account. After they connect, Junior uses their account for all Notion
 tools.
@@ -85,20 +86,14 @@ per-user OAuth.
 ### Use only the service account
 
 To stop people from connecting their own Notion accounts, turn off user
-OAuth for the service account in your plugin list. Then everyone uses the shared
-account, and Junior never sends a Notion connect link. The shared account
-must cover every Notion tool that Junior loads, so also limit the tools:
+OAuth in your plugin list. Then everyone uses the shared account, and Junior
+never sends a Notion connect link. Junior hides the Notion tools that the
+service account does not list, so only search and fetch stay available:
 
 ```ts title="plugins.ts"
 export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
   manifests: {
-    notion: {
-      mcp: { allowedTools: ["notion-search", "notion-fetch"] },
-      serviceAccount: {
-        userOAuth: false,
-        mcpTools: ["notion-search", "notion-fetch"],
-      },
-    },
+    notion: { accounts: { userOAuth: false } },
   },
 });
 ```

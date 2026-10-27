@@ -18,7 +18,7 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-notion"]);
 
 This package does not use `NOTION_TOKEN` or a shared workspace integration. Each user connects their own Notion account the first time Junior calls a Notion MCP tool. Junior sends the OAuth link privately and resumes the thread automatically after the user authorizes.
 
-Optionally, a Junior admin can connect a Notion service account from the dashboard Admin page, or with `junior service-account connect notion`. Users who have not connected Notion then use that account for `notion-search` and `notion-fetch`. Write tools still ask the user to connect their own account.
+Optionally, a Junior admin can connect a Notion service account from the dashboard Admin page, or with `junior service-account connect notion`. The manifest lets that account call only `notion-search` and `notion-fetch` (`accounts.service-account.tools`). Users who have not connected Notion then use that account for those tools. Write tools still ask the user to connect their own account.
 
 The package exposes a deliberately limited Notion MCP surface:
 

@@ -37,7 +37,7 @@ const plugin: PluginDefinition = {
       url: SERVICE_ACCOUNT_MCP_URL,
       allowedTools: ["search", "create"],
     },
-    serviceAccount: { mcpTools: ["search"] },
+    accounts: { serviceAccount: { tools: ["search"] } },
   },
 };
 
@@ -46,8 +46,7 @@ const onlyPlugin: PluginDefinition = {
   ...plugin,
   manifest: {
     ...plugin.manifest,
-    mcp: { ...plugin.manifest.mcp!, allowedTools: ["search"] },
-    serviceAccount: { userOAuth: false, mcpTools: ["search"] },
+    accounts: { userOAuth: false, serviceAccount: { tools: ["search"] } },
   },
 };
 
@@ -188,6 +187,10 @@ describe("MCP service account auth", () => {
     ).manager;
     try {
       await connected.activateProvider(PROVIDER);
+      // No actor connection exists to call the unlisted tool, so it is hidden.
+      expect(
+        connected.getResolvedActiveTools().map((managed) => managed.rawName),
+      ).toEqual(["search"]);
       await expect(
         tool(connected, "search").execute({}),
       ).resolves.toMatchObject({

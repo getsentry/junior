@@ -1,24 +1,23 @@
 /**
  * Service accounts.
  *
- * A plugin can declare an optional install-wide provider account, often a
- * bot, that Junior itself uses. By default, the credential order for one
- * request is:
+ * A plugin's `accounts` block can allow an optional install-wide provider
+ * account, often a bot, that Junior itself uses. By default, the credential
+ * order for one request is:
  *
  * 1. The Actor's own connection, when it exists.
- * 2. The plugin's service account, when an Admin connected it and this
- *    policy allows the request.
+ * 2. The plugin's service account, when an Admin connected it and
+ *    `accounts.service-account` lists what the request uses.
  * 3. Otherwise, the Actor must connect their own account.
  *
- * With `user-oauth: false`, Junior uses only the service account. It ignores Actor
- * connections and never asks an Actor to connect. Until an Admin connects
- * the account, the plugin is not available.
+ * With `accounts.user-oauth: false`, Junior uses only the service account.
+ * It ignores Actor connections, never asks an Actor to connect, and hides
+ * what the account does not list. Until an Admin connects the account, the
+ * plugin is not available.
  *
- * The service account usually has fewer permissions than a person. This
- * module is the one place that decides which requests it may serve. Each
- * request surface asks it before it uses the shared account. Surfaces that
- * Junior proxies, such as sandbox egress, can also enforce the policy on
- * each request.
+ * This module is the one place that decides which requests the service
+ * account may serve. Each request surface asks it before it uses the shared
+ * account. Today MCP tools are the only request kind.
  *
  * This module also owns the connect flow that the dashboard Admin page and
  * the `junior service-account` CLI share. Today MCP is the only surface that
@@ -35,15 +34,17 @@ import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 /** One request that a plugin's service account could serve. */
 export interface ServiceAccountRequest {
   /** Provider MCP tool that the request calls. */
-  mcpTool: string;
+  tool: string;
 }
 
-/** Return whether the plugin's service account policy allows this request. */
+/** Return whether the plugin's service account may serve this request. */
 export function serviceAccountAllows(
-  manifest: Pick<PluginManifest, "serviceAccount">,
+  manifest: Pick<PluginManifest, "accounts">,
   request: ServiceAccountRequest,
 ): boolean {
-  return manifest.serviceAccount?.mcpTools.includes(request.mcpTool) ?? false;
+  return (
+    manifest.accounts?.serviceAccount?.tools.includes(request.tool) ?? false
+  );
 }
 
 /**
@@ -53,9 +54,9 @@ export function serviceAccountAllows(
  * Actor to connect.
  */
 export function serviceAccountOnly(
-  manifest: Pick<PluginManifest, "serviceAccount">,
+  manifest: Pick<PluginManifest, "accounts">,
 ): boolean {
-  return manifest.serviceAccount?.userOAuth === false;
+  return manifest.accounts?.userOAuth === false;
 }
 
 /** Admin-safe status of one plugin's service account. Never includes tokens. */
@@ -65,18 +66,18 @@ export interface ServiceAccountStatus {
   /** False when Actors cannot use their own connection. */
   userOAuth: boolean;
   /** MCP tools that the account may call. */
-  mcpTools: string[];
+  tools: string[];
   connected: boolean;
   connectedAt?: string;
   /** Email of the Admin who connected it. Missing for CLI connections. */
   connectedBy?: string;
 }
 
-/** Return the plugins that declare a service account policy. */
+/** Return the plugins whose `accounts` block allows a service account. */
 export function serviceAccountPlugins(
   plugins: PluginDefinition[],
 ): PluginDefinition[] {
-  return plugins.filter((plugin) => plugin.manifest.serviceAccount);
+  return plugins.filter((plugin) => plugin.manifest.accounts?.serviceAccount);
 }
 
 /** Read the service account status for one plugin. */
@@ -84,12 +85,16 @@ export async function getServiceAccountStatus(
   plugin: PluginDefinition,
 ): Promise<ServiceAccountStatus> {
   const { manifest } = plugin;
+  const serviceAccount = manifest.accounts?.serviceAccount;
+  if (!serviceAccount) {
+    throw new Error(`Plugin ${manifest.name} does not allow a service account`);
+  }
   const credentials = await getMcpServiceAccountCredentials(manifest.name);
   return {
     provider: manifest.name,
     displayName: manifest.displayName,
     userOAuth: !serviceAccountOnly(manifest),
-    mcpTools: manifest.serviceAccount?.mcpTools ?? [],
+    tools: serviceAccount.tools,
     connected: Boolean(credentials),
     ...(credentials
       ? { connectedAt: new Date(credentials.connectedAtMs).toISOString() }

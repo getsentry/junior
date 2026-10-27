@@ -307,7 +307,7 @@ function signInProvider(input: {
 
 function requireServiceAccountMcp(plugin: PluginDefinition) {
   const mcp = plugin.manifest.mcp;
-  if (!mcp || !plugin.manifest.serviceAccount) {
+  if (!mcp || !plugin.manifest.accounts?.serviceAccount) {
     throw new Error(
       `Plugin "${plugin.manifest.name}" does not support a service account`,
     );

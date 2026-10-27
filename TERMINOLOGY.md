@@ -39,12 +39,12 @@ Canonical words used across Junior's code and documentation.
   reach. Do not add plugin-specific admin lists.
 - **Service account**: an optional provider account, often a bot, that Junior
   itself uses for one plugin. An Admin connects it on the dashboard Admin
-  page, or with `junior service-account connect`. By default, per-Actor
-  OAuth stays on. Junior uses the service account
-  only for an Actor who has not connected their own account, and only for
-  requests that the plugin's `service-account` policy allows. With
-  `user-oauth: false`, Junior uses only the service account and never asks an Actor to
-  connect.
+  page, or with `junior service-account connect`. The plugin's
+  `accounts.service-account` block allows it and lists what it may use. By
+  default, per-Actor OAuth stays on. Junior uses the service account only for
+  an Actor who has not connected their own account, and only for what it
+  lists. With `accounts.user-oauth: false`, Junior uses only
+  the service account and never asks an Actor to connect.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are
