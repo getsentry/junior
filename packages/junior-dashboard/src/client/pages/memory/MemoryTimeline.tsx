@@ -15,8 +15,8 @@ import { Card } from "../../components/layout/Card";
 import type { MemoryDay } from "./memoryDashboard";
 
 const series = [
-  { color: "#67e8f9", key: "personal", label: "Personal" },
-  { color: "#6ee7b7", key: "public", label: "Public" },
+  { color: "var(--color-cyan-300)", key: "personal", label: "Personal" },
+  { color: "var(--color-emerald-300)", key: "public", label: "Public" },
 ] as const;
 
 /** Render viewer memory creation as a stacked personal/public timeline. */

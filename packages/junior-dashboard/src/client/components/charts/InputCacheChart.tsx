@@ -164,7 +164,7 @@ export function InputCacheChart(props: {
                   {bars}
                   {incomplete ? (
                     <rect
-                      fill="#94a3b8"
+                      fill="var(--color-slate-400)"
                       x={x(index) - barWidth / 2}
                       y={layout.top + layout.plotHeight - 3}
                       width={barWidth}

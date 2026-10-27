@@ -50,6 +50,7 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
 import { TextArea, TextInput } from "../../components/TextInput";
+import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
 import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShell";
@@ -300,6 +301,9 @@ function FoundationsGalleryPage() {
               : null}
           </Drawer>
         ) : null}
+      </Fixture>
+      <Fixture title="Theme">
+        <ThemeSwitcher className="max-w-64" />
       </Fixture>
       <Fixture title="Color tokens">
         <div className="grid gap-4">

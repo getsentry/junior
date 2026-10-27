@@ -43,7 +43,13 @@ export function LocationActivityChart(props: {
           <ChartLegend
             ariaLabel="Conversation activity period"
             inline
-            items={[{ color: "#22d3ee", key: "period", label: "90 days" }]}
+            items={[
+              {
+                color: "var(--color-cyan-400)",
+                key: "period",
+                label: "90 days",
+              },
+            ]}
           />
         }
       />
@@ -55,8 +61,12 @@ export function LocationActivityChart(props: {
         >
           <defs>
             <linearGradient id="location-bars" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#22d3ee" />
-              <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.65" />
+              <stop offset="0%" stopColor="var(--color-cyan-400)" />
+              <stop
+                offset="100%"
+                stopColor="var(--color-amber-500)"
+                stopOpacity="0.65"
+              />
             </linearGradient>
           </defs>
           <ActivityChartGrid layout={layout} maximum={maximum} />
@@ -98,7 +108,7 @@ export function LocationActivityChart(props: {
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke="#22d3ee"
+            stroke="var(--color-cyan-400)"
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

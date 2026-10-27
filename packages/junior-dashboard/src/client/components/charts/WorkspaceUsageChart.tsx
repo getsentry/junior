@@ -14,7 +14,7 @@ import { Card } from "../layout/Card";
 import { formatActivityChartAverage, formatCompactNumber } from "../../format";
 import type { WorkspaceUsageDay } from "./workspaceUsage";
 
-const USAGE_COLOR = "#a78bfa";
+const USAGE_COLOR = "var(--color-violet-400)";
 
 /** Plot successful Workspace switches for one recipe over a trailing window. */
 export function WorkspaceUsageChart(props: {
