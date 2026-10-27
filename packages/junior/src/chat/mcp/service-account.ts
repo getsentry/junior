@@ -144,26 +144,16 @@ export function createMcpServiceAccountClientProvider(
   let lastRefreshToken = connected.tokens.refresh_token;
   let tokensRejected = false;
 
-  // Read and write under one lock, so a turn that saves one field cannot
-  // write back an older refresh token that another turn already replaced.
-  const update = async (
-    patch: Partial<McpServiceAccountCredentials>,
-  ): Promise<void> => {
+  // Read and write under one lock, so a turn cannot write back or delete a
+  // refresh token that another turn already replaced.
+  const withStoreLock = async <T>(
+    run: (fence: () => Promise<void>) => Promise<T>,
+  ): Promise<T> => {
     const state = getStateAdapter();
     const result = await withLock(
       state,
       `${serviceAccountKey(provider)}:update`,
-      async (lock) => {
-        const current = await getMcpServiceAccountCredentials(provider);
-        if (!current) {
-          throw new Error(reconnectMessage(provider));
-        }
-        await fenceLock(state, lock);
-        await putMcpServiceAccountCredentials(provider, {
-          ...current,
-          ...patch,
-        });
-      },
+      async (lock) => await run(() => fenceLock(state, lock)),
       { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: UPDATE_LOCK_WAIT_MS },
     );
     if (!result.acquired) {
@@ -171,6 +161,23 @@ export function createMcpServiceAccountClientProvider(
         `Timed out waiting to update the ${provider} service account`,
       );
     }
+    return result.value;
+  };
+
+  const update = async (
+    patch: Partial<McpServiceAccountCredentials>,
+  ): Promise<void> => {
+    await withStoreLock(async (fence) => {
+      const current = await getMcpServiceAccountCredentials(provider);
+      if (!current) {
+        throw new Error(reconnectMessage(provider));
+      }
+      await fence();
+      await putMcpServiceAccountCredentials(provider, {
+        ...current,
+        ...patch,
+      });
+    });
   };
 
   return {
@@ -211,20 +218,31 @@ export function createMcpServiceAccountClientProvider(
       }
     },
     redirectToAuthorization: async () => {
-      const stored = await getMcpServiceAccountCredentials(provider);
-      // Without a rejection, the refresh failed for a reason that can pass,
-      // such as a network error. Keep the account for the next turn.
-      const revoked = tokensRejected || !stored || !stored.tokens.refresh_token;
-      if (!revoked) {
-        throw new Error(
-          `The ${provider} service account could not refresh its token. Try again later.`,
-        );
-      }
-      if (stored && stored.tokens.refresh_token === lastRefreshToken) {
+      const revoked = await withStoreLock(async (fence) => {
+        const stored = await getMcpServiceAccountCredentials(provider);
+        if (!stored) {
+          return true;
+        }
+        // Without a rejection, the refresh failed for a reason that can
+        // pass, such as a network error. If another turn replaced the
+        // rejected token, the account still works. Keep it in both cases.
+        if (
+          (!tokensRejected && stored.tokens.refresh_token) ||
+          stored.tokens.refresh_token !== lastRefreshToken
+        ) {
+          return false;
+        }
+        await fence();
         await deleteMcpServiceAccountCredentials(provider);
         logWarn("mcp.service_account.disconnected", {
           "app.plugin.name": provider,
         });
+        return true;
+      });
+      if (!revoked) {
+        throw new Error(
+          `The ${provider} service account could not refresh its token. Try again later.`,
+        );
       }
       throw new McpAuthorizationRequiredError(
         provider,

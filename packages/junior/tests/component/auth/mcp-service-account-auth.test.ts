@@ -267,6 +267,14 @@ describe("MCP service account auth", () => {
       await refreshed.close();
     }
     await stale.invalidateCredentials?.("tokens");
+    const staleRedirect = await Promise.resolve(
+      stale.redirectToAuthorization(new URL(`${SERVICE_ACCOUNT_MCP_URL}/x`)),
+    ).catch((error: unknown) => error);
+    expect(staleRedirect).toBeInstanceOf(Error);
+    expect(staleRedirect).not.toBeInstanceOf(McpAuthorizationRequiredError);
+    expect(
+      (await getMcpServiceAccountCredentials(PROVIDER))?.tokens.refresh_token,
+    ).toBe("refresh-2");
     await expect(stale.tokens()).resolves.toMatchObject({
       refresh_token: "refresh-2",
     });
