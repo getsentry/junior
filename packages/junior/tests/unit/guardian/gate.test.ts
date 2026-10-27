@@ -7,7 +7,7 @@ import {
   type ToolActionReview,
   type ToolActionReviewContext,
   type ToolActionReviewer,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 
 const LOCAL_SOURCE = {
   kind: "local",

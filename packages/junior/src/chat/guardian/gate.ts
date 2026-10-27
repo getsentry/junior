@@ -19,8 +19,8 @@ import type {
 import type {
   ToolActionPriorRejection,
   ToolActionRejectionMarker,
-} from "@/chat/tool-support/action-review-history";
-import { projectToolActionRejection } from "@/chat/tool-support/action-review-history";
+} from "@/chat/guardian/history";
+import { projectToolActionRejection } from "@/chat/guardian/history";
 import { logException } from "@/chat/logging";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 

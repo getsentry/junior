@@ -470,7 +470,7 @@ vi.mock("@/chat/pi/client", () => ({
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
-vi.mock("@/chat/services/guardian-action-review", () => ({
+vi.mock("@/chat/guardian/reviewer", () => ({
   createGuardianActionReviewer: () => ({
     review: async (proposal: unknown) => {
       guardianProposals.push(proposal);

@@ -24,7 +24,7 @@ import {
   ToolActionRejectedError,
   ToolActionReviewLimitError,
   ToolActionReviewUnavailableError,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 
 function isPluginToolInputError(error: unknown): boolean {
   return (

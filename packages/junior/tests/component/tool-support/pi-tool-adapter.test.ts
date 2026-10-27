@@ -7,7 +7,7 @@ import {
   createToolActionReview,
   type ToolActionReview,
   type ToolActionReviewer,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";

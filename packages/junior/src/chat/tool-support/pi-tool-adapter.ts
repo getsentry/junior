@@ -52,7 +52,7 @@ import {
   reviewToolAction,
   ToolActionRejectedError,
   type ToolActionReview,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /**

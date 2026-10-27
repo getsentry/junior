@@ -7,7 +7,7 @@ import {
   normalizeToolNameFromResult,
 } from "@/chat/pi/transcript";
 import { estimateTextTokens } from "@/chat/services/context-budget";
-import type { ToolActionEvidence } from "@/chat/tool-support/action-review";
+import type { ToolActionEvidence } from "@/chat/guardian/gate";
 
 const MAX_MESSAGE_TRANSCRIPT_TOKENS = 10_000;
 const MAX_TOOL_TRANSCRIPT_TOKENS = 10_000;

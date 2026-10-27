@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
+import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 
 /** Incomplete transcript fixtures for evidence selection tests. */
 function piMessage(value: unknown): PiMessage {

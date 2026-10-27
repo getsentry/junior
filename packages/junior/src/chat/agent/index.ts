@@ -140,7 +140,7 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
-import { CHILD_AGENT_USER_INTENT } from "@/chat/tool-support/action-review";
+import { CHILD_AGENT_USER_INTENT } from "@/chat/guardian/gate";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {

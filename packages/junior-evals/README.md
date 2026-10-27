@@ -501,7 +501,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Adding a trigger label fires immediately; unrelated labels do not.
 - Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,memory,scheduler,sentry,skills}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
-- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
+- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/guardian/**`.
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard, Guardian job, and Router job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).

@@ -6,7 +6,7 @@ import {
   GUARDIAN_ACTION_POLICY,
   GUARDIAN_BLOCK_RULES,
   GUARDIAN_RULE_IDS,
-} from "@/chat/services/guardian-action-policy";
+} from "@/chat/guardian/policy";
 import { ProviderError } from "@/chat/services/provider-error";
 import type {
   RootConversation,
@@ -14,7 +14,7 @@ import type {
   ToolActionProposal,
   ToolActionReviewDecision,
   ToolActionReviewer,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 
 // Field order is generation order. The model rates risk and authorization
 // before it names a rule, as the policy and the Codex reviewer require. The

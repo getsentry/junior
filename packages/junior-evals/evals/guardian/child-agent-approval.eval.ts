@@ -13,7 +13,7 @@ import {
   type RootConversationMessage,
   type ToolActionEvidence,
   type ToolActionProposal,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 import { renderTaskInput } from "@/chat/task-input";
 import { guardianEvals } from "../../src/guardian-harness";
 import { evidence, priorRejection, proposal, slackContext } from "./helpers";

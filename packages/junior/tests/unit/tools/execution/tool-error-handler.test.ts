@@ -23,7 +23,7 @@ import { McpToolError } from "@/chat/mcp/errors";
 import {
   ToolActionRejectedError,
   ToolActionReviewUnavailableError,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 
 describe("handleToolExecutionError", () => {
   beforeEach(() => {

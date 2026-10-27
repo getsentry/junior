@@ -4,9 +4,9 @@ import {
   createGuardianActionReviewer,
   guardianDecision,
   guardianPrompt,
-} from "@/chat/services/guardian-action-review";
+} from "@/chat/guardian/reviewer";
 import { ProviderError } from "@/chat/services/provider-error";
-import type { ToolActionProposal } from "@/chat/tool-support/action-review";
+import type { ToolActionProposal } from "@/chat/guardian/gate";
 import type { ZodType } from "zod";
 
 const mocks = vi.hoisted(() => ({
