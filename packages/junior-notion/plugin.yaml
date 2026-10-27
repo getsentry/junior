@@ -10,3 +10,11 @@ mcp:
     - notion-create-pages
     - notion-update-page
     - notion-move-pages
+
+# Optional shared read account. It has no effect until an admin connects it
+# on the dashboard Admin page.
+accounts:
+  service-account:
+    tools:
+      - notion-search
+      - notion-fetch
