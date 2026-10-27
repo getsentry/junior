@@ -9,7 +9,7 @@ import {
   normalizeCheckSuiteEvents,
   type GitHubCheckSuiteFacts,
 } from "./check-suite.js";
-import { isBotLogin } from "./ownership.js";
+import { isBotLogin, mentionsBotLogin } from "./ownership.js";
 
 export type {
   GitHubCheckSuiteFacts,
@@ -297,6 +297,7 @@ const issueCommentWebhookSchema = z.object({
       .nullable(),
   }),
   repository: repositorySchema,
+  sender: z.object({ id: z.number(), login: z.string().min(1) }).optional(),
 });
 
 /** Normalize a newly created issue or pull request comment. */
@@ -343,26 +344,31 @@ function normalizeIssueCommentEvents(
 
   const issue = gitHubIssueResource(input);
   const repository = gitHubRepositoryResource(input);
-  return [
-    {
-      eventKey: gitHubEventKey(deliveryId, "issue.comment.created"),
-      eventType: "issue.comment.created",
-      occurredAtMs: Date.now(),
-      identifier: issue.identifier,
-      trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
-      ...gitHubDoneBy(author),
-      untrustedText: parsed.data.comment.body,
-    },
-    {
-      eventKey: gitHubEventKey(deliveryId, "issue.comment.created"),
-      eventType: "issue.comment.created",
-      occurredAtMs: Date.now(),
-      identifier: repository.identifier,
-      trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
-      ...gitHubDoneBy(author),
-      untrustedText: parsed.data.comment.body,
-    },
-  ];
+  // The webhook sender is the GitHub-authenticated person who wrote the
+  // comment. Match on its numeric id; logins can be renamed and reused.
+  const sender = parsed.data.sender;
+  const data: Record<string, unknown> = {
+    repo: input.repo,
+    issue: input.number,
+    commentId: parsed.data.comment.id,
+  };
+  if (sender) {
+    data.senderId = sender.id;
+    data.senderLogin = sender.login;
+  }
+  if (botEmail) {
+    data.mentionsBot = mentionsBotLogin(parsed.data.comment.body, botEmail);
+  }
+  return [issue, repository].map((resource) => ({
+    eventKey: gitHubEventKey(deliveryId, "issue.comment.created"),
+    eventType: "issue.comment.created",
+    occurredAtMs: Date.now(),
+    identifier: resource.identifier,
+    trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
+    ...gitHubDoneBy(author),
+    data,
+    untrustedText: parsed.data.comment.body,
+  }));
 }
 
 const issueWebhookSchema = z.object({

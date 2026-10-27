@@ -1,4 +1,7 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  eventMatchFieldsSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
 
 export const GITHUB_ISSUE_EVENTS = [
   "issue.comment.created",
@@ -11,6 +14,26 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
   "issue.closed",
   "issue.reopened",
 ];
+
+/**
+ * Exact values GitHub sets on issue comment event data. Missing keys do not
+ * match, so selectors fail closed on other events.
+ */
+export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  mentionsBot: {
+    kind: "boolean",
+    description: "true when the issue comment mentions the Junior GitHub App",
+  },
+  senderId: {
+    kind: "number",
+    description:
+      "immutable numeric GitHub user id of the issue commenter; prefer over logins",
+  },
+  senderLogin: {
+    kind: "string",
+    description: "GitHub login of the issue commenter; logins can be renamed",
+  },
+});
 
 /** The identifier shape that `gitHubIssueResource` builds. */
 export const GITHUB_ISSUE_IDENTIFIER = {
