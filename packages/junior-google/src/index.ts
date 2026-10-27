@@ -36,6 +36,7 @@ import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript
 import { createReadGoogleSheetTool } from "./tools/read-sheet";
 import { createReadGoogleSlidesTool } from "./tools/read-slides";
 import { createSearchGoogleFilesTool } from "./tools/search-files";
+import { createSetWorkingHoursTool } from "./tools/set-working-hours";
 import { createUpdateCalendarEventTool } from "./tools/update-event";
 
 /** Register Junior's Google Workspace plugin. */
@@ -76,6 +77,7 @@ export function googlePlugin(): PluginRegistration {
         const toolContext = {
           accountEmail: config.accountEmail,
           allowedDomains: config.allowedDomains,
+          db: ctx.db as GoogleDb,
           egress: ctx.egress,
           sandbox: ctx.sandbox,
           users: ctx.users,
@@ -91,6 +93,7 @@ export function googlePlugin(): PluginRegistration {
           readGoogleSlides: createReadGoogleSlidesTool(toolContext),
           readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
           searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
+          setWorkingHours: createSetWorkingHoursTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
       },

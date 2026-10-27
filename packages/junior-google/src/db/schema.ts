@@ -19,3 +19,17 @@ export const juniorGoogleAccounts = pgTable("junior_google_accounts", {
   connectedBy: text("connected_by").notNull(),
   connectedAtMs: bigint("connected_at_ms", { mode: "number" }).notNull(),
 });
+
+/**
+ * Working hours that people save for themselves with `setWorkingHours`.
+ *
+ * Google Calendar does not expose the working hours people set in Calendar,
+ * so Junior keeps its own copy. One row per work email. Times are 24-hour
+ * `HH:MM` in the person's own calendar time zone.
+ */
+export const juniorGoogleWorkingHours = pgTable("junior_google_working_hours", {
+  email: text("email").primaryKey(),
+  workdayStart: text("workday_start").notNull(),
+  workdayEnd: text("workday_end").notNull(),
+  updatedAtMs: bigint("updated_at_ms", { mode: "number" }).notNull(),
+});

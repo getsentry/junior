@@ -1,0 +1,99 @@
+{
+  "id": "29caf218-abf4-4c4c-95e9-94e1d458d618",
+  "prevId": "46c07fba-dfdc-49a7-98ee-6ab1a36022d0",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.junior_google_accounts": {
+      "name": "junior_google_accounts",
+      "schema": "",
+      "columns": {
+        "account_email": {
+          "name": "account_email",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connected_by": {
+          "name": "connected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connected_at_ms": {
+          "name": "connected_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.junior_google_working_hours": {
+      "name": "junior_google_working_hours",
+      "schema": "",
+      "columns": {
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workday_start": {
+          "name": "workday_start",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workday_end": {
+          "name": "workday_end",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at_ms": {
+          "name": "updated_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

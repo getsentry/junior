@@ -11,12 +11,18 @@ Gmail and Drive writes are out of scope.
 ## Surfaces
 
 - `findMeetingTimes` finds times when every required attendee is free and
-  inside working hours (09:00 to 17:00 by default) in the time zone of their
-  own calendar. It reads free/busy data and calendar time zones only. It never
-  reads event titles or details. Optional attendees do not block a slot.
+  inside their working hours, in the time zone of their own calendar. A
+  person's working hours are the hours they saved with `setWorkingHours`, or
+  09:00 to 17:00. A requested time of day, such as afternoons only, can narrow
+  saved hours but never widens them. It reads free/busy data and calendar
+  time zones only. It never reads event titles or details. Optional attendees do not block a slot.
   Slots where they are free come first, and each slot names the optional
   attendees who are busy or off hours. Slots are spread across days and
   across each day, so the requester gets a real choice.
+- `setWorkingHours` saves the requester's own weekday working hours in the
+  `junior_google_working_hours` table. Google does not expose the working
+  hours that people set in Calendar, so people tell Junior instead. A
+  requester can change only their own hours, by their work email.
 - Every Calendar tool takes an optional `timeZone` for the times it reads and
   shows. Without it, the tool uses the requester's timezone from
   `ctx.users.resolveTimezone()`, so Junior does not have to ask for one.
@@ -167,7 +173,7 @@ identity.
 The plugin registers no tools and no sign-in routes until the first three
 variables are set. The Admin page shows **Not configured** until then.
 
-6. Run `junior upgrade` to create the table.
+6. Run `junior upgrade` to create the tables.
 7. Run `junior admin grant <email>` for each person who may connect the account.
 8. Connect the account on **Admin → Google account**, or run
    `junior google connect` with the deployment database configured.
@@ -190,7 +196,9 @@ variables are set. The Admin page shows **Not configured** until then.
 - `readGoogleSheet` does not return formulas, notes on cells, or charts.
   `readGoogleSlides` does not describe images or charts.
 - Google does not expose the working hours that people set in Calendar.
-  Junior uses each calendar's time zone and one shared workday instead.
+  Junior uses only the hours that people save with `setWorkingHours`. People
+  who did not save hours get 09:00 to 17:00 on weekdays. Saved hours do not
+  change by weekday.
 - Junior cannot find or book meeting rooms. Room discovery needs the Admin
   SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
   admin role on Junior's account. Room emails are also outside the allowed
