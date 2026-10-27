@@ -19,6 +19,8 @@ export const plugins = defineJuniorPlugins([linearPlugin()]);
 
 This package does not require a shared `LINEAR_API_KEY` or a custom OAuth app for the default setup. Each user connects their own Linear account the first time Junior calls a Linear MCP tool. Junior sends the authorization link privately and resumes the same Slack thread automatically after the user authorizes.
 
+Optionally, a Junior admin can connect a Linear service account from the dashboard Admin page, or with `junior service-account connect linear`. The plugin lets that account call only Linear's read tools, such as `get_issue`, `list_issues`, and `list_comments` (`accounts.service-account.tools`). Users who have not connected Linear then use that account for those tools. Creating or updating issues and comments still asks the user to connect their own account. Anyone who can talk to Junior can read what the service account can read.
+
 Linear operations use Linear's hosted MCP tools directly. When an issue is created through that path, Junior links it to the current conversation.
 
 To run watches or event automations when Linear issues are created:

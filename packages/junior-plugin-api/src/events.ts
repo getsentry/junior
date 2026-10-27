@@ -315,6 +315,12 @@ export const eventInputSchema = z
       .optional(),
     /** People involved in the change. Watch Events list them as mentions. */
     people: z.array(eventPersonSchema).max(20).optional(),
+    /**
+     * The person who did what the Event describes, such as a reviewer or a
+     * commenter. Core resolves them like `people`, so the agent knows when a
+     * mention and a provider name are the same person.
+     */
+    doneBy: eventPersonSchema.optional(),
   })
   .strict();
 

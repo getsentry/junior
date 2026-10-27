@@ -1,6 +1,9 @@
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { createApp } from "@/app";
 import { closeDb, getConversationEventStore } from "@/chat/db";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -15,15 +18,17 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
+import { SUITE_EXPERIMENTAL } from "../../fixtures/experimental-setup";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
-import { usersInfoOk } from "../../fixtures/slack/factories/api";
+import { authTestOk, usersInfoOk } from "../../fixtures/slack/factories/api";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
   queueSlackApiError,
 } from "../../msw/handlers/slack-api";
+import { mswServer } from "../../msw/server";
 
 const SIGNING_SECRET = "test-signing-secret";
 
@@ -31,6 +36,7 @@ describe("Slack webhook auth boundary", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     vi.useRealTimers();
+    await disconnectStateAdapter();
     await closeDb();
   });
 
@@ -253,6 +259,56 @@ describe("Slack webhook auth boundary", () => {
     expect(queue.queuedMessages()).toHaveLength(5);
     expect(getCapturedSlackApiCalls("users.info")).toHaveLength(6);
     await state.disconnect();
+  });
+
+  it("lets only Slack authors on the allowed domains start a Turn", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const slack = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = slack.waitUntil();
+    const app = await createApp({
+      allowedDomains: ["example.com", "example.org"],
+      conversationWorkQueue: () => queue,
+      experimental: SUITE_EXPERIMENTAL,
+      waitUntil: waitUntil.fn,
+    });
+    await getStateAdapter().connect();
+    // Membership and the domain check can both look up the author.
+    const emails: Record<string, string> = {
+      U123: "testuser@example.com",
+      UCONTRACTOR: "someone@contractor.dev",
+    };
+    mswServer.use(
+      http.post("https://slack.com/api/users.info", async ({ request }) => {
+        const user = new URLSearchParams(await request.text()).get("user")!;
+        return HttpResponse.json(
+          usersInfoOk({ userId: user, email: emails[user] }),
+        );
+      }),
+    );
+    let sequence = 1;
+    const mention = async (user: string) => {
+      const envelope = slackEventsApiEnvelope({
+        eventType: "app_mention",
+        channel: "C123",
+        user,
+        ts: `1712345.${String(sequence++).padStart(6, "0")}`,
+        text: `<@${authTestOk().user_id}> hello`,
+      });
+      expect((await app.fetch(slack.event(envelope))).status).toBe(200);
+      await waitUntil.flush();
+    };
+
+    // Slack verifies the profile email, so its domain decides.
+    await mention("U123");
+    expect(queue.queuedMessages()).toHaveLength(1);
+
+    // Junior drops the message and does not reply.
+    await mention("UCONTRACTOR");
+    expect(queue.queuedMessages()).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
+    expect(slackApiOutbox.messages()).toEqual([]);
   });
 
   it.each(["message", "factory"] as const)(

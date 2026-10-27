@@ -108,7 +108,7 @@ const AGENT_TEST_RULES = [
     message:
       "tests must not fake the model; run the real agent through the agent test fixture",
     pattern:
-      /\bvi\.(?:doMock|mock)\(\s*["'](?:@earendil-works\/pi-agent-core|@\/chat\/pi\/client)["']|\bclass\s+MockAgent\b|\b(?:createFauxCore|fauxAssistantMessage)\b|\b(?:completeObject|completeText)\s*:|\bhttp\.\w+\(\s*["'`]https:\/\/ai-gateway\.vercel\.sh/g,
+      /\bvi\.(?:doMock|mock)\(\s*["'](?:@earendil-works\/pi-agent-core|@\/chat\/pi\/client)["']|\bclass\s+MockAgent\b|\b(?:createFauxCore|fauxAssistantMessage)\b|\b(?:completeDecision|completeObject|completeText)\s*:|\bhttp\.\w+\(\s*["'`]https:\/\/ai-gateway\.vercel\.sh/g,
   },
   {
     id: "runtime-config-mutation",

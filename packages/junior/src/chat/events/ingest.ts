@@ -3,7 +3,7 @@ import { eventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import { enqueueEventNotification } from "@/chat/events/notification";
-import { resolveEventPeopleMentions } from "@/chat/events/people";
+import { resolveEventMentions, type EventMentions } from "@/chat/events/people";
 import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
 
 /** Match a normalized event and enqueue notifications into conversations. */
@@ -28,13 +28,10 @@ export async function ingestEvent(
     state: options.state,
   });
   // Resolve once per Event. Only matched Watches pay for the lookup.
-  let people: string[] = [];
-  if (subscriptions.length > 0 && event.people && options.slackTeamId) {
+  let mentions: EventMentions = { people: [] };
+  if (subscriptions.length > 0 && options.slackTeamId) {
     try {
-      people = await resolveEventPeopleMentions(
-        event.people,
-        options.slackTeamId,
-      );
+      mentions = await resolveEventMentions(event, options.slackTeamId);
     } catch (error) {
       // People only add mentions. Deliver the Event without them.
       logException(error, "event.people.resolve.failed", {
@@ -60,8 +57,9 @@ export async function ingestEvent(
         waitDeadlineMs,
         deliver: async (current) => {
           const result = await enqueueEventNotification({
+            doneBy: mentions.doneBy,
             event,
-            people,
+            people: mentions.people,
             queue: options.queue,
             state: options.state,
             subscription: current,

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { normalizeIdentityEmail } from "@/chat/identities/identity";
 
 export type LogAttributeValue = string | number | boolean | string[];
 export type LogAttributes = Record<string, LogAttributeValue>;
@@ -10,12 +11,18 @@ export interface LogContext {
   requestId?: string;
   messageConversationId?: string;
   destinationName?: string;
+  /** The accountable person: the user Actor, or the delegated credential owner. */
   userId?: string;
   userName?: string;
   userEmail?: string;
+  userFullName?: string;
   runId?: string;
+  /** Who acted: `user` or `system`. */
   actorType?: string;
   actorId?: string;
+  /** Why delegated credentials were allowed, and for which Automation. */
+  taskId?: string;
+  credentialAllowedWhen?: string;
   assistantUserName?: string;
   modelId?: string;
   skillName?: string;
@@ -57,11 +64,15 @@ export function logContextToAttributes(context: LogContext): LogAttributes {
       context.platform === "slack" ? "slack" : context.platform,
     "messaging.message.conversation_id": context.messageConversationId,
     "messaging.destination.name": context.destinationName,
-    "enduser.id": context.userId,
-    "enduser.pseudo.id": context.userName,
+    "user.id": context.userId,
+    "user.name": context.userName,
+    "user.email": normalizeIdentityEmail(context.userEmail),
+    "user.full_name": context.userFullName,
     "app.run.id": context.runId,
     "app.actor.type": context.actorType,
     "app.actor.id": context.actorId,
+    "app.task.id": context.taskId,
+    "app.credential.allowed_when": context.credentialAllowedWhen,
     "gen_ai.agent.name": context.assistantUserName,
     "gen_ai.request.model": context.modelId,
     "app.skill.name": context.skillName,

@@ -51,7 +51,8 @@ export function fileReferenceSchema(name: string) {
     );
 }
 
-const FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,200}$/;
+/** A Drive file id, as the file tools accept it. */
+export const FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,200}$/;
 
 /** One Drive file, and the resource key that a link-shared file can need. */
 export interface FileReference {

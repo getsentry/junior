@@ -1397,6 +1397,13 @@ function simpleConversation(
   });
 }
 
+const MOCK_MENTION_MORGAN: ActorIdentity = {
+  email: "dev@example.com",
+  fullName: "Morgan Lee",
+  slackUserId: "U123",
+  slackUserName: "morgan",
+};
+
 function eventAutomationRunConversation(
   nowMs: number,
 ): ConversationDetailReport {
@@ -1444,6 +1451,7 @@ function eventAutomationRunConversation(
           "",
           "End with `finishAutomationRun`.",
         ].join("\n"),
+        mentions: [MOCK_MENTION_MORGAN],
       }),
       reportEvent(1, at(1_000), {
         type: "turn_lifecycle",
@@ -1455,7 +1463,12 @@ function eventAutomationRunConversation(
         type: "message",
         messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
         role: "assistant",
-        text: "ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production.",
+        text: "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>.",
+        // U456 has no People profile, and U999 is not resolved.
+        mentions: [
+          MOCK_MENTION_MORGAN,
+          { fullName: "Casey Nguyen", slackUserId: "U456" },
+        ],
       }),
       reportEvent(3, at(14_000), {
         type: "turn_lifecycle",
@@ -2682,6 +2695,7 @@ export function readMockPeopleCode(
   const overview = readMockCodeOverview();
   return {
     activityDays: overview.activityDays,
+    changes: overview.changes,
     generatedAt: overview.generatedAt,
     summary: overview.summary,
     windowEnd: overview.windowEnd,

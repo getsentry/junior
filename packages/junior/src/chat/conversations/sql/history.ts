@@ -151,7 +151,11 @@ function messagesSummarizedEventFromRow(
 }
 
 class SqlConversationEventStore implements ConversationEventStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async append(
     conversationId: string,

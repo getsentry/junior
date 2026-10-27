@@ -483,6 +483,7 @@ export function usersInfoOk(
         email: input.email ?? "testuser@example.com",
         status_text: input.statusText ?? "",
         status_emoji: input.statusEmoji ?? "",
+        image_512: `https://avatars.slack-edge.com/${input.userId ?? TEST_USER_ID}_512.png`,
         ...(input.fields ? { fields: input.fields } : undefined),
       },
     },

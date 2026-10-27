@@ -2,6 +2,7 @@ import {
   PluginToolInputError,
   type ObjectAnnotation,
   type PluginEgress,
+  type PluginSandbox,
   type User,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -14,6 +15,8 @@ export interface GoogleToolContext {
   accountEmail: string;
   allowedDomains: string[];
   egress: PluginEgress;
+  /** Holds full meeting records that are too long to return inline. */
+  sandbox: Pick<PluginSandbox, "root" | "run" | "writeFile">;
   users: {
     resolveActor(): Promise<{ user?: User } | undefined>;
     resolveTimezone(): Promise<string>;

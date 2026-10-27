@@ -42,6 +42,10 @@ An Automation run is one dispatch of an Automation. Each run is one row in
 - Dispatch sets `conversation_id` when the dispatch Conversation exists. A
   later write of the same run fills a missing link. A skipped run, or a run
   that fails before dispatch, has no Conversation.
+- Dispatch sets `automation_version` to the newest version whose definition
+  is the same as the dispatched definition. Later writes keep it. It is null
+  when the run was not dispatched, and when no version matches. This shows
+  which instruction a run used, and who saved it, after later edits.
 - The heartbeat settles running runs of both kinds from their dispatch record,
   also when the Automation was deleted during the run. A run whose dispatch
   record is gone becomes `failed`.

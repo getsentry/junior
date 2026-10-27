@@ -74,6 +74,25 @@ describe("Scheduled Delivery", () => {
     expect(delivery.replies[0]!.text).not.toMatch(/<@[UW]/);
   });
 
+  test("when a due reminder says to post in this channel, deliver it instead of looking for a posting tool", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      task: "Post a reminder in this channel asking everyone to reply in this message's thread with their weekly update. A couple of sentences is enough.",
+    });
+
+    const delivery = await run(heartbeat());
+
+    expect(
+      completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
+    ).toEqual([expect.objectContaining({ result: "send_message" })]);
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).toMatch(/weekly update/i);
+  });
+
   test("when a due reminder goes to its creator's DM, deliver the reminder itself", async ({
     run,
   }) => {

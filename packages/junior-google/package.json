@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-google",
-  "version": "0.255.0",
+  "version": "0.259.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -43,7 +43,7 @@
     "drizzle-kit": "catalog:",
     "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.7"
   }
 }

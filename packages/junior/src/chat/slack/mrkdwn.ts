@@ -118,7 +118,7 @@ function readBareUrl(
 ): { url: string; suffix: string; end: number } | undefined {
   let end = start;
   while (end < line.length) {
-    const ch = line[end];
+    const ch = line.charAt(end);
     if (
       /\s/.test(ch) ||
       ch === "<" ||
@@ -267,8 +267,7 @@ export function ensureBlockSpacing(text: string): string {
   const result: string[] = [];
   let inCodeBlock = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const line of lines) {
     const isCodeFence = codeBlockPattern.test(line.trimStart());
 
     if (isCodeFence) {

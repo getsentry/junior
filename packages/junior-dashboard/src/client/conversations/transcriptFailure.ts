@@ -55,8 +55,6 @@ export function transcriptFailureTitle(
     case "agent_run_failed":
       return "Internal error";
   }
-
-  return "Internal error";
 }
 
 /** Short description for one failed turn in the transcript. */
@@ -111,8 +109,6 @@ export function transcriptFailureDescription(
     case "agent_run_failed":
       return `${agentName} hit an internal error during this turn.`;
   }
-
-  return `${agentName} hit an internal error during this turn.`;
 }
 
 /** Search text for one failed turn in the transcript. */

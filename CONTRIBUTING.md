@@ -139,6 +139,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-memory`
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
+- `@sentry/junior-pagerduty`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
 

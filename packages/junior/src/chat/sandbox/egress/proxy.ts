@@ -1,4 +1,6 @@
-import { logWarn, withSpan } from "@/chat/logging";
+import { credentialLogContext } from "@/chat/credentials/context";
+import type { LogContext } from "@/chat/log-context";
+import { logWarn, setSentryUser, withSpan } from "@/chat/logging";
 import {
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
@@ -8,6 +10,7 @@ import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
+  type SandboxEgressCredentialContext,
 } from "@/chat/sandbox/egress/session";
 import {
   shouldPropagateSandboxEgressTrace,
@@ -65,12 +68,16 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.egressId
+      ? { "app.sandbox.egress_id": input.egressId }
+      : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status ? { "http.response.status_code": input.status } : undefined),
+    ...(input.status
+      ? { "http.response.status_code": input.status }
+      : undefined),
   };
 }
 
@@ -223,20 +230,49 @@ function buildUpstreamUrl(request: Request): UpstreamUrlResult {
   }
 }
 
+/**
+ * Name the Conversation and the accountable person from the verified token.
+ * Each proxy request is a new HTTP request with no run log context, so the
+ * proxy binds the same fields that the run binds.
+ */
+function sandboxEgressLogContext(
+  context: SandboxEgressCredentialContext,
+): LogContext {
+  return {
+    ...(context.conversationId
+      ? { conversationId: context.conversationId }
+      : undefined),
+    ...credentialLogContext(context.credentials),
+  };
+}
+
 /** Continue inbound trace context only after sandbox egress verification succeeds. */
 function continueSandboxEgressTrace<T>(
   request: Request,
   upstreamHost: string,
   tracePropagation: SandboxEgressTracePropagationConfig,
+  credentialContext: SandboxEgressCredentialContext,
   callback: () => Promise<T>,
 ): Promise<T> {
   const sentryTrace = request.headers.get("sentry-trace") ?? undefined;
   const baggage = request.headers.get("baggage") ?? undefined;
+  const logContext = sandboxEgressLogContext(credentialContext);
   const run = () =>
-    withSpan("sandbox.egress", "http.server", {}, callback, {
-      "http.request.method": request.method,
-      "url.path": redactedProxyPath(new URL(request.url).pathname),
-    });
+    withSpan(
+      "sandbox.egress",
+      "http.server",
+      logContext,
+      async () => {
+        setSentryUser(
+          logContext.userId ? { id: logContext.userId } : undefined,
+        );
+        return await callback();
+      },
+      {
+        "http.request.method": request.method,
+        "url.path": redactedProxyPath(new URL(request.url).pathname),
+      },
+    );
   if (
     !shouldPropagateSandboxEgressTrace(upstreamHost, tracePropagation) ||
     (!sentryTrace && !baggage)
@@ -361,6 +397,7 @@ export async function proxySandboxEgressRequest(
     request,
     upstreamUrl.hostname,
     deps.tracePropagation ?? {},
+    credentialContext,
     async () =>
       await executeCredentialedEgressRequest({
         activeEgressId,

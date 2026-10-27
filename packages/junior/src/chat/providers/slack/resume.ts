@@ -55,6 +55,7 @@ import {
 } from "@/chat/slack/assistant-thread/status";
 import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { actorLogContext } from "@/chat/credentials/context";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import {
   startProcessingReactionForMessage,
@@ -196,12 +197,10 @@ interface ResumePreparedTurn {
 }
 
 function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
-  const actor = args.run?.actor;
   return {
     conversationId: args.conversationId,
     messageConversationId: args.conversationId,
-    userId: isUserActor(actor) ? actor.userId : undefined,
-    userName: isUserActor(actor) ? actor.userName : undefined,
+    ...actorLogContext(args.run?.actor, args.run?.credentialContext),
     destinationName: args.channelId,
     assistantUserName: botConfig.userName,
     modelId: defaultModelId(botConfig),

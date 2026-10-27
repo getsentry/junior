@@ -36,7 +36,7 @@ export interface WebSearchResult {
   url: string;
 }
 
-const SEARCH_REQUEST_URL = "https://ai-gateway.vercel.sh/v3/ai/language-model";
+const SEARCH_REQUEST_URL = "https://ai-gateway.vercel.sh/v4/ai/language-model";
 const SEARCH_TOOL_ID = "gateway.parallel_search";
 
 let searchResults: WebSearchResult[] = [];

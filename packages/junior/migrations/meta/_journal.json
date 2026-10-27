@@ -414,6 +414,20 @@
       "when": 1792331274207,
       "tag": "0058_automation_creator_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792739994091,
+      "tag": "0059_automation_run_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792971097553,
+      "tag": "0060_identity_signed_in_at",
+      "breakpoints": true
     }
   ]
 }

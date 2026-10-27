@@ -115,6 +115,16 @@ import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
+import {
+  createSignInAuth,
+  resolveSignInAuthConfig,
+  type SignInAuth,
+  type SignInAuthConfig,
+} from "@/chat/sign-in/auth";
+import {
+  assertNoLegacyAllowedDomains,
+  resolveAllowedDomains,
+} from "@/chat/sign-in/allowlist";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -140,6 +150,14 @@ export interface JuniorAppOptions extends BotModelConfig {
    * default-model call per completed Turn. Disabled by default.
    */
   briefs?: { enabled?: boolean };
+  /**
+   * Domains that may use Junior. Slack checks the email domain of the
+   * author's Slack profile. Dashboard Google sign-in checks the `hd` claim of
+   * the Google Workspace account. Defaults to `JUNIOR_ALLOWED_DOMAINS`.
+   * Recommended. Dashboard auth requires at least one. Empty lets every
+   * Slack workspace member use Junior.
+   */
+  allowedDomains?: string[];
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -435,6 +453,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }),
   });
   let sandboxEgressTracePropagationDomains: string[] = [];
+  let signInConfig: SignInAuthConfig | undefined;
+  let allowedDomains: string[] = [];
   try {
     sandboxEgressTracePropagationDomains =
       normalizeSandboxEgressTracePropagationDomains(
@@ -455,6 +475,22 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setSlackReactionConfig(options?.slack ?? {});
     if (options?.slack?.crossActorMidRunMode) {
       setCrossActorMidRunMode(options.slack.crossActorMidRunMode);
+    }
+    // One domain list for Slack authors and dashboard sign-ins.
+    assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
+    allowedDomains = resolveAllowedDomains(options?.allowedDomains);
+    if (allowedDomains.length === 0) {
+      logWarn("app.allowed_domains.unset", {
+        "app.reason":
+          "allowedDomains is empty, so any Slack workspace member can use Junior",
+      });
+    }
+    if (dashboard && !dashboard.disabled) {
+      signInConfig = resolveSignInAuthConfig(
+        botConfig.userName,
+        allowedDomains,
+        dashboard,
+      );
     }
     if (shouldValidatePluginCatalog) {
       pluginCatalogRuntime.getSignature();
@@ -570,10 +606,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     restoreRuntimeConfig();
     throw error;
   }
-  const slackWebhookServices = createProductionSlackWebhookServices({
-    queue: conversationWorkQueue,
-    services: runtimeServiceOverrides,
-  });
+  // The Google sign-in session of the dashboard.
+  const signInAuth: SignInAuth | undefined = signInConfig
+    ? createSignInAuth(signInConfig)
+    : undefined;
+  const slackWebhookServices = {
+    ...createProductionSlackWebhookServices({
+      queue: conversationWorkQueue,
+      services: runtimeServiceOverrides,
+    }),
+    allowedDomains,
+  };
 
   const app = new Hono();
 
@@ -597,9 +640,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   mountRoutes(
     app,
     await createDashboardRouteRegistrations({
+      allowedDomains,
+      auth: signInAuth,
       authenticatedRoutes,
       conversationWorkQueue,
-      dashboard,
+      // Keep dashboard redirects on the origin of the sign-in callback.
+      dashboard:
+        dashboard && signInConfig
+          ? { ...dashboard, baseURL: signInConfig.baseURL }
+          : dashboard,
       createDashboardApp: virtualConfig?.createDashboardApp,
       pluginRoutes: pluginApiRoutes,
     }),

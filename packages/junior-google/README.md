@@ -4,7 +4,8 @@ Proof of concept. Junior acts as its own Google Workspace account, for example
 `junior@sentry.io`. Junior does not use the Google credentials of the people it
 helps. Tracking issue: getsentry/junior#2063.
 
-This version supports Calendar and reading Google Docs, Sheets, and Slides.
+This version supports Calendar, Meet transcripts, and reading Google Docs,
+Sheets, and Slides.
 Gmail and Drive writes are out of scope.
 
 ## Surfaces
@@ -62,6 +63,26 @@ Gmail and Drive writes are out of scope.
 - `listGoogleFileComments` reads the comments and replies on one Doc, Sheet,
   or Slides file, 100 per call. Each comment gives its author name, text, the
   file text it is attached to, and whether it is resolved.
+- `readMeetingTranscript` reads the Meet transcript and Gemini notes of one
+  meeting on Junior's calendar. Junior and the requester must both be invited
+  to the meeting. Junior does not have to join the call. When someone turns on
+  transcription or Gemini notes, Google saves them as Docs in the organizer's
+  Drive, attaches them to the Calendar event, and shares them with every
+  invitee in the organizer's domain. The tool reads these Docs from the event
+  attachments, so it needs no Meet scope. It reads an attached Doc only when
+  the organizer owns it and it was made after the meeting started. Thus a Doc
+  that someone else attaches to the event, or an agenda made before the
+  meeting, is not read. It does not require a title format, because Meet can
+  change the titles and they differ by language. The title only sets `kind`.
+  Google can take from some minutes to a few hours after the call to attach
+  the records, so an automation must allow for this delay. The result marks
+  the text as untrusted. The tool only reads. Junior acts on what was said
+  only when the requester or an automation asks for it.
+- A transcript of a long meeting can be megabytes. The result returns at
+  most 100,000 characters inline. The tool saves the full text of each cut
+  record to a Markdown file in the Conversation sandbox, under `meetings/`,
+  and returns its `path`. Junior then reads or searches the full file in
+  parts. Drive cannot export a Doc larger than 10 MB.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
@@ -110,6 +131,11 @@ request and the tool asks an admin to reconnect.
   comment reads; Sheets metadata and cell reads; and Slides reads. Each
   request must go to the host of its own API.
 - Junior also requests `openid email` to verify the account during sign-in.
+- Drive sharing decides which files Junior can read. The file tools read
+  any Doc, Sheet, or Slides file shared with Junior's account. This includes
+  Meet transcripts and Gemini notes, which Google shares with Junior when it
+  is invited. `readMeetingTranscript` finds the records from the Calendar
+  event and adds the invite checks. It is not the only way to read them.
 
 ## Setup
 
@@ -169,5 +195,10 @@ variables are set. The Admin page shows **Not configured** until then.
   SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
   admin role on Junior's account. Room emails are also outside the allowed
   domains. It cannot accept or decline invites for other people.
+- Google does not share Meet records with invitees when more than 200 people
+  in the organizer's domain are invited.
+- Junior reads a transcript only when someone asks. No event tells
+  automations that a transcript is ready yet. Tracking issue:
+  getsentry/junior#2100.
 - No disconnect command. To revoke access, remove the app grant from the
   Junior account in Google.

@@ -1,7 +1,18 @@
-import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getNextRunAtMs } from "./cadence";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
 import { existingConversationId } from "@/chat/automations/execution-stats";
+import { automationVersionOf } from "@/chat/automations/versions";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -66,9 +77,18 @@ async function readRun(
   return rows[0] ? parseScheduledRunRow(rows[0]) : undefined;
 }
 
-async function writeRun(db: JuniorDatabase, run: ScheduledRun): Promise<void> {
+/**
+ * Save a Scheduled automation run. Pass `automationVersion` only when the run
+ * is dispatched. Later writes keep the stored version.
+ */
+async function writeRun(
+  db: JuniorDatabase,
+  run: ScheduledRun,
+  automationVersion?: SQL,
+): Promise<void> {
   const stored = scheduledRunSchema.parse(run);
   const columns = {
+    ...(automationVersion ? { automationVersion } : undefined),
     attempt: stored.attempt,
     automationId: stored.taskId,
     claimedAtMs: stored.claimedAtMs,
@@ -386,6 +406,7 @@ async function updateRun(
   db: JuniorDatabase,
   runId: string,
   update: (run: ScheduledRun) => ScheduledRun | undefined,
+  automationVersion?: SQL,
 ): Promise<ScheduledRun | undefined> {
   return await db.transaction(async (tx) => {
     await tx.execute(
@@ -395,7 +416,7 @@ async function updateRun(
     if (!current) return undefined;
     const next = update(current);
     if (!next) return undefined;
-    await writeRun(tx, next);
+    await writeRun(tx, next, automationVersion);
     return next;
   });
 }
@@ -408,7 +429,10 @@ function canFinishRun(
   return run.status === "running" && run.startedAtMs === startedAtMs;
 }
 
-/** Mark a pending run dispatched only for the active claim. */
+/**
+ * Mark a pending run dispatched only for the active claim, and store the
+ * version of `task` that the dispatch ran.
+ */
 export async function markScheduledRunDispatched(
   db: JuniorDatabase,
   args: {
@@ -416,17 +440,22 @@ export async function markScheduledRunDispatched(
     dispatchId: string;
     nowMs: number;
     runId: string;
+    task: ScheduledAutomation;
   },
 ): Promise<ScheduledRun | undefined> {
-  return await updateRun(db, args.runId, (run) =>
-    run.status === "pending" && run.claimedAtMs === args.claimedAtMs
-      ? {
-          ...run,
-          dispatchId: args.dispatchId,
-          startedAtMs: args.nowMs,
-          status: "running",
-        }
-      : undefined,
+  return await updateRun(
+    db,
+    args.runId,
+    (run) =>
+      run.status === "pending" && run.claimedAtMs === args.claimedAtMs
+        ? {
+            ...run,
+            dispatchId: args.dispatchId,
+            startedAtMs: args.nowMs,
+            status: "running",
+          }
+        : undefined,
+    automationVersionOf(args.task),
   );
 }
 

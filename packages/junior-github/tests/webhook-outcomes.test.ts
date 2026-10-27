@@ -570,6 +570,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received requested changes from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "please revise",
           },
         ],
@@ -594,6 +595,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a review comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "overall this looks close",
           },
         ],
@@ -614,6 +616,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "",
           },
         ],
@@ -638,6 +641,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "fine, but dedupe the tests",
           },
           {
@@ -647,6 +651,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "fine, but dedupe the tests",
           },
         ],
@@ -671,6 +676,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             data: {
               repo: "getsentry/junior",
               pullRequest: 946,
@@ -702,6 +708,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received an inline review comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             data: {
               repo: "getsentry/junior",
               pullRequest: 946,
@@ -1462,6 +1469,7 @@ describe("GitHub webhook events", () => {
         identifier,
         trustedSummary:
           "GitHub issue getsentry/junior#946 received a comment from reviewer.",
+        doneBy: { provider: "github", handle: "reviewer" },
         data: {
           repo: "getsentry/junior",
           issue: 946,

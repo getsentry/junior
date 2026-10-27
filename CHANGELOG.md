@@ -1,4 +1,76 @@
 # Changelog
+## 0.259.0
+
+### New Features ✨
+
+- (linear) Allow an optional read-only service account by @sentry-junior in [#2249](https://github.com/getsentry/junior/pull/2249)
+- (plugins) Add optional service accounts for plugins by @sentry-junior in [#2245](https://github.com/getsentry/junior/pull/2245)
+- (slack) Route passive replies with a decision model by @sentry-junior in [#2238](https://github.com/getsentry/junior/pull/2238)
+
+### Internal Changes 🔧
+
+- (lint) Require GitHub plugin requests to use host egress by @sentry-junior in [#2222](https://github.com/getsentry/junior/pull/2222)
+
+## 0.258.0
+
+### New Features ✨
+
+- (auth) Replace Slack sign-in with an allowed domain list by @sentry-junior in [#2229](https://github.com/getsentry/junior/pull/2229)
+- (automations) Default event automation runs to 10 per minute with a configurable window by @sentry-junior in [#2237](https://github.com/getsentry/junior/pull/2237)
+- (pagerduty) Add read-only PagerDuty plugin by @sentry-junior in [#2236](https://github.com/getsentry/junior/pull/2236)
+
+### Bug Fixes 🐛
+
+- (egress) Skip body reading for OPTIONS requests by @sentry in [#2199](https://github.com/getsentry/junior/pull/2199)
+- (github) Attribute automation writes to the Automation run by @sentry-junior in [#2235](https://github.com/getsentry/junior/pull/2235)
+- (lint) Steer file-length failures toward module splits by @sentry-junior in [#2227](https://github.com/getsentry/junior/pull/2227)
+
+### Internal Changes 🔧
+
+- (evals) Bump cloudflared to 2026.10.4 by @sentry-junior in [#2239](https://github.com/getsentry/junior/pull/2239)
+- (ts) Upgrade to TypeScript 7 with strict compiler checks by @sentry-junior in [#2171](https://github.com/getsentry/junior/pull/2171)
+
+## 0.257.0
+
+### New Features ✨
+
+#### Automations
+
+- Run Slack channel automations on named bot posts by @sentry-junior in [#2197](https://github.com/getsentry/junior/pull/2197)
+- Record the Automation version on each run by @sentry-junior[bot] in [#2212](https://github.com/getsentry/junior/pull/2212)
+
+#### Dashboard
+
+- Render Slack mentions as names and profile links by @sentry-junior in [#2226](https://github.com/getsentry/junior/pull/2226)
+- Improve transcript prose typography by @sentry-junior in [#2224](https://github.com/getsentry/junior/pull/2224)
+- Add clear button to search inputs by @sentry-junior in [#2216](https://github.com/getsentry/junior/pull/2216)
+- List a person's code changes on their profile by @sentry-junior in [#2208](https://github.com/getsentry/junior/pull/2208)
+
+#### Slack
+
+- Require Google sign-in before first Slack use by @sentry-junior in [#2220](https://github.com/getsentry/junior/pull/2220)
+- Return avatar URL from user lookup by @sentry-junior in [#2221](https://github.com/getsentry/junior/pull/2221)
+
+#### Other
+
+- (identities) Link OAuth accounts from web connections and verified emails by @sentry-junior in [#2201](https://github.com/getsentry/junior/pull/2201)
+- (logging) Audit credentialed egress writes with one identity model by @sentry-junior in [#2214](https://github.com/getsentry/junior/pull/2214)
+
+### Bug Fixes 🐛
+
+- (automations) Say that send_message is how an automation run posts by @sentry-junior in [#2213](https://github.com/getsentry/junior/pull/2213)
+- (evals) Use a valid PNG for generated images by @sentry-junior in [#2223](https://github.com/getsentry/junior/pull/2223)
+
+## 0.256.0
+
+### New Features ✨
+
+- (google) Read Meet transcripts of meetings Junior is invited to by @sentry-junior in [#2107](https://github.com/getsentry/junior/pull/2107)
+
+### Internal Changes 🔧
+
+- (node) Bump Node to 24.22.1 by @sentry-junior in [#2202](https://github.com/getsentry/junior/pull/2202)
+
 ## 0.255.0
 
 ### New Features ✨

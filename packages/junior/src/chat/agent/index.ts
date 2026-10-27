@@ -58,7 +58,10 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
-import { credentialUserSubjectId } from "@/chat/credentials/context";
+import {
+  actorLogContext,
+  credentialUserSubjectId,
+} from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
@@ -183,8 +186,11 @@ async function readRunConversationVisibility(
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
-  constructor(readonly originalError: unknown) {
+  readonly originalError: unknown;
+
+  constructor(originalError: unknown) {
     super("Assistant message delivery failed");
+    this.originalError = originalError;
   }
 }
 
@@ -240,9 +246,7 @@ export async function executeAgentRun(
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
   });
-  const credentialActor = run.credentialContext?.actor;
   const actor = actorFromRun(run);
-  const userActor = actor && "userId" in actor ? actor : undefined;
   const runLogContext: LogContext = {
     conversationId: run.conversationId,
     platform:
@@ -264,20 +268,8 @@ export async function executeAgentRun(
         : run.source.kind === "web" || run.source.kind === "local"
           ? run.source.conversationId
           : run.conversationId),
-    userId: userActor?.userId,
-    userName: userActor?.userName,
-    userEmail: userActor?.email,
+    ...actorLogContext(actor, run.credentialContext),
     runId: run.runId,
-    actorType: credentialActor
-      ? "type" in credentialActor
-        ? credentialActor.type
-        : "system"
-      : undefined,
-    actorId: credentialActor
-      ? "type" in credentialActor
-        ? credentialActor.userId
-        : credentialActor.name
-      : undefined,
     assistantUserName: botConfig.userName,
   };
   return withLogContext(runLogContext, () =>
@@ -1290,6 +1282,7 @@ async function executeAgentRunInPrivacyContext(
         }
         return deliverAssistantMessage(event.message);
       }
+      return undefined;
     });
 
     let newMessages: PiMessage[] = [];
@@ -1662,6 +1655,7 @@ async function executeAgentRunInPrivacyContext(
             }
             throw error;
           }
+          return undefined;
         },
         {
           "gen_ai.operation.name": "invoke_agent",

@@ -589,7 +589,12 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("reuses broker-managed credentials across read and write egress", async () => {
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      conversationId: "conversation-1",
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
@@ -628,11 +633,24 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
+    unregister();
+
     expect(writeResponse.status).toBe(200);
     await expect(writeResponse.text()).resolves.toBe(
       "Bearer integration-egress-token",
     );
     expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    const writeAudit = records.find(
+      (record) =>
+        record.eventName === "sandbox.egress.upstream.requested" &&
+        record.attributes["http.request.method"] === "POST",
+    );
+    expect(writeAudit?.attributes).toMatchObject({
+      "app.actor.type": "user",
+      "app.log.audit": true,
+      "gen_ai.conversation.id": "conversation-1",
+      "user.id": ACTOR_ID,
+    });
   });
 
   it("intercepts credential-injected provider traffic before live forwarding", async () => {

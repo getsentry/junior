@@ -62,6 +62,7 @@ class TestTokenStore {
 type TestActor = {
   email?: string;
   fullName?: string;
+  name?: string;
   platform?: string;
   teamId?: string;
   userId?: string;
@@ -263,6 +264,37 @@ function mockGitHubUserApi(input?: {
   return requests;
 }
 
+function mockGitHubUserEmailsApi(input: {
+  payload: unknown;
+  status?: number;
+}): CapturedRequest[] {
+  const requests: CapturedRequest[] = [];
+  mswServer.use(
+    http.get("https://api.github.com/user/emails", async ({ request }) => {
+      requests.push(await captureRequest(request));
+      return HttpResponse.json(input.payload as Record<string, unknown>, {
+        status: input.status ?? 200,
+      });
+    }),
+  );
+  return requests;
+}
+
+async function resolveGitHubOAuthAccount(
+  plugin: ReturnType<typeof githubPlugin>,
+) {
+  return await plugin.hooks?.resolveOAuthAccount?.({
+    db,
+    log: pluginLog,
+    plugin: { name: "github" },
+    tokenResponse: {},
+    tokens: {
+      accessToken: "user-token",
+      refreshToken: "refresh-token",
+    },
+  });
+}
+
 function mockGitHubRefresh(
   status: number,
   payload: Record<string, unknown>,
@@ -312,6 +344,7 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
+  source?: ToolRegistrationHookContext["source"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
   subscribe?: ToolRegistrationHookContext["events"]["subscribe"];
 }) {
@@ -329,7 +362,7 @@ function githubToolsContext(input?: {
     ...(input?.actor ? { actor: input.actor } : undefined),
     conversationId,
     destination: { platform: "local" as const, conversationId },
-    source: {
+    source: input?.source ?? {
       kind: "local" as const,
       visibility: "private" as const,
       conversationId,
@@ -995,6 +1028,38 @@ describe("github plugin", () => {
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
+  it("attributes automation writes to the Automation run", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = {
+      ...githubToolsContext({
+        actor: { platform: "system", name: "junior" },
+        conversationId: "agent-dispatch:dispatch_1",
+        source: {
+          kind: "event_automation",
+          automationId: "evt_1",
+          automationRunId: "dispatch_1",
+        },
+      }),
+      automationLink: { url: "https://junior.example.com/automations/evt_1" },
+    };
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-automation" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -2808,25 +2873,25 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("resolves the GitHub account for user OAuth tokens", async () => {
+  it("resolves the GitHub account and verified emails for user OAuth tokens", async () => {
     const requests = mockGitHubUserApi();
+    const emailRequests = mockGitHubUserEmailsApi({
+      payload: [
+        { email: "actor@example.com", primary: true, verified: true },
+        { email: "actor@users.noreply.github.com", verified: true },
+        { email: "unverified@example.com", verified: false },
+      ],
+    });
 
     const plugin = githubPlugin();
-    const account = await plugin.hooks?.resolveOAuthAccount?.({
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {
-        accessToken: "user-token",
-        refreshToken: "refresh-token",
-      },
-    });
+    const account = await resolveGitHubOAuthAccount(plugin);
 
     expect(account).toEqual({
       handle: "actor",
       id: "12345",
       label: "actor",
       url: "https://github.com/actor",
+      verifiedEmails: ["actor@example.com", "actor@users.noreply.github.com"],
     });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -2834,7 +2899,28 @@ Conversation: \`local:test:old-conversation\`
       method: "GET",
     });
     expect(requests[0]?.headers.authorization).toBe("Bearer user-token");
+    expect(emailRequests[0]?.headers.authorization).toBe("Bearer user-token");
   });
+
+  it.each([
+    [403, { message: "Resource not accessible by integration" }],
+    [500, { message: "server error" }],
+  ])(
+    "resolves the GitHub account without emails when the emails lookup returns %i",
+    async (status, payload) => {
+      mockGitHubUserApi();
+      mockGitHubUserEmailsApi({ payload, status });
+
+      const account = await resolveGitHubOAuthAccount(githubPlugin());
+
+      expect(account).toEqual({
+        handle: "actor",
+        id: "12345",
+        label: "actor",
+        url: "https://github.com/actor",
+      });
+    },
+  );
 
   it("surfaces operational failures while lazily resolving GitHub account identity", async () => {
     mockGitHubUserApi({

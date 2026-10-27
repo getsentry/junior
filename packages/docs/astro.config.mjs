@@ -19,6 +19,7 @@ export default defineConfig({
     "/extend/cloudflare": "/extend/cloudflare-plugin",
     "/extend/datadog": "/extend/datadog-plugin",
     "/extend/hex": "/extend/hex-plugin",
+    "/extend/pagerduty": "/extend/pagerduty-plugin",
     "/plugins/overview": "/extend",
     "/plugins/agent-browser": "/extend/agent-browser-plugin",
     "/plugins/amplitude": "/extend/amplitude-plugin",
@@ -136,6 +137,10 @@ export default defineConfig({
             },
             { label: "Memory Plugin", link: "/extend/memory-plugin/" },
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
+            {
+              label: "PagerDuty Plugin",
+              link: "/extend/pagerduty-plugin/",
+            },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
           ],

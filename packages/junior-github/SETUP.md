@@ -19,6 +19,11 @@ In GitHub:
 - Workflows: Write
 - Metadata: Read
 
+  Optional: under account permissions, grant Email addresses: Read. Junior then
+  reads the verified emails of a connected GitHub account to link it to a
+  person. Without it, Junior links the account only through the person who
+  connected it.
+
 4. Create the app and generate a private key.
 5. Install the app on the target org/repo(s).
 

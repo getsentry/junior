@@ -77,7 +77,9 @@ export function getMcpProviderErrorAttributes(
     ...(error.status !== undefined
       ? { "http.response.status_code": error.status }
       : undefined),
-    ...(error.resourceHost ? { "server.address": error.resourceHost } : undefined),
+    ...(error.resourceHost
+      ? { "server.address": error.resourceHost }
+      : undefined),
   };
 }
 
@@ -86,6 +88,22 @@ export class McpToolError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "McpToolError";
+  }
+}
+
+/**
+ * Thrown when a plugin uses only its service account and no Admin has
+ * connected it. The model can tell the person to ask an Admin.
+ */
+export class McpServiceAccountRequiredError extends McpToolError {
+  readonly provider: string;
+
+  constructor(provider: string, displayName: string) {
+    super(
+      `${displayName} is not available yet. Junior uses a shared ${displayName} account for everyone, and a Junior admin must connect it on the dashboard Admin page.`,
+    );
+    this.name = "McpServiceAccountRequiredError";
+    this.provider = provider;
   }
 }
 

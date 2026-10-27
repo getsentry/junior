@@ -11,3 +11,8 @@ export const TICKET_NUMBER = "4729";
 export function ticketScreenshotPng(): Buffer {
   return readFileSync(new URL("./images/ticket-4729.png", import.meta.url));
 }
+
+/** The same PNG, with the ticket number changed to "1234". */
+export function editedTicketScreenshotPng(): Buffer {
+  return readFileSync(new URL("./images/ticket-1234.png", import.meta.url));
+}

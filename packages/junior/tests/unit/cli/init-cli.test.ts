@@ -36,6 +36,11 @@ function removeExampleOnlyServerConfig(source: string): string {
         "",
       )
       .replace('  import("./dashboard.ts"),\n', "")
+      // The example deployment allows Sentry; the scaffold uses a placeholder.
+      .replace(
+        'allowedDomains: ["sentry.io"]',
+        'allowedDomains: ["example.com"]',
+      )
       .replace(/  dashboard: \{[\s\S]*?  \},\n  plugins,/, "  plugins,")
       .replace(/  configDefaults: \{[\s\S]*?  \},\n/, ""),
   );

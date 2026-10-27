@@ -23,6 +23,12 @@ const toneColors = {
   warning: "#fbbf24",
 } as const;
 
+function seriesColor(series: Widget["series"][number], index: number): string {
+  return series.tone
+    ? toneColors[series.tone]
+    : (colors[index % colors.length] ?? colors[0]);
+}
+
 /** Render a validated plugin-owned categorical bar chart. */
 export function PluginBarChart(props: {
   range?: TimeRangeDays;
@@ -69,9 +75,7 @@ export function PluginBarChart(props: {
           <ChartLegend
             ariaLabel="Chart legend"
             items={widget.series.map((series, index) => ({
-              color: series.tone
-                ? toneColors[series.tone]
-                : colors[index % colors.length],
+              color: seriesColor(series, index),
               key: series.key,
               label: series.label,
             }))}
@@ -122,11 +126,7 @@ export function PluginBarChart(props: {
                 >
                   <rect
                     aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
-                    fill={
-                      series.tone
-                        ? toneColors[series.tone]
-                        : colors[seriesIndex % colors.length]
-                    }
+                    fill={seriesColor(series, seriesIndex)}
                     height={renderedHeight}
                     opacity={value ? 0.82 : 0.1}
                     rx="1.5"
