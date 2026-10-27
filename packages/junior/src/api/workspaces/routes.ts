@@ -67,6 +67,7 @@ function view(workspace: Workspace) {
     id: workspace.id,
     name: workspace.name,
     setupScript: workspace.setupScript,
+    vcpus: workspace.vcpus,
     repos: workspace.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,

@@ -143,6 +143,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
           id: "11111111-1111-4111-8111-111111111111",
           name: "sentry",
           setupScript: "pnpm install",
+          vcpus: 8,
           snapshot: null,
           repos: [
             {
@@ -171,6 +172,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
     .getByLabel("Repository 1", { exact: true })
     .fill("getsentry/sentry");
   await page.getByLabel("Setup script").fill("pnpm install");
+  await page.getByLabel("vCPUs").fill("8");
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/workspaces`);
@@ -184,6 +186,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
       },
     ],
     setupScript: "pnpm install",
+    vcpus: 8,
   });
 });
 
@@ -198,6 +201,7 @@ test("shows Workspace snapshot details on its direct route", async ({
         id: workspaceId,
         name: "sentry",
         setupScript: "pnpm install",
+        vcpus: null,
         snapshot: {
           id: "snap_workspace_123",
           generatedAt: new Date(NOW_MS - 60_000).toISOString(),

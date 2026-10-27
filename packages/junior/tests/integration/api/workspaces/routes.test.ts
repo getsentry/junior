@@ -71,6 +71,7 @@ describe("workspace admin API", () => {
         body: JSON.stringify({
           name: "Sentry",
           setupScript: "pnpm install",
+          vcpus: 8,
           repos: [
             {
               provider: "github",
@@ -91,6 +92,7 @@ describe("workspace admin API", () => {
     expect(created).toMatchObject({
       name: "sentry",
       setupScript: "pnpm install",
+      vcpus: 8,
       repos: [
         {
           provider: "github",
@@ -136,6 +138,7 @@ describe("workspace admin API", () => {
       id: created.id,
       name: "sentry-core",
       setupScript: "pnpm install --frozen-lockfile",
+      vcpus: null,
       repos: [
         {
           provider: "github",
@@ -298,6 +301,7 @@ describe("workspace admin API", () => {
       {
         body: JSON.stringify({
           name: "snapshot-renamed",
+          vcpus: 16,
           repos: [{ provider: "github", repo: "getsentry/sentry" }],
         }),
         headers: { "content-type": "application/json" },
@@ -308,8 +312,10 @@ describe("workspace admin API", () => {
     const renamedDetail = await app.request(
       `http://localhost/api/workspaces/${created.id}`,
     );
+    // A size change keeps the ready snapshot.
     expect(workspaceSchema.parse(await renamedDetail.json())).toMatchObject({
       name: "snapshot-renamed",
+      vcpus: 16,
       snapshot: { id: "snap_old", buildDurationMs: 9_000, sizeBytes: null },
     });
 

@@ -200,6 +200,23 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           />
         </Field>
 
+        <Field
+          help="Sandbox vCPUs for this Workspace. Each vCPU adds 2 GB of memory. Leave empty to use the app default."
+          htmlFor="workspace-vcpus"
+          label="vCPUs"
+        >
+          <TextInput
+            autoComplete="off"
+            id="workspace-vcpus"
+            inputMode="numeric"
+            onChange={(event) =>
+              props.onChange({ ...props.draft, vcpus: event.target.value })
+            }
+            placeholder="App default"
+            value={props.draft.vcpus}
+          />
+        </Field>
+
         {props.error ? <InlineError>{props.error}</InlineError> : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-dashboard-border-subtle pt-5">

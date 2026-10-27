@@ -9,6 +9,7 @@ const workspace: WorkspaceReport = {
   name: "sentry",
   repos: [],
   setupScript: "",
+  vcpus: null,
   snapshot: null,
 };
 

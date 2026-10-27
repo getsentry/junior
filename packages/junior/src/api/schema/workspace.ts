@@ -39,6 +39,7 @@ export const workspaceSchema = z
     id: z.string().uuid(),
     name: z.string(),
     setupScript: z.string(),
+    vcpus: z.number().int().positive().nullable(),
     repos: z.array(workspaceRepoSchema),
     snapshot: workspaceSnapshotSchema.nullable(),
   })
@@ -55,6 +56,7 @@ export const workspaceBodySchema = z
   .object({
     name: z.string(),
     setupScript: z.string().optional(),
+    vcpus: z.number().int().positive().nullable().optional(),
     repos: z.array(workspaceRepoInputSchema),
   })
   .strict();

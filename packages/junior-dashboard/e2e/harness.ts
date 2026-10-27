@@ -501,6 +501,7 @@ export async function mockDashboardApis(
         },
       ],
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: {
         buildDurationMs: 45_000,
         generatedAt: "2026-08-15T05:40:21.000Z",
