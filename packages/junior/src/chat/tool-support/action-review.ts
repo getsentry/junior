@@ -75,8 +75,8 @@ export interface RootConversationMessage {
 }
 
 /**
- * Bounded projection of the root Conversation of a child agent, read by core
- * when Guardian reviews one action of the child.
+ * Bounded projection of the root Conversation, read by core when Guardian
+ * reviews one action. For a root Run, it is the Run's own Conversation.
  */
 export interface RootConversation {
   messages: RootConversationMessage[];
@@ -114,7 +114,7 @@ export interface ToolActionProposal {
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
   priorRejectedActions?: ToolActionPriorRejection[];
-  /** The root Conversation of a child agent. Only a child has it. */
+  /** The root Conversation, with each message labeled by its real author. */
   rootConversation?: RootConversation;
   tool: {
     annotations?: ToolAnnotations;
@@ -155,8 +155,12 @@ export interface ToolActionReviewContext {
   destination: Destination;
   source: Source;
   userIntent?: () => string;
-  evidence?: () => ToolActionEvidence;
-  /** Read the root Conversation of a child agent when an action needs review. */
+  /**
+   * Build bounded transcript evidence. `userEntries: false` leaves out user
+   * messages when the root Conversation already has them with authors.
+   */
+  evidence?: (options: { userEntries: boolean }) => ToolActionEvidence;
+  /** Read the root Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
 }
 
@@ -441,7 +445,16 @@ function buildProposal(
       source: context.source,
       userIntent: context.userIntent(),
     },
-    ...(context.evidence ? { evidence: context.evidence() } : undefined),
+    ...(context.evidence
+      ? {
+          // In a root Run, the root Conversation has each user message with
+          // its real author, so the evidence leaves out the same messages.
+          evidence: context.evidence({
+            userEntries:
+              context.childAgent === true || !rootConversation?.messages.length,
+          }),
+        }
+      : undefined),
     input,
     ...(priorRejections.length > 0
       ? {

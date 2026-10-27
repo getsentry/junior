@@ -240,6 +240,10 @@ When Guardian reviews an action of a child, `root-conversation.ts` walks
 rewrite these events. Nothing is copied into the child, and nothing new is
 stored.
 
+A root Run reads its own Conversation the same way, with the same labels, so
+the Actor's earlier messages can authorize an action. That evidence then
+leaves out its unlabeled user messages, so Guardian reads each one once.
+
 - Only a root message whose author has the same Actor identity as the child
   is labeled `user`. It is compared by platform, team, and user id. When
   either Actor is not known, the message does not count.
@@ -263,8 +267,10 @@ stored.
   with no special case.
 - The read is bounded: the newest 16 messages and 24,000 characters. A cut
   adds an explicit notice.
-- The instruction of an Automation run root is always in the read. It is
-  loaded by its message id and comes first. It is not one of the 16 messages.
+- The opening message of the root is always in the read and comes first. For
+  an Automation run root, it is the run's instruction, loaded by its message
+  id. For another root, it is the oldest message, which usually holds the
+  original request. It is not one of the 16 messages.
 - A message keeps the position of its original event. An edit changes only
   its text. An edit of a message older than the read is left out, so an edit
   never moves a message after a newer one, such as a revocation.

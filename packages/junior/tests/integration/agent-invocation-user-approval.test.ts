@@ -122,6 +122,10 @@ describe("user approval for child agents", () => {
         ],
         truncated: false,
       });
+      // A root Run reads its own Conversation with the same labels.
+      await expect(read(slackParentConversationId, user)).resolves.toEqual(
+        await read(child.childConversationId, user),
+      );
       // Without the child's Actor, nothing is the user.
       await expect(read(child.childConversationId)).resolves.toEqual({
         messages: [],
@@ -167,7 +171,7 @@ describe("user approval for child agents", () => {
     }
   });
 
-  it("keeps a later revocation last when an old root message is edited", async () => {
+  it("keeps the opening request first and a later revocation last when the request is edited", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
@@ -220,15 +224,18 @@ describe("user approval for child agents", () => {
         actor: user,
         conversationId: child.childConversationId,
       });
-      expect(read.messages).toHaveLength(16);
+      // The opening request stays first, with its newest text, after more
+      // than a page of later events. The edit never moves it after the
+      // revocation.
+      expect(read.messages).toHaveLength(17);
+      expect(read.messages[0]).toEqual({
+        author: "user",
+        text: "Unpublish abc.png and def.png.",
+      });
       expect(read.messages.at(-1)).toEqual({
         author: "user",
         text: "Stop. Don't unpublish anything.",
       });
-      // The edit does not bring the old approval in after the revocation.
-      expect(read.messages.map((message) => message.text)).not.toContain(
-        "Unpublish abc.png and def.png.",
-      );
       expect(read.truncated).toBe(true);
     } finally {
       await fixture.close();

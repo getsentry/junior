@@ -109,11 +109,12 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
 
 function collectEvidenceEntries(
   messages: readonly PiMessage[],
+  userEntries: boolean,
 ): EvidenceEntry[] {
   const entries: EvidenceEntry[] = [];
   for (const message of messages) {
     if (message.role === "user") {
-      const text = getUserMessageInstructionText(message);
+      const text = userEntries ? getUserMessageInstructionText(message) : "";
       if (text) {
         entries.push({ role: "user", text });
       }
@@ -140,13 +141,17 @@ function collectEvidenceEntries(
  * Project the Codex Guardian transcript selection into structured evidence.
  * In a child agent, no person writes a message: each user-role message is a
  * parent agent task or another agent's output, so it gets the `parent agent`
- * role.
+ * role. `userEntries: false` leaves out user messages, for a Run whose root
+ * Conversation already shows them with their authors.
  */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],
-  options: { childAgent?: boolean } = {},
+  options: { childAgent?: boolean; userEntries?: boolean } = {},
 ): ToolActionEvidence {
-  const candidates = collectEvidenceEntries(messages).map((entry) => {
+  const candidates = collectEvidenceEntries(
+    messages,
+    options.userEntries ?? true,
+  ).map((entry) => {
     const text = truncateText(
       entry.text,
       isToolEntry(entry) ? MAX_TOOL_ENTRY_TOKENS : MAX_MESSAGE_ENTRY_TOKENS,

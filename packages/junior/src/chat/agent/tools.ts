@@ -445,19 +445,19 @@ export async function wireAgentTools(
       destination: toolRoute.destination,
       source: runSource,
       userIntent: args.currentUserIntent,
-      evidence: () =>
-        buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
-      // A child has no message from a person. Its authority is in the root
-      // Conversation, read again for each action.
-      ...(childAgent
-        ? {
-            rootConversation: async () =>
-              await readRootConversation({
-                actor: args.currentActor,
-                conversationId: args.run.conversationId,
-              }),
-          }
-        : undefined),
+      evidence: ({ userEntries }) =>
+        buildToolActionEvidence(args.currentAgentMessages(), {
+          childAgent,
+          userEntries,
+        }),
+      // The root Conversation labels each message with its real author, so
+      // the Actor's earlier messages can authorize. A child has no message
+      // from a person, so this is its only authority. Read for each action.
+      rootConversation: async () =>
+        await readRootConversation({
+          actor: args.currentActor,
+          conversationId: args.run.conversationId,
+        }),
     },
     onDecision: ({ toolCallId, toolName, decision }) =>
       recordGuardianActionReviewed({
