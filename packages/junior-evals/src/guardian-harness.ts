@@ -10,7 +10,7 @@ import {
   type DescribeEvalOptions,
   type JsonValue,
 } from "vitest-evals";
-import { completeObject } from "@/chat/pi/client";
+import { completeDecision } from "@/chat/pi/client";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import type {
   ToolActionDecision,
@@ -45,7 +45,7 @@ function resolveGuardianModelId(): string {
   if (configured) {
     return configured;
   }
-  return "openai/gpt-6-luna";
+  return "typesafe-ai/jev";
 }
 
 /** Run one Guardian proposal through the production reviewer boundary. */
@@ -54,7 +54,7 @@ export async function reviewGuardianProposal(
   options?: { signal?: AbortSignal },
 ): Promise<ToolActionReviewDecision> {
   const reviewer = createGuardianActionReviewer({
-    completeObject,
+    completeDecision,
     modelId: resolveGuardianModelId(),
   });
   return reviewer.review(proposal, options);

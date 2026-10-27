@@ -1,4 +1,3 @@
-import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGuardianActionReviewer,
@@ -7,7 +6,6 @@ import {
 } from "@/chat/guardian/reviewer";
 import { ProviderError } from "@/chat/services/provider-error";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
-import type { ZodType } from "zod";
 
 const mocks = vi.hoisted(() => ({
   logWarn: vi.fn(),
@@ -49,66 +47,63 @@ describe("Guardian action review", () => {
     mocks.logWarn.mockReset();
   });
 
-  it("derives the decision from the named rule for the exact proposal", async () => {
-    const completeObject = vi.fn<
-      (request: { schema: ZodType }) => Promise<{
-        costUsd: number;
-        object: Record<string, unknown>;
-      }>
-    >(async () => ({
-      object: {
-        reason: "Recurring work should be confirmed.",
-        riskLevel: "medium" as const,
-        rule: "withheld_step" as const,
-        userAuthorization: "low" as const,
+  it("derives the decision from the chosen rule for the exact proposal", async () => {
+    const completeDecision = vi.fn(async () => ({
+      answers: {
+        riskLevel: { type: "choice" as const, choice: "medium" as const },
+        rule: {
+          type: "choice" as const,
+          choice: "withheld_step" as const,
+          probabilities: { withheld_step: 0.91 },
+        },
+        userAuthorization: { type: "choice" as const, choice: "low" as const },
       },
       costUsd: 0.0042,
     }));
     const reviewer = createGuardianActionReviewer({
       modelId: "test/guardian",
-      completeObject: completeObject as never,
+      completeDecision: completeDecision as never,
     });
 
     await expect(reviewer.review(proposal)).resolves.toEqual({
       costUsd: 0.0042,
       decision: "ask",
-      reason: "Recurring work should be confirmed.",
+      reason: expect.stringMatching(/^withheld_step \(p=0\.91\): The user/),
       riskLevel: "medium",
       rule: "withheld_step",
       userAuthorization: "low",
     });
-    expect(
-      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
-    ).toEqual([]);
-    expect(completeObject).toHaveBeenCalledWith(
+    expect(completeDecision).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxTokens: 2_000,
         modelId: "test/guardian",
-        prompt: expect.stringContaining('"cadence": "weekly"'),
-        recordTelemetryPayloads: false,
+        state: expect.stringContaining('"cadence": "weekly"'),
+        questions: expect.objectContaining({
+          riskLevel: expect.objectContaining({ type: "choice" }),
+          rule: expect.objectContaining({ type: "choice" }),
+          userAuthorization: expect.objectContaining({ type: "choice" }),
+        }),
       }),
     );
   });
 
-  it("retries one invalid structured response", async () => {
+  it("retries one invalid decision response", async () => {
     const invalidResponse = new ProviderError({
       kind: "invalid_response",
       retryable: false,
     });
-    const completeObject = vi
+    const completeDecision = vi
       .fn()
       .mockRejectedValueOnce(invalidResponse)
       .mockResolvedValueOnce({
-        object: {
-          reason: "The requested report is routine and scoped.",
-          riskLevel: "low" as const,
-          rule: "none" as const,
-          userAuthorization: "high" as const,
+        answers: {
+          riskLevel: { type: "choice", choice: "low" },
+          rule: { type: "choice", choice: "none" },
+          userAuthorization: { type: "choice", choice: "high" },
         },
       });
     const reviewer = createGuardianActionReviewer({
       modelId: "test/guardian",
-      completeObject: completeObject as never,
+      completeDecision: completeDecision as never,
     });
 
     await expect(reviewer.review(proposal)).resolves.toMatchObject({
@@ -116,7 +111,7 @@ describe("Guardian action review", () => {
       riskLevel: "low",
       userAuthorization: "high",
     });
-    expect(completeObject).toHaveBeenCalledTimes(2);
+    expect(completeDecision).toHaveBeenCalledTimes(2);
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "guardian.action_review.retrying",
       {
@@ -193,9 +188,9 @@ describe("Guardian action review", () => {
   });
 
   it("rejects non-JSON action input before model review", async () => {
-    const completeObject = vi.fn();
+    const completeDecision = vi.fn();
     const reviewer = createGuardianActionReviewer({
-      completeObject: completeObject as never,
+      completeDecision: completeDecision as never,
       modelId: "test/guardian",
     });
 
@@ -205,7 +200,7 @@ describe("Guardian action review", () => {
         input: { invalid: 1n },
       }),
     ).rejects.toThrow("Invalid input");
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeDecision).not.toHaveBeenCalled();
   });
 
   it("puts the root user instructions of a child in a section that only this request can open", () => {

@@ -35,7 +35,7 @@ process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-guardian:${randomUUID()}`;
 process.env.REDIS_URL =
   process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
-process.env.AI_GUARDIAN_MODEL ??= "openai/gpt-6-luna";
+process.env.AI_GUARDIAN_MODEL ??= "typesafe-ai/jev";
 
 export default defineConfig({
   resolve: {

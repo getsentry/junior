@@ -1,16 +1,17 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { logWarn } from "@/chat/logging";
-import type { completeObject } from "@/chat/pi/client";
+import type { completeDecision } from "@/chat/pi/client";
 import {
   GUARDIAN_ACTION_POLICY,
   GUARDIAN_BLOCK_RULES,
-  GUARDIAN_RULE_IDS,
+  GUARDIAN_NO_RULE_DESCRIPTION,
+  GUARDIAN_RISK_LEVELS,
+  GUARDIAN_USER_AUTHORIZATION_LEVELS,
+  type GuardianBlockRuleId,
 } from "@/chat/guardian/policy";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
-  RISK_LEVELS,
-  USER_AUTHORIZATION_LEVELS,
   type RootConversation,
   type ToolActionDecision,
   type ToolActionProposal,
@@ -18,23 +19,46 @@ import {
   type ToolActionReviewer,
 } from "@/chat/guardian/proposal";
 
-// Field order is generation order. The model rates risk and authorization
-// before it names a rule, as the policy and the Codex reviewer require. The
-// model does not choose the decision; guardianDecision derives it.
-const guardianAssessmentSchema = z
-  .object({
-    riskLevel: z.enum(RISK_LEVELS),
-    userAuthorization: z.enum(USER_AUTHORIZATION_LEVELS),
-    rule: z.enum(GUARDIAN_RULE_IDS),
-    reason: z.string().trim().min(1).max(500),
-  })
-  .strict();
+type GuardianRuleId = "none" | GuardianBlockRuleId;
 
-type GuardianAssessment = z.infer<typeof guardianAssessmentSchema>;
+/** One Guardian assessment: the choices of the decision model. */
+interface GuardianAssessment {
+  riskLevel: keyof typeof GUARDIAN_RISK_LEVELS;
+  userAuthorization: keyof typeof GUARDIAN_USER_AUTHORIZATION_LEVELS;
+  rule: GuardianRuleId;
+  reason: string;
+}
 
-type CompleteObject = typeof completeObject;
+// The decision model answers each question with one choice. It does not
+// choose the decision; guardianDecision derives it from the rule.
+const GUARDIAN_QUESTIONS = {
+  riskLevel: {
+    type: "choice",
+    instructions: `${GUARDIAN_ACTION_POLICY}\n\nChoose the intrinsic risk of the exact planned action.`,
+    criteria: GUARDIAN_RISK_LEVELS,
+  },
+  userAuthorization: {
+    type: "choice",
+    instructions: `${GUARDIAN_ACTION_POLICY}\n\nChoose how clearly the current actor's user intent authorizes the exact planned action, its target, and its side effects.`,
+    criteria: GUARDIAN_USER_AUTHORIZATION_LEVELS,
+  },
+  rule: {
+    type: "choice",
+    instructions: `${GUARDIAN_ACTION_POLICY}\n\nChoose the one block rule that the exact planned action clearly matches, or \`none\`.`,
+    criteria: {
+      none: GUARDIAN_NO_RULE_DESCRIPTION,
+      ...Object.fromEntries(
+        Object.entries(GUARDIAN_BLOCK_RULES).map(([id, rule]) => [
+          id,
+          rule.description,
+        ]),
+      ),
+    } as Record<GuardianRuleId, string>,
+  },
+} as const;
+
+type CompleteDecision = typeof completeDecision;
 const GUARDIAN_REVIEW_TIMEOUT_MS = 60_000;
-const GUARDIAN_REVIEW_MAX_TOKENS = 2_000;
 const MAX_PROPOSAL_CHARS = 192_000;
 
 // Rules for an action of a child agent. Adapted from Codex multi_agent_v2
@@ -154,10 +178,27 @@ export function guardianDecision(
   return { decision, reason: assessment.reason };
 }
 
-/** Create the structured Guardian reviewer used for permissioned tool actions. */
+/**
+ * Write the reason from the chosen rule. A decision model returns no prose,
+ * so the reason is the rule text with its probability.
+ */
+function assessmentReason(
+  rule: GuardianRuleId,
+  probability: number | undefined,
+): string {
+  const description =
+    rule === "none"
+      ? GUARDIAN_NO_RULE_DESCRIPTION
+      : GUARDIAN_BLOCK_RULES[rule].description;
+  return probability === undefined
+    ? `${rule}: ${description}`
+    : `${rule} (p=${probability.toFixed(2)}): ${description}`;
+}
+
+/** Create the Guardian reviewer used for permissioned tool actions. */
 export function createGuardianActionReviewer(options: {
   modelId: string;
-  completeObject: CompleteObject;
+  completeDecision: CompleteDecision;
 }): ToolActionReviewer {
   return {
     async review(proposal, reviewOptions) {
@@ -166,14 +207,10 @@ export function createGuardianActionReviewer(options: {
         ? AbortSignal.any([reviewOptions.signal, timeoutSignal])
         : timeoutSignal;
       const completeReview = () =>
-        options.completeObject({
+        options.completeDecision({
           modelId: options.modelId,
-          schema: guardianAssessmentSchema,
-          system: GUARDIAN_ACTION_POLICY,
-          prompt: guardianPrompt(proposal),
-          maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
-          recordTelemetryPayloads: false,
-          temperature: 0,
+          state: guardianPrompt(proposal),
+          questions: GUARDIAN_QUESTIONS,
           promptName: "junior.guardian_action_review",
           signal,
           metadata: {
@@ -199,7 +236,16 @@ export function createGuardianActionReviewer(options: {
         });
         result = await completeReview();
       }
-      const assessment = guardianAssessmentSchema.parse(result.object);
+      const { riskLevel, userAuthorization, rule } = result.answers;
+      const assessment: GuardianAssessment = {
+        riskLevel: riskLevel.choice,
+        userAuthorization: userAuthorization.choice,
+        rule: rule.choice,
+        reason: assessmentReason(
+          rule.choice,
+          rule.probabilities?.[rule.choice],
+        ),
+      };
       const decision: ToolActionReviewDecision = {
         ...guardianDecision(assessment, proposal),
         riskLevel: assessment.riskLevel,
