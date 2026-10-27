@@ -13,6 +13,7 @@ import {
   putMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import {
+  createMcpServiceAccountClientProvider,
   deleteMcpServiceAccountCredentials,
   finishMcpServiceAccountSignIn,
   getMcpServiceAccountCredentials,
@@ -223,11 +224,37 @@ describe("MCP service account auth", () => {
     expect(onAuthorizationRequired).not.toHaveBeenCalled();
   });
 
-  it("refreshes the shared token and disconnects once the provider revokes the grant", async () => {
+  it("refreshes the shared token and falls back to the actor once the provider revokes the grant", async () => {
     const server = useServiceAccountMcpServer();
     await connectServiceAccount();
 
+    // A token endpoint outage fails the request but keeps the account.
     server.expireAccessTokens();
+    server.setTokenEndpointDown(true);
+    const outage = createManager().manager;
+    try {
+      const failure = await outage
+        .activateProvider(PROVIDER)
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(McpAuthorizationRequiredError);
+    } finally {
+      await outage.close();
+    }
+    expect(
+      (await getMcpServiceAccountCredentials(PROVIDER))?.tokens.refresh_token,
+    ).toBe("refresh-1");
+    server.setTokenEndpointDown(false);
+
+    // A turn that read a refresh token that another turn already replaced
+    // retries with the stored token instead of dropping the account.
+    const stale = createMcpServiceAccountClientProvider(
+      PROVIDER,
+      (await getMcpServiceAccountCredentials(PROVIDER))!,
+    );
+    await expect(stale.tokens()).resolves.toMatchObject({
+      refresh_token: "refresh-1",
+    });
     const refreshed = createManager().manager;
     try {
       await refreshed.activateProvider(PROVIDER);
@@ -239,21 +266,46 @@ describe("MCP service account auth", () => {
     } finally {
       await refreshed.close();
     }
-    expect(
-      (await getMcpServiceAccountCredentials(PROVIDER))?.tokens.refresh_token,
-    ).toBe("refresh-2");
+    await stale.invalidateCredentials?.("tokens");
+    await expect(stale.tokens()).resolves.toMatchObject({
+      refresh_token: "refresh-2",
+    });
 
+    // Per-user OAuth is on, so a revoked account sends the actor to connect.
     server.revokeGrant();
-    const revoked = createManager().manager;
+    const onAuthorizationRequired = vi.fn(async () => false);
+    const revoked = createManager(onAuthorizationRequired).manager;
     try {
-      const failure = await revoked
-        .activateProvider(PROVIDER)
-        .catch((error: unknown) => error);
-      expect(failure).not.toBeInstanceOf(McpAuthorizationRequiredError);
-      expect(failure).toBeInstanceOf(Error);
+      await expect(revoked.activateProvider(PROVIDER)).rejects.toBeInstanceOf(
+        McpAuthorizationRequiredError,
+      );
     } finally {
       await revoked.close();
     }
+    expect(onAuthorizationRequired).toHaveBeenCalledWith(
+      PROVIDER,
+      expect.any(McpAuthorizationRequiredError),
+      undefined,
+    );
+    await expect(
+      getMcpServiceAccountCredentials(PROVIDER),
+    ).resolves.toBeUndefined();
+  });
+
+  it("reports the missing account when a service-account-only grant is revoked", async () => {
+    const server = useServiceAccountMcpServer();
+    await connectServiceAccount();
+    server.revokeGrant();
+    const onAuthorizationRequired = vi.fn(async () => false);
+    const { manager } = createManager(onAuthorizationRequired, onlyPlugin);
+    try {
+      await expect(manager.activateProvider(PROVIDER)).rejects.toBeInstanceOf(
+        McpServiceAccountRequiredError,
+      );
+    } finally {
+      await manager.close();
+    }
+    expect(onAuthorizationRequired).not.toHaveBeenCalled();
     await expect(
       getMcpServiceAccountCredentials(PROVIDER),
     ).resolves.toBeUndefined();

@@ -18,6 +18,7 @@ export function useServiceAccountMcpServer() {
   const accessTokens = new Set<string>();
   const refreshTokens = new Set<string>();
   let issued = 0;
+  let tokenEndpointDown = false;
   const issue = () => {
     issued += 1;
     const tokens = {
@@ -94,6 +95,9 @@ export function useServiceAccountMcpServer() {
     }),
     http.post(`${ORIGIN}/token`, async ({ request }) => {
       const params = new URLSearchParams(await request.text());
+      if (tokenEndpointDown) {
+        return HttpResponse.json({ error: "server_error" }, { status: 503 });
+      }
       if (
         params.get("grant_type") === "authorization_code" &&
         params.get("code") === AUTHORIZATION_CODE
@@ -114,6 +118,10 @@ export function useServiceAccountMcpServer() {
 
   return {
     expireAccessTokens: () => accessTokens.clear(),
+    /** Make the token endpoint fail like a short outage. */
+    setTokenEndpointDown: (down: boolean) => {
+      tokenEndpointDown = down;
+    },
     revokeGrant: () => {
       accessTokens.clear();
       refreshTokens.clear();

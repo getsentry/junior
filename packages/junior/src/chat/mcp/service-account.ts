@@ -20,12 +20,15 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { isRecord } from "@/chat/coerce";
 import { logWarn } from "@/chat/logging";
+import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 
 const SERVICE_ACCOUNT_KEY_PREFIX = "junior:mcp_service_account";
 const SIGN_IN_KEY_PREFIX = "junior:mcp_service_account_sign_in";
 const SIGN_IN_TTL_MS = 10 * 60 * 1000;
+const UPDATE_LOCK_WAIT_MS = 5_000;
 
 /** Stored OAuth state for one plugin's service account. */
 export interface McpServiceAccountCredentials {
@@ -127,9 +130,12 @@ function reconnectMessage(provider: string): string {
  *
  * It refreshes tokens like a user connection but never starts a new sign-in.
  * Many turns share this account, so it reads the store on each request and
- * deletes the stored grant only when the rejected refresh token is still the
- * stored one. A turn that lost a refresh race thus does not disconnect the
- * account for everyone.
+ * writes each change under a lock. When the provider rejects a refresh token
+ * that another turn already replaced, it retries with the stored one. It
+ * deletes the stored grant only when the provider rejected the stored token
+ * itself, and then throws `McpAuthorizationRequiredError` so the tool manager
+ * can fall back to Actor auth or report the missing account. A refresh that
+ * fails for another reason, such as a network error, keeps the account.
  */
 export function createMcpServiceAccountClientProvider(
   provider: string,
@@ -138,14 +144,33 @@ export function createMcpServiceAccountClientProvider(
   let lastRefreshToken = connected.tokens.refresh_token;
   let tokensRejected = false;
 
+  // Read and write under one lock, so a turn that saves one field cannot
+  // write back an older refresh token that another turn already replaced.
   const update = async (
     patch: Partial<McpServiceAccountCredentials>,
   ): Promise<void> => {
-    const current = await getMcpServiceAccountCredentials(provider);
-    if (!current) {
-      throw new Error(reconnectMessage(provider));
+    const state = getStateAdapter();
+    const result = await withLock(
+      state,
+      `${serviceAccountKey(provider)}:update`,
+      async (lock) => {
+        const current = await getMcpServiceAccountCredentials(provider);
+        if (!current) {
+          throw new Error(reconnectMessage(provider));
+        }
+        await fenceLock(state, lock);
+        await putMcpServiceAccountCredentials(provider, {
+          ...current,
+          ...patch,
+        });
+      },
+      { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: UPDATE_LOCK_WAIT_MS },
+    );
+    if (!result.acquired) {
+      throw new Error(
+        `Timed out waiting to update the ${provider} service account`,
+      );
     }
-    await putMcpServiceAccountCredentials(provider, { ...current, ...patch });
   };
 
   return {
@@ -157,10 +182,14 @@ export function createMcpServiceAccountClientProvider(
       await update({ clientInformation });
     },
     tokens: async () => {
-      if (tokensRejected) {
-        return undefined;
-      }
       const tokens = (await getMcpServiceAccountCredentials(provider))?.tokens;
+      if (tokensRejected) {
+        // Another turn replaced the rejected token. Retry with the new one.
+        if (!tokens || tokens.refresh_token === lastRefreshToken) {
+          return undefined;
+        }
+        tokensRejected = false;
+      }
       lastRefreshToken = tokens?.refresh_token;
       return tokens;
     },
@@ -183,13 +212,24 @@ export function createMcpServiceAccountClientProvider(
     },
     redirectToAuthorization: async () => {
       const stored = await getMcpServiceAccountCredentials(provider);
+      // Without a rejection, the refresh failed for a reason that can pass,
+      // such as a network error. Keep the account for the next turn.
+      const revoked = tokensRejected || !stored || !stored.tokens.refresh_token;
+      if (!revoked) {
+        throw new Error(
+          `The ${provider} service account could not refresh its token. Try again later.`,
+        );
+      }
       if (stored && stored.tokens.refresh_token === lastRefreshToken) {
         await deleteMcpServiceAccountCredentials(provider);
         logWarn("mcp.service_account.disconnected", {
           "app.plugin.name": provider,
         });
       }
-      throw new Error(reconnectMessage(provider));
+      throw new McpAuthorizationRequiredError(
+        provider,
+        reconnectMessage(provider),
+      );
     },
     // The SDK saves a verifier just before it asks for a new sign-in, which
     // `redirectToAuthorization` then refuses.
