@@ -188,14 +188,22 @@ export function timerWatchCredentialSubject(
   return shared;
 }
 
-/** Read the saved Watch task facts from one Event mailbox entry. */
+/**
+ * Read the saved Watch task facts from one Event mailbox entry. Entries
+ * without a Watch or saved facts, such as child agent results and input queued
+ * before facts were saved, return undefined and keep their own text.
+ */
 function readEventTaskFacts(
   message: InboundMessage,
-): { facts: EventTaskFacts; metadata: EventMailboxMetadata } | undefined {
+):
+  | { facts: EventTaskFacts; metadata: EventMailboxMetadata; watchId: string }
+  | undefined {
   const metadata = message.input.metadata;
   if (!isEventMailboxMetadata(metadata)) return undefined;
+  const watchId = metadata.event.subscriptionId;
+  if (!watchId) return undefined;
   const parsed = eventTaskFactsSchema.safeParse(metadata.task);
-  return parsed.success ? { facts: parsed.data, metadata } : undefined;
+  return parsed.success ? { facts: parsed.data, metadata, watchId } : undefined;
 }
 
 /**
@@ -225,10 +233,8 @@ export function renderEventBatchText(
       others.push(message);
       continue;
     }
-    const { facts, metadata } = saved;
-    const key =
-      metadata.event.subscriptionId ?? `${facts.about}\n${facts.instructions}`;
-    let group = groups.get(key);
+    const { facts, metadata, watchId } = saved;
+    let group = groups.get(watchId);
     if (!group) {
       group = {
         about: facts.about,
@@ -236,7 +242,7 @@ export function renderEventBatchText(
         people: [],
         events: [],
       };
-      groups.set(key, group);
+      groups.set(watchId, group);
     }
     for (const person of facts.people ?? []) {
       if (!group.people.includes(person)) group.people.push(person);
@@ -263,14 +269,18 @@ export function renderEventBatchText(
     .join("\n\n");
 }
 
-/** List every Event in a batch for the conversation message. */
+/**
+ * List the Watch Events in a batch for the conversation message. These are the
+ * Events that the task message counts, so the list and the count agree.
+ */
 export function eventBatchMessageEvents(
   messages: readonly InboundMessage[],
 ): ConversationMessageEvent[] {
   return messages.flatMap((message) => {
-    const metadata = message.input.metadata;
-    if (!isEventMailboxMetadata(metadata)) return [];
-    const label = readEventTaskFacts(message)?.facts.about;
+    const saved = readEventTaskFacts(message);
+    if (!saved) return [];
+    const { metadata } = saved;
+    const label = saved.facts.about;
     return [
       {
         eventType: metadata.event.eventType,

@@ -4,10 +4,10 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
+  renderEventBatchText,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
-import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import {
   getEventBatchDelayMs,
   parseEventMessages,
@@ -369,7 +369,7 @@ export async function startAgentInvocationsForChildInput(
     // use the grants of the person who set it.
     const { actor, source } = events[0]!;
     const invocation = await createAgentInvocationFromLatest({
-      input: joinMailboxText(messages),
+      input: renderEventBatchText(messages),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
       ),

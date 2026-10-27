@@ -406,13 +406,16 @@ writes one task input:
   appear once. Guidance follows, with one `- <event type>: <text>` line for
   each event type.
 - Then each Event: `Event N: <event type>`, its trusted summary, verified
-  details, and external text.
+  details, and external text. Events are numbered by Watch group, then by
+  arrival.
 - The outcome rule appears once, at the end.
 
 Mailbox input saves the task facts for each Watch Event, so the batch input is
-written when the Turn starts. Input without task facts, such as a child agent
-result, keeps its own text after the task input. The conversation message lists
-every Event in `meta.events`.
+written when the Turn starts. Root and child Conversations use the same batch
+input. Input without task facts, such as a child agent result or input queued
+before facts were saved, keeps its own text after the task input. The count
+and `meta.events` on the conversation message include only the Watch Events,
+so they always agree.
 
 When the outline changes: update this section, `task-input.ts`, and the unit
 snapshots together. Do not restate the outline in call-site prompts.

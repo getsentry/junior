@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createEventInboundMessage,
-  EVENT_WAIT_MS,
-} from "@/chat/events/notification";
+import { enqueueEventNotification } from "@/chat/events/notification";
+import { createWatch } from "@/chat/events/store";
 import type { AgentRun } from "@/chat/agent/types";
-import { renderTaskInput } from "@/chat/task-input";
 import { getConversationEventStore } from "@/chat/db";
 import {
   appendAndEnqueueWebMessage,
@@ -16,7 +13,6 @@ import {
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
-import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type {
   ConversationWorkerContext,
@@ -72,40 +68,79 @@ describe("event wake delay", () => {
 
     const baseMs = 1_700_000_000_000;
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(baseMs);
-    const subscription = {
-      conversationId,
-      id: "resource-subscription-burst",
-    };
-    const eventMessage = (sequence: number, receivedAtMs: number) => {
-      const task = {
-        about: "GitHub PR getsentry/junior#1563",
-        instructions: "Fix failed checks on this PR.",
-        trustedSummary: `Check ${sequence} failed`,
-      };
-      return createEventInboundMessage({
-        event: {
-          eventKey: `check-${sequence}`,
-          eventType: "check_suite.completed",
-          objectType: "code_change",
-          identifier: "getsentry/junior#1563",
-          namespace: "github",
-          occurredAtMs: receivedAtMs,
-          trustedSummary: `Check ${sequence} failed`,
-        },
-        receivedAtMs,
-        subscription,
-        task,
-        text: renderTaskInput(task),
-      });
-    };
-
-    await appendAndEnqueueInboundMessage({
-      conversationStore,
-      message: eventMessage(1, baseMs),
-      queue,
-      queueDelayMs: EVENT_WAIT_MS,
-      state,
+    const watch = (input: {
+      events: string[];
+      guidance?: Record<string, string>;
+      identifier: string;
+      intent: string;
+      label: string;
+      namespace: string;
+      resourceType: string;
+    }) =>
+      createWatch(
+        { conversationId, expiresAtMs: baseMs + 3_600_000, ...input },
+        { nowMs: baseMs, state },
+      );
+    const prWatch = await watch({
+      events: [
+        "pull_request.review.approved",
+        "pull_request.review_comment.created",
+      ],
+      guidance: {
+        "pull_request.review_comment.created": "Reply on the thread.",
+      },
+      identifier: "getsentry/junior#2245",
+      intent: "Maintain this pull request.",
+      label: "GitHub PR getsentry/junior#2245",
+      namespace: "github",
+      resourceType: "pull_request",
     });
+    // A second Watch on the same PR keeps its own instructions.
+    const releaseWatch = await watch({
+      events: ["pull_request.merged"],
+      identifier: "getsentry/junior#2245",
+      intent: "Post release notes after merge.",
+      label: "GitHub PR getsentry/junior#2245",
+      namespace: "github",
+      resourceType: "pull_request",
+    });
+    const deployWatch = await watch({
+      events: ["deployment.succeeded"],
+      identifier: "prj_junior:production",
+      intent: "Report deploy results.",
+      label: "Vercel deployment junior-prod",
+      namespace: "vercel",
+      resourceType: "deployment",
+    });
+    const notify = (
+      subscription: typeof prWatch,
+      eventKey: string,
+      eventType: string,
+      trustedSummary: string,
+      people?: string[],
+    ) =>
+      enqueueEventNotification({
+        event: {
+          eventKey,
+          eventType,
+          identifier: subscription.identifier,
+          namespace: subscription.namespace,
+          occurredAtMs: Date.now(),
+          trustedSummary,
+        },
+        people,
+        queue,
+        state,
+        subscription,
+      });
+
+    await notify(
+      prWatch,
+      "github:delivery-1:pull_request.review.approved",
+      "pull_request.review.approved",
+      "Approved by dcramer.",
+      ["<@U123>"],
+    );
     expect(queue.sentRecords()).toEqual([
       expect.objectContaining({ delayMs: 30_000 }),
     ]);
@@ -116,12 +151,20 @@ describe("event wake delay", () => {
         createModelAgentRunnerForRun((agentRun) => {
           agentRuns.push(agentRun);
           return createModelStream([
-            { type: "text", text: "Handled both events." },
+            { type: "text", text: "Handled the events." },
           ]);
         }),
       ),
     );
+    const processNext = () =>
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run,
+        state,
+      });
 
+    // A person's message runs now. The Event keeps waiting.
     nowSpy.mockReturnValue(baseMs + 100);
     await appendAndEnqueueWebMessage(
       {
@@ -132,230 +175,54 @@ describe("event wake delay", () => {
       },
       { conversationStore, queue, state },
     );
-    expect(queue.sentRecords()).toHaveLength(2);
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run,
-        state,
-      }),
-    ).resolves.toEqual({ status: "pending_requeued" });
+    await expect(processNext()).resolves.toEqual({
+      status: "pending_requeued",
+    });
     expect(agentRuns).toHaveLength(1);
 
+    // Events from other Watches and providers join the same wait window.
     nowSpy.mockReturnValue(baseMs + 200);
-    await appendAndEnqueueInboundMessage({
-      conversationStore,
-      message: eventMessage(2, baseMs + 200),
-      queue,
-      state,
-    });
-    expect(queue.sentRecords()).toHaveLength(3);
-
-    nowSpy.mockReturnValue(baseMs + 30_000);
+    await notify(
+      deployWatch,
+      "vercel:hook-1:deployment.succeeded",
+      "deployment.succeeded",
+      "Deployment dpl_1 succeeded.",
+    );
+    nowSpy.mockReturnValue(baseMs + 300);
+    await notify(
+      prWatch,
+      "github:delivery-2:pull_request.review_comment.created",
+      "pull_request.review_comment.created",
+      "Inline comment from cursor[bot].",
+    );
+    nowSpy.mockReturnValue(baseMs + 400);
+    await notify(
+      releaseWatch,
+      "github:delivery-3:pull_request.merged",
+      "pull_request.merged",
+      "Merged by dcramer.",
+    );
+    // A repeated delivery of the same Event for the same Watch is dropped.
     await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run,
-        state,
-      }),
-    ).resolves.toEqual({ status: "pending_requeued" });
-    expect(agentRuns).toHaveLength(1);
-    expect(queue.sentRecords().at(-1)).toMatchObject({ delayMs: 5_000 });
-
-    nowSpy.mockReturnValue(baseMs + 35_000);
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run,
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-    expect(agentRuns).toHaveLength(2);
-
-    const savedEvents =
-      await getConversationEventStore().loadHistory(conversationId);
-    // Both Events are listed on the one message, not only the first.
-    expect(
-      savedEvents.find(
-        (event) =>
-          event.data.type === "message" &&
-          event.data.meta?.eventType === "check_suite.completed",
-      )?.data,
-    ).toMatchObject({
-      meta: {
-        eventObjectType: "code_change",
-        events: [
-          {
-            eventType: "check_suite.completed",
-            label: "GitHub PR getsentry/junior#1563",
-            trustedSummary: "Check 1 failed",
-          },
-          {
-            eventType: "check_suite.completed",
-            label: "GitHub PR getsentry/junior#1563",
-            trustedSummary: "Check 2 failed",
-          },
-        ],
-      },
-    });
-    const userMessages = savedEvents.flatMap((event) =>
-      event.data.type === "message" && event.data.role === "user"
-        ? [event.data.text]
-        : [],
-    );
-    expect(userMessages).toHaveLength(2);
-    expect(userMessages[0]).toBe("Please check now");
-    // One task message states the instructions once for both Events.
-    const batchText = userMessages[1]!;
-    expect(batchText).toContain("You received 2 events.");
-    expect(batchText.match(/Instructions: /g)).toHaveLength(1);
-    expect(batchText).toContain(
-      "Event 1: check_suite.completed\nTrusted summary: Check 1 failed",
-    );
-    expect(batchText).toContain(
-      "Event 2: check_suite.completed\nTrusted summary: Check 2 failed",
-    );
-  });
-
-  it("merges Events from different Watches into one task message", async () => {
-    const { actor, conversationStore, queue, state } =
-      await createConversationFixture();
-    const conversationId = createConversationId({
-      actorEmail: actor.email,
-      idempotencyKey: "event-mixed-1",
-    });
-    await recordWebConversationActivity({
-      actor,
-      conversationId,
-      conversationStore,
-      nowMs: 1,
-    });
-
-    const baseMs = 1_700_000_000_000;
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(baseMs);
-    const prWatch = {
-      about: "GitHub PR getsentry/junior#2245",
-      id: "watch-pr-maintain",
-      identifier: "getsentry/junior#2245",
-      instructions: "Maintain this pull request.",
-      namespace: "github",
-    };
-    // A second Watch on the same PR has its own instructions.
-    const prReleaseWatch = {
-      ...prWatch,
-      id: "watch-pr-release",
-      instructions: "Post release notes after merge.",
-    };
-    const deployWatch = {
-      about: "Vercel deployment junior-prod (production)",
-      id: "watch-deploy",
-      identifier: "prj_junior:production",
-      instructions: "Report deploy results.",
-      namespace: "vercel",
-    };
-    const eventMessage = (
-      watch: typeof prWatch,
-      eventKey: string,
-      eventType: string,
-      trustedSummary: string,
-      receivedAtMs: number,
-    ) => {
-      const task = {
-        about: watch.about,
-        instructions: watch.instructions,
-        trustedSummary,
-      };
-      return createEventInboundMessage({
-        event: {
-          eventKey,
-          eventType,
-          identifier: watch.identifier,
-          namespace: watch.namespace,
-          occurredAtMs: receivedAtMs,
-          trustedSummary,
-        },
-        receivedAtMs,
-        subscription: { conversationId, id: watch.id },
-        task,
-        text: renderTaskInput(task),
-      });
-    };
-    const messages = [
-      eventMessage(
+      notify(
         prWatch,
         "github:delivery-1:pull_request.review.approved",
         "pull_request.review.approved",
         "Approved by dcramer.",
-        baseMs,
       ),
-      eventMessage(
-        deployWatch,
-        "vercel:hook-1:deployment.succeeded",
-        "deployment.succeeded",
-        "Deployment dpl_1 succeeded.",
-        baseMs + 100,
-      ),
-      eventMessage(
-        prWatch,
-        "github:delivery-2:pull_request.review_comment.created",
-        "pull_request.review_comment.created",
-        "Inline comment from cursor[bot].",
-        baseMs + 200,
-      ),
-      eventMessage(
-        prReleaseWatch,
-        "github:delivery-3:pull_request.merged",
-        "pull_request.merged",
-        "Merged by dcramer.",
-        baseMs + 300,
-      ),
-    ];
-    for (const message of messages) {
-      nowSpy.mockReturnValue(message.receivedAtMs);
-      await appendAndEnqueueInboundMessage({
-        conversationStore,
-        message,
-        queue,
-        queueDelayMs: EVENT_WAIT_MS,
-        state,
-      });
-    }
-    // A repeated delivery of the same Event for the same Watch is dropped.
-    nowSpy.mockReturnValue(baseMs + 400);
-    await expect(
-      appendAndEnqueueInboundMessage({
-        conversationStore,
-        message: messages[0]!,
-        queue,
-        queueDelayMs: EVENT_WAIT_MS,
-        state,
-      }),
     ).resolves.toMatchObject({ status: "duplicate" });
 
-    const agentRuns: AgentRun[] = [];
-    const run = requireConversationTurn(
-      createConversationTurnWorker(
-        createModelAgentRunnerForRun((agentRun) => {
-          agentRuns.push(agentRun);
-          return createModelStream([{ type: "text", text: "Handled." }]);
-        }),
-      ),
-    );
-    nowSpy.mockReturnValue(baseMs + 60_000);
-    let status: string | undefined;
-    while (status !== "completed" && queue.sentRecords().length > 0) {
-      ({ status } = await processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run,
-        state,
-      }));
-    }
-    expect(status).toBe("completed");
+    // Each extra Event adds 5s to the 30s wait.
+    nowSpy.mockReturnValue(baseMs + 30_000);
+    await expect(processNext()).resolves.toEqual({
+      status: "pending_requeued",
+    });
     expect(agentRuns).toHaveLength(1);
+    expect(queue.sentRecords().at(-1)).toMatchObject({ delayMs: 15_000 });
+
+    nowSpy.mockReturnValue(baseMs + 45_000);
+    await expect(processNext()).resolves.toEqual({ status: "completed" });
+    expect(agentRuns).toHaveLength(2);
 
     const savedEvents =
       await getConversationEventStore().loadHistory(conversationId);
@@ -364,34 +231,46 @@ describe("event wake delay", () => {
         ? [event.data]
         : [],
     );
-    expect(userMessages).toHaveLength(1);
-    expect(userMessages[0]!.meta?.events).toEqual([
+    expect(userMessages.map((message) => message.text)[0]).toBe(
+      "Please check now",
+    );
+    expect(userMessages).toHaveLength(2);
+    // The one message lists every Event, not only the first.
+    expect(userMessages[1]!.meta?.events).toEqual([
       expect.objectContaining({
         eventType: "pull_request.review.approved",
-        label: prWatch.about,
+        label: prWatch.label,
+        trustedSummary: "Approved by dcramer.",
       }),
       expect.objectContaining({
         eventType: "deployment.succeeded",
-        label: deployWatch.about,
+        label: deployWatch.label,
       }),
       expect.objectContaining({
         eventType: "pull_request.review_comment.created",
-        label: prWatch.about,
+        label: prWatch.label,
       }),
       expect.objectContaining({
         eventType: "pull_request.merged",
-        label: prWatch.about,
+        label: releaseWatch.label,
       }),
     ]);
-    // Each Watch keeps its own instructions, and its Events stay together.
-    const text = userMessages[0]!.text;
+    // Each Watch states its instructions once and keeps its Events together.
+    const text = userMessages[1]!.text;
     expect(text).toContain("You received 4 events.");
     expect(text.match(/Instructions: /g)).toHaveLength(3);
     expect(text).toContain(
       [
-        `About: ${prWatch.about}`,
-        `Instructions: ${prWatch.instructions}`,
-        "",
+        `About: ${prWatch.label}`,
+        "People involved: <@U123>",
+        `Instructions: ${prWatch.intent}`,
+      ].join("\n"),
+    );
+    expect(text).toContain(
+      "- pull_request.review_comment.created: Reply on the thread.",
+    );
+    expect(text).toContain(
+      [
         "Event 1: pull_request.review.approved",
         "Trusted summary: Approved by dcramer.",
         "",
@@ -400,16 +279,15 @@ describe("event wake delay", () => {
     );
     expect(text).toContain(
       [
-        `About: ${deployWatch.about}`,
-        `Instructions: ${deployWatch.instructions}`,
+        `About: ${deployWatch.label}`,
+        `Instructions: ${deployWatch.intent}`,
         "",
         "Event 3: deployment.succeeded",
       ].join("\n"),
     );
     expect(text).toContain(
       [
-        `About: ${prReleaseWatch.about}`,
-        `Instructions: ${prReleaseWatch.instructions}`,
+        `Instructions: ${releaseWatch.intent}`,
         "",
         "Event 4: pull_request.merged",
       ].join("\n"),
