@@ -4,6 +4,7 @@ import type { EventPerson } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { slackMention } from "@/chat/slack/mrkdwn";
+import type { EventDoneBy } from "@/chat/task-input";
 import { juniorIdentities } from "@/db/schema";
 
 const linkedSlackIdentity = alias(juniorIdentities, "event_people_slack");
@@ -30,19 +31,29 @@ function personCondition(person: EventPerson) {
   );
 }
 
+/** Slack mentions resolved from an Event. */
+export interface EventMentions {
+  /** Mentions of the Event people, in input order, with no duplicates. */
+  people: string[];
+  /** The person who did what the Event describes, when they resolve. */
+  doneBy?: EventDoneBy;
+}
+
 /**
- * Resolve Event people to Slack mentions through linked user identities in
- * one Slack workspace.
+ * Resolve the Event people and the Event doer to Slack mentions through
+ * linked user identities in one Slack workspace, with one query.
  *
  * A person resolves only when exactly one linked Slack user in that workspace
  * matches. Core drops unlinked and ambiguous people, so a provider value never
- * guesses a mention. The result keeps input order and has no duplicates.
+ * guesses a mention.
  */
-export async function resolveEventPeopleMentions(
-  people: readonly EventPerson[],
+export async function resolveEventMentions(
+  event: { doneBy?: EventPerson; people?: readonly EventPerson[] },
   slackTeamId: string,
-): Promise<string[]> {
-  if (people.length === 0) return [];
+): Promise<EventMentions> {
+  const people = event.people ?? [];
+  const lookup = event.doneBy ? [...people, event.doneBy] : people;
+  if (lookup.length === 0) return { people: [] };
 
   const rows = await getSqlExecutor()
     .db()
@@ -66,7 +77,7 @@ export async function resolveEventPeopleMentions(
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
-        or(...people.map(personCondition)),
+        or(...lookup.map(personCondition)),
       ),
     );
 
@@ -84,13 +95,25 @@ export async function resolveEventPeopleMentions(
       add(`email:${row.emailNormalized}`, row.slackUserId);
     }
   }
+  const mentionOf = (person: EventPerson): string | undefined => {
+    const users = slackUsersByKey.get(personKey(person));
+    return users?.size === 1 ? slackMention([...users][0]!) : undefined;
+  };
 
   const mentions: string[] = [];
   for (const person of people) {
-    const users = slackUsersByKey.get(personKey(person));
-    if (users?.size !== 1) continue;
-    const mention = slackMention([...users][0]!);
-    if (!mentions.includes(mention)) mentions.push(mention);
+    const mention = mentionOf(person);
+    if (mention && !mentions.includes(mention)) mentions.push(mention);
   }
-  return mentions;
+  const doneByMention = event.doneBy ? mentionOf(event.doneBy) : undefined;
+  if (!doneByMention || !event.doneBy) return { people: mentions };
+  return {
+    people: mentions,
+    doneBy: {
+      mention: doneByMention,
+      ...("handle" in event.doneBy
+        ? { handle: event.doneBy.handle }
+        : undefined),
+    },
+  };
 }

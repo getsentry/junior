@@ -117,6 +117,8 @@ describe("Watch Event people", () => {
           namespace: "demo",
           identifier: "job-1",
           trustedSummary: `Demo job 1: ${eventType}.`,
+          // The Event names this linked person by handle only.
+          doneBy: { provider: "github", handle: "REQUESTER" },
           // Handles match without case. Unlinked people and repeats drop out.
           people: [
             { provider: "github", handle: "requester" },
@@ -136,6 +138,9 @@ describe("Watch Event people", () => {
       (message) => message.input.text,
     );
     expect(succeeded).toContain("People involved: <@U123>, <@U456>\n");
+    expect(succeeded).toContain(
+      'Done by: <@U123>. This person did what this Event describes. The Event calls them "REQUESTER". That is the same person. They are also in People involved.',
+    );
     expect(succeeded).toContain("Tell the people involved.");
     // Watch guidance applies only to its own event type.
     expect(failed).toContain("People involved: <@U123>, <@U456>\n");
