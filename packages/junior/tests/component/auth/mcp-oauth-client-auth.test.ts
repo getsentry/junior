@@ -18,6 +18,7 @@ const PLUGIN_ROOT = path.resolve(
 const PROVIDER = "oauth-client-mcp";
 const ORIGIN = "https://oauth-client-mcp.example.test";
 const MCP_URL = `${ORIGIN}/mcp`;
+const AUTH_ORIGIN = "https://auth.oauth-client-mcp.example.test";
 const CLIENT_ID = "pre-registered-client";
 const CLIENT_SECRET = "pre-registered-secret";
 const AUTHORIZATION_CODE = "authorization-code";
@@ -31,10 +32,15 @@ const ORIGINAL_ENV = { ...process.env };
  */
 function useOAuthClientMcpServer() {
   const tokenRequests: Request[] = [];
+  let accessToken: string | undefined = ACCESS_TOKEN;
+  let refreshToken = "refresh-token";
   mswServer.use(
     http.get(MCP_URL, () => new HttpResponse(null, { status: 405 })),
     http.post(MCP_URL, async ({ request }) => {
-      if (request.headers.get("authorization") !== `Bearer ${ACCESS_TOKEN}`) {
+      if (
+        !accessToken ||
+        request.headers.get("authorization") !== `Bearer ${accessToken}`
+      ) {
         return new HttpResponse(null, {
           status: 401,
           headers: {
@@ -58,47 +64,59 @@ function useOAuthClientMcpServer() {
     http.get(`${ORIGIN}/oauth-resource-metadata`, () =>
       HttpResponse.json({
         resource: MCP_URL,
-        authorization_servers: [ORIGIN],
+        authorization_servers: [AUTH_ORIGIN],
         scopes_supported: ["docs", "docs.readonly"],
       }),
     ),
-    http.get(`${ORIGIN}/.well-known/oauth-authorization-server`, () =>
+    http.get(`${AUTH_ORIGIN}/.well-known/oauth-authorization-server`, () =>
       HttpResponse.json({
-        issuer: ORIGIN,
-        authorization_endpoint: `${ORIGIN}/authorize`,
-        token_endpoint: `${ORIGIN}/token`,
+        issuer: AUTH_ORIGIN,
+        authorization_endpoint: `${AUTH_ORIGIN}/authorize`,
+        token_endpoint: `${AUTH_ORIGIN}/token`,
         response_types_supported: ["code"],
         code_challenge_methods_supported: ["S256"],
         token_endpoint_auth_methods_supported: ["client_secret_basic"],
       }),
     ),
     http.post(
-      `${ORIGIN}/token`,
+      `${AUTH_ORIGIN}/token`,
       () =>
         new HttpResponse("Token endpoint moved", {
           status: 307,
           headers: { location: "/token/exchange" },
         }),
     ),
-    http.post(`${ORIGIN}/token/exchange`, async ({ request }) => {
+    http.post(`${AUTH_ORIGIN}/token/exchange`, async ({ request }) => {
       tokenRequests.push(request.clone());
       const params = new URLSearchParams(await request.text());
       const clientAuth = `Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}`;
+      const refreshing = params.get("grant_type") === "refresh_token";
       if (
         request.headers.get("authorization") !== clientAuth ||
-        params.get("code") !== AUTHORIZATION_CODE
+        (refreshing
+          ? params.get("refresh_token") !== refreshToken
+          : params.get("code") !== AUTHORIZATION_CODE)
       ) {
         return HttpResponse.json({ error: "invalid_client" }, { status: 401 });
       }
+      if (refreshing) {
+        accessToken = "refreshed-access-token";
+        refreshToken = "rotated-refresh-token";
+      }
       return HttpResponse.json({
-        access_token: ACCESS_TOKEN,
+        access_token: accessToken,
         token_type: "Bearer",
         expires_in: 3600,
-        refresh_token: "refresh-token",
+        refresh_token: refreshToken,
       });
     }),
   );
-  return { tokenRequests };
+  return {
+    tokenRequests,
+    expireAccessToken: () => {
+      accessToken = undefined;
+    },
+  };
 }
 
 describe("pre-registered MCP OAuth client", () => {
@@ -123,9 +141,10 @@ describe("pre-registered MCP OAuth client", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("authorizes with the configured client and scope instead of registering", async () => {
+  it("authorizes and refreshes with the configured client and a separate authorization server", async () => {
     const server = useOAuthClientMcpServer();
-    const { getMcpAuthSession } = await import("@/chat/mcp/auth-store");
+    const { getMcpAuthSession, getMcpStoredOAuthCredentials } =
+      await import("@/chat/mcp/auth-store");
     const { McpAuthorizationRequiredError, PluginMcpClient } =
       await import("@/chat/mcp/client");
     const { createMcpOAuthClientProvider, finalizeMcpAuthorization } =
@@ -181,5 +200,32 @@ describe("pre-registered MCP OAuth client", () => {
     } finally {
       await authorized.close();
     }
+
+    // A new turn must use the saved refresh token without another sign-in.
+    server.expireAccessToken();
+    const refreshed = await connect();
+    try {
+      const tools = await refreshed.listTools();
+      expect(tools.map((tool) => tool.name)).toEqual(["status"]);
+    } finally {
+      await refreshed.close();
+    }
+    expect(server.tokenRequests).toHaveLength(2);
+    const refreshRequest = server.tokenRequests[1]!;
+    expect(refreshRequest.url).toBe(`${AUTH_ORIGIN}/token/exchange`);
+    expect(refreshRequest.headers.get("authorization")).toBe(
+      `Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}`,
+    );
+    const params = new URLSearchParams(await refreshRequest.text());
+    expect(params.get("grant_type")).toBe("refresh_token");
+    expect(params.get("refresh_token")).toBe("refresh-token");
+    expect(params.get("resource")).toBe(MCP_URL);
+    expect(
+      (await getMcpStoredOAuthCredentials("U123", PROVIDER))?.tokens,
+    ).toMatchObject({
+      access_token: "refreshed-access-token",
+      refresh_token: "rotated-refresh-token",
+      issuer: AUTH_ORIGIN,
+    });
   });
 });
