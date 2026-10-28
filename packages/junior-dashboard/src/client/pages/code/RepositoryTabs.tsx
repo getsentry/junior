@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
 
 import { useCodeRepositoryConversationsData } from "../../api";
@@ -17,6 +17,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
 import { buildConversations, getDashboardTimeZone } from "../../format";
+import { useDebouncedValue } from "../../debouncedValue";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { repositoryActivity } from "./RepositorySections";
@@ -28,7 +29,7 @@ const noFinishedConversations = new Set<string>();
 export function RepositoryConversationsTab(props: { repositoryId: string }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const search = useDeferredValue(query.trim());
+  const search = useDebouncedValue(query.trim());
   const feed = useCodeRepositoryConversationsData(props.repositoryId, search);
   const conversations = buildConversations(feed.data?.conversations ?? []);
   useEffect(() => {
