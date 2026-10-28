@@ -1266,7 +1266,7 @@ describe("sandbox egress proxy integration", () => {
       name: "classifies GitHub access denials with the accepted permissions",
       body: { message: "Resource not accessible by integration" },
       message:
-        "GitHub denied access: Resource not accessible by integration. This endpoint accepts these GitHub permissions: actions=write. Check that the GitHub App has them and that its installation includes the repository.",
+        "GitHub denied access: Resource not accessible by integration. This endpoint accepts these GitHub permissions: actions=write.",
     },
   ])("$name", async ({ body, message }) => {
     configureGitHubAppEnv();

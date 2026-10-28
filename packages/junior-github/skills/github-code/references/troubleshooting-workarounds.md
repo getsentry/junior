@@ -27,5 +27,5 @@
 - Retry a transport failure once after you check the repository.
 - Do not repeat 401, 403, 404, or validation failures.
 - A `user-read` or `user-write` failure needs private App OAuth.
-- An `installation-*` access denial needs an App permission or installation fix. Other GitHub refusals, such as a run that cannot be retried, are not permission problems.
+- An `installation-*` access denial needs an App permission or installation fix.
 - Use structured `permission_denied` details when present.

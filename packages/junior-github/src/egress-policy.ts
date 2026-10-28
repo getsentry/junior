@@ -235,12 +235,9 @@ function shouldInspectGitHubGraphqlResponse(
 const GITHUB_ERROR_BODY_LIMIT_BYTES = 4 * 1024;
 
 // GitHub also returns 403 for requests it refuses for other reasons, such as
-// a run that cannot be retried or a secondary rate limit. Only these messages
-// mean that the credential lacks access.
-const GITHUB_ACCESS_DENIED_MESSAGES = new Set([
-  "Resource not accessible by integration",
-  "Resource not accessible by personal access token",
-]);
+// a run that cannot be retried or a secondary rate limit. Only this message
+// means that the App or user token lacks access.
+const GITHUB_ACCESS_DENIED_MESSAGE = "Resource not accessible by integration";
 
 // GitHub sends this header on most responses. It lists the permissions that
 // the endpoint accepts. It does not say which permission is missing.
@@ -272,7 +269,7 @@ async function githubForbiddenPermissionDeniedMessage(
   const message = githubErrorMessage(
     await ctx.response.readText(GITHUB_ERROR_BODY_LIMIT_BYTES),
   );
-  if (!message || !GITHUB_ACCESS_DENIED_MESSAGES.has(message)) {
+  if (message !== GITHUB_ACCESS_DENIED_MESSAGE) {
     return undefined;
   }
   const accepted = ctx.response.headers
@@ -281,9 +278,7 @@ async function githubForbiddenPermissionDeniedMessage(
   return [
     `GitHub denied access: ${message}.`,
     ...(accepted && GITHUB_ACCEPTED_PERMISSIONS_PATTERN.test(accepted)
-      ? [
-          `This endpoint accepts these GitHub permissions: ${accepted}. Check that the GitHub App has them and that its installation includes the repository.`,
-        ]
+      ? [`This endpoint accepts these GitHub permissions: ${accepted}.`]
       : []),
   ].join(" ");
 }
