@@ -83,5 +83,6 @@ child agent. See "User Approval" in `agent-invocations/README.md`.
   proposals to the real reviewer. CI runs them for each change in this
   directory. Run them with `pnpm --filter @sentry/junior-evals evals:guardian`.
 - `proposalTool()` in `gate.ts` builds the `tool` field of a proposal. The
-  Guardian evals build their tool specs with it, so keep it the only builder.
+  Guardian evals call it with the agent's own tools, so keep it the only
+  builder.
 - Telemetry names are in `TELEMETRY.md`.

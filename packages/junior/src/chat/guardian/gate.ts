@@ -326,30 +326,26 @@ function buildProposal(
         }
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
-    tool: proposalTool(
-      toolName,
-      tool,
-      resolved,
-      tool.describeProposal?.(input),
-    ),
+    tool: proposalTool(toolName, tool, input, resolved),
   };
 }
 
 /**
- * Build the `tool` field of a proposal: the tool as Guardian sees it. The
- * resolved metadata of a dispatcher, such as `callMcpTool`, names the real
- * tool. The Guardian evals build their tool specs with this function, so
+ * Build the `tool` field of a proposal: the tool as Guardian sees it for this
+ * input. The resolved metadata of a dispatcher, such as `callMcpTool`, names
+ * the real tool. The Guardian evals call this with the agent's own tools, so
  * they send the same shape as production.
  */
 export function proposalTool(
   toolName: string,
   tool: AnyToolDefinition,
+  input: Record<string, unknown>,
   resolved: ToolApprovalResolution | undefined,
-  proposalDescription?: string,
 ): ToolActionProposal["tool"] {
   const name = resolved?.name ?? toolName;
   const annotations = resolved?.annotations ?? tool.annotations;
   const catalogSource = resolved?.source ?? tool.source;
+  const proposalDescription = tool.describeProposal?.(input);
   return {
     ...(annotations ? { annotations } : undefined),
     description: resolved?.description ?? tool.description,

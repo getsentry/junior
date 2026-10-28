@@ -39,6 +39,7 @@ jobs:
               - 'packages/junior-evals/evals/guardian/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'
+              - 'packages/junior-evals/src/guardian-tools.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/guardian-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.guardian.config.ts'
