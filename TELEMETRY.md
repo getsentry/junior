@@ -169,15 +169,16 @@ Do not add app-specific keys under `user.*`. Put facts about the request in
 
 PostgreSQL queries that are slow, frequent, or failing.
 
-Spans: `db.query`
+Spans: `db`
 
-Attributes: `db.system.name`, `db.namespace`, `db.operation.name`,
-`db.collection.name`, `db.query.summary`, `db.query.text`,
-`db.response.status_code`, `error.type`, `server.address`, `server.port`,
-`app.db.driver`
+The Sentry SDK records these spans through its `Postgres` (`pg`) and `Neon`
+integrations. Origins: `auto.db.postgres`, `auto.db.neon`.
+
+Attributes: `db.system.name`, `db.namespace`, `db.query.summary`,
+`db.query.text`, `db.user`, `server.address`, `server.port`
 
 `db.query.text` keeps parameter placeholders and never includes parameter values.
-All inline SQL literals use `?`. SQL comments are removed.
+The SDK replaces inline SQL literals with `?` and removes SQL comments.
 Group by `db.query.text` to identify one query shape. Group by
 `db.query.summary` for a lower-cardinality operation and target view.
 

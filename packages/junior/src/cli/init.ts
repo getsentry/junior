@@ -180,12 +180,10 @@ export async function runInit(
       typecheck: "tsc --noEmit",
     },
     dependencies: {
-      "@opentelemetry/api": "1.9.1",
-      "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
-      "@sentry/nitro": "10.65.0",
+      "@sentry/nitro": "11.9.0",
       hono: "^4.13.11",
     },
     devDependencies: {

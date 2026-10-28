@@ -452,10 +452,16 @@ describe("juniorNitro plugin modules", () => {
       dashboard: { basePath: "/ops" },
     }).nitro.setup(nitro);
 
-    expect(rollupBeforeHooks).toHaveLength(1);
-    await rollupBeforeHooks[0]!({}, { plugins: buildPlugins });
-    expect(buildPlugins).toHaveLength(1);
-    await buildPlugins[0]?.writeBundle?.();
+    expect(rollupBeforeHooks).toHaveLength(2);
+    for (const hook of rollupBeforeHooks) {
+      await hook({}, { plugins: buildPlugins });
+    }
+    // Sentry's Orchestrion transform adds diagnostics channels at build time.
+    expect(buildPlugins.map((plugin) => plugin.name)).toEqual([
+      "code-transformer",
+      "junior:copy-build-content",
+    ]);
+    await buildPlugins[1]?.writeBundle?.();
 
     await expect(
       fs.readFile(
@@ -607,7 +613,7 @@ describe("juniorNitro plugin modules", () => {
     expect(code).toContain(
       'export const plugins = {"packages":["@acme/junior-demo"]};',
     );
-    expect(rollupBeforeHooks).toHaveLength(1);
+    expect(rollupBeforeHooks).toHaveLength(2);
   });
 
   it("resolves package plugin modules with custom exports", async () => {
@@ -791,7 +797,9 @@ describe("juniorNitro plugin modules", () => {
       plugins: defineJuniorPlugins(["@acme/junior-demo"]),
     }).nitro.setup(nitro);
     const buildConfig: TestBuildConfig = { plugins: [] };
-    await rollupBeforeHooks[0]?.(nitro, buildConfig);
+    for (const hook of rollupBeforeHooks) {
+      await hook(nitro, buildConfig);
+    }
     const copyPlugin = buildConfig.plugins?.find(
       (plugin) => plugin.name === "junior:copy-build-content",
     );

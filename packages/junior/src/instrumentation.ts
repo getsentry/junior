@@ -3,7 +3,6 @@ import {
   scrubPrivateSentryEvent,
   scrubPrivateSentryLog,
   scrubPrivateSentrySpan,
-  scrubPrivateSentryTransaction,
 } from "@/chat/sentry-payload-filter";
 import {
   getDeploymentServiceVersion,
@@ -43,23 +42,18 @@ export function initSentry(): void {
       process.env.NODE_ENV,
     release: serviceVersion,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
-    traceLifecycle: "stream",
-    sendDefaultPii: true,
-    enableLogs,
-    registerEsmLoaderHooks: false,
-    streamGenAiSpans: true,
     beforeSend: scrubPrivateSentryEvent,
-    beforeSendLog: scrubPrivateSentryLog,
-    beforeSendSpan: Sentry.withStreamedSpan(scrubPrivateSentrySpan),
-    beforeSendTransaction: scrubPrivateSentryTransaction,
+    // The SDK always sends logs written through its logger, so drop them here
+    // when SENTRY_ENABLE_LOGS turns them off.
+    beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
+    beforeSendSpan: scrubPrivateSentrySpan,
     integrations(defaultIntegrations) {
-      return [
-        ...defaultIntegrations,
-        Sentry.vercelAIIntegration({
-          recordInputs: true,
-          recordOutputs: true,
-        }),
-      ];
+      // Junior records its own privacy-aware model spans around pi-ai, which
+      // calls the Anthropic SDK. The default Anthropic integration would add a
+      // second span for each model call.
+      return defaultIntegrations.filter(
+        (integration) => integration.name !== "Anthropic_AI",
+      );
     },
   });
 

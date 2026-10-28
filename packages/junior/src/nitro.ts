@@ -1,4 +1,5 @@
 import path from "node:path";
+import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
@@ -117,32 +118,29 @@ function runtimeModuleForResolvedPluginModule(
 }
 
 /**
- * Prevent import-in-the-middle and require-in-the-middle from being
- * externalized so Rolldown bundles them inline.
+ * Add Sentry's diagnostics-channel instrumentation to the production bundle.
  *
- * @sentry/node (via @opentelemetry/instrumentation) statically imports these
- * packages. Nitro already lists them in nf3's NonBundleablePackages, which
- * means it externalizes them and relies on traceNodeModules to copy the
- * package directories into the Vercel function output. In practice that trace
- * step fails to materialize the packages at runtime, causing an
- * ERR_MODULE_NOT_FOUND startup crash.
+ * Sentry instruments libraries such as pg, Neon, and the AI SDK through
+ * diagnostics channels. Nitro bundles these libraries, so the runtime module
+ * hooks of the SDK cannot change them. The Orchestrion plugin adds the
+ * channels at build time instead. `@sentry/nitro` does not add this plugin.
  *
- * Adding them to noExternals overrides the NonBundleablePackages default and
- * forces Rolldown to bundle their CJS code inline. The trade-off is that
- * Node.js ESM loader hooks (hook.mjs) are not active, which limits OTEL
- * auto-instrumentation of modules loaded after initialization. That is an
- * acceptable cost compared to a fatal startup failure.
+ * The bundle does not need the runtime hooks, so the build removes their code.
+ * `nitro dev` keeps the runtime hooks from `--import=./instrument.mjs`.
  */
-function bundleOpenTelemetryLoaderHooks(nitro: Nitro): void {
-  const existing = Array.isArray(nitro.options.noExternals)
-    ? nitro.options.noExternals
-    : [];
-  const additions = ["import-in-the-middle", "require-in-the-middle"].filter(
-    (pkg) => !existing.includes(pkg),
-  );
-  if (additions.length > 0) {
-    nitro.options.noExternals = [...existing, ...additions];
+function addSentryBuildTimeInstrumentation(nitro: Nitro): void {
+  if (nitro.options.dev) {
+    return;
   }
+  nitro.options.replace = {
+    ...nitro.options.replace,
+    __SENTRY_CHANNEL_INJECTION__: "false",
+  };
+  nitro.hooks.hook("rollup:before", (_nitro, config) => {
+    const buildConfig = config as RollupLikeConfig;
+    buildConfig.plugins ??= [];
+    buildConfig.plugins.push(sentryOrchestrionPlugin());
+  });
 }
 
 function configureVercelDeployment(
@@ -275,7 +273,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           nitro,
           options,
         );
-        bundleOpenTelemetryLoaderHooks(nitro);
+        addSentryBuildTimeInstrumentation(nitro);
 
         applyRolldownTreeshakeWorkaround(nitro);
         const pluginSource = options.plugins;

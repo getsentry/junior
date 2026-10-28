@@ -12,8 +12,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opentelemetry/api": "1.9.1",
-    "@opentelemetry/core": "2.9.0",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
     "@sentry/junior-amplitude": "workspace:*",
@@ -27,7 +25,7 @@
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",
-    "@sentry/nitro": "10.65.0",
+    "@sentry/nitro": "11.9.0",
     "hono": "^4.13.11"
   },
   "devDependencies": {

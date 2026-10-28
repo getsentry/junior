@@ -171,7 +171,7 @@ describe("init cli", () => {
     expect(pkg.dependencies["@sentry/junior"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-memory"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
-    expect(pkg.dependencies["@sentry/nitro"]).toBe("10.65.0");
+    expect(pkg.dependencies["@sentry/nitro"]).toBe("11.9.0");
     expect(pkg.devDependencies.nitro).toBeDefined();
     expect(pkg.devDependencies.vite).toBeUndefined();
     expect(pkg.devDependencies.vercel).toBeUndefined();

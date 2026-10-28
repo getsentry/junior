@@ -10,7 +10,6 @@ import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
-import { traceQueries } from "./tracing";
 import { logException } from "@/chat/logging";
 
 type QueryClient = Pool | PoolClient | Client;
@@ -24,11 +23,9 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   private isolatedQueryId = 0;
 
   private readonly pool: Pool;
-  private readonly connectionString: string;
 
-  constructor(pool: Pool, connectionString: string) {
+  constructor(pool: Pool) {
     this.pool = pool;
-    this.connectionString = connectionString;
   }
 
   db(): JuniorDatabase {
@@ -58,10 +55,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
     statement: string,
     params: readonly unknown[] = [],
   ): Promise<T[]> {
-    const client = traceQueries(await this.pool.connect(), {
-      connectionString: this.connectionString,
-      driver: "neon",
-    });
+    const client = await this.pool.connect();
     try {
       // A named statement uses the extended protocol, which accepts one statement only.
       const result = await client.query<QueryResultRow>({
@@ -165,10 +159,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
-      connectionString: this.connectionString,
-      driver: "neon",
-    });
+    return this.transactionClient.getStore() ?? this.pool;
   }
 }
 
@@ -187,5 +178,5 @@ export function createNeonJuniorSqlExecutor(args: {
   pool.on("error", (error: Error) => {
     logException(error, "db.pool.client.failed", { "app.db.driver": "neon" });
   });
-  return new NeonExecutor(pool, args.connectionString);
+  return new NeonExecutor(pool);
 }
