@@ -89,30 +89,29 @@ export function ConversationDetailsFrame(props: {
       }}
     >
       <header className="flex items-center justify-between gap-3 border-b border-dashboard-border py-2 pl-5 pr-3">
-        <h2
-          aria-label="Conversation details"
-          className="m-0 text-base font-semibold text-dashboard-text"
-          id={titleId}
-        >
-          Details
-        </h2>
-        <div className="flex items-center gap-1">
-          {props.actions}
-          {props.actions ? (
-            <span
-              aria-hidden="true"
-              className="mx-1 h-4 w-px bg-dashboard-border"
-            />
-          ) : null}
-          <Button
-            ref={closeRef}
-            aria-label="Close conversation details"
-            onClick={props.onClose}
-            size="icon"
+        {/* Keep actions beside the title. The panel opens under the pointer
+            that clicked the chat's Details button, so that corner holds only
+            Close. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <h2
+            aria-label="Conversation details"
+            className="m-0 text-base font-semibold text-dashboard-text"
+            id={titleId}
           >
-            <X aria-hidden="true" size={15} />
-          </Button>
+            Details
+          </h2>
+          {props.actions ? (
+            <div className="flex items-center gap-0.5">{props.actions}</div>
+          ) : null}
         </div>
+        <Button
+          ref={closeRef}
+          aria-label="Close conversation details"
+          onClick={props.onClose}
+          size="icon"
+        >
+          <X aria-hidden="true" size={15} />
+        </Button>
       </header>
       <div className="min-h-0">{props.children}</div>
     </aside>
