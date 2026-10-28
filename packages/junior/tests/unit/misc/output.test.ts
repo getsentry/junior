@@ -153,6 +153,41 @@ describe("normalizeSlackReplyMarkdown", () => {
       normalizeSlackReplyMarkdown("opened getsentry/junior#1509 for review"),
     ).toBe("opened getsentry/junior#1509 for review");
   });
+
+  it("moves a list item's follow-up paragraph after a nested list out of the list", () => {
+    const input = [
+      "1. I checked the side effects:",
+      "   - **Tag:** both change.",
+      "   - **CalVer:** still works.",
+      "   ",
+      "   So you can have one or the other.",
+      "",
+      "2. It describes:",
+      "   - **Requirements:**",
+      "     - A PR shows up only where it lands.",
+      "",
+      "   It also links craft PR #924.",
+      "3. Last item.",
+    ].join("\n");
+
+    expect(normalizeSlackReplyMarkdown(input)).toBe(
+      [
+        "1. I checked the side effects:",
+        "   - **Tag:** both change.",
+        "   - **CalVer:** still works.",
+        "",
+        "So you can have one or the other.",
+        "",
+        "2. It describes:",
+        "   - **Requirements:**",
+        "     - A PR shows up only where it lands.",
+        "",
+        "It also links craft PR #924.",
+        "",
+        "3. Last item.",
+      ].join("\n"),
+    );
+  });
 });
 
 describe("buildSlackOutputMessage", () => {

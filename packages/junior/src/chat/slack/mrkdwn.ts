@@ -259,6 +259,69 @@ function wrapBareReferences(text: string): string {
   return out.join("\n");
 }
 
+const LIST_ITEM_PREFIX_RE = /^[ \t]*(?:[-*•]|\d+\.)[ \t]+/;
+
+function removeIndent(line: string, maxIndent: number): string {
+  let i = 0;
+  while (i < maxIndent && (line[i] === " " || line[i] === "\t")) {
+    i++;
+  }
+  return line.slice(i);
+}
+
+/**
+ * Move a top-level list item's follow-up paragraph out of the list when it
+ * comes after a nested list.
+ *
+ * Slack's `markdown` block joins all paragraphs of a list item with no space
+ * and renders the nested list after them, so the follow-up text moves above
+ * the nested list. Slack keeps the start number of the next ordered list, so
+ * the list numbers stay correct after the paragraph moves out.
+ */
+function liftListFollowUpParagraphs(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let inCodeBlock = false;
+  let inTopLevelItem = false;
+  let nestedContentIndent: number | undefined;
+  let liftIndent: number | undefined;
+  let prevBlank = false;
+
+  for (const line of lines) {
+    const isBlank = line.trim() === "";
+    const indent = line.length - line.trimStart().length;
+
+    if (!inCodeBlock && !isBlank) {
+      if (indent === 0) {
+        inTopLevelItem = LIST_ITEM_PREFIX_RE.test(line);
+        nestedContentIndent = undefined;
+        liftIndent = undefined;
+      } else if (inTopLevelItem && liftIndent === undefined) {
+        const listItemPrefix = LIST_ITEM_PREFIX_RE.exec(line);
+        if (listItemPrefix) {
+          nestedContentIndent ??= listItemPrefix[0].length;
+        } else if (
+          // Less indent than the nested item text: the paragraph belongs to
+          // the top-level item. Lift it and the rest of that item.
+          prevBlank &&
+          nestedContentIndent !== undefined &&
+          indent < nestedContentIndent
+        ) {
+          liftIndent = indent;
+        }
+      }
+    }
+
+    if (line.trimStart().startsWith("```")) {
+      inCodeBlock = !inCodeBlock;
+    }
+    out.push(liftIndent === undefined ? line : removeIndent(line, liftIndent));
+    prevBlank = isBlank;
+  }
+
+  return out.join("\n");
+}
+
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
   const codeBlockPattern = /^```/;
@@ -311,8 +374,9 @@ export function ensureBlockSpacing(text: string): string {
  * or `{ type: "markdown" }` blocks.
  *
  * Plugins may first rewrite ordinary Markdown. Core then applies Slack-only
- * delivery shaping: bare URL wrapping and block spacing. Slack reply delivery
- * owns chunking and continuation markers separately.
+ * delivery shaping: bare URL wrapping, block spacing, and list follow-up
+ * paragraph lifting. Slack reply delivery owns chunking and continuation
+ * markers separately.
  */
 export function normalizeSlackReplyMarkdown(text: string): string {
   let normalized = applyPluginFormatMarkdown(text)
@@ -320,6 +384,7 @@ export function normalizeSlackReplyMarkdown(text: string): string {
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareReferences(normalized);
   normalized = ensureBlockSpacing(normalized);
+  normalized = liftListFollowUpParagraphs(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
 }
 
