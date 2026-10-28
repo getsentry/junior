@@ -259,10 +259,9 @@ test("opens and closes a conversation on mobile", async ({
     .click();
   const details = page.getByRole("dialog", { name: "Conversation details" });
   await expect(details).toHaveAttribute("aria-modal", "true");
-  const closeDetails = details.getByRole("button", {
-    name: "Close conversation details",
-  });
-  await expect(closeDetails).toBeFocused();
+  await expect(
+    details.getByRole("tab", { name: "Summary", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(details.locator(":focus")).toHaveCount(1);
   await page.keyboard.press("Escape");
@@ -279,6 +278,15 @@ test("opens and closes a conversation on mobile", async ({
     sourcePosition: { x: 100, y: 10 },
     targetPosition: { x: 100, y: 110 },
   });
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  await details
+    .getByRole("button", { name: "Dismiss conversation details" })
+    .click({ position: { x: 8, y: 8 } });
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
   const transcript = page.getByLabel("Conversation transcript");

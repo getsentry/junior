@@ -18,6 +18,15 @@ const focusableSelector = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
+/** Find visible controls that belong to the dialog's keyboard focus cycle. */
+function focusableElements(dialog: HTMLElement | null): HTMLElement[] {
+  return Array.from(
+    dialog?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
+  ).filter(
+    (element) => element.tabIndex >= 0 && element.getClientRects().length > 0,
+  );
+}
+
 /** Render a modal drawer or bottom sheet and own its focus and scroll lifecycle. */
 export function Drawer(props: {
   actions?: ReactNode;
@@ -50,9 +59,12 @@ export function Drawer(props: {
       // A responsive sheet can mount below an already open event dialog.
       const drawers = document.querySelectorAll("[data-dashboard-drawer]");
       if (drawers[drawers.length - 1] !== dialogRef.current) return;
-      dialogRef.current
-        ?.querySelector<HTMLElement>("[data-drawer-close]")
-        ?.focus();
+      const dialog = dialogRef.current;
+      const initialFocus =
+        dialog?.querySelector<HTMLElement>("[data-drawer-close]") ??
+        focusableElements(dialog).at(0) ??
+        dialog;
+      initialFocus?.focus();
     });
     const onKeyDown = (event: KeyboardEvent) => {
       // An event detail drawer can open above a child conversation drawer.
@@ -67,12 +79,7 @@ export function Drawer(props: {
       if (event.key !== "Tab") return;
 
       const dialog = dialogRef.current;
-      const focusable = Array.from(
-        dialog?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
-      ).filter(
-        (element) =>
-          element.tabIndex >= 0 && element.getClientRects().length > 0,
-      );
+      const focusable = focusableElements(dialog);
       const first = focusable.at(0);
       const last = focusable.at(-1);
       if (!dialog || !first || !last) {
@@ -117,6 +124,7 @@ export function Drawer(props: {
       className="fixed inset-0 z-50"
       ref={dialogRef}
       role="dialog"
+      tabIndex={-1}
     >
       <button
         aria-label={props.dismissLabel}
@@ -145,19 +153,13 @@ export function Drawer(props: {
             : undefined
         }
       >
-        <header
-          className={cn(
-            "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-dashboard-border bg-dashboard-bg-elevated px-4 pb-3 md:px-5",
-            bottom
-              ? "rounded-t-2xl pt-1"
-              : "pt-[max(0.75rem,env(safe-area-inset-top))]",
-          )}
-        >
-          {bottom ? (
+        {bottom ? (
+          <div className="rounded-t-2xl bg-dashboard-bg-elevated px-4 pt-1 md:px-5">
+            <div className="sr-only">{props.header}</div>
             <div
               aria-hidden="true"
               data-drawer-handle=""
-              className="col-span-2 flex touch-none cursor-grab justify-center py-3 active:cursor-grabbing"
+              className="flex touch-none cursor-grab justify-center py-3 active:cursor-grabbing"
               onPointerDown={(event) => {
                 dragStartRef.current = event.clientY;
                 event.currentTarget.setPointerCapture(event.pointerId);
@@ -183,26 +185,24 @@ export function Drawer(props: {
             >
               <span className="h-1 w-9 rounded-full bg-dashboard-border-interactive" />
             </div>
-          ) : null}
-          <div className="min-w-0">{props.header}</div>
-          <div
-            className={cn(
-              "flex items-start gap-1.5",
-              bottom && "absolute right-3 top-1 md:right-4",
-            )}
-          >
-            {props.actions}
-            <Button
-              aria-label={props.closeLabel}
-              data-drawer-close
-              onClick={props.onClose}
-              size="icon"
-              title="Close"
-            >
-              <X aria-hidden="true" size={15} strokeWidth={2.25} />
-            </Button>
           </div>
-        </header>
+        ) : (
+          <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dashboard-border bg-dashboard-bg-elevated px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
+            <div className="min-w-0">{props.header}</div>
+            <div className="flex items-start gap-1.5">
+              {props.actions}
+              <Button
+                aria-label={props.closeLabel}
+                data-drawer-close
+                onClick={props.onClose}
+                size="icon"
+                title="Close"
+              >
+                <X aria-hidden="true" size={15} strokeWidth={2.25} />
+              </Button>
+            </div>
+          </header>
+        )}
         <div className="min-h-0 overflow-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5">
           {props.children}
         </div>

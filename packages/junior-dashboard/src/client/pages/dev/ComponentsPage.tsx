@@ -323,7 +323,8 @@ function FoundationsGalleryPage() {
             titleId="gallery-sheet-title"
           >
             <p className="m-0 text-sm text-dashboard-text-muted">
-              Swipe the handle down or close the sheet to return to the page.
+              Swipe the handle down, tap outside, or press Escape to return to
+              the page.
             </p>
           </Drawer>
         ) : null}
