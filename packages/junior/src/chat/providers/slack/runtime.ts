@@ -26,7 +26,6 @@ import {
 import {
   logException,
   logWarn,
-  setSpanAttributes,
   withSpan,
   withLogContext,
 } from "@/chat/logging";
@@ -45,6 +44,10 @@ import {
   startProcessingReaction,
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
+import {
+  getTurnInputSpanAttributes,
+  type SlackTurnInput,
+} from "@/chat/providers/slack/turn-input-timing";
 import {
   getChannelId,
   getMessageTs,
@@ -106,8 +109,8 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
-  /** Attributes to set on the `chat.turn` span, such as mailbox input timing. */
-  turnSpanAttributes?: Record<string, number>;
+  /** Mailbox timing for the input messages that start this turn. */
+  turnInput?: SlackTurnInput;
 }
 
 /** Sent when a stop decision unsubscribes a thread. */
@@ -734,8 +737,11 @@ export function createSlackTurnRuntime<
           hooks,
         );
 
-        await withSpan("chat.turn", "chat.turn", context, async () => {
-          setSpanAttributes(hooks.turnSpanAttributes ?? {});
+        await withSpan("chat.turn", "chat.turn", context, async (set) => {
+          const turnStartedAtMs = deps.now();
+          if (hooks.turnInput) {
+            set(getTurnInputSpanAttributes(hooks.turnInput, turnStartedAtMs));
+          }
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             botUserId: deps.getBotUserId(),
             explicitMention: true,
@@ -915,8 +921,11 @@ export function createSlackTurnRuntime<
           channelId,
           runId,
         });
-        await withSpan("chat.turn", "chat.turn", turnContext, async () => {
-          setSpanAttributes(hooks.turnSpanAttributes ?? {});
+        await withSpan("chat.turn", "chat.turn", turnContext, async (set) => {
+          const turnStartedAtMs = deps.now();
+          if (hooks.turnInput) {
+            set(getTurnInputSpanAttributes(hooks.turnInput, turnStartedAtMs));
+          }
           // This path can compact context and run router/vision model calls
           // before executeSlackTurn() opens the main reply span.
           const content = parseContent(message);

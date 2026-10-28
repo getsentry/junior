@@ -37,6 +37,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
+import type { SlackTurnInput } from "@/chat/providers/slack/turn-input-timing";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
@@ -446,7 +447,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      turnSpanAttributes?: Record<string, number>;
+      turnInput?: SlackTurnInput;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -487,7 +488,7 @@ describe("Slack conversation work execution", () => {
           thread,
           message,
           skipped: hooks.messageContext?.skipped ?? [],
-          turnSpanAttributes: hooks.turnSpanAttributes,
+          turnInput: hooks.turnInput,
         });
       },
       handleSubscribedMessage: async () => {
@@ -511,16 +512,11 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.turnSpanAttributes).toEqual({
-      "app.turn.input_count": 2,
-      "app.turn.delivery_lag_ms": Math.round(
-        oldestInput!.receivedAtMs - oldestInput!.createdAtMs,
-      ),
-      "app.turn.wait_ms": expect.any(Number),
+    expect(calls[0]?.turnInput).toEqual({
+      count: 2,
+      oldestCreatedAtMs: oldestInput?.createdAtMs,
+      oldestReceivedAtMs: oldestInput?.receivedAtMs,
     });
-    expect(
-      calls[0]?.turnSpanAttributes?.["app.turn.wait_ms"],
-    ).toBeGreaterThanOrEqual(0);
     expect(calls[0]?.destination).toEqual(SLACK_DESTINATION);
     expect(calls[0]?.thread.id).toBe(CONVERSATION_ID);
     expect(calls[0]?.message.id).toBe("1712345.0002");

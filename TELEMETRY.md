@@ -242,7 +242,11 @@ A Slack `chat.turn` span records mailbox timing for its input messages:
 - `app.turn.delivery_lag_ms`: Slack send time to webhook receipt for the
   oldest input message.
 - `app.turn.wait_ms`: webhook receipt of the oldest input message to the start
-  of the turn. It includes queue wait and worker setup.
+  of the `chat.turn` span. It includes queue wait and worker setup.
+
+For the oldest input message, delivery lag, wait, and the `chat.turn` duration
+are contiguous. `app.turn.wait_ms` ends at the same turn start that
+`app.turn.first_feedback_ms` measures from.
 
 The timing attributes are absent when the value is negative. A negative value
 is clock skew between Slack and Junior hosts, not latency. Resumed `chat.turn`

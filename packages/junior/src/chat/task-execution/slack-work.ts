@@ -525,34 +525,6 @@ function compareInboundMessages(
   );
 }
 
-/**
- * Describe how long the oldest input waited before this turn started.
- *
- * Slack, the webhook host, and the worker host use separate clocks. A negative
- * duration is clock skew, not latency, so it is left out.
- */
-function getTurnInputSpanAttributes(
-  records: InboundMessage[],
-  turnStartedAtMs: number,
-): Record<string, number> {
-  const attributes: Record<string, number> = {
-    "app.turn.input_count": records.length,
-  };
-  const oldest = records[0];
-  if (!oldest) {
-    return attributes;
-  }
-  const deliveryLagMs = oldest.receivedAtMs - oldest.createdAtMs;
-  if (deliveryLagMs >= 0) {
-    attributes["app.turn.delivery_lag_ms"] = Math.round(deliveryLagMs);
-  }
-  const waitMs = turnStartedAtMs - oldest.receivedAtMs;
-  if (waitMs >= 0) {
-    attributes["app.turn.wait_ms"] = Math.round(waitMs);
-  }
-  return attributes;
-}
-
 function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
   return records.some((record) => {
     const metadata = parseSlackMetadata(record.input.metadata);
@@ -697,10 +669,16 @@ export function createSlackConversationWorker(
       return { status: "completed" };
     }
 
+    const oldestRecord = records[0];
     const latestRecord = records[records.length - 1];
-    if (!latestRecord) {
+    if (!oldestRecord || !latestRecord) {
       return { status: "completed" };
     }
+    const turnInput = {
+      count: records.length,
+      oldestCreatedAtMs: oldestRecord.createdAtMs,
+      oldestReceivedAtMs: oldestRecord.receivedAtMs,
+    };
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
       throw new Error(
@@ -750,10 +728,6 @@ export function createSlackConversationWorker(
           totalSinceLastHandler: messages.length,
         };
         const activeAuthorId = requireSlackAuthorId(latestMessage);
-        const turnSpanAttributes = getTurnInputSpanAttributes(
-          records,
-          Date.now(),
-        );
         let initialMessagesAcked = false;
         const ack = async (): Promise<void> => {
           if (initialMessagesAcked) {
@@ -804,7 +778,7 @@ export function createSlackConversationWorker(
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
               stopSignal: context.stopSignal?.(),
-              turnSpanAttributes,
+              turnInput,
               subscribeThread: async () =>
                 await subscribeSlackThreadForMessage({
                   messageCreatedAtMs: latestRecord.createdAtMs,
@@ -825,7 +799,7 @@ export function createSlackConversationWorker(
                 isFinalAttempt: context.attempt.isFinalAttempt,
                 shouldYield: context.shouldYield,
                 stopSignal: context.stopSignal?.(),
-                turnSpanAttributes,
+                turnInput,
               },
             );
           }
