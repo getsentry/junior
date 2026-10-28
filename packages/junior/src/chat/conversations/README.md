@@ -267,6 +267,11 @@ An object annotation holds the latest saved facts for an object in one
 Conversation. The provider owns its key, type, title, status, and optional fields.
 It is not the authoritative object store.
 
+A child agent saves annotations in its own Conversation. People see the root
+Conversation, so reads for a root also include the annotations of every
+Conversation in its tree. The newest annotation wins for each object. Writes and
+webhook updates keep the Conversation that saved the annotation.
+
 Successful plugin tools return `objectAnnotations`. Core assigns the plugin
 owner, saves the annotations, and replaces them with owned `objectCards` in the
 tool result. Hosted MCP hooks can return the same annotations. Raw MCP responses
@@ -280,7 +285,10 @@ Pending cards come from committed successful tool results, not a scan of changed
 annotation rows. The latest selection per owner/key wins. Failed or timed-out
 results do not replace earlier cards. Removal results suppress earlier selections.
 A visible Message consumes its cards. A new Turn does not inherit cards from a
-silent Turn. Delivery resolves the selected objects from saved annotations.
+silent Turn. A child agent cannot reply to people. When a child result starts a
+parent Turn, the parent reply also delivers the cards that the child selected in
+that agent invocation. A child of a child does not pass its cards up yet.
+Delivery resolves the selected objects from saved annotations.
 Store only `{ kind, plugin, key }` references in Message `objectCards` metadata
 and report those references in transcript events. The Conversation supplies the
 scope; references cannot select another Conversation.
