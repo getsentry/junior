@@ -6,6 +6,7 @@ import { Field } from "../../components/Field";
 import { InlineError } from "../../components/InlineError";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
+import { formatWorkspaceSandboxSize } from "./SandboxSizeSummary";
 import {
   createRepoDraft,
   type RepoDraft,
@@ -15,6 +16,7 @@ import {
 type WorkspaceEditorProps = {
   busy: boolean;
   canSave: boolean;
+  defaultVcpus: number | null;
   draft: WorkspaceDraft;
   error?: string;
   editing: boolean;
@@ -212,7 +214,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
             onChange={(event) =>
               props.onChange({ ...props.draft, vcpus: event.target.value })
             }
-            placeholder="App default"
+            placeholder={formatWorkspaceSandboxSize(null, props.defaultVcpus)}
             value={props.draft.vcpus}
           />
         </Field>

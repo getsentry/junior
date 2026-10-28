@@ -71,7 +71,7 @@ The default floating dependency max age is seven days. Set `SANDBOX_SNAPSHOT_FLO
 
 Snapshot builds use `SANDBOX_VCPUS` because `junior snapshot create` runs before app initialization. Set it when dependency installation needs more CPU or memory than the Vercel Sandbox default. Runtime sandboxes should normally use `createApp({ sandbox: { vcpus } })`. Each vCPU provides 2 GB of memory, so a value of `4` creates an 8 GB sandbox.
 
-A Workspace recipe can set its own vCPU count. Junior uses that value for the Workspace snapshot build and for each sandbox that starts from the Workspace snapshot. It takes precedence over the app setting and `SANDBOX_VCPUS`. Use it when one Workspace, such as a large monorepo, needs more memory than the others. For example, `8` gives that Workspace 16 GB.
+A Workspace recipe can set its own vCPU count. Junior uses that value for the Workspace snapshot build and for each sandbox that starts from the Workspace snapshot. It takes precedence over the app setting and `SANDBOX_VCPUS`. Use it when one Workspace, such as a large monorepo, needs more memory than the others. For example, `8` gives that Workspace 16 GB. The dashboard Workspaces page shows the default Sandbox size and the size of each Workspace.
 
 Leave the variable unset to use the Vercel default. Requested vCPU counts must be supported by the deployment's Vercel plan; unsupported values cause sandbox creation to fail.
 

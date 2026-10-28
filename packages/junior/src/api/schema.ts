@@ -183,6 +183,7 @@ export {
 } from "./schema/workspace";
 export type {
   BaselineSnapshotReport,
+  WorkspaceListReport,
   WorkspaceReport,
 } from "./schema/workspace";
 export {

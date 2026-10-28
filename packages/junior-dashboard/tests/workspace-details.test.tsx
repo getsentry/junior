@@ -27,6 +27,7 @@ function render(props: {
 }): string {
   return renderToStaticMarkup(
     <WorkspaceDetailsContent
+      defaultVcpus={4}
       error={props.error ?? false}
       loading={props.loading ?? false}
       range={30}

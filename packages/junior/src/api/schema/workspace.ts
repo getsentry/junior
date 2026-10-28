@@ -48,6 +48,8 @@ export const workspaceSchema = z
 export const workspaceListSchema = z
   .object({
     baselineSnapshot: baselineSnapshotSchema.nullable(),
+    /** App-level Sandbox vCPUs. Null means the Vercel default. */
+    defaultVcpus: z.number().int().positive().nullable(),
     workspaces: z.array(workspaceSchema),
   })
   .strict();
@@ -71,3 +73,4 @@ export const deleteWorkspaceResponseSchema = z
 
 export type BaselineSnapshotReport = z.infer<typeof baselineSnapshotSchema>;
 export type WorkspaceReport = z.infer<typeof workspaceSchema>;
+export type WorkspaceListReport = z.infer<typeof workspaceListSchema>;
