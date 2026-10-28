@@ -65,9 +65,10 @@ conversation tree.
    `parentMailboxStatus: "pending"`.
 7. The worker appends the result to the parent mailbox before it acknowledges
    the child work. Then it sets `parentMailboxStatus: "appended"`.
-   The result names the parent's other child agents that are still open, so a
-   parent that started several children can wait for all of them before it
-   reports.
+   The result names the parent's other child agents whose results have not
+   reached it: those still running and those whose result is still
+   `parentMailboxStatus: "pending"`. A parent that started several children
+   can wait for all of them before it reports.
 8. The heartbeat repairs invocations left in `mailboxStatus: "pending"` or
    `parentMailboxStatus: "pending"`.
 
