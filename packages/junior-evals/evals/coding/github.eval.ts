@@ -28,6 +28,29 @@ describe("GitHub Skill Workflows", () => {
     );
   });
 
+  test("when completed code work leaves an optional follow-up, open the PR without asking", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "/github-code Say you finished a code change on a pushed branch and the checks pass, but you left out an optional cleanup that would widen the change. Do you ask me before you open the PR, or what do you do? Keep it short.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The answer says Junior opens the pull request without asking first.",
+          "The answer says the left-out cleanup is named as a follow-up, such as in the pull request body or the report.",
+        ],
+        fail: [
+          "Do not say Junior asks the user whether to open the pull request or waits for permission.",
+          "Do not say Junior adds the cleanup to the change before opening the pull request.",
+        ],
+      }),
+    );
+  });
+
   test("when a default repo is set in one turn, reuse it in the next turn without asking again", async ({
     run,
   }) => {

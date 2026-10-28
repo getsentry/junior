@@ -332,7 +332,7 @@ const PLANNING_RULES = [
 const TASK_EXECUTION_RULES = [
   "- Actionable request: act in this turn.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
+  "- Ask the user only for missing access or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue. An open scope or follow-up question does not block delivery: deliver the requested work and state the question.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
   "- A tool result with `timed_out: true` means that attempt did not finish. Continue the active task. Before retrying work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
 ];

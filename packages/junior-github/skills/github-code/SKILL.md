@@ -35,7 +35,8 @@ Use `git` and `gh` for repository work.
 - Push before `github_createPullRequest`. Never ask for a token for bot pushes.
 - When an error names a tool, use it. Change permissions only when GitHub rejected the request.
 - Stop for an unclear target, missing access, destructive work, or a GitHub permission failure.
-- Unless the user opts out, push completed work and open a PR. Open it ready for review when the work is complete and the checks pass. Open a draft only when work, checks, or decisions remain.
+- Code changes always end in a pushed branch and a PR. Do not ask whether to open one. Skip it only when the user opts out or asks for investigation only.
+- Open the PR ready for review when the work is complete and the checks pass. Open a draft when work, checks, or decisions remain. A scope or follow-up question is not a reason to stop: open the PR, and name the question in the PR body and the report.
 - Report repo, branch, PR, checks, and skipped checks.
 
 Do not install or repair the GitHub plugin from this skill.
