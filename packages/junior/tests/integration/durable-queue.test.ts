@@ -23,7 +23,7 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { LOST_WORKER_PARK_ERROR } from "@/chat/task-execution/paused-turn";
+import { LOST_WORKER_RESUME_MESSAGE } from "@/chat/task-execution/paused-turn";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -667,7 +667,7 @@ describe("durable queue contract", () => {
       ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
     }
 
-    it("resumes from the last boundary when the worker stops checking in", async () => {
+    it("resumes from the last save when the worker stops checking in", async () => {
       // A blocked event loop and a dead process both leave this residue. The
       // next wake resumes the turn and replies once, without an error reply.
       const turnId = await seedDeadWorkerResidue("running");
@@ -703,11 +703,11 @@ describe("durable queue contract", () => {
       await expectNextTurn(q, "1712345.0006");
     });
 
-    it("fails once when the resumed turn stalls before its first checkpoint", async () => {
-      // The resume runs right after the park, so a worker that stalls before
-      // writing a running checkpoint leaves the park marker behind.
+    it("fails once when the resumed turn stops before its first save", async () => {
+      // Recovery runs the resumed turn right away. A worker that stops before
+      // its first save leaves the resume message on the paused turn.
       const turnId = await seedDeadWorkerResidue("paused", {
-        errorMessage: LOST_WORKER_PARK_ERROR,
+        errorMessage: LOST_WORKER_RESUME_MESSAGE,
         lostWorkerResumeCount: 1,
         reason: "retry",
       });

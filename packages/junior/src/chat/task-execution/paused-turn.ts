@@ -743,31 +743,39 @@ async function failStrandedTurnWithFallback(args: {
   return true;
 }
 
+/** Recovery resumes a turn at most once after its worker stops checking in. */
 const MAX_LOST_WORKER_RESUMES = 1;
-const LOST_WORKER_LIMIT_ERROR =
+const LOST_WORKER_FAILURE =
   "Turn lost its worker before reaching a safe boundary";
-/** Park marker. A running checkpoint or another park replaces it. */
-export const LOST_WORKER_PARK_ERROR =
+/**
+ * Saved on the paused turn when recovery resumes it. The resumed run replaces
+ * it at its first save.
+ */
+export const LOST_WORKER_RESUME_MESSAGE =
   "Turn lost its worker; resuming from its last boundary";
 
-/** True when a lost-worker resume lost its worker before any progress. */
-function isUnstartedLostWorkerResume(turn: TurnRecord): boolean {
+/** True when a resumed turn lost its worker again before it saved anything. */
+function lostWorkerBeforeFirstSave(turn: TurnRecord): boolean {
   return (
-    turn.errorMessage === LOST_WORKER_PARK_ERROR &&
+    turn.errorMessage === LOST_WORKER_RESUME_MESSAGE &&
     (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES
   );
 }
 
-/** Park a turn whose worker stopped checking in so the next run resumes it. */
-async function parkLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
+/**
+ * Pause a turn whose worker stopped checking in, so it resumes from its last
+ * save. Returns false when the turn already used its resume or has no slice
+ * left.
+ */
+async function pauseLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
   if (
     (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES ||
-    // A park past the slice limit fails the turn without the visible fallback.
+    // Past the slice limit, the save fails the turn without a reply.
     turn.sliceId + 1 > botConfig.maxSlicesPerTurn
   ) {
     return false;
   }
-  const parked = await saveTurnCheckpoint({
+  const paused = await saveTurnCheckpoint({
     mode: "paused",
     reason: "retry",
     conversationId: turn.conversationId,
@@ -775,13 +783,13 @@ async function parkLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
     sliceId: turn.sliceId,
     messages: turn.piMessages,
     lostWorkerResumeCount: (turn.lostWorkerResumeCount ?? 0) + 1,
-    errorMessage: LOST_WORKER_PARK_ERROR,
+    errorMessage: LOST_WORKER_RESUME_MESSAGE,
   });
-  if (!parked) return false;
+  if (!paused) return false;
   logWarn("agent.turn.lost_worker.resumed", {
     "app.ai.conversation_id": turn.conversationId,
     "app.ai.session_id": turn.turnId,
-    "app.ai.resume_slice_id": parked.sliceId,
+    "app.ai.resume_slice_id": paused.sliceId,
   });
   return true;
 }
@@ -813,7 +821,7 @@ async function runNextPausedTurnInContext(
   const running = newest
     ? await getTurnRecord(conversationId, newest.turnId)
     : undefined;
-  let parkedTurnId: string | undefined;
+  let resumedTurnId: string | undefined;
   if (running?.state === "running") {
     if (turnHasReply(conversation, running.turnId)) {
       const acceptedReply = [...conversation.messages]
@@ -839,19 +847,19 @@ async function runNextPausedTurnInContext(
       return false;
     }
 
-    // An expired lease means the worker stopped checking in. It does not
-    // mean the work is lost: a blocked event loop looks the same as a dead
-    // process. Resume once from the last committed boundary. A second loss
-    // fails, so one turn that stalls each worker cannot spread.
-    if (!(await parkLostWorkerTurn(running))) {
+    // An expired lease means the worker stopped checking in. Its process may
+    // be dead or blocked, and recovery cannot tell which. Resume the turn once
+    // from its last save. A second loss fails the turn, so one bad turn cannot
+    // block one instance after another.
+    if (!(await pauseLostWorkerTurn(running))) {
       await failStrandedTurnWithFallback({
         conversationId,
-        errorMessage: LOST_WORKER_LIMIT_ERROR,
+        errorMessage: LOST_WORKER_FAILURE,
         turn: running,
       });
       return false;
     }
-    parkedTurnId = running.turnId;
+    resumedTurnId = running.turnId;
     summaries = await listTurnSummaries(conversationId);
   }
 
@@ -859,14 +867,14 @@ async function runNextPausedTurnInContext(
     if (!isPausedTurn(summary)) {
       continue;
     }
-    // The resume runs right after the park. If the marker is still there on
-    // a later wake, that resume lost its worker too.
-    if (summary.turnId !== parkedTurnId && summary.resumeReason === "retry") {
+    // Recovery runs the resumed turn right away. If a later wake still finds
+    // the resume message, the resumed run lost its worker before it saved.
+    if (summary.turnId !== resumedTurnId && summary.resumeReason === "retry") {
       const turn = await getTurnRecord(conversationId, summary.turnId);
-      if (turn && isUnstartedLostWorkerResume(turn)) {
+      if (turn && lostWorkerBeforeFirstSave(turn)) {
         await failStrandedTurnWithFallback({
           conversationId,
-          errorMessage: LOST_WORKER_LIMIT_ERROR,
+          errorMessage: LOST_WORKER_FAILURE,
           turn,
         });
         continue;
