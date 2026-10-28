@@ -5,11 +5,13 @@
  * proposals realistic and free of eval-shaped instructions in userIntent.
  */
 import type {
+  RootConversation,
   ToolActionDecision,
   ToolActionEvidence,
   ToolActionProposal,
-} from "@/chat/tool-support/action-review";
-import type { ToolActionPriorRejection } from "@/chat/tool-support/action-review-history";
+} from "@/chat/guardian/proposal";
+import type { ToolActionPriorRejection } from "@/chat/guardian/history";
+import { agentToolSpec } from "../../src/guardian-tools";
 
 const LOCAL_CONVERSATION_ID = "local:guardian-eval";
 
@@ -80,22 +82,49 @@ export function slackContext(
   };
 }
 
+/**
+ * The tool of a snapshot. Name an agent tool, and the snapshot gets the
+ * `tool` field that production sends for the input. Pass an object only for
+ * a made-up tool that the agent does not have.
+ */
+export type SnapshotTool = string | ToolActionProposal["tool"];
+
+/** A prior rejection whose tool is resolved like the proposal's tool. */
+export type PriorRejectionSnapshot = Omit<ToolActionPriorRejection, "tool"> & {
+  tool: SnapshotTool;
+};
+
+async function resolveTool(
+  tool: SnapshotTool,
+  input: Record<string, unknown>,
+): Promise<ToolActionProposal["tool"]> {
+  return typeof tool === "string" ? await agentToolSpec(tool, input) : tool;
+}
+
 /** Build one exact ToolActionProposal snapshot. */
-export function proposal(input: {
+export async function proposal(input: {
   context: ToolActionProposal["context"];
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
-  priorRejectedActions?: ToolActionPriorRejection[];
-  tool: ToolActionProposal["tool"];
-}): ToolActionProposal {
+  priorRejectedActions?: PriorRejectionSnapshot[];
+  rootConversation?: RootConversation;
+  tool: SnapshotTool;
+}): Promise<ToolActionProposal> {
+  const priorRejectedActions = await Promise.all(
+    (input.priorRejectedActions ?? []).map(async (rejection) => ({
+      ...rejection,
+      tool: await resolveTool(rejection.tool, rejection.input),
+    })),
+  );
   return {
     context: input.context,
     ...(input.evidence ? { evidence: input.evidence } : {}),
     input: input.input,
-    ...(input.priorRejectedActions && input.priorRejectedActions.length > 0
-      ? { priorRejectedActions: input.priorRejectedActions }
+    ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : {}),
+    ...(input.rootConversation
+      ? { rootConversation: input.rootConversation }
       : {}),
-    tool: input.tool,
+    tool: await resolveTool(input.tool, input.input),
   };
 }
 
@@ -115,10 +144,10 @@ export function priorRejection(input: {
   decision: "ask" | "deny";
   input: Record<string, unknown>;
   reason: string;
-  tool: ToolActionPriorRejection["tool"];
+  tool: SnapshotTool;
   riskLevel?: ToolActionPriorRejection["riskLevel"];
   userAuthorization?: ToolActionPriorRejection["userAuthorization"];
-}): ToolActionPriorRejection {
+}): PriorRejectionSnapshot {
   return {
     decision: input.decision,
     input: input.input,

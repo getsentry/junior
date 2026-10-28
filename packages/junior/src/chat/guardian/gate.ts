@@ -8,7 +8,6 @@ import {
   missingToolAnnotationKeys,
   type Destination,
   type Source,
-  type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -19,128 +18,21 @@ import type {
 import type {
   ToolActionPriorRejection,
   ToolActionRejectionMarker,
-} from "@/chat/tool-support/action-review-history";
-import { projectToolActionRejection } from "@/chat/tool-support/action-review-history";
+} from "@/chat/guardian/history";
+import {
+  addPriorRejection,
+  projectToolActionRejection,
+} from "@/chat/guardian/history";
+import type {
+  RootConversation,
+  ToolActionDecision,
+  ToolActionEvidence,
+  ToolActionProposal,
+  ToolActionReviewDecision,
+  ToolActionReviewer,
+} from "@/chat/guardian/proposal";
 import { logException } from "@/chat/logging";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
-
-/** Outcome available to the action reviewer. */
-export type ToolActionDecision = "allow" | "ask" | "deny";
-
-export interface ToolActionReviewDecision {
-  costUsd?: number;
-  decision: ToolActionDecision;
-  reason: string;
-  riskLevel: "low" | "medium" | "high" | "critical";
-  /** Named policy rule that set the decision, or `none`. Diagnostic only. */
-  rule?: string;
-  userAuthorization: "high" | "medium" | "low" | "unknown";
-}
-
-export interface ToolActionEvidence {
-  entries: Array<{
-    role:
-      | "assistant"
-      | "user"
-      | "parent agent"
-      | `tool ${string} call`
-      | `tool ${string} result`;
-    text: string;
-  }>;
-  omittedEntries: number;
-}
-
-/**
- * User intent of every action in a child agent run. No person writes there,
- * so Guardian judges user authorization only from the root Conversation.
- */
-export const CHILD_AGENT_USER_INTENT =
-  "[Child agent run. No person writes here. Its task came from a parent agent, so the task is not user intent. Judge user authorization only from the root user instructions section.]";
-
-/** One root Conversation message, labeled with its real author. */
-export interface RootConversationMessage {
-  /**
-   * `user` is a message from the child's own Actor. `automation` is the
-   * instruction of the Automation run that is the root. Only these two can
-   * authorize an action. Each other label is only context.
-   */
-  author:
-    | "user"
-    | "automation"
-    | "assistant"
-    | "other person"
-    | "event"
-    | "system";
-  text: string;
-}
-
-/**
- * Bounded projection of the root Conversation of a child agent, read by core
- * when Guardian reviews one action of the child.
- */
-export interface RootConversation {
-  messages: RootConversationMessage[];
-  /** Older root messages are not in `messages`. */
-  truncated: boolean;
-}
-
-/** Exact model-review request; only core-supplied context carries authority. */
-export interface ToolActionProposal {
-  context: {
-    actor:
-      | { platform: "local"; userId: string }
-      | { platform: "slack"; teamId: string; userId: string }
-      | { platform: "system"; name: string };
-    conversationId: string;
-    credential?: {
-      actor:
-        | { type: "user"; userId: string }
-        | { platform: "system"; name: string };
-      subject?: {
-        allowedWhen:
-          | "private-direct-conversation"
-          | "scheduled-automation"
-          | "event-automation"
-          | "timer-watch";
-        taskId?: string;
-        type: "user";
-        userId: string;
-      };
-    };
-    destination: Destination;
-    source: Source;
-    userIntent: string;
-  };
-  evidence?: ToolActionEvidence;
-  input: Record<string, unknown>;
-  priorRejectedActions?: ToolActionPriorRejection[];
-  /** The root Conversation of a child agent. Only a child has it. */
-  rootConversation?: RootConversation;
-  tool: {
-    annotations?: ToolAnnotations;
-    description: string;
-    dispatcherName?: string;
-    identity?: {
-      id: string;
-      name: string;
-      plugin: string;
-    };
-    name: string;
-    proposalDescription?: string;
-    catalogSource?: {
-      description: string;
-      id: string;
-    };
-  };
-}
-
-/** Guardian capability for one schema-constrained action proposal. */
-export interface ToolActionReviewer {
-  review(
-    proposal: ToolActionProposal,
-    options?: { signal?: AbortSignal },
-  ): Promise<ToolActionReviewDecision>;
-}
 
 /** Core-owned context used to prepare one exact action for Guardian. */
 export interface ToolActionReviewContext {
@@ -300,38 +192,23 @@ export class ToolActionReviewLimitError extends Error {
   }
 }
 
-/** Keep core tools outside action review unless they explicitly opt in. */
-function effectiveApprovalMode(
+/**
+ * True when an `auto` action must enter review. Only a core action with a
+ * complete set of annotations that marks it read-only, closed-world, and not
+ * destructive skips review. Missing or partial annotations are unknown risk.
+ */
+function autoActionNeedsReview(
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,
-): "approve" | "review" {
-  const declared = tool.approvalMode;
-  if (declared === undefined || declared === "approve") {
-    return "approve";
-  }
-  if (declared === "review") {
-    return "review";
-  }
-  if (declared !== "auto") {
-    return "review";
-  }
-
+): boolean {
   const annotations = resolved?.annotations ?? tool.annotations;
-  // Missing or partial annotations are unknown risk, so require review.
-  if (missingToolAnnotationKeys(annotations).length > 0) {
-    return "review";
-  }
-  if (
+  return (
+    missingToolAnnotationKeys(annotations).length > 0 ||
     annotations?.destructiveHint === true ||
     annotations?.openWorldHint === true ||
-    annotations?.readOnlyHint === false
-  ) {
-    return "review";
-  }
-  if (tool.identity || resolved?.source || tool.source) {
-    return "review";
-  }
-  return "approve";
+    annotations?.readOnlyHint === false ||
+    Boolean(tool.identity || resolved?.source || tool.source)
+  );
 }
 
 function actionActor(actor: Actor): ToolActionProposal["context"]["actor"] {
@@ -429,8 +306,6 @@ function buildProposal(
   priorRejections: ToolActionPriorRejection[],
   rootConversation: RootConversation | undefined,
 ): ToolActionProposal {
-  const name = resolved?.name ?? toolName;
-  const proposalDescription = tool.describeProposal?.(input);
   const credential = actionCredential(context.credentialContext);
   return {
     context: {
@@ -451,23 +326,37 @@ function buildProposal(
         }
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
-    tool: {
-      ...((resolved?.annotations ?? tool.annotations)
-        ? { annotations: resolved?.annotations ?? tool.annotations }
-        : undefined),
-      description: resolved?.description ?? tool.description,
-      ...(name !== toolName ? { dispatcherName: toolName } : undefined),
-      ...(tool.identity ? { identity: tool.identity } : undefined),
-      name,
-      ...(proposalDescription ? { proposalDescription } : undefined),
-      ...((resolved?.source ?? tool.source)
-        ? { catalogSource: resolved?.source ?? tool.source }
-        : undefined),
-    },
+    tool: proposalTool(toolName, tool, input, resolved),
   };
 }
 
-const MAX_VISIBLE_DENIAL_CHARS = 12_000;
+/**
+ * Build the `tool` field of a proposal: the tool as Guardian sees it for this
+ * input. The resolved metadata of a dispatcher, such as `callMcpTool`, names
+ * the real tool. The Guardian evals call this with the agent's own tools, so
+ * they send the same shape as production.
+ */
+export function proposalTool(
+  toolName: string,
+  tool: AnyToolDefinition,
+  input: Record<string, unknown>,
+  resolved: ToolApprovalResolution | undefined,
+): ToolActionProposal["tool"] {
+  const name = resolved?.name ?? toolName;
+  const annotations = resolved?.annotations ?? tool.annotations;
+  const catalogSource = resolved?.source ?? tool.source;
+  const proposalDescription = tool.describeProposal?.(input);
+  return {
+    ...(annotations ? { annotations } : undefined),
+    description: resolved?.description ?? tool.description,
+    ...(name !== toolName ? { dispatcherName: toolName } : undefined),
+    ...(tool.identity ? { identity: tool.identity } : undefined),
+    name,
+    ...(proposalDescription ? { proposalDescription } : undefined),
+    ...(catalogSource ? { catalogSource } : undefined),
+  };
+}
+
 const MAX_VISIBLE_DENIAL_INPUT_CHARS = 4_000;
 const MAX_CONSECUTIVE_REJECTIONS = 3;
 
@@ -511,19 +400,6 @@ function projectedRejection(
   };
 }
 
-function appendVisibleRejection(
-  rejections: ToolActionPriorRejection[],
-  rejection: ToolActionPriorRejection,
-): void {
-  rejections.push(rejection);
-  while (
-    rejections.length > 0 &&
-    JSON.stringify(rejections).length > MAX_VISIBLE_DENIAL_CHARS
-  ) {
-    rejections.shift();
-  }
-}
-
 /** Prepare the exact action that Guardian must review, when review is required. */
 async function prepareToolActionReview(
   toolName: string,
@@ -532,11 +408,14 @@ async function prepareToolActionReview(
   context: ToolActionReviewContext,
   priorRejections: ToolActionPriorRejection[],
 ): Promise<ToolActionProposal | undefined> {
+  // A core tool stays outside review unless it opts in. Plugin tools default
+  // to `auto`.
   if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  if (effectiveApprovalMode(tool, resolved) === "approve") {
+  // Each mode other than `auto`, also one that is not known, needs review.
+  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool, resolved)) {
     return;
   }
   assertAuthoritativeContext(context);
@@ -610,7 +489,7 @@ export function createToolActionReview(options: {
         return decision;
       }
       const reviewedAction = projectedRejection(proposal, decision);
-      appendVisibleRejection(priorRejections, reviewedAction);
+      addPriorRejection(priorRejections, reviewedAction);
       consecutiveRejections += 1;
       const exhausted = consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS;
       if (exhausted) {

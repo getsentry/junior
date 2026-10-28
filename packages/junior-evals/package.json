@@ -23,6 +23,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
+    "@sentry/junior-vercel": "workspace:*",
     "ai": "^7.0.153",
     "chat": "4.29.0",
     "hono": "^4.12.27",

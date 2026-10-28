@@ -62,11 +62,9 @@ the Conversation Location without giving the Run Delivery to that Location.
 - `local/`: local CLI adapter.
 - `plugins/`, `credentials/`, `sandbox/`, and `mcp/`: external capability
   boundaries.
-- `tool-support/action-review.ts`: effective approval modes, authoritative
-  action proposals, deterministic context checks, and the execution gate.
-- `services/guardian-action-policy.ts` and `guardian-action-review.ts`: the
-  Codex-derived policy and structured model reviewer for actions that enter
-  review.
+- `guardian/`: Guardian action review. It owns the execution gate, the
+  proposal and evidence that Guardian reads, the policy, and the model
+  reviewer. See `guardian/README.md`.
 
 Provider layers may call the native runtime through provider-neutral contracts.
 The native runtime must not import a provider layer. Low-level provider
