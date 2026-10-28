@@ -32,7 +32,7 @@ export function BaseSandboxCard(props: {
           </p>
         </div>
 
-        <dl className="m-0 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
           <Fact label="Size">{formatSandboxSize(props.defaultVcpus)}</Fact>
           {snapshot ? (
             <>
@@ -68,8 +68,8 @@ export function BaseSandboxCard(props: {
 
 function Fact(props: { children: ReactNode; label: string }) {
   return (
-    <div className="flex min-w-0 items-baseline gap-2">
-      <dt className="shrink-0 text-dashboard-text-muted">{props.label}</dt>
+    <div className="contents">
+      <dt className="text-dashboard-text-muted">{props.label}</dt>
       <dd className="m-0 min-w-0 tabular-nums text-dashboard-text">
         {props.children}
       </dd>
