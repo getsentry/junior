@@ -1,25 +1,23 @@
-import { Cpu } from "lucide-react";
 import type { ReactNode } from "react";
 import type { BaselineSnapshotReport } from "@sentry/junior/api/schema";
 
-import { Detail, DetailList } from "../../components/DetailList";
 import { Card } from "../../components/layout/Card";
-import { StatusChip, type StatusChipTone } from "../../components/StatusChip";
+import { formatMs, formatRelativeTime, formatTime } from "../../format";
 import { formatSandboxSize } from "./SandboxSizeSummary";
-import { SnapshotDetails } from "./SnapshotSummary";
 
 /**
- * Show the base Sandbox in one card and mark what Workspaces share with it.
- * Workspaces use the base size unless they set vCPUs. They never use the
- * baseline snapshot.
+ * Show the base Sandbox: the default size and the baseline snapshot.
+ * Workspaces use the default size unless they set vCPUs. They build their own
+ * snapshot instead of the baseline snapshot.
  */
 export function BaseSandboxCard(props: {
   defaultVcpus: number | null;
   snapshot: BaselineSnapshotReport | null;
 }) {
+  const snapshot = props.snapshot;
   return (
     <Card as="section" className="mb-0" padding="md" variant="section">
-      <div aria-labelledby="base-sandbox-heading" className="grid gap-5">
+      <div aria-labelledby="base-sandbox-heading" className="grid gap-4">
         <div className="min-w-0 grid gap-1">
           <h2
             className="m-0 text-base font-semibold text-dashboard-text"
@@ -28,77 +26,53 @@ export function BaseSandboxCard(props: {
             Base Sandbox
           </h2>
           <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-            Junior uses this Sandbox when a conversation has no Workspace.
+            Used when a conversation has no Workspace. Workspaces use its size
+            unless they set their own vCPUs. Each Workspace builds its own
+            snapshot.
           </p>
         </div>
 
-        <BaseSandboxSection
-          description="Workspaces use this size unless they set their own vCPUs."
-          headingId="base-sandbox-size-heading"
-          scope="Shared with Workspaces"
-          scopeTone="accent"
-          title="Size"
-        >
-          <DetailList>
-            <Detail label="vCPUs and memory">
-              <span className="inline-flex items-center gap-2">
-                <Cpu aria-hidden="true" size={14} />
-                {formatSandboxSize(props.defaultVcpus)}
+        <dl className="m-0 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <Fact label="Size">{formatSandboxSize(props.defaultVcpus)}</Fact>
+          {snapshot ? (
+            <>
+              {snapshot.dependencyCount == null ? null : (
+                <Fact label="Dependencies">{snapshot.dependencyCount}</Fact>
+              )}
+              <Fact label="Build time">
+                {formatMs(snapshot.buildDurationMs)}
+              </Fact>
+              <Fact label="Generated">
+                <span title={formatTime(snapshot.generatedAt)}>
+                  {formatRelativeTime(snapshot.generatedAt)}
+                </span>
+              </Fact>
+              <Fact label="Snapshot">
+                <span className="break-all font-mono text-xs">
+                  {snapshot.id}
+                </span>
+              </Fact>
+            </>
+          ) : (
+            <Fact label="Snapshot">
+              <span className="text-dashboard-text-muted">
+                Not built yet. The first Sandbox without a Workspace builds it.
               </span>
-            </Detail>
-          </DetailList>
-        </BaseSandboxSection>
-
-        <BaseSandboxSection
-          description={
-            props.snapshot
-              ? "Each Workspace builds its own snapshot from its repos and setup script."
-              : "No baseline snapshot yet. The first Sandbox without a Workspace creates one. Each Workspace builds its own snapshot."
-          }
-          headingId="baseline-snapshot-heading"
-          scope="Base only"
-          scopeTone="neutral"
-          title="Baseline snapshot"
-        >
-          {props.snapshot ? (
-            <SnapshotDetails snapshot={props.snapshot} />
-          ) : null}
-        </BaseSandboxSection>
+            </Fact>
+          )}
+        </dl>
       </div>
     </Card>
   );
 }
 
-function BaseSandboxSection(props: {
-  children: ReactNode;
-  description: string;
-  headingId: string;
-  scope: string;
-  scopeTone: StatusChipTone;
-  title: string;
-}) {
+function Fact(props: { children: ReactNode; label: string }) {
   return (
-    <section
-      aria-labelledby={props.headingId}
-      className="grid gap-3 border-t border-dashboard-border-subtle pt-4"
-    >
-      <div className="min-w-0 grid gap-1">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h3
-            className="m-0 text-sm font-semibold text-dashboard-text"
-            id={props.headingId}
-          >
-            {props.title}
-          </h3>
-          <StatusChip size="compact" tone={props.scopeTone}>
-            {props.scope}
-          </StatusChip>
-        </div>
-        <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
-          {props.description}
-        </p>
-      </div>
-      {props.children}
-    </section>
+    <div className="flex min-w-0 items-baseline gap-2">
+      <dt className="shrink-0 text-dashboard-text-muted">{props.label}</dt>
+      <dd className="m-0 min-w-0 tabular-nums text-dashboard-text">
+        {props.children}
+      </dd>
+    </div>
   );
 }
