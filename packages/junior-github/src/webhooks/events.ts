@@ -114,11 +114,22 @@ const deploymentSchema = z
   })
   .passthrough();
 
+// GitHub sends the workflow and its run only for deployments that GitHub
+// Actions creates for a job with `environment:`.
+const deploymentWorkflowSchema = {
+  workflow: z
+    .object({ id: z.number(), path: z.string().min(1) })
+    .passthrough()
+    .nullish(),
+  workflow_run: z.object({ id: z.number() }).passthrough().nullish(),
+};
+
 const deploymentWebhookSchema = z
   .object({
     action: z.string(),
     deployment: deploymentSchema,
     repository: repositorySchema,
+    ...deploymentWorkflowSchema,
   })
   .passthrough();
 const canonicalDeploymentEventSchema = z
@@ -129,21 +140,36 @@ const canonicalDeploymentEventSchema = z
     deploymentId: z.number(),
     environment: z.string().min(1),
     repo: z.string().min(1),
+    workflowId: z.number().optional(),
+    workflowPath: z.string().min(1).optional(),
+    workflowRunId: z.number().optional(),
   })
   .strict();
+
+/** Select the canonical deployment fields shared by both webhook envelopes. */
+function canonicalDeploymentFields(
+  data: z.output<typeof deploymentWebhookSchema>,
+) {
+  return {
+    action: data.action,
+    commitSha: data.deployment.sha,
+    createdAt: data.deployment.created_at,
+    deploymentId: data.deployment.id,
+    environment: data.deployment.environment,
+    repo: data.repository.full_name,
+    workflowId: data.workflow?.id,
+    workflowPath: data.workflow?.path,
+    workflowRunId: data.workflow_run?.id,
+  };
+}
 
 /** Convert GitHub's permissive webhook envelope into routing-safe fields. */
 function parseDeploymentEvent(body: unknown) {
   const parsed = deploymentWebhookSchema.safeParse(body);
   if (!parsed.success) return undefined;
-  return canonicalDeploymentEventSchema.parse({
-    action: parsed.data.action,
-    commitSha: parsed.data.deployment.sha,
-    createdAt: parsed.data.deployment.created_at,
-    deploymentId: parsed.data.deployment.id,
-    environment: parsed.data.deployment.environment,
-    repo: parsed.data.repository.full_name,
-  });
+  return canonicalDeploymentEventSchema.parse(
+    canonicalDeploymentFields(parsed.data),
+  );
 }
 
 /** Normalize a newly created GitHub deployment. */
@@ -155,29 +181,25 @@ function normalizeDeploymentEvent(
   if (!parsed || parsed.action !== "created") return [];
   const eventType = "deployment.created";
   const { label } = gitHubDeploymentSourceResource(parsed);
-  return deploymentSourceTargets(parsed).map(({ resource }) => ({
+  return deploymentTargets(parsed).map(({ identifier }) => ({
     eventKey: gitHubEventKey(deliveryId, eventType),
     eventType,
     occurredAtMs: providerTime(parsed.createdAt) ?? Date.now(),
-    identifier: resource.identifier,
+    identifier,
     trustedSummary: `${label} was created (deployment ${parsed.deploymentId}).`,
+    data: deploymentEventData(parsed),
   }));
 }
 
-const deploymentStatusWebhookSchema = z
-  .object({
-    action: z.string(),
-    deployment: deploymentSchema,
-    deployment_status: z
-      .object({
-        created_at: z.string().optional(),
-        description: z.string().optional().nullable(),
-        state: z.string(),
-      })
-      .passthrough(),
-    repository: repositorySchema,
-  })
-  .passthrough();
+const deploymentStatusWebhookSchema = deploymentWebhookSchema.extend({
+  deployment_status: z
+    .object({
+      created_at: z.string().optional(),
+      description: z.string().optional().nullable(),
+      state: z.string(),
+    })
+    .passthrough(),
+});
 const canonicalDeploymentStatusEventSchema = canonicalDeploymentEventSchema
   .extend({
     description: z.string().optional().nullable(),
@@ -191,13 +213,8 @@ function parseDeploymentStatusEvent(body: unknown) {
   const parsed = deploymentStatusWebhookSchema.safeParse(body);
   if (!parsed.success) return undefined;
   return canonicalDeploymentStatusEventSchema.parse({
-    action: parsed.data.action,
-    commitSha: parsed.data.deployment.sha,
-    createdAt: parsed.data.deployment.created_at,
-    deploymentId: parsed.data.deployment.id,
+    ...canonicalDeploymentFields(parsed.data),
     description: parsed.data.deployment_status.description,
-    environment: parsed.data.deployment.environment,
-    repo: parsed.data.repository.full_name,
     state: parsed.data.deployment_status.state,
     statusCreatedAt: parsed.data.deployment_status.created_at,
   });
@@ -245,21 +262,45 @@ function normalizeDeploymentStatusEvent(
     eventType === "deployment.failed" ||
     eventType === "deployment.error";
   const { label } = gitHubDeploymentSourceResource(parsed);
-  return deploymentSourceTargets(parsed).map(
-    ({ completeOnTerminalEvent, resource }) => ({
+  return deploymentTargets(parsed).map(
+    ({ completeOnTerminalEvent, identifier }) => ({
       eventKey: gitHubEventKey(deliveryId, eventType),
       eventType,
       occurredAtMs: providerTime(parsed.statusCreatedAt) ?? Date.now(),
-      identifier: resource.identifier,
+      identifier,
       ...(terminal && completeOnTerminalEvent ? { terminal: true } : undefined),
       trustedSummary: `${label} ${outcome} (deployment ${parsed.deploymentId}).`,
+      data: deploymentEventData(parsed),
       untrustedText: parsed.description ?? undefined,
     }),
   );
 }
 
-/** Address one deployment through its environment, its commit, and both. */
-function deploymentSourceTargets(input: {
+/** Trusted deployment facts for match filters and the woken agent. */
+function deploymentEventData(input: {
+  environment: string;
+  workflowId?: number;
+  workflowPath?: string;
+  workflowRunId?: number;
+}) {
+  return {
+    environment: input.environment.toLowerCase(),
+    ...(input.workflowId === undefined
+      ? undefined
+      : { workflowId: input.workflowId }),
+    ...(input.workflowPath ? { workflowPath: input.workflowPath } : undefined),
+    ...(input.workflowRunId === undefined
+      ? undefined
+      : { workflowRunId: input.workflowRunId }),
+  };
+}
+
+/**
+ * Address one deployment through its exact environment, its commit, and its
+ * repository. Only the exact target completes on a terminal status; the
+ * repository target lets event automations follow every deployment.
+ */
+function deploymentTargets(input: {
   commitSha: string;
   environment: string;
   repo: string;
@@ -267,22 +308,18 @@ function deploymentSourceTargets(input: {
   return [
     {
       completeOnTerminalEvent: true,
-      resource: gitHubDeploymentSourceResource(input),
+      identifier: gitHubDeploymentSourceResource(input).identifier,
     },
     {
       completeOnTerminalEvent: false,
-      resource: gitHubDeploymentSourceResource({
+      identifier: gitHubDeploymentSourceResource({
         commitSha: input.commitSha,
         repo: input.repo,
-      }),
+      }).identifier,
     },
-    // The environment target outlives each deployment for durable automations.
     {
       completeOnTerminalEvent: false,
-      resource: gitHubDeploymentSourceResource({
-        environment: input.environment,
-        repo: input.repo,
-      }),
+      identifier: gitHubRepositoryResource({ repo: input.repo }).identifier,
     },
   ];
 }

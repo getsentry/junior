@@ -551,6 +551,7 @@ describe("github plugin", () => {
 
     expect(repository).toMatchObject({
       supportedEvents: expect.arrayContaining([
+        "deployment.failed",
         "issue.opened",
         "pull_request.opened",
         "pull_request.ready_for_review",
@@ -571,6 +572,7 @@ describe("github plugin", () => {
           kind: "string",
           description: "pull request author login",
         },
+        environment: { kind: "string" },
         headBranch: {
           kind: "string",
           description: "head branch name from the webhook",
@@ -579,6 +581,8 @@ describe("github plugin", () => {
           kind: "boolean",
           description: "true when the pull request is a draft",
         },
+        workflowId: { kind: "number" },
+        workflowPath: { kind: "string" },
       },
     });
   });
@@ -642,10 +646,6 @@ describe("github plugin", () => {
         environment: "Production EU",
         repo,
       }),
-      deployment_environment: gitHubDeploymentSourceResource({
-        environment: "Production EU",
-        repo,
-      }),
       issue: gitHubIssueResource({ number: 208, repo }),
       pull_request: gitHubPullRequestResource({ number: 691, repo }),
       release_source: gitHubReleaseSourceResource({ repo, tag: "v1.2.0" }),
@@ -665,7 +665,6 @@ describe("github plugin", () => {
     // Issues and pull requests share one number space in a repository.
     expect(fitting).toEqual({
       deployment_source: ["deployment_source"],
-      deployment_environment: ["deployment_source"],
       issue: ["issue", "pull_request"],
       pull_request: ["issue", "pull_request"],
       release_source: ["release_source"],

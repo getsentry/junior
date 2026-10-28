@@ -1,4 +1,5 @@
 import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import { GITHUB_DEPLOYMENT_EVENTS } from "./deployment.js";
 import { GITHUB_ISSUE_EVENTS, GITHUB_ISSUE_SUGGESTED_EVENTS } from "./issue.js";
 import {
   GITHUB_PULL_REQUEST_EVENTS,
@@ -35,7 +36,11 @@ export function gitHubRepositorySubscribable(input: {
       ...GITHUB_ISSUE_SUGGESTED_EVENTS,
       ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
     ],
-    supportedEvents: [...GITHUB_ISSUE_EVENTS, ...GITHUB_PULL_REQUEST_EVENTS],
+    supportedEvents: [
+      ...GITHUB_DEPLOYMENT_EVENTS,
+      ...GITHUB_ISSUE_EVENTS,
+      ...GITHUB_PULL_REQUEST_EVENTS,
+    ],
     type: "repository",
   };
 }
