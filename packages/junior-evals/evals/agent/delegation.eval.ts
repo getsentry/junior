@@ -11,10 +11,7 @@ describe("Implicit Delegation", () => {
   }) => {
     // A small budget keeps each child short. The case measures the parent's
     // choice to delegate, not the quality of the children's research.
-    const { run } = await agent({
-      experimental: { subagents: true },
-      limits: { maxToolCallsPerTurn: 6 },
-    });
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 6 } });
     const conversation = await run(
       slackMention(
         "I need to pick a database for a new service. Research how PostgreSQL, MySQL, and SQLite each handle adding a NOT NULL column with a default to a very large table: locking, rewrite cost, and replication impact. Go to each project's own docs, then give me the tradeoffs.",
@@ -26,9 +23,8 @@ describe("Implicit Delegation", () => {
   });
 
   test("when a request needs only a few direct tool calls, do the work without a child agent", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({ experimental: { subagents: true } });
     const conversation = await run(
       slackMention("what time is it right now in UTC and in Tokyo?"),
     );

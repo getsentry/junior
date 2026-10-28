@@ -216,6 +216,8 @@ export async function createFixtureAgent(
   installWebReplay();
   const app = await createApp({
     ...options,
+    // Production turns on child agents, so every case runs with them on.
+    experimental: { subagents: true, ...options.experimental },
     conversationWorkQueue: (consume) => queue.connect(consume),
     // Plugin tasks run in process. A call is idle only after they finish.
     pluginTaskQueue: (consume) => ({
