@@ -29,7 +29,7 @@ related:
 | `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
 | `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
-| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
+| `AI_GUARDIAN_MODEL`                         | No          | Decision model for Guardian action review. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                                     |
 | `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
 | `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
 | `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
@@ -65,12 +65,12 @@ an epoch opens is audit evidence, not a runtime pin. Changing a mapping retarget
 existing conversations, while removing or renaming a referenced profile makes
 those conversations fail until that name is configured again.
 
-Guardian action review sends the configured Guardian model a bounded review request with
+Guardian action review sends the configured Guardian decision model a bounded review request with
 hook-adjusted semantic input (starting from validated tool arguments and
 excluding hook-injected environment values), current actor and destination
 context, and bounded user, assistant, tool-call, and tool-result evidence using
 the Codex Guardian transcript selection rules. Guardian defaults to
-`openai/gpt-6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
+`typesafe-ai/jev`; set `AI_GUARDIAN_MODEL` to override it. Input and output
 payloads from this review are excluded from telemetry.
 
 Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:
@@ -285,7 +285,7 @@ const app = await createApp({
   },
   decisionModelId: "typesafe-ai/jev",
   fastModelId: "openai/gpt-6-luna",
-  guardianModelId: "openai/gpt-6-luna",
+  guardianModelId: "typesafe-ai/jev",
   embeddingModelId: "openai/text-embedding-3-small",
   webSearchModelId: "openai/gpt-6-luna",
   imageGenerationModelId: "google/gemini-3-pro-image",

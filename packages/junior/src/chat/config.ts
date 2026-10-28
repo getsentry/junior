@@ -85,7 +85,7 @@ export interface BotModelConfig {
   embeddingModelId?: string;
   /** Model used for low-cost structured and utility calls. */
   fastModelId?: string;
-  /** Model used to review sensitive tool calls. */
+  /** Decision model used to review sensitive tool calls. */
   guardianModelId?: string;
   /** Model used to generate images. */
   imageGenerationModelId?: string;
@@ -262,7 +262,7 @@ const DEFAULT_MODEL_ID = resolveGatewayModel(
   DEFAULT_MODEL_PROFILES.standard.modelId,
 ).id;
 const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
-const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
+const DEFAULT_GUARDIAN_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
   DEFAULT_MODEL_PROFILES.handoff.modelId,
 ).id;
@@ -489,7 +489,7 @@ function readBotConfig(
     validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
     DEFAULT_FAST_MODEL_ID;
   const guardianModelId =
-    validateGatewayModelId(env.AI_GUARDIAN_MODEL) ?? DEFAULT_GUARDIAN_MODEL_ID;
+    toOptionalTrimmed(env.AI_GUARDIAN_MODEL) ?? DEFAULT_GUARDIAN_MODEL_ID;
   const handoffModelId =
     validateGatewayModelId(env.AI_HANDOFF_MODEL) ?? DEFAULT_HANDOFF_MODEL_ID;
 
@@ -872,7 +872,7 @@ export function setBotModelConfig(config: BotModelConfig): void {
     botConfig.guardianModelId = requireModelId(
       "guardianModelId",
       config.guardianModelId,
-      validateGatewayModelId,
+      toOptionalTrimmed,
     );
   }
   if (config.imageGenerationModelId !== undefined) {

@@ -209,7 +209,8 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/pi/client", () => ({
+vi.mock("@/chat/pi/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   GEN_AI_PROVIDER_NAME: "test-provider",
   GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
   GEN_AI_SERVER_PORT: 443,

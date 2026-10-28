@@ -587,6 +587,8 @@ export async function completeDecision<
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
   promptName?: string;
+  /** Set to false to keep the state and answers out of AI SDK telemetry. */
+  recordTelemetryPayloads?: boolean;
 }): Promise<{
   answers: Experimental_DecisionResult<TQuestions>["answers"];
   costUsd?: number;
@@ -605,6 +607,15 @@ export async function completeDecision<
           model: provider.decisionModel(params.modelId),
           state: params.state,
           questions: params.questions,
+          ...(params.recordTelemetryPayloads === false
+            ? {
+                telemetry: {
+                  isEnabled: true,
+                  recordInputs: false,
+                  recordOutputs: false,
+                },
+              }
+            : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),

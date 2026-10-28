@@ -75,7 +75,7 @@ import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
-import { completeObject } from "@/chat/pi/client";
+import { completeDecision } from "@/chat/pi/client";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
@@ -473,7 +473,7 @@ export async function wireAgentTools(
     onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
-      completeObject,
+      completeDecision,
       modelId: botConfig.guardianModelId,
     }),
   });

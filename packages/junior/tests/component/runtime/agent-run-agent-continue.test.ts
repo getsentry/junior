@@ -212,7 +212,8 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
   maybeExecuteJrRpcCustomCommand: async () => ({ handled: false }),
 }));
 
-vi.mock("@/chat/pi/client", () => ({
+vi.mock("@/chat/pi/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   GEN_AI_PROVIDER_NAME: "vercel-ai-gateway",
   GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
   GEN_AI_SERVER_PORT: 443,
