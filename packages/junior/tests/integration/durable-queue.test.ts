@@ -701,6 +701,12 @@ describe("durable queue contract", () => {
         error: "lost its worker",
       });
       await expectNextTurn(q, "1712345.0006");
+      // The next turn was told that this one failed.
+      expect(
+        JSON.stringify(
+          await loadProjection({ conversationId: CONVERSATION_ID }),
+        ),
+      ).toContain("Your previous turn failed before it finished.");
     });
 
     it("fails once when the resumed turn stops before its first save", async () => {
