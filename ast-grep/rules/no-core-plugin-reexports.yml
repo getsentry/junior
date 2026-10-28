@@ -1,7 +1,7 @@
 id: no-core-plugin-reexports
 language: TypeScript
 severity: error
-message: Core @sentry/junior must not re-export plugin packages. Use plugin discovery/catalog wiring instead.
+message: Core @sentry/junior must not re-export plugin packages. Plugins load through package discovery in packages/junior/src/chat/plugins/package-discovery.ts. If core needs plugin behavior, add a small provider-neutral contract to @sentry/junior-plugin-api and let the plugin implement it. See policies/provider-boundaries.md.
 files:
   - packages/junior/src/**/*.ts
   - packages/junior/src/**/*.tsx

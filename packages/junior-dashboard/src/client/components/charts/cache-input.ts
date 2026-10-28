@@ -1,9 +1,17 @@
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 export const CACHE_INPUT_SERIES = [
-  { key: "cachedInputTokens", label: "From cache", color: "#22d3ee" },
-  { key: "cacheCreationTokens", label: "Written to cache", color: "#fbbf24" },
-  { key: "inputTokens", label: "Uncached", color: "#a78bfa" },
+  {
+    key: "cachedInputTokens",
+    label: "From cache",
+    color: "var(--color-cyan-400)",
+  },
+  {
+    key: "cacheCreationTokens",
+    label: "Written to cache",
+    color: "var(--color-amber-400)",
+  },
+  { key: "inputTokens", label: "Uncached", color: "var(--color-violet-400)" },
 ] as const;
 
 export type CacheInput = Pick<

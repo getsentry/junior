@@ -4,7 +4,7 @@ import {
   projectToolActionRejection,
   restoreToolActionRejections,
   type ToolActionRejectionMarker,
-} from "@/chat/tool-support/action-review-history";
+} from "@/chat/guardian/history";
 
 function transcript(
   marker: Record<string, unknown>,

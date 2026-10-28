@@ -288,7 +288,7 @@ such as an Event Turn, does not read it. The person's messages would get the
 Guardian renders the projection outside the untrusted proposal JSON, in a
 `<root_user_instructions key="...">` section with a new random key for each
 request. Each line has its real author as a prefix. The rules for a child
-action are in `services/guardian-action-review.ts`. They are adapted from
+action are in `guardian/reviewer.ts`. They are adapted from
 Codex multi_agent_v2 (`openai/codex` at `f0c5077`,
 `guardian-context/src/authorization.rs`) and the Claude Code auto-mode
 classifier.

@@ -19,9 +19,9 @@ import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { formatActivityChartAverage } from "../../format";
 
-const CREATED_COLOR = "#67e8f9";
-const MERGED_COLOR = "#6ee7b7";
-const CLOSED_COLOR = "#fb7185";
+const CREATED_COLOR = "var(--color-cyan-300)";
+const MERGED_COLOR = "var(--color-emerald-300)";
+const CLOSED_COLOR = "var(--color-rose-400)";
 
 /** Render created, merged, and closed code changes over a trailing window. */
 export function CodeActivityChart(props: {
@@ -143,7 +143,7 @@ export function CodeActivityChart(props: {
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-slate-200)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

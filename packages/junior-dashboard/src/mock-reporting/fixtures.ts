@@ -168,7 +168,7 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
-  metadata?: Pick<ConversationReportEvent, "model" | "modelCall">,
+  metadata?: Pick<ConversationReportEvent, "mentions" | "model" | "modelCall">,
 ): ConversationReportEvent {
   return { seq, createdAt, data, ...metadata };
 }
@@ -1428,48 +1428,58 @@ function eventAutomationRunConversation(
       credentialUser: "Alex Rivera",
     },
     events: [
-      reportEvent(0, startedAt, {
-        type: "message",
-        messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
-        role: "user",
-        // Dispatch input is authored by the dispatch owner, not a person.
-        actorIdentity: {
-          fullName: "junior",
-          slackUserId: "junior",
-          slackUserName: "junior",
+      reportEvent(
+        0,
+        startedAt,
+        {
+          type: "message",
+          messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+          role: "user",
+          // Dispatch input is authored by the dispatch owner, not a person.
+          actorIdentity: {
+            fullName: "junior",
+            slackUserId: "junior",
+            slackUserName: "junior",
+          },
+          text: [
+            "[task]",
+            "",
+            "This is a task, not a message from a person.",
+            "",
+            "About: Issue · ACME-42",
+            'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
+            "Instructions: Summarize the closed issue",
+            "",
+            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
+            "",
+            "End with `finishAutomationRun`.",
+          ].join("\n"),
         },
-        text: [
-          "[task]",
-          "",
-          "This is a task, not a message from a person.",
-          "",
-          "About: Issue · ACME-42",
-          'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
-          "Instructions: Summarize the closed issue",
-          "",
-          "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
-          "",
-          "End with `finishAutomationRun`.",
-        ].join("\n"),
-        mentions: [MOCK_MENTION_MORGAN],
-      }),
+        { mentions: [MOCK_MENTION_MORGAN] },
+      ),
       reportEvent(1, at(1_000), {
         type: "turn_lifecycle",
         turnId: "dispatch:event-1",
         state: "started",
         inputMessageIds: [EVENT_AUTOMATION_RUN_CONVERSATION_ID],
       }),
-      reportEvent(2, at(13_000), {
-        type: "message",
-        messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
-        role: "assistant",
-        text: "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>.",
+      reportEvent(
+        2,
+        at(13_000),
+        {
+          type: "message",
+          messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
+          role: "assistant",
+          text: "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>.",
+        },
         // U456 has no People profile, and U999 is not resolved.
-        mentions: [
-          MOCK_MENTION_MORGAN,
-          { fullName: "Casey Nguyen", slackUserId: "U456" },
-        ],
-      }),
+        {
+          mentions: [
+            MOCK_MENTION_MORGAN,
+            { fullName: "Casey Nguyen", slackUserId: "U456" },
+          ],
+        },
+      ),
       reportEvent(3, at(14_000), {
         type: "turn_lifecycle",
         turnId: "dispatch:event-1",
@@ -1601,6 +1611,9 @@ function summaryFromConversation(
     activityEvent?.data.type === "message" && activityEvent.data.text
       ? {
           createdAt: activityEvent.createdAt,
+          ...(activityEvent.mentions
+            ? { mentions: activityEvent.mentions }
+            : undefined),
           role: activityEvent.data.role as "assistant" | "user",
           text: activityEvent.data.text,
         }

@@ -44,8 +44,7 @@ export function PeopleActivityChart(props: {
   days: PeopleActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
-  const chartTitle =
-    `Active people per ${timeRangeBucketPerLabel(bucketUnit)}`;
+  const chartTitle = `Active people per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const values = props.days.map((day) => day.activePeople);
@@ -70,7 +69,13 @@ export function PeopleActivityChart(props: {
           <ChartLegend
             ariaLabel="People activity legend"
             inline
-            items={[{ color: "#fbbf24", key: "people", label: "people" }]}
+            items={[
+              {
+                color: "var(--color-amber-400)",
+                key: "people",
+                label: "people",
+              },
+            ]}
           />
         }
       />
@@ -82,13 +87,21 @@ export function PeopleActivityChart(props: {
         >
           <defs>
             <linearGradient id="people-area" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+              <stop
+                offset="0%"
+                stopColor="var(--color-amber-500)"
+                stopOpacity="0.3"
+              />
+              <stop
+                offset="100%"
+                stopColor="var(--color-amber-500)"
+                stopOpacity="0"
+              />
             </linearGradient>
             <linearGradient id="people-line" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="#f59e0b" />
-              <stop offset="55%" stopColor="#fbbf24" />
-              <stop offset="100%" stopColor="#22d3ee" />
+              <stop offset="0%" stopColor="var(--color-amber-500)" />
+              <stop offset="55%" stopColor="var(--color-amber-400)" />
+              <stop offset="100%" stopColor="var(--color-cyan-400)" />
             </linearGradient>
           </defs>
           <ActivityChartGrid layout={layout} maximum={maximum} />
@@ -122,7 +135,7 @@ export function PeopleActivityChart(props: {
                 <circle
                   cx={point.x}
                   cy={point.y}
-                  fill="#fbbf24"
+                  fill="var(--color-amber-400)"
                   opacity={props.days.length > 30 ? 0.35 : 0.75}
                   r={props.days.length > 30 ? 3 : 4}
                   tabIndex={0}
@@ -136,7 +149,7 @@ export function PeopleActivityChart(props: {
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke="#fbbf24"
+            stroke="var(--color-amber-400)"
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

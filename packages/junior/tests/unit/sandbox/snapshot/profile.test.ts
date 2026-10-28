@@ -82,6 +82,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: null,
       repos: [
         {
@@ -122,6 +123,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos,
     });
@@ -129,6 +131,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [...repos].reverse(),
     });
@@ -153,6 +156,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: null,
       repos: reposA
     });
@@ -160,6 +164,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: null,
       repos: reposB
     });
@@ -174,6 +179,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: []
     };

@@ -6,25 +6,27 @@ import {
   GUARDIAN_ACTION_POLICY,
   GUARDIAN_BLOCK_RULES,
   GUARDIAN_RULE_IDS,
-} from "@/chat/services/guardian-action-policy";
+} from "@/chat/guardian/policy";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
   CHILD_AGENT_USER_INTENT,
   ROOT_LINE_BREAK,
+  RISK_LEVELS,
+  USER_AUTHORIZATION_LEVELS,
   type RootConversation,
   type ToolActionDecision,
   type ToolActionProposal,
   type ToolActionReviewDecision,
   type ToolActionReviewer,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/proposal";
 
 // Field order is generation order. The model rates risk and authorization
 // before it names a rule, as the policy and the Codex reviewer require. The
 // model does not choose the decision; guardianDecision derives it.
 const guardianAssessmentSchema = z
   .object({
-    riskLevel: z.enum(["low", "medium", "high", "critical"]),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+    riskLevel: z.enum(RISK_LEVELS),
+    userAuthorization: z.enum(USER_AUTHORIZATION_LEVELS),
     rule: z.enum(GUARDIAN_RULE_IDS),
     reason: z.string().trim().min(1).max(500),
   })

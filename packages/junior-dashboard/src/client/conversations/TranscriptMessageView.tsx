@@ -54,7 +54,12 @@ export const TranscriptMessageView = memo(
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
           {props.message.parts.map((part, index) =>
             part.type === "text" ? (
-              <TranscriptText key={index} role={role} text={part.text ?? ""} />
+              <TranscriptText
+                key={index}
+                mentions={props.message.mentions ?? []}
+                role={role}
+                text={part.text ?? ""}
+              />
             ) : null,
           )}
         </div>

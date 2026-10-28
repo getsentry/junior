@@ -59,10 +59,12 @@ function authenticatedApi(email = "person@example.com") {
 
 describe("workspace admin API", () => {
   afterEach(async () => {
+    delete process.env.SANDBOX_VCPUS;
     await closeDb();
   });
 
   it("creates, lists, updates, and deletes Workspace recipes", async () => {
+    process.env.SANDBOX_VCPUS = "4";
     const app = authenticatedApi();
 
     const createResponse = await app.request(
@@ -71,6 +73,7 @@ describe("workspace admin API", () => {
         body: JSON.stringify({
           name: "Sentry",
           setupScript: "pnpm install",
+          vcpus: 8,
           repos: [
             {
               provider: "github",
@@ -91,6 +94,7 @@ describe("workspace admin API", () => {
     expect(created).toMatchObject({
       name: "sentry",
       setupScript: "pnpm install",
+      vcpus: 8,
       repos: [
         {
           provider: "github",
@@ -109,6 +113,7 @@ describe("workspace admin API", () => {
     expect(listResponse.status).toBe(200);
     const listed = workspaceListSchema.parse(await listResponse.json());
     expect(listed.baselineSnapshot).toBeNull();
+    expect(listed.defaultVcpus).toBe(4);
     expect(listed.workspaces.map((workspace) => workspace.id)).toContain(
       created.id,
     );
@@ -136,6 +141,7 @@ describe("workspace admin API", () => {
       id: created.id,
       name: "sentry-core",
       setupScript: "pnpm install --frozen-lockfile",
+      vcpus: null,
       repos: [
         {
           provider: "github",
@@ -298,6 +304,7 @@ describe("workspace admin API", () => {
       {
         body: JSON.stringify({
           name: "snapshot-renamed",
+          vcpus: 16,
           repos: [{ provider: "github", repo: "getsentry/sentry" }],
         }),
         headers: { "content-type": "application/json" },
@@ -308,8 +315,10 @@ describe("workspace admin API", () => {
     const renamedDetail = await app.request(
       `http://localhost/api/workspaces/${created.id}`,
     );
+    // A size change keeps the ready snapshot.
     expect(workspaceSchema.parse(await renamedDetail.json())).toMatchObject({
       name: "snapshot-renamed",
+      vcpus: 16,
       snapshot: { id: "snap_old", buildDurationMs: 9_000, sizeBytes: null },
     });
 

@@ -248,7 +248,7 @@ export function ActivityChartGrid(props: {
     return (
       <g key={ratio}>
         <line
-          stroke="rgba(255,255,255,0.07)"
+          stroke="var(--color-dashboard-border-subtle)"
           strokeDasharray="3 5"
           x1={props.layout.left}
           x2={props.layout.width - props.layout.right}
@@ -332,9 +332,6 @@ export function activityChartAverage(values: readonly number[]): number {
 export const chartAverageLabelClassName =
   "fill-dashboard-text-solid font-sans tabular-nums leading-none";
 
-/** Solid chip behind average labels so series colors never wash out the text. */
-const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";
-
 /**
  * Opt-in horizontal average across the plotted buckets.
  * Renders a dashed guide plus a compact "value / day" label on the right.
@@ -380,7 +377,7 @@ export function ActivityChartAverageLine(props: {
   return (
     <g aria-label={`average ${label}`} pointerEvents="none">
       <line
-        stroke={props.stroke ?? "rgba(255,255,255,0.55)"}
+        stroke={props.stroke ?? "var(--color-dashboard-text-faint)"}
         strokeDasharray="4 4"
         strokeOpacity={0.85}
         strokeWidth={1.25}
@@ -389,8 +386,10 @@ export function ActivityChartAverageLine(props: {
         y1={y}
         y2={y}
       />
+      {/* Solid chip so series colors never wash out the label text. */}
       <rect
-        fill={chartAverageLabelChip}
+        fill="var(--color-dashboard-bg-elevated)"
+        fillOpacity={0.92}
         height={chipHeight}
         rx={3}
         width={chipWidth}
@@ -399,7 +398,7 @@ export function ActivityChartAverageLine(props: {
       />
       <text
         className={chartAverageLabelClassName}
-        fill="#ffffff"
+        fill="var(--color-dashboard-text-solid)"
         fontSize={fontSize}
         textAnchor="middle"
         x={chipX + chipWidth / 2}

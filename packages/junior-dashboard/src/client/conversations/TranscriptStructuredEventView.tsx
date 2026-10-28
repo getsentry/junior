@@ -1,5 +1,6 @@
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
+import { MentionText } from "./transcriptMentions";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptSummary } from "./TranscriptSummary";
 
@@ -14,6 +15,7 @@ export function TranscriptStructuredEventView(props: {
   const presentation = props.part.presentation;
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
+  const mentions = props.part.mentions ?? [];
   // The rail icon box is h-6. A leading-6 title shares its center line.
   const surfaceClass = "min-w-0 font-sans text-xs";
   // A lone detail often repeats the event title, such as "Loaded AGENTS.md"
@@ -32,7 +34,7 @@ export function TranscriptStructuredEventView(props: {
             )}
             {detail.description ? (
               <div className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-dashboard-text-muted">
-                <HighlightText text={detail.description} />
+                <MentionText mentions={mentions} text={detail.description} />
               </div>
             ) : null}
             {detail.content ? (
@@ -64,7 +66,7 @@ export function TranscriptStructuredEventView(props: {
         </div>
         {presentation.preview ? (
           <div className="mt-0.5 truncate text-xs text-dashboard-text-muted">
-            <HighlightText text={presentation.preview} />
+            <MentionText mentions={mentions} text={presentation.preview} />
           </div>
         ) : null}
       </div>

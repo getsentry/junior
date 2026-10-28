@@ -1,11 +1,27 @@
 import { ChevronRight } from "lucide-react";
 
-import { renderMentionText } from "./transcriptMentions";
+import { MentionText } from "./transcriptMentions";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
 import type { TranscriptViewMessage } from "../types";
 import { TranscriptSummary } from "./TranscriptSummary";
+
+function EventTypeChip(props: { eventType: string }) {
+  return (
+    <span className="break-all rounded-md border border-dashboard-border px-1.5 py-0.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+      <HighlightText text={props.eventType} />
+    </span>
+  );
+}
+
+/** Heading for several Events that arrived in one message. */
+function batchSummary(events: readonly { label?: string }[]): string {
+  // Name the resource only when every Event is about it.
+  const label = events[0]?.label;
+  const shared = label && events.every((event) => event.label === label);
+  return `${events.length} events${shared ? ` · ${label}` : ""}`;
+}
 
 /** Render an Event Message whose heading expands its full text. */
 export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
@@ -13,16 +29,39 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
   const redacted = props.message.parts.some(
     (part) => part.type === "text" && part.redacted,
   );
-  const summary = props.message.trustedSummary ?? props.message.eventType ?? "";
+  const events = props.message.events ?? [];
+  const mentions = props.message.mentions ?? [];
+  const isBatch = events.length > 1;
+  const summary = isBatch
+    ? batchSummary(events)
+    : (props.message.trustedSummary ?? props.message.eventType ?? "");
   const heading = (
-    <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-      <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
-        {renderMentionText(summary, "event-summary")}
-      </span>
-      {props.message.eventType ? (
-        <span className="break-all rounded-md border border-dashboard-border px-1.5 py-0.5 font-mono text-2xs leading-none text-dashboard-text-muted">
-          <HighlightText text={props.message.eventType} />
+    <span className="flex min-w-0 flex-col gap-1">
+      <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
+          <MentionText mentions={mentions} text={summary} />
         </span>
+        {!isBatch && props.message.eventType ? (
+          <EventTypeChip eventType={props.message.eventType} />
+        ) : null}
+      </span>
+      {isBatch ? (
+        <ul className="flex min-w-0 flex-col gap-1">
+          {events.map((event, index) => (
+            <li
+              key={index}
+              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted"
+            >
+              <span className="min-w-0 break-words">
+                <MentionText
+                  mentions={mentions}
+                  text={event.trustedSummary ?? event.eventType}
+                />
+              </span>
+              <EventTypeChip eventType={event.eventType} />
+            </li>
+          ))}
+        </ul>
       ) : null}
     </span>
   );

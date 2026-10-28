@@ -6,9 +6,11 @@ import { Button } from "../../components/Button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
+import { formatSandboxSize } from "./SandboxSizeSummary";
 
 type WorkspaceListProps = {
   busy: boolean;
+  defaultVcpus: number | null;
   onDelete(workspace: WorkspaceReport): void;
   workspaces: WorkspaceReport[];
 };
@@ -29,6 +31,7 @@ export function WorkspaceList(props: WorkspaceListProps) {
           {props.workspaces.map((workspace) => (
             <WorkspaceListItem
               busy={props.busy}
+              defaultVcpus={props.defaultVcpus}
               key={workspace.id}
               onDelete={props.onDelete}
               workspace={workspace}
@@ -42,6 +45,7 @@ export function WorkspaceList(props: WorkspaceListProps) {
 
 function WorkspaceListItem(props: {
   busy: boolean;
+  defaultVcpus: number | null;
   onDelete(workspace: WorkspaceReport): void;
   workspace: WorkspaceReport;
 }) {
@@ -72,7 +76,8 @@ function WorkspaceListItem(props: {
               </span>
               <span className="font-mono text-xs text-dashboard-text-muted">
                 {workspace.repos.length} repo
-                {workspace.repos.length === 1 ? "" : "s"}
+                {workspace.repos.length === 1 ? "" : "s"} ·{" "}
+                {formatSandboxSize(workspace.vcpus ?? props.defaultVcpus)}
               </span>
             </span>
             <span className="mt-1.5 block truncate font-mono text-xs text-dashboard-text-muted">

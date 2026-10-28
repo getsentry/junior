@@ -202,8 +202,8 @@ describe("ActivityChartAverageLine", () => {
     expect(html).toContain(">40 / day</text>");
     expect(html).toContain('stroke="#22d3ee"');
     // Label sits on a dark chip so series colors stay off the text.
-    expect(html).toContain('fill="rgba(9, 12, 14, 0.92)"');
-    expect(html).toContain('fill="#ffffff"');
+    expect(html).toContain('fill="var(--color-dashboard-bg-elevated)"');
+    expect(html).toContain('fill="var(--color-dashboard-text-solid)"');
   });
 
   it("hides when the average is zero", () => {

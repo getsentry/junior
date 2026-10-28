@@ -22,7 +22,7 @@ import {
   ROOT_LINE_BREAK,
   type RootConversation,
   type RootConversationMessage,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/proposal";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses

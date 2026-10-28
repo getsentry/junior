@@ -11,12 +11,12 @@ import {
   type JsonValue,
 } from "vitest-evals";
 import { completeObject } from "@/chat/pi/client";
-import { createGuardianActionReviewer } from "@/chat/services/guardian-action-review";
+import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import type {
   ToolActionDecision,
   ToolActionProposal,
   ToolActionReviewDecision,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/proposal";
 
 const GUARDIAN_EVAL_TIMEOUT_MS = 60_000;
 

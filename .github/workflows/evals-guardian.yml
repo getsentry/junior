@@ -39,13 +39,19 @@ jobs:
               - 'packages/junior-evals/evals/guardian/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'
+              - 'packages/junior-evals/src/guardian-tools.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/guardian-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.guardian.config.ts'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/scripts/network-jail.sh'
-              - 'packages/junior/src/chat/services/guardian-action-policy.ts'
+              - 'packages/junior/src/chat/guardian/**'
+              # guardian-tools.ts builds each case's tool from these sources.
+              - 'packages/junior/src/chat/tools/**'
+              - 'packages/junior-github/src/**'
+              - 'packages/junior-google/src/**'
+              - 'packages/junior-vercel/src/**'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

@@ -40,6 +40,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sinclair/typebox": "^0.34.49",
     "drizzle-orm": "catalog:",
+    "marked": "^18.1.2",
     "zod": "catalog:"
   },
   "devDependencies": {

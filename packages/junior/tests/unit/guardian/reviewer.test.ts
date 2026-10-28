@@ -4,13 +4,13 @@ import {
   createGuardianActionReviewer,
   guardianDecision,
   guardianPrompt,
-} from "@/chat/services/guardian-action-review";
+} from "@/chat/guardian/reviewer";
 import { ProviderError } from "@/chat/services/provider-error";
 import {
   CHILD_AGENT_USER_INTENT,
   type RootConversation,
   type ToolActionProposal,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/proposal";
 import type { ZodType } from "zod";
 
 const mocks = vi.hoisted(() => ({
