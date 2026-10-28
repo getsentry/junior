@@ -6,7 +6,9 @@ import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
  * Save who asked Junior to open a pull request on one head branch.
  * Call it before the pull request exists, so the `opened` webhook can read
  * it. Without a linked GitHub login, the old row for the branch is removed,
- * so a requester from an earlier pull request cannot carry over.
+ * so a requester from an earlier pull request cannot carry over. Returns the
+ * login that the row had before, so a caller can restore it when GitHub
+ * rejects the create.
  */
 export async function recordGitHubPullRequestRequester(
   db: GitHubDb,
@@ -15,24 +17,27 @@ export async function recordGitHubPullRequestRequester(
     repositoryFullName: string;
     requesterLogin: string | undefined;
   },
-): Promise<void> {
+): Promise<string | undefined> {
   const key = {
     headBranch: input.headBranch,
     repositoryFullName: input.repositoryFullName.toLowerCase(),
   };
+  const keyMatches = and(
+    eq(
+      juniorGitHubPullRequestRequesters.repositoryFullName,
+      key.repositoryFullName,
+    ),
+    eq(juniorGitHubPullRequestRequesters.headBranch, key.headBranch),
+  );
+  const [previous] = await db
+    .select({
+      requesterLogin: juniorGitHubPullRequestRequesters.requesterLogin,
+    })
+    .from(juniorGitHubPullRequestRequesters)
+    .where(keyMatches);
   if (!input.requesterLogin) {
-    await db
-      .delete(juniorGitHubPullRequestRequesters)
-      .where(
-        and(
-          eq(
-            juniorGitHubPullRequestRequesters.repositoryFullName,
-            key.repositoryFullName,
-          ),
-          eq(juniorGitHubPullRequestRequesters.headBranch, key.headBranch),
-        ),
-      );
-    return;
+    await db.delete(juniorGitHubPullRequestRequesters).where(keyMatches);
+    return previous?.requesterLogin;
   }
   const values = {
     requesterLogin: input.requesterLogin,
@@ -48,6 +53,7 @@ export async function recordGitHubPullRequestRequester(
       ],
       set: values,
     });
+  return previous?.requesterLogin;
 }
 
 /** Load the saved requester login for each head branch that has one. */

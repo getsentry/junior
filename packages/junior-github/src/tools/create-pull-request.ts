@@ -342,16 +342,31 @@ async function createGitHubPullRequest(
   };
 }
 
+/** The requester row key for the head branch that a create call names. */
+function requesterBranch(input: CreateGitHubPullRequestInput): {
+  headBranch: string;
+  repositoryFullName: string;
+} {
+  const repo = parseRepo(input.repo);
+  // `owner:branch` names a fork branch. Webhooks send only the branch.
+  const head = nonEmptyString(input.head, "head");
+  return {
+    headBranch: head.slice(head.indexOf(":") + 1),
+    repositoryFullName: `${repo.owner}/${repo.name}`,
+  };
+}
+
 /**
  * Save the requester's linked GitHub login for the new pull request's head
  * branch. Webhooks read it to fill `requesterUsername` and `requesterRole`.
  * It runs before the create call because GitHub can deliver `opened` before
- * the create call returns.
+ * the create call returns. Returns the login the branch had before, so a
+ * rejected create can restore it.
  */
 async function recordPullRequestRequester(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
-): Promise<void> {
+): Promise<string | undefined> {
   let requester: Awaited<ReturnType<typeof ctx.users.resolveActor>>;
   if (ctx.actor && ctx.actor.platform !== "system") {
     try {
@@ -365,12 +380,8 @@ async function recordPullRequestRequester(
       });
     }
   }
-  const repo = parseRepo(input.repo);
-  // `owner:branch` names a fork branch. Webhooks send only the branch.
-  const head = nonEmptyString(input.head, "head");
-  await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
-    headBranch: head.slice(head.indexOf(":") + 1),
-    repositoryFullName: `${repo.owner}/${repo.name}`,
+  return await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+    ...requesterBranch(input),
     requesterLogin: linkedGitHubLogin(requester?.user),
   });
 }
@@ -569,7 +580,10 @@ export function createGitHubPullRequestTool(
             ctx,
             ctx.slack?.conversationLink?.url,
           );
-          await recordPullRequestRequester(ctx, parsedInput);
+          const previousRequester = await recordPullRequestRequester(
+            ctx,
+            parsedInput,
+          );
           const pendingState: CreatePullRequestState = {
             status: "pending",
             createdAtMs: Date.now(),
@@ -589,6 +603,12 @@ export function createGitHubPullRequestTool(
               isDefinitiveGitHubPullRequestCreateRejection(error)
             ) {
               await ctx.state.delete(key);
+              // GitHub did not open a pull request, so this call must not
+              // change the requester of an existing pull request.
+              await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+                ...requesterBranch(parsedInput),
+                requesterLogin: previousRequester,
+              });
             }
             throw error;
           }

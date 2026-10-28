@@ -2517,6 +2517,7 @@ describe("GitHub-owned pull request outcomes", () => {
       plugin: { name: "github" },
     };
     let requesterLogin: string | undefined = "dcramer";
+    let createStatus = 201;
     const state = new Map<string, unknown>();
     const createTool = plugin.hooks!.tools!({
       ...pluginCtx,
@@ -2530,7 +2531,8 @@ describe("GitHub-owned pull request outcomes", () => {
       },
       egress: {
         async fetch({ operation }: { operation: string }) {
-          return operation === "github.pull.create"
+          if (operation !== "github.pull.create") return Response.json({});
+          return createStatus === 201
             ? Response.json(
                 {
                   html_url: "https://github.com/getsentry/junior/pull/946",
@@ -2538,7 +2540,10 @@ describe("GitHub-owned pull request outcomes", () => {
                 },
                 { status: 201 },
               )
-            : Response.json({});
+            : Response.json(
+                { message: "A pull request already exists" },
+                { status: createStatus },
+              );
         },
       },
       events: { canSubscribe: false },
@@ -2630,6 +2635,20 @@ describe("GitHub-owned pull request outcomes", () => {
         ["dcramer", "admin"],
       ]);
 
+      // A create that GitHub rejects does not change the saved requester.
+      requesterLogin = "octocat";
+      createStatus = 422;
+      await expect(
+        createTool.execute!(createInput, { toolCallId: "call-rejected" }),
+      ).rejects.toThrow("HTTP 422");
+      createStatus = 201;
+      published.length = 0;
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
+        ["dcramer", "admin"],
+        ["dcramer", "admin"],
+      ]);
+
       // A later PR on the branch from an unlinked requester clears the old
       // requester, so the event falls back to the bot author.
       requesterLogin = undefined;
@@ -2651,7 +2670,12 @@ describe("GitHub-owned pull request outcomes", () => {
         ["octocat", "none"],
         ["octocat", "none"],
       ]);
-      expect(roleLogins).toEqual(["dcramer", "sentry-junior[bot]", "octocat"]);
+      expect(roleLogins).toEqual([
+        "dcramer",
+        "dcramer",
+        "sentry-junior[bot]",
+        "octocat",
+      ]);
     } finally {
       await fixture.close();
     }
