@@ -12,8 +12,10 @@ const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
+    decisionModel: vi.fn((modelId: string) => ({ modelId })),
     embeddingModel: vi.fn((modelId: string) => ({ modelId })),
   })),
+  decide: vi.fn(),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
   getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
@@ -62,7 +64,9 @@ vi.mock("@ai-sdk/gateway", () => ({
 }));
 
 vi.mock("ai", () => ({
+  Experimental_DecisionRefusalError: { isInstance: () => false },
   embedMany: mocks.embedMany,
+  experimental_decide: mocks.decide,
   generateObject: mocks.generateObject,
   NoObjectGeneratedError: {
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
@@ -325,6 +329,36 @@ describe("completeText", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
         "gen_ai.response.finish_reasons": ["stop"],
+      }),
+    );
+  });
+
+  it("keeps decision payloads out of telemetry when asked", async () => {
+    mocks.decide.mockResolvedValue({
+      answers: { ok: { value: "yes" } },
+      usage: { inputTokens: 10 },
+    });
+
+    const { completeDecision } = await import("@/chat/pi/client");
+    const questions = {
+      ok: { type: "choice", criteria: { yes: "Yes.", no: "No." } },
+    } as const;
+
+    await completeDecision({
+      modelId: "test/decision",
+      state: "private state",
+      questions,
+      recordTelemetryPayloads: false,
+    });
+
+    expect(mocks.decide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: "private state",
+        telemetry: {
+          isEnabled: true,
+          recordInputs: false,
+          recordOutputs: false,
+        },
       }),
     );
   });

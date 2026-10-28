@@ -77,6 +77,7 @@ describe("Guardian action review", () => {
       expect.objectContaining({
         modelId: "test/guardian",
         state: expect.stringContaining('"cadence": "weekly"'),
+        recordTelemetryPayloads: false,
         questions: expect.objectContaining({
           riskLevel: expect.objectContaining({ type: "choice" }),
           rule: expect.objectContaining({ type: "choice" }),

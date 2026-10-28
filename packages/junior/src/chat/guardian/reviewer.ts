@@ -211,6 +211,7 @@ export function createGuardianActionReviewer(options: {
           modelId: options.modelId,
           state: guardianPrompt(proposal),
           questions: GUARDIAN_QUESTIONS,
+          recordTelemetryPayloads: false,
           promptName: "junior.guardian_action_review",
           signal,
           metadata: {
