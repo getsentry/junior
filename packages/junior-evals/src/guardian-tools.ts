@@ -10,10 +10,10 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { googlePlugin } from "@sentry/junior-google";
 import { vercelPlugin } from "@sentry/junior-vercel";
-import { createApp, defineJuniorPlugins } from "@/app";
 import { proposalTool } from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -99,21 +99,17 @@ const context: ToolRuntimeContext = {
   },
 };
 
-let agentTools: Promise<Record<string, AnyToolDefinition>> | undefined;
+let agentTools: Record<string, AnyToolDefinition> | undefined;
 
-async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
+function buildAgentTools(): Record<string, AnyToolDefinition> {
   // The Google plugin registers its tools only when it is configured.
   process.env.GOOGLE_CLIENT_ID ??= "guardian-eval";
   process.env.GOOGLE_CLIENT_SECRET ??= "guardian-eval";
   process.env.GOOGLE_WORKSPACE_ACCOUNT_EMAIL ??= "junior@example.com";
-  // createApp registers the plugins as a host does.
-  await createApp({
-    plugins: defineJuniorPlugins([
-      githubPlugin(),
-      googlePlugin(),
-      vercelPlugin(),
-    ]),
-  });
+  // Register only the plugins, as createTools reads them. Do not call
+  // createApp: it also resets the runtime config, checks the plugin catalog,
+  // and builds the host app, which the isolated Guardian evals do not set up.
+  setPlugins([githubPlugin(), googlePlugin(), vercelPlugin()]);
   return {
     ...(createTools([], {}, context) as Record<string, AnyToolDefinition>),
     callMcpTool: createCallMcpToolTool({
@@ -131,7 +127,7 @@ export async function agentToolSpec(
   input: Record<string, unknown>,
 ): Promise<ToolActionProposal["tool"]> {
   agentTools ??= buildAgentTools();
-  const tool = (await agentTools)[name];
+  const tool = agentTools[name];
   if (!tool) {
     throw new Error(`The agent has no tool named ${name}.`);
   }
