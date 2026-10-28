@@ -75,13 +75,16 @@ function beforeToolContext(
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"],
 ) {
   const env: Record<string, string> = {};
-  let denial: string | undefined;
+  let blocked: { kind: "deny" | "redirect"; message: string } | undefined;
 
   return {
     ctx: {
       decision: {
         deny(message: string) {
-          denial = message;
+          blocked = { kind: "deny", message };
+        },
+        redirect(message: string) {
+          blocked = { kind: "redirect", message };
         },
         replaceInput() {},
       },
@@ -111,8 +114,8 @@ function beforeToolContext(
       },
     },
     env,
-    get denial() {
-      return denial;
+    get blocked() {
+      return blocked;
     },
   };
 }
@@ -3868,7 +3871,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env).toMatchObject({
       GIT_AUTHOR_NAME: "sentry-junior[bot]",
       GIT_AUTHOR_EMAIL: "bot@example.com",
@@ -3891,8 +3894,8 @@ Conversation: \`local:test:old-conversation\`
     ["git clone https://example.com/github.com/getsentry/junior", false],
     ["git fetch origin main", false],
   ])(
-    "denies GitHub clones in bash on a best-effort basis: %s",
-    async (command, denied) => {
+    "redirects GitHub clones in bash on a best-effort basis: %s",
+    async (command, redirected) => {
       process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
       process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3905,8 +3908,13 @@ Conversation: \`local:test:old-conversation\`
 
       await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
-      expect(before.denial?.includes("github_cloneRepository") ?? false).toBe(
-        denied,
+      expect(before.blocked).toEqual(
+        redirected
+          ? {
+              kind: "redirect",
+              message: expect.stringContaining("github_cloneRepository"),
+            }
+          : undefined,
       );
     },
   );
@@ -4061,7 +4069,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>\nCo-Authored-By: Carol Steer <carol@example.com>",
     );
@@ -4099,7 +4107,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
@@ -4174,7 +4182,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>",
     );
@@ -4198,7 +4206,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
@@ -4300,7 +4308,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env).toMatchObject({
       GIT_COMMITTER_NAME: "sentry-junior[bot]",
       GIT_COMMITTER_EMAIL: "bot@example.com",

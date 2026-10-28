@@ -62,7 +62,7 @@ import {
 import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
-import { githubCloneCommandDenial } from "./clone-command.js";
+import { githubCloneCommandRedirect } from "./clone-command.js";
 import {
   githubGrantForEgress,
   githubGraphqlPermissionDeniedMessage,
@@ -401,12 +401,12 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const cloneDenial =
+        const cloneRedirect =
           typeof ctx.tool.input.command === "string"
-            ? githubCloneCommandDenial(ctx.tool.input.command)
+            ? githubCloneCommandRedirect(ctx.tool.input.command)
             : undefined;
-        if (cloneDenial) {
-          ctx.decision.deny(cloneDenial);
+        if (cloneRedirect) {
+          ctx.decision.redirect(cloneRedirect);
           return;
         }
         const botName = requireEnv(botNameEnv);

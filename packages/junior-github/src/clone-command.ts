@@ -10,19 +10,21 @@
  */
 import { parseShellCommands } from "@sentry/junior-plugin-api";
 
-const CLONE_DENIAL_MESSAGE =
+const CLONE_REDIRECT_MESSAGE =
   "Use github_cloneRepository to clone GitHub repositories, not git clone or gh repo clone. It checks for a matching Workspace first.";
 
 /** Git global options that take the next token as their value. */
 const GIT_OPTIONS_WITH_VALUE = new Set(["-C", "-c"]);
 
 /**
- * Return a denial message when a bash command clones a GitHub repository
+ * Return a redirect message when a bash command clones a GitHub repository
  * without `github_cloneRepository`. Return undefined for other commands.
  */
-export function githubCloneCommandDenial(command: string): string | undefined {
+export function githubCloneCommandRedirect(
+  command: string,
+): string | undefined {
   return parseShellCommands(command).some(isGitHubClone)
-    ? CLONE_DENIAL_MESSAGE
+    ? CLONE_REDIRECT_MESSAGE
     : undefined;
 }
 

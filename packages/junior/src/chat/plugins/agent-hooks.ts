@@ -47,6 +47,7 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   getDashboardConversationLink,
@@ -1687,7 +1688,7 @@ export function createPluginHookRunner(
           continue;
         }
         let replacement: Record<string, unknown> | undefined;
-        let denied: string | undefined;
+        let blocked: PluginToolDeniedError | ToolInputError | undefined;
         await hook({
           ...basePluginContext(plugin),
           actor: input.actor,
@@ -1709,8 +1710,11 @@ export function createPluginHookRunner(
             },
           },
           decision: {
-            deny(message) {
-              denied = message;
+            deny(reason) {
+              blocked = new PluginToolDeniedError(reason);
+            },
+            redirect(message) {
+              blocked = new ToolInputError(message);
             },
             replaceInput(input) {
               replacement = input;
@@ -1718,10 +1722,8 @@ export function createPluginHookRunner(
           },
         });
 
-        // A denial tells the model to take another path, so it is an
-        // expected tool input failure, not a runtime exception.
-        if (denied) {
-          throw new ToolInputError(denied);
+        if (blocked) {
+          throw blocked;
         }
         if (replacement !== undefined) {
           if (!isRecord(replacement)) {

@@ -19,6 +19,7 @@ import {
 } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   ToolActionRejectedError,
@@ -41,6 +42,7 @@ function getToolErrorType(error: unknown): string {
   if (error instanceof ToolInputError || isPluginToolInputError(error)) {
     return "tool_input_error";
   }
+  if (error instanceof PluginToolDeniedError) return "plugin_tool_denied";
   return error instanceof Error ? error.name : "tool_execution_error";
 }
 
@@ -119,10 +121,12 @@ export function handleToolExecutionError(
     });
   }
 
-  // Expected tool failures (MCP errors, model input errors) are not Sentry exceptions.
+  // Expected tool failures (MCP errors, model input errors, plugin policy
+  // denials) are not Sentry exceptions.
   const isExpectedToolFailure =
     error instanceof McpToolError ||
     error instanceof ToolInputError ||
+    error instanceof PluginToolDeniedError ||
     isPluginToolInputError(error);
   if (!isExpectedToolFailure) {
     logException(error, "agent.tool_call.failed", {

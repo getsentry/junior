@@ -275,12 +275,22 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | Surface                  | Purpose                                                                                                                                                                                      |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                      |
-| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                                   |
+| `beforeToolExecute(ctx)` | Deny, redirect, or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                        |
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
 | `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
+
+In `beforeToolExecute`, `ctx.decision` can stop a tool call before it runs:
+
+- `ctx.decision.redirect(message)`: a different path is correct. The message
+  tells the agent what to do instead, for example "Use `myProvider_clone`."
+- `ctx.decision.deny(reason)`: a policy refusal. Junior tells the agent not to
+  retry or work around the block, and to explain it.
+
+Both return the message to the agent as the tool result. Neither ends the
+turn, and neither is reported to Sentry as an exception.
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
 `ctx.users.resolveActor()` only when a tool needs the active actor's linked
