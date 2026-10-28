@@ -1,15 +1,9 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
   ConversationAnnotationInput,
   EventInput,
 } from "@sentry/junior-plugin-api";
-import {
-  createLocalPgliteFixture,
-  type LocalPgliteFixture,
-} from "@sentry/junior-testing/pglite";
+import { createLocalPgliteFixture } from "@sentry/junior-testing/pglite";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -81,31 +75,12 @@ function checkSuitePullRequest(
   };
 }
 
+import {
+  createGitHubFixture,
+  type GitHubFixture,
+  migrationSql,
+} from "./github-db";
 import { mswServer } from "./msw";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-type GitHubFixture = LocalPgliteFixture<GitHubDb>;
-
-async function createGitHubFixture(): Promise<GitHubFixture> {
-  const fixture = await createLocalPgliteFixture<GitHubDb>(githubSqlSchema);
-  for (const migrationFile of [
-    "0000_pull_request_outcomes.sql",
-    "0001_issue_outcomes.sql",
-    "0002_pull_request_commit_composition.sql",
-    "0003_pull_request_conversations.sql",
-    "0004_marvelous_toad_men.sql",
-    "0005_github_cost_associations.sql",
-    "0006_fat_korvac.sql",
-    "0007_shallow_millenium_guard.sql",
-  ]) {
-    await fixture.execute(await migrationSql(migrationFile));
-  }
-  return fixture;
-}
-
-async function migrationSql(name: string): Promise<string> {
-  return await readFile(resolve(__dirname, `../migrations/${name}`), "utf8");
-}
 
 it("returns only candidate conversations with unmerged pull requests", async () => {
   const fixture = await createGitHubFixture();
@@ -2488,6 +2463,195 @@ describe("GitHub-owned pull request outcomes", () => {
       await route!.handler(signedRequest(opened));
       expect(roleRequests).toHaveLength(1);
       expect(published[0]?.data?.authorRole).toBe("write");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("filters Junior pull requests by the requester the create tool saved", async () => {
+    const fixture = await createGitHubFixture();
+    const roleLogins: string[] = [];
+    const published: EventInput[] = [];
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
+    vi.stubEnv(
+      "GITHUB_APP_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+        ({ params }) => {
+          const login = String(params.login);
+          roleLogins.push(login);
+          const role = login === "dcramer" ? "admin" : "none";
+          return HttpResponse.json({ permission: role, role_name: role });
+        },
+      ),
+    );
+    const plugin = githubPlugin();
+    const pluginCtx = {
+      cache: {
+        async getOrLoad<T>(
+          _key: string,
+          load: () => Promise<{ ttlMs?: number; value: T }>,
+        ) {
+          return (await load()).value;
+        },
+      },
+      db: fixture.db(),
+      log: { error() {}, info() {}, warn() {} },
+      plugin: { name: "github" },
+    };
+    let requesterLogin: string | undefined = "dcramer";
+    const state = new Map<string, unknown>();
+    const createTool = plugin.hooks!.tools!({
+      ...pluginCtx,
+      actor: { platform: "slack", teamId: "T1", userId: "U039RR91S" },
+      conversationId: "slack:C123:1712345.0001",
+      destination: { platform: "local", conversationId: "local:test" },
+      source: {
+        kind: "local",
+        visibility: "private",
+        conversationId: "local:test",
+      },
+      egress: {
+        async fetch({ operation }: { operation: string }) {
+          return operation === "github.pull.create"
+            ? Response.json(
+                {
+                  html_url: "https://github.com/getsentry/junior/pull/946",
+                  number: 946,
+                },
+                { status: 201 },
+              )
+            : Response.json({});
+        },
+      },
+      events: { canSubscribe: false },
+      users: {
+        async resolveActor() {
+          return {
+            user: {
+              id: "user-1",
+              identities: requesterLogin
+                ? [
+                    {
+                      id: "github-identity",
+                      provider: "github",
+                      providerSubjectId: "1",
+                      handle: requesterLogin,
+                    },
+                  ]
+                : [],
+            },
+          };
+        },
+      },
+      state: {
+        async delete(key: string) {
+          state.delete(key);
+        },
+        async get(key: string) {
+          return state.get(key);
+        },
+        async set(key: string, value: unknown) {
+          state.set(key, value);
+        },
+        async withLock<T>(_key: string, _ttl: number, run: () => Promise<T>) {
+          return await run();
+        },
+      },
+    } as any).createPullRequest!;
+    const [route] = plugin.hooks!.routes!({
+      ...pluginCtx,
+      annotations: {
+        forConversation() {
+          return {
+            async upsert() {},
+            async remove() {},
+            async list() {
+              return [];
+            },
+          };
+        },
+      },
+      codeChanges: {
+        async associateConversations() {},
+        async record() {},
+      },
+      events: {
+        hasMatch: async () => true,
+        neededMatchKeys: async () => ["requesterRole"],
+        async publish(event) {
+          published.push(event);
+        },
+      },
+    });
+    const createInput = {
+      base: "main",
+      head: "fix/requester-role",
+      repo: "getsentry/junior",
+      title: "Fix requester role",
+    };
+    // Webhooks ignore the attribution block in the body. Only the saved
+    // requester counts.
+    const opened = pullRequestPayload();
+    Object.assign(opened.pull_request, {
+      body: `<!-- junior-request-attribution:start -->\nvia @octocat.\n<!-- junior-request-attribution:end -->\n\n${opened.pull_request.body}`,
+      head: { ref: "fix/requester-role" },
+    });
+    const requesterFields = () =>
+      published
+        .filter((event) => event.eventType === "pull_request.opened")
+        .map((event) => [
+          event.data?.requesterUsername,
+          event.data?.requesterRole,
+        ]);
+
+    try {
+      await createTool.execute!(createInput, { toolCallId: "call-1" });
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
+        ["dcramer", "admin"],
+        ["dcramer", "admin"],
+      ]);
+
+      // A later PR on the branch from an unlinked requester clears the old
+      // requester, so the event falls back to the bot author.
+      requesterLogin = undefined;
+      published.length = 0;
+      await createTool.execute!(createInput, { toolCallId: "call-2" });
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
+        ["sentry-junior[bot]", "none"],
+        ["sentry-junior[bot]", "none"],
+      ]);
+
+      // A person's pull request uses its author, even on a saved branch.
+      requesterLogin = "dcramer";
+      await createTool.execute!(createInput, { toolCallId: "call-3" });
+      published.length = 0;
+      opened.pull_request.user = { login: "octocat" };
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
+        ["octocat", "none"],
+        ["octocat", "none"],
+      ]);
+      expect(roleLogins).toEqual(["dcramer", "sentry-junior[bot]", "octocat"]);
     } finally {
       await fixture.close();
     }

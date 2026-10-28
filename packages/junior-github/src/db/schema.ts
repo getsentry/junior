@@ -126,8 +126,32 @@ export const juniorGitHubPullRequestIssues = pgTable(
   ],
 );
 
+/**
+ * The person who asked Junior to open the pull request on one head branch.
+ * The create tool writes the row before it opens the pull request, so the
+ * `opened` webhook can read it. A new pull request on the same branch replaces
+ * the row.
+ */
+export const juniorGitHubPullRequestRequesters = pgTable(
+  "junior_github_pull_request_requesters",
+  {
+    /** Lowercase `owner/name`. */
+    repositoryFullName: text("repository_full_name").notNull(),
+    headBranch: text("head_branch").notNull(),
+    /** The requester's linked GitHub login when Junior opened the PR. */
+    requesterLogin: text("requester_login").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.repositoryFullName, table.headBranch],
+    }),
+  ],
+);
+
 export const githubSqlSchema = {
   juniorGitHubIssues,
   juniorGitHubPullRequestIssues,
+  juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 };

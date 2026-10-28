@@ -120,6 +120,16 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
     kind: "boolean",
     description: "true when the pull request is a draft",
   },
+  requesterUsername: {
+    kind: "string",
+    description:
+      "login of the person who asked for the pull request: on Junior's own pull requests, the linked requester saved when Junior opened it; otherwise the author",
+  },
+  requesterRole: {
+    kind: "string",
+    description:
+      "requesterUsername's repository role, with the same values as authorRole",
+  },
 });
 
 /** The identifier shape that `gitHubPullRequestResource` builds. */

@@ -28,6 +28,8 @@ import {
   appendGitHubRequesterAttribution,
   linkedGitHubLogin,
 } from "../tool-support/attribution.js";
+import type { GitHubDb } from "../db/database.js";
+import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -340,6 +342,39 @@ async function createGitHubPullRequest(
   };
 }
 
+/**
+ * Save the requester's linked GitHub login for the new pull request's head
+ * branch. Webhooks read it to fill `requesterUsername` and `requesterRole`.
+ * It runs before the create call because GitHub can deliver `opened` before
+ * the create call returns.
+ */
+async function recordPullRequestRequester(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+): Promise<void> {
+  let requester: Awaited<ReturnType<typeof ctx.users.resolveActor>>;
+  if (ctx.actor && ctx.actor.platform !== "system") {
+    try {
+      requester = await ctx.users.resolveActor();
+    } catch (error) {
+      // An unknown requester falls back to the author in webhooks. Clearing
+      // the row below keeps that fallback instead of blocking the PR.
+      ctx.log.warn("github.pull_request.requester.resolve_actor.failed", {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  const repo = parseRepo(input.repo);
+  // `owner:branch` names a fork branch. Webhooks send only the branch.
+  const head = nonEmptyString(input.head, "head");
+  await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+    headBranch: head.slice(head.indexOf(":") + 1),
+    repositoryFullName: `${repo.owner}/${repo.name}`,
+    requesterLogin: linkedGitHubLogin(requester?.user),
+  });
+}
+
 /** Assignment is optional: lookup or provider failures must not fail PR creation. */
 async function assignPullRequestRequester(
   ctx: ToolRegistrationHookContext,
@@ -534,6 +569,7 @@ export function createGitHubPullRequestTool(
             ctx,
             ctx.slack?.conversationLink?.url,
           );
+          await recordPullRequestRequester(ctx, parsedInput);
           const pendingState: CreatePullRequestState = {
             status: "pending",
             createdAtMs: Date.now(),
