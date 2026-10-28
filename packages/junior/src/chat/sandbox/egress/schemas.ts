@@ -62,12 +62,10 @@ export const sandboxEgressAuthRequiredSignalSchema = z
 export const sandboxEgressPermissionDeniedSignalSchema = z
   .object({
     account: pluginProviderAccountSchema.optional(),
-    acceptedPermissions: z.string().optional(),
     grant: sandboxEgressGrantSchema,
     message: z.string().min(1),
     provider: providerNameSchema,
     source: z.literal("upstream"),
-    sso: z.string().optional(),
     status: httpStatusSchema,
     upstreamHost: z.string().min(1),
     upstreamPath: z.string().min(1),

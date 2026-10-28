@@ -14,6 +14,7 @@ import {
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
+  GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   HTTP_READ_METHODS,
   USER_WRITE_REQUIREMENTS,
   githubRepositoryFromUrl,
@@ -179,7 +180,7 @@ function githubGraphqlAccess(
   return "write";
 }
 
-export function githubGraphqlPermissionDeniedMessage(
+function githubGraphqlPermissionDeniedMessage(
   bodyText: string,
 ): string | undefined {
   let parsed: unknown;
@@ -209,7 +210,7 @@ export function githubGraphqlPermissionDeniedMessage(
   return undefined;
 }
 
-export function shouldInspectGitHubGraphqlResponse(
+function shouldInspectGitHubGraphqlResponse(
   ctx: EgressResponseHookContext,
 ): boolean {
   if (
@@ -229,6 +230,84 @@ export function shouldInspectGitHubGraphqlResponse(
   }
   const contentType = ctx.response.headers.get("content-type");
   return contentType ? /\bjson\b/i.test(contentType) : false;
+}
+
+const GITHUB_ERROR_BODY_LIMIT_BYTES = 4 * 1024;
+
+// GitHub also returns 403 for requests it refuses for other reasons, such as
+// a run that cannot be retried or a secondary rate limit. Only these messages
+// mean that the credential lacks access.
+const GITHUB_ACCESS_DENIED_MESSAGES = new Set([
+  "Resource not accessible by integration",
+  "Resource not accessible by personal access token",
+]);
+
+// GitHub sends this header on most responses. It lists the permissions that
+// the endpoint accepts. It does not say which permission is missing.
+const GITHUB_ACCEPTED_PERMISSIONS_PATTERN =
+  /^[a-z_]+=[a-z]+(?:\s*[,;]\s*[a-z_]+=[a-z]+)*$/;
+
+function githubErrorMessage(bodyText: string | undefined): string | undefined {
+  if (!bodyText) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(bodyText);
+    return isRecord(parsed) && typeof parsed.message === "string"
+      ? parsed.message.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function githubForbiddenPermissionDeniedMessage(
+  ctx: EgressResponseHookContext,
+): Promise<string | undefined> {
+  const sso = ctx.response.headers.get("x-github-sso");
+  if (sso?.startsWith("required")) {
+    const url = sso.match(/\burl=(https:\/\/github\.com\/\S+)/)?.[1];
+    return `GitHub requires SAML SSO authorization for this credential.${url ? ` Authorize it at ${url}` : ""}`;
+  }
+  const message = githubErrorMessage(
+    await ctx.response.readText(GITHUB_ERROR_BODY_LIMIT_BYTES),
+  );
+  if (!message || !GITHUB_ACCESS_DENIED_MESSAGES.has(message)) {
+    return undefined;
+  }
+  const accepted = ctx.response.headers
+    .get("x-accepted-github-permissions")
+    ?.trim();
+  return [
+    `GitHub denied access: ${message}.`,
+    ...(accepted && GITHUB_ACCEPTED_PERMISSIONS_PATTERN.test(accepted)
+      ? [
+          `This endpoint accepts these GitHub permissions: ${accepted}. Check that the GitHub App has them and that its installation includes the repository.`,
+        ]
+      : []),
+  ].join(" ");
+}
+
+/**
+ * Classify a GitHub response as a permission denial.
+ *
+ * Returns a message only when GitHub says that the credential lacks access.
+ * Other GitHub refusals return undefined, so the runtime does not call them
+ * permission problems.
+ */
+export async function githubPermissionDeniedMessage(
+  ctx: EgressResponseHookContext,
+): Promise<string | undefined> {
+  if (ctx.response.status === 403) {
+    return await githubForbiddenPermissionDeniedMessage(ctx);
+  }
+  if (!shouldInspectGitHubGraphqlResponse(ctx)) {
+    return undefined;
+  }
+  const bodyText = await ctx.response.readText(
+    GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
+  );
+  return bodyText ? githubGraphqlPermissionDeniedMessage(bodyText) : undefined;
 }
 
 /** GitHub body writes that must go through a typed tool. */
