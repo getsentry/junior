@@ -313,7 +313,7 @@ function FoundationsGalleryPage() {
             onClose={() => setSheetOpen(false)}
           >
             <p className="m-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-dashboard-text-muted">
-              Swipe the handle down, tap outside, or press Escape to return to
+              Use the close button, tap outside, or press Escape to return to
               the page.
             </p>
           </BottomSheet>

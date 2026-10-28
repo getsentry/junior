@@ -4,6 +4,36 @@ Shared dashboard components live here. Feature pages compose these surfaces
 instead of copying Tailwind blocks. See `policies/frontend-components.md` for
 the policy. `pnpm dashboard-style:check` enforces the token rules below.
 
+## shadcn/ui
+
+`packages/junior-dashboard/components.json` configures shadcn/ui for this package.
+It uses Base UI (`base-nova`), Tailwind 4, and Lucide. Add components from the
+repository root:
+
+```sh
+pnpm --filter @sentry/junior-dashboard exec shadcn add <component>
+```
+
+The CLI writes components to `src/client/components/ui/`. Its `@dashboard/*`
+alias points to `src/client/*`. The existing `@/*` alias still points to core.
+`src/client/lib/utils.ts` provides the shadcn `cn` helper. Existing components
+keep the class join helper in `src/client/styles.ts` until they are migrated.
+
+The shadcn color tokens in `src/tailwind.css` use the dashboard tokens in both
+themes. Primary actions use `text-solid` with inverse text. Danger uses the
+same theme-aware rose shade as existing danger controls. The `dark:` variant
+follows `data-theme`. Keep the existing Tailwind radius scale. Do not apply the CLI's global border or body resets to existing
+components. Check each added component against the rules below and add its
+gallery fixture before use.
+
+`ui/sheet.tsx` is the shadcn Base UI Dialog Sheet. It supports all four edges,
+uses the dashboard overlay and close button, and stops motion when reduced
+motion is set. The copied source license is in `ui/sheet.LICENSE`.
+`Drawer` and `BottomSheet` compose this component for app details.
+`ui/useSheet.ts` owns their close lifecycle, shared document scroll lock, and
+focus rules when a resize puts one modal below another. Conversation browser
+scenarios cover dismissal, nested focus, and layout changes.
+
 ## Foundations
 
 Tokens live in the `@theme` block of `src/tailwind.css`. Keep every color in a
@@ -80,15 +110,13 @@ token so each theme can redefine it.
   sentence-case text, with no border or fill. It is not a control.
 - **Messages.** Use `Notice` for compact transient messages and `FormNotice`
   for wrapping form recovery text.
-- **Overlays.** `Sheet` is a local adaptation of shadcn/ui's Base UI Sheet.
-  It uses Base UI Drawer for focus, dismissal, and native swipe support. The
-  app's shared scroll lock keeps it in sync with the mobile conversation shell.
-  `SheetContent` owns side placement, backdrop fade, and slide transitions.
-  `Drawer` adds a visible header and close control. `BottomSheet` adds a swipe
-  handle and keeps content scrolling separate from gestures. Both skip motion
-  when reduced motion is set. Docked conversation details use a non-modal aside
-  so the chat stays usable. The copied component's license is in `Sheet.LICENSE`.
-  `Tooltip` and `IconButtonTooltip` own hover text.
+- **Overlays.** `ui/sheet.tsx` is the shadcn/ui Base UI Sheet. It uses Base UI
+  Dialog for focus and dismissal. `Drawer` adds a visible header and close
+  control. `BottomSheet` puts details below a title and close control. Both use
+  the app's shared scroll lock, skip motion when reduced motion is set, and
+  close with the close button, backdrop, or Escape. Docked conversation details
+  use a non-modal aside so the chat stays usable. `Tooltip` and
+  `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original

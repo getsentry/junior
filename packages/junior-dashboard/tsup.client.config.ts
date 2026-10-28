@@ -28,6 +28,8 @@ export default defineConfig({
     "@sentry/junior/version",
     "@sentry/junior-plugin-api",
     "@tanstack/react-query",
+    "class-variance-authority",
+    "cn",
     "lucide-react",
     "react",
     "react-dom",
