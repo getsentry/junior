@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -12,7 +12,7 @@ export interface GitHubPullRequestRequester {
   userId?: string;
 }
 
-/** Where a requester row points before or after GitHub opens the PR. */
+/** The head branch that a create call names, before GitHub gives a number. */
 interface PendingTarget {
   headBranch: string;
   repositoryFullName: string;
@@ -20,10 +20,17 @@ interface PendingTarget {
 
 const table = juniorGitHubPullRequestRequesters;
 
-function pendingRows(target: PendingTarget) {
+/**
+ * A pending row older than this belongs to a create call that stopped before
+ * it could link or remove the row. Webhooks ignore it.
+ */
+const PENDING_REQUESTER_MAX_AGE_MS = 10 * 60 * 1000;
+
+function pendingRow(target: PendingTarget, identityId: string) {
   return and(
     eq(table.repositoryFullName, target.repositoryFullName.toLowerCase()),
     eq(table.headBranch, target.headBranch),
+    eq(table.identityId, identityId),
     isNull(table.number),
   );
 }
@@ -38,16 +45,17 @@ function requesterValues(requester: GitHubPullRequestRequester) {
 
 /**
  * Save the person who asks Junior to open a pull request, before GitHub opens
- * it, so the `opened` webhook can read it. It replaces any pending row for the
- * branch. Rows of pull requests that GitHub already opened do not change.
- * Pass no requester to only remove the pending row.
+ * it, so the `opened` webhook can read it. It changes only this person's
+ * pending row for the branch.
  */
 export async function recordPendingGitHubPullRequestRequester(
   db: GitHubDb,
-  input: PendingTarget & { requester?: GitHubPullRequestRequester },
+  input: PendingTarget & { requester: GitHubPullRequestRequester },
 ): Promise<void> {
-  await db.delete(table).where(pendingRows(input));
-  if (!input.requester) return;
+  await removePendingGitHubPullRequestRequester(db, {
+    ...input,
+    identityId: input.requester.identityId,
+  });
   const now = new Date();
   await db.insert(table).values({
     ...requesterValues(input.requester),
@@ -59,27 +67,56 @@ export async function recordPendingGitHubPullRequestRequester(
   });
 }
 
+/** Remove this person's pending row after GitHub rejects their create. */
+export async function removePendingGitHubPullRequestRequester(
+  db: GitHubDb,
+  input: PendingTarget & { identityId: string },
+): Promise<void> {
+  await db.delete(table).where(pendingRow(input, input.identityId));
+}
+
 /**
- * Link the pending requester row to the pull request GitHub opened. GitHub
- * just gave out this number, so any older row for it belongs to an earlier
- * repository with the same name, and is removed.
+ * Save the person who asked Junior to open the pull request GitHub just
+ * opened, and remove their pending row. With no requester, it saves no row.
+ * GitHub just gave out this number, so any older row for it belongs to an
+ * earlier repository with the same name, and is removed.
  */
 export async function attachGitHubPullRequestRequester(
   db: GitHubDb,
-  input: PendingTarget & { number: number },
+  input: {
+    headBranch?: string;
+    number: number;
+    repositoryFullName: string;
+    requester?: GitHubPullRequestRequester;
+  },
 ): Promise<void> {
+  const repositoryFullName = input.repositoryFullName.toLowerCase();
   await db
     .delete(table)
     .where(
       and(
-        eq(table.repositoryFullName, input.repositoryFullName.toLowerCase()),
+        eq(table.repositoryFullName, repositoryFullName),
         eq(table.number, input.number),
       ),
     );
-  await db
-    .update(table)
-    .set({ number: input.number, updatedAt: new Date() })
-    .where(pendingRows(input));
+  if (!input.requester) return;
+  if (input.headBranch) {
+    await removePendingGitHubPullRequestRequester(db, {
+      headBranch: input.headBranch,
+      identityId: input.requester.identityId,
+      repositoryFullName,
+    });
+  }
+  const now = new Date();
+  await db.insert(table).values({
+    ...requesterValues(input.requester),
+    action: "create",
+    createdAt: now,
+    headBranch: input.headBranch ?? null,
+    number: input.number,
+    repositoryFullName,
+    updatedAt: now,
+  });
 }
 
 /**
@@ -120,10 +157,11 @@ export async function recordGitHubPullRequestRequester(
 
 /**
  * Load the person who asked Junior to open each pull request: its `create`
- * row. Pass `pendingHeadBranch` only for the `opened` webhook, which can
- * arrive before the create tool links the row to the number. A pending row is
- * used only when the pull request has no linked `create` row, so a create
- * call that GitHub later rejects cannot change an open pull request.
+ * row. Pass `pendingHeadBranch` only for the `opened` webhook of a same-repo
+ * pull request, which can arrive before the create tool saves the row. A
+ * pending row is used only when the pull request has no `create` row and the
+ * branch has exactly one recent pending row. Concurrent create calls on one
+ * branch are ambiguous, so they give no opener.
  */
 export async function listGitHubPullRequestOpeners(
   db: GitHubDb,
@@ -151,7 +189,14 @@ export async function listGitHubPullRequestOpeners(
         or(
           inArray(table.number, numbers),
           headBranches.length > 0
-            ? and(isNull(table.number), inArray(table.headBranch, headBranches))
+            ? and(
+                isNull(table.number),
+                inArray(table.headBranch, headBranches),
+                gt(
+                  table.createdAt,
+                  new Date(Date.now() - PENDING_REQUESTER_MAX_AGE_MS),
+                ),
+              )
             : undefined,
         ),
       ),
@@ -159,15 +204,16 @@ export async function listGitHubPullRequestOpeners(
     .orderBy(asc(table.createdAt));
   const openers = new Map<number, GitHubPullRequestRequester>();
   for (const pr of input.pullRequests) {
+    const pending = pr.pendingHeadBranch
+      ? rows.filter(
+          (candidate) =>
+            candidate.number === null &&
+            candidate.headBranch === pr.pendingHeadBranch,
+        )
+      : [];
     const row =
       rows.find((candidate) => candidate.number === pr.number) ??
-      (pr.pendingHeadBranch
-        ? rows.find(
-            (candidate) =>
-              candidate.number === null &&
-              candidate.headBranch === pr.pendingHeadBranch,
-          )
-        : undefined);
+      (pending.length === 1 ? pending[0] : undefined);
     if (!row) continue;
     openers.set(pr.number, {
       identityId: row.identityId,

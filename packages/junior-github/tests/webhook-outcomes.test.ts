@@ -2548,7 +2548,10 @@ describe("GitHub-owned pull request outcomes", () => {
     const opened = pullRequestPayload();
     Object.assign(opened.pull_request, {
       body: `<!-- junior-request-attribution:start -->\nvia @octocat.\n<!-- junior-request-attribution:end -->\n\n${opened.pull_request.body}`,
-      head: { ref: "fix/requester-role" },
+      head: {
+        ref: "fix/requester-role",
+        repo: { full_name: "getsentry/junior" },
+      },
     });
     const requesterFields = () => {
       const fields = published
@@ -2684,6 +2687,58 @@ describe("GitHub-owned pull request outcomes", () => {
         ["dcramer", "admin"],
       ]);
 
+      // Two create calls on one branch at once are ambiguous, so `opened`
+      // gives no opener until the create tool saves the one GitHub opened.
+      const concurrent = pullRequestPayload();
+      Object.assign(concurrent.pull_request, {
+        head: {
+          ref: "fix/concurrent",
+          repo: { full_name: "getsentry/junior" },
+        },
+        id: 1003,
+        number: 948,
+      });
+      const concurrentInput = { ...createInput, head: "fix/concurrent" };
+      createResponse = () => {
+        person = "octocat";
+        createResponse = () =>
+          route!
+            .handler(signedRequest(concurrent))
+            .then(() =>
+              Response.json(
+                { message: "A pull request already exists" },
+                { status: 422 },
+              ),
+            );
+        return expect(
+          tools.createPullRequest!.execute!(concurrentInput, {
+            toolCallId: "call-concurrent-rejected",
+          }),
+        )
+          .rejects.toThrow("HTTP 422")
+          .then(() =>
+            Response.json(
+              {
+                html_url: "https://github.com/getsentry/junior/pull/948",
+                number: 948,
+              },
+              { status: 201 },
+            ),
+          );
+      };
+      await tools.createPullRequest!.execute!(concurrentInput, {
+        toolCallId: "call-concurrent",
+      });
+      expect(requesterFields()).toEqual([
+        ["sentry-junior[bot]", "none"],
+        ["sentry-junior[bot]", "none"],
+      ]);
+      await route!.handler(signedRequest(concurrent));
+      expect(requesterFields()).toEqual([
+        ["dcramer", "admin"],
+        ["dcramer", "admin"],
+      ]);
+
       // A create that GitHub rejects cannot change the requesters of an
       // open pull request on the branch.
       person = "octocat";
@@ -2712,6 +2767,7 @@ describe("GitHub-owned pull request outcomes", () => {
       ]);
       expect(await savedRequesters()).toEqual([
         [946, "create", "slack-identity-dcramer", "user-dcramer", "dcramer"],
+        [948, "create", "slack-identity-dcramer", "user-dcramer", "dcramer"],
         [946, "update", "slack-identity-octocat", "user-octocat", "octocat"],
       ]);
 
@@ -2748,6 +2804,8 @@ describe("GitHub-owned pull request outcomes", () => {
         ["octocat", "none"],
       ]);
       expect(roleLogins).toEqual([
+        "dcramer",
+        "sentry-junior[bot]",
         "dcramer",
         "dcramer",
         "sentry-junior[bot]",

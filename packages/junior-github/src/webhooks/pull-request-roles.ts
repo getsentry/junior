@@ -16,6 +16,19 @@ const REQUESTER_USERNAME_MATCH_KEY = "requesterUsername";
 const REQUESTER_ROLE_MATCH_KEY = "requesterRole";
 
 const webhookSchema = z.object({
+  pull_request: z
+    .object({
+      head: z
+        .object({
+          repo: z
+            .object({ full_name: z.string().optional() })
+            .nullable()
+            .optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .optional(),
   repository: z.object({ full_name: z.string().min(1) }),
 });
 
@@ -41,6 +54,8 @@ async function pullRequestRequesters(args: {
   botEmail: string | undefined;
   db: GitHubDb;
   events: EventInput[];
+  /** Whether the pull request head is in the base repository, not a fork. */
+  headInRepository: boolean;
   repositoryFullName: string;
 }): Promise<Map<EventInput, string>> {
   // Repository watches get a copy of each pull request Event with the
@@ -53,9 +68,11 @@ async function pullRequestRequesters(args: {
   const botPullRequests = args.events.flatMap((event) => {
     const number = numberByEventKey.get(event.eventKey);
     const headBranch = event.data?.headBranch;
-    // Only `opened` can arrive before the create tool links its row.
+    // Only `opened` can arrive before the create tool saves its row. The
+    // create tool saves pending rows only for heads in the repository.
     const pendingHeadBranch =
       event.eventType === "pull_request.opened" &&
+      args.headInRepository &&
       typeof headBranch === "string"
         ? headBranch
         : undefined;
@@ -128,6 +145,9 @@ export async function withGitHubPullRequestRoles(args: {
         botEmail: args.botEmail,
         db: args.db,
         events: authored,
+        headInRepository:
+          parsed.data.pull_request?.head?.repo?.full_name?.toLowerCase() ===
+          repositoryFullName.toLowerCase(),
         repositoryFullName,
       })
     : new Map<EventInput, string>();

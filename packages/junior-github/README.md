@@ -39,12 +39,16 @@ in `junior_github_pull_request_requesters`. Each row has the Junior identity
 id, the user id when known, and the linked GitHub login. The `create` row is
 the opener. `update` rows never replace it. The create tool writes a pending
 row with no number before it calls GitHub, because the `opened` webhook can
-arrive first. After GitHub opens the pull request, the tool sets the number. A
-create that GitHub rejects removes the pending row. Only `opened` events read
-pending rows, and only when the pull request has no `create` row, so a
-rejected create cannot change the opener of an open pull request. Webhooks use
-the opener's GitHub login for `requesterUsername` and `requesterRole`. They
-never read the pull request body.
+arrive first. Each pending row belongs to one Junior identity. After GitHub
+opens the pull request, the tool saves its own `create` row with the number. A
+create that GitHub rejects removes only its own pending row. Only `opened`
+events for a head in the same repository read pending rows. They use one only
+when the pull request has no `create` row and the branch has exactly one
+pending row from the last 10 minutes. Concurrent creates on one branch give no
+opener until the create tool saves the row. Fork heads (`owner:branch` in
+another repository) get no pending row. Webhooks use the opener's GitHub login
+for `requesterUsername` and `requesterRole`. They never read the pull request
+body.
 
 The plugin owns its signed webhook route, deployment, pull request, and release
 events, and normalized pull request and issue outcome projections.

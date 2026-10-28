@@ -33,6 +33,7 @@ import { resolveGitHubPullRequestRequester } from "../pull-request-requesters/ac
 import {
   attachGitHubPullRequestRequester,
   recordPendingGitHubPullRequestRequester,
+  removePendingGitHubPullRequestRequester,
 } from "../pull-request-requesters/store.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
@@ -346,18 +347,27 @@ async function createGitHubPullRequest(
   };
 }
 
-/** The pending requester key for the head branch that a create call names. */
+/**
+ * The repository and head branch that a create call names. A head in another
+ * repository (`owner:branch` for a fork) has no `headBranch`, because the
+ * webhook sends only the branch name and the pending row cannot tell the two
+ * apart.
+ */
 function requesterBranch(input: CreateGitHubPullRequestInput): {
-  headBranch: string;
+  headBranch?: string;
   repositoryFullName: string;
 } {
   const repo = parseRepo(input.repo);
-  // `owner:branch` names a fork branch. Webhooks send only the branch.
+  const repositoryFullName = `${repo.owner}/${repo.name}`;
   const head = nonEmptyString(input.head, "head");
-  return {
-    headBranch: head.slice(head.indexOf(":") + 1),
-    repositoryFullName: `${repo.owner}/${repo.name}`,
-  };
+  const separator = head.indexOf(":");
+  if (
+    separator !== -1 &&
+    head.slice(0, separator).toLowerCase() !== repo.owner.toLowerCase()
+  ) {
+    return { repositoryFullName };
+  }
+  return { headBranch: head.slice(separator + 1), repositoryFullName };
 }
 
 /** Assignment is optional: lookup or provider failures must not fail PR creation. */
@@ -556,10 +566,16 @@ export function createGitHubPullRequestTool(
           );
           // GitHub can deliver `opened` before the create call returns, so
           // the requester must be saved first.
-          await recordPendingGitHubPullRequestRequester(ctx.db as GitHubDb, {
-            ...requesterBranch(parsedInput),
-            requester: await resolveGitHubPullRequestRequester(ctx),
-          });
+          const requester = await resolveGitHubPullRequestRequester(ctx);
+          const { headBranch, repositoryFullName } =
+            requesterBranch(parsedInput);
+          if (requester && headBranch) {
+            await recordPendingGitHubPullRequestRequester(ctx.db as GitHubDb, {
+              headBranch,
+              repositoryFullName,
+              requester,
+            });
+          }
           const pendingState: CreatePullRequestState = {
             status: "pending",
             createdAtMs: Date.now(),
@@ -579,12 +595,18 @@ export function createGitHubPullRequestTool(
               isDefinitiveGitHubPullRequestCreateRejection(error)
             ) {
               await ctx.state.delete(key);
-              // GitHub did not open a pull request, so no pending requester
-              // may remain for the branch.
-              await recordPendingGitHubPullRequestRequester(
-                ctx.db as GitHubDb,
-                requesterBranch(parsedInput),
-              );
+              // GitHub did not open a pull request, so this call's pending
+              // requester must not remain for the branch.
+              if (requester && headBranch) {
+                await removePendingGitHubPullRequestRequester(
+                  ctx.db as GitHubDb,
+                  {
+                    headBranch,
+                    identityId: requester.identityId,
+                    repositoryFullName,
+                  },
+                );
+              }
             }
             throw error;
           }
@@ -609,8 +631,10 @@ export function createGitHubPullRequestTool(
             );
           }
           await attachGitHubPullRequestRequester(ctx.db as GitHubDb, {
-            ...requesterBranch(parsedInput),
+            headBranch,
             number: result.number,
+            repositoryFullName,
+            requester,
           });
           await assignPullRequestRequester(ctx, parsedInput, result);
           return await gitHubPullRequestStructuredResult(
