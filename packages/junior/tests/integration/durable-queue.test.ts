@@ -3,7 +3,11 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import {
+  FUNCTION_TIMEOUT_BUFFER_SECONDS,
+  botConfig,
+  getChatConfig,
+} from "@/chat/config";
 import {
   commitAcceptedReply,
   loadProjection,
@@ -19,6 +23,7 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
+import { LOST_WORKER_PARK_ERROR } from "@/chat/task-execution/paused-turn";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -249,8 +254,14 @@ async function expectAssistantInSql(text: string): Promise<void> {
  */
 async function seedDeadWorkerResidue(
   mode: "paused" | "running",
-  options: { lostWorkerResumeCount?: number } = {},
+  options: {
+    errorMessage?: string;
+    lostWorkerResumeCount?: number;
+    reason?: "retry" | "timeout";
+    sliceId?: number;
+  } = {},
 ) {
+  const { reason = "timeout", ...overrides } = options;
   const turnId = "turn_1712345_0001";
   const assistant = fauxAssistantMessage("checking");
   assistant.timestamp = 2;
@@ -290,10 +301,10 @@ async function seedDeadWorkerResidue(
       visibility: "private",
     }),
     surface: "slack" as const,
-    ...options,
+    ...overrides,
   };
   if (mode === "paused") {
-    await saveTurnCheckpoint({ ...checkpoint, mode, reason: "timeout" });
+    await saveTurnCheckpoint({ ...checkpoint, mode, reason });
   } else {
     await saveTurnCheckpoint({ ...checkpoint, mode });
   }
@@ -683,6 +694,44 @@ describe("durable queue contract", () => {
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(q.wakes.sentRecords()).toHaveLength(1);
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "failed",
+        replies: 1,
+        error: "lost its worker",
+      });
+      await expectNextTurn(q, "1712345.0006");
+    });
+
+    it("fails once when the resumed turn stalls before its first checkpoint", async () => {
+      // The resume runs right after the park, so a worker that stalls before
+      // writing a running checkpoint leaves the park marker behind.
+      const turnId = await seedDeadWorkerResidue("paused", {
+        errorMessage: LOST_WORKER_PARK_ERROR,
+        lostWorkerResumeCount: 1,
+        reason: "retry",
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "failed",
+        replies: 1,
+        error: "lost its worker",
+      });
+      await expectNextTurn(q, "1712345.0006");
+    });
+
+    it("fails once when the lost turn has no slice left to resume", async () => {
+      const turnId = await seedDeadWorkerResidue("running", {
+        sliceId: botConfig.maxSlicesPerTurn,
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
       await expectTerminalTurn(q, {
         turnId,
         state: "failed",

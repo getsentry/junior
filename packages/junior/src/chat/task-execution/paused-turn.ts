@@ -12,6 +12,7 @@ import {
   logWarn,
   withLogContext,
 } from "@/chat/logging";
+import { botConfig } from "@/chat/config";
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -743,9 +744,29 @@ async function failStrandedTurnWithFallback(args: {
 }
 
 const MAX_LOST_WORKER_RESUMES = 1;
+const LOST_WORKER_LIMIT_ERROR =
+  "Turn lost its worker before reaching a safe boundary";
+/** Park marker. A running checkpoint or another park replaces it. */
+export const LOST_WORKER_PARK_ERROR =
+  "Turn lost its worker; resuming from its last boundary";
+
+/** True when a lost-worker resume lost its worker before any progress. */
+function isUnstartedLostWorkerResume(turn: TurnRecord): boolean {
+  return (
+    turn.errorMessage === LOST_WORKER_PARK_ERROR &&
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES
+  );
+}
 
 /** Park a turn whose worker stopped checking in so the next run resumes it. */
 async function parkLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
+  if (
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES ||
+    // A park past the slice limit fails the turn without the visible fallback.
+    turn.sliceId + 1 > botConfig.maxSlicesPerTurn
+  ) {
+    return false;
+  }
   const parked = await saveTurnCheckpoint({
     mode: "paused",
     reason: "retry",
@@ -754,7 +775,7 @@ async function parkLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
     sliceId: turn.sliceId,
     messages: turn.piMessages,
     lostWorkerResumeCount: (turn.lostWorkerResumeCount ?? 0) + 1,
-    errorMessage: "Turn lost its worker; resuming from its last boundary",
+    errorMessage: LOST_WORKER_PARK_ERROR,
   });
   if (!parked) return false;
   logWarn("agent.turn.lost_worker.resumed", {
@@ -781,7 +802,7 @@ async function runNextPausedTurnInContext(
   options: PausedTurnOptions,
   runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
-  const summaries = await listTurnSummaries(conversationId);
+  let summaries = await listTurnSummaries(conversationId);
   const persisted = await getPersistedThreadState(conversationId);
   const conversation = coerceThreadConversationState(persisted);
   await hydrateConversationMessages({ conversation, conversationId });
@@ -792,6 +813,7 @@ async function runNextPausedTurnInContext(
   const running = newest
     ? await getTurnRecord(conversationId, newest.turnId)
     : undefined;
+  let parkedTurnId: string | undefined;
   if (running?.state === "running") {
     if (turnHasReply(conversation, running.turnId)) {
       const acceptedReply = [...conversation.messages]
@@ -821,28 +843,34 @@ async function runNextPausedTurnInContext(
     // mean the work is lost: a blocked event loop looks the same as a dead
     // process. Resume once from the last committed boundary. A second loss
     // fails, so one turn that stalls each worker cannot spread.
-    if (
-      (running.lostWorkerResumeCount ?? 0) < MAX_LOST_WORKER_RESUMES &&
-      (await parkLostWorkerTurn(running))
-    ) {
-      return await runNextPausedTurnInContext(
+    if (!(await parkLostWorkerTurn(running))) {
+      await failStrandedTurnWithFallback({
         conversationId,
-        options,
-        runOptions,
-      );
+        errorMessage: LOST_WORKER_LIMIT_ERROR,
+        turn: running,
+      });
+      return false;
     }
-
-    await failStrandedTurnWithFallback({
-      conversationId,
-      errorMessage: "Turn lost its worker before reaching a safe boundary",
-      turn: running,
-    });
-    return false;
+    parkedTurnId = running.turnId;
+    summaries = await listTurnSummaries(conversationId);
   }
 
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
+    }
+    // The resume runs right after the park. If the marker is still there on
+    // a later wake, that resume lost its worker too.
+    if (summary.turnId !== parkedTurnId && summary.resumeReason === "retry") {
+      const turn = await getTurnRecord(conversationId, summary.turnId);
+      if (turn && isUnstartedLostWorkerResume(turn)) {
+        await failStrandedTurnWithFallback({
+          conversationId,
+          errorMessage: LOST_WORKER_LIMIT_ERROR,
+          turn,
+        });
+        continue;
+      }
     }
 
     const request = await getPausedTurnRequest({
