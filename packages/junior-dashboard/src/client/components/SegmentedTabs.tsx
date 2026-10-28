@@ -23,7 +23,7 @@ export function segmentedTabClass(selected: boolean): string {
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
-  /** Keep tabs fixed while their panel content scrolls. */
+  /** Fill the frame with fixed tabs and padded, scrolling content. */
   scroll?: boolean;
   /** `count` is the number of entries in the panel. Zero and unknown counts are hidden. */
   items: readonly { count?: number; label: string; value: Value }[];
@@ -35,8 +35,10 @@ export function SegmentedTabs<const Value extends string>(props: {
   return (
     <div
       className={cn(
-        "grid min-w-0 gap-4",
-        props.scroll && "h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]",
+        "grid min-w-0",
+        props.scroll
+          ? "h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]"
+          : "gap-4",
       )}
     >
       <div
@@ -45,6 +47,7 @@ export function SegmentedTabs<const Value extends string>(props: {
           "flex min-w-0",
           segmentedTabsFrameClass,
           segmentedTabsInsetClass,
+          props.scroll && "m-4",
         )}
         role="tablist"
       >
@@ -100,8 +103,10 @@ export function SegmentedTabs<const Value extends string>(props: {
       <div
         aria-labelledby={`${id}-${props.value}`}
         className={cn(
-          "min-w-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
-          props.scroll && "min-h-0 overflow-y-auto overscroll-contain pr-2",
+          "min-w-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+          props.scroll
+            ? "min-h-0 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus-visible:-outline-offset-2"
+            : "rounded-md",
         )}
         id={`${id}-panel`}
         role="tabpanel"

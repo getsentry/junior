@@ -115,7 +115,7 @@ export function BottomSheet(props: {
             <span className="h-1 w-9 rounded-full bg-dashboard-border-interactive" />
           </div>
         </div>
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5">
+        <div className="min-h-0 overflow-y-auto overscroll-contain">
           {props.children}
         </div>
       </aside>

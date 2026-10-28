@@ -107,7 +107,9 @@ levels stay distinct.
 - **Panel switches** use `SegmentedTabs`, which draws a pill track. Pass the
   selected value, items, change handler, and panel content. It owns tab and
   panel labels and keyboard focus. Pass `scroll` to keep the tabs fixed while
-  the panel content scrolls.
+  the panel content scrolls. That mode fills its frame and owns the content
+  padding, so its scrollbar stays at the frame edge. `BottomSheet` content owns
+  its own padding.
 
 Keep collection filters in `FilterTabList`.
 

@@ -85,7 +85,7 @@ export function ConversationDetailsFrame(props: {
           <X aria-hidden="true" size={15} />
         </Button>
       </header>
-      <div className="min-h-0 p-4">{props.children}</div>
+      <div className="min-h-0">{props.children}</div>
     </aside>
   );
 }
