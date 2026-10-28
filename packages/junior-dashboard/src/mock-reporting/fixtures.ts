@@ -1002,6 +1002,9 @@ function advisorConversation(
   const conversation = detail(nowMs, {
     conversationId,
     displayTitle: "Advisor review",
+    // A child keeps the Actor who started it, but that person did not write
+    // its agent invocation input.
+    actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 18_000),
     lastProgressAt: iso(Date.parse(startedAt), 18_000),
