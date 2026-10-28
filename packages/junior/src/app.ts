@@ -188,6 +188,11 @@ export interface JuniorAppOptions extends BotModelConfig {
      * `JUNIOR_CROSS_ACTOR_MID_RUN_MODE` or `follow_up`.
      */
     crossActorMidRunMode?: CrossActorMidRunMode;
+    /**
+     * Slack user IDs of bots that may start a Turn from a mention or DM. Bots
+     * have no profile email, so `allowedDomains` blocks them otherwise.
+     */
+    allowedBotUserIds?: string[];
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
@@ -615,6 +620,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       queue: conversationWorkQueue,
       services: runtimeServiceOverrides,
     }),
+    allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
     allowedDomains,
   };
 
