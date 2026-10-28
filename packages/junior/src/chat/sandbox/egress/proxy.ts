@@ -3,8 +3,10 @@ import type { LogContext } from "@/chat/log-context";
 import { logWarn, setSentryUser, withSpan } from "@/chat/logging";
 import {
   executeCredentialedEgressRequest,
+  forwardEgressRequestWithoutCredentials,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
+import { hasHostManagedCredentialPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
@@ -399,13 +401,23 @@ export async function proxySandboxEgressRequest(
     deps.tracePropagation ?? {},
     credentialContext,
     async () =>
-      await executeCredentialedEgressRequest({
-        activeEgressId,
-        credentialContext,
-        deps,
-        provider,
-        request,
-        upstreamUrl,
-      }),
+      // Only clients that send a credential placeholder get provider
+      // credentials. Other clients, such as a browser, keep their own login.
+      hasHostManagedCredentialPlaceholder(request.headers)
+        ? await executeCredentialedEgressRequest({
+            activeEgressId,
+            credentialContext,
+            deps,
+            provider,
+            request,
+            upstreamUrl,
+          })
+        : await forwardEgressRequestWithoutCredentials({
+            activeEgressId,
+            deps,
+            provider,
+            request,
+            upstreamUrl,
+          }),
   );
 }

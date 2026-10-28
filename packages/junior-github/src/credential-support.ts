@@ -114,6 +114,18 @@ export const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
 export const GITHUB_INSTALLATION_ID_ENV = "GITHUB_INSTALLATION_ID";
 export const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
 export const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
+/**
+ * Git config that makes git send the token placeholder to github.com.
+ *
+ * Git sends no auth header by itself, and sandbox egress adds credentials only
+ * to requests that carry a placeholder.
+ */
+export const GITHUB_GIT_PLACEHOLDER_HEADER = {
+  key: "http.https://github.com/.extraHeader",
+  value: `Authorization: Basic ${Buffer.from(
+    `x-access-token:${GITHUB_AUTH_TOKEN_PLACEHOLDER}`,
+  ).toString("base64")}`,
+};
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const USER_REFRESH_TIMEOUT_MS = 20_000;

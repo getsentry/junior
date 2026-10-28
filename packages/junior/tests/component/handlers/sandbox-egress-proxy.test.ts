@@ -216,6 +216,8 @@ function egressRequest(
         ? { "vercel-forwarded-path": forwardedPath }
         : undefined),
       ...(input.port ? { "vercel-forwarded-port": input.port } : undefined),
+      // Sandbox CLIs send the token placeholder to ask for credentials.
+      authorization: "Bearer host_managed_credential",
       ...(input.headers ?? {}),
     },
     ...(input.body === undefined ? undefined : { body: input.body }),

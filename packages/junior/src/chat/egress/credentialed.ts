@@ -1,6 +1,9 @@
 import { logAudit, logException, logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
-import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
+import {
+  egressRequestHeaders,
+  egressResponseHeaders,
+} from "@/chat/egress/headers";
 import {
   hasSandboxEgressLeaseTransformForHost,
   sandboxEgressCredentialLease,
@@ -16,10 +19,7 @@ import {
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress/session";
-import {
-  shouldPropagateSandboxEgressTrace,
-  type SandboxEgressTracePropagationConfig,
-} from "@/chat/sandbox/egress/tracing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
   EgressAuthRequired,
   EgressPolicyDenied,
@@ -39,33 +39,6 @@ import {
 // persistence and auth/permission signal storage stay in their caller-specific
 // adapters until a second host/plugin caller needs a different storage surface.
 
-const HOP_BY_HOP_HEADERS = new Set([
-  "connection",
-  "host",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-const PROXY_ONLY_HEADERS = new Set([
-  "vercel-sandbox-oidc-token",
-  "vercel-forwarded-host",
-  "vercel-forwarded-scheme",
-  "vercel-forwarded-port",
-  "vercel-forwarded-path",
-]);
-const TRACE_PROPAGATION_HEADERS = new Set([
-  "baggage",
-  "sentry-trace",
-  "traceparent",
-]);
-const DECODED_RESPONSE_HEADERS = new Set([
-  "content-encoding",
-  "content-length",
-]);
 const UPSTREAM_TOKEN_REJECTION_STATUS = 401;
 const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
 const GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
@@ -474,70 +447,6 @@ async function responseTextWithinLimit(
   return new TextDecoder().decode(combined);
 }
 
-/**
- * Build the upstream request headers.
- *
- * Sandbox/proxy-only headers are stripped so they cannot leak to providers, and
- * trace headers are preserved only for hosts opted into trace propagation.
- * Credential lease transforms win last because they are the host-issued
- * authority for provider auth headers.
- */
-function requestHeaders(
-  request: Request,
-  lease: SandboxEgressCredentialLease,
-  upstreamHost: string,
-  tracePropagation: SandboxEgressTracePropagationConfig,
-): Headers {
-  const headers = new Headers();
-  const mayPropagateTrace = shouldPropagateSandboxEgressTrace(
-    upstreamHost,
-    tracePropagation,
-  );
-  request.headers.forEach((value, key) => {
-    const normalized = key.toLowerCase();
-    if (
-      HOP_BY_HOP_HEADERS.has(normalized) ||
-      PROXY_ONLY_HEADERS.has(normalized)
-    ) {
-      return;
-    }
-    if (TRACE_PROPAGATION_HEADERS.has(normalized) && !mayPropagateTrace) {
-      return;
-    }
-    headers.append(key, value);
-  });
-
-  for (const transform of lease.headerTransforms) {
-    if (!matchesSandboxEgressDomain(upstreamHost, transform.domain)) {
-      continue;
-    }
-    for (const [key, value] of Object.entries(transform.headers)) {
-      if (
-        TRACE_PROPAGATION_HEADERS.has(key.toLowerCase()) &&
-        !mayPropagateTrace
-      ) {
-        continue;
-      }
-      headers.set(key, value);
-    }
-  }
-  return headers;
-}
-
-function responseHeaders(upstream: Response): Headers {
-  const headers = new Headers();
-  upstream.headers.forEach((value, key) => {
-    const normalized = key.toLowerCase();
-    if (
-      !HOP_BY_HOP_HEADERS.has(normalized) &&
-      !DECODED_RESPONSE_HEADERS.has(normalized)
-    ) {
-      headers.append(key, value);
-    }
-  });
-  return headers;
-}
-
 function leaseLogAttributes(input: {
   egressId: string;
   lease: SandboxEgressCredentialLease;
@@ -608,6 +517,86 @@ async function recordSandboxPermissionDenied(input: {
   });
 }
 
+/** Read the request body once, or return the Junior error for an unreadable body. */
+async function readEgressRequestBody(input: {
+  activeEgressId: string;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<ArrayBuffer | undefined | Response> {
+  const { activeEgressId, provider, request, upstreamUrl } = input;
+  try {
+    return await requestBodyBytes(request);
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw error;
+    }
+    return unreadableBodyResponse(
+      logException(error, "sandbox.egress.request_body.unreadable", {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: 500,
+        }),
+        ...routingAttributes(request, upstreamUrl),
+      }),
+    );
+  }
+}
+
+/**
+ * Forward one verified sandbox egress request without provider credentials.
+ *
+ * Use this for requests that do not carry a credential placeholder, such as
+ * browser traffic. The request keeps its own auth headers and cookies. No grant
+ * is selected and no credential lease is issued.
+ */
+export async function forwardEgressRequestWithoutCredentials(input: {
+  activeEgressId: string;
+  deps: Pick<CredentialedEgressDeps, "fetch" | "tracePropagation">;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<Response> {
+  const { activeEgressId, deps, provider, request, upstreamUrl } = input;
+  const body = await readEgressRequestBody(input);
+  if (body instanceof Response) {
+    return body;
+  }
+  const upstream = await (deps.fetch ?? fetch)(upstreamUrl, {
+    method: request.method,
+    headers: egressRequestHeaders(
+      request,
+      undefined,
+      upstreamUrl.hostname,
+      deps.tracePropagation ?? {},
+    ),
+    ...(body !== undefined ? { body } : undefined),
+    redirect: "manual",
+  });
+  if (shouldLogSandboxEgressInfo()) {
+    logInfo("sandbox.egress.upstream.passthrough", {
+      ...egressAttributes({
+        egressId: activeEgressId,
+        host: upstreamUrl.hostname,
+        method: request.method,
+        path: upstreamUrl.pathname,
+        provider,
+        status: upstream.status,
+      }),
+      ...routingAttributes(request, upstreamUrl),
+    });
+  }
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: egressResponseHeaders(upstream),
+  });
+}
+
 /**
  * Forward one verified sandbox egress request with host-managed credentials.
  *
@@ -635,26 +624,9 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
-  let body: ArrayBuffer | undefined;
-  try {
-    body = await requestBodyBytes(request);
-  } catch (error) {
-    if (!(error instanceof TypeError)) {
-      throw error;
-    }
-    return unreadableBodyResponse(
-      logException(error, "sandbox.egress.request_body.unreadable", {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          host: upstreamUrl.hostname,
-          method: request.method,
-          path: upstreamUrl.pathname,
-          provider,
-          status: 500,
-        }),
-        ...routingAttributes(request, upstreamUrl),
-      }),
-    );
+  const body = await readEgressRequestBody(input);
+  if (body instanceof Response) {
+    return body;
   }
   const bodyForGrantSelection = githubBodyInspection({
     provider,
@@ -792,7 +764,7 @@ export async function executeCredentialedEgressRequest(input: {
   let retriedAfter403 = false;
 
   while (true) {
-    const headers = requestHeaders(
+    const headers = egressRequestHeaders(
       request,
       lease,
       upstreamUrl.hostname,
@@ -936,7 +908,7 @@ export async function executeCredentialedEgressRequest(input: {
       return new Response(upstream.body, {
         status: upstream.status,
         statusText: upstream.statusText,
-        headers: responseHeaders(upstream),
+        headers: egressResponseHeaders(upstream),
       });
     }
 
@@ -957,7 +929,7 @@ export async function executeCredentialedEgressRequest(input: {
     return new Response(upstream.body, {
       status: upstream.status,
       statusText: upstream.statusText,
-      headers: responseHeaders(upstream),
+      headers: egressResponseHeaders(upstream),
     });
   }
 }

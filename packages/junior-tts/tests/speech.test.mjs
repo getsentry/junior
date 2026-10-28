@@ -38,7 +38,10 @@ test("Gateway request keeps style separate and writes WAV without a Sandbox key"
   const fetch = t.mock.method(globalThis, "fetch", async (url, init) => {
     assert.equal(url, "https://ai-gateway.vercel.sh/v4/ai/speech-model");
     assert.equal(init.redirect, "error");
-    assert.equal(new Headers(init.headers).has("authorization"), false);
+    assert.equal(
+      new Headers(init.headers).get("authorization"),
+      "Bearer host_managed_credential",
+    );
     assert.equal(init.headers["ai-model-id"], "google/gemini-3.8-flash-tts");
     assert.equal(init.headers["ai-speech-model-specification-version"], "4");
     const body = JSON.parse(init.body);

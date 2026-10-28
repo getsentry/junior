@@ -73,6 +73,7 @@ import {
   GITHUB_APP_PRIVATE_KEY_ENV,
   GITHUB_AUTH_TOKEN_ENV,
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
+  GITHUB_GIT_PLACEHOLDER_HEADER,
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   GITHUB_INSTALLATION_ID_ENV,
   createPermissionCache,
@@ -396,6 +397,11 @@ export function githubPlugin(
         await configureGit(ctx, "commit.gpgsign", "false");
         await configureGit(ctx, "credential.helper", "");
         await configureGit(ctx, "http.emptyAuth", "true");
+        await configureGit(
+          ctx,
+          GITHUB_GIT_PLACEHOLDER_HEADER.key,
+          GITHUB_GIT_PLACEHOLDER_HEADER.value,
+        );
       },
       async beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {

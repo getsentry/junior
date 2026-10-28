@@ -121,6 +121,8 @@ function proxiedRequest(input: {
       ...(input.body !== undefined
         ? { "content-type": "application/json" }
         : undefined),
+      // Sandbox CLIs send the token placeholder to ask for credentials.
+      authorization: "Bearer host_managed_credential",
       ...(input.headers ?? {}),
     },
   });
@@ -373,6 +375,67 @@ describe("sandbox egress proxy integration", () => {
       provider: "sandbox-egress-test",
       grant: expect.objectContaining({ access: "read" }),
     });
+  });
+
+  it("adds credentials only to requests that carry a credential placeholder", async () => {
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      modules.policy.buildSandboxEgressNetworkPolicy({ credentialToken }),
+      PROVIDER_HOST,
+    );
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        return Response.json({
+          authorization: headers.get("authorization"),
+          cookie: headers.get("cookie"),
+        });
+      },
+    );
+    const deps = {
+      fetch: upstreamFetch as typeof fetch,
+      verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+    };
+
+    // A browser sends its own login and no placeholder.
+    const browserRequest = proxiedRequest({
+      forwardURL,
+      headers: { cookie: "session=browser-login" },
+    });
+    browserRequest.headers.delete("authorization");
+    const browser = await modules.proxy.proxySandboxEgressRequest(
+      browserRequest,
+      deps,
+    );
+    expect(browser.status).toBe(200);
+    await expect(browser.json()).resolves.toEqual({
+      authorization: null,
+      cookie: "session=browser-login",
+    });
+
+    // Git sends the placeholder as the Basic auth password.
+    const git = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        headers: {
+          authorization: `Basic ${Buffer.from(
+            "x-access-token:ghp_host_managed_credential",
+          ).toString("base64")}`,
+        },
+      }),
+      deps,
+    );
+    expect(git.status).toBe(200);
+    await expect(git.json()).resolves.toMatchObject({
+      authorization: "Bearer integration-egress-token",
+    });
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toBeUndefined();
   });
 
   it("records OAuth authorization metadata for broker credential gaps", async () => {
