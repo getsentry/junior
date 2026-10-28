@@ -14,8 +14,10 @@ const NOT_ALLOWED_TTL_MS = 30 * 1000;
  * Return whether a Slack author may start a Turn. With allowed domains, the
  * email of the author's Slack profile must be on one of them. Slack verifies
  * that email, so Junior trusts it. Without allowed domains, every author may.
+ * Bot user IDs in allowedBotUserIds bypass the domain check entirely.
  */
 export async function isSlackAuthorDomainAllowed(args: {
+  allowedBotUserIds?: readonly string[];
   allowedDomains: readonly string[];
   state: StateAdapter;
   teamId: string | undefined;
@@ -24,6 +26,7 @@ export async function isSlackAuthorDomainAllowed(args: {
   if (args.allowedDomains.length === 0) return true;
   const userId = parseSlackUserId(args.user);
   if (!args.teamId || !userId) return false;
+  if (args.allowedBotUserIds?.includes(userId)) return true;
   const key = `slack:allowed-domain:${args.teamId}:${userId}`;
   const cached = await args.state.get<boolean>(key);
   if (typeof cached === "boolean") return cached;

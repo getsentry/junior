@@ -137,6 +137,8 @@ export interface SlackWebhookServices {
   conversationStore?: ConversationStore;
   /** Email domains Slack authors need to start a Turn. Empty allows all. */
   allowedDomains?: readonly string[];
+  /** Slack user IDs of bots allowed to start a Turn regardless of domain. */
+  allowedBotUserIds?: readonly string[];
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -448,6 +450,7 @@ async function routeParsedMessage(args: {
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
+  allowedBotUserIds: readonly string[];
   allowedDomains: readonly string[];
   state: StateAdapter;
 }): Promise<void> {
@@ -537,6 +540,7 @@ async function routeParsedMessage(args: {
   if (
     route === "mention" &&
     !(await isSlackAuthorDomainAllowed({
+      allowedBotUserIds: args.allowedBotUserIds,
       allowedDomains: args.allowedDomains,
       state: args.state,
       teamId: args.installation.teamId,
@@ -720,6 +724,7 @@ async function handleSlackEvent(args: {
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
+                allowedBotUserIds: args.services.allowedBotUserIds ?? [],
                 allowedDomains: args.services.allowedDomains ?? [],
                 state,
               }),

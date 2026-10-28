@@ -158,6 +158,12 @@ export interface JuniorAppOptions extends BotModelConfig {
    * Slack workspace member use Junior.
    */
   allowedDomains?: string[];
+  /**
+   * Slack user IDs of bots that may start a Turn even when allowedDomains is
+   * set. Bots have no email address, so they cannot pass the domain check;
+   * this opt-in list lets trusted bots bypass it.
+   */
+  allowedBotUserIds?: string[];
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -615,6 +621,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       queue: conversationWorkQueue,
       services: runtimeServiceOverrides,
     }),
+    allowedBotUserIds: options?.allowedBotUserIds ?? [],
     allowedDomains,
   };
 
