@@ -292,12 +292,36 @@ export async function readRootConversation(args: {
     chars += renderedChars(message);
     contextMessages += 1;
   }
+  // When the opening message is older than the page, only messages between
+  // it and the page are missing.
+  const firstSeq = page.events[0]?.seq;
+  const openingGap =
+    pinnedRead?.seq !== undefined &&
+    firstSeq !== undefined &&
+    (
+      await getConversationEventStore().query(root.conversationId, {
+        afterSeq: pinnedRead.seq,
+        beforeSeq: firstSeq,
+        limit: 1,
+        types: ["message", "message_updated"],
+      })
+    ).events.length > 0;
+  const hasOlder = pinnedRead?.seq === undefined ? page.hasOlder : openingGap;
   // Keep the event order. A note marks each gap, so a reply is not read as
-  // the answer to a message that is not shown.
+  // the answer to a message that is not shown. A gap after the opening
+  // message can hide a newer message that narrows it, so its note says so.
   const messages: RootConversationMessage[] = [];
   let omitted = 0;
+  let afterOpening = openingGap;
   const addGapNote = () => {
-    if (omitted > 0) {
+    if (afterOpening) {
+      messages.push({
+        author: "system",
+        text: "[Messages after the opening message are not shown here. They may narrow or revoke it. A reply after this note may answer one of them.]",
+      });
+      afterOpening = false;
+      omitted = 0;
+    } else if (omitted > 0) {
       messages.push({
         author: "system",
         text: `[${omitted} ${omitted === 1 ? "message is" : "messages are"} not shown here. A reply after this note may answer one of them.]`,
@@ -314,20 +338,6 @@ export async function readRootConversation(args: {
     messages.push({ author: message.author, text: message.text });
   }
   addGapNote();
-  // When the opening message is older than the page, only messages between
-  // it and the page are missing.
-  const firstSeq = page.events[0]?.seq;
-  const hasOlder =
-    pinnedRead?.seq === undefined || firstSeq === undefined
-      ? page.hasOlder
-      : (
-          await getConversationEventStore().query(root.conversationId, {
-            afterSeq: pinnedRead.seq,
-            beforeSeq: firstSeq,
-            limit: 1,
-            types: ["message", "message_updated"],
-          })
-        ).events.length > 0;
   return {
     messages: [...pinned, ...messages],
     truncated: hasOlder || orphanEdits.size > 0 || kept.size < all.length,

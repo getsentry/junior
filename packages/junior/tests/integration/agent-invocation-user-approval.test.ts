@@ -50,6 +50,14 @@ async function recordRootMessage(
   ]);
 }
 
+/** The note after a pinned opening message when newer messages are cut. */
+const openingGap = {
+  author: "system",
+  text: expect.stringMatching(
+    /^\[Messages after the opening message are not shown here\. They may narrow or revoke it\./,
+  ),
+};
+
 describe("user approval for child agents", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
@@ -234,16 +242,16 @@ describe("user approval for child agents", () => {
       // The opening request stays first, with its newest text, after more
       // than a page of later events. The edit never moves it after the
       // revocation. The revocation stays, though newer context pushes it
-      // out of the newest 16, and a note marks each cut.
-      const gap = {
-        author: "system",
-        text: expect.stringMatching(/^\[\d+ messages are not shown here\./),
-      };
+      // out of the newest 16, and a note marks each cut. The cut after the
+      // opening request says that it can hide a newer limit.
       expect(read.messages).toEqual([
         { author: "user", text: "Unpublish abc.png and def.png." },
-        gap,
+        openingGap,
         { author: "user", text: "Stop. Don't unpublish anything." },
-        gap,
+        {
+          author: "system",
+          text: expect.stringMatching(/^\[\d+ messages are not shown here\./),
+        },
         ...Array.from({ length: 16 }, (_, index) => ({
           author: "assistant",
           text: `Step ${55 + index}.`,
@@ -325,12 +333,10 @@ describe("user approval for child agents", () => {
         author: "automation",
         text: instruction,
       });
-      // Steps 1 to 54 are not shown. The steps in the read page get a note.
+      // Steps 1 to 54 are not shown. One note marks the cut after the
+      // instruction.
       expect(long.messages.slice(1)).toEqual([
-        {
-          author: "system",
-          text: expect.stringMatching(/^\[48 messages are not shown here\./),
-        },
+        openingGap,
         ...Array.from({ length: 16 }, (_, index) => ({
           author: "assistant",
           text: `Step ${55 + index}.`,
