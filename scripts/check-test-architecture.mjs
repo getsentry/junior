@@ -202,7 +202,9 @@ export function checkAgentTestArchitecture(files, baseline) {
       const allowed = allowedByFile[filePath] ?? 0;
       if (actual > allowed) {
         errors.push(
-          `${filePath}: ${rule.message} (${actual} found, ${allowed} allowed)`,
+          allowed === 0
+            ? `${filePath}: ${rule.message} (${actual} found)`
+            : `${filePath}: ${rule.message} (${actual} found; its baseline is ${allowed} and can only go down)`,
         );
       }
     }
@@ -233,9 +235,7 @@ export function checkIntegrationTestArchitecture(files) {
       }
       const actual = countMatches(file.contents, rule.pattern);
       if (actual > 0) {
-        errors.push(
-          `${file.path}: ${rule.message} (${actual} found, 0 allowed)`,
-        );
+        errors.push(`${file.path}: ${rule.message} (${actual} found)`);
       }
     }
   }
@@ -253,7 +253,7 @@ export function checkDatabaseTestFixtures(files) {
     );
     if (directFixtureImports > 0) {
       errors.push(
-        `${file.path}: database tests must import fixtures through tests/fixtures/sql (${directFixtureImports} found, 0 allowed)`,
+        `${file.path}: database tests must import fixtures through tests/fixtures/sql (${directFixtureImports} found)`,
       );
     }
     const legacyFixtures = countMatches(
@@ -262,7 +262,7 @@ export function checkDatabaseTestFixtures(files) {
     );
     if (legacyFixtures > 0) {
       errors.push(
-        `${file.path}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (${legacyFixtures} found, 0 allowed)`,
+        `${file.path}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (${legacyFixtures} found)`,
       );
     }
     const emptyFixtures = countMatches(
@@ -271,7 +271,7 @@ export function checkDatabaseTestFixtures(files) {
     );
     if (emptyFixtures > 0 && !EMPTY_DATABASE_TESTS.has(file.path)) {
       errors.push(
-        `${file.path}: only migration contract tests may use empty Junior SQL fixtures (${emptyFixtures} found, 0 allowed)`,
+        `${file.path}: only migration contract tests may use empty Junior SQL fixtures (${emptyFixtures} found)`,
       );
     }
   }
@@ -336,7 +336,13 @@ function main() {
     console.log("Tests follow test architecture policy.");
     return;
   }
-  console.error(["Test architecture check failed:", ...errors].join("\n"));
+  console.error(
+    [
+      "Test architecture check failed:",
+      ...errors,
+      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md, packages/junior/tests/README.md, and packages/junior-evals/README.md.`,
+    ].join("\n"),
+  );
   process.exitCode = 1;
 }
 

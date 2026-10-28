@@ -1,7 +1,7 @@
 id: no-eval-slack-msw-helpers
 language: TypeScript
 severity: error
-message: Evals must not use Slack MSW helpers. Use eval harness evidence instead.
+message: Evals must not queue or read Slack API calls through the junior test MSW helpers. Assert the replies, tool calls, reactions, or turn states of the returned Conversation. See "Agent Test Fixture" in packages/junior-evals/README.md.
 files:
   - packages/junior-evals/evals/**/*.ts
   - packages/junior-evals/evals/**/*.tsx

@@ -20,7 +20,7 @@ test("rejects a new integration test that mocks a Junior module", () => {
       integrationTest('vi.mock("@/chat/runtime", () => ({}));'),
     ]),
     [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found)`,
     ],
   );
 });
@@ -31,7 +31,7 @@ test("rejects dynamic mocks", () => {
       integrationTest("vi.doMock(\n  '@/chat/runtime',\n  () => ({}),\n);"),
     ]),
     [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found)`,
     ],
   );
 });
@@ -42,7 +42,7 @@ test("rejects external package mocks", () => {
       integrationTest('vi.mock("@vercel/sandbox", () => ({}));'),
     ]),
     [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found)`,
     ],
   );
 });
@@ -53,7 +53,7 @@ test("rejects Pi agent mocks", () => {
       integrationTest('vi.mock("@earendil-works/pi-agent-core", () => ({}));'),
     ]),
     [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found)`,
     ],
   );
 });
@@ -71,7 +71,7 @@ test("rejects manufactured agent outcomes", () => {
       ),
     ]),
     [
-      `${TEST_PATH}: integration tests must run the real agent instead of manufacturing agent outcomes (4 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must run the real agent instead of manufacturing agent outcomes (4 found)`,
     ],
   );
 });
@@ -95,7 +95,7 @@ test("rejects scripted agent runners", () => {
       ),
     ]),
     [
-      `${TEST_PATH}: integration tests must use the model stream instead of a scripted agent runner (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must use the model stream instead of a scripted agent runner (1 found)`,
     ],
   );
 });
@@ -111,7 +111,7 @@ test("rejects direct agent dispatch worker composition", () => {
       ),
     ]),
     [
-      `${TEST_PATH}: integration tests must compose agent dispatch through production conversation work (2 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must compose agent dispatch through production conversation work (2 found)`,
     ],
   );
 });
@@ -122,7 +122,7 @@ test("rejects unsafe Slack double casts", () => {
       integrationTest("const thread = value as unknown as Thread;"),
     ]),
     [
-      `${TEST_PATH}: integration tests must use typed Slack fixtures instead of double casts (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must use typed Slack fixtures instead of double casts (1 found)`,
     ],
   );
 });
@@ -133,7 +133,7 @@ test("rejects fixed waits in dashboard E2E tests", () => {
       integrationTest("await page.waitForTimeout(100);", DASHBOARD_E2E_PATH),
     ]),
     [
-      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must wait for an observable state instead of a fixed delay (1 found, 0 allowed)`,
+      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must wait for an observable state instead of a fixed delay (1 found)`,
     ],
   );
 });
@@ -147,7 +147,7 @@ test("rejects visual assertions in dashboard E2E tests", () => {
       ),
     ]),
     [
-      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must leave visual layout and style checks to visual QA (2 found, 0 allowed)`,
+      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must leave visual layout and style checks to visual QA (2 found)`,
     ],
   );
 });
@@ -175,8 +175,8 @@ test("rejects database fixture boundary bypasses", () => {
       ),
     ]),
     [
-      `${TEST_PATH}: database tests must import fixtures through tests/fixtures/sql (2 found, 0 allowed)`,
-      `${TEST_PATH}: only migration contract tests may use empty Junior SQL fixtures (1 found, 0 allowed)`,
+      `${TEST_PATH}: database tests must import fixtures through tests/fixtures/sql (2 found)`,
+      `${TEST_PATH}: only migration contract tests may use empty Junior SQL fixtures (1 found)`,
     ],
   );
 });
@@ -187,7 +187,7 @@ test("rejects the ambiguous local SQL fixture", () => {
       integrationTest("await createLocalJuniorSqlFixture();"),
     ]),
     [
-      `${TEST_PATH}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (1 found, 0 allowed)`,
+      `${TEST_PATH}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (1 found)`,
     ],
   );
 });
@@ -228,7 +228,7 @@ test("rejects broad browser error assertions in dashboard E2E tests", () => {
       ),
     ]),
     [
-      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must assert the journey outcome instead of broad browser error silence (3 found, 0 allowed)`,
+      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must assert the journey outcome instead of broad browser error silence (3 found)`,
     ],
   );
 });
@@ -263,9 +263,9 @@ test("rejects agent test contract violations above the baseline", () => {
       {},
     ),
     [
-      `${EVAL_PATH}: agent tests must import only the agent test fixture, the public app API, plugin packages, and test libraries (3 found, 0 allowed)`,
-      `${TEST_PATH}: tests must not fake the model; run the real agent through the agent test fixture (1 found, 0 allowed)`,
-      `${TEST_PATH}: tests must not mutate runtime config or reload modules; pass options to createApp() or agent() (1 found, 0 allowed)`,
+      `${EVAL_PATH}: agent tests must import only the agent test fixture, the public app API, plugin packages, and test libraries (3 found)`,
+      `${TEST_PATH}: tests must not fake the model; run the real agent through the agent test fixture (1 found)`,
+      `${TEST_PATH}: tests must not mutate runtime config or reload modules; pass options to createApp() or agent() (1 found)`,
     ],
   );
 });
