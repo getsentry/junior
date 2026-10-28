@@ -170,11 +170,11 @@ export async function grepFiles(params: {
         ? path.posix.basename(filePath)
         : path.posix.relative(root, filePath);
     const matchedLines: number[] = [];
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    for (const [lineIndex, line] of lines.entries()) {
       if (
         !lineMatches({
           ignoreCase: params.ignoreCase,
-          line: lines[lineIndex],
+          line,
           literal: params.literal,
           pattern: params.pattern,
           regex,
@@ -200,7 +200,7 @@ export async function grepFiles(params: {
           continue;
         }
         emittedLines.add(current);
-        const truncated = truncateGrepLine(lines[current]);
+        const truncated = truncateGrepLine(lines[current] ?? "");
         lineTruncated ||= truncated.truncated;
         const separator = matchedLineSet.has(current) ? ":" : "-";
         output.push(
@@ -334,7 +334,11 @@ async function grepFilesWithRipgrep(params: {
         cause: new Error(detail),
       });
     }
-    if (/regex parse error|error parsing regex/i.test(detail)) {
+    if (
+      /regex parse error|error parsing regex|is not allowed in a regex/i.test(
+        detail,
+      )
+    ) {
       throw new ToolInputError(`Invalid regex pattern: ${params.pattern}`, {
         cause: new Error(detail),
       });

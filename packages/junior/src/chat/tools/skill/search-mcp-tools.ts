@@ -1,4 +1,7 @@
-import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
+import type {
+  ManagedMcpToolDescriptor,
+  McpAuthorizationContext,
+} from "@/chat/mcp/tool-manager";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
@@ -52,7 +55,10 @@ interface ProviderSummary {
 }
 
 interface SearchMcpToolManager {
-  activateProvider(provider: string): Promise<boolean>;
+  activateProvider(
+    provider: string,
+    authorizationContext?: McpAuthorizationContext,
+  ): Promise<boolean>;
   getActiveToolCatalog(options?: {
     provider?: string;
   }): ManagedMcpToolDescriptor[];
@@ -217,6 +223,26 @@ function searchProviderCatalog(
     .map((ranked) => ranked.provider);
 }
 
+/**
+ * Providers to offer when `provider` is not a configured name, such as a
+ * display name. Without them, the empty result reads as "no such tools".
+ */
+function unknownProviderSuggestions(
+  mcpToolManager: SearchMcpToolManager,
+  provider: string,
+  activeToolCount: number,
+): ProviderSummary[] {
+  if (activeToolCount > 0) {
+    return [];
+  }
+  const configured = mcpToolManager.getAvailableProviderCatalog();
+  if (configured.some((candidate) => candidate.provider === provider)) {
+    return [];
+  }
+  const matches = searchProviderCatalog(configured, provider);
+  return matches.length > 0 ? matches : searchProviderCatalog(configured, "");
+}
+
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
 // TODO(dcramer): Fold MCP discovery into searchTools once the shared catalog can
 // connect a selected provider and return its full tool schemas.
@@ -246,6 +272,13 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
             "Optional provider name to list or search within. If configured but not yet connected, Junior activates it on demand.",
           )
           .optional(),
+        intent: z
+          .string()
+          .min(1)
+          .describe(
+            'Set this when you pass provider. A short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
+          )
+          .optional(),
         max_results: z
           .number()
           .int()
@@ -263,9 +296,12 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       available_providers: result.available_providers,
       tools: result.tools,
     }),
-    execute: async ({ query, provider, max_results }) => {
+    execute: async ({ query, provider, intent, max_results }) => {
       if (provider) {
-        await mcpToolManager.activateProvider(provider);
+        await mcpToolManager.activateProvider(
+          provider,
+          intent ? { intent } : undefined,
+        );
       }
       const catalog = mcpToolManager.getActiveToolCatalog(
         provider ? { provider } : {},
@@ -276,7 +312,11 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
         maxResults,
       );
       const providers = provider
-        ? []
+        ? unknownProviderSuggestions(
+            mcpToolManager,
+            provider,
+            catalog.length,
+          ).slice(0, maxResults)
         : searchProviderCatalog(
             mcpToolManager.getAvailableProviderCatalog(),
             query ?? "",

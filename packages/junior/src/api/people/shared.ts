@@ -154,7 +154,9 @@ export function activityHours(
  * Hour keys must be summed into 6-hour keys first.
  */
 export function activitySixHours(
-  hours: Map<string, ActorActivityDayReport> | readonly ActorActivityDayReport[],
+  hours:
+    | Map<string, ActorActivityDayReport>
+    | readonly ActorActivityDayReport[],
   nowMs: number,
 ): ActorActivityDayReport[] {
   const series =

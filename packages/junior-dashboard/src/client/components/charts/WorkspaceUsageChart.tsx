@@ -11,13 +11,10 @@ import {
 import { ChartHeader } from "./ChartHeader";
 import type { TimeRangeDays } from "../controls/TimeRangeSelector";
 import { Card } from "../layout/Card";
-import {
-  formatActivityChartAverage,
-  formatCompactNumber,
-} from "../../format";
+import { formatActivityChartAverage, formatCompactNumber } from "../../format";
 import type { WorkspaceUsageDay } from "./workspaceUsage";
 
-const USAGE_COLOR = "#a78bfa";
+const USAGE_COLOR = "var(--color-violet-400)";
 
 /** Plot successful Workspace switches for one recipe over a trailing window. */
 export function WorkspaceUsageChart(props: {
@@ -59,15 +56,11 @@ export function WorkspaceUsageChart(props: {
             return (
               <ActivityChartTooltip
                 key={day.date}
-                content={
-                  <ActivityTooltipRows rows={[["usage", day.count]]} />
-                }
+                content={<ActivityTooltipRows rows={[["usage", day.count]]} />}
                 date={day.date}
                 summary={`${day.count} switches`}
               >
-                <g
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   <rect
                     fill={USAGE_COLOR}
                     height={renderedHeight}
@@ -102,7 +95,7 @@ export function WorkspaceUsageChart(props: {
           />
         </ChartSvg>
         {!hasUsage ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No usage in this period.
           </div>
         ) : null}

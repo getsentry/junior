@@ -30,6 +30,7 @@ import {
   slackLocationLabel,
   setDashboardTimeZone,
   summarizeMessages,
+  summarizeModelUsage,
   summarizeToolCalls,
   summarizeTurns,
 } from "../src/client/format";
@@ -103,6 +104,28 @@ describe("dashboard conversation formatting", () => {
     ).toBe("80 tokens");
     expect(formatCostTotal({ cost: { total: 1.999 } })).toBe("$2.00");
     expect(formatCostTotal({ cost: { total: 0.0042 } })).toBe("$0.0042");
+  });
+
+  it("reconciles model usage totals with their breakdown", () => {
+    expect(
+      summarizeModelUsage([
+        {
+          modelId: "anthropic/claude-sonnet-4-5",
+          usage: {
+            inputTokens: 18,
+            outputTokens: 592,
+            cachedInputTokens: 179_000,
+            cacheCreationTokens: 36_000,
+          },
+        },
+      ]),
+    ).toEqual({
+      inputTokens: 18,
+      outputTokens: 592,
+      cachedInputTokens: 179_000,
+      cacheCreationTokens: 36_000,
+      totalTokens: 215_610,
+    });
   });
 
   it("formats human-readable durations at increasing scales", () => {

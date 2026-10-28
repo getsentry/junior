@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -30,7 +31,7 @@ import {
 import type { ActorIdentity } from "../schema/conversation";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { summaryFromRow } from "../conversations/reporting";
-import { readRootConversationMetricsFromSql } from "../conversations/usage";
+import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -596,14 +597,16 @@ export async function readLocationDetailFromSql(
   const activity = activityDays(days, nowMs, ACTIVITY_DAYS);
   const hourlyActivity = activityHours(hours, nowMs);
   const recentConversationIds = recentRows.map((row) => row.conversationId);
-  const [accessByConversation, metricsByRoot] = await Promise.all([
-    readConversationAccessFromSql(
-      getDb(),
-      recentConversationIds,
-      options.viewer,
-    ),
-    readRootConversationMetricsFromSql(getDb(), recentConversationIds),
-  ]);
+  const [accessByConversation, metricsByRoot, automationTitleByConversation] =
+    await Promise.all([
+      readConversationAccessFromSql(
+        getDb(),
+        recentConversationIds,
+        options.viewer,
+      ),
+      readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
+      readAutomationTitlesByConversationId(recentRows),
+    ]);
   return {
     ...location,
     activityDays: activity,
@@ -618,6 +621,7 @@ export async function readLocationDetailFromSql(
     recentConversations: recentRows.map((row) =>
       summaryFromRow(row, {
         access: accessByConversation.get(row.conversationId),
+        automationTitle: automationTitleByConversation.get(row.conversationId),
         metrics: metricsByRoot.get(row.conversationId),
       }),
     ),

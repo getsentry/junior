@@ -194,12 +194,12 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByText(/^junior version /)).toBeVisible();
   const navigationSheet = page.getByRole("dialog", { name: "Navigation" });
   const spendCallout = navigationSheet.getByLabel(
-    "Personal model spend: 7 days $0.07, 30 days $0.07",
+    "Personal model spend: 7 days $0.46, 30 days $0.46",
     { exact: true },
   );
   await expect(spendCallout).toBeVisible();
-  await expect(spendCallout.getByText("7d $0.07")).toBeVisible();
-  await expect(spendCallout.getByText("30d $0.07")).toBeVisible();
+  await expect(spendCallout.getByText("7d $0.46")).toBeVisible();
+  await expect(spendCallout.getByText("30d $0.46")).toBeVisible();
   // Spend sits above every destination, including primary nav.
   const spendAbovePrimary = await spendCallout.evaluate((node) => {
     const dialog = node.closest('[role="dialog"]');

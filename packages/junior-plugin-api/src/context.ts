@@ -33,9 +33,15 @@ export type SlackLocation = z.output<typeof slackLocationSchema>;
 export type SlackSource = Extract<Source, { kind: "slack" }>;
 export type LocalSource = Extract<Source, { kind: "local" }>;
 export type WebSource = Extract<Source, { kind: "web" }>;
-export type ResourceEventSource = Extract<Source, { kind: "resource_event" }>;
-export type ScheduledTaskSource = Extract<Source, { kind: "scheduled_task" }>;
-export type EventTaskSource = Extract<Source, { kind: "event_task" }>;
+export type EventSource = Extract<Source, { kind: "event" }>;
+export type ScheduledAutomationSource = Extract<
+  Source,
+  { kind: "scheduled_automation" }
+>;
+export type EventAutomationSource = Extract<
+  Source,
+  { kind: "event_automation" }
+>;
 export type PluginDispatchSource = Extract<Source, { kind: "plugin_dispatch" }>;
 export type AgentInvocationSource = Extract<
   Source,
@@ -126,12 +132,12 @@ export interface WebInvocationContext extends BaseInvocationContext {
   source: WebSource;
 }
 
-export interface ResourceEventInvocationContext extends BaseInvocationContext {
+export interface EventInvocationContext extends BaseInvocationContext {
   /** Existing conversation destination used for tool context. */
   destination: Destination;
   actor?: Actor;
-  /** Runtime-owned Resource event Source for this invocation. */
-  source: ResourceEventSource;
+  /** Runtime-owned Event Source for this invocation. */
+  source: EventSource;
 }
 
 export type InvocationContext =
@@ -143,10 +149,10 @@ export type InvocationContext =
       actor?: Actor;
       source:
         | AgentInvocationSource
-        | EventTaskSource
+        | EventAutomationSource
         | PluginDispatchSource
-        | ResourceEventSource
-        | ScheduledTaskSource;
+        | EventSource
+        | ScheduledAutomationSource;
     });
 
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
@@ -189,15 +195,15 @@ export function createWebSource(
   };
 }
 
-/** Build a normalized Resource event Source from one matched event. */
-export function createResourceEventSource(input: {
+/** Build a normalized Event Source from one matched event. */
+export function createEventSource(input: {
   eventKey: string;
   eventType: string;
   identifier: string;
   namespace: string;
-}): ResourceEventSource {
+}): EventSource {
   return {
-    kind: "resource_event",
+    kind: "event",
     eventKey: input.eventKey,
     eventType: input.eventType,
     identifier: input.identifier,
@@ -223,10 +229,10 @@ export function getSourceKey(source: Source): string | undefined {
       }
       return `slack:${source.teamId}:${source.channelId}:${messageKey}`;
     }
-    case "resource_event":
-      return `resource-event:${source.namespace}:${source.eventKey}`;
-    case "scheduled_task":
-    case "event_task":
+    case "event":
+      return `event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_automation":
+    case "event_automation":
     case "plugin_dispatch":
     case "agent_invocation":
       return undefined;

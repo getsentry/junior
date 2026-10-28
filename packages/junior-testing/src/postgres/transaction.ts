@@ -53,15 +53,17 @@ async function createWorkerDatabase(
     databaseName,
     config.templateDatabaseName,
   );
-  return {
+  const pool = new Pool({
+    application_name: config.applicationName,
     connectionString,
-    databaseName,
-    pool: new Pool({
-      application_name: config.applicationName,
-      connectionString,
-      max: 4,
-    }),
-  };
+    max: 4,
+  });
+  // Template cloning can terminate idle clients. The pool replaces them; an
+  // unhandled pool error would crash the Vitest worker instead.
+  pool.on("error", (error) => {
+    console.warn(`Postgres test pool client failed: ${error.message}`);
+  });
+  return { connectionString, databaseName, pool };
 }
 
 /** Return the current Vitest worker's cloned migrated database. */

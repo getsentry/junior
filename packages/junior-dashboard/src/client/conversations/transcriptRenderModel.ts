@@ -1,3 +1,4 @@
+import { messageCardText } from "@sentry/junior/api/schema";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -187,13 +188,18 @@ export function groupTranscriptMessages(
 
 /** Build the plain-text clipboard/raw view for one canonical message. */
 export function messageRawText(message: TranscriptViewMessage): string {
-  return message.parts
+  const body = message.parts
     .map((part) => {
       if (part.type === "text") return part.text ?? "";
       if (part.type === "reasoning") return part.text ?? "reasoning redacted";
       if (part.type === "tool_call") return `tool_call ${part.name}`;
       if (part.type === "subagent") {
-        return `subagent ${part.subagentKind}\nstatus ${part.status}`;
+        return [
+          `subagent ${part.agentName ?? part.subagentKind}`,
+          ...(part.title ? [`title ${part.title}`] : []),
+          ...(part.task ? [`task ${part.task}`] : []),
+          `status ${part.status}`,
+        ].join("\n");
       }
       if (part.type === "structured_event") {
         return [
@@ -232,5 +238,15 @@ export function messageRawText(message: TranscriptViewMessage): string {
         .join("\n");
     })
     .filter((part) => part.trim().length > 0)
+    .join("\n\n");
+  return [
+    body,
+    ...(message.attachments ?? []).map(
+      (attachment) =>
+        `[attachment] ${attachment.filename} (${attachment.contentType}, ${attachment.bytes} bytes)`,
+    ),
+    ...(message.cards ?? []).map(messageCardText),
+  ]
+    .filter(Boolean)
     .join("\n\n");
 }

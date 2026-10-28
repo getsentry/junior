@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 
 import { cn } from "../styles";
 import {
@@ -6,21 +7,30 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptSummary } from "./TranscriptSummary";
+
+/** Frame expanded transcript activity content below its row title. */
+export const transcriptActivityBodyClass =
+  "ml-6 mt-1.5 min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel";
 
 /** Render the shared expandable/non-expandable frame for transcript tools. */
 export function ToolFrame(props: {
   children?: ReactNode;
   expandable?: boolean;
+  /** Icon in the activity icon column. Rail events pass their own icon. */
+  icon?: LucideIcon;
+  iconClassName?: string;
   meta: string[];
   mobileSummaryMeta?: string;
-  raw?: boolean;
   signature: ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
+  const [open, setOpen] = useState(false);
   const metaText = props.meta.join(" · ");
   const interactive = props.expandable ?? Boolean(props.children);
-  const staticFrame = searchActive || props.raw || !interactive;
-  const header = (
+  const staticFrame = searchActive || !interactive;
+  const Icon = props.icon;
+  const row = (
     <TranscriptHeadingRow
       left={
         <>
@@ -61,38 +71,55 @@ export function ToolFrame(props: {
       rightClassName="ml-3 min-w-0 max-md:hidden"
     />
   );
+  const header = Icon ? (
+    <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-center gap-2">
+      <Icon
+        aria-hidden="true"
+        className={cn("size-3.5 justify-self-center", props.iconClassName)}
+        strokeWidth={2}
+      />
+      {row}
+    </div>
+  ) : (
+    row
+  );
   const mobileMeta =
     metaText && props.children ? (
-      <div className="hidden min-w-0 break-words bg-black/15 px-2.5 py-1 font-mono text-xs leading-snug text-dashboard-text-muted max-md:block">
+      <div className="hidden min-w-0 break-words border-b border-dashboard-border-subtle px-2.5 py-1.5 font-sans text-xs tabular-nums leading-snug text-dashboard-text-muted max-md:block">
         {metaText}
       </div>
     ) : null;
 
+  const body = props.children ? (
+    <div className={transcriptActivityBodyClass}>
+      {mobileMeta}
+      {props.children}
+    </div>
+  ) : null;
+
   // Force-expand tool details during search so highlighted matches are visible.
   if (staticFrame) {
     return (
-      <div className="min-w-0 max-w-full overflow-hidden">
-        <div className={toolHeaderClass(false)}>{header}</div>
-        {mobileMeta}
-        {props.children}
+      <div className="min-w-0 max-w-full">
+        <div className="block py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted">
+          {header}
+        </div>
+        {body}
       </div>
     );
   }
 
   return (
-    <details className="group min-w-0 max-w-full overflow-hidden">
-      <summary className={toolHeaderClass(true)}>{header}</summary>
-      {mobileMeta}
-      {props.children}
+    <details
+      className="group min-w-0 max-w-full"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <TranscriptSummary className="-mx-2 block font-mono text-xs leading-tight text-dashboard-text-muted">
+        {header}
+      </TranscriptSummary>
+      {/* Closed details hide DOM, but still mount React children and run Shiki. */}
+      {open ? body : null}
     </details>
-  );
-}
-
-function toolHeaderClass(interactive: boolean): string {
-  return cn(
-    "block px-2.5 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted",
-    interactive
-      ? "cursor-pointer list-none transition-colors hover:bg-white/[0.03] hover:text-dashboard-text hover:[&_*]:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-dashboard-text focus-visible:[&_*]:text-dashboard-text [&::-webkit-details-marker]:hidden"
-      : "cursor-default",
   );
 }

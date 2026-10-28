@@ -18,6 +18,14 @@ import {
   decideReply,
   sanitizeAssistantText,
 } from "@/chat/services/assistant-reply";
+import {
+  readAutomationResult,
+  type AutomationResult,
+} from "@/chat/automation-result";
+import {
+  readBlockedReport,
+  type BlockedReport,
+} from "@/chat/agent-invocations/blocked-report";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -36,8 +44,15 @@ export interface AgentTurnDiagnostics {
 }
 
 export interface AgentRunResult {
-  /** Sanitized terminal text for diagnostics and failure fallback, not success delivery. */
+  /**
+   * Sanitized terminal text for diagnostics and failure fallback, not success
+   * delivery. An Automation run that declared `send_message` carries that text.
+   */
   text: string;
+  /** Declared result of a Scheduled automation or Event automation run. */
+  automation?: AutomationResult;
+  /** Blocked report of a child agent run. */
+  blocked?: BlockedReport;
   sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
@@ -56,24 +71,22 @@ export interface TurnResultInput {
   executionProfile: TurnRoute;
   assistantUserName?: string;
   modelId: string;
+  /** Automation runs succeed only with one declared result. */
+  requireAutomationResult?: boolean;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
-  const {
-    newMessages,
-    toolCalls,
-    sandboxRef,
-    durationMs,
-    shouldTrace,
-    usage,
-    executionProfile,
-    modelId,
-  } = input;
+  if (input.requireAutomationResult) {
+    return buildAutomationTurnResult(input);
+  }
+  const { newMessages, sandboxRef, shouldTrace } = input;
 
   const toolResults = newMessages.filter(isToolResultMessage);
   const assistantMessages = newMessages.filter(isAssistantMessage);
   const terminalAssistantMessages = getTerminalAssistantMessages(newMessages);
+  // A blocked report ends the run with no text, and it is the run's result.
+  const blocked = readBlockedReport(newMessages);
 
   const rawPrimaryText = sanitizeAssistantText(
     terminalAssistantMessages
@@ -130,7 +143,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     }
   }
 
-  if (!primaryText && !completedWithoutTerminalText && !isProviderError) {
+  if (
+    !primaryText &&
+    !completedWithoutTerminalText &&
+    !blocked &&
+    !isProviderError
+  ) {
     logWarn("ai.model_response.empty", {
       "app.ai.tool_results": toolResults.length,
       "app.ai.tool_error_results": toolErrorCount,
@@ -139,61 +157,128 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   }
 
   const usedPrimaryText = Boolean(rawPrimaryText);
+  const suppressedPrimaryText = Boolean(
+    rawPrimaryText && !noReplyRequested && !primaryText,
+  );
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
-  } else if (primaryText || completedWithoutTerminalText) {
+  } else if (suppressedPrimaryText) {
+    outcome = "execution_failure";
+  } else if (primaryText || completedWithoutTerminalText || blocked) {
     outcome = "success";
   } else {
     outcome = "execution_failure";
   }
-  const suppressedPrimaryText = Boolean(
-    rawPrimaryText && !noReplyRequested && !primaryText,
-  );
-  const resolvedOutcome: AgentTurnDiagnostics["outcome"] = suppressedPrimaryText
-    ? "execution_failure"
-    : outcome;
 
   if (shouldTrace) {
     logInfo("agent.message.generated", {
       "app.message.kind": "assistant_outbound",
       "app.message.length": primaryText.length,
       "app.message.output": summarizeMessageText(primaryText),
-      "app.ai.outcome": resolvedOutcome,
+      "app.ai.outcome": outcome,
       "app.ai.assistant_messages": assistantMessages.length,
-      ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : undefined),
+      ...(stopReason
+        ? { "gen_ai.response.finish_reasons": [stopReason] }
+        : undefined),
     });
   }
 
-  const resolvedDiagnostics: AgentTurnDiagnostics = {
-    outcome: resolvedOutcome,
-    modelId,
-    assistantMessageCount: assistantMessages.length,
-    reasoningLevel: executionProfile.reasoningLevel,
-    toolCalls,
+  return {
+    text: primaryText,
+    ...(blocked ? { blocked } : undefined),
+    sandboxRef,
+    piMessages: input.piMessages,
+    diagnostics: buildDiagnostics(input, {
+      outcome,
+      usedPrimaryText,
+      stopReason,
+      errorMessage,
+      lastAssistant,
+    }),
+  };
+}
+
+function buildDiagnostics(
+  input: TurnResultInput,
+  result: {
+    outcome: AgentTurnDiagnostics["outcome"];
+    usedPrimaryText: boolean;
+    stopReason?: string;
+    errorMessage?: string;
+    lastAssistant?: unknown;
+  },
+): AgentTurnDiagnostics {
+  const { outcome, errorMessage, lastAssistant } = result;
+  const toolResults = input.newMessages.filter(isToolResultMessage);
+  return {
+    outcome,
+    modelId: input.modelId,
+    assistantMessageCount: input.newMessages.filter(isAssistantMessage).length,
+    reasoningLevel: input.executionProfile.reasoningLevel,
+    toolCalls: input.toolCalls,
     toolResultCount: toolResults.length,
-    toolErrorCount,
-    usedPrimaryText,
-    durationMs,
-    usage,
-    stopReason,
+    toolErrorCount: toolResults.filter((toolResult) => toolResult.isError)
+      .length,
+    usedPrimaryText: result.usedPrimaryText,
+    durationMs: input.durationMs,
+    usage: input.usage,
+    stopReason: result.stopReason,
     errorMessage,
     providerError:
-      resolvedOutcome === "provider_error" && errorMessage
+      outcome === "provider_error" && errorMessage
         ? createProviderError(errorMessage, {
-            modelId,
+            modelId: input.modelId,
             retryable:
-              lastAssistant !== undefined &&
               isAssistantMessage(lastAssistant) &&
               isRetryableAssistantError(lastAssistant),
           })
         : undefined,
   };
+}
+
+/**
+ * Build the result of an Automation run from its declared result. Final
+ * assistant text is not used. A run without a declared result fails.
+ */
+function buildAutomationTurnResult(input: TurnResultInput): AgentRunResult {
+  const lastAssistant = input.newMessages.filter(isAssistantMessage).at(-1);
+  const stopReason = lastAssistant?.stopReason;
+  const automation = readAutomationResult(
+    input.piMessages ?? input.newMessages,
+  );
+  // A declared result decides the outcome, even when a later slice errs.
+  const outcome: AgentTurnDiagnostics["outcome"] = automation
+    ? "success"
+    : stopReason === "error"
+      ? "provider_error"
+      : "execution_failure";
+  const errorMessage =
+    outcome === "provider_error"
+      ? lastAssistant?.errorMessage
+      : outcome === "execution_failure"
+        ? "Automation run ended without a declared result."
+        : undefined;
+
+  if (input.shouldTrace) {
+    logInfo("agent.message.generated", {
+      "app.message.kind": "automation_result",
+      "app.ai.outcome": outcome,
+      "app.automation.result": automation?.result ?? "missing",
+    });
+  }
 
   return {
-    text: primaryText,
-    sandboxRef,
+    text: automation?.result === "send_message" ? automation.message : "",
+    ...(automation ? { automation } : undefined),
+    sandboxRef: input.sandboxRef,
     piMessages: input.piMessages,
-    diagnostics: resolvedDiagnostics,
+    diagnostics: buildDiagnostics(input, {
+      outcome,
+      usedPrimaryText: automation?.result === "send_message",
+      stopReason,
+      errorMessage,
+      lastAssistant,
+    }),
   };
 }

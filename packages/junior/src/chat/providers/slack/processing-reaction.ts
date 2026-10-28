@@ -46,6 +46,7 @@ export function shouldKeepProcessingReactionForToolInvocation(
 export async function startProcessingReaction(args: {
   message: Message;
   thread: Thread;
+  timeoutMs?: number;
 }): Promise<ProcessingReaction> {
   if (args.message.author.isMe) {
     return noProcessingReaction;
@@ -60,6 +61,7 @@ export async function startProcessingReaction(args: {
   return startProcessingReactionForMessage({
     channelId,
     timestamp: messageTs,
+    timeoutMs: args.timeoutMs,
   });
 }
 
@@ -67,12 +69,14 @@ export async function startProcessingReaction(args: {
 export async function startProcessingReactionForMessage(args: {
   channelId: string;
   timestamp: SlackMessageTs;
+  timeoutMs?: number;
 }): Promise<ProcessingReaction> {
   try {
     await addReactionToMessage({
       channelId: args.channelId,
       timestamp: args.timestamp,
       emoji: getChatConfig().slack.processingReactionEmoji,
+      timeoutMs: args.timeoutMs,
     });
   } catch (error) {
     logException(error, "slack.processing.reaction_add.failed", {
@@ -110,7 +114,8 @@ export async function startProcessingReactionForMessage(args: {
     complete: async () => {
       // Always attempt both sides of the completion lifecycle independently.
       // Reaction-only Turns still need `:done` even if removing the processing
-      // reaction fails, and a prior keep() must not block the completed emoji.
+      // reaction fails. After keep(), the processing reaction is the result
+      // that the person asked for, so the Turn adds no completed emoji.
       const shouldAddCompleted = shouldRemove;
       await removeProcessingReaction();
 

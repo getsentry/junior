@@ -121,7 +121,9 @@ export async function selectPluginGrant(
   const result = await hook({
     ...basePluginContext(plugin),
     request: {
-      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
+      ...(input.bodyText !== undefined
+        ? { bodyText: input.bodyText }
+        : undefined),
       method: input.method,
       ...(input.operation ? { operation: input.operation } : undefined),
       url: input.upstreamUrl.toString(),
@@ -210,6 +212,7 @@ export function getOAuthAccountProviders(): string[] {
 /** Ask a plugin which provider account belongs to an OAuth token. */
 export async function resolvePluginOAuthAccount(input: {
   provider: string;
+  tokenResponse: Record<string, unknown>;
   tokens: StoredTokens;
 }): Promise<PluginProviderAccount | undefined> {
   const plugin = pluginFor(input.provider);
@@ -219,6 +222,7 @@ export async function resolvePluginOAuthAccount(input: {
   }
   const account = await hook({
     ...basePluginContext(plugin),
+    tokenResponse: input.tokenResponse,
     tokens: input.tokens,
   });
   return account === undefined

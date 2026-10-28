@@ -8,11 +8,15 @@ import { juniorSqlSchema } from "@/db/schema";
 
 class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   private savepointId = 0;
+  private isolatedQueryId = 0;
 
-  constructor(
-    private readonly client: PoolClient,
-    private readonly closeTransaction: () => Promise<void>,
-  ) {}
+  private readonly client: PoolClient;
+  private readonly closeTransaction: () => Promise<void>;
+
+  constructor(client: PoolClient, closeTransaction: () => Promise<void>) {
+    this.client = client;
+    this.closeTransaction = closeTransaction;
+  }
 
   db(): JuniorDatabase {
     return drizzle(this.client, {
@@ -35,6 +39,22 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
       ...params,
     ]);
     return result.rows as T[];
+  }
+
+  async queryIsolated<T = unknown>(
+    statement: string,
+    params: readonly unknown[] = [],
+  ): Promise<T[]> {
+    // The pinned test client cannot be discarded, so a savepoint keeps a
+    // failed statement from aborting the test transaction.
+    return await this.transaction(async () => {
+      const result = await this.client.query<QueryResultRow>({
+        name: `junior_test_isolated_${++this.isolatedQueryId}`,
+        text: statement,
+        values: [...params],
+      });
+      return result.rows as T[];
+    });
   }
 
   async migrate(config: MigrationConfig): Promise<void> {

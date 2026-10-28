@@ -6,6 +6,8 @@
  * a local destination, and only commits assistant delivery after the CLI sink
  * accepts each completed tool-free assistant message.
  */
+import { messageCardText } from "@/chat/conversations/cards";
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { randomUUID } from "node:crypto";
@@ -23,7 +25,6 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,
@@ -155,7 +156,7 @@ async function loadLocalPiMessages(args: {
   if (projection.length === 0) {
     return undefined;
   }
-  return stripRuntimeTurnContext(projection);
+  return projection;
 }
 
 /** Run one local CLI message through Junior's shared agent-run boundary. */
@@ -268,9 +269,13 @@ async function runLocalAgentTurnInContext(
       return;
     }
     failureCode = "delivery_failed";
-    await deps.deliverReply({ text });
+    const cards = await loadPendingMessageCards(input.conversationId);
+    await deps.deliverReply({
+      text: [text, ...cards.map(messageCardText)].join("\n\n"),
+    });
     assistantMessageDelivered = true;
     const recordedMessageId = recordDeliveredAssistantMessage({
+      cards,
       conversation,
       sessionId: turnId,
       text,
@@ -292,9 +297,8 @@ async function runLocalAgentTurnInContext(
       );
     } catch (error) {
       logException(
-        new Error("Accepted assistant message persistence failed"),
+        error,
         "local.assistant.message_post_delivery_persist.failed",
-        { "error.type": error instanceof Error ? error.name : typeof error },
       );
     }
     failureCode = "agent_run_failed";

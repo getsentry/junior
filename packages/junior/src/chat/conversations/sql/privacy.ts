@@ -19,7 +19,7 @@ export interface RootConversationVisibility {
 
 /** Accept only a structurally valid persisted root as privacy authority. */
 async function readRootCandidate(
-  executor: JuniorSqlDatabase,
+  executor: Pick<JuniorSqlDatabase, "db">,
   conversationId: string,
 ): Promise<PrivacyRootCandidate | undefined> {
   const rows = await executor
@@ -40,10 +40,11 @@ async function readRootCandidate(
     )
     .where(eq(juniorConversations.conversationId, conversationId));
   const row = rows[0];
-  return row?.requestedRootConversationId !== null &&
-    (row?.requestedParentConversationId !== null ||
-      row?.requestedRootConversationId === row?.requestedConversationId) &&
-    row?.rootConversationId === row.requestedRootConversationId &&
+  return row !== undefined &&
+    row.requestedRootConversationId !== null &&
+    (row.requestedParentConversationId !== null ||
+      row.requestedRootConversationId === row.requestedConversationId) &&
+    row.rootConversationId === row.requestedRootConversationId &&
     row.rootRootConversationId === row.rootConversationId &&
     row.rootParentConversationId === null &&
     row.rootDestinationId !== null
@@ -55,7 +56,7 @@ async function readRootCandidate(
 }
 
 async function readCandidateVisibility(
-  executor: JuniorSqlDatabase,
+  executor: Pick<JuniorSqlDatabase, "db">,
   candidate: PrivacyRootCandidate,
 ): Promise<RootConversationVisibility> {
   const destinations = await executor
@@ -78,7 +79,7 @@ async function readCandidateVisibility(
  * stable visibility decision.
  */
 export async function resolveRootVisibility(
-  executor: JuniorSqlDatabase,
+  executor: Pick<JuniorSqlDatabase, "db">,
   conversationId: string,
 ): Promise<RootConversationVisibility> {
   const candidate = await readRootCandidate(executor, conversationId);

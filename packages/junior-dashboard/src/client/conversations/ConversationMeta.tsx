@@ -1,3 +1,5 @@
+import { ObjectIcon } from "../components/ObjectIcon";
+import { objectPresentation } from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
@@ -13,18 +15,22 @@ import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
-  conversationActorLabel,
   formatConversationDuration,
-  peoplePath,
   slackLocationLabel,
   summarizeCost,
+  summarizeModelUsage,
   summarizeUsage,
-  taskPath,
+  automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
-import { cn } from "../styles";
-import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
+import { cn, dashboardInlineLinkClass } from "../styles";
+import {
+  CostMetric,
+  DurationMetric,
+  SubagentsMetric,
+  TokenMetric,
+} from "./TelemetryMetrics";
 import type { Conversation } from "../types";
 import {
   projectSidebarAnnotationBadges,
@@ -43,9 +49,9 @@ export function PendingAuthorization(props: {
   };
 }) {
   return (
-    <div className="mb-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
+    <div className="mb-2 rounded-lg border border-dashboard-accent/20 bg-dashboard-accent/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
       <a
-        className="font-medium text-cyan-200 underline decoration-cyan-300/40 underline-offset-2 hover:text-cyan-100"
+        className="font-medium text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-accent-text"
         href={props.authorization.authorizationUrl}
         rel="noreferrer"
         target="_blank"
@@ -75,8 +81,8 @@ export function ConversationPrivacyChip(props: {
     <span
       className={
         isPublic
-          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2 py-0.5 font-sans text-2xs font-medium text-emerald-50/85"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
+          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
+          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
       }
       role="note"
       title={`${fullLabel}. ${detail}`}
@@ -93,16 +99,17 @@ export function ConversationPrivacyChip(props: {
 }
 
 type ResourceLinkStatus = NonNullable<
-  NonNullable<ConversationDetailReport["annotations"]>[number]["status"]
+  Extract<
+    NonNullable<ConversationDetailReport["annotations"]>[number],
+    { kind: "resource_link" }
+  >["status"]
 >;
 
 /** True when the conversation has at least one resource-link annotation. */
 export function hasConversationAnnotations(
   annotations: ConversationDetailReport["annotations"] | undefined,
 ): boolean {
-  return Boolean(
-    annotations?.some((annotation) => annotation.kind === "resource_link"),
-  );
+  return Boolean(annotations?.some((annotation) => Boolean(annotation.url)));
 }
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
@@ -136,7 +143,13 @@ export function ConversationSidebarAnnotations(props: {
               className="flex min-w-0 items-center gap-1.5"
               key={`${annotation.key}:${index}`}
             >
-              {annotation.icon ? (
+              {annotation.objectType ? (
+                <ObjectIcon
+                  {...annotation}
+                  objectType={annotation.objectType}
+                  size={14}
+                />
+              ) : annotation.icon ? (
                 <SidebarAnnotationIcon icon={annotation.icon} />
               ) : null}
               <span className="min-w-0 truncate">{details[index]}</span>
@@ -154,7 +167,7 @@ export function ConversationSidebarAnnotations(props: {
         {useMobileFacepile ? (
           <SidebarAnnotationIconFacepile
             annotations={mobileFacepileAnnotations}
-            // Discs sit on the sidebar panel / row surface (#09090b).
+            // Discs sit on the sidebar panel / row surface.
             cutoutColor="var(--color-dashboard-surface-panel)"
           />
         ) : (
@@ -163,7 +176,7 @@ export function ConversationSidebarAnnotations(props: {
               <SidebarAnnotationGroupChip group={group} key={group.label} />
             ))}
             {badges.overflowGroupCount > 0 ? (
-              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
                 +{badges.overflowGroupCount}
               </span>
             ) : null}
@@ -212,9 +225,17 @@ function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-36 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
       {props.group.annotations.map((annotation) =>
-        annotation.icon ? (
+        annotation.objectType ? (
+          <ObjectIcon
+            {...annotation}
+            objectType={annotation.objectType}
+            key={annotation.key}
+            decorative
+            size={14}
+          />
+        ) : annotation.icon ? (
           <SidebarAnnotationIcon
             decorative
             icon={annotation.icon}
@@ -248,8 +269,8 @@ function SidebarAnnotationStatusChip(props: {
         // real chips, not floating glyphs. Box-shadow cutout (not border) keeps
         // layout at 18px while punching a surface-colored ring through the chip
         // underneath — classic avatar-facepile silhouette.
-        "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control",
-        props.stacked && "-ml-2",
+        "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control",
+        props.stacked && "-ml-1",
       )}
       style={{
         boxShadow: `0 0 0 2px ${props.cutoutColor}`,
@@ -257,7 +278,14 @@ function SidebarAnnotationStatusChip(props: {
       }}
       title={tone?.label}
     >
-      {props.annotation.icon ? (
+      {props.annotation.objectType ? (
+        <ObjectIcon
+          {...props.annotation}
+          objectType={props.annotation.objectType}
+          decorative
+          size={12}
+        />
+      ) : props.annotation.icon ? (
         <SidebarAnnotationIcon
           decorative
           icon={props.annotation.icon}
@@ -290,12 +318,24 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
+  objectType?: SidebarAnnotation["objectType"];
+  status?: string;
 }): string {
+  const identity = annotation.objectType
+    ? [
+        objectPresentation({ objectType: annotation.objectType }).label,
+        annotation.status,
+      ]
+        .filter(Boolean)
+        .join(": ")
+    : "";
   // Prefer the plugin key when it carries a fuller resource identity than the
   // compact label (for example owner/repo#123 vs repo).
-  return annotation.key.includes("/") || annotation.key.includes("#")
-    ? annotation.key
-    : annotation.label;
+  const label =
+    annotation.key.includes("/") || annotation.key.includes("#")
+      ? annotation.key
+      : annotation.label;
+  return [identity, label].filter(Boolean).join(" · ");
 }
 
 type SidebarAnnotationIconName = NonNullable<
@@ -303,21 +343,33 @@ type SidebarAnnotationIconName = NonNullable<
 >;
 
 const SIDEBAR_ICON_PRESENTATION = {
-  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
+  "circle-dot": {
+    className: "text-[#3fb950] light:text-[#1a7f37]",
+    Icon: CircleDot,
+    label: "Open",
+  },
   "circle-dashed": {
-    className: "text-[#8c959f]",
+    className: "text-[#8c959f] light:text-[#59636e]",
     Icon: CircleDashed,
     label: "Draft",
   },
-  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
-  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "circle-x": {
+    className: "text-[#f85149] light:text-[#cf222e]",
+    Icon: CircleX,
+    label: "Closed",
+  },
+  "git-merge": {
+    className: "text-[#a371f7] light:text-[#8250df]",
+    Icon: GitMerge,
+    label: "Merged",
+  },
   "git-pull-request": {
-    className: "text-[#3fb950]",
+    className: "text-[#3fb950] light:text-[#1a7f37]",
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922]",
+    className: "text-[#d29922] light:text-[#9a6700]",
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -361,27 +413,47 @@ function SidebarAnnotationIcon(props: {
 /** Render resource-link annotations under the conversation title. */
 export function ConversationAnnotations(props: {
   detail: ConversationDetailReport | undefined;
+  layout?: "list" | "strip";
 }) {
   const links =
     props.detail?.annotations?.filter(
-      (annotation) => annotation.kind === "resource_link",
+      (annotation) => annotation.url !== null,
     ) ?? [];
   if (links.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div
+      className={cn(
+        "flex gap-x-4 gap-y-2",
+        props.layout === "strip" ? "overflow-x-auto" : "flex-col",
+      )}
+    >
       {links.map((link) => (
         <a
-          className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-0.5 font-sans text-2xs leading-snug text-cyan-50 no-underline"
-          href={link.url}
+          className={cn(
+            "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+            props.layout === "strip"
+              ? "px-1 py-0.5 text-xs hover:text-dashboard-accent-text"
+              : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
+          )}
+          href={link.url ?? undefined}
           key={`${link.plugin}:${link.key}`}
           rel="noreferrer"
           target="_blank"
-          title={resourceLinkTitle(link)}
+          title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
         >
-          {link.status ? (
-            <ResourceStatus status={link.status} url={link.url} />
-          ) : null}
-          <span>{link.label}</span>
+          <ObjectIcon
+            objectType={
+              link.objectType ??
+              props.detail?.sidebarAnnotations?.find(
+                (annotation) => annotation.key === link.key,
+              )?.objectType ??
+              "item"
+            }
+            status={link.status}
+            facts={link.kind === "object" ? link.facts : undefined}
+            size={16}
+          />
+          <span className="min-w-0 break-words">{link.label}</span>
         </a>
       ))}
     </div>
@@ -408,124 +480,10 @@ function resourceLinkTitle(link: {
     .join(" · ");
 }
 
-const RESOURCE_STATUS_ICON = {
-  open: "circle-dot",
-  draft: "circle-dashed",
-  closed: "circle-x",
-  merged: "git-merge",
-  warning: "triangle-alert",
-} as const satisfies Record<ResourceLinkStatus, SidebarAnnotationIconName>;
-
-function isPullRequestUrl(url: string): boolean {
-  try {
-    return /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(url).pathname);
-  } catch {
-    return false;
-  }
-}
-
-function resourceStatusIcon(
-  status: ResourceLinkStatus,
-  url: string,
-): SidebarAnnotationIconName {
-  if (status === "open" && isPullRequestUrl(url)) return "git-pull-request";
-  return RESOURCE_STATUS_ICON[status];
-}
-
-function ResourceStatus(props: { status: ResourceLinkStatus; url: string }) {
-  return (
-    <SidebarAnnotationIcon
-      icon={resourceStatusIcon(props.status, props.url)}
-      size={12}
-    />
-  );
-}
-
-/** True when identity has content for the requested presentation. */
-export function hasConversationIdentity(props: {
-  conversation: Conversation | undefined;
-  conversationId: string | undefined;
-  detail: ConversationDetailReport | undefined;
-  variant?: "compact" | "full";
-}): boolean {
-  const variant = props.variant ?? "full";
-  const owner = conversationActorLabel(props.conversation);
-  if (variant === "compact") return Boolean(owner);
-  const id = props.conversationId ?? props.conversation?.id;
-  return Boolean(owner || id || props.detail?.sentryConversationUrl);
-}
-
-/** Render the conversation owner, optionally with id and Sentry deep link. */
-export function ConversationIdentity(props: {
-  conversation: Conversation | undefined;
-  conversationId: string | undefined;
-  detail: ConversationDetailReport | undefined;
-  variant?: "compact" | "full";
-}) {
-  if (!hasConversationIdentity(props)) return null;
-  const variant = props.variant ?? "full";
-  const email = props.conversation?.actorIdentity?.email?.trim();
-  const owner = conversationActorLabel(props.conversation);
-  const id = props.conversationId ?? props.conversation?.id;
-  const ownerNode = owner ? (
-    email ? (
-      <Link
-        className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
-        to={peoplePath(email)}
-      >
-        {owner}
-      </Link>
-    ) : (
-      owner
-    )
-  ) : null;
-  if (variant === "compact") {
-    return (
-      <span className="inline-flex min-w-0 max-w-full items-center">
-        <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
-      </span>
-    );
-  }
-  const sentryLink = props.detail?.sentryConversationUrl ? (
-    <a
-      className="text-dashboard-text no-underline hover:underline"
-      href={props.detail.sentryConversationUrl}
-      rel="noreferrer"
-      target="_blank"
-    >
-      View in Sentry
-    </a>
-  ) : null;
-
-  return (
-    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
-      {ownerNode ? (
-        <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
-      ) : null}
-      {id ? (
-        <span className="inline-flex min-w-0 items-center gap-x-1.5" title={id}>
-          {ownerNode ? (
-            <span className="text-dashboard-text-muted/50">·</span>
-          ) : null}
-          <span className="min-w-0 max-w-[18rem] truncate">{id}</span>
-        </span>
-      ) : null}
-      {sentryLink ? (
-        <span className="inline-flex min-w-0 items-center gap-x-1.5">
-          {ownerNode || id ? (
-            <span className="text-dashboard-text-muted/50">·</span>
-          ) : null}
-          {sentryLink}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
 function LocationLink(props: { label: string; locationUrl?: string }) {
   return props.locationUrl ? (
     <a
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className={dashboardInlineLinkClass}
       href={props.locationUrl}
       rel="noreferrer"
       target="_blank"
@@ -540,41 +498,18 @@ function LocationLink(props: { label: string; locationUrl?: string }) {
 function SourceTask(props: {
   sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
 }) {
-  const kindLabel =
-    props.sourceTask.kind === "scheduled" ? "Scheduled Task" : "Event Task";
-  const taskId = props.sourceTask.id?.trim();
+  const automationId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
-  const link = taskId ? (
+  const label = title ? `Automation: ${title}` : "Automation";
+  return automationId ? (
     <Link
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
-      to={taskPath(taskId)}
+      className={dashboardInlineLinkClass}
+      to={automationPath(automationId)}
     >
-      Triggered by {kindLabel}
+      {label}
     </Link>
   ) : (
-    <span>Triggered by {kindLabel}</span>
-  );
-  // Keep tooltips to short identity fields. Full task prompts belong on the
-  // task details page, not in hover chrome.
-  if (!title) return link;
-  return (
-    <Tooltip
-      align="left"
-      content={
-        <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <span>Title</span>
-          <span className="text-dashboard-text">{title}</span>
-          {taskId ? (
-            <>
-              <span>ID</span>
-              <span className="break-all text-dashboard-text">{taskId}</span>
-            </>
-          ) : null}
-        </span>
-      }
-    >
-      {link}
-    </Tooltip>
+    <span>{label}</span>
   );
 }
 
@@ -641,7 +576,8 @@ function conversationStatItems(props: {
     : props.detail;
   const usage =
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
-  const tokenSummary = summarizeUsage(usage);
+  const tokenSummary =
+    summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const costSummary = summarizeCost(usage);
   const location = slackLocationLabel(props.conversation, {
     includeId: false,
@@ -652,8 +588,10 @@ function conversationStatItems(props: {
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
+  const childAgentTotals =
+    props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const rawStats: Array<MetricListItem | undefined> = [
-    variant === "full" && location
+    location
       ? {
           content: <LocationLink label={location} locationUrl={locationUrl} />,
           key: "location",
@@ -669,6 +607,8 @@ function conversationStatItems(props: {
       ? {
           content: (
             <DurationMetric
+              childAgentTotals={childAgentTotals}
+              durationMs={props.conversation.cumulativeDurationMs}
               endedAt={props.conversation.lastSeenAt}
               label={durationLabel}
               startedAt={props.conversation.startedAt}
@@ -681,6 +621,8 @@ function conversationStatItems(props: {
       ? {
           content: (
             <TokenMetric
+              detailsHint={variant === "compact"}
+              childAgentTotals={childAgentTotals}
               compactionCount={
                 completeDetail
                   ? completeDetail.events.filter(
@@ -704,10 +646,12 @@ function conversationStatItems(props: {
       ? {
           content: (
             <CostMetric
+              detailsHint={variant === "compact"}
               auxiliaryCosts={
                 props.detail?.auxiliaryCosts ??
                 props.conversation.auxiliaryCosts
               }
+              childAgentTotals={childAgentTotals}
               live={live}
               liveModelId={activeModelId}
               modelUsage={props.detail?.modelUsage}
@@ -715,6 +659,12 @@ function conversationStatItems(props: {
             />
           ),
           key: "cost",
+        }
+      : undefined,
+    childAgentTotals
+      ? {
+          content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
+          key: "subagents",
         }
       : undefined,
   ];

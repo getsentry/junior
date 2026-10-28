@@ -223,7 +223,7 @@ describe("createWebSearchTool", () => {
     globalThis.AbortController = class extends originalAC {
       constructor() {
         super();
-        return (brokenController as AbortController);
+        return brokenController as AbortController;
       }
     } as typeof AbortController;
 

@@ -10,13 +10,17 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationAggregateColumns } from "./aggregate";
+import {
+  readConversationMetricBuckets,
+  type ConversationMetricBucket,
+} from "./metric-buckets";
 import type {
   ConversationMetricDay,
   ConversationStatsItem,
   ConversationStatsReport,
   GuardianMetricDay,
   GuardianStats,
-} from "../schema/conversation";
+} from "../schema/conversation-stats";
 import {
   WINDOW_SEVEN_DAY_HOURS,
   sumUtcHoursIntoSixHours,
@@ -98,6 +102,7 @@ function locationLabel(row: {
 type AggregateRow = {
   active: number;
   cachedInputTokens: number | null;
+  cacheCreationTokens: number | null;
   conversations: number;
   costUsd: number | null;
   durationMs: number;
@@ -155,6 +160,7 @@ const WINDOW_HOURS = WINDOW_SEVEN_DAY_HOURS;
 
 type MetricRow = {
   cachedInputTokens: number | null;
+  cacheCreationTokens: number | null;
   conversations: number;
   costUsd: number | null;
   date: string;
@@ -162,6 +168,53 @@ type MetricRow = {
   inputTokens: number | null;
   tokens: number | null;
 };
+
+function applyMetricBuckets(
+  rows: Array<Pick<MetricRow, "conversations" | "date">>,
+  metrics: ConversationMetricBucket[],
+): MetricRow[] {
+  const byDate = new Map<string, MetricRow>(
+    rows.map((row) => [
+      row.date,
+      {
+        ...row,
+        cachedInputTokens: null,
+        cacheCreationTokens: null,
+        costUsd: null,
+        durationMs: 0,
+        inputTokens: null,
+        tokens: null,
+      },
+    ]),
+  );
+  for (const metric of metrics) {
+    const row = byDate.get(metric.date) ?? {
+      cachedInputTokens: null,
+      cacheCreationTokens: null,
+      conversations: 0,
+      costUsd: null,
+      date: metric.date,
+      durationMs: 0,
+      inputTokens: null,
+      tokens: null,
+    };
+    if (metric.metric === "cached_input_tokens") {
+      row.cachedInputTokens = metric.value;
+    } else if (metric.metric === "cache_creation_tokens") {
+      row.cacheCreationTokens = metric.value;
+    } else if (metric.metric === "cost_usd") {
+      row.costUsd = metric.value;
+    } else if (metric.metric === "duration_ms") {
+      row.durationMs = metric.value;
+    } else if (metric.metric === "input_tokens") {
+      row.inputTokens = metric.value;
+    } else if (metric.metric === "total_tokens") {
+      row.tokens = metric.value;
+    }
+    byDate.set(metric.date, row);
+  }
+  return [...byDate.values()];
+}
 
 type GuardianRow = {
   allow: number;
@@ -172,12 +225,12 @@ type GuardianRow = {
   requests: number;
 };
 
-
 function metricPoint(
   date: string,
   row:
     | {
         cachedInputTokens?: number | null;
+        cacheCreationTokens?: number | null;
         conversations?: number;
         costUsd?: number | null;
         durationMs?: number;
@@ -192,6 +245,10 @@ function metricPoint(
     durationMs: row?.durationMs ?? 0,
     ...(row?.cachedInputTokens !== null && row?.cachedInputTokens !== undefined
       ? { cachedInputTokens: row.cachedInputTokens }
+      : undefined),
+    ...(row?.cacheCreationTokens !== null &&
+    row?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: row.cacheCreationTokens }
       : undefined),
     ...(row?.costUsd !== null && row?.costUsd !== undefined
       ? { costUsd: addUsd(undefined, row.costUsd) }
@@ -223,7 +280,6 @@ function metricDays(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
   return days;
 }
 
-
 function emptyMetricDay(date: string): ConversationMetricDay {
   return { conversations: 0, date, durationMs: 0 };
 }
@@ -254,8 +310,10 @@ function sumGuardianHoursIntoSixHours(
   });
 }
 
-
-function metricHours(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
+function metricHours(
+  rows: MetricRow[],
+  endMs: number,
+): ConversationMetricDay[] {
   const byHour = new Map(rows.map((row) => [row.date, row]));
   const end = startOfUtcHour(endMs);
   const start = new Date(end.getTime() - (WINDOW_HOURS - 1) * HOUR_MS);
@@ -362,6 +420,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     locationRows,
     metricRows,
     metricHourRows,
+    dayMetrics,
+    hourMetrics,
   ] = await Promise.all([
     db
       .select(treeAggregateColumns)
@@ -439,13 +499,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       ),
     db
       .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
         conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
         date: activityDate,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
       .innerJoin(
@@ -459,13 +514,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       .groupBy(activityDate),
     db
       .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
         conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
         date: activityHour,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
       .innerJoin(
@@ -477,12 +527,14 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       )
       .where(where)
       .groupBy(activityHour),
+    readConversationMetricBuckets(db, { bucket: "day", start, end }),
+    readConversationMetricBuckets(db, { bucket: "hour", start, end }),
   ]);
   return {
     actorRows,
     locationRows,
-    metricHourRows,
-    metricRows,
+    metricHourRows: applyMetricBuckets(metricHourRows, hourMetrics),
+    metricRows: applyMetricBuckets(metricRows, dayMetrics),
     totals: totalsRows[0],
   };
 }
@@ -560,6 +612,10 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     ...(totals?.cachedInputTokens !== null &&
     totals?.cachedInputTokens !== undefined
       ? { cachedInputTokens: totals.cachedInputTokens }
+      : undefined),
+    ...(totals?.cacheCreationTokens !== null &&
+    totals?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: totals.cacheCreationTokens }
       : undefined),
     conversations: totals?.conversations ?? 0,
     durationMs: totals?.durationMs ?? 0,

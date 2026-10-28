@@ -119,10 +119,10 @@ export const webSourceSchema = z
   })
   .strict();
 
-/** Runtime-owned Resource event input Source. */
-export const resourceEventSourceSchema = z
+/** Runtime-owned Event input Source. */
+export const eventSourceSchema = z
   .object({
-    kind: z.literal("resource_event"),
+    kind: z.literal("event"),
     eventKey: exactNonBlankStringSchema,
     eventType: exactNonBlankStringSchema,
     identifier: exactNonBlankStringSchema,
@@ -130,14 +130,26 @@ export const resourceEventSourceSchema = z
   })
   .strict();
 
-/** Runtime-owned Scheduled task input Source. */
-export const scheduledTaskSourceSchema = z
-  .object({ kind: z.literal("scheduled_task") })
+// Stored automation Sources from before these fields existed omit them.
+const automationSourceFields = {
+  automationId: exactNonBlankStringSchema.optional(),
+  automationRunId: exactNonBlankStringSchema.optional(),
+};
+
+/** Runtime-owned Scheduled automation input Source. */
+export const scheduledAutomationSourceSchema = z
+  .object({
+    kind: z.literal("scheduled_automation"),
+    ...automationSourceFields,
+  })
   .strict();
 
-/** Runtime-owned Event task input Source. */
-export const eventTaskSourceSchema = z
-  .object({ kind: z.literal("event_task") })
+/** Runtime-owned Event automation input Source. */
+export const eventAutomationSourceSchema = z
+  .object({
+    kind: z.literal("event_automation"),
+    ...automationSourceFields,
+  })
   .strict();
 
 /** Runtime-owned Plugin dispatch input Source. */
@@ -154,9 +166,9 @@ const currentSourceSchema = z.discriminatedUnion("kind", [
   slackSourceSchema,
   localSourceSchema,
   webSourceSchema,
-  resourceEventSourceSchema,
-  scheduledTaskSourceSchema,
-  eventTaskSourceSchema,
+  eventSourceSchema,
+  scheduledAutomationSourceSchema,
+  eventAutomationSourceSchema,
   pluginDispatchSourceSchema,
   agentInvocationSourceSchema,
 ]);
@@ -166,8 +178,15 @@ function normalizeStoredSource(value: unknown): unknown {
     return value;
   }
   const source = value as Record<string, unknown>;
-  if ("kind" in source || !("platform" in source)) {
-    return value;
+  if ("kind" in source) {
+    const legacyKinds: Record<string, string> = {
+      event_task: "event_automation",
+      resource_event: "event",
+      scheduled_task: "scheduled_automation",
+    };
+    const kind =
+      typeof source.kind === "string" ? legacyKinds[source.kind] : undefined;
+    return kind ? { ...source, kind } : value;
   }
   if (
     source.platform !== "slack" &&
@@ -203,7 +222,7 @@ export const pluginCredentialSubjectSchema = z.discriminatedUnion(
       .object({
         type: z.literal("user"),
         userId: exactActorUserIdSchema,
-        allowedWhen: z.literal("scheduled-task"),
+        allowedWhen: z.literal("scheduled-automation"),
         taskId: exactNonBlankStringSchema,
       })
       .strict(),
@@ -276,6 +295,8 @@ export const userSchema = z
     email: nonBlankStringSchema.max(320),
     id: exactNonBlankStringSchema,
     identities: z.array(identitySchema).max(100),
+    /** True only for Junior admins. Missing means not an admin. */
+    isAdmin: z.literal(true).optional(),
   })
   .strict();
 

@@ -8,10 +8,9 @@ import { SystemNavigation } from "./SystemNavigation";
 /** Place the shared secondary navigation above one System page. */
 export function SystemPageLayout(props: { children: ReactNode }) {
   return (
-    <>
-      <SystemNavigation />
+    <SystemNavigation>
       <PageLayout>{props.children}</PageLayout>
-    </>
+    </SystemNavigation>
   );
 }
 
@@ -23,9 +22,8 @@ export function SystemRouteLoading(props: {
   variant?: PageContentSkeletonVariant;
 }) {
   return (
-    <>
-      <SystemNavigation />
+    <SystemNavigation>
       <PageRouteLoading {...props} />
-    </>
+    </SystemNavigation>
   );
 }

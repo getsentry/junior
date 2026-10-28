@@ -1,11 +1,13 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  juniorCodeChanges,
+  juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -13,21 +15,25 @@ import {
 } from "@/db/schema";
 import { conversationReadColumns } from "@/db/schema/conversations";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
   conversationArchivedForEmail,
   conversationArchivedForUser,
   conversationArchiveTimes,
-  conversationHasParticipantEmail,
   conversationHasParticipantUser,
+  conversationIsMemberRoot,
   conversationNotArchivedForEmail,
   conversationNotArchivedForUser,
   viewerConversationMembership,
 } from "./membership";
 import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
-import { readRootConversationMetricsFromSql } from "./usage";
+import {
+  childAgentTotalsReport,
+  readConversationTreeMetricsFromSql,
+} from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
@@ -35,12 +41,10 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
+import { attachActivityPreviewMentions } from "./mentions";
+import { readConversationParticipants } from "./participants";
 
 const CONVERSATION_FEED_LIMIT = 50;
-// Archived conversations stay in the default feed for this long after
-// archiving, so the sidebar's undo affordance works without a search. Search
-// still finds older archived conversations regardless of this window.
-const RECENT_ARCHIVE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type ConversationFeedMembership =
   | { kind: "viewer"; userId: string }
@@ -49,38 +53,56 @@ type ConversationFeedMembership =
 function conversationFeedMembershipFilter(
   status: "active" | "archived" | "all",
   filter: ConversationFeedMembership | undefined,
-  archivedAfter: Date,
 ): SQL | undefined {
   if (!filter) return status === "archived" ? sql`false` : undefined;
   if (filter.kind === "viewer") {
     return and(
-      viewerConversationMembership({
-        actorMatch: eq(juniorIdentities.userId, filter.userId),
-        participantMatch: conversationHasParticipantUser(filter.userId),
-      }),
+      conversationIsMemberRoot({ userId: filter.userId }),
       status === "archived"
         ? conversationArchivedForUser(filter.userId)
         : status === "all"
           ? undefined
-          : or(
-              conversationNotArchivedForUser(filter.userId),
-              conversationArchivedForUser(filter.userId, archivedAfter),
-            ),
+          : conversationNotArchivedForUser(filter.userId),
     );
   }
   return and(
-    viewerConversationMembership({
-      actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
-      participantMatch: conversationHasParticipantEmail(filter.email),
-    }),
+    conversationIsMemberRoot({ email: filter.email }),
     status === "archived"
       ? conversationArchivedForEmail(filter.email)
       : status === "all"
         ? undefined
-        : or(
-            conversationNotArchivedForEmail(filter.email),
-            conversationArchivedForEmail(filter.email, archivedAfter),
-          ),
+        : conversationNotArchivedForEmail(filter.email),
+  );
+}
+
+/**
+ * Keep root conversations linked to one code repository. A code change can
+ * link a child conversation, so linked ids resolve to their root. Private
+ * roots stay visible only to their members.
+ */
+function conversationCodeRepositoryFilter(
+  repositoryId: string,
+  viewerUserId: string | undefined,
+): SQL | undefined {
+  return and(
+    sql<boolean>`${juniorConversations.conversationId} IN (
+      SELECT coalesce(linked.root_conversation_id, linked.conversation_id)
+      FROM ${juniorConversations} AS linked
+      WHERE linked.conversation_id IN (
+        SELECT unnest(${juniorCodeChanges.conversationIds})
+        FROM ${juniorCodeChanges}
+        WHERE ${juniorCodeChanges.repositoryId} = ${repositoryId}
+      )
+    )`,
+    or(
+      eq(juniorDestinations.visibility, "public"),
+      viewerUserId
+        ? viewerConversationMembership({
+            actorMatch: eq(juniorIdentities.userId, viewerUserId),
+            participantMatch: conversationHasParticipantUser(viewerUserId),
+          })
+        : undefined,
+    ),
   );
 }
 
@@ -89,8 +111,9 @@ async function conversationRows(
   limit: number,
   status: "active" | "archived" | "all",
   filter: ConversationFeedMembership | undefined,
-  archivedAfter: Date,
   query?: string,
+  includePrivateBriefs = false,
+  codeRepository?: { id: string; viewerUserId?: string },
 ) {
   return db
     .select({
@@ -117,11 +140,30 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        conversationFeedMembershipFilter(status, filter, archivedAfter),
-        // TODO(dcramer): Search only matches conversation titles today. Expand
-        // to transcripts and semantic search once title search ships.
+        conversationFeedMembershipFilter(status, filter),
+        codeRepository
+          ? conversationCodeRepositoryFilter(
+              codeRepository.id,
+              codeRepository.viewerUserId,
+            )
+          : undefined,
         query
-          ? sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`
+          ? or(
+              sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
+              sql<boolean>`exists (
+                select 1
+                from ${juniorConversationBriefs}
+                where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
+                  and ${includePrivateBriefs ? sql`true` : eq(juniorDestinations.visibility, "public")}
+                  and ${juniorConversationBriefs.version} = (
+                    select max(${juniorConversationBriefs.version})
+                    from ${juniorConversationBriefs}
+                    where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
+                  )
+                  and to_tsvector('english', ${juniorConversationBriefs.searchText})
+                    @@ websearch_to_tsquery('english', ${query})
+              )`,
+            )
           : undefined,
       ),
     )
@@ -271,10 +313,15 @@ function conversationFeedFilter(options: {
  * Build a bounded dashboard feed. Prefer the viewer user when present; otherwise
  * keep only roots linked to actorEmail before applying the limit. Membership is
  * root-actor ownership or a materialized participant row for that person.
+ *
+ * `codeRepositoryId` replaces membership with every root linked to that
+ * repository's code changes. Private roots appear only for their members, and
+ * per-person archive state does not hide rows.
  */
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
+    codeRepositoryId?: string;
     limit?: number;
     q?: string;
     status?: "active" | "archived";
@@ -283,15 +330,23 @@ export async function readConversationFeedFromSql(
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
   const db = getDb();
-  const filter = conversationFeedFilter(options);
+  const filter = options.codeRepositoryId
+    ? undefined
+    : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
-    query ? "all" : (options.status ?? "active"),
+    query || options.codeRepositoryId ? "all" : (options.status ?? "active"),
     filter,
-    new Date(nowMs - RECENT_ARCHIVE_WINDOW_MS),
     query,
+    filter?.kind === "viewer",
+    options.codeRepositoryId
+      ? {
+          id: options.codeRepositoryId,
+          ...(options.viewer ? { viewerUserId: options.viewer.id } : undefined),
+        }
+      : undefined,
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
@@ -303,10 +358,12 @@ export async function readConversationFeedFromSql(
     annotationsByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
+    participantsByConversation,
     teamDomainByTeamId,
     conversationWork,
     lastUserMessageAtByConversation,
     activityPreviewByConversation,
+    automationTitleByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationArchiveTimes(
@@ -319,10 +376,9 @@ export async function readConversationFeedFromSql(
           : undefined,
     ),
     listConversationAnnotationsById(db, conversationIds),
-    readConversationAuxiliaryCostsFromSql(db, conversationIds, {
-      includeDescendants: true,
-    }),
-    readRootConversationMetricsFromSql(db, conversationIds),
+    readConversationAuxiliaryCostsFromSql(db, conversationIds),
+    readConversationTreeMetricsFromSql(db, conversationIds),
+    readConversationParticipants(db, conversationIds),
     resolveSlackTeamDomains(
       conversations.flatMap((conversation) =>
         conversation.location?.provider === "slack"
@@ -333,7 +389,17 @@ export async function readConversationFeedFromSql(
     listConversationWork(conversationIds),
     readLastUserMessageAtByConversation(db, conversationIds),
     readConversationActivityPreviews(db, conversationIds),
+    readAutomationTitlesByConversationId(conversations),
   ]);
+  const visibleActivityPreviews = await attachActivityPreviewMentions(
+    getSqlExecutor(),
+    new Map(
+      [...activityPreviewByConversation].filter(
+        ([conversationId]) =>
+          accessByConversation.get(conversationId)?.canViewPrivateContent,
+      ),
+    ),
+  );
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
       conversationId,
@@ -354,14 +420,22 @@ export async function readConversationFeedFromSql(
       const row = rows[index]!;
       const access = accessByConversation.get(conversation.conversationId);
       const metrics = metricsByRoot.get(conversation.conversationId);
+      const auxiliaryCosts = auxiliaryCostsByRoot.get(
+        conversation.conversationId,
+      );
+      const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const archivedAtMs = archiveTimesByConversation.get(
         conversation.conversationId,
       );
       const summary = conversationSummaryFromStoredConversation({
         ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
+        automationTitle: automationTitleByConversation.get(
+          conversation.conversationId,
+        ),
         conversation,
         access,
-        auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
+        auxiliaryCosts: auxiliaryCosts?.total,
+        ...(childAgentTotals ? { childAgentTotals } : undefined),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
         teamDomainByTeamId,
         ...(row.location?.visibility === "public"
@@ -386,12 +460,18 @@ export async function readConversationFeedFromSql(
       const annotations = access?.canViewPrivateContent
         ? (annotationsByConversation.get(conversation.conversationId) ?? [])
         : [];
-      const activityPreview = access?.canViewPrivateContent
-        ? activityPreviewByConversation.get(conversation.conversationId)
+      const activityPreview = visibleActivityPreviews.get(
+        conversation.conversationId,
+      );
+      const participants = access?.canViewPrivateContent
+        ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       return {
         ...summary,
         ...work,
+        ...(participants && participants.length > 0
+          ? { participants }
+          : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
@@ -424,6 +504,7 @@ export async function readConversationFeedFromSql(
 export async function readConversationFeed(
   options: {
     actorEmail?: string;
+    codeRepositoryId?: string;
     q?: string;
     status?: "active" | "archived";
     viewer?: User;

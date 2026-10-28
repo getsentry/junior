@@ -20,7 +20,7 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
@@ -394,42 +394,38 @@ describe("Slack conversation work execution", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("routes edited Slack mentions through the durable mailbox", async () => {
+  it("does not route edited Slack messages", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
-    const slackAdapter = createSlackAdapterFixture();
-    const editedTs = "1712345.0003";
-    const editedText = `<@${SLACK_BOT_USER_ID}> edited ask`;
 
     const response = await handleSlackWebhookAndFlush({
       request: slackWebhookRequest({
         ...slackEnvelope({
           eventType: "message",
           text: "edited ask",
-          ts: editedTs,
+          ts: "1712345.0003",
         }),
         event: {
           type: "message",
           subtype: "message_changed",
           channel: "C123",
-          hidden: true,
           message: {
             type: "message",
             user: "U123",
-            text: editedText,
-            ts: editedTs,
+            text: `<@${SLACK_BOT_USER_ID}> edited ask`,
+            ts: "1712345.0003",
           },
           previous_message: {
             type: "message",
             user: "U123",
             text: "edited ask",
-            ts: editedTs,
+            ts: "1712345.0003",
           },
         },
       }),
       services: {
-        getSlackAdapter: () => slackAdapter,
+        getSlackAdapter: createSlackAdapterFixture,
         queue,
         runtime: createNoopSlackWebhookRuntime(),
         state,
@@ -437,36 +433,7 @@ describe("Slack conversation work execution", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(queue.sentRecords()).toEqual([
-      expect.objectContaining({
-        conversationId: `slack:C123:${editedTs}`,
-        idempotencyKey: `slack:T123:slack:C123:${editedTs}:${editedTs}:message_changed_mention`,
-      }),
-    ]);
-
-    const calls: Array<{ message: Message; thread: Thread }> = [];
-    await expect(
-      processNextQueuedSlackWork({
-        getSlackAdapter: () => slackAdapter,
-        queue,
-        runtime: {
-          handleNewMention: async (thread, message, hooks) => {
-            await hooks.ack?.();
-            calls.push({ thread, message });
-          },
-          handleSubscribedMessage: async () => {
-            throw new Error("unexpected subscribed route");
-          },
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.thread.id).toBe(`slack:C123:${editedTs}`);
-    expect(calls[0]?.message.id).toBe(`${editedTs}:message_changed_mention`);
-    expect(calls[0]?.message.text).toBe(editedText);
-    expect(calls[0]?.message.isMention).toBe(true);
+    expect(queue.sentRecords()).toEqual([]);
   });
 
   it("runs queued Slack mailbox work through the Slack runtime", async () => {
@@ -912,7 +879,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("leaves resource events deferred during an active turn", async () => {
+  it("leaves events deferred during an active turn", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     const state = getStateAdapter();
@@ -939,7 +906,7 @@ describe("Slack conversation work execution", () => {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
         await appendInboundMessage({
-          message: createResourceEventInboundMessage({
+          message: createEventInboundMessage({
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
@@ -963,7 +930,7 @@ describe("Slack conversation work execution", () => {
         currentNowMs = 2_001;
       },
       handleSubscribedMessage: async () => {
-        throw new Error("resource event should remain queued for follow-up");
+        throw new Error("event should remain queued for follow-up");
       },
     };
 
@@ -986,7 +953,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.execution.pendingMessages).toEqual([
       expect.objectContaining({
         delivery: "defer",
-        source: "resource_event",
+        source: "event",
       }),
     ]);
   });
@@ -1847,7 +1814,6 @@ describe("Slack conversation work execution", () => {
       services: {
         agentRunner: {
           run: async (request) => {
-            const _text = request.instruction.text;
             const context = request;
 
             await context?.durability?.onInputCommitted?.();

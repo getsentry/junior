@@ -1,4 +1,8 @@
-import type { PluginManifest } from "./types";
+import type {
+  PluginAccountsConfig,
+  PluginManifest,
+  PluginMcpConfig,
+} from "./types";
 
 type ManifestSource = Record<string, unknown>;
 
@@ -54,6 +58,40 @@ function inlineCredentialsSource(
   return result;
 }
 
+/** Convert a camelCase `mcp.auth` block to its plugin.yaml source keys. */
+export function mcpAuthSource(
+  auth: NonNullable<PluginMcpConfig["auth"]>,
+): ManifestSource {
+  return {
+    issuer: auth.issuer,
+    "key-id": auth.keyId,
+    "private-key-env": auth.privateKeyEnv,
+  };
+}
+
+/** Convert a camelCase `mcp.oauthClient` block to its plugin.yaml source keys. */
+export function mcpOauthClientSource(
+  oauthClient: NonNullable<PluginMcpConfig["oauthClient"]>,
+): ManifestSource {
+  const result: ManifestSource = {
+    "client-id-env": oauthClient.clientIdEnv,
+    "client-secret-env": oauthClient.clientSecretEnv,
+  };
+  setDefined(result, "scope", oauthClient.scope);
+  setDefined(result, "authorize-params", oauthClient.authorizeParams);
+  return result;
+}
+
+/** Convert a camelCase `accounts` block to its plugin.yaml source keys. */
+export function accountsSource(
+  accounts: Partial<Record<keyof PluginAccountsConfig, unknown>>,
+): ManifestSource {
+  const result: ManifestSource = {};
+  setDefined(result, "user-oauth", accounts.userOAuth);
+  setDefined(result, "service-account", accounts.serviceAccount);
+  return result;
+}
+
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   if (mcp === undefined || !isRecord(mcp)) {
     return mcp;
@@ -63,6 +101,12 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   setDefined(result, "transport", mcp.transport);
   setDefined(result, "url", mcp.url);
   setDefined(result, "headers", mcp.headers);
+  setDefined(result, "auth", mcp.auth && mcpAuthSource(mcp.auth));
+  setDefined(
+    result,
+    "oauth-client",
+    mcp.oauthClient && mcpOauthClientSource(mcp.oauthClient),
+  );
   setDefined(result, "allowed-tools", mcp.allowedTools);
   setDefined(result, "wrapped-tools", mcp.wrappedTools);
   return result;
@@ -134,6 +178,11 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "runtime-postinstall", manifest.runtimePostinstall);
   setDefined(result, "mcp", inlineMcpSource(manifest.mcp));
   setDefined(result, "oauth", inlineOauthSource(manifest.oauth));
+  setDefined(
+    result,
+    "accounts",
+    manifest.accounts && accountsSource(manifest.accounts),
+  );
   setDefined(
     result,
     "target",

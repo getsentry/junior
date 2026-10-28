@@ -92,12 +92,12 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
       <LocationActivityChart days={detail.activityDays} />
 
       <Card>
-        <div className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-4">
-          <span className="grid size-9 place-items-center rounded border border-cyan-400/15 bg-cyan-400/[0.06] text-cyan-300">
+        <div className="flex items-center gap-3 border-b border-dashboard-border-subtle px-4 py-4">
+          <span className="grid size-9 place-items-center rounded-md border border-dashboard-accent/15 bg-dashboard-accent/[0.06] text-dashboard-accent">
             <MapPin aria-hidden="true" size={16} />
           </span>
           <div>
-            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+            <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
               People seen here
             </h3>
             <p className="mt-1 mb-0 font-mono text-xs text-dashboard-text-muted">
@@ -127,7 +127,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
                 </>
               );
               const className =
-                "min-w-0 border-b border-r border-white/[0.055] px-4 py-3.5 transition-colors hover:bg-white/[0.03]";
+                "min-w-0 border-b border-r border-dashboard-border-subtle px-4 py-3.5 transition-colors hover:bg-dashboard-fill-soft";
               return item.actor.email ? (
                 <Link
                   className={`${className} text-inherit no-underline`}

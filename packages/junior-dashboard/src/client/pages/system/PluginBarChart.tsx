@@ -15,13 +15,25 @@ import { formatCostSummary } from "../../format";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
 
-const colors = ["#67e8f9", "#6ee7b7", "#fbbf24", "#fb7185", "#a78bfa"] as const;
+const colors = [
+  "var(--color-cyan-300)",
+  "var(--color-emerald-300)",
+  "var(--color-amber-400)",
+  "var(--color-rose-400)",
+  "var(--color-violet-400)",
+] as const;
 const toneColors = {
-  danger: "#fb7185",
-  good: "#6ee7b7",
-  neutral: "#67e8f9",
-  warning: "#fbbf24",
+  danger: "var(--color-rose-400)",
+  good: "var(--color-emerald-300)",
+  neutral: "var(--color-cyan-300)",
+  warning: "var(--color-amber-400)",
 } as const;
+
+function seriesColor(series: Widget["series"][number], index: number): string {
+  return series.tone
+    ? toneColors[series.tone]
+    : (colors[index % colors.length] ?? colors[0]);
+}
 
 /** Render a validated plugin-owned categorical bar chart. */
 export function PluginBarChart(props: {
@@ -53,10 +65,10 @@ export function PluginBarChart(props: {
   const zeroY = layout.top + (maximum / span) * layout.plotHeight;
 
   return (
-    <div className="overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel">
-      <div className="border-b border-white/[0.06] px-4 py-3">
+    <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel">
+      <div className="border-b border-dashboard-border-subtle px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h4 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+          <h4 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
             {widget.title}
           </h4>
         </div>
@@ -69,9 +81,7 @@ export function PluginBarChart(props: {
           <ChartLegend
             ariaLabel="Chart legend"
             items={widget.series.map((series, index) => ({
-              color: series.tone
-                ? toneColors[series.tone]
-                : colors[index % colors.length],
+              color: seriesColor(series, index),
               key: series.key,
               label: series.label,
             }))}
@@ -79,7 +89,7 @@ export function PluginBarChart(props: {
         ) : null}
       </div>
       {categories.length === 0 ? (
-        <p className="m-0 p-4 font-mono text-xs text-dashboard-text-muted">
+        <p className="m-0 p-4 font-sans text-xs text-dashboard-text-muted">
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (
@@ -93,7 +103,7 @@ export function PluginBarChart(props: {
             return (
               <g key={index}>
                 <line
-                  stroke="rgba(255,255,255,0.07)"
+                  stroke="var(--color-dashboard-border-subtle)"
                   strokeDasharray="3 5"
                   x1={layout.left}
                   x2={layout.width - layout.right}
@@ -122,11 +132,7 @@ export function PluginBarChart(props: {
                 >
                   <rect
                     aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
-                    fill={
-                      series.tone
-                        ? toneColors[series.tone]
-                        : colors[seriesIndex % colors.length]
-                    }
+                    fill={seriesColor(series, seriesIndex)}
                     height={renderedHeight}
                     opacity={value ? 0.82 : 0.1}
                     rx="1.5"
@@ -183,8 +189,6 @@ function visibleCategoryCount(
   if (range && availableRanges.includes(range)) return range;
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
 }
-
-
 
 function formatChartNumber(value: number): string {
   return String(Number(value.toPrecision(12)));

@@ -1,11 +1,15 @@
 import type {
+  PluginAccountsConfig,
   PluginMcpConfig,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
+  PluginServiceAccountConfig,
 } from "@sentry/junior-plugin-api";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
 export type {
+  PluginAccountsConfig,
+  PluginServiceAccountConfig,
   PluginNpmRuntimeDependency,
   PluginMcpConfig,
   PluginRuntimeDependency,
@@ -66,6 +70,7 @@ export interface PluginManifest {
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
   mcp?: PluginMcpConfig;
   oauth?: PluginOAuthConfig;
+  accounts?: PluginAccountsConfig;
   target?: {
     type: string;
     configKey: string;
@@ -124,10 +129,16 @@ export interface PluginManifestConfig {
     transport?: "http";
     url?: string;
     headers?: Record<string, string | null> | null;
+    auth?: PluginMcpConfig["auth"];
+    oauthClient?: PluginMcpConfig["oauthClient"];
     allowedTools?: string[] | null;
     wrappedTools?: string[] | null;
   } | null;
   oauth?: PluginOAuthConfigPatch | null;
+  accounts?: {
+    userOAuth?: boolean | null;
+    serviceAccount?: PluginServiceAccountConfig | null;
+  } | null;
   target?: {
     type?: string;
     configKey?: string;
@@ -154,6 +165,8 @@ export interface PluginDefinition {
 }
 
 export interface InlinePluginManifestDefinition {
+  /** Local manifest directory when the plugin does not come from a package. */
+  dir?: string;
   manifest: PluginManifest;
   packageName?: string;
 }

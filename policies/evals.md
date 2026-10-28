@@ -8,15 +8,24 @@ Suite policy:
 
 - **Integration** (`evals/integration/**`): full-runtime integration coverage
   that must never regress. Failures are hard pass/fail.
-- **Behavioral** (domain folders under `evals/` except `integration/` and
-  `guardian/`): agent behavior with bounded variability. CI gates on the
-  aggregate suite floor, not a single weak case.
+- **Behavioral** (domain folders under `evals/` except `integration/`,
+  `guardian/`, and `router/`): agent interpretation and reply quality. Rubrics
+  allow valid variations in wording and tool discovery, not broken behavior.
+  CI requires an 80% case pass rate; a failing case names a product gap and
+  stays visible without blocking the suite.
 - **Guardian** (`evals/guardian/**`): isolated decision snapshots with exact
   `allow` / `ask` / `deny` assertions. Failures are hard pass/fail.
+- **Router** (`evals/router/**`): isolated turn route snapshots with exact
+  model profile and reasoning level assertions. Failures are hard pass/fail.
 
 ## Policy
 
-- Keep prompts realistic. Do not script the user request to make the eval pass.
+- When a judge or rubric scores the outcome, the inputs and loaded history must
+  show real user behavior. Do not script the user request to make the eval
+  pass.
+- When a case only sets up state to assert a deterministic outcome, such as
+  turn routing, delivery, or stored effects, manufactured inputs are fine. Keep
+  them short, so each turn needs as few model calls as possible.
 - Assert behavior rules, not incidental wording or execution sequence.
 - Put never-break full-runtime integration coverage under `evals/integration/**`.
   Put agent-behavior measurement under behavioral domain folders.
@@ -29,8 +38,9 @@ Suite policy:
   See `agent-steering.md`.
 - Product prompt examples must be neutral examples that are not reused from eval
   scenarios.
-- Treat the normalized `vitest-evals` session as the canonical eval surface for
-  judges and assertions.
+- Tests on the agent test fixture assert on its call results: replies, tool
+  calls, reactions, and turn states. These come from Junior's reporting API and
+  the Slack mock.
 - Limit rubric-judge input to user-visible text from normalized user and
   assistant messages, in session order. Keep tool calls, artifacts, persistence,
   logs, traces, and runtime metadata out of rubric prompts.
@@ -42,14 +52,19 @@ Suite policy:
   multiple assertions behind helpers.
 - Use native `vitest-evals` harness support for ordered full-turn transcripts.
   Do not add repo-local event logs or sequencing layers to simulate them.
-- Use `toolCalls(result.session)` or other `vitest-evals` primitives when tool
-  or provider evidence is part of the behavior.
+- Use the tool calls of a call result when tool or provider evidence is part
+  of the behavior.
 - Use evals to prove model-facing choices such as whether the agent calls the
   right tool, target, and final-reply strategy. Do not use evals to prove fixed
   tool transport details such as Slack API payload fields or file upload
   serialization. Cover those in integration tests.
-- Do not invent parallel transcript, event-log, or tool-call schemas for eval
-  assertions. Improve the harness edge instead.
+- Do not invent transcript, event-log, or tool-call schemas in eval files.
+  Improve the fixture or harness edge instead.
+- A scenario controls three things: the agent config it instantiates, prior
+  turns preloaded through the runtime's own stores, and mocked third-party
+  APIs. Do not add harness knobs that write runtime state directly, script
+  the model, or replace a Junior-owned module. See
+  `packages/junior-evals/README.md`.
 - Keep eval replies within 60 seconds.
 - Use fixtures, mocks, or replay for external resources instead of raising
   timeouts.
@@ -60,3 +75,9 @@ Suite policy:
   are the behavior under test.
 - Shared vocabulary that is part of the product contract is allowed, but copied
   scenario phrases should be replaced with neutral prompt examples.
+- The harness may override a product wait time, such as the 30 seconds after
+  a watched event, so that an eval does not wait in real time. A core test
+  must cover the wait. This is the only case where the harness replaces a
+  value of a Junior-owned module.
+- Global setup may give the product the Sandbox snapshot ids of an earlier
+  run, so that a run does not build the snapshots again.

@@ -16,7 +16,7 @@ import {
   type LocalToolResult,
 } from "@/chat/local/runner";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { listResourceEventSubscriptions } from "@/chat/resource-events/store";
+import { listWatches } from "@/chat/events/store";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -64,6 +64,7 @@ describe("Workspace tools", () => {
         id: "11111111-1111-4111-8111-111111111111",
         name: "sentry",
         setupScript: "pnpm install",
+        vcpus: null,
         repos: [
           {
             provider: "github",
@@ -123,6 +124,7 @@ describe("Workspace tools", () => {
       const createInput = createTool.prepareArguments!({
         name: "relay",
         setup_script: "cargo fetch",
+        vcpus: 8,
         repos: [
           {
             provider: "github",
@@ -144,7 +146,7 @@ describe("Workspace tools", () => {
 
       expect(createTool.approvalMode).toBe("review");
       expect(createTool.describeProposal?.(createInput)).toBe(
-        "Create Workspace relay (1 repository; includes a setup script).",
+        "Create Workspace relay (1 repository; includes a setup script; 8 vCPUs).",
       );
       expect(updateTool.approvalMode).toBe("review");
       expect(updateTool.describeProposal?.(updateInput)).toBe(
@@ -158,6 +160,7 @@ describe("Workspace tools", () => {
         createTool.prepareArguments!({
           name: "relay",
           setup_script: null,
+          vcpus: null,
           repos: [
             {
               provider: "github",
@@ -261,6 +264,7 @@ describe("Workspace tools", () => {
                 id: expect.any(String),
                 name: "relay",
                 setup_script: "cargo fetch",
+                vcpus: 8,
                 repos: [
                   {
                     provider: "github",
@@ -273,6 +277,7 @@ describe("Workspace tools", () => {
                 id: workspace.id,
                 name: "sentry-web",
                 setup_script: "pnpm install",
+                vcpus: null,
                 repos: [
                   {
                     provider: "github",
@@ -319,6 +324,7 @@ describe("Workspace tools", () => {
         id: "11111111-1111-4111-8111-111111111111",
         name: "sentry",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [{ provider: "github", repo: "getsentry/sentry" }],
       };
@@ -394,6 +400,7 @@ describe("Workspace tools", () => {
         id: "33333333-3333-4333-8333-333333333333",
         name: "sentry-missing-snapshot",
         setupScript: "devenv sync",
+        vcpus: null,
         repos: [],
       };
       await getDb().insert(juniorWorkspaces).values({
@@ -433,9 +440,7 @@ describe("Workspace tools", () => {
         workspace: expect.objectContaining({ id: workspace.id }),
         sendAgain: true,
       });
-      await expect(
-        listResourceEventSubscriptions({ conversationId }),
-      ).resolves.toEqual([]);
+      await expect(listWatches({ conversationId })).resolves.toEqual([]);
     } finally {
       ensureSnapshot.mockRestore();
     }
@@ -447,6 +452,7 @@ describe("Workspace tools", () => {
       id: "44444444-4444-4444-8444-444444444444",
       name: "sentry-retry-snapshot",
       setupScript: "devenv sync",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -506,6 +512,7 @@ describe("Workspace tools", () => {
       id: "22222222-2222-4222-8222-222222222222",
       name: "sentry-building",
       setupScript: "devenv sync",
+      vcpus: null,
       snapshot: null,
       repos: [{ provider: "github", repo: "getsentry/sentry" }],
     };
@@ -552,7 +559,7 @@ describe("Workspace tools", () => {
     let subscribedBeforeSend = false;
     sendWorkspaceSnapshotJob.mockImplementationOnce(async () => {
       subscribedBeforeSend =
-        (await listResourceEventSubscriptions({ conversationId })).length === 1;
+        (await listWatches({ conversationId })).length === 1;
     });
 
     const tools = createWorkspaceTools(context);
@@ -563,10 +570,7 @@ describe("Workspace tools", () => {
       status: "building",
       subscription: {
         id: expect.any(String),
-        events: [
-          "workspace_snapshot.ready",
-          "workspace_snapshot.failed",
-        ],
+        events: ["workspace_snapshot.ready", "workspace_snapshot.failed"],
       },
     });
     expect(switchWorkspace).not.toHaveBeenCalled();
@@ -575,7 +579,7 @@ describe("Workspace tools", () => {
       workspaceId: workspace.id,
       profileHash: expect.any(String),
     });
-    const subscriptions = await listResourceEventSubscriptions({
+    const subscriptions = await listWatches({
       conversationId,
     });
     expect(subscriptions).toHaveLength(1);

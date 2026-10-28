@@ -14,18 +14,28 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
+import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
-import { createResourceEventTools } from "@/chat/tools/resource-events";
-import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
-import { createEventTaskTools } from "@/chat/tools/event-tasks";
-import { createScheduledTaskTools } from "@/chat/tools/scheduled-tasks";
+import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
+import { createEventTools } from "@/chat/tools/events";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { createEventAutomationTools } from "@/chat/tools/event-automations";
+import { createScheduledAutomationTools } from "@/chat/tools/scheduled-automations";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
+import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSendFilesTool } from "@/chat/slack/tools/send-files";
+import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
+import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createSlackCanvasEditTool } from "@/chat/slack/tools/canvas/edit";
@@ -38,12 +48,14 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
+import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -71,11 +83,15 @@ function createToolState(): ToolState {
 export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
-  includeLoadSkill?: boolean;
   pluginSandbox?: PluginSandbox;
 }
 
-/** Build the model-facing tool registry from runtime-owned context and capabilities. */
+/**
+ * Build the model-facing tool registry from runtime-owned context and capabilities.
+ *
+ * Choose tools from the Conversation, not from one Turn, so the cached tool
+ * list stays the same. Use `disableTools` when a Turn cannot use a tool.
+ */
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -88,17 +104,16 @@ export function createTools(
     ? resolveChannelCapabilities(slackContext.locationChannelId)
     : undefined;
   const canSendFilesToActiveConversation = Boolean(
-    slackContext && slackLocationCapabilities?.canSendFiles,
+    slackContext
+      ? slackLocationCapabilities?.canSendFiles
+      : context.attachmentStorage,
   );
-  const resourceEventCatalog = getResourceEventCatalog();
+  const eventCatalog = getEventCatalog();
   const tools: ToolRegistry = {
-    ...(options.includeLoadSkill === false
-      ? undefined
-      : {
-          loadSkill: createLoadSkillTool(availableSkills, {
-            onSkillLoaded: hooks.onSkillLoaded,
-          }),
-        }),
+    loadSkill: createLoadSkillTool(availableSkills, {
+      onSkillLoaded: hooks.onSkillLoaded,
+    }),
+    updatePlan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
     bash: createBashTool(),
@@ -115,12 +130,28 @@ export function createTools(
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
     }),
-    ...createResourceEventTools(context, resourceEventCatalog),
-    ...createEventTaskTools(context, resourceEventCatalog),
-    ...createScheduledTaskTools(context),
+    ...createEventTools(context, eventCatalog),
+    ...createEventAutomationTools(context, eventCatalog),
+    ...createScheduledAutomationTools(context),
     ...createWorkspaceTools(context),
+    ...createOperatorTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
+  if (context.conversationPrivacy === "public") {
+    tools.searchConversationBriefs = createSearchConversationBriefsTool(
+      slackContext
+        ? {
+            kind: "public_provider_tenant",
+            provider: "slack",
+            providerTenantId: slackContext.teamId,
+          }
+        : { kind: "public" },
+      context.conversationId,
+      slackContext
+        ? createSlackConversationBriefSearchPort(slackContext.teamId)
+        : undefined,
+    );
+  }
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(
       context.workspace,
@@ -136,11 +167,25 @@ export function createTools(
       {
         modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
+        sandbox: context.workspace,
       },
       hooks.toolOverrides?.imageGenerate,
     );
   }
   if (context.attachmentStorage) {
+    if (!slackContext) {
+      tools.sendFiles = createSendFilesTool(
+        state,
+        (input) => readSandboxFileUpload(context.workspace, input),
+        {
+          attachments: {
+            conversationId: context.conversationId,
+            db: getSqlExecutor(),
+            storage: context.attachmentStorage,
+          },
+        },
+      );
+    }
     tools.loadAttachment = createLoadAttachmentTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
@@ -164,7 +209,38 @@ export function createTools(
   }
 
   if (context.spawnAgent) {
-    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+    if (!context.spawnAgentProfiles) {
+      throw new Error("spawnAgent is missing its configured model profiles");
+    }
+    tools.spawnAgent = createSpawnAgentTool(
+      context.spawnAgent,
+      context.spawnAgentProfiles,
+    );
+    tools.stopAgent = createStopAgentTool(context.conversationId);
+  }
+
+  // A child agent that is too deep to start child agents can still list its
+  // parent and siblings.
+  if (context.spawnAgent || context.messageAgent) {
+    tools.listAgents = createListAgentsTool({
+      conversationId: context.conversationId,
+      parentConversationId: context.parentConversationId,
+    });
+  }
+
+  if (context.messageAgent) {
+    tools.messageAgent = createMessageAgentTool(context.messageAgent);
+  }
+
+  // A child agent reports to its parent, whatever input started this Turn.
+  if (context.parentConversationId) {
+    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
+  }
+
+  if (context.automation) {
+    tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
+      context.automation,
+    );
   }
 
   if (context.mcpToolManager) {
@@ -192,13 +268,19 @@ export function createTools(
           context.conversationId,
         );
     }
-    // Always register public search in Slack turns. Without an action token the
-    // tool stays visible and returns an honest interactive-turn limit.
-    if (context.source.kind === "slack") {
-      tools.slackPublicSearch = createSlackPublicSearchTool(
-        context.slackActionToken,
-      );
-    }
+    Object.assign(
+      tools,
+      disableTools(
+        {
+          slackPublicSearch: createSlackPublicSearchTool(
+            context.slackActionToken,
+          ),
+        },
+        context.slackActionToken
+          ? undefined
+          : "Slack gives a search token only for a new message or mention.",
+      ),
+    );
     const identityProviders = [
       "slack",
       ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
@@ -227,7 +309,7 @@ export function createTools(
     }
 
     if (locationCapabilities.canSendFiles) {
-      tools.sendFiles = createSendFilesTool(
+      tools.sendFiles = createSlackSendFilesTool(
         slackContext,
         state,
         (input) => readSandboxFileUpload(context.workspace, input),
@@ -246,13 +328,17 @@ export function createTools(
     tools.slackChannelListMessages =
       createSlackChannelListMessagesTool(slackContext);
 
-    if (
-      context.source.kind === "slack" &&
-      locationCapabilities.canAddReactions
-    ) {
-      tools.addReaction = createSlackMessageAddReactionTool(
-        slackContext,
-        state,
+    if (locationCapabilities.canAddReactions) {
+      Object.assign(
+        tools,
+        disableTools(
+          {
+            addReaction: createSlackMessageAddReactionTool(slackContext, state),
+          },
+          slackContext.messageTs
+            ? undefined
+            : "It needs a Slack message in this Turn to react to.",
+        ),
       );
     }
   }

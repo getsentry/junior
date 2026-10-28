@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
 import { applyCoreMigrations } from "../fixtures/conversation-sql-migrations";
-import { createEmptyJuniorSqlFixture } from "../fixtures/postgres/fixture";
+import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 
 const coreMigrations = readMigrationFiles({
   migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),

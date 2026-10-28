@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+
 import { GET as handlePluginOAuthCallback } from "@/handlers/oauth-callback";
 import { GET as handleMcpOAuthCallback } from "@/handlers/mcp-oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -46,9 +46,7 @@ function decodeProvider(value: string | undefined): string | undefined {
 }
 
 /** Start the loopback callback that completes OAuth in the local CLI process. */
-export async function startLocalOAuthCallbackServer(
-  agentRunner: AgentRunner,
-): Promise<LocalOAuthCallbackServer> {
+export async function startLocalOAuthCallbackServer(): Promise<LocalOAuthCallbackServer> {
   let pendingAuthorization: PendingAuthorization | undefined;
 
   const completeAuthorization = (
@@ -126,12 +124,8 @@ export async function startLocalOAuthCallbackServer(
     try {
       const request = new Request(requestUrl, { method: "GET" });
       const response = mcpMatch
-        ? await handleMcpOAuthCallback(request, provider, waitUntil, {
-            agentRunner,
-          })
-        : await handlePluginOAuthCallback(request, provider, waitUntil, {
-            agentRunner,
-          });
+        ? await handleMcpOAuthCallback(request, provider, waitUntil, {})
+        : await handlePluginOAuthCallback(request, provider, waitUntil, {});
       const body = Buffer.from(await response.arrayBuffer());
       await Promise.all(backgroundTasks);
       if (response.ok) {

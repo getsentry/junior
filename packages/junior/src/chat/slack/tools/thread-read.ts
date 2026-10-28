@@ -17,7 +17,7 @@ import {
   parseRequiredSlackTimestampParam,
   slackTimestampParam,
 } from "@/chat/slack/timestamp-param";
-import type { SlackChannelId } from "@/chat/slack/ids";
+import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackFileRef, SlackThreadReply } from "@/chat/slack/channel";
 import {
@@ -27,6 +27,7 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
+import { getConversationStore } from "@/chat/db";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
@@ -69,6 +70,15 @@ function sanitizeMessage(
     subtype: msg.subtype,
     bot_id: msg.bot_id,
     type: msg.type,
+    ...(msg.reactions?.length
+      ? {
+          reactions: msg.reactions.map((reaction) => ({
+            name: reaction.name,
+            count: reaction.count,
+            users: reaction.users,
+          })),
+        }
+      : undefined),
     ...(attachmentText ? { attachment_text: attachmentText } : undefined),
     ...(files.length
       ? {
@@ -112,6 +122,32 @@ function truncateMessages(
   return { messages: kept, omitted: messages.length - kept.length };
 }
 
+/**
+ * Find stored Conversations for a Slack thread.
+ *
+ * A thread that an automation run started is bound to the run's Conversation.
+ * Other threads use `slack:<channel>:<threadTs>`. Return both when both exist.
+ */
+async function findThreadConversationIds(args: {
+  channelId: SlackChannelId;
+  teamId: SlackTeamId;
+  threadTs: string;
+}): Promise<string[]> {
+  const store = getConversationStore();
+  const boundId = await store.getConversationIdByProviderConversation({
+    provider: "slack",
+    providerDestinationId: args.channelId,
+    providerTenantId: args.teamId,
+    providerConversationId: args.threadTs,
+  });
+  const threadId = `slack:${args.channelId}:${args.threadTs}`;
+  const ids = boundId ? [boundId] : [];
+  if (threadId !== boundId && (await store.get({ conversationId: threadId }))) {
+    ids.push(threadId);
+  }
+  return ids;
+}
+
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
 export function createSlackThreadReadTool(
   context: SlackToolContext,
@@ -119,7 +155,7 @@ export function createSlackThreadReadTool(
 ) {
   return zodTool({
     description:
-      "Read a Slack thread from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels.",
+      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `conversation_ids` when you took part in the thread; pass one to `searchConversationEvents`.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -127,17 +163,25 @@ export function createSlackThreadReadTool(
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      url: z.string().min(1).describe("Slack message archive URL.").optional(),
-      channel_id: slackChannelRefParam.optional(),
+      url: z
+        .string()
+        .min(1)
+        .describe("Slack message archive URL.")
+        .nullable()
+        .optional(),
+      channel_id: slackChannelRefParam.nullable().optional(),
       ts: slackTimestampParam(
         "Slack message timestamp. May be the thread root or any message in the thread.",
-      ).optional(),
+      )
+        .nullable()
+        .optional(),
       limit: z.coerce
         .number()
         .int()
         .min(1)
         .max(1000)
         .describe("Maximum number of thread messages to fetch.")
+        .nullable()
         .optional(),
       max_pages: z.coerce
         .number()
@@ -145,6 +189,7 @@ export function createSlackThreadReadTool(
         .min(1)
         .max(10)
         .describe("Maximum number of Slack API pages to traverse.")
+        .nullable()
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
@@ -197,7 +242,7 @@ export function createSlackThreadReadTool(
           channelId,
           threadTs: lookupTs,
           limit: limit ?? 1000,
-          maxPages: max_pages,
+          maxPages: max_pages ?? undefined,
         });
 
       let replies: SlackThreadReply[] | undefined;
@@ -287,6 +332,11 @@ export function createSlackThreadReadTool(
         sanitized,
         MAX_THREAD_READ_CHARS,
       );
+      const conversationIds = await findThreadConversationIds({
+        channelId,
+        teamId: context.teamId,
+        threadTs: resolvedThreadTs,
+      });
 
       return {
         channel_id: channelId,
@@ -294,6 +344,9 @@ export function createSlackThreadReadTool(
         ...(joined ? { joined_channel: true } : undefined),
         target_message_ts: messageTs,
         thread_ts: resolvedThreadTs,
+        ...(conversationIds.length > 0
+          ? { conversation_ids: conversationIds }
+          : undefined),
         count: messages.length,
         fetched_count: replies.length,
         truncated: omitted > 0,

@@ -13,7 +13,7 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior, but its Better Auth session only protects dashboard routes.
+Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior. Junior core owns its Better Auth session. The allowed Google domains also limit who can use Junior in Slack. See [Allowed domains](/reference/config-and-env/#allowed-domains).
 
 ## Install
 
@@ -25,16 +25,17 @@ pnpm add @sentry/junior-dashboard
 
 ## Configure the dashboard
 
-Pass `dashboard` to `createApp()`. Configure the Google Workspace domain that
-should be allowed to view the dashboard:
+Pass `dashboard` to `createApp()`. Dashboard sign-in requires at least one
+[allowed domain](/reference/config-and-env/#allowed-domains). The same list
+also gates who can use Junior in Slack:
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins";
 
 export default await createApp({
+  allowedDomains: ["example.com"],
   dashboard: {
-    allowedGoogleDomains: ["sentry.io"],
     trustedOrigins: ["https://<your-domain>"],
   },
   plugins,
@@ -52,7 +53,6 @@ export default defineConfig({
   modules: [
     juniorNitro({
       dashboard: {
-        allowedGoogleDomains: ["sentry.io"],
         trustedOrigins: ["https://<your-domain>"],
       },
       plugins: "./plugins",
@@ -68,72 +68,75 @@ You can also provide the same authorization policy through deployment environmen
 
 | Variable                           | Purpose                                                       |
 | ---------------------------------- | ------------------------------------------------------------- |
-| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`  | Comma-separated or JSON array of allowed Google domains.      |
-| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`  | Comma-separated or JSON array of explicit email allowlist.    |
+| `JUNIOR_ALLOWED_DOMAINS`           | Comma-separated or JSON array of allowed domains.             |
 | `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` | Comma-separated or JSON array of Better Auth trusted origins. |
 | `JUNIOR_DASHBOARD_AUTH_REQUIRED`   | Set to `false` only for explicit local dashboard auth bypass. |
 
 The dashboard package owns these routes:
 
-| Route                           | Purpose                                     |
-| ------------------------------- | ------------------------------------------- |
-| `/`                             | Personal conversation workspace.            |
-| `/conversations`                | Redirect to the personal workspace.         |
-| `/conversations/:conversation`  | Workspace with a selected transcript.       |
-| `/tasks`                        | Signed-in user's scheduled and event tasks. |
-| `/code`                         | Native code-change volume and cost summary. |
-| `/plugins/:plugin/:page/*`      | Core-rendered signed-in plugin page.        |
-| `/system`                       | Aggregate runtime and model metrics.        |
-| `/system/people`                | Actor activity directory.                   |
-| `/system/people/:email`         | Actor activity profile.                     |
-| `/system/locations`             | Public location activity directory.         |
-| `/system/locations/:location`   | Public location activity detail.            |
-| `/system/workspaces`            | Install-wide repository Workspace recipes.  |
-| `/system/plugins`               | Loaded plugin and skill inventory.          |
-| `/system/plugins/:plugin`       | Plugin details and operational reports.     |
-| `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.     |
-| `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.         |
-| `/auth/login`                   | Dashboard Google login starter.             |
-| `/api/auth/*`                   | Better Auth Google login and callbacks.     |
+| Route                           | Purpose                                           |
+| ------------------------------- | ------------------------------------------------- |
+| `/`                             | Personal conversation workspace.                  |
+| `/conversations`                | Redirect to the personal workspace.               |
+| `/conversations/:conversation`  | Workspace with a selected transcript.             |
+| `/automations`                  | Signed-in user's scheduled and event automations. |
+| `/code`                         | Native code-change volume and cost summary.       |
+| `/code/:repository/*`           | One repository's conversations and code changes.  |
+| `/plugins/:plugin/:page/*`      | Core-rendered signed-in plugin page.              |
+| `/system`                       | Aggregate runtime and model metrics.              |
+| `/system/people`                | Actor activity directory.                         |
+| `/system/people/:email`         | Actor activity profile.                           |
+| `/system/locations`             | Public location activity directory.               |
+| `/system/locations/:location`   | Public location activity detail.                  |
+| `/system/workspaces`            | Install-wide repository Workspace recipes.        |
+| `/system/plugins`               | Loaded plugin and skill inventory.                |
+| `/system/plugins/:plugin`       | Plugin details and operational reports.           |
+| `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.           |
+| `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.               |
+| `/auth/login`                   | Dashboard Google login starter.                   |
+| `/api/auth/*`                   | Better Auth Google login and callbacks.           |
 
 `/code` summarizes native Junior code-change records across repositories.
-Person profiles load the same person-scoped code stats under their Code
-section. Existing `/people/*` and `/locations/*` links redirect to their
+Each repository links to its own page. That page has Overview, Conversations,
+and Changes tabs. A conversation belongs to a repository when one of its code
+changes links the conversation. Person profiles load the same person-scoped
+code stats under their Code section. Existing `/people/*` and `/locations/*` links redirect to their
 corresponding System routes.
 
 `/health` remains the public minimal Junior runtime health response.
 
 The current authenticated product API slices are:
 
-| Endpoint                                  | Purpose                                                                                                     |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `/api/health`                             | Dashboard-safe health metadata.                                                                             |
-| `/api/runtime`                            | Runtime paths, providers, skills, and packages.                                                             |
-| `/api/plugins`                            | Loaded plugin list.                                                                                         |
-| `/api/plugins/:plugin/*`                  | Authenticated, namespaced API routes contributed by enabled plugins.                                        |
-| `/api/user-pages`                         | Safe navigation metadata for registered plugin pages.                                                       |
-| `/api/user-pages/:plugin/:page`           | Viewer-authorized metrics and records for one plugin page.                                                  |
-| `/api/tasks`                              | Viewer-owned scheduled and resource-event tasks.                                                            |
-| `/api/tasks/:kind/:task`                  | Deletes one viewer-owned scheduled or event task.                                                           |
-| `/api/skills`                             | Discovered skill list.                                                                                      |
-| `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization. |
-| `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                         |
-| `/api/code`                               | Native code-change overview across repositories.                                                            |
-| `/api/people`                             | Actor directory.                                                                                            |
-| `/api/people/:email`                      | Actor profile and recent conversation resources.                                                            |
-| `/api/people/:email/code`                 | Person-scoped native code-change summary for one profile.                                                   |
-| `/api/people/:email/plugin-reports`       | Person-scoped sanitized plugin operational summaries.                                                       |
-| `/api/locations`                          | Public location directory and generic private-activity totals.                                              |
-| `/api/locations/:location`                | Activity, actors, and recent conversations for one public location.                                         |
-| `/api/plugin-reports`                     | Sanitized plugin operational summaries.                                                                     |
-| `/api/conversations/:conversation`        | Conversation header metadata and expiring transcript; private transcripts are participant-authorized.       |
-| `/api/conversations/:conversation/events` | Earlier transcript event pages selected with a signed `before` cursor.                                      |
-| `/api/config`                             | Safe dashboard config signals and feature readiness.                                                        |
-| `/api/me`                                 | Signed-in dashboard identity.                                                                               |
+| Endpoint                                  | Purpose                                                                                                                                                                                               |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/health`                             | Dashboard-safe health metadata.                                                                                                                                                                       |
+| `/api/runtime`                            | Runtime paths, providers, skills, and packages.                                                                                                                                                       |
+| `/api/plugins`                            | Loaded plugin list.                                                                                                                                                                                   |
+| `/api/plugins/:plugin/*`                  | Authenticated, namespaced API routes contributed by enabled plugins.                                                                                                                                  |
+| `/api/user-pages`                         | Safe navigation metadata for registered plugin pages.                                                                                                                                                 |
+| `/api/user-pages/:plugin/:page`           | Viewer-authorized metrics and records for one plugin page.                                                                                                                                            |
+| `/api/automations`                        | Viewer-owned scheduled and event automations.                                                                                                                                                         |
+| `/api/automations/:id`                    | Deletes one viewer-owned scheduled or event automation.                                                                                                                                               |
+| `/api/skills`                             | Discovered skill list.                                                                                                                                                                                |
+| `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization; optional `codeRepositoryId` lists conversations linked to that repository's code changes. |
+| `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                                                                                                                   |
+| `/api/code`                               | Native code-change overview across repositories.                                                                                                                                                      |
+| `/api/code/repositories/:repository`      | One repository's code-change summary, recent changes, and Workspaces.                                                                                                                                 |
+| `/api/people`                             | Actor directory.                                                                                                                                                                                      |
+| `/api/people/:email`                      | Actor profile and recent conversation resources.                                                                                                                                                      |
+| `/api/people/:email/code`                 | Person-scoped native code-change summary for one profile.                                                                                                                                             |
+| `/api/people/:email/plugin-reports`       | Person-scoped sanitized plugin operational summaries.                                                                                                                                                 |
+| `/api/locations`                          | Public location directory and generic private-activity totals.                                                                                                                                        |
+| `/api/locations/:location`                | Activity, actors, and recent conversations for one public location.                                                                                                                                   |
+| `/api/plugin-reports`                     | Sanitized plugin operational summaries.                                                                                                                                                               |
+| `/api/conversations/:conversation`        | Conversation header metadata and expiring transcript; private transcripts are participant-authorized.                                                                                                 |
+| `/api/conversations/:conversation/events` | Earlier transcript event pages selected with a signed `before` cursor.                                                                                                                                |
+| `/api/config`                             | Safe dashboard config signals and feature readiness.                                                                                                                                                  |
+| `/api/me`                                 | Signed-in dashboard identity.                                                                                                                                                                         |
 
 For a private conversation, the transcript is available only when the signed-in verified email matches the owning root conversation actor's persisted verified email. Conversation summary resources report that match through `isParticipant`; event-page resources apply the same authorization decision through their projected events and `eventHistory`. Other viewers receive redacted metadata. Top-level conversation resources and System, People, and Location statistics include descendant duration and usage even when child resources are loaded separately. A directly requested child reports only its own metrics.
 
-The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/tasks` combines the signed-in user's scheduled and resource-event tasks. `/code` shows install-wide native code-change volume, merge rate, median merge time, and conversation cost. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/system` owns runtime metrics and the People, Locations, and Plugins reporting views. People and Locations remain separate pages under System so their directories and detail views stay focused. Person profiles include the same native code stats as `/code`, scoped to that actor. Each `/system/plugins/:plugin` page shows that plugin's details and any operational summaries the plugin still publishes. Plugins may also register signed-in pages in primary navigation or the profile menu; Junior owns their route, metrics, search, pagination, record inspection, and actions. System always remains the last primary navigation item. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/automations` combines the signed-in user's scheduled and event automations. `/code` shows install-wide native code-change volume, merge rate, median merge time, and conversation cost. `/conversations` redirects to the personal workspace instead of exposing a global conversation index. `/system` owns runtime metrics and the People, Locations, and Plugins reporting views. People and Locations remain separate pages under System so their directories and detail views stay focused. Person profiles include the same native code stats as `/code`, scoped to that actor. Each `/system/plugins/:plugin` page shows that plugin's details and any operational summaries the plugin still publishes. Plugins may also register signed-in pages in primary navigation or the profile menu; Junior owns their route, metrics, search, pagination, record inspection, and actions. System always remains the last primary navigation item. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 On desktop, the conversation sidebar and selected transcript scroll independently within the viewport. Mobile presents the list and selected conversation as separate navigable views.
 When dashboard auth is explicitly disabled for local or demo use, Junior uses `dev@example.com` as the verified local viewer. The workspace and API use that viewer for conversation access and writes.
 The conversation feed and detail are backed by durable SQL conversation and event records. Retention and purge settings determine when transcript data is removed. Conversation detail returns the latest 500 reporting events by default and a `previousCursor` when earlier events remain. The `limit` query parameter can select between 1 and 1,000 events. Cursors are signed for one conversation; consumers should treat them as opaque.

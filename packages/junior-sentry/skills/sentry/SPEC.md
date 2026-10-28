@@ -2,8 +2,8 @@
 
 ## Intent
 
-The Sentry skill helps agents investigate live Sentry telemetry and create explicitly requested alerts and monitors through the Sentry CLI using per-user credentials injected by Junior.
-It should produce useful investigation results, safe alerting mutations, or Sentry web links without exposing credentials.
+The Sentry skill helps agents investigate live Sentry telemetry and make explicitly requested project, team, and alerting changes through the Sentry CLI using per-user credentials injected by Junior.
+It should produce useful investigation results, safe configuration changes, or Sentry web links without exposing credentials.
 
 ## Scope
 
@@ -13,26 +13,27 @@ In scope:
 - Investigating Sentry's own product telemetry and product feature usage through Sentry CLI/API data surfaces.
 - Using `sentry api <endpoint>` for authenticated requests when no high-level command exists.
 - Creating explicitly requested metric alerts through `sentry alert metrics` after duplicate checks and dry-run validation, with API fallback only for unsupported alert behavior.
+- Other Sentry API writes the user asks for, such as creating projects, updating project settings, and managing teams, after target resolution, duplicate checks, and dry-run validation.
 - Generating Sentry deep links for user-scoped or entity-specific views.
 - Diagnosing auth, scope, and access failures without guessing missing scopes.
 
 Out of scope:
 
 - Repository, code search, commit, branch, and pull-request work.
-- Mutating Sentry data outside explicitly requested alert or monitor operations.
+- Sentry writes the user did not ask for.
 - Persisting, printing, or transforming Sentry credentials.
 
 ## Users And Trigger Context
 
 - Primary users: Junior users asking Slack or harness agents to investigate Sentry data.
-- Common user requests: "list my Sentry issues", "show error logs", "inspect this trace", "which orgs can I access", "open the issue in Sentry", "use Sentry telemetry", "create a metric alert", and "notify this channel when this monitor fires".
+- Common user requests: "list my Sentry issues", "show error logs", "inspect this trace", "which orgs can I access", "open the issue in Sentry", "use Sentry telemetry", "create a metric alert", "create a project for this service", "give team X access to project Y", "change this project setting", and "notify this channel when this monitor fires".
 - Should not trigger for: source-code tasks, GitHub PRs, repository searches, or generic questions about Sentry SDK implementation.
 
 ## Runtime Contract
 
 - Required first actions: classify the Sentry operation, resolve configured org/project when needed, and verify current CLI help before blocking on an unknown command.
-- Required outputs: concise findings, relevant Sentry URLs or deep links, created alerting resource URLs, and clear access/auth failure messages.
-- Non-negotiable constraints: do not print credentials; default to read-only commands; only perform explicitly requested alerting mutations; check duplicates and dry-run before writing; use canonical current CLI command groups; use `sentry api` before claiming a surface is unavailable.
+- Required outputs: concise findings, relevant Sentry URLs or deep links, changed resource URLs with before/after values, and clear access/auth failure messages.
+- Non-negotiable constraints: do not print credentials; default to read-only commands; write only when the user asks; read current state, check duplicates, and dry-run before writing; change only requested fields; verify after writing; use canonical current CLI command groups; use `sentry api` before claiming a surface is unavailable.
 - Expected bundled files loaded at runtime: `references/cli-commands.md`, `references/deep-link-patterns.md`, and `references/sandbox-runtime.md`.
 
 ## Current CLI Data
@@ -40,10 +41,11 @@ Out of scope:
 - Verified date: 2026-07-13.
 - Verified npm package: `sentry@0.38.0`, installed from the `runtimeDependencies` declared by `sentryPlugin()`.
 - Auth model: Junior injects `SENTRY_AUTH_TOKEN` for authenticated Sentry commands during the requesting user's turn.
-- Canonical command groups: `sentry issue`, `sentry org`, `sentry log`, `sentry trace`, `sentry alert metrics`, and `sentry api`.
+- Canonical command groups: `sentry issue`, `sentry org`, `sentry project`, `sentry team`, `sentry dsn`, `sentry log`, `sentry trace`, `sentry alert metrics`, `sentry schema`, and `sentry api`.
 - Required migration rule: prefer singular command groups such as `sentry org list`; do not teach stale plural command forms such as `sentry organizations list`.
 - Required fallback rule: use `sentry api <endpoint>` when no high-level CLI command covers the requested surface.
 - Alerting write rule: prefer `sentry alert metrics`; use the API fallback only when live CLI help confirms the requested behavior is unsupported.
+- Project and team write rule: use `sentry project create` for new projects; use `sentry api` for settings, project-team, and team writes after `sentry schema` confirms the endpoint.
 
 ## Source And Evidence Model
 
@@ -79,11 +81,13 @@ Data that must not be stored:
 ## Evaluation
 
 - Lightweight validation: run skill validation and grep for stale command forms after CLI updates.
-- Deeper evaluation: add Slack/harness evals for org listing, issue search, log search, trace lookup, API fallback, auth recovery, explicit alert creation, duplicate prevention, and refusal of unrelated mutations.
+- Deeper evaluation: add Slack/harness evals for org listing, issue search, log search, trace lookup, API fallback, auth recovery, explicit alert creation, explicit project creation and team assignment, duplicate prevention, and refusal of unrelated mutations.
 - Holdout examples: requests that mention "organizations list", "orgs", "logs for this trace", and "use the API".
-- Acceptance gates: command guidance matches latest CLI help, stale plural forms are not canonical, read-only fallback is available, alerting writes require explicit intent plus duplicate and dry-run checks, unrelated mutations remain blocked, and credential handling remains private.
+- Acceptance gates: command guidance matches latest CLI help, stale plural forms are not canonical, read-only fallback is available, writes require explicit intent plus duplicate and dry-run checks, unrelated mutations remain blocked, and credential handling remains private.
 
 ## Known Limitations
+
+- This skill does not decide which Sentry requests are allowed. OAuth scopes, the user's Sentry role, and host egress rules (when added) own that limit.
 
 - The skill depends on the runtime-installed npm `sentry` package, which may change independently of this repository.
 - The eval shim is intentionally narrow and is not a full Sentry CLI replacement.

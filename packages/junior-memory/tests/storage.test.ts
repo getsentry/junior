@@ -1,14 +1,6 @@
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import {
-  createLocalPgliteFixture,
-  pgliteBtreeGinExtension,
-  pgliteVectorExtension,
-  type LocalPgliteFixture,
-} from "@sentry/junior-testing/pglite";
-import {
-  createResourceEventSource,
+  createEventSource,
   createWebSource,
   createLocalSource,
   createSlackSource,
@@ -27,8 +19,10 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
+  conversationMemoryListResponseSchema,
   createMemoryApi,
   memoryApiSchema,
+  memoryCountsResponseSchema,
   memoryDashboardResponseSchema,
   memoryListResponseSchema,
 } from "../src/api";
@@ -37,9 +31,9 @@ import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
 import {
+  createMemoryArchiveTool,
   createMemoryCreateTool,
   createMemoryListTool,
-  createMemoryRemoveTool,
   createMemorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
@@ -49,11 +43,9 @@ import type {
   MemorySupersessionDecider,
   MemorySupersessionInput,
 } from "../src/store";
+import { createMemoryFixture, type MemoryFixture } from "./fixture";
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-type MemoryFixture = LocalPgliteFixture<MemoryDb>;
 
 const noopLogger: PluginLogger = {
   error() {},
@@ -177,26 +169,6 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
     stderr: stderr.join(""),
     stdout: stdout.join(""),
   };
-}
-
-async function createMemoryFixture(): Promise<MemoryFixture> {
-  const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema, {
-    extensions: {
-      btree_gin: pgliteBtreeGinExtension,
-      vector: pgliteVectorExtension,
-    },
-  });
-  const migrationsDir = resolve(__dirname, "../migrations");
-  const migrations = (await readdir(migrationsDir))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort();
-  for (const migrationFile of migrations) {
-    const migration = await readFile(resolve(migrationsDir, migrationFile), {
-      encoding: "utf8",
-    });
-    await fixture.execute(migration);
-  }
-  return fixture;
 }
 
 async function installViewerCoreTables(fixture: MemoryFixture): Promise<void> {
@@ -583,6 +555,7 @@ describe("memory plugin storage", () => {
             kind: "preference",
             canonicalFact: "Uses qa-structured-output in CLI QA.",
             expiresAtMs: null,
+            reason: null,
           },
         };
       },
@@ -599,7 +572,7 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(calls[0]?.schema).toBeDefined();
+    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
   it("normalizes recall selection to known unique candidate ids", async () => {
@@ -636,6 +609,7 @@ describe("memory plugin storage", () => {
       "Reject memories that merely share a company",
     );
     expect(calls[0]?.prompt).toContain("<candidate-memories>");
+    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
@@ -685,6 +659,38 @@ describe("memory plugin storage", () => {
     });
     expect(withoutEither.hooks?.userPrompt).toBeUndefined();
     expect(withoutEither.tasks?.processSession).toBeUndefined();
+  });
+
+  it("registers only read memory tools in child agent runs", () => {
+    const plugin = memoryPlugin();
+    const toolNames = (source: PluginTaskContext["source"]) =>
+      Object.keys(
+        plugin.hooks?.tools?.({
+          db: {},
+          model: {},
+          source,
+          users: {},
+        } as any) ?? {},
+      ).sort();
+
+    expect(toolNames({ kind: "agent_invocation" })).toEqual([
+      "listMemories",
+      "searchMemories",
+    ]);
+    expect(
+      toolNames(
+        createSlackSource({
+          channelId: "C123",
+          teamId: "T123",
+          visibility: "public",
+        }),
+      ),
+    ).toEqual([
+      "archiveMemory",
+      "createMemory",
+      "listMemories",
+      "searchMemories",
+    ]);
   });
 
   it("parses canonical actor extraction into stored memory text", async () => {
@@ -850,6 +856,9 @@ describe("memory plugin storage", () => {
         return {
           object: {
             decision: "reject",
+            kind: null,
+            canonicalFact: null,
+            expiresAtMs: null,
             reason: "not_public_shareable",
           },
         };
@@ -1006,8 +1015,8 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("does not extract Memory from Resource event Turns", async () => {
-    const actor = { platform: "system", name: "resource-event" } as const;
+  it("does not extract Memory from Event Turns", async () => {
+    const actor = { platform: "system", name: "event" } as const;
     await expect(
       processMemorySession(
         processSessionContext({
@@ -1018,7 +1027,7 @@ describe("memory plugin storage", () => {
                 actor,
                 actorUserId: undefined,
                 actors: [actor],
-                source: createResourceEventSource({
+                source: createEventSource({
                   eventKey: "event-1",
                   eventType: "issue.updated",
                   identifier: "PROJ-123",
@@ -1046,15 +1055,19 @@ describe("memory plugin storage", () => {
         kind: "preference",
         idempotencyKey: "memory-test:passive-supersession-old",
       });
+      const supersessionCalls: Parameters<PluginModel["completeObject"]>[0][] =
+        [];
       const model: PluginModel = {
         async completeObject(input) {
           if (
             typeof input.prompt === "string" &&
-            input.prompt.includes("<memory-preference-adjudication-input>")
+            input.prompt.includes("<memory-adjudication-input>")
           ) {
+            supersessionCalls.push(input);
             return {
               object: {
                 decision: "supersedes_old",
+                duplicateId: null,
                 supersededIds: [oldMemory.memory.id],
               },
             };
@@ -1096,6 +1109,11 @@ describe("memory plugin storage", () => {
           },
         }),
       );
+
+      expect(supersessionCalls).toHaveLength(1);
+      expect(
+        strictProviderSchemaProblems(supersessionCalls[0]!.schema),
+      ).toEqual([]);
 
       const rows = await memoryDb(fixture)
         .select()
@@ -1313,6 +1331,7 @@ describe("memory plugin storage", () => {
       );
 
       expect(calls).toHaveLength(1);
+      expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
@@ -1542,7 +1561,7 @@ describe("memory plugin storage", () => {
         async completeObject(input) {
           if (
             typeof input.prompt === "string" &&
-            input.prompt.includes("<memory-preference-adjudication-input>")
+            input.prompt.includes("<memory-adjudication-input>")
           ) {
             const existingJson =
               /<existing-memories>\n(.+)\n<\/existing-memories>/s.exec(
@@ -1552,11 +1571,18 @@ describe("memory plugin storage", () => {
               ? (JSON.parse(existingJson) as Array<{ id: string }>)
               : [];
             if (existing.length === 0) {
-              return { object: { decision: "distinct" } };
+              return {
+                object: {
+                  decision: "distinct",
+                  duplicateId: null,
+                  supersededIds: null,
+                },
+              };
             }
             return {
               object: {
                 decision: "supersedes_old",
+                duplicateId: null,
                 supersededIds: [existing[0]!.id],
               },
             };
@@ -2376,10 +2402,12 @@ describe("memory plugin storage", () => {
       });
 
       expect(publicMemory.memory).toMatchObject({
+        conversationId: slackContext().conversationId,
         scope: "public",
         subjectType: "conversation",
       });
       expect(privateMemory.memory).toMatchObject({
+        conversationId: privateContext.conversationId,
         scope: "private",
         subjectType: "user",
       });
@@ -2508,6 +2536,44 @@ describe("memory plugin storage", () => {
         kind: "knowledge",
       });
       const api = createMemoryApi({
+        conversationEvents: {
+          async list({ conversationId, eventName }) {
+            if (conversationId === "missing") return undefined;
+            expect(eventName).toBe("memories_captured");
+            return [
+              {
+                content: {
+                  memories: [
+                    {
+                      content: "Use pnpm.",
+                      id: "captured-memory",
+                      kind: "procedure",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "public",
+                    },
+                  ],
+                },
+                createdAt: "2026-07-28T12:01:00.000Z",
+                version: 2,
+              },
+              {
+                content: {
+                  memories: [
+                    {
+                      content: "Use pnpm.",
+                      id: "captured-memory",
+                      kind: "procedure",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "public",
+                    },
+                  ],
+                },
+                createdAt: "2026-07-28T12:00:00.000Z",
+                version: 2,
+              },
+            ];
+          },
+        },
         db: memoryDb(fixture),
         eventStats: {
           async costsByDay({ days, eventName }) {
@@ -2564,6 +2630,7 @@ describe("memory plugin storage", () => {
           user: {
             email: "person@example.com",
             emailVerified: true,
+            isAdmin: false,
           },
         },
         pluginName: "memory",
@@ -2574,6 +2641,31 @@ describe("memory plugin storage", () => {
         requestContext,
       );
       expect(unknownRouteResponse.status).toBe(404);
+      const conversationResponse = await api.fetch(
+        new Request("http://localhost/conversations/conversation-1/memories"),
+        requestContext,
+      );
+      expect(conversationResponse.status).toBe(200);
+      expect(
+        conversationMemoryListResponseSchema.parse(
+          await conversationResponse.json(),
+        ),
+      ).toEqual({
+        memories: [
+          {
+            capturedAt: "2026-07-28T12:01:00.000Z",
+            content: "Use pnpm.",
+            id: "captured-memory",
+            kind: "procedure",
+            visibility: "public",
+          },
+        ],
+      });
+      const missingConversationResponse = await api.fetch(
+        new Request("http://localhost/conversations/missing/memories"),
+        requestContext,
+      );
+      expect(missingConversationResponse.status).toBe(404);
       const invalidMethodResponse = await api.fetch(
         new Request("http://localhost/memories", { method: "POST" }),
         requestContext,
@@ -2640,6 +2732,15 @@ describe("memory plugin storage", () => {
         memoryListResponseSchema.parse(await searchResponse.json()).memories,
       ).toEqual([expect.objectContaining({ id: second.memory.id })]);
 
+      const searchCountsResponse = await api.fetch(
+        new Request("http://localhost/counts?q=memory"),
+        requestContext,
+      );
+      expect(searchCountsResponse.status).toBe(200);
+      expect(
+        memoryCountsResponseSchema.parse(await searchCountsResponse.json()),
+      ).toEqual({ active: 2, personal: 1, public: 1 });
+
       const detailResponse = await api.fetch(
         new Request(`http://localhost/memories/${first.memory.id}`),
         requestContext,
@@ -2661,14 +2762,6 @@ describe("memory plugin storage", () => {
         content: "Public workspace memory.",
         id: publicMemory.memory.id,
       });
-
-      const publicDeleteResponse = await api.fetch(
-        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
-          method: "DELETE",
-        }),
-        requestContext,
-      );
-      expect(publicDeleteResponse.status).toBe(404);
 
       const dashboardResponse = await api.fetch(
         new Request("http://localhost/dashboard"),
@@ -2724,13 +2817,23 @@ describe("memory plugin storage", () => {
       );
       expect(privateDeleteResponse.status).toBe(204);
 
+      const publicDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(publicDeleteResponse.status).toBe(204);
+
+      // `second` is a public-channel memory (default "C123" test channel),
+      // so it is visible and archivable like any other public memory.
       const deleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${second.memory.id}`, {
           method: "DELETE",
         }),
         requestContext,
       );
-      expect(deleteResponse.status).toBe(404);
+      expect(deleteResponse.status).toBe(204);
 
       const hiddenDeleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${hidden.memory.id}`, {
@@ -3290,6 +3393,28 @@ WHERE id = '${superseded.memory.id}'
         created: false,
         memory: { id: created.memory.id },
       });
+      const signalRows = () =>
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemorySignals);
+      await expect(signalRows()).resolves.toEqual([
+        expect.objectContaining({
+          idempotencyKey: "memory-test:exact-dedup-repeat",
+          memoryId: created.memory.id,
+          observedAtMs: TEST_NOW_MS,
+          signal: "duplicate",
+        }),
+      ]);
+      nowMs = TEST_NOW_MS + 91 * 24 * 60 * 60 * 1000;
+      await store.createMemory({
+        content: "Prefers release notes with risk callouts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:exact-dedup-later",
+      });
+      await expect(signalRows()).resolves.toEqual([
+        expect.objectContaining({
+          idempotencyKey: "memory-test:exact-dedup-later",
+          memoryId: created.memory.id,
+        }),
+      ]);
       const otherKind = await store.createMemory({
         content: "Prefers release notes with risk callouts.",
         kind: "knowledge",
@@ -3592,7 +3717,7 @@ WHERE id = '${superseded.memory.id}'
       };
       const tools = {
         createMemory: createMemoryCreateTool(context),
-        removeMemory: createMemoryRemoveTool(context),
+        archiveMemory: createMemoryArchiveTool(context),
         listMemories: createMemoryListTool(context),
         searchMemories: createMemorySearchTool(context),
       };
@@ -3714,7 +3839,7 @@ WHERE id = '${superseded.memory.id}'
       );
       expect(personal).toBeDefined();
       await expect(
-        tools.removeMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
+        tools.archiveMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
       ).resolves.toMatchObject({
         memory: {
           id: personal!.id,
@@ -4535,13 +4660,15 @@ INSERT INTO junior_memory_memories (
       let duplicateId: string | undefined;
       const model: PluginModel = {
         async completeObject(input) {
-          expect(input.prompt).toContain(
-            "<memory-preference-adjudication-input>",
-          );
+          expect(input.prompt).toContain("<memory-adjudication-input>");
           return {
             object: duplicateId
-              ? { decision: "duplicate", duplicateId }
-              : { decision: "distinct" },
+              ? { decision: "duplicate", duplicateId, supersededIds: null }
+              : {
+                  decision: "distinct",
+                  duplicateId: null,
+                  supersededIds: null,
+                },
           };
         },
       };
@@ -4858,7 +4985,7 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("does not supersede conversation-scoped preference rows", async () => {
+  it("keeps conversation-scoped preferences when review suggests supersession", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -4866,10 +4993,11 @@ INSERT INTO junior_memory_memories (
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
         supersessionDecider: {
-          adjudicateSupersession() {
-            throw new Error(
-              "conversation-scoped preferences should not use supersession",
-            );
+          adjudicateSupersession(input) {
+            return {
+              decision: "supersedes_old",
+              supersededIds: [input.existingMemories[0].id],
+            };
           },
         },
       });
@@ -4896,36 +5024,76 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("does not adjudicate supersession for non-preference memories", async () => {
+  it("reuses semantic knowledge duplicates without superseding knowledge", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const oldContent = "Deploy checks use the release runbook.";
+      const changedContent = "Deploy checks use the release checklist.";
+      const duplicateContent = "The release runbook drives deploy checks.";
+      const adjudicationCalls: MemorySupersessionInput[] = [];
+      const context = slackContext();
+      const store = createMemoryStore(memoryDb(fixture), context, {
         now: () => nowMs,
         supersessionDecider: {
-          adjudicateSupersession() {
-            throw new Error("knowledge should not use preference supersession");
+          adjudicateSupersession(input) {
+            adjudicationCalls.push(input);
+            const old = input.existingMemories.find(
+              (memory) => memory.content === oldContent,
+            );
+            if (!old) {
+              return { decision: "distinct" };
+            }
+            return input.candidate.content === duplicateContent
+              ? { decision: "duplicate", duplicateId: old.id }
+              : { decision: "supersedes_old", supersededIds: [old.id] };
           },
         },
       });
 
       const oldMemory = await store.createMemory({
-        content: "Deploy checks use the release runbook.",
+        content: oldContent,
         kind: "knowledge",
-        idempotencyKey: "memory-test:supersession-knowledge-old",
+        idempotencyKey: "memory-test:knowledge-old",
       });
 
       nowMs = TEST_NOW_MS + 1;
-      const newMemory = await store.createMemory({
-        content: "Deploy checks use the release checklist.",
+      const changedMemory = await store.createMemory({
+        content: changedContent,
         kind: "knowledge",
-        idempotencyKey: "memory-test:supersession-knowledge-new",
+        idempotencyKey: "memory-test:knowledge-changed",
       });
 
+      nowMs = TEST_NOW_MS + 2;
+      await expect(
+        store.createMemory({
+          content: duplicateContent,
+          kind: "knowledge",
+          idempotencyKey: "memory-test:knowledge-duplicate",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: oldMemory.memory.id },
+      });
+
+      expect(adjudicationCalls.at(-1)).toMatchObject({
+        candidate: { content: duplicateContent, kind: "knowledge" },
+      });
       await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: newMemory.memory.id }),
+        expect.objectContaining({ id: changedMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemorySignals),
+      ).resolves.toEqual([
+        {
+          conversationId: context.conversationId,
+          idempotencyKey: "memory-test:knowledge-duplicate",
+          memoryId: oldMemory.memory.id,
+          observedAtMs: TEST_NOW_MS + 2,
+          signal: "duplicate",
+        },
       ]);
     } finally {
       await fixture.close();

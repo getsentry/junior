@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
-import {
-  resourceEventGuidance,
-  pluginSupportsEvent,
-} from "@/chat/resource-events/catalog";
-import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
+import { eventGuidance, pluginSupportsEvent } from "@/chat/events/catalog";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   WORKSPACE_SNAPSHOT_FAILED_EVENT,
   WORKSPACE_SNAPSHOT_NAMESPACE,
   WORKSPACE_SNAPSHOT_READY_EVENT,
   WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
   workspaceSnapshotFinishedEvent,
-  workspaceSnapshotResourceEvents,
+  workspaceSnapshotEvents,
 } from "@/chat/sandbox/snapshot/events";
 
 describe("Workspace snapshot events", () => {
@@ -51,10 +48,8 @@ describe("Workspace snapshot events", () => {
   });
 
   it("registers core snapshot events for catalog search and guidance", () => {
-    const registration = workspaceSnapshotResourceEvents();
-    const catalog = {
-      [WORKSPACE_SNAPSHOT_NAMESPACE]: registration,
-    };
+    const registration = workspaceSnapshotEvents();
+    const catalog = getEventCatalog();
 
     expect(
       pluginSupportsEvent(
@@ -65,7 +60,7 @@ describe("Workspace snapshot events", () => {
       ),
     ).toBe(true);
     expect(
-      resourceEventGuidance(
+      eventGuidance(
         catalog,
         WORKSPACE_SNAPSHOT_NAMESPACE,
         WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
@@ -73,7 +68,7 @@ describe("Workspace snapshot events", () => {
       ),
     ).toContain("switchWorkspace");
     expect(
-      resourceEventGuidance(
+      eventGuidance(
         catalog,
         WORKSPACE_SNAPSHOT_NAMESPACE,
         WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
@@ -81,7 +76,10 @@ describe("Workspace snapshot events", () => {
       ),
     ).toContain("Report the snapshot failure");
 
-    const runtime = getResourceEventCatalog();
-    expect(runtime[WORKSPACE_SNAPSHOT_NAMESPACE]).toEqual(registration);
+    expect(
+      catalog[WORKSPACE_SNAPSHOT_NAMESPACE]?.resourceTypes.filter(
+        (resource) => resource.type === WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+      ),
+    ).toEqual(registration.resourceTypes);
   });
 });

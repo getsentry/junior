@@ -3,9 +3,9 @@ import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
+  createMemoryArchiveTool,
   createMemoryCreateTool,
   createMemoryListTool,
-  createMemoryRemoveTool,
   createMemorySearchTool,
   type MemoryCreateToolContext,
   type MemoryReviewer,
@@ -130,6 +130,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       },
       apiRoutes(ctx) {
         return createMemoryApi({
+          conversationEvents: ctx.conversationEvents,
           db: ctx.db as MemoryDb,
           eventStats: ctx.eventStats,
           users: ctx.users,
@@ -143,6 +144,15 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
+        const readTools = {
+          listMemories: createMemoryListTool(context),
+          searchMemories: createMemorySearchTool(context),
+        };
+        // Only the main agent writes memory. Child agent runs can read memory
+        // and suggest memories in their result.
+        if (ctx.source.kind === "agent_invocation") {
+          return readTools;
+        }
         return {
           createMemory: createMemoryCreateTool(
             memoryCreateToolContext({
@@ -153,9 +163,8 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
               supersessionDecider: agent,
             }),
           ),
-          removeMemory: createMemoryRemoveTool(context),
-          listMemories: createMemoryListTool(context),
-          searchMemories: createMemorySearchTool(context),
+          archiveMemory: createMemoryArchiveTool(context),
+          ...readTools,
         };
       },
       ...(!options.disableRecall

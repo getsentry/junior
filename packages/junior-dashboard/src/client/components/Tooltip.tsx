@@ -16,6 +16,7 @@ type TooltipProps = {
   children: ReactElement;
   className?: string;
   content: ReactNode;
+  focusable?: boolean;
   label?: ReactNode;
   placement?: "above" | "below";
   triggerClassName?: string;
@@ -51,6 +52,7 @@ export function Tooltip({
   children,
   className,
   content,
+  focusable = false,
   label,
   placement = "above",
   triggerClassName,
@@ -121,6 +123,8 @@ export function Tooltip({
       <HoverCard.Trigger
         aria-describedby={open ? tooltipId : undefined}
         asChild
+        onBlur={focusable ? () => setOpen(false) : undefined}
+        onFocus={focusable ? () => setOpen(true) : undefined}
         onPointerCancel={() => {
           touchStartedOpenRef.current = null;
         }}
@@ -162,7 +166,7 @@ export function Tooltip({
           className={cn(
             "z-50 select-text outline-none",
             className ??
-              "min-w-36 max-w-lg rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
+              "min-w-36 max-w-lg rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 py-2 font-sans text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
           )}
           collisionPadding={VIEWPORT_GAP}
           hideWhenDetached
@@ -172,7 +176,7 @@ export function Tooltip({
           sideOffset={ANCHOR_GAP}
         >
           {label ? (
-            <div className="mb-1 font-semibold uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="mb-1 font-semibold text-dashboard-text-muted">
               {label}
             </div>
           ) : null}

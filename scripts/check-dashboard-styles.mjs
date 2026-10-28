@@ -144,6 +144,51 @@ export function findComposerSafeAreaBottomPadding(files) {
   });
 }
 
+// Structural fills, borders, and rings use dashboard tokens, not raw white or
+// black opacity steps. Shadows may still use black.
+const NEUTRAL_SURFACE_LITERAL_PATTERN =
+  /(?<![\w-])(?:[a-z-]+:)*!?(?:bg|border(?:-[xytrblse])?|decoration|divide|fill|outline|ring|stroke)-(?:white|black)(?![\w-])/;
+const DASHBOARD_COLOR_UTILITY_PATTERN =
+  /(?<![\w-])(?:[a-z-]+:)*!?(?:accent|bg|border|caret|decoration|divide|fill|from|outline|placeholder|ring|shadow|stroke|text|to|via)-dashboard-([a-z]+(?:-[a-z]+)*)/g;
+
+/** Report raw white or black fills, borders, and rings that bypass tokens. */
+export function findNeutralSurfaceLiterals(files) {
+  return files.flatMap((file) =>
+    file.contents
+      .split("\n")
+      .flatMap((line, index) =>
+        NEUTRAL_SURFACE_LITERAL_PATTERN.test(line)
+          ? [`${file.path}:${index + 1}: ${line.trim()}`]
+          : [],
+      ),
+  );
+}
+
+/** Read the dashboard color token names defined in the Tailwind theme. */
+export function dashboardColorTokens(css) {
+  return new Set(
+    [...css.matchAll(/--color-dashboard-([a-z]+(?:-[a-z]+)*)\s*:/g)].map(
+      (match) => match[1],
+    ),
+  );
+}
+
+/** Report dashboard color utilities that name a token the theme does not define. */
+export function findUnknownDashboardColorTokens(files, tokens) {
+  return files.flatMap((file) =>
+    file.contents.split("\n").flatMap((line, index) => {
+      const unknown = [...line.matchAll(DASHBOARD_COLOR_UTILITY_PATTERN)]
+        .map((match) => match[1])
+        .filter((token) => !tokens.has(token));
+      return unknown.length > 0
+        ? [
+            `${file.path}:${index + 1}: unknown dashboard color ${unknown.join(", ")}`,
+          ]
+        : [];
+    }),
+  );
+}
+
 function collectSourceFiles(root, directory, files = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const absolutePath = path.join(directory, entry.name);
@@ -170,21 +215,65 @@ function main() {
     root,
     path.join(root, "packages/junior-dashboard/tests"),
   );
-  const errors = [
-    ...findNonstandardNeutralTextColors(files),
-    ...findArbitraryTextSizes(files),
-    ...findUndersizedHardcodedFontSizes(files),
-    ...findClassicViewportHeights(files),
-    ...findAdditiveSafeAreaPadding(files),
-    ...findComposerSafeAreaBottomPadding(files),
-    ...findDashboardUtilityAssertions(testFiles),
-  ];
-  if (errors.length === 0) {
+  const tokens = dashboardColorTokens(
+    fs.readFileSync(
+      path.join(root, "packages/junior-dashboard/src/tailwind.css"),
+      "utf8",
+    ),
+  );
+  // Each fix names the design intent so an agent changes the design instead of
+  // rewriting the source until the pattern stops matching.
+  const checks = [
+    {
+      fix: "Use a dashboard text token by meaning: text-dashboard-text-solid, text-dashboard-text, text-dashboard-text-subtle, text-dashboard-text-muted, or text-dashboard-text-faint. Do not use text-white, text-dashboard-text-secondary, or gray hex text.",
+      lines: findNonstandardNeutralTextColors(files),
+    },
+    {
+      fix: "Use a dashboard surface, fill, overlay, or border token instead of raw white or black. Shadows may use black.",
+      lines: findNeutralSurfaceLiterals(files),
+    },
+    {
+      fix: "Use a color token defined in packages/junior-dashboard/src/tailwind.css. Add a new token only when no existing token has this meaning.",
+      lines: findUnknownDashboardColorTokens(files, tokens),
+    },
+    {
+      fix: "Use a named type step (text-2xs through text-4xl) chosen by role. Do not use an absolute text-[N] size.",
+      lines: findArbitraryTextSizes(files),
+    },
+    {
+      fix: `Keep SVG and chart text at ${MIN_PRODUCT_FONT_SIZE_PX}px or larger. Make room in the layout instead of shrinking the text.`,
+      lines: findUndersizedHardcodedFontSizes(files),
+    },
+    {
+      fix: "Use dvh or the visualViewport variables from layout/VisualViewportShell instead of 100vh.",
+      lines: findClassicViewportHeights(files),
+    },
+    {
+      fix: "Use max(<padding>, env(safe-area-inset-*)) instead of adding padding to the safe-area inset.",
+      lines: findAdditiveSafeAreaPadding(files),
+    },
+    {
+      fix: "conversations/ComposerDock owns the bottom safe-area pad. Remove this safe-area math and let ComposerDock set it.",
+      lines: findComposerSafeAreaBottomPadding(files),
+    },
+    {
+      fix: "Dashboard tests must not assert CSS utility classes. Assert the visible state, role, or text, or leave the look to visual QA.",
+      lines: findDashboardUtilityAssertions(testFiles),
+    },
+  ].filter((check) => check.lines.length > 0);
+  if (checks.length === 0) {
     console.log(
-      "Dashboard source uses shared text tokens, type scale, and mobile-safe viewport padding.",
+      "Dashboard source uses shared color tokens, type scale, and mobile-safe viewport padding.",
     );
     return;
   }
+  const errors = checks.flatMap((check) => [
+    check.fix,
+    ...check.lines.map((line) => `  ${line}`),
+  ]);
+  errors.push(
+    "Fix the design, not the match. Do not split class strings, build class names at runtime, or move values into inline styles to pass. See packages/junior-dashboard/src/client/components/README.md.",
+  );
   console.error(["Dashboard style check failed:", ...errors].join("\n"));
   process.exitCode = 1;
 }

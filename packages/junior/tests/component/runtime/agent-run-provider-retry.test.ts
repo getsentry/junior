@@ -41,6 +41,12 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
     },
   }),
 );
+// The repository becomes visible at the next Pi boundary, like after
+// switchWorkspace.
+const repositoryState = vi.hoisted(() => ({
+  availableAtBoundary: false,
+  available: false,
+}));
 
 async function realSleep(ms: number): Promise<void> {
   await new Promise<void>((resolve) => realSetTimeout(resolve, ms));
@@ -346,6 +352,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
             ),
           );
         }
+        repositoryState.available ||= repositoryState.availableAtBoundary;
         try {
           await this.prepareNextTurn?.({
             context: { messages: this.state.messages },
@@ -542,7 +549,7 @@ vi.mock("@/chat/pi/client", () => ({
     };
   },
   getGatewayApiKey: () => "test-gateway-key",
-  resolveGatewayModel: (modelId: string) => modelId,
+  resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
 vi.mock("@/chat/prompt", async (importOriginal) => {
@@ -559,7 +566,20 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
-    captureRepositoryInstructions: async () => undefined,
+    captureRepositoryInstructions: async () =>
+      repositoryState.available
+        ? {
+            directory: "/vercel/sandbox/repo",
+            fingerprint: "agents-v1",
+            sources: [
+              {
+                path: "/vercel/sandbox/repo/AGENTS.md",
+                content: "Use pnpm.",
+              },
+            ],
+            text: "Use pnpm.",
+          }
+        : undefined,
     workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({
@@ -575,7 +595,10 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         throw new Error("sandbox executor should not execute in this test");
       },
     },
-    sandboxRef: () => undefined,
+    sandboxRef: () =>
+      repositoryState.available
+        ? { id: "sandbox-test", profileHash: "hash-test" }
+        : undefined,
     close: vi.fn(),
   }),
 }));
@@ -644,6 +667,8 @@ describe("agent run continuation", () => {
     compactionState.nextProviderContextText = "";
     compactionState.preflightContextText = "";
     compactionState.summaryCalls = 0;
+    repositoryState.availableAtBoundary = false;
+    repositoryState.available = false;
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -869,6 +894,7 @@ describe("agent run continuation", () => {
 
   it("persists and queues steering messages at the next Pi boundary", async () => {
     agentMode.value = "steering";
+    repositoryState.availableAtBoundary = true;
     const injectedTexts: string[] = [];
     const priorMessages = [
       {
@@ -947,6 +973,17 @@ describe("agent run continuation", () => {
     expect(serializedMessages).toContain("previous question");
     expect(serializedMessages).toContain("help me");
     expect(serializedMessages).toContain("actually do the other thing");
+    // The committed steering message must follow AGENTS.md, as in Pi history.
+    const committedMessages = (sessionRecord?.piMessages ?? []).map((message) =>
+      JSON.stringify(message),
+    );
+    const agentsIndex = committedMessages.findIndex((message) =>
+      message.includes("# AGENTS.md instructions for /vercel/sandbox/repo"),
+    );
+    expect(agentsIndex).toBeGreaterThan(-1);
+    expect(committedMessages[agentsIndex + 1]).toContain(
+      "actually do the other thing",
+    );
 
     const report = await readConversationDetail("slack:C123:1712345.0001");
     const visibleText = report?.events.flatMap((event) =>
@@ -1065,6 +1102,7 @@ describe("agent run continuation", () => {
 
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
     agentMode.value = "cooperativeYield";
+    repositoryState.availableAtBoundary = true;
 
     const outcome = await executeAgentRun({
       conversationId: "conversation-yield",
@@ -1098,7 +1136,15 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "user",
     ]);
+    // A resumed Turn finds AGENTS.md only in context messages.
+    expect(JSON.stringify(sessionRecord?.piMessages[2])).toContain(
+      "# AGENTS.md instructions for /vercel/sandbox/repo",
+    );
+    expect(sessionRecord?.piMessageProvenance[2]).toEqual({
+      authority: "context",
+    });
     await expect(
       getPausedTurnRequest({
         conversationId: "conversation-yield",

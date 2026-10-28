@@ -17,6 +17,7 @@ import {
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
+  hasConversationStop,
   listActiveConversationIds,
   listConversationsByActivity,
   ackMessages,
@@ -1695,7 +1696,25 @@ describe("conversation work execution", () => {
     vi.useFakeTimers({ now: 1_000 });
     let currentNowMs = 1_000;
     const queue = createConversationWorkQueueTestAdapter();
-    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const state = getStateAdapter();
+    const workerGetKeys: string[] = [];
+    const workerState = new Proxy(state, {
+      get(target, prop) {
+        if (prop === "get") {
+          return async (key: string) => {
+            workerGetKeys.push(key);
+            return target.get(key);
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
     const entered = deferred<void>();
     const stopObserved = deferred<void>();
     const finishRun = deferred<void>();
@@ -1704,6 +1723,7 @@ describe("conversation work execution", () => {
       nowMs: () => currentNowMs,
       queue,
       softYieldAfterMs: 1_000,
+      state: workerState,
       run: async (context) => {
         await context.attempt.ack();
         const signal = context.stopSignal?.();
@@ -1723,22 +1743,33 @@ describe("conversation work execution", () => {
     });
 
     await entered.promise;
+    const conversationReadsBeforeStop = workerGetKeys.filter(
+      (key) => key === CONVERSATION_WORK_STATE_KEY,
+    ).length;
     await appendInboundMessage({
       message: inboundMessage("m2", {
         createdAtMs: 1_500,
         receivedAtMs: 1_500,
       }),
       nowMs: 1_500,
+      state,
     });
 
     await expect(
       stopConversationWork({
         conversationId: CONVERSATION_ID,
         nowMs: 2_000,
+        state,
       }),
     ).resolves.toMatchObject({ status: "requested" });
     await vi.advanceTimersByTimeAsync(500);
     await stopObserved.promise;
+    expect(
+      workerGetKeys.filter((key) => key === CONVERSATION_WORK_STATE_KEY),
+    ).toHaveLength(conversationReadsBeforeStop);
+    expect(
+      workerGetKeys.includes(`junior:conversation:v2:stop:${CONVERSATION_ID}`),
+    ).toBe(true);
 
     await appendInboundMessage({
       message: inboundMessage("m3", {
@@ -1748,17 +1779,63 @@ describe("conversation work execution", () => {
         receivedAtMs: 2_000,
       }),
       nowMs: 2_000,
+      state,
     });
     currentNowMs = 2_000;
     finishRun.resolve();
 
     await expect(running).resolves.toEqual({ status: "pending_requeued" });
     await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).resolves.toMatchObject({
-      execution: { stop: undefined },
       messages: [expect.objectContaining({ inboundMessageId: "m3" })],
     });
+  });
+
+  it("does not apply a stale stop marker to a new run", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    const first = processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        await context.attempt.ack();
+        entered.resolve();
+        await finish.promise;
+        return { status: "completed" };
+      },
+    });
+    await entered.promise;
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    finish.resolve();
+    await expect(first).resolves.toEqual({ status: "completed" });
+
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 3_000,
+        receivedAtMs: 3_000,
+      }),
+      nowMs: 3_000,
+    });
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          const signal = context.stopSignal?.();
+          if (!signal) throw new Error("Expected a Conversation stop signal");
+          expect(signal.aborted).toBe(false);
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
   });
 
   it("resumes a paused Turn when its stop missed the live poll", async () => {
@@ -1794,14 +1871,16 @@ describe("conversation work execution", () => {
     finish.resolve();
 
     await expect(running).resolves.toEqual({ status: "pending_requeued" });
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
-    ).resolves.toMatchObject({
-      execution: {
-        status: "paused",
-        stop: expect.objectContaining({ inboundMessageIds: [] }),
-      },
+    const paused = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
     });
+    expect(paused?.execution.status).toBe("paused");
+    await expect(
+      hasConversationStop({
+        conversationId: CONVERSATION_ID,
+        runId: paused!.execution.runId!,
+      }),
+    ).resolves.toBe(true);
 
     await expect(
       processConversationWork(queue.takeMessage(), {
@@ -1818,7 +1897,7 @@ describe("conversation work execution", () => {
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
-      execution: { status: "idle", stop: undefined },
+      execution: { status: "idle" },
     });
   });
 
@@ -1875,14 +1954,18 @@ describe("conversation work execution", () => {
     releaseCompletion.resolve();
 
     await expect(running).resolves.toEqual({ status: "pending_requeued" });
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
-    ).resolves.toMatchObject({
-      execution: {
-        status: "paused",
-        stop: expect.objectContaining({ runId: expect.any(String) }),
-      },
+    const paused = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
     });
+    expect(paused?.execution.status).toBe("paused");
+    await expect(
+      hasConversationStop({
+        conversationId: CONVERSATION_ID,
+        runId: paused!.execution.runId!,
+        state,
+      }),
+    ).resolves.toBe(true);
 
     await expect(
       processConversationWork(queue.takeMessage(), {
@@ -1899,7 +1982,7 @@ describe("conversation work execution", () => {
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).resolves.toMatchObject({
-      execution: { status: "idle", stop: undefined },
+      execution: { status: "idle" },
     });
   });
 

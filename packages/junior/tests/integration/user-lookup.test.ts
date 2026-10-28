@@ -2,10 +2,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
-import {
-  upsertIdentity,
-  upsertLinkedIdentity,
-} from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { juniorIdentities } from "@/db/schema";
@@ -68,6 +65,7 @@ describe("userLookup", () => {
           display_name: "David Cramer",
           title: "Co-founder & CTO",
           email: "david@sentry.io",
+          avatar_url: "https://avatars.slack-edge.com/U039RR91S_512.png",
           is_bot: false,
           is_deleted: false,
           mention: "<@U039RR91S>",
@@ -117,6 +115,24 @@ describe("userLookup", () => {
         },
       });
       expect(result.user.profile_fields).toBeUndefined();
+    });
+
+    it("rejects malformed custom profile fields", async () => {
+      queueSlackApiResponse("users.info", {
+        body: {
+          ok: true,
+          user: {
+            id: "U0BASIC",
+            profile: { fields: { Xf0123: { value: 123 } } },
+          },
+        },
+      });
+      await expect(
+        executeTool(lookupTool(), {
+          provider: "slack",
+          query: "U0BASIC",
+        }),
+      ).rejects.toMatchObject({ name: "ZodError" });
     });
 
     it("handles user not found", async () => {
@@ -300,9 +316,9 @@ describe("userLookup", () => {
         count: 2,
       });
       expect(result.mention).toBeUndefined();
-      expect(result.users.map((user: { id: string }) => user.id).sort()).toEqual(
-        ["U_COLIN_CURTIN", "U_COLIN_KAWAI"],
-      );
+      expect(
+        result.users.map((user: { id: string }) => user.id).sort(),
+      ).toEqual(["U_COLIN_CURTIN", "U_COLIN_KAWAI"]);
     });
 
     it("ranks a multi-token name above another first-name match", async () => {
@@ -801,7 +817,7 @@ describe("userLookup", () => {
       );
 
       expect(tools).toHaveProperty("userLookup");
-      expect(tools.userLookup.description).toContain("provider");
+      expect(tools.userLookup?.description).toContain("provider");
     });
   });
 });

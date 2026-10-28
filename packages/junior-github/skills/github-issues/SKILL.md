@@ -28,11 +28,11 @@ Use only for GitHub issues. For pull requests, branches, pushes, or PR creation 
 - Resolve the issue number for non-create operations.
 - Keep `--repo owner/repo` explicit on `gh` commands so the command itself targets the intended repository, not a stale default.
 - When the user explicitly asks for durable work in response to GitHub issue
-  activity, use an event task instead of polling:
+  activity, use an event automation instead of polling:
   - Use namespace `github`. One issue uses identifier `owner/repo#number` and
     resource type `issue`; repo-wide issue activity uses identifier
     `owner/repo` and resource type `repository`.
-  - Use the event names currently exposed by the resource-event catalog; search
+  - Use the event names currently exposed by the event catalog; search
     it when the requested event is unclear.
   - Put every requested issue state in the same task's `events` array. Create
     separate tasks only when the work to perform is different.

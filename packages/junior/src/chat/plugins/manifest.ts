@@ -12,10 +12,16 @@ import type {
   PluginNpmRuntimeDependency,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
+  PluginAccountsConfig,
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
-import { inlineManifestSource } from "./inline-manifest-source";
+import {
+  accountsSource,
+  inlineManifestSource,
+  mcpAuthSource,
+  mcpOauthClientSource,
+} from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -227,6 +233,35 @@ const oauthSourceSchema = z
   })
   .passthrough();
 
+const mcpAuthSourceSchema = z
+  .object({
+    issuer: nonEmptyTrimmedString,
+    "key-id": nonEmptyTrimmedString,
+    "private-key-env": envVarString,
+  })
+  .passthrough();
+
+const mcpOauthClientSourceSchema = z
+  .object({
+    "client-id-env": envVarString,
+    "client-secret-env": envVarString,
+    scope: nonEmptyTrimmedString.optional(),
+    "authorize-params": stringMapSchema.optional(),
+  })
+  .passthrough();
+
+// Strict, so a typo fails loudly instead of silently widening or narrowing
+// which accounts Junior may use.
+const accountsSourceSchema = z
+  .object({
+    "user-oauth": z.boolean().optional(),
+    "service-account": z
+      .object({ tools: nonEmptyStringArraySchema("tools") })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const mcpSourceSchema = z
   .object({
     transport: nonEmptyTrimmedString
@@ -235,7 +270,9 @@ const mcpSourceSchema = z
       })
       .optional(),
     url: httpsUrlString,
+    auth: mcpAuthSourceSchema.optional(),
     headers: stringMapSchema.optional(),
+    "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
   })
@@ -292,6 +329,11 @@ const manifestSourceSchema = z
       })
       .optional(),
     oauth: z
+      .record(z.string(), z.unknown(), {
+        error: "must be an object",
+      })
+      .optional(),
+    accounts: z
       .record(z.string(), z.unknown(), {
         error: "must be an object",
       })
@@ -360,6 +402,16 @@ function manifestConfigPatch(
       setDefined(mcp, "transport", config.mcp.transport);
       setDefined(mcp, "url", config.mcp.url);
       setDefined(mcp, "headers", config.mcp.headers);
+      setDefined(
+        mcp,
+        "auth",
+        config.mcp.auth && mcpAuthSource(config.mcp.auth),
+      );
+      setDefined(
+        mcp,
+        "oauth-client",
+        config.mcp.oauthClient && mcpOauthClientSource(config.mcp.oauthClient),
+      );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
       result.mcp = mcp;
@@ -385,6 +437,9 @@ function manifestConfigPatch(
       );
       result.oauth = oauth;
     }
+  }
+  if (config.accounts !== undefined) {
+    result.accounts = config.accounts && accountsSource(config.accounts);
   }
   if (config.target !== undefined) {
     if (!config.target) {
@@ -508,9 +563,36 @@ function assertDeclaredEnvReferences(
     }
     if (envVars[name]?.default !== undefined) {
       throw new Error(
-        `${context} references env var ${name}, but API header env vars must not declare defaults`,
+        `${context} references env var ${name}, but header env vars must not declare defaults`,
       );
     }
+  }
+}
+
+function assertDeclaredHeaderEnvReferences(
+  headers: Record<string, string> | undefined,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  prefix: string,
+): void {
+  for (const [key, headerValue] of Object.entries(headers ?? {})) {
+    assertDeclaredEnvReferences(headerValue, envVars, `${prefix}.${key}`);
+  }
+}
+
+function assertDeclaredHostSecretEnv(
+  name: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  context: string,
+): void {
+  if (!Object.prototype.hasOwnProperty.call(envVars, name)) {
+    throw new Error(
+      `${context} uses env var ${name} which is not declared in env-vars`,
+    );
+  }
+  if (envVars[name]?.default !== undefined) {
+    throw new Error(
+      `${context} uses env var ${name}, but host secret env vars must not declare defaults`,
+    );
   }
 }
 
@@ -523,9 +605,7 @@ function normalizeRequiredApiHeaders(
   if (!apiHeaders) {
     throw new Error(`${prefix} must contain at least one header`);
   }
-  for (const [key, headerValue] of Object.entries(apiHeaders)) {
-    assertDeclaredEnvReferences(headerValue, envVars, `${prefix}.${key}`);
-  }
+  assertDeclaredHeaderEnvReferences(apiHeaders, envVars, prefix);
   return apiHeaders;
 }
 
@@ -583,31 +663,46 @@ function normalizeCommandEnv(
   );
 }
 
+/** Collect every env var that carries a host-only secret for one plugin. */
+function hostOnlyEnvNames(manifest: {
+  apiHeaders?: Record<string, string> | undefined;
+  credentials?: PluginCredentials | undefined;
+  oauth?: PluginOAuthConfig | undefined;
+  mcp?: PluginMcpConfig | undefined;
+}): Set<string> {
+  const names = new Set<string>();
+  if (manifest.mcp?.auth) {
+    names.add(manifest.mcp.auth.privateKeyEnv);
+  }
+  if (manifest.mcp?.oauthClient) {
+    names.add(manifest.mcp.oauthClient.clientIdEnv);
+    names.add(manifest.mcp.oauthClient.clientSecretEnv);
+  }
+  for (const value of [
+    ...Object.values(manifest.apiHeaders ?? {}),
+    ...Object.values(manifest.mcp?.headers ?? {}),
+  ]) {
+    for (const name of envReferences(value)) {
+      names.add(name);
+    }
+  }
+  if (manifest.credentials?.authTokenEnv) {
+    names.add(manifest.credentials.authTokenEnv);
+  }
+  if (manifest.oauth) {
+    names.add(manifest.oauth.clientIdEnv);
+    names.add(manifest.oauth.clientSecretEnv);
+  }
+  return names;
+}
+
 function assertCommandEnvDoesNotExposeHostSecretRefs(
   commandEnv: Record<string, string> | undefined,
-  apiHeaders: Record<string, string> | undefined,
-  credentials: PluginCredentials | undefined,
-  oauth: PluginOAuthConfig | undefined,
+  hostOnlyRefs: Set<string>,
   pluginName: string,
 ): void {
   if (!commandEnv) {
     return;
-  }
-
-  const hostOnlyRefs = new Set<string>();
-  for (const value of Object.values(apiHeaders ?? {})) {
-    for (const name of envReferences(value)) {
-      hostOnlyRefs.add(name);
-    }
-  }
-  if (credentials) {
-    if (credentials.authTokenEnv) {
-      hostOnlyRefs.add(credentials.authTokenEnv);
-    }
-  }
-  if (oauth) {
-    hostOnlyRefs.add(oauth.clientIdEnv);
-    hostOnlyRefs.add(oauth.clientSecretEnv);
   }
 
   for (const [key, value] of Object.entries(commandEnv)) {
@@ -944,11 +1039,69 @@ function normalizeMcp(
         forbiddenKeys: FORBIDDEN_API_HEADER_NAMES,
       })
     : undefined;
+  assertDeclaredHeaderEnvReferences(
+    headers,
+    envVars,
+    `Plugin ${name} mcp.headers`,
+  );
+  if (result.data.auth) {
+    assertDeclaredHostSecretEnv(
+      result.data.auth["private-key-env"],
+      envVars,
+      `Plugin ${name} mcp.auth.private-key-env`,
+    );
+  }
+  const oauthClient = result.data["oauth-client"];
+  if (oauthClient) {
+    if (result.data.auth) {
+      throw new Error(
+        `Plugin ${name} mcp must not declare both auth and oauth-client`,
+      );
+    }
+    assertDeclaredHostSecretEnv(
+      oauthClient["client-id-env"],
+      envVars,
+      `Plugin ${name} mcp.oauth-client.client-id-env`,
+    );
+    assertDeclaredHostSecretEnv(
+      oauthClient["client-secret-env"],
+      envVars,
+      `Plugin ${name} mcp.oauth-client.client-secret-env`,
+    );
+  }
+  const oauthClientAuthorizeParams = oauthClient?.["authorize-params"]
+    ? normalizeStringMap(
+        oauthClient["authorize-params"],
+        `Plugin ${name} mcp.oauth-client.authorize-params`,
+        { reservedKeys: RESERVED_AUTHORIZE_PARAM_KEYS },
+      )
+    : undefined;
 
   return {
     transport: "http",
     url: result.data.url,
+    ...(result.data.auth
+      ? {
+          auth: {
+            issuer: result.data.auth.issuer,
+            keyId: result.data.auth["key-id"],
+            privateKeyEnv: result.data.auth["private-key-env"],
+          },
+        }
+      : undefined),
     ...(headers ? { headers } : undefined),
+    ...(oauthClient
+      ? {
+          oauthClient: {
+            clientIdEnv: oauthClient["client-id-env"],
+            clientSecretEnv: oauthClient["client-secret-env"],
+            ...(oauthClient.scope ? { scope: oauthClient.scope } : undefined),
+            ...(oauthClientAuthorizeParams
+              ? { authorizeParams: oauthClientAuthorizeParams }
+              : undefined),
+          },
+        }
+      : undefined),
     ...(result.data["allowed-tools"]
       ? { allowedTools: result.data["allowed-tools"] }
       : undefined),
@@ -956,6 +1109,57 @@ function normalizeMcp(
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
   } satisfies PluginMcpConfig;
+}
+
+/**
+ * Validate which accounts the plugin may use against the surfaces that
+ * support them. Today only MCP OAuth stores a service account.
+ */
+function normalizeAccounts(
+  data: Record<string, unknown>,
+  mcp: PluginMcpConfig | undefined,
+  name: string,
+): PluginAccountsConfig | undefined {
+  const result = accountsSourceSchema.safeParse(data);
+  if (!result.success) {
+    throw new Error(issueMessage(result.error, `Plugin ${name} accounts`));
+  }
+  const userOAuth = result.data["user-oauth"];
+  const serviceAccount = result.data["service-account"];
+  if (userOAuth === false && !serviceAccount) {
+    throw new Error(
+      `Plugin ${name} accounts.user-oauth false requires accounts.service-account`,
+    );
+  }
+  if (!serviceAccount) {
+    return undefined;
+  }
+  // The connect flow registers its own OAuth client, and signed bot auth
+  // has no per-actor account to replace.
+  if (!mcp || mcp.auth || mcp.oauthClient) {
+    throw new Error(
+      `Plugin ${name} accounts.service-account requires mcp without auth or oauth-client`,
+    );
+  }
+  // An empty allow-list loads every tool, so only a set list can be checked.
+  if (mcp.allowedTools) {
+    const loadedTools = new Set([
+      ...mcp.allowedTools,
+      ...(mcp.wrappedTools ?? []),
+    ]);
+    const unknownTools = serviceAccount.tools.filter(
+      (tool) => !loadedTools.has(tool),
+    );
+    if (unknownTools.length > 0) {
+      throw new Error(
+        `Plugin ${name} accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unknownTools.join(", ")}`,
+      );
+    }
+  }
+  return {
+    ...(userOAuth === false ? { userOAuth } : undefined),
+    serviceAccount: { tools: serviceAccount.tools },
+  };
 }
 
 function parseManifestSource(
@@ -1025,6 +1229,11 @@ function parseManifestSource(
         `Plugin ${String(parsedSource.name ?? "unknown")} oauth must be an object`,
       );
     }
+    if (path === "accounts") {
+      throw new Error(
+        `Plugin ${String(parsedSource.name ?? "unknown")} accounts must be an object`,
+      );
+    }
     if (path === "target") {
       throw new Error(
         `Plugin ${String(parsedSource.name ?? "unknown")} target must be an object`,
@@ -1083,6 +1292,9 @@ function parseManifestSource(
     ? normalizeRuntimePostinstall(data["runtime-postinstall"], data.name)
     : undefined;
   const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
+  const accounts = data.accounts
+    ? normalizeAccounts(data.accounts, mcp, data.name)
+    : undefined;
 
   const manifest: PluginManifest = {
     name: data.name,
@@ -1097,6 +1309,7 @@ function parseManifestSource(
     ...(runtimeDependencies ? { runtimeDependencies } : undefined),
     ...(runtimePostinstall ? { runtimePostinstall } : undefined),
     ...(mcp ? { mcp } : undefined),
+    ...(accounts ? { accounts } : undefined),
   };
 
   if (data.oauth) {
@@ -1147,9 +1360,7 @@ function parseManifestSource(
 
   assertCommandEnvDoesNotExposeHostSecretRefs(
     data["command-env"],
-    apiHeaders,
-    credentials,
-    manifest.oauth,
+    hostOnlyEnvNames({ apiHeaders, credentials, oauth: manifest.oauth, mcp }),
     data.name,
   );
   assertCommandEnvHostRefsAreExplicitlyExposed(

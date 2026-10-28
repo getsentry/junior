@@ -4,6 +4,32 @@ import { screenshot } from "./screenshot";
 
 test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route("**/api/conversations/stats", async (route) => {
+    const response = await route.fetch();
+    const report = await response.json();
+    const metricDays = Array.from({ length: 30 }, (_, index) => ({
+      date: new Date(NOW_MS - (29 - index) * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
+      conversations: 8,
+      durationMs: 120_000,
+      inputTokens: 2_000,
+      cachedInputTokens: index === 25 ? 8_000 : 180_000,
+      cacheCreationTokens: index === 25 ? 190_000 : 10_000 + index * 100,
+      tokens: 205_000,
+      costUsd: 1.5,
+    }));
+    const metricHours = Array.from({ length: 24 }, (_, index) => ({
+      ...metricDays[index],
+      date: new Date(NOW_MS - (23 - index) * 3_600_000)
+        .toISOString()
+        .slice(0, 13),
+      ...(index === 23 ? { cacheCreationTokens: undefined } : {}),
+    }));
+    await route.fulfill({
+      json: { ...report, metricDays, metricHours, metricSixHours: undefined },
+    });
+  });
   await page.goto(`${dashboard.baseURL}/system`);
 
   await expect(
@@ -11,13 +37,45 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
-  await expect(page.getByText("Cache hit rate")).toBeVisible();
-  await expect(page.getByText("Input token cache")).toBeVisible();
+  await expect(page.getByText("Input cache")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
-  await screenshot(page, "system", { view: "desktop" });
+  await expect(
+    page.getByRole("button", { name: "Percent", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("group", { name: "Reporting period" }),
+  ).toHaveCount(1);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-share");
+  await page.getByRole("button", { name: "Tokens", exact: true }).click();
+  await expect(page.getByLabel("Input cache tokens per day")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tokens", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-tokens", { view: "desktop" });
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
+  await page.getByText("Largest cache writes", { exact: true }).click();
+  const largestWrites = page.getByRole("table", {
+    name: "Largest cache writes",
+  });
+  await expect(largestWrites).not.toContainText("190k");
+  await expect(page.getByText(/Missing data in 1 of 24/)).toBeVisible();
+  await page.getByText("How to read this", { exact: true }).click();
+  await expect(
+    page.getByText(/They do not show individual calls/),
+  ).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-missing", { view: "desktop" });
+  await page.getByRole("button", { name: "30d", exact: true }).click();
+  await expect(largestWrites).toContainText("190k");
+  await expect(page.getByText(/Missing data in 1 of 24/)).toHaveCount(0);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
 
   const systemNavigation = page.getByLabel("System navigation");
   await expect(systemNavigation.getByRole("link")).toHaveText([
@@ -66,11 +124,15 @@ test("lists Workspaces with the baseline snapshot", async ({
     page.getByRole("heading", { name: "Workspaces", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Baseline snapshot", exact: true }),
+    page.getByRole("heading", { name: "Base Sandbox", exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Manage sentry" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Manage sentry" }),
+  ).toContainText("2 repos · 4 vCPUs · 8 GB");
   await expect(page.getByRole("link", { name: "New Workspace" })).toBeVisible();
   await screenshot(page, "workspaces");
 });
@@ -85,6 +147,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
           id: "11111111-1111-4111-8111-111111111111",
           name: "sentry",
           setupScript: "pnpm install",
+          vcpus: 8,
           snapshot: null,
           repos: [
             {
@@ -98,7 +161,9 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
       });
       return;
     }
-    await route.fulfill({ json: { baselineSnapshot: null, workspaces: [] } });
+    await route.fulfill({
+      json: { baselineSnapshot: null, defaultVcpus: 4, workspaces: [] },
+    });
   });
 
   await page.goto(`${dashboard.baseURL}/system/workspaces`);
@@ -113,6 +178,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
     .getByLabel("Repository 1", { exact: true })
     .fill("getsentry/sentry");
   await page.getByLabel("Setup script").fill("pnpm install");
+  await page.getByLabel("vCPUs").fill("8");
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/workspaces`);
@@ -126,6 +192,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
       },
     ],
     setupScript: "pnpm install",
+    vcpus: 8,
   });
 });
 
@@ -140,6 +207,7 @@ test("shows Workspace snapshot details on its direct route", async ({
         id: workspaceId,
         name: "sentry",
         setupScript: "pnpm install",
+        vcpus: null,
         snapshot: {
           id: "snap_workspace_123",
           generatedAt: new Date(NOW_MS - 60_000).toISOString(),
@@ -164,6 +232,7 @@ test("shows Workspace snapshot details on its direct route", async ({
   ).toBeVisible();
   await expect(page.getByText("snap_workspace_123")).toBeVisible();
   await expect(page.getByText("45s")).toBeVisible();
+  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("sentry");
   await expect(
     page.getByLabel("System navigation").getByRole("link", {
@@ -183,9 +252,11 @@ test("keeps System navigation usable on mobile", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
-  await expect(page.getByLabel("System navigation")).not.toBeVisible();
-  await page.getByRole("button", { name: "Open navigation" }).click();
-  const systemNavigation = page.getByLabel("System navigation");
+  // Page tabs stay on the page, so moving between System pages does not need
+  // the navigation menu.
+  const systemNavigation = page.getByRole("navigation", {
+    name: "System navigation",
+  });
   await expect(systemNavigation.getByRole("link")).toHaveText([
     "Overview",
     "People",
@@ -193,11 +264,15 @@ test("keeps System navigation usable on mobile", async ({
     "Workspaces",
     "Plugins",
   ]);
-  await systemNavigation.getByRole("link", { name: "Plugins" }).click();
+  const pluginsLink = systemNavigation.getByRole("link", { name: "Plugins" });
+  await pluginsLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/plugins`);
   await expect(
     page.getByRole("heading", { name: "Plugins", exact: true }),
   ).toBeVisible();
+  // The current page tab scrolls into view when the row is wider than the screen.
+  await expect(pluginsLink).toHaveAttribute("aria-current", "page");
+  await expect(pluginsLink).toBeInViewport({ ratio: 1 });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);

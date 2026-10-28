@@ -3,12 +3,14 @@ import { HTTPException } from "hono/http-exception";
 import { createVercelAttachmentStorage } from "./chat/attachments/vercel";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
+import { createConnectionRoutes } from "./api/connections/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
+import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
-import { createTaskRoutes } from "./api/tasks/routes";
+import { createAutomationRoutes } from "./api/automations/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
@@ -22,6 +24,8 @@ import {
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
 import { logException } from "./chat/logging";
+import type { ConversationWorkQueue } from "./chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import {
   readHealthReport,
   readPluginOperationalReportFeed,
@@ -35,11 +39,19 @@ export {
   resolveViewerUser,
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";
-export type { JuniorApiVariables };
+export type { ConversationWorkQueue, JuniorApiVariables };
 export { jsonResponse };
 
+/** Options that `createApp()` passes through the dashboard. */
+export interface JuniorApiOptions {
+  /** Queue for accepted web input. Defaults to Vercel Queues. */
+  conversationWorkQueue?: ConversationWorkQueue;
+}
+
 /** Create Junior's production REST API for authenticated dashboard consumers. */
-export function createJuniorApi(): Hono<JuniorApiEnv> {
+export function createJuniorApi(
+  options: JuniorApiOptions = {},
+): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get("/api/health", async () =>
@@ -68,14 +80,17 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: createVercelAttachmentStorage(),
+      queue: options.conversationWorkQueue ?? getVercelConversationWorkQueue(),
     }),
   );
   app.route("/api/code", createCodeRoutes());
+  app.route("/api/connections", createConnectionRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
+  app.route("/api/service-accounts", createServiceAccountRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
-  app.route("/api/tasks", createTaskRoutes());
+  app.route("/api/automations", createAutomationRoutes());
   app.route("/api/workspaces", createWorkspaceRoutes());
   app.notFound(() =>
     jsonResponse(

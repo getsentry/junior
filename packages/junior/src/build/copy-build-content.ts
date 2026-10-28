@@ -168,7 +168,7 @@ function parseIncludePattern(pattern: string): {
     );
   }
 
-  const isScopedPackage = parts[0].startsWith("@");
+  const isScopedPackage = parts[0]?.startsWith("@") ?? false;
   const packagePartCount = isScopedPackage ? 2 : 1;
   const pkgName = parts.slice(0, packagePartCount).join("/");
   const subpath = parts.slice(packagePartCount).join("/");

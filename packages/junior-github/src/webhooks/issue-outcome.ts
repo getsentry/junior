@@ -8,7 +8,7 @@ import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
 } from "../tools/footer.js";
-import { botLoginFromEmail } from "./ownership.js";
+import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 
 const canonicalIssueOutcomeSchema = z
   .object({
@@ -107,16 +107,13 @@ export function normalizeGitHubIssueOutcome(args: {
   if (!openedAt || !updatedAt) {
     throw new Error("GitHub issue lifecycle timestamps are invalid");
   }
-  const authorLogin = issue.user.login.trim().toLowerCase();
-  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
-  if (parsed.action === "opened" && !botLogin) {
+  if (parsed.action === "opened" && !botLoginFromEmail(args.botEmail)) {
     throw new Error(
       "The configured GitHub App bot email must encode a [bot] login in GitHub's noreply format to classify issue ownership",
     );
   }
   const hasOwnershipMarker = Boolean(
-    botLogin &&
-    authorLogin === botLogin &&
+    isBotLogin(issue.user.login, args.botEmail) &&
     issue.body?.includes(GITHUB_SESSION_FOOTER_START),
   );
   const candidateOwned =
@@ -185,12 +182,12 @@ export function normalizeGitHubIssueConversations(args: {
   botEmail?: string;
 }): GitHubIssueConversationsInput | undefined {
   const parsed = issueConversationSchema.safeParse(args.body);
-  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
-  if (!parsed.success || !botLogin) return undefined;
-  const authorLogin = parsed.data.issue.user.login.trim().toLowerCase();
-  if (authorLogin !== botLogin) return undefined;
-  const senderLogin = parsed.data.sender?.login.trim().toLowerCase();
-  if (senderLogin && senderLogin !== botLogin) return undefined;
+  if (!parsed.success) return undefined;
+  if (!isBotLogin(parsed.data.issue.user.login, args.botEmail)) {
+    return undefined;
+  }
+  const sender = parsed.data.sender;
+  if (sender && !isBotLogin(sender.login, args.botEmail)) return undefined;
   const conversationIds = githubConversationIds(parsed.data.issue.body);
   return conversationIds.length > 0
     ? {

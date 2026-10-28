@@ -16,7 +16,7 @@ export function SectionIntro(props: {
         {props.title}
       </h2>
       {props.description ? (
-        <p className="mt-1.5 mb-0 max-w-2xl font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1.5 mb-0 max-w-2xl font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {props.description}
         </p>
       ) : null}

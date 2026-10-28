@@ -10,6 +10,7 @@ import {
 import { Ellipsis, Menu } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
+import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
   MobileHeaderLivePortal,
@@ -18,20 +19,31 @@ import {
 import {
   ConversationHeaderActions,
   HeaderIconButton,
+  TranscriptViewToggle,
   type ConversationArchiveAction,
 } from "./ConversationHeaderActions";
 import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
-/** Render the sticky conversation title, compact tools, and advanced details. */
+/** Show the conversation title, search, and details. */
 export function ConversationHeader(props: {
+  /** Parent chain of a child Conversation. Root Conversations omit it. */
+  agentTree?: ReactNode;
   copyAction?: ReactNode;
   annotations: ReactNode;
   archive: ConversationArchiveAction;
+  brief?: ReactNode;
   conversationId: string;
+  /** Links to the fork source and to forks of this conversation. */
+  forks?: ReactNode;
   identity: ReactNode;
+  linkedWork?: ReactNode;
+  lastActivityAt?: string;
+  sentryConversationUrl?: string;
   live: boolean;
   meta?: ReactNode;
+  onOpenSubagent(target: SubagentTranscriptTarget): void;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
@@ -102,9 +114,10 @@ export function ConversationHeader(props: {
         <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
       </HeaderIconButton>
       {mobileMenuOpen ? (
-        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-white/[0.08] bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
+        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
           <ConversationHeaderActions
             archive={props.archive}
+            conversationId={props.conversationId}
             copyAction={menuCopyAction}
             detailsOpen={detailsOpen}
             layout="menu"
@@ -125,7 +138,7 @@ export function ConversationHeader(props: {
           />
           {openMobileNavigation ? (
             <button
-              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none"
+              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none"
               onClick={() => {
                 setMobileMenuOpen(false);
                 openMobileNavigation();
@@ -141,7 +154,12 @@ export function ConversationHeader(props: {
     </div>
   );
 
-  const showMobileChrome = searchOpenVisible || props.archive.error;
+  const showMobileHeader =
+    searchOpenVisible ||
+    props.archive.error ||
+    Boolean(props.linkedWork) ||
+    Boolean(props.forks) ||
+    Boolean(props.agentTree);
 
   const liveIndicator = props.live ? (
     <span
@@ -156,26 +174,35 @@ export function ConversationHeader(props: {
       <MobileHeaderActionsPortal>{mobileOverflow}</MobileHeaderActionsPortal>
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
-        className={
-          showMobileChrome
-            ? "sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-2 pt-2 backdrop-blur md:-mx-7 md:mb-3 md:px-7 md:pb-2.5 md:pt-4"
-            : "sticky top-0 z-10 -mx-3 mb-2 hidden border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-2 pt-3 backdrop-blur md:-mx-7 md:mb-3 md:block md:px-7 md:pb-2.5 md:pt-4"
-        }
+        className={cn(
+          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border bg-dashboard-bg md:-mx-7",
+          !showMobileHeader && "hidden md:block",
+        )}
       >
-        <div className="hidden min-w-0 items-start justify-between gap-2 md:flex">
-          <div className="min-w-0 pt-0.5">
-            <div className="flex min-w-0 items-center gap-x-2 gap-y-1">
-              <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-[-0.03em]">
+        <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
+          <div className="min-w-0">
+            {props.agentTree ? (
+              <div className="mb-1.5 min-w-0">{props.agentTree}</div>
+            ) : null}
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
                 {props.title}
               </h2>
               {liveIndicator}
-              <span className="hidden shrink-0 sm:inline-flex">
-                {props.privacy}
-              </span>
+              <span className="shrink-0">{props.privacy}</span>
             </div>
+            {props.meta ? (
+              <div className="mt-2 min-w-0 text-xs leading-snug text-dashboard-text-muted">
+                {props.meta}
+              </div>
+            ) : null}
+            {props.forks ? (
+              <div className="mt-1.5 min-w-0">{props.forks}</div>
+            ) : null}
           </div>
           <ConversationHeaderActions
             archive={props.archive}
+            conversationId={props.conversationId}
             copyAction={props.copyAction}
             detailsOpen={detailsOpen}
             onDetailsClick={() => setDetailsOpen(true)}
@@ -185,9 +212,29 @@ export function ConversationHeader(props: {
             view={props.view}
           />
         </div>
-
+        {props.agentTree ? (
+          <div className="px-4 py-2 md:hidden">{props.agentTree}</div>
+        ) : null}
+        {props.forks ? (
+          <div className="px-4 py-2 md:hidden">{props.forks}</div>
+        ) : null}
+        {props.linkedWork ? (
+          <div
+            aria-label="Linked work"
+            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:px-7"
+          >
+            {props.linkedWork}
+          </div>
+        ) : null}
+        <div className="hidden border-t border-dashboard-border-subtle px-7 md:flex">
+          <TranscriptViewToggle
+            labelled
+            onChange={props.onViewChange}
+            value={props.view}
+          />
+        </div>
         {searchOpenVisible ? (
-          <div className="min-w-0 md:mt-2">
+          <div className="px-4 py-3 md:px-7">
             <SearchInput
               className="min-w-0"
               inputRef={searchInputRef}
@@ -199,16 +246,9 @@ export function ConversationHeader(props: {
             />
           </div>
         ) : null}
-
         {props.archive.error ? (
-          <div className="mt-1.5 text-xs text-red-300/80">
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update archive state.
-          </div>
-        ) : null}
-
-        {props.meta ? (
-          <div className="mt-1.5 hidden min-w-0 font-sans text-xs leading-snug text-dashboard-text-muted md:block">
-            {props.meta}
           </div>
         ) : null}
       </header>
@@ -216,9 +256,13 @@ export function ConversationHeader(props: {
       {detailsOpen ? (
         <ConversationDetailsDrawer
           annotations={props.annotations}
+          brief={props.brief}
           conversationId={props.conversationId}
           identity={props.identity}
+          lastActivityAt={props.lastActivityAt}
+          sentryConversationUrl={props.sentryConversationUrl}
           onClose={() => setDetailsOpen(false)}
+          onOpenSubagent={props.onOpenSubagent}
           privacy={props.privacy}
           stats={props.stats}
           title={props.title}

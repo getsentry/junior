@@ -1,3 +1,4 @@
+import { messageCardRef, type MessageCard } from "@/chat/conversations/cards";
 import { botConfig } from "@/chat/config";
 import type { completeText } from "@/chat/pi/client";
 import type {
@@ -150,6 +151,7 @@ export function upsertConversationMessage(
 
 /** Record one assistant message after its destination accepts it. */
 export function recordDeliveredAssistantMessage(args: {
+  cards?: MessageCard[];
   conversation: ThreadConversationState;
   sessionId: string;
   source?: "slack" | "web";
@@ -166,6 +168,7 @@ export function recordDeliveredAssistantMessage(args: {
     replied: true,
     skippedReason: undefined,
   });
+  const objectCards = args.cards?.map(messageCardRef);
   upsertConversationMessage(args.conversation, {
     id: messageId,
     role: "assistant",
@@ -176,6 +179,7 @@ export function recordDeliveredAssistantMessage(args: {
       isBot: true,
     },
     meta: {
+      ...(objectCards?.length ? { objectCards } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
     },
@@ -208,6 +212,7 @@ export function markConversationMessage(
   if (messageIndex < 0) return;
 
   const current = conversation.messages[messageIndex];
+  if (!current) return;
   conversation.messages[messageIndex] = {
     ...current,
     meta: {

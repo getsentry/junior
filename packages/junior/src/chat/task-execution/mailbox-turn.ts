@@ -1,5 +1,5 @@
 import {
-  createResourceEventSource,
+  createEventSource,
   createLocalSource,
   createWebSource,
   type Source,
@@ -16,11 +16,14 @@ import {
   listTurnSummaries,
 } from "@/chat/task-execution/checkpoint";
 import {
-  isResourceEventConversationMessage,
-  RESOURCE_EVENT_MESSAGE_AUTHOR,
-  RESOURCE_EVENT_SYSTEM_ACTOR,
-} from "@/chat/resource-events/actor";
-import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
+  isEventConversationMessage,
+  EVENT_MESSAGE_AUTHOR,
+  EVENT_SYSTEM_ACTOR,
+} from "@/chat/events/actor";
+import {
+  EVENT_WAIT_MS,
+  isEventMailboxMetadata,
+} from "@/chat/events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
@@ -55,10 +58,10 @@ export function turnInputFactsFromConversationMessage(
     visibility?: ConversationPrivacy;
   },
 ): TurnInputFacts | undefined {
-  if (isResourceEventConversationMessage(message)) {
+  if (isEventConversationMessage(message)) {
     return {
-      actor: args.savedActor ?? RESOURCE_EVENT_SYSTEM_ACTOR,
-      author: message.author ?? RESOURCE_EVENT_MESSAGE_AUTHOR,
+      actor: args.savedActor ?? EVENT_SYSTEM_ACTOR,
+      author: message.author ?? EVENT_MESSAGE_AUTHOR,
       // Stored Turns written before Source was saved can only restore the old
       // provider stand-in from the Conversation.
       source:
@@ -108,12 +111,11 @@ export function sourceFromTurnInput(args: {
   return args.source;
 }
 
-function hasResourceEventActor(actors: readonly Actor[] | undefined): boolean {
+function hasEventActor(actors: readonly Actor[] | undefined): boolean {
   return Boolean(
     actors?.some(
       (actor) =>
-        actor.platform === "system" &&
-        actor.name === RESOURCE_EVENT_SYSTEM_ACTOR.name,
+        actor.platform === "system" && actor.name === EVENT_SYSTEM_ACTOR.name,
     ),
   );
 }
@@ -149,7 +151,7 @@ export async function getActiveConversationTurnId(
     : undefined;
 }
 
-/** Return the active web or resource-event mailbox Turn. */
+/** Return the active web or event mailbox Turn. */
 async function getActiveMailboxTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
@@ -169,10 +171,9 @@ async function getActiveMailboxTurnId(
       record &&
       !record.dispatchId &&
       (record.source?.kind === "web" ||
-        record.source?.kind === "resource_event" ||
+        record.source?.kind === "event" ||
         (!record.source &&
-          (record.surface === "api" ||
-            hasResourceEventActor(record.actors)))) &&
+          (record.surface === "api" || hasEventActor(record.actors)))) &&
       (record.state === "paused" || record.state === "running"),
   );
   if (active.length > 1) {
@@ -243,7 +244,36 @@ function parseWebMessages(
   });
 }
 
-function parseResourceEventMessages(
+/** Extra debounce time added per additional event already batched. */
+const EVENT_WAIT_PER_EXTRA_MESSAGE_MS = 5_000;
+/** Upper bound on the debounce window regardless of batch size. */
+const EVENT_MAX_WAIT_MS = 60_000;
+
+/**
+ * Return how long an event batch must wait before its Turn starts.
+ *
+ * A resource-event burst (e.g. several check runs on one PR) should produce
+ * one Turn instead of one per event. The window grows with batch size up to
+ * EVENT_MAX_WAIT_MS, so later events in the same burst land in this batch.
+ * Returns 0 when the batch can run now or does not start with an event.
+ */
+export function getEventBatchDelayMs(
+  messages: readonly InboundMessage[],
+  nowMs = Date.now(),
+): number {
+  const first = messages[0];
+  if (!first || !isEventMailboxMetadata(first.input.metadata)) {
+    return 0;
+  }
+  const waitMs = Math.min(
+    EVENT_MAX_WAIT_MS,
+    EVENT_WAIT_MS + EVENT_WAIT_PER_EXTRA_MESSAGE_MS * (messages.length - 1),
+  );
+  return Math.max(0, first.receivedAtMs + waitMs - nowMs);
+}
+
+/** Read an event batch as Turn input, or return [] when it is not only events. */
+export function parseEventMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
   if (messages.length === 0) {
@@ -252,38 +282,38 @@ function parseResourceEventMessages(
   if (
     !messages.every(
       (message) =>
-        message.source === "resource_event" &&
-        isResourceEventMailboxMetadata(message.input.metadata),
+        message.source === "event" &&
+        isEventMailboxMetadata(message.input.metadata),
     )
   ) {
     return [];
   }
   return messages.map((message) => {
-    if (!isResourceEventMailboxMetadata(message.input.metadata)) {
-      throw new Error("Resource event has invalid metadata");
+    if (!isEventMailboxMetadata(message.input.metadata)) {
+      throw new Error("Event has invalid metadata");
     }
     return {
-      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
-      author: RESOURCE_EVENT_MESSAGE_AUTHOR,
+      actor: EVENT_SYSTEM_ACTOR,
+      author: EVENT_MESSAGE_AUTHOR,
       message,
-      source: createResourceEventSource({
-        eventKey: message.input.metadata.resourceEvent.eventKey,
-        eventType: message.input.metadata.resourceEvent.eventType,
-        identifier: message.input.metadata.resourceEvent.identifier,
-        namespace: message.input.metadata.resourceEvent.namespace,
+      source: createEventSource({
+        eventKey: message.input.metadata.event.eventKey,
+        eventType: message.input.metadata.event.eventType,
+        identifier: message.input.metadata.event.identifier,
+        namespace: message.input.metadata.event.namespace,
       }),
     };
   });
 }
 
-/** Web or resource-event mailbox work selected for one lease. */
+/** Web or event mailbox work selected for one lease. */
 export type MailboxTurnWork =
   | { kind: "mailbox"; batch: MailboxTurnInput[] }
   | { kind: "resume"; turnId: string };
 
 /**
- * Select web or resource-event work from new mailbox input or a saved Turn.
- * Saved Actor data identifies a resumed resource-event Turn.
+ * Select web or event work from new mailbox input or a saved Turn.
+ * Saved Actor data identifies a resumed event Turn.
  */
 export async function resolveMailboxTurnWork(
   context: ConversationWorkerContext,
@@ -292,7 +322,7 @@ export async function resolveMailboxTurnWork(
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  const resourceBatch = parseResourceEventMessages(context.attempt.messages);
+  const resourceBatch = parseEventMessages(context.attempt.messages);
   if (resourceBatch.length > 0) {
     return { kind: "mailbox", batch: resourceBatch };
   }

@@ -2,11 +2,11 @@
 title: Credentials & OAuth
 description: How Junior uses connected accounts without exposing secrets to the model or sandbox.
 type: conceptual
-summary: Understand connected accounts, private OAuth, and task-scoped access.
+summary: Understand connected accounts, private OAuth, and automation-scoped access.
 prerequisites:
   - /concepts/security-and-authority/
 related:
-  - /concepts/tasks/
+  - /concepts/automations/
   - /extend/sentry-plugin/
   - /operate/security-hardening/
 ---
@@ -22,11 +22,11 @@ When sandbox traffic reaches a domain registered by a plugin, Junior fetches a s
 - Junior matches the request domain instead of guessing from command text.
 - Missing identity or credential context blocks the request.
 
-## User and Task Access
+## User and Automation Access
 
 The current user is the default credential owner. Their account can be used only within the active turn and provider scope.
 
-Scheduled and event tasks run as Junior, not as the creator. A task may use the creator's connected account when access was delegated to that exact task. The delegation does not apply to other tasks or conversations.
+Scheduled and event automations run as Junior, not as the creator. A automation may use the creator's connected account when access was delegated to that exact automation. The delegation does not apply to other automations or conversations.
 
 ## OAuth
 

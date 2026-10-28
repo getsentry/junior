@@ -10,9 +10,16 @@ import type { PluginManifest } from "@/chat/plugins/types";
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
 
-function resolveHeaders(
+/**
+ * Fill `${NAME}` refs in plugin header values from the deployment env.
+ *
+ * Manifests keep the placeholder so secrets never reach build output, and the
+ * parser has already required each name to be declared without a default.
+ */
+export function resolvePluginHeaderEnvRefs(
   provider: string,
   headers: Record<string, string>,
+  kind = "API header",
 ): Record<string, string> {
   return Object.fromEntries(
     Object.entries(headers).map(([key, value]) => {
@@ -21,7 +28,7 @@ function resolveHeaders(
         const envValue = process.env[envName]?.trim();
         if (!envValue) {
           throw new Error(
-            `Missing ${envName} for API header provider "${provider}"`,
+            `Missing ${envName} for ${kind} provider "${provider}"`,
           );
         }
         return envValue;
@@ -39,7 +46,7 @@ export function resolveApiHeaderTransforms(
   if (!domains || !apiHeaders) {
     return [];
   }
-  const resolvedHeaders = resolveHeaders(manifest.name, apiHeaders);
+  const resolvedHeaders = resolvePluginHeaderEnvRefs(manifest.name, apiHeaders);
   return domains.map((domain) => ({
     domain,
     headers: resolvedHeaders,

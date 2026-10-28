@@ -1,16 +1,20 @@
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationStore } from "@/chat/db";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { readLocationConfigurationValues } from "@/chat/configuration/sql";
+import { getConversationStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
-import {
-  getThreadTitleSourceMessage,
-  isHumanConversationMessage,
-} from "@/chat/services/conversation-memory";
+import { getPluginConversationTitleContext } from "@/chat/plugins/conversation-title-context";
+import { getThreadTitleSourceMessage } from "@/chat/services/conversation-memory";
 import {
   fallbackShortTitle,
   generateShortTitle,
 } from "@/chat/services/short-title";
-import type { ThreadConversationState } from "@/chat/state/conversation";
+import type { Destination } from "@sentry/junior-plugin-api";
+import type {
+  ConversationMessage,
+  ThreadConversationState,
+} from "@/chat/state/conversation";
 
 const inFlightTitles = new Map<string, Promise<string | undefined>>();
 
@@ -23,9 +27,10 @@ export function resetConversationTitleStateForTests(): void {
  * Set-once conversation title from the earliest human message.
  *
  * One automatic generation path for every surface. Starts only from durable
- * transcript writes via `scheduleConversationTitle`. Returns a newly persisted
- * title, or undefined when the conversation is already titled or generation
- * does not apply.
+ * transcript writes via `scheduleConversationTitle`. A dispatched run, such as
+ * an automation run, has no human message, so its title comes from the run
+ * input. Returns a newly persisted title, or undefined when the conversation
+ * is already titled or generation does not apply.
  */
 async function ensureConversationTitle(args: {
   conversation: ThreadConversationState;
@@ -45,13 +50,56 @@ async function ensureConversationTitle(args: {
   return work;
 }
 
+/** Return the earliest user message, which is the input of a dispatched run. */
+function getRunInputMessage(
+  conversation: ThreadConversationState,
+): ConversationMessage | undefined {
+  let earliest: ConversationMessage | undefined;
+  for (const message of conversation.messages) {
+    if (
+      message.role === "user" &&
+      (!earliest || message.createdAtMs < earliest.createdAtMs)
+    ) {
+      earliest = message;
+    }
+  }
+  return earliest;
+}
+
+/**
+ * Read config values for title context, such as a default repository. A
+ * failed Location read keeps the install defaults, so the title still works.
+ */
+async function resolveTitleConfiguration(
+  destination: Destination | undefined,
+): Promise<Record<string, unknown>> {
+  const defaults = getConfigDefaults();
+  if (destination?.platform !== "slack") return defaults;
+  try {
+    return {
+      ...defaults,
+      ...(await readLocationConfigurationValues({ db: getDb(), destination })),
+    };
+  } catch (error) {
+    logWarn("conversation.title.configuration.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    return defaults;
+  }
+}
+
 async function ensureConversationTitleOnce(args: {
   conversation: ThreadConversationState;
   conversationId: string;
   conversationStore?: Pick<ConversationStore, "get" | "recordActivity">;
   nowMs?: number;
 }): Promise<string | undefined> {
-  if (!args.conversation.messages.some(isHumanConversationMessage)) {
+  const humanMessage = getThreadTitleSourceMessage(args.conversation);
+  const runInputMessage = humanMessage
+    ? undefined
+    : getRunInputMessage(args.conversation);
+  if (!humanMessage && !runInputMessage) {
     return undefined;
   }
 
@@ -66,30 +114,46 @@ async function ensureConversationTitleOnce(args: {
     if (stored?.parentConversationId) {
       return undefined;
     }
-
-    const titleSourceMessage = getThreadTitleSourceMessage(args.conversation);
+    // Only dispatched runs use bot-authored input as the title source.
+    const titleSourceMessage =
+      humanMessage ??
+      (stored?.source === "plugin" ? runInputMessage : undefined);
     const sourceText = titleSourceMessage?.text.trim() ?? "";
     if (!titleSourceMessage || !sourceText) {
       return undefined;
     }
 
-    let title: string;
+    const kind = humanMessage ? "conversation" : "run";
+    let title: string | undefined;
     try {
-      const generated = await generateShortTitle({
+      // Run input is task boilerplate; only human messages link objects.
+      const context =
+        kind === "conversation"
+          ? await getPluginConversationTitleContext({
+              configuration: await resolveTitleConfiguration(
+                stored?.destination,
+              ),
+              text: sourceText,
+            })
+          : undefined;
+      title = await generateShortTitle({
         completeText,
-        kind: "conversation",
+        context,
+        kind,
         sourceText,
       });
-      title = generated ?? fallbackShortTitle(sourceText, "Conversation");
     } catch (error) {
       logWarn("conversation.title.generation.failed", {
         "exception.message":
           error instanceof Error ? error.message : String(error),
       });
+    }
+    // Run input starts with task boilerplate, so a failed run title stays
+    // unset and the dashboard keeps its fallback label.
+    if (!title && kind === "conversation") {
       title = fallbackShortTitle(sourceText, "Conversation");
     }
-
-    const normalized = title.trim();
+    const normalized = title?.trim();
     if (!normalized) {
       return undefined;
     }
@@ -118,8 +182,8 @@ async function ensureConversationTitleOnce(args: {
 }
 
 /**
- * Fire-and-forget title work after durable human transcript writes.
- * This is the only entry that starts generation.
+ * Start title work after durable transcript writes. This is the only
+ * entry that starts generation; `settleConversationTitleWork` joins it.
  */
 export function scheduleConversationTitle(args: {
   conversation: ThreadConversationState;
@@ -134,6 +198,16 @@ export function scheduleConversationTitle(args: {
   }).catch((error) => {
     logException(error, "conversation.title.task.failed");
   });
+}
+
+/**
+ * Wait for title generation started for one Conversation. The queue worker
+ * gives this to `waitUntil` so title work has an owner.
+ */
+export async function settleConversationTitleWork(
+  conversationId: string,
+): Promise<void> {
+  await inFlightTitles.get(conversationId);
 }
 
 /**

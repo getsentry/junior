@@ -1,0 +1,17 @@
+id: plugin-tool-camel-case
+valid:
+  - "const tools = { deploymentCreate: definePluginTool({}) };"
+  - 'const tools = { "deploymentCreate": definePluginTool({}) };'
+  - "const tools = { 'deploymentCreate': definePluginTool({}) };"
+  - "const tools = { deployment: createVercelDeploymentTool(ctx) };"
+  - "const tools = { ...createVercelActionTools(ctx) };"
+  - "const input = { deployment_id: z.string() };"
+  - "const result = { deployment_id: getDeploymentId() };"
+invalid:
+  - "const tools = { deployment_create: definePluginTool({}) };"
+  - 'const tools = { "deployment-create": definePluginTool({}) };'
+  - "const tools = { 'deployment_create': definePluginTool({}) };"
+  - "const tools = { DeploymentCreate: definePluginTool({}) };"
+  - "const tools = { deployment_inspect: createVercelDeploymentTool(ctx) };"
+  - "function createActions(ctx) { return { alias_assign: definePluginTool({}) }; }"
+  - "const tools = { [toolName]: definePluginTool({}) };"

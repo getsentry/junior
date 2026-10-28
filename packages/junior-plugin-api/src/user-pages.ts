@@ -13,7 +13,7 @@ const userPageIdSchema = nonBlankStringSchema
   .regex(/^[a-z][a-z0-9-]*$/);
 const userPageLabelSchema = nonBlankStringSchema.max(80);
 const userPageDescriptionSchema = nonBlankStringSchema.max(500);
-const userPageNavigationSchema = z.enum(["primary", "profile"]);
+const userPageNavigationSchema = z.enum(["primary", "profile", "admin"]);
 
 const pluginUserPageMetricSchema = z
   .object({
@@ -38,7 +38,11 @@ const pluginUserPageActionSchema = z
       .max(500)
       .regex(/^\/api\/plugins\/[a-z][a-z0-9-]*(?:\/|$)/),
     label: nonBlankStringSchema.max(80),
-    method: z.literal("DELETE"),
+    /**
+     * `DELETE` sends a request and refreshes the page. `GET` opens the plugin
+     * route in the browser, for flows such as an OAuth redirect.
+     */
+    method: z.enum(["DELETE", "GET"]),
     tone: z.enum(["danger", "neutral"]).optional(),
   })
   .strict();
@@ -121,8 +125,11 @@ export interface PluginUserPageDefinition {
   description: string;
   id: string;
   label: string;
-  /** Dashboard navigation surface where this page is linked. */
-  navigation?: "primary" | "profile";
+  /**
+   * Dashboard navigation surface where this page is linked. Junior lists and
+   * serves `admin` pages only to Junior admins.
+   */
+  navigation?: "primary" | "profile" | "admin";
   read(
     ctx: PluginUserPageContext,
     input: PluginUserPageInput,

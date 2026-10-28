@@ -6,6 +6,7 @@
  * authorization pause notices use `sendSlackReply` so the footer stays
  * consistent.
  */
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
@@ -20,18 +21,25 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  finishedRunReply,
+  runDispatchOutcome,
+  deliversFinalText,
+} from "@/chat/automation-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   logException,
+  setSpanAttributes,
   setTags,
   withLogContext,
   type LogContext,
 } from "@/chat/logging";
 import {
   finalizeFailedTurnReplyWithEvent,
+  getAgentTurnDiagnosticsAttributes,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -47,9 +55,8 @@ import {
 } from "@/chat/slack/assistant-thread/status";
 import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { actorLogContext } from "@/chat/credentials/context";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { acquireActiveLock } from "@/chat/state/locks";
 import {
   startProcessingReactionForMessage,
   type ProcessingReaction,
@@ -78,16 +85,6 @@ import {
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
 import { getConversationStore } from "@/chat/db";
-
-function resolveReplyTimeoutMs(): number | undefined {
-  const raw = process.env.EVAL_AGENT_REPLY_TIMEOUT_MS?.trim();
-  if (!raw) {
-    return undefined;
-  }
-
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
 
 async function postSlackMessageBestEffort(
   channelId: string,
@@ -152,14 +149,6 @@ function createReadOnlyConfigService(
   };
 }
 
-/** Error raised when another worker is already resuming the Slack Turn. */
-export class ResumeTurnBusyError extends Error {
-  constructor(lockKey: string) {
-    super(`Another worker is already resuming Slack Turn "${lockKey}"`);
-    this.name = "ResumeTurnBusyError";
-  }
-}
-
 interface ResumeSlackTurnArgs {
   messageText: string;
   conversationId: string;
@@ -171,13 +160,6 @@ interface ResumeSlackTurnArgs {
   messageTs?: SlackMessageTs;
   /** Saved Run fields. `beforeStart` may supply them after stale-work checks. */
   run?: ResumeRun;
-  lockKey?: string;
-  /**
-   * When true, the caller already holds the conversation work lease.
-   * Skip the second resume lock so the queue continuation has one owner.
-   * Authorization callbacks and other independent resumes leave this false.
-   */
-  ownsConversationLease?: boolean;
   initialText?: string;
   initialStatus?: AssistantStatusSpec;
   executeTurn: ExecuteTurn;
@@ -214,23 +196,11 @@ interface ResumePreparedTurn {
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
 }
 
-function getDefaultLockKey(
-  channelId: string,
-  threadTs: string | undefined,
-): string {
-  return threadTs ? `slack:${channelId}:${threadTs}` : `slack:${channelId}`;
-}
-
-function getResumeLogContext(
-  args: ResumeSlackTurnArgs,
-  lockKey: string,
-): LogContext {
-  const actor = args.run?.actor;
+function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
   return {
     conversationId: args.conversationId,
-    messageConversationId: lockKey,
-    userId: isUserActor(actor) ? actor.userId : undefined,
-    userName: isUserActor(actor) ? actor.userName : undefined,
+    messageConversationId: args.conversationId,
+    ...actorLogContext(args.run?.actor, args.run?.credentialContext),
     destinationName: args.channelId,
     assistantUserName: botConfig.userName,
     modelId: defaultModelId(botConfig),
@@ -344,8 +314,7 @@ function buildResumedRun(
     throw new TypeError("Slack resume requires a Slack Destination");
   }
   const requestDeadline = getTurnRequestDeadline();
-  const threadId =
-    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
+  const threadId = args.conversationId;
   const persistedLocationConfiguration =
     savedRun.environment?.locationConfiguration ??
     (savedRun.environment?.configuration
@@ -380,7 +349,7 @@ function buildResumedRun(
       }
       await priorOnEvent?.(event);
     },
-    ...(savedRun.dispatch?.outcomes?.length === 0 ? undefined : { delivery }),
+    ...(deliversFinalText(savedRun.dispatch) ? { delivery } : undefined),
     durability: {
       ...savedRun.durability,
       onSandboxRefChanged: async (sandboxRef) => {
@@ -396,19 +365,15 @@ function buildResumedRun(
 /**
  * Resume a paused Slack Turn.
  *
- * Queue continuations pass `ownsConversationLease` and skip the second lock
- * because the worker lease is already held. Authorization callbacks and other
- * independent resumes still take the thread lock. A started resume owns its
- * completion work.
+ * The caller must hold the conversation work lease. This function does not
+ * acquire another execution lock. A started resume owns its completion work.
  * Returns false only when `beforeStart` proves the resume is stale before
  * generation begins.
  */
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  const lockKey =
-    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  return withLogContext(getResumeLogContext(args, lockKey), () =>
+  return withLogContext(getResumeLogContext(args), () =>
     resumeSlackTurnInContext(args),
   );
 }
@@ -416,19 +381,6 @@ export async function resumeSlackTurn(
 async function resumeSlackTurnInContext(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const lockKey =
-    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  // A worker continuation already holds the Conversation lease. Do not take
-  // another lock for the same work.
-  const lock = args.ownsConversationLease
-    ? undefined
-    : await acquireActiveLock(stateAdapter, lockKey);
-  if (!args.ownsConversationLease && !lock) {
-    throw new ResumeTurnBusyError(lockKey);
-  }
-
   const status = createSlackWebApiAssistantStatusSession({
     channelId: args.channelId,
     threadTs: args.threadTs,
@@ -458,7 +410,7 @@ async function resumeSlackTurnInContext(
     if (preparedArgs) {
       runArgs = { ...args, ...preparedArgs };
     }
-    setTags(getResumeLogContext(runArgs, lockKey));
+    setTags(getResumeLogContext(runArgs));
 
     const savedRun = runArgs.run;
     if (!savedRun) {
@@ -509,7 +461,7 @@ async function resumeSlackTurnInContext(
     const conversationId = runArgs.conversationId;
     const visibility = (await getConversationStore().get({ conversationId }))
       ?.visibility;
-    const visibleConversationId = lockKey;
+    const visibleConversationId = args.conversationId;
     const sessionId = runArgs.turnId;
     let deliveryConversation:
       | ReturnType<typeof coerceThreadConversationState>
@@ -555,6 +507,7 @@ async function resumeSlackTurnInContext(
         return;
       }
       failureCode = "delivery_failed";
+      const cards = await loadPendingMessageCards(conversationId);
       const deliveryState = await getDeliveryConversation();
       let slackMessageTs: string[] = [];
       try {
@@ -563,6 +516,7 @@ async function resumeSlackTurnInContext(
           for (const outcome of outcomes) {
             slackMessageTs.push(
               ...(await sendSlackReply({
+                cards,
                 channelId: outcome.destination.channelId,
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
@@ -573,6 +527,7 @@ async function resumeSlackTurnInContext(
           }
         } else {
           slackMessageTs = await sendSlackReply({
+            cards,
             channelId: runArgs.channelId,
             conversationId: runArgs.conversationId,
             replyAttribution: runArgs.run?.dispatch?.replyAttribution,
@@ -590,6 +545,7 @@ async function resumeSlackTurnInContext(
       assistantMessageDelivered = true;
       acceptedDeliveryId = messageTs;
       const recordedMessageId = recordDeliveredAssistantMessage({
+        cards,
         conversation: deliveryState.conversation,
         sessionId: deliveryState.sessionId,
         source: "slack",
@@ -630,9 +586,8 @@ async function resumeSlackTurnInContext(
         );
       } catch (error) {
         logException(
-          new Error("Accepted assistant message persistence failed"),
+          error,
           "slack.resume.assistant_message_post_delivery_persist.failed",
-          { "error.type": error instanceof Error ? error.name : typeof error },
         );
       }
       const dispatchId = savedRun.dispatch?.id;
@@ -673,94 +628,87 @@ async function resumeSlackTurnInContext(
         surface: "slack",
       });
     }
-    const replyTimeoutMs = resolveReplyTimeoutMs();
-    const outcome = await runArgs.executeTurn(
-      run,
-      async (result) => {
-        const finalized = finalizeFailedTurnReplyWithEvent({
-          reply: result,
-          logException,
-        });
-        const reply = finalized.reply;
-        const dispatchErrorMessage =
-          run.dispatch && reply.diagnostics.outcome !== "success"
-            ? (reply.diagnostics.errorMessage ??
-              `Agent turn ended with ${reply.diagnostics.outcome}.`)
-            : undefined;
-        if (reply.diagnostics.outcome !== "success") {
-          await deliverAssistantMessage(reply.text);
-        }
-        runResultHandled = true;
+    const outcome = await runArgs.executeTurn(run, async (result) => {
+      const finalized = finalizeFailedTurnReplyWithEvent({
+        reply: result,
+        logException,
+      });
+      const reply = finalized.reply;
+      setSpanAttributes(getAgentTurnDiagnosticsAttributes(reply));
+      const dispatchResult = runDispatchOutcome(reply);
+      const dispatchErrorMessage = run.dispatch
+        ? dispatchResult.errorMessage
+        : undefined;
+      const replyText = finishedRunReply(reply, run.dispatch);
+      if (replyText !== undefined) {
+        await deliverAssistantMessage(replyText);
+      }
+      runResultHandled = true;
 
-        await status.clear();
-        failureCode = "persistence_failed";
-        // Save the completed Turn only after delivery. A remaining write
-        // failure must reach this provider instead of completing durable work.
-        if (reply.piMessages?.length) {
-          await saveTurnCheckpoint({
-            mode: "completed",
-            conversationId: runArgs.conversationId,
-            turnId: runArgs.turnId,
-            messages: reply.piMessages,
-            durationMs: reply.diagnostics.durationMs,
-            usage: reply.diagnostics.usage,
-            destination: run.destination,
-            destinationVisibility: visibility,
-            dispatchId: run.dispatch?.id,
-            dispatchOutcome:
-              reply.diagnostics.outcome === "success" ? "completed" : "failed",
-            ...(dispatchErrorMessage
-              ? { errorMessage: dispatchErrorMessage }
-              : undefined),
-            ...(acceptedDeliveryId
-              ? { resultMessageId: acceptedDeliveryId }
-              : undefined),
-            source: run.source,
-            actor: resumeActor,
-            surface: run.surface ?? "slack",
-            sliceId: runArgs.sliceId,
-          });
-        } else if (run.dispatch?.id) {
-          await recordTurnSummary({
-            conversationId: runArgs.conversationId,
-            destination: run.destination,
-            destinationVisibility: visibility,
-            dispatchId: run.dispatch?.id,
-            dispatchOutcome:
-              reply.diagnostics.outcome === "success" ? "completed" : "failed",
-            ...(acceptedDeliveryId
-              ? { resultMessageId: acceptedDeliveryId }
-              : undefined),
-            turnId: runArgs.turnId,
-            sliceId: runArgs.sliceId ?? 1,
-            source: run.source,
-            state:
-              reply.diagnostics.outcome === "success" ? "completed" : "failed",
-            surface: run.surface ?? "slack",
-          });
-        }
-        await runArgs.commitResult?.(reply);
-        if (reply.diagnostics.outcome === "success") {
-          shouldScheduleCompletedPluginTasks = true;
-          return {
-            outcome: assistantMessageDelivered ? "success" : "no_reply",
-          };
-        }
-
-        return {
-          outcome: "failed",
-          failureCode: "model_execution_failed",
-          ...(finalized.eventId ? { eventId: finalized.eventId } : undefined),
-          ...(finalized.failureReason
-            ? { failureReason: finalized.failureReason }
+      await status.clear();
+      failureCode = "persistence_failed";
+      // Save the completed Turn only after delivery. A remaining write
+      // failure must reach this provider instead of completing durable work.
+      if (reply.piMessages?.length) {
+        await saveTurnCheckpoint({
+          mode: "completed",
+          conversationId: runArgs.conversationId,
+          turnId: runArgs.turnId,
+          messages: reply.piMessages,
+          durationMs: reply.diagnostics.durationMs,
+          usage: reply.diagnostics.usage,
+          destination: run.destination,
+          destinationVisibility: visibility,
+          dispatchId: run.dispatch?.id,
+          dispatchOutcome: dispatchResult.outcome,
+          ...(dispatchErrorMessage
+            ? { errorMessage: dispatchErrorMessage }
             : undefined),
+          ...(acceptedDeliveryId
+            ? { resultMessageId: acceptedDeliveryId }
+            : undefined),
+          source: run.source,
+          actor: resumeActor,
+          surface: run.surface ?? "slack",
+          sliceId: runArgs.sliceId,
+        });
+      } else if (run.dispatch?.id) {
+        await recordTurnSummary({
+          conversationId: runArgs.conversationId,
+          destination: run.destination,
+          destinationVisibility: visibility,
+          dispatchId: run.dispatch?.id,
+          dispatchOutcome: dispatchResult.outcome,
+          ...(acceptedDeliveryId
+            ? { resultMessageId: acceptedDeliveryId }
+            : undefined),
+          turnId: runArgs.turnId,
+          sliceId: runArgs.sliceId ?? 1,
+          source: run.source,
+          state:
+            reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          surface: run.surface ?? "slack",
+        });
+      }
+      await runArgs.commitResult?.(reply);
+      if (reply.diagnostics.outcome === "success") {
+        shouldScheduleCompletedPluginTasks = true;
+        return {
+          outcome: assistantMessageDelivered ? "success" : "no_reply",
         };
-      },
-      replyTimeoutMs,
-    );
+      }
+
+      return {
+        outcome: "failed",
+        failureCode: "model_execution_failed",
+        ...(finalized.eventId ? { eventId: finalized.eventId } : undefined),
+        ...(finalized.failureReason
+          ? { failureReason: finalized.failureReason }
+          : undefined),
+      };
+    });
     if (outcome.status !== "completed") {
-      // Expected pauses defer their handlers until the lock is released,
-      // mirroring the failure path below.
+      // Finish reaction cleanup before running pause or failure handlers.
       await status.clear();
       const onAuthPause = runArgs.onAuthPause;
       const onSuspend = runArgs.onSuspend;
@@ -781,8 +729,8 @@ async function resumeSlackTurnInContext(
         // Queue continue already owns the lease. After a hard timeout, return
         // the lease so the next wake starts with a full request budget.
         if (
-          runArgs.ownsConversationLease &&
-          (outcome.reason === "timeout" || savedRun.durability?.shouldYield?.())
+          outcome.reason === "timeout" ||
+          savedRun.durability?.shouldYield?.()
         ) {
           throw new CooperativeTurnYieldError();
         }
@@ -838,10 +786,6 @@ async function resumeSlackTurnInContext(
     // Lease owner must requeue after a hard timeout park. Do not convert this
     // into a user-visible resume failure.
     if (isCooperativeTurnYieldError(runError)) {
-      if (lock) {
-        await stateAdapter.releaseLock(lock);
-      }
-      await processingReaction?.stop();
       throw runError;
     }
 
@@ -870,9 +814,6 @@ async function resumeSlackTurnInContext(
       await processingReaction?.complete();
     } else {
       await processingReaction?.stop();
-    }
-    if (lock) {
-      await stateAdapter.releaseLock(lock);
     }
   }
 

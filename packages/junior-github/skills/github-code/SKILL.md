@@ -7,13 +7,14 @@ description: Work with GitHub repositories, source code, branches, commits, pull
 
 Use `git` and `gh` for repository work.
 
-| Action                          | Tool / command                                                           |
-| ------------------------------- | ------------------------------------------------------------------------ |
-| Create PR                       | `github_createPullRequest` (not `gh pr create`)                          |
-| Update PR title/body/base/state | `github_updatePullRequest`                                               |
-| Submit PR review                | `github_submitPullRequestReview`                                         |
-| Resolve review thread           | `github_resolvePullRequestReviewThread`                                  |
-| Clone missing repo              | `github_cloneRepository`; on Workspace match error use `switchWorkspace` |
+| Action                          | Tool / command                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Create PR                       | `github_createPullRequest` (not `gh pr create`)                                                               |
+| Update PR title/body/base/state | `github_updatePullRequest`                                                                                    |
+| Mark PR ready / draft           | `github_updatePullRequest` with `draft: false` / `draft: true`                                                |
+| Submit PR review                | `github_submitPullRequestReview`                                                                              |
+| Resolve review thread           | `github_resolvePullRequestReviewThread`                                                                       |
+| Clone missing repo              | `github_cloneRepository` (not `git clone` or `gh repo clone`); on Workspace match error use `switchWorkspace` |
 
 ## Open when needed
 
@@ -28,12 +29,13 @@ Use `git` and `gh` for repository work.
 - Use the requested repo. Otherwise read `github.repo` with standalone `jr-rpc config get github.repo`.
 - Pass `--repo owner/repo` to `gh`. Use `git -C PATH` for local repos.
 - Read each applicable `AGENTS.md` before edits.
-- Keep unrelated work. Never force-push, delete refs, or make destructive merges.
+- Keep unrelated work. Never delete refs or make destructive merges.
+- Force-push only with `--force-with-lease`, and only to branches Junior pushed or the requester named.
 - Use repository evidence. Report only checks you ran.
 - Push before `github_createPullRequest`. Never ask for a token for bot pushes.
 - When an error names a tool, use it. Change permissions only when GitHub rejected the request.
 - Stop for an unclear target, missing access, destructive work, or a GitHub permission failure.
-- Unless the user opts out, push completed work and open a draft PR.
+- Unless the user opts out, push completed work and open a PR. Open it ready for review when the work is complete and the checks pass. Open a draft only when work, checks, or decisions remain.
 - Report repo, branch, PR, checks, and skipped checks.
 
 Do not install or repair the GitHub plugin from this skill.

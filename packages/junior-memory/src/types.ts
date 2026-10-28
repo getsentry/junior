@@ -12,6 +12,8 @@ export const MEMORY_SUBJECT_TYPES = [
 // Durable attribution follows Source kind, including dashboard roots.
 export const MEMORY_SOURCE_PLATFORMS = ["slack", "local", "web"] as const;
 export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
+/** Things that can happen to a stored memory and feed future recall weights. */
+export const MEMORY_SIGNALS = ["duplicate"] as const;
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
 
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
@@ -19,6 +21,7 @@ export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 export type MemorySubjectType = (typeof MEMORY_SUBJECT_TYPES)[number];
 export type MemorySourcePlatform = (typeof MEMORY_SOURCE_PLATFORMS)[number];
 export type MemoryEmbeddingMetric = (typeof MEMORY_EMBEDDING_METRICS)[number];
+export type MemorySignal = (typeof MEMORY_SIGNALS)[number];
 
 const nonEmptyStringSchema = z.string().min(1);
 

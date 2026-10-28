@@ -4,7 +4,7 @@ import { mswServer } from "../msw/server";
 /** Return a fixed route decision from the model service. */
 export function mockTurnRouterModel(): void {
   mswServer.use(
-    http.post("https://ai-gateway.vercel.sh/v3/ai/language-model", () =>
+    http.post("https://ai-gateway.vercel.sh/v4/ai/language-model", () =>
       HttpResponse.json({
         content: [
           {

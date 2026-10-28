@@ -4,17 +4,17 @@ import { z } from "zod";
 
 export const QUEUE_SIGNATURE_MAX_AGE_MS = 60 * 60 * 1000;
 
-export type QueueRejectReason =
-  | "expired"
-  | "malformed"
-  | "signature_mismatch";
+export type QueueRejectReason = "expired" | "malformed" | "signature_mismatch";
 
 export type QueueVerifyResult<Message> =
   | { status: "verified"; message: Message }
   | { status: "rejected"; reason: QueueRejectReason }
   | { status: "unavailable"; reason: "invalid_clock" | "missing_secret" };
 
-export interface QueueSignConfig<Message extends object, Version extends string> {
+export interface QueueSignConfig<
+  Message extends object,
+  Version extends string,
+> {
   context: string;
   maxAgeMs?: number;
   schema: z.ZodType<Message>;
@@ -36,9 +36,7 @@ function digest(args: {
   signedAtMs: number;
 }): string {
   return createHmac("sha256", args.secret)
-    .update(
-      [args.context, args.signedAtMs, ...args.parts].join(args.separator),
-    )
+    .update([args.context, args.signedAtMs, ...args.parts].join(args.separator))
     .digest("hex");
 }
 
@@ -113,7 +111,9 @@ export function verifyQueueMessage<
       signedAtMs: z.number().finite(),
     })
     .safeParse(value);
-  const message = config.schema.safeParse(body(value as Record<string, unknown>));
+  const message = config.schema.safeParse(
+    body(value as Record<string, unknown>),
+  );
   if (!signed.success || !message.success) {
     return { status: "rejected", reason: "malformed" };
   }

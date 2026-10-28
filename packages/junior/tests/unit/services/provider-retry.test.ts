@@ -66,7 +66,7 @@ describe("provider retry helpers", () => {
   it("finds provider errors preserved by domain wrappers", () => {
     const providerError = createProviderError("No object generated", {
       kind: "invalid_response",
-      modelId: "openai/gpt-5.6-luna",
+      modelId: "openai/gpt-6-luna",
     });
     const wrapped = new Error("Action review unavailable", {
       cause: providerError,
@@ -179,6 +179,30 @@ describe("provider retry helpers", () => {
     ).toMatchObject({ delayMs: 2_000, messages: [user] });
   });
 
+  it("retries capacity errors within the existing budget", () => {
+    const user = { role: "user", content: "help" } as PiMessage;
+    const failure = assistantError(
+      JSON.stringify({
+        type: "error",
+        error: {
+          type: "api_error",
+          message:
+            "The model is currently at capacity due to high demand. Please try again in a few minutes.",
+        },
+      }),
+    );
+    expect(
+      nextProviderRetry({ attempt: 0, failure, messages: [user, failure] }),
+    ).toMatchObject({
+      delayMs: 2000,
+      messages: [user],
+      providerError: { kind: "capacity", retryable: true },
+    });
+    expect(
+      nextProviderRetry({ attempt: 3, failure, messages: [user, failure] }),
+    ).toBeUndefined();
+  });
+
   it("honors bounded rate-limit hints", () => {
     const error = Object.assign(new Error("rate limited"), {
       responseHeaders: { "Retry-After": "30" },
@@ -274,6 +298,16 @@ describe("provider retry helpers", () => {
         retryable: false,
       });
     }
+  });
+
+  it("uses safe provider copy when classification fails", () => {
+    const message = getProviderErrorUserMessage(
+      createProviderError("unrecognized raw-error-sentinel token=secret"),
+    );
+
+    expect(message).toContain("model provider returned an error");
+    expect(message).not.toContain("raw-error-sentinel");
+    expect(message).not.toContain("token=secret");
   });
 
   it("does not claim a retry happened in terminal capacity copy", () => {

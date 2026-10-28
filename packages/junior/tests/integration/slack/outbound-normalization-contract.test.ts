@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import * as Sentry from "@/chat/sentry";
+import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import type { SlackEntity } from "@/chat/slack/work-object";
 import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
@@ -23,7 +26,39 @@ import {
 } from "../../msw/handlers/slack-api";
 
 describe("Slack contract: outbound normalization", () => {
+  const spans: ReturnType<typeof Sentry.spanToJSON>[] = [];
+  const events: Sentry.ErrorEvent[] = [];
+  let client: ReturnType<typeof Sentry.init>;
+
+  beforeAll(() => {
+    client = Sentry.init({
+      dsn: "https://public@example.com/1",
+      tracesSampleRate: 1,
+      defaultIntegrations: false,
+      beforeSend: (event) => {
+        events.push(event);
+        return null;
+      },
+      transport: () => ({
+        send: async () => ({ statusCode: 200 }),
+        flush: async () => true,
+      }),
+    });
+    client?.on("spanEnd", (span) => {
+      const json = Sentry.spanToJSON(span);
+      if (json.description === "POST slack.com/api/chat.postMessage") {
+        spans.push(json);
+      }
+    });
+  });
+
+  afterAll(async () => {
+    await client?.close();
+  });
+
   beforeEach(() => {
+    spans.length = 0;
+    events.length = 0;
     process.env.SLACK_BOT_TOKEN =
       process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
     setPlugins([]);
@@ -36,6 +71,8 @@ describe("Slack contract: outbound normalization", () => {
       text: "hello",
     });
 
+    await client?.flush();
+    expect(events).toHaveLength(0);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -46,6 +83,133 @@ describe("Slack contract: outbound normalization", () => {
         }),
       }),
     ]);
+  });
+
+  it.each([
+    { includeEntities: false, privacy: undefined },
+    { includeEntities: true, privacy: "public" as const },
+    { includeEntities: true, privacy: "private" as const },
+  ])(
+    "captures warning issues and span diagnostics with $privacy visibility and entities=$includeEntities",
+    async ({ includeEntities, privacy }) => {
+      const entities: SlackEntity[] = includeEntities
+        ? [
+            {
+              entity_type: "slack#/entities/item",
+              external_ref: { type: "annotation", id: "private-reference" },
+              url: "https://private.example/pull/1",
+              entity_payload: {
+                attributes: { title: { text: "private-title" } },
+              },
+            },
+          ]
+        : [];
+      queueSlackApiResponse("chat.postMessage", {
+        body: {
+          ok: true,
+          ts: "1700000000.000200",
+          response_metadata: {
+            warnings: ["invalid_metadata_format"],
+            messages: [
+              '[WARN] Message metadata was incorrectly formatted. The message metadata will be ignored as a result. For event metadata, refer to the following errors: ["missing required field: event_type","missing required field: event_payload"]. For entity metadata, refer to the following errors: ["expected object at /entities/0/entity_payload, received string: private-title"].',
+              '"private-title" https://private.example/pull/1 user@example.com xoxb-private-token Bearer private-bearer API_KEY=private-key 秘密 /entities/private-reference/title',
+            ],
+            unrelated: "private-response-data",
+          },
+        },
+      });
+      const post = () =>
+        postSlackMessage({
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+          text: "private-message",
+          entities,
+        });
+      const result = await (privacy
+        ? runWithConversationPrivacy(privacy, post)
+        : post());
+      await client?.flush();
+      expect(result.ts).toBe("1700000000.000200");
+      expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        message: "Slack chat.postMessage returned warnings",
+        level: "warning",
+        fingerprint: [
+          "slack.chat.postMessage.warning",
+          "invalid_metadata_format",
+        ],
+        contexts: {
+          trace: { trace_id: spans[0]?.trace_id, span_id: spans[0]?.span_id },
+        },
+        extra: {
+          "messaging.message.id": "1700000000.000200",
+          "app.slack.warning_count": 1,
+        },
+      });
+      expect(events[0]?.extra?.["app.slack.response_diagnostics"]).toEqual({
+        warnings: ["invalid_metadata_format"],
+        messages: [
+          '[WARN] Message metadata was incorrectly formatted. The message metadata will be ignored as a result. For event metadata, refer to the following errors: ["missing required field: event_type","missing required field: event_payload"]. For entity metadata, refer to the following errors: ["expected object at /entities/*/entity_payload, received string: [value]"].',
+          '"[value]" [value] [value] [value] [value] [value] [value] [value] /entities/*/title',
+        ],
+      });
+      expect(JSON.stringify(events)).not.toContain("秘密");
+      expect(JSON.stringify(events)).not.toContain("private-");
+      expect(JSON.stringify(events)).not.toContain("private.example");
+      expect(spans).toHaveLength(1);
+      const attributes = spans[0]?.data;
+      expect(attributes).toMatchObject({
+        "app.slack.channel_id": "C123",
+        "app.slack.thread_ts": "1700000000.000100",
+        "app.slack.work_object.count": entities.length,
+        "messaging.message.id": "1700000000.000200",
+        "app.slack.warning_count": 1,
+        "app.slack.diagnostic_codes": ["invalid_metadata_format"],
+      });
+      expect(JSON.stringify(spans)).not.toContain("private-");
+      expect(JSON.stringify(spans)).not.toContain("private.example");
+    },
+  );
+
+  it("keeps request attributes and the API error on a rejected post span", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: { ok: false, error: "invalid_metadata_schema" },
+    });
+
+    await expect(
+      postSlackMessage({ channelId: "C123", text: "private-message" }),
+    ).rejects.toMatchObject({ apiError: "invalid_metadata_schema" });
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.status).not.toBe("ok");
+    expect(spans[0]?.data).toMatchObject({
+      "app.slack.work_object.count": 0,
+      "app.slack.api_error_code": "invalid_metadata_schema",
+    });
+    expect(JSON.stringify(spans)).not.toContain("private-message");
+  });
+
+  it("rejects Task fields on Item entities before chat.postMessage", async () => {
+    await expect(
+      postSlackMessage({
+        channelId: "C123",
+        text: "The object is ready.",
+        entities: [
+          // @ts-expect-error Item entities must use custom_fields, not Task fields.
+          {
+            entity_type: "slack#/entities/item",
+            external_ref: { id: "1" },
+            url: "https://example.com/pull/1",
+            entity_payload: {
+              attributes: { title: { text: "Fix the parser" } },
+              fields: { status: { value: "draft" } },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/fields/);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 
   it("passes block payloads with a top-level fallback text", async () => {

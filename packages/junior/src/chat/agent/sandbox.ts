@@ -35,6 +35,7 @@ export interface AgentSandboxOptions {
   traceContext: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   egressSignals?: SandboxEgressSignalTransport;
+  conversationId?: string;
   credentialEgress?: CredentialContext;
   actor?: Actor;
   locationConfiguration?: LocationConfigurationService;
@@ -45,7 +46,7 @@ export interface AgentSandboxOptions {
     workspace: SandboxWorkspace,
     recipe: Workspace,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<() => Promise<void>>;
   onSandboxRefChanged(sandboxRef: SandboxRef): void;
   persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
 }
@@ -166,6 +167,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     traceContext: options.traceContext,
     tracePropagation: options.tracePropagation,
     egressSignals: options.egressSignals,
+    conversationId: options.conversationId,
     credentialEgress: options.credentialEgress,
     prepare: options.prepareSandbox,
     prepareWorkspace: options.prepareWorkspace,

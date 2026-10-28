@@ -32,6 +32,7 @@ export type PluginCommandIo = PluginCliIo;
 
 const pluginCliLoader = createJiti(import.meta.url, { moduleCache: false });
 const CORE_COMMAND_NAMES = new Set([
+  "admin",
   "chat",
   "check",
   "init",

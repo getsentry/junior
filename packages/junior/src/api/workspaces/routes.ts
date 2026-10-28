@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
+import { getSandboxResources } from "@/chat/sandbox/resources";
 import {
   create as createSnapshotProfile,
   hash as workspaceProfileHash,
@@ -67,6 +68,7 @@ function view(workspace: Workspace) {
     id: workspace.id,
     name: workspace.name,
     setupScript: workspace.setupScript,
+    vcpus: workspace.vcpus,
     repos: workspace.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -101,6 +103,7 @@ export function createWorkspaceRoutes(): Hono<JuniorApiEnv> {
     ]);
     return jsonResponse(workspaceListSchema, {
       baselineSnapshot,
+      defaultVcpus: getSandboxResources()?.vcpus ?? null,
       workspaces: workspaces.map(view),
     });
   });

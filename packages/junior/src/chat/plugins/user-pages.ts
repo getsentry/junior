@@ -10,24 +10,37 @@ import {
   type PluginUserPageContent,
   type PluginUserPageInput,
   type PluginUserPageLink,
+  type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 
-/** List safe navigation metadata for registered plugin user pages. */
-export function readPluginUserPageLinks(): PluginUserPageLink[] {
+/** Admin pages are hidden from everyone except Junior admins. */
+function viewerCanSeePage(
+  page: { navigation?: PluginUserPageLink["navigation"] },
+  viewer: User | undefined,
+): boolean {
+  return page.navigation !== "admin" || viewer?.isAdmin === true;
+}
+
+/** List safe navigation metadata for the plugin user pages one viewer can see. */
+export function readPluginUserPageLinks(
+  viewer: User | undefined,
+): PluginUserPageLink[] {
   return pluginUserPageLinksSchema.parse(
     getPlugins().flatMap((plugin) =>
-      (plugin.userPages ?? []).map((page) => ({
-        description: page.description,
-        id: page.id,
-        label: page.label,
-        navigation: page.navigation ?? "profile",
-        pluginDisplayName: plugin.manifest.displayName,
-        pluginName: plugin.manifest.name,
-      })),
+      (plugin.userPages ?? [])
+        .filter((page) => viewerCanSeePage(page, viewer))
+        .map((page) => ({
+          description: page.description,
+          id: page.id,
+          label: page.label,
+          navigation: page.navigation ?? "profile",
+          pluginDisplayName: plugin.manifest.displayName,
+          pluginName: plugin.manifest.name,
+        })),
     ),
   );
 }
@@ -61,6 +74,8 @@ export async function readPluginUserPage(input: {
   if (!viewer) {
     throw new Error("Authenticated viewer user could not be resolved");
   }
+  // Read the role fresh so a revoked admin loses access on the next request.
+  if (!viewerCanSeePage(page, viewer)) return undefined;
 
   const content = pluginUserPageContentSchema.parse(
     await page.read(

@@ -12,7 +12,10 @@ import type {
 import { isPostableObject, Message } from "chat";
 import { SlackAdapter } from "@chat-adapter/slack";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { readProxyProperty } from "./proxy-property";
+import {
+  getCapturedSlackApiCalls,
+  type CapturedSlackApiCall,
+} from "../msw/handlers/slack-api";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -280,19 +283,6 @@ export class FakeSlackAdapter extends SlackAdapter {
   }
 }
 
-function createThreadAdapter(): Adapter {
-  const adapter = new FakeSlackAdapter();
-  return new Proxy(adapter, {
-    get(target, property) {
-      if (property === "name") {
-        return "test";
-      }
-      const value = readProxyProperty(target, property);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-}
-
 // ── Test Thread ──────────────────────────────────────────────────────
 
 export interface TestThread extends Thread {
@@ -366,7 +356,24 @@ export async function createTestThread(args: {
   let seededThreadState = false;
   let seededChannelState = false;
 
-  const stubAdapter = createThreadAdapter();
+  // Include HTTP post attempts in request order with SDK-only notices. Tests
+  // that need cards, blocks, or delivery outcomes must inspect the MSW outbox.
+  const recordedApiCalls = new Set<CapturedSlackApiCall>();
+  const recordApiPosts = () => {
+    for (const call of getCapturedSlackApiCalls("chat.postMessage")) {
+      if (
+        recordedApiCalls.has(call) ||
+        call.params.channel !== parseChannelFromAdapterChannelId(channelId) ||
+        call.params.thread_ts !== id.split(":")[2]
+      )
+        continue;
+      recordedApiCalls.add(call);
+      posts.push({ markdown: call.params.text });
+      postKinds.push("value");
+      postIds.push(Symbol("api-post"));
+    }
+  };
+  const stubAdapter = new FakeSlackAdapter();
   const channelRef = args.channelStateRef ?? { value: {} };
 
   // Constructor args own the fixture snapshot for this id. Always apply them so
@@ -495,6 +502,7 @@ export async function createTestThread(args: {
       adapter: stubAdapter,
       threadId: id,
       record(entry, kind) {
+        recordApiPosts();
         const postId = Symbol("post");
         posts.push(entry);
         postKinds.push(kind);
@@ -555,9 +563,11 @@ export async function createTestThread(args: {
       return [];
     },
     get posts() {
+      recordApiPosts();
       return posts;
     },
     get postKinds() {
+      recordApiPosts();
       return postKinds;
     },
     get subscribeCalls() {

@@ -1,9 +1,12 @@
+import { githubObjectFacts } from "../object-facts.js";
+import { githubObjectAnnotation } from "../annotations.js";
 import {
   type Identity,
   type User,
   type Actor,
   type PluginLogger,
   type PluginEgress,
+  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -12,7 +15,7 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { gitHubIssueSubscribable } from "../resource-events/issue.js";
+import { gitHubIssueSubscribable } from "../events/issue.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
 
@@ -98,11 +101,13 @@ function githubApiErrorMessage(payload: unknown): string {
 /** Update mutable issue metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdateIssueTool(ctx: {
   actor?: Actor;
+  automationLink?: { url: string };
   conversationId?: string;
   egress: PluginEgress;
   log: PluginLogger;
-  resourceEvents: { canSubscribe: boolean };
+  events: { canSubscribe: boolean };
   slack?: { conversationLink?: { url?: string } };
+  source?: Source;
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
   };
@@ -171,13 +176,24 @@ export function createGitHubUpdateIssueTool(ctx: {
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubIssueSubscribable({
             number: providerResult.number,
             repo: repo.ref,
           })
         : undefined;
       return {
+        objectAnnotations: [
+          githubObjectAnnotation({
+            ...githubObjectFacts("task", parsed),
+            repo: repo.ref,
+            number: providerResult.number,
+            title: providerResult.title,
+            url: providerResult.html_url,
+            objectType: "task",
+            status: providerResult.state,
+          }),
+        ],
         target: "updateIssue",
         body: providerResult.body,
         number: providerResult.number,

@@ -6,9 +6,10 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import {
   createToolActionReview,
   type ToolActionReview,
-  type ToolActionReviewer,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
+import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
+import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
@@ -64,12 +65,12 @@ describe("Pi tool adapter", () => {
     handleToolExecutionError.mockClear();
   });
 
-  it("emits assistant status only for reportProgress", async () => {
+  it("emits assistant status for updatePlan only", async () => {
     const sandbox = new SkillSandbox([], []);
     const onStatus = vi.fn(async () => undefined);
-    const [reportProgressTool, bashTool] = createPiAgentTools(
+    const [updatePlanTool, bashTool] = createPiAgentTools(
       {
-        reportProgress: createReportProgressTool(),
+        updatePlan: createUpdatePlanTool(),
         bash: {
           description: "bash",
           inputSchema: {} as any,
@@ -81,13 +82,16 @@ describe("Pi tool adapter", () => {
       onStatus,
     );
 
-    await reportProgressTool!.execute("tool-progress", {
-      message: "  Reviewing results  ",
+    await updatePlanTool!.execute("tool-plan", {
+      plan: [
+        { step: "Inspect current behavior", status: "completed" },
+        { step: "Implement the MVP", status: "in_progress" },
+      ],
     });
     await bashTool!.execute("tool-bash", { command: "pwd" });
 
-    expect(onStatus).toHaveBeenCalledTimes(1);
-    expect(onStatus).toHaveBeenCalledWith({ text: "Reviewing results" });
+    expect(onStatus).toHaveBeenCalledOnce();
+    expect(onStatus).toHaveBeenCalledWith({ text: "Implement the MVP" });
   });
 
   it("emits assistant status when reportProgress runs through executeTool", async () => {
@@ -265,6 +269,83 @@ describe("Pi tool adapter", () => {
     );
   });
 
+  it("reports a failure after the run aborts as an attempt with unknown outcome", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const execute = vi.fn(async () => {
+      abortController.abort(new Error("turn deadline"));
+      throw new Error("transport closed");
+    });
+
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          description: "demo",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    await expect(
+      demoTool!.execute(
+        "tool-demo",
+        { value: "input" },
+        abortController.signal,
+      ),
+    ).resolves.toMatchObject({
+      details: { aborted: true, target: "demo" },
+      isError: false,
+    });
+    expect(handleToolExecutionError).not.toHaveBeenCalled();
+  });
+
+  it("reports a preempted tool that ignores the abort as an attempt with unknown outcome", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const execute = vi.fn(() => {
+      abortController.abort(new Error("turn deadline"));
+      return new Promise<never>(() => {});
+    });
+
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          description: "demo",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    await expect(
+      demoTool!.execute(
+        "tool-demo",
+        { value: "input" },
+        abortController.signal,
+      ),
+    ).resolves.toMatchObject({
+      details: { aborted: true, target: "demo" },
+      isError: false,
+    });
+  });
+
   it("reports tool call parameters to the caller", async () => {
     const sandbox = new SkillSandbox([], []);
     const onToolCall = vi.fn();
@@ -425,7 +506,7 @@ describe("Pi tool adapter", () => {
       userAuthorization: "high" as const,
     }));
     const pluginHooks = {
-      afterMcpTool: vi.fn(async () => undefined),
+      afterMcpTool: vi.fn(async () => []),
       beforeToolExecute: vi.fn(async () => ({
         input: {
           reportId: "monthly",

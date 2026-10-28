@@ -1,6 +1,6 @@
 # @sentry/junior-sentry
 
-Sentry investigations (per-user OAuth) and signed issue webhooks (internal integration) for Junior.
+Sentry investigations and explicitly requested project, team, and alert changes (per-user OAuth plus optional org read access) and signed issue webhooks (internal integration) for Junior.
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-sentry
@@ -27,12 +27,17 @@ Verified CLI surface (check live `sentry --help` before blocking):
 
 - `sentry issue list|events|explain|plan|view`
 - `sentry org list|view`
+- `sentry project create|list|view`, `sentry team list`, `sentry dsn list`
 - `sentry log list|view`
 - `sentry trace list|view|logs`
 - `sentry alert metrics list|view|create|edit|delete`
-- `sentry api <endpoint>` fallback
+- `sentry api <endpoint>` fallback, with `sentry schema` for endpoint lookup
 
-## Issue webhooks
+## Org read access
+
+Set `SENTRY_READ_TOKEN` to a read-only internal integration token. Junior then uses it for Sentry API reads (`GET`, `HEAD`, `OPTIONS`), including Explore queries, scheduled tasks, and event automations. Writes and `/api/0/users/` requests still use the requesting user's OAuth token.
+
+## Issue and metric alert webhooks
 
 Use a **Sentry internal integration** (not a public app install flow):
 
@@ -40,6 +45,13 @@ Use a **Sentry internal integration** (not a public app install flow):
 2. Point it at `https://<junior-host>/api/webhooks/sentry`.
 3. Set the org slug as `SENTRY_WEBHOOK_ORG` and the integration client secret as `SENTRY_WEBHOOK_SECRET`, then redeploy.
 
-Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes `issue.created` for `org/project#issueId` and `org/project`. Create watches/event tasks before the issue arrives; unmatched deliveries are not replayed.
+For metric alerts, also enable **Alert Rule Action** on the integration and add it as a `sentry_app` trigger action on each alert. Sentry sends metric alerts only to alert actions.
+
+Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes:
+
+- `issue.created` for `org/project#issueId` and `org/project`.
+- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId`.
+
+Create watches/event automations before the webhook arrives; unmatched deliveries are not replayed.
 
 Full guide: https://junior.sentry.dev/extend/sentry-plugin/

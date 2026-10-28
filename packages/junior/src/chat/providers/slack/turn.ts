@@ -4,6 +4,7 @@
  * This module owns Slack status, delivery, and state.
  * It calls `executeTurn` to run and finish the Turn.
  */
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
@@ -26,15 +27,15 @@ import {
   withSpan,
 } from "@/chat/logging";
 import { sendSlackReply } from "@/chat/slack/reply";
-import {
-  buildSlackOutputMessage,
-  splitSlackReplyText,
-} from "@/chat/slack/output";
+import { buildSlackOutputMessage } from "@/chat/slack/output";
 import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
 } from "@/chat/slack/errors";
-import { buildSteeringPiMessage } from "@/chat/agent/prompt";
+import {
+  buildSteeringPiMessage,
+  withoutSavedSteeringMessages,
+} from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
   type AgentRun,
@@ -139,18 +140,21 @@ import {
   loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { persistWithRetry } from "@/chat/services/persist-retry";
-import {
-  stripRuntimeTurnContext,
-  trimTrailingAssistantMessages,
-} from "@/chat/pi/transcript";
+import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   scheduleSessionCompletedPluginTasks,
   type ScheduleSessionCompletedPluginTasksOptions,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  finishedRunReply,
+  runDispatchOutcome,
+  deliversFinalText,
+} from "@/chat/automation-result";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,
@@ -161,8 +165,8 @@ import {
   inboundMessageActor,
   inboundMessageProvenance,
   resolveChannelName,
+  resolveSlackChannelType,
   saveSteeringMessages,
-  steeringMessageKey,
 } from "@/chat/providers/slack/input";
 
 /**
@@ -202,9 +206,7 @@ async function loadPiMessagesForTurn(args: {
     );
     if (sessionRecord?.piMessages.length) {
       return {
-        piMessages: stripRuntimeTurnContext(
-          trimTrailingAssistantMessages(sessionRecord.piMessages),
-        ),
+        piMessages: trimTrailingAssistantMessages(sessionRecord.piMessages),
       };
     }
   }
@@ -225,6 +227,8 @@ async function loadPiMessagesForTurn(args: {
 
 interface SlackTurnDeps {
   contextCompactor: ContextCompactor;
+  /** Keeps background work, such as title projection, alive after the turn. */
+  waitUntil?: (task: Promise<unknown>) => void;
   executeTurn: ExecuteTurn;
   getSlackAdapter: () => SlackAdapter;
   pausedTurns: PausedTurns;
@@ -295,8 +299,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       options.destination,
       "Slack reply execution",
     );
-    const slackChannelType = resolveSlackChannelTypeFromMessage(message);
+    const slackChannelType = options.execution
+      ? resolveSlackChannelTypeFromMessage(message)
+      : await resolveSlackChannelType(message, channelId);
     const slackConversation = resolveSlackConversationContext({
+      botUserId: deps.getSlackAdapter().botUserId,
       channelId,
       channelName,
       channelType: slackChannelType,
@@ -589,16 +596,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           if (sessionRecord?.state === "paused") {
             if (sessionRecord.resumeReason === "auth") {
-              // A user follow-up replaces a Turn paused for authorization.
-              // Answer it as a new Turn. The original agent input remains in
-              // history, and the authorization link remains valid. A later
-              // authorization response finds the abandoned Turn and cannot
-              // start a competing Run.
-              await abandonTurnRecord({
-                conversationId,
-                turnId: activeTurnId,
-                errorMessage: "Auth-paused Turn superseded by new input",
-              });
+              // A user follow-up gets its own Turn. The Turn that waits for
+              // authorization stays paused, so a later authorization can
+              // still resume it. Only one Run has the Conversation lease, so
+              // the two Turns do not run at the same time.
               markTurnClosed({
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),
@@ -814,6 +815,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
+          const cards = await loadPendingMessageCards(conversationId);
           let slackMessageTs: string[] = [];
           const messageDestinations: Array<{
             destination: Extract<Destination, { platform: "slack" }>;
@@ -827,6 +829,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             if (outcomes) {
               for (const outcome of outcomes) {
                 const messageIds = await sendSlackReply({
+                  cards,
                   channelId: outcome.destination.channelId,
                   conversationId,
                   replyAttribution:
@@ -842,9 +845,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   })),
                 );
               }
-            } else if (channelId && thread.adapter.name === "slack") {
+            } else {
               slackMessageTs = await sendSlackReply({
-                channelId,
+                cards,
+                channelId: destination.channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
@@ -856,15 +860,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   messageId: threadTs ?? messageId,
                 })),
               );
-            } else {
-              for (const part of splitSlackReplyText(text)) {
-                const postedMessageTs = (
-                  await thread.post(buildSlackOutputMessage(part))
-                ).id;
-                if (postedMessageTs) {
-                  slackMessageTs.push(postedMessageTs);
-                }
-              }
             }
           } catch (error) {
             if (isRetryableSlackPostError(error)) {
@@ -888,6 +883,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           acceptedDeliveryId = slackTs;
           options.onTurnDeliveryAccepted?.(slackTs);
           const recordedMessageId = recordDeliveredAssistantMessage({
+            cards,
             conversation: preparedState.conversation,
             sessionId: turnId,
             source: "slack",
@@ -926,12 +922,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             await options.onTurnStatePersisted?.();
           } catch (error) {
             logException(
-              new Error("Accepted assistant message persistence failed"),
+              error,
               "slack.assistant.message_post_delivery_persist.failed",
-              {
-                "error.type":
-                  error instanceof Error ? error.name : typeof error,
-              },
             );
           }
           if (slackTs && options.execution?.dispatch?.id) {
@@ -1026,17 +1018,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (batchedSteeringMessages.length > 0) {
             // A repeated mailbox delivery may reload saved steering messages.
             // Add only messages that are not already in agent history.
-            const presentKeys = new Set(
-              (piMessages ?? [])
-                .map(steeringMessageKey)
-                .filter((key): key is string => key !== undefined),
+            const newSteeringMessages = withoutSavedSteeringMessages(
+              piMessages ?? [],
+              batchedSteeringMessages.map((entry) => entry.message),
+              (message) => message,
             );
-            const newSteeringMessages = batchedSteeringMessages
-              .map((entry) => entry.message)
-              .filter((batchedMessage) => {
-                const key = steeringMessageKey(batchedMessage);
-                return key === undefined || !presentKeys.has(key);
-              });
             if (newSteeringMessages.length > 0) {
               piMessages = [...(piMessages ?? []), ...newSteeringMessages];
             }
@@ -1044,12 +1030,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
 
           status.update();
           // Title generation is automatic on transcript persist. DM threads only
-          // project the stored/in-flight title to Slack once it settles.
-          void resolveConversationTitle({ conversationId })
+          // project the stored/in-flight title to Slack once it settles. The
+          // turn does not wait for slow titles; the worker's waitUntil owns it.
+          const titleProjection = resolveConversationTitle({ conversationId })
             .then(async (title) => {
-              if (!title) {
-                return;
-              }
+              if (!title) return;
               await maybeSyncAssistantTitle({
                 channelId: assistantThreadContext?.channelId,
                 getSlackAdapter: deps.getSlackAdapter,
@@ -1060,6 +1045,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             .catch((error) => {
               logException(error, "conversation.title.task.failed");
             });
+          deps.waitUntil?.(titleProjection);
           const toolChannelId = channelId;
           const activeInstructionAuthorId =
             actor?.userId ?? parseActorUserId(message.author.userId);
@@ -1078,6 +1064,22 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   async (queuedMessages) => {
                     acceptedMessages =
                       await resolveSteeringMessages(queuedMessages);
+                    // Record before accepting, so a failed write leaves the
+                    // messages pending instead of missing from the transcript.
+                    for (const queued of queuedMessages) {
+                      upsertConversationMessage(
+                        preparedState.conversation,
+                        toConversationMessage({
+                          entry: queued.message,
+                          explicitMention: queued.explicitMention,
+                          text: queued.userText,
+                        }),
+                      );
+                    }
+                    await persistConversationMessages({
+                      conversation: preparedState.conversation,
+                      conversationId,
+                    });
                     await accept(acceptedMessages);
                   },
                   { conversationContext: preparedState.conversationContext },
@@ -1150,9 +1152,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            ...(options.execution?.dispatch?.outcomes?.length === 0
-              ? undefined
-              : { delivery: deliverAssistantMessage }),
+            ...(deliversFinalText(options.execution?.dispatch)
+              ? { delivery: deliverAssistantMessage }
+              : undefined),
             durability: {
               onInputCommitted: options.ack,
               drainSteeringMessages,
@@ -1188,17 +1190,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               finalResult = finalized.reply;
               failureEventId = finalized.eventId;
               failureReason = finalized.failureReason;
-              await deliverAssistantMessage(finalResult.text);
             }
-            const turnResult: DispatchTurnResult =
-              finalResult.diagnostics.outcome === "success"
-                ? { outcome: "completed" }
-                : {
-                    errorMessage:
-                      finalResult.diagnostics.errorMessage ??
-                      `Agent turn ended with ${finalResult.diagnostics.outcome}.`,
-                    outcome: "failed",
-                  };
+            const reply = finishedRunReply(
+              finalResult,
+              options.execution?.dispatch,
+            );
+            if (reply !== undefined) {
+              await deliverAssistantMessage(reply);
+            }
+            const turnResult = runDispatchOutcome(finalResult);
             runResultHandled = true;
             shouldPersistFailureState = false;
             boundaryFailureCode = "agent_run_failed";
@@ -1227,10 +1227,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   destinationVisibility,
                   source,
                   sliceId: 1,
-                  dispatchOutcome:
-                    finalResult.diagnostics.outcome === "success"
-                      ? "completed"
-                      : "failed",
+                  dispatchOutcome: turnResult.outcome,
                   ...(options.execution?.dispatch && turnResult.errorMessage
                     ? { errorMessage: turnResult.errorMessage }
                     : undefined),
@@ -1258,10 +1255,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   source,
                   surface: options.execution?.surface ?? "slack",
                   dispatchId: options.execution?.dispatch?.id,
-                  dispatchOutcome:
-                    finalResult.diagnostics.outcome === "success"
-                      ? "completed"
-                      : "failed",
+                  dispatchOutcome: turnResult.outcome,
                   ...(acceptedDeliveryId
                     ? { resultMessageId: acceptedDeliveryId }
                     : undefined),

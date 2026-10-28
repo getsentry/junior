@@ -1,3 +1,5 @@
+import { INPUT_IMAGE_TYPES, type InputImage } from "@sentry/junior/api/schema";
+import { ComposerImages, readComposerImages } from "./ComposerImages";
 import {
   memo,
   useEffect,
@@ -8,19 +10,19 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Send } from "lucide-react";
+import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/Button";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 
-const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
-const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
 
 type ConversationDraft = {
+  /** Image bytes are not restored from localStorage; do not reuse their send key. */
+  hasImages?: boolean;
   /** Key issued for `lastSubmittedText`. Reused while the next send matches it. */
   idempotencyKey: string;
   /** Trimmed text the current idempotency key was issued for. */
@@ -29,19 +31,23 @@ type ConversationDraft = {
 };
 
 type ConversationAttempt = {
+  images?: InputImage[];
   idempotencyKey: string;
   lastSubmittedText: string;
 };
 
-/** Choose the send attempt for one submit. Same trimmed text reuses the key. */
+/** Reuse a send key only while its text and image selection stay unchanged. */
 export function conversationAttemptForSubmit(
   current: ConversationAttempt,
   text: string,
+  images?: InputImage[],
 ): ConversationAttempt {
-  if (text === current.lastSubmittedText) return current;
+  if (text === current.lastSubmittedText && images === current.images)
+    return current;
   return {
     idempotencyKey: crypto.randomUUID(),
     lastSubmittedText: text,
+    images,
   };
 }
 
@@ -64,8 +70,18 @@ type ConversationComposerProps = {
   restoreDraftOnError?: boolean;
   submitLabel: string;
   onFocus?: () => void;
-  onSubmit(message: string, idempotencyKey: string): Promise<void>;
+  onSubmit(
+    message: string,
+    idempotencyKey: string,
+    images?: InputImage[],
+  ): Promise<void>;
   onSubmitStart?: () => void;
+  /**
+   * Stop the active Turn. Present only while a Turn can be stopped. Resolves
+   * with queued text that the stop removed, which returns to the draft.
+   */
+  onStop?: () => Promise<string | undefined>;
+  stopPending?: boolean;
 };
 
 /** Render the dashboard message composer for a new or existing conversation. */
@@ -79,7 +95,16 @@ export const ConversationComposer = memo(function ConversationComposer(
   // New-conversation create holds the send control until accept settles so a
   // failed restore cannot race a later submit.
   const [createPending, setCreatePending] = useState(false);
-  const [canSend, setCanSend] = useState(() => Boolean(initialDraft.text.trim()));
+  const [canSend, setCanSend] = useState(() =>
+    Boolean(initialDraft.text.trim()),
+  );
+  const [images, setImages] = useState<InputImage[]>([]);
+  const imagesRef = useRef(images);
+  const [imageError, setImageError] = useState<string>();
+  const [readingImages, setReadingImages] = useState(false);
+  const readingImagesRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -94,6 +119,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   });
   // Blocks same-tick double fire. For create restore, also blocks until settle.
   const submittingRef = useRef(false);
+  const stoppingRef = useRef(false);
   // Monotonic token so a late failed create never restores over a newer submit.
   const submitTokenRef = useRef(0);
   const sendLocked =
@@ -109,35 +135,31 @@ export const ConversationComposer = memo(function ConversationComposer(
     };
   }, [storageKey]);
 
+  // Grow with wrapped and explicit lines. CSS `max-height` caps the box, and
+  // longer drafts scroll inside it. Width changes rewrap the text, so measure
+  // again when the textarea gets narrower or wider.
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-
-    const syncHeight = () => {
-      if (window.matchMedia(DESKTOP_MEDIA_QUERY).matches) {
-        if (textarea.style.height) textarea.style.height = "";
-        return;
-      }
-      // Measure from auto height only when the value changed. Avoid layout work
-      // on parent re-renders that leave the draft text alone.
-      const previous = textarea.style.height;
-      textarea.style.height = "auto";
-      const nextHeight = Math.min(
-        textarea.scrollHeight,
-        MOBILE_COMPOSER_MAX_HEIGHT_PX,
-      );
-      const next = `${nextHeight}px`;
-      if (previous === next) {
-        textarea.style.height = previous;
-        return;
-      }
-      textarea.style.height = next;
+    syncComposerHeight(textarea);
+    let width = textarea.clientWidth;
+    let frame: number | undefined;
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      // A height change inside this callback starts a ResizeObserver loop
+      // error. Measure in the next frame instead.
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = undefined;
+        syncComposerHeight(textarea);
+      });
+    });
+    observer.observe(textarea);
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-
-    syncHeight();
-    const media = window.matchMedia(DESKTOP_MEDIA_QUERY);
-    media.addEventListener("change", syncHeight);
-    return () => media.removeEventListener("change", syncHeight);
   }, []);
 
   const updateCanSend = (text: string) => {
@@ -145,6 +167,30 @@ export const ConversationComposer = memo(function ConversationComposer(
     if (canSendRef.current === nextCanSend) return;
     canSendRef.current = nextCanSend;
     setCanSend(nextCanSend);
+  };
+
+  const replaceImages = (next: InputImage[]) => {
+    imagesRef.current = next;
+    setImages(next);
+  };
+  const addImages = async (files: File[]) => {
+    if (!files.length || readingImagesRef.current || sendLocked) return;
+    readingImagesRef.current = true;
+    setReadingImages(true);
+    setImageError(undefined);
+    try {
+      replaceImages(await readComposerImages(files, imagesRef.current));
+      textareaRef.current?.focus({ preventScroll: true });
+    } catch (error) {
+      setImageError(
+        error instanceof Error
+          ? error.message
+          : "Could not read images. Add them again.",
+      );
+    } finally {
+      readingImagesRef.current = false;
+      setReadingImages(false);
+    }
   };
 
   const scheduleDraftStorage = () => {
@@ -158,12 +204,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   const syncTextareaHeight = () => {
-    const textarea = textareaRef.current;
-    if (!textarea || window.matchMedia(DESKTOP_MEDIA_QUERY).matches) return;
-    const previous = textarea.style.height;
-    textarea.style.height = "auto";
-    const next = `${Math.min(textarea.scrollHeight, MOBILE_COMPOSER_MAX_HEIGHT_PX)}px`;
-    textarea.style.height = previous === next ? previous : next;
+    if (textareaRef.current) syncComposerHeight(textareaRef.current);
   };
 
   const setMessage = (text: string) => {
@@ -185,16 +226,27 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = draftRef.current.text.trim();
-    if (!text || !online || submittingRef.current || sendLocked) return;
+    const submittedImages = imagesRef.current;
+    if (
+      (!text && !submittedImages.length) ||
+      !online ||
+      submittingRef.current ||
+      sendLocked ||
+      readingImagesRef.current
+    )
+      return;
 
-    // Keep the key while the trimmed text matches the last attempt. Edits that
-    // return to the same text (typo undo, IME) must not mint a new key or a
-    // retry can duplicate a send the server already accepted.
-    const attempt = conversationAttemptForSubmit(attemptRef.current, text);
+    const attempt = conversationAttemptForSubmit(
+      attemptRef.current,
+      text,
+      submittedImages.length ? submittedImages : undefined,
+    );
     attemptRef.current = attempt;
     const submitToken = ++submitTokenRef.current;
     const submittedDraft: ConversationDraft = {
-      ...attempt,
+      idempotencyKey: attempt.idempotencyKey,
+      lastSubmittedText: attempt.lastSubmittedText,
+      hasImages: submittedImages.length > 0,
       text,
     };
     // Clear immediately so the reader can compose the next message. Existing
@@ -205,6 +257,8 @@ export const ConversationComposer = memo(function ConversationComposer(
       text: "",
     };
     replaceMessage(clearedDraft);
+    replaceImages([]);
+    setImageError(undefined);
     storeDraft(storageKey, clearedDraft);
     attemptRef.current = nextAttempt;
     submittingRef.current = true;
@@ -220,7 +274,11 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
 
     try {
-      await props.onSubmit(text, attempt.idempotencyKey);
+      await props.onSubmit(
+        text,
+        attempt.idempotencyKey,
+        submittedImages.length ? submittedImages : undefined,
+      );
     } catch {
       if (!props.restoreDraftOnError) {
         // Parent keeps the failed message in the mailbox queue for retry.
@@ -229,7 +287,8 @@ export const ConversationComposer = memo(function ConversationComposer(
       // Ignore stale failures after a newer submit owns the composer.
       if (submitToken !== submitTokenRef.current) return;
       // Restore only when the reader has not already started another draft.
-      if (draftRef.current.text) return;
+      if (draftRef.current.text || imagesRef.current.length) return;
+      replaceImages(submittedImages);
       replaceMessage(submittedDraft);
       attemptRef.current = attempt;
       storeDraft(storageKey, submittedDraft);
@@ -241,8 +300,36 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
   };
 
+  // Put queued text back ahead of anything the reader already typed.
+  const stopTurn = async () => {
+    if (!props.onStop || stoppingRef.current) return;
+    stoppingRef.current = true;
+    let restored: string | undefined;
+    try {
+      restored = await props.onStop();
+    } catch {
+      // The parent owns the stop error message.
+      return;
+    } finally {
+      stoppingRef.current = false;
+    }
+    if (!restored) return;
+    const current = draftRef.current.text;
+    const next: ConversationDraft = {
+      ...draftRef.current,
+      text: current.trim() ? `${restored}\n${current}` : restored,
+    };
+    replaceMessage(next);
+    storeDraft(storageKey, next);
+    textareaRef.current?.focus({ preventScroll: true });
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       void submit();
     }
@@ -250,16 +337,12 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {!online || props.error ? (
+      {props.error || imageError ? (
         <div
           aria-live="polite"
-          className={
-            !online
-              ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
-              : "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
-          }
+          className="min-w-0 font-sans text-xs leading-relaxed text-rose-300"
         >
-          {!online ? "Connect to send. Your draft is saved." : props.error}
+          {imageError ?? props.error}
         </div>
       ) : null}
       <form
@@ -267,12 +350,67 @@ export const ConversationComposer = memo(function ConversationComposer(
           // Accessory chrome needs a full footer row. Side-by-side mobile is
           // only for the bare reply dock.
           props.footerStart
-            ? "block overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35"
-            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
+            ? "block overflow-hidden focus-within:border-dashboard-focus/45 focus-within:ring-1 focus-within:ring-dashboard-focus/25"
+            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-dashboard-accent/35 focus-within:ring-1 focus-within:ring-dashboard-focus/35 md:block",
           dashboardComposerSurfaceClass,
+          dragging && "ring-2 ring-dashboard-focus",
         )}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+            setDragging(false);
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(false);
+          void addImages(Array.from(event.dataTransfer.files));
+        }}
+        onPaste={(event) => {
+          const files = Array.from(event.clipboardData.files);
+          if (!files.length) return;
+          event.preventDefault();
+          void addImages(files);
+        }}
         onSubmit={submit}
       >
+        {images.length ? (
+          <ComposerImages
+            images={images}
+            disabled={readingImages || sendLocked}
+            onRemove={(index) => {
+              if (readingImagesRef.current || sendLocked) return;
+              replaceImages(imagesRef.current.filter((_, i) => i !== index));
+              setImageError(undefined);
+            }}
+          />
+        ) : null}
+        {dragging || readingImages ? (
+          <div
+            role="status"
+            className="col-span-full px-3 pt-2 text-sm text-dashboard-text-muted"
+          >
+            {readingImages ? "Reading images…" : "Drop images here"}
+          </div>
+        ) : null}
+        <input
+          accept={INPUT_IMAGE_TYPES.join(",")}
+          aria-label="Choose images"
+          className="sr-only"
+          multiple
+          onChange={(event) => {
+            void addImages(Array.from(event.currentTarget.files ?? []));
+            event.currentTarget.value = "";
+          }}
+          ref={fileInputRef}
+          tabIndex={-1}
+          type="file"
+        />
         <label className="sr-only" htmlFor={id}>
           {props.label}
         </label>
@@ -282,7 +420,8 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3.5"
+          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4 md:py-3"
+          disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
           id={id}
           inputMode="text"
@@ -302,40 +441,76 @@ export const ConversationComposer = memo(function ConversationComposer(
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
-            props.footerStart ? "justify-between" : "justify-end md:justify-between",
+            props.footerStart
+              ? "justify-between"
+              : "justify-end md:justify-between",
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
+            <Button
+              aria-label="Attach images"
+              disabled={sendLocked || readingImages}
+              onClick={() => fileInputRef.current?.click()}
+              size="icon"
+              title="Attach images (up to 3 MB total)"
+              type="button"
+            >
+              <ImagePlus aria-hidden="true" size={16} />
+            </Button>
             {props.footerStart}
             {props.footerStart ? null : (
-              <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
+              <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
                 Enter to send · Shift+Enter for a new line
               </div>
             )}
           </div>
-          <Button
-            aria-label={sendLocked ? "Sending message" : props.submitLabel}
-            className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
-            disabled={!canSend || !online || sendLocked}
-            title={
-              !online
-                ? "Connect to send"
-                : sendLocked
-                  ? "Sending message"
-                  : props.submitLabel
-            }
-            type="submit"
-          >
-            <Send aria-hidden="true" size={14} />
-            <span className="hidden md:inline">
-              {sendLocked ? "Sending…" : props.submitLabel}
-            </span>
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {props.onStop ? (
+              <Button
+                aria-label={props.stopPending ? "Stopping" : "Stop"}
+                disabled={props.stopPending || !online}
+                onClick={() => void stopTurn()}
+                title="Stop Junior"
+              >
+                <Square aria-hidden="true" fill="currentColor" size={12} />
+                <span className="hidden md:inline">
+                  {props.stopPending ? "Stopping…" : "Stop"}
+                </span>
+              </Button>
+            ) : null}
+            <Button
+              aria-label={sendLocked ? "Sending message" : props.submitLabel}
+              className="disabled:!border-transparent disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted disabled:!opacity-100"
+              disabled={
+                (!canSend && !images.length) ||
+                !online ||
+                sendLocked ||
+                readingImages
+              }
+              title={sendLocked ? "Sending message" : props.submitLabel}
+              tone="primary"
+              type="submit"
+            >
+              <Send aria-hidden="true" size={14} />
+              <span className="hidden md:inline">
+                {sendLocked ? "Sending…" : props.submitLabel}
+              </span>
+            </Button>
+          </div>
         </div>
       </form>
     </div>
   );
 });
+
+/** Fit the textarea to its text. CSS `max-height` sets the scroll limit. */
+function syncComposerHeight(textarea: HTMLTextAreaElement): void {
+  // Measure from auto height so the box can also shrink after deletes.
+  const previous = textarea.style.height;
+  textarea.style.height = "auto";
+  const next = `${textarea.scrollHeight}px`;
+  textarea.style.height = previous === next ? previous : next;
+}
 
 function emptyDraft(): ConversationDraft {
   return {
@@ -368,7 +543,10 @@ function readStoredDraft(storageKey: string): ConversationDraft {
             // a retry after reload still reuses it.
             text.trim();
       return {
-        idempotencyKey: draft.idempotencyKey,
+        idempotencyKey:
+          "hasImages" in draft && draft.hasImages
+            ? crypto.randomUUID()
+            : draft.idempotencyKey,
         lastSubmittedText,
         text,
       };

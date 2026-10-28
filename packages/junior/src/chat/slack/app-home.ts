@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
-import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
+import type { WebClient } from "@slack/web-api";
+import type { KnownBlock, SectionBlock } from "@slack/types";
+import { readConnectedOAuthTokens } from "@/chat/credentials/connections";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -9,7 +10,6 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 import { discoverSkills } from "@/chat/skills";
 import type {
   StoredProviderAccount,
-  StoredTokens,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { getRuntimeMetadata } from "@/chat/config";
@@ -77,22 +77,6 @@ function connectedAccountText(
     : `*${plugin.manifest.name}*\n${plugin.manifest.description}`;
 }
 
-async function connectedOAuthTokens(
-  userId: string,
-  plugin: PluginDefinition,
-  userTokenStore: UserTokenStore,
-): Promise<StoredTokens | undefined> {
-  if (plugin.manifest.oauth || plugin.manifest.credentials) {
-    const stored = await userTokenStore.get(userId, plugin.manifest.name);
-    return stored &&
-      hasRequiredOAuthScope(stored.scope, plugin.manifest.oauth?.scope)
-      ? stored
-      : undefined;
-  }
-
-  return undefined;
-}
-
 async function hasConnectedMcpAccount(
   userId: string,
   plugin: PluginDefinition,
@@ -109,8 +93,8 @@ async function hasConnectedMcpAccount(
   );
   return Boolean(
     credentials?.tokens ||
-      credentials?.clientInformation ||
-      credentials?.discoveryState,
+    credentials?.clientInformation ||
+    credentials?.discoveryState,
   );
 }
 
@@ -126,7 +110,11 @@ export async function buildHomeView(
   const connectedSections: SectionBlock[] = [];
 
   for (const plugin of providers) {
-    const tokens = await connectedOAuthTokens(userId, plugin, userTokenStore);
+    const tokens = await readConnectedOAuthTokens(
+      userId,
+      plugin,
+      userTokenStore,
+    );
     if (!tokens && !(await hasConnectedMcpAccount(userId, plugin))) continue;
 
     connectedSections.push({

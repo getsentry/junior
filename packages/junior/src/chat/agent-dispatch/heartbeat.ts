@@ -1,11 +1,17 @@
+import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
+import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
-import { listPendingAgentInvocationMailboxAppends } from "@/chat/agent-invocations/store";
+import {
+  listPendingAgentInvocationMailboxAppends,
+  listPendingAgentInvocationResults,
+} from "@/chat/agent-invocations/store";
+import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
 import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
@@ -151,6 +157,29 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   }
 }
 
+/** Repair terminal agent invocation results that never reached their parent. */
+export async function recoverPendingAgentInvocationResults(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+}): Promise<void> {
+  const invocations = await listPendingAgentInvocationResults(
+    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
+  );
+  for (const invocation of invocations) {
+    try {
+      await recordSubagentEnded(invocation);
+      await enqueueAgentInvocationResult(invocation, {
+        nowMs: args.nowMs,
+        queue: args.conversationWorkQueue,
+      });
+    } catch (error) {
+      logException(error, "agent.invocation.result.recovery.failed", {
+        "app.agent.invocation_id": invocation.invocationId,
+      });
+    }
+  }
+}
+
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
@@ -169,18 +198,28 @@ export async function runHeartbeat(args: {
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });
+  await recoverPendingAgentInvocationResults({
+    conversationWorkQueue: queue,
+    nowMs: args.nowMs,
+  });
   try {
-    const dispatchCount = await runScheduledTaskHeartbeat({
+    const dispatchCount = await runScheduledAutomationHeartbeat({
       conversationWorkQueue: queue,
       nowMs: args.nowMs,
     });
     if (dispatchCount > 0) {
-      logInfo("scheduled_tasks.heartbeat.dispatched", {
+      logInfo("scheduled_automations.heartbeat.dispatched", {
         "app.dispatch.count": dispatchCount,
       });
     }
   } catch (error) {
-    logException(error, "scheduled_tasks.heartbeat.failed");
+    logException(error, "scheduled_automations.heartbeat.failed");
+  }
+  try {
+    await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });
+  } catch (error) {
+    // Timer claims expire for retry; a failure must not block plugin heartbeats.
+    logException(error, "watches.timer.heartbeat.failed");
   }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,

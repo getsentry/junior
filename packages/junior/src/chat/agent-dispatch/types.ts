@@ -1,10 +1,10 @@
 import type {
   DispatchOptions,
   DestinationVisibility,
-  EventTaskSource,
+  EventAutomationSource,
   PluginDispatchSource,
   ReplyAttribution,
-  ScheduledTaskSource,
+  ScheduledAutomationSource,
   Source,
   SlackDestination,
   TaskOutcome,
@@ -36,7 +36,10 @@ export interface BoundDispatchOptions extends Omit<
   "credentialSubject"
 > {
   credentialSubject?: CredentialSubject;
-  source: EventTaskSource | PluginDispatchSource | ScheduledTaskSource;
+  source:
+    | EventAutomationSource
+    | PluginDispatchSource
+    | ScheduledAutomationSource;
 }
 
 export interface DispatchRecord {

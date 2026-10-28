@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createResourceEventSource,
+  createEventSource,
   createSlackSource,
   createWebSource,
 } from "@sentry/junior-plugin-api";
@@ -19,8 +19,9 @@ import {
 } from "@/chat/task-execution/mailbox-turn";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
-import { RESOURCE_EVENT_SYSTEM_ACTOR } from "@/chat/resource-events/actor";
-import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type {
@@ -172,12 +173,16 @@ describe("Conversation mailbox Turn work", () => {
     );
     const run = requireConversationTurn(worker);
 
+    const background: Promise<unknown>[] = [];
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
         run,
         state,
+        waitUntil: (task) => {
+          background.push(task);
+        },
       }),
     ).resolves.toMatchObject({ status: "completed" });
 
@@ -189,14 +194,12 @@ describe("Conversation mailbox Turn work", () => {
       }),
     );
 
-    // Title generation is automatic on human transcript persist and may finish
-    // just after the worker returns completed.
-    await vi.waitFor(async () => {
-      const stored = await conversationStore.get({
-        conversationId: accepted.conversationId,
-      });
-      expect(stored?.title?.trim().length).toBeGreaterThan(0);
-    });
+    // The worker gives title work to `waitUntil`, so the title is stored
+    // when that work settles.
+    await Promise.all(background);
+    await expect(
+      conversationStore.get({ conversationId: accepted.conversationId }),
+    ).resolves.toMatchObject({ title: expect.stringMatching(/\S/) });
 
     const history = await getConversationEventStore().loadHistory(
       accepted.conversationId,
@@ -258,7 +261,7 @@ describe("Conversation mailbox Turn work", () => {
         }),
       }),
     ]);
-  });
+  }, 10_000);
 
   it("feeds private source visibility into the agent run", async () => {
     const { actor, conversationStore, queue, state } =
@@ -410,19 +413,19 @@ describe("Conversation mailbox Turn work", () => {
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
 
-  it("resumes a paused dashboard Turn before a deferred resource event", async () => {
+  it("resumes a paused dashboard Turn before a deferred event", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const accepted = await createAndEnqueueConversation(
       {
         actor,
-        idempotencyKey: "dashboard-before-resource-event",
+        idempotencyKey: "dashboard-before-event",
         message: "Check the current state.",
       },
       { conversationStore, queue, state },
     );
     const dashboardTurnId = conversationTurnIdForMessage(accepted.messageId);
-    const resourceMessage = createResourceEventInboundMessage({
+    const resourceMessage = createEventInboundMessage({
       event: {
         eventKey: "checks-failed-after-dashboard-yield",
         eventType: "pull_request.checks.failed",
@@ -459,7 +462,7 @@ describe("Conversation mailbox Turn work", () => {
             text:
               run.turnId === dashboardTurnId
                 ? "Dashboard Turn finished."
-                : "Resource event handled.",
+                : "Event handled.",
           },
         ]);
       }),
@@ -510,12 +513,12 @@ describe("Conversation mailbox Turn work", () => {
     ).resolves.toMatchObject({ state: "completed" });
   }, 10_000);
 
-  it("runs and resumes a resource event with a local Destination", async () => {
+  it("runs and resumes a event with a local Destination", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const conversationId = createConversationId({
       actorEmail: actor.email,
-      idempotencyKey: "resource-event-root-1",
+      idempotencyKey: "event-root-1",
     });
     const destination = await recordWebConversationActivity({
       actor,
@@ -527,9 +530,15 @@ describe("Conversation mailbox Turn work", () => {
       activityAtMs: 1,
       conversationId,
       nowMs: 1,
-      title: "Resource events",
+      title: "Events",
     });
-    const message = createResourceEventInboundMessage({
+    // The Watch creator's subject must survive the yield.
+    const credentialSubject = bindTimerWatchCredentialSubject({
+      conversationId,
+      userId: "U123",
+      watchId: "resource-subscription-1",
+    });
+    const message = createEventInboundMessage({
       event: {
         eventKey: "checks-failed-1",
         eventType: "check_suite.completed",
@@ -541,6 +550,7 @@ describe("Conversation mailbox Turn work", () => {
       receivedAtMs: 2,
       subscription: {
         conversationId,
+        credentialSubject,
         id: "resource-subscription-1",
       },
       text: "Code change checks failed",
@@ -554,7 +564,7 @@ describe("Conversation mailbox Turn work", () => {
 
     const messageId = message.inboundMessageId;
     const turnId = conversationTurnIdForMessage(messageId);
-    const source = createResourceEventSource({
+    const source = createEventSource({
       eventKey: "checks-failed-1",
       eventType: "check_suite.completed",
       identifier: "getsentry/junior#1563",
@@ -569,11 +579,11 @@ describe("Conversation mailbox Turn work", () => {
           firstRun = false;
           return createModelStream([
             { type: "toolCall", name: "systemTime", arguments: {} },
-            { type: "text", text: "Handled the resource event." },
+            { type: "text", text: "Handled the event." },
           ]);
         }
         return createModelStream([
-          { type: "text", text: "Handled the resource event." },
+          { type: "text", text: "Handled the event." },
         ]);
       }),
     );
@@ -590,7 +600,7 @@ describe("Conversation mailbox Turn work", () => {
       }),
     ).resolves.toEqual({ status: "yielded" });
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
-      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+      actor: EVENT_SYSTEM_ACTOR,
       resumeReason: "yield",
       source,
       state: "paused",
@@ -610,8 +620,11 @@ describe("Conversation mailbox Turn work", () => {
     for (const run of agentRuns) {
       expect(run).toEqual(
         expect.objectContaining({
-          actor: RESOURCE_EVENT_SYSTEM_ACTOR,
-          credentialContext: { actor: RESOURCE_EVENT_SYSTEM_ACTOR },
+          actor: EVENT_SYSTEM_ACTOR,
+          credentialContext: {
+            actor: EVENT_SYSTEM_ACTOR,
+            subject: credentialSubject,
+          },
           destination,
           disabledFeatures: ["interactive-auth"],
           source,
@@ -621,7 +634,7 @@ describe("Conversation mailbox Turn work", () => {
       expect(run.authorization).toBeUndefined();
     }
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
-      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+      actor: EVENT_SYSTEM_ACTOR,
       source,
       state: "completed",
     });
@@ -653,12 +666,12 @@ describe("Conversation mailbox Turn work", () => {
         source: undefined,
         eventType: undefined,
         trustedSummary: undefined,
-        text: "Handled the resource event.",
+        text: "Handled the event.",
       },
     ]);
   }, 10_000);
 
-  it("delivers a resumed resource event from the Conversation Location", async () => {
+  it("delivers a resumed event from the Conversation Location", async () => {
     const { conversationStore, queue, state } =
       await createConversationFixture();
     const conversationId = "slack:C123";
@@ -673,7 +686,7 @@ describe("Conversation mailbox Turn work", () => {
       nowMs: 1,
       source: "slack",
     });
-    const message = createResourceEventInboundMessage({
+    const message = createEventInboundMessage({
       event: {
         eventKey: "legacy-review-requested-1",
         eventType: "pull_request.review.requested",
@@ -697,7 +710,7 @@ describe("Conversation mailbox Turn work", () => {
     });
 
     const turnId = conversationTurnIdForMessage(message.inboundMessageId);
-    const source = createResourceEventSource({
+    const source = createEventSource({
       eventKey: "legacy-review-requested-1",
       eventType: "pull_request.review.requested",
       identifier: "getsentry/junior#1563",

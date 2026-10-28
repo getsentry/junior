@@ -1,15 +1,15 @@
 /**
- * GitHub check suite resource events.
+ * GitHub check suite events.
  */
-import type { ResourceEventInput } from "@sentry/junior-plugin-api";
+import type { EventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   githubRequest,
   isRecord,
   issueInstallationToken,
 } from "../credential-support.js";
-import { gitHubPullRequestResource } from "../resource-events/pull-request.js";
-import { gitHubRepositoryResource } from "../resource-events/repository.js";
+import { gitHubPullRequestResource } from "../events/pull-request.js";
+import { gitHubRepositoryResource } from "../events/repository.js";
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -22,10 +22,7 @@ function gitHubEventKey(deliveryId: string, eventType: string): string {
   return `github:${deliveryId}:${eventType}`;
 }
 
-function pullRequestTargets(
-  event: ResourceEventInput,
-  repo: string,
-): ResourceEventInput[] {
+function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
   const { terminal: _terminal, ...repositoryEvent } = event;
   return [
     event,
@@ -117,7 +114,7 @@ function isCheckSuiteRepositoryPullRequest(
   return pullRequest.base.repo.id === repositoryId;
 }
 
-/** Map a completed check suite conclusion to the resource event type we publish. */
+/** Map a completed check suite conclusion to the event type we publish. */
 function checkSuiteEventType(
   conclusion: string | null | undefined,
 ): "pull_request.checks.failed" | "pull_request.checks.recovered" | undefined {
@@ -196,7 +193,7 @@ function checkSuiteHeadBranch(
 }
 
 /** Build the trusted data and summary for one check-suite event. */
-export function buildCheckSuiteResourceEvent(args: {
+export function buildCheckSuiteEvent(args: {
   appName?: string;
   authorEmail?: string;
   authorUsername?: string;
@@ -212,7 +209,7 @@ export function buildCheckSuiteResourceEvent(args: {
   pullRequestNumber?: number;
   repo: string;
   suiteConclusion: string;
-}): ResourceEventInput {
+}): EventInput {
   const pullRequestNumber = args.pullRequestNumber;
   const resource =
     pullRequestNumber === undefined
@@ -347,17 +344,19 @@ export function normalizeCheckSuiteEvents(
   deliveryId: string,
   body: unknown,
   options?: GitHubCheckSuiteFacts,
-): ResourceEventInput[] {
+): EventInput[] {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return [];
   const conclusion = parsed.data.check_suite.conclusion;
   const eventType = checkSuiteEventType(conclusion);
   if (!eventType || typeof conclusion !== "string") return [];
   const suite = parsed.data.check_suite;
-  const appName = suite.app?.name?.trim() || suite.app?.slug?.trim() || undefined;
+  const appName =
+    suite.app?.name?.trim() || suite.app?.slug?.trim() || undefined;
   const headBranch = checkSuiteHeadBranch(suite.head_branch);
   const headSha =
-    typeof suite.head_sha === "string" && /^[0-9a-f]{7,40}$/i.test(suite.head_sha)
+    typeof suite.head_sha === "string" &&
+    /^[0-9a-f]{7,40}$/i.test(suite.head_sha)
       ? suite.head_sha
       : undefined;
   const repository = parsed.data.repository;
@@ -385,7 +384,7 @@ export function normalizeCheckSuiteEvents(
   // No same-repo PR (common on main): one repository event with headBranch.
   if (sameRepoPullRequests.length === 0) {
     return [
-      buildCheckSuiteResourceEvent({
+      buildCheckSuiteEvent({
         ...shared,
         ...(headBranch ? { headBranch } : undefined),
       }),
@@ -396,9 +395,11 @@ export function normalizeCheckSuiteEvents(
     const pullRequestHeadBranch =
       checkSuiteHeadBranch(pullRequest.head?.ref) ?? headBranch;
     return pullRequestTargets(
-      buildCheckSuiteResourceEvent({
+      buildCheckSuiteEvent({
         ...shared,
-        ...(facts?.authorEmail ? { authorEmail: facts.authorEmail } : undefined),
+        ...(facts?.authorEmail
+          ? { authorEmail: facts.authorEmail }
+          : undefined),
         ...(facts?.authorUsername
           ? { authorUsername: facts.authorUsername }
           : undefined),
@@ -432,9 +433,11 @@ export function parseCheckSuitePublishTargets(body: unknown):
     gitHubRepositoryResource({ repo }).identifier,
   ]);
   for (const pullRequest of parsed.data.check_suite.pull_requests) {
-    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id)) continue;
+    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id))
+      continue;
     identifiers.add(
-      gitHubPullRequestResource({ number: pullRequest.number, repo }).identifier,
+      gitHubPullRequestResource({ number: pullRequest.number, repo })
+        .identifier,
     );
   }
   return {
@@ -447,15 +450,17 @@ export function parseCheckSuitePublishTargets(body: unknown):
 export function parseCheckSuiteFactsTarget(
   body: unknown,
   options?: { loadPullRequestFacts?: boolean },
-): {
-  checkSuiteId: number;
-  headSha: string;
-  loadFailingChecks: boolean;
-  loadPullRequestFacts: boolean;
-  owner: string;
-  pullRequestNumbers: number[];
-  repoName: string;
-} | undefined {
+):
+  | {
+      checkSuiteId: number;
+      headSha: string;
+      loadFailingChecks: boolean;
+      loadPullRequestFacts: boolean;
+      owner: string;
+      pullRequestNumbers: number[];
+      repoName: string;
+    }
+  | undefined {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return undefined;
   const conclusion = parsed.data.check_suite.conclusion;

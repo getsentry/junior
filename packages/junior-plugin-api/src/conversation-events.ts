@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { User } from "./context";
 
 const conversationEventNameSchema = z
   .string()
@@ -121,6 +122,21 @@ export interface PluginConversationEventCostDay {
   costUsd: number;
   date: string;
   events: number;
+}
+
+export interface PluginConversationEventRecord {
+  content: Record<string, unknown>;
+  createdAt: string;
+  version: number;
+}
+
+/** Read events owned by the current plugin namespace after Conversation access checks. */
+export interface PluginConversationEventReader {
+  list(input: {
+    conversationId: string;
+    eventName: string;
+    viewer: User;
+  }): Promise<PluginConversationEventRecord[] | undefined>;
 }
 
 /** Read aggregate costs for events owned by the current plugin namespace. */

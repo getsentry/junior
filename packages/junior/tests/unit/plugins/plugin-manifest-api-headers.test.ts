@@ -447,7 +447,230 @@ describe("plugin manifest API headers", () => {
         "/tmp/example",
       ),
     ).toThrow(
-      "Plugin example api-headers.Authorization references env var EXAMPLE_AUTH_HEADER, but API header env vars must not declare defaults",
+      "Plugin example api-headers.Authorization references env var EXAMPLE_AUTH_HEADER, but header env vars must not declare defaults",
+    );
+  });
+
+  it("rejects undeclared MCP header env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  headers:",
+          '    X-Api-Key: "${EXAMPLE_MCP_KEY}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example mcp.headers.X-Api-Key references env var EXAMPLE_MCP_KEY which is not declared in env-vars",
+    );
+  });
+
+  it.each([
+    [
+      "without a declaration",
+      [],
+      "Plugin example mcp.auth.private-key-env uses env var EXAMPLE_MCP_PRIVATE_KEY which is not declared in env-vars",
+    ],
+    [
+      "with a default",
+      ["env-vars:", "  EXAMPLE_MCP_PRIVATE_KEY:", "    default: unsafe"],
+      "Plugin example mcp.auth.private-key-env uses env var EXAMPLE_MCP_PRIVATE_KEY, but host secret env vars must not declare defaults",
+    ],
+  ])("rejects MCP auth private key env vars %s", (_name, envLines, message) => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          ...envLines,
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  auth:",
+          "    issuer: https://junior.example.com",
+          "    key-id: junior-1",
+          "    private-key-env: EXAMPLE_MCP_PRIVATE_KEY",
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(message);
+  });
+
+  it("parses a pre-registered MCP OAuth client", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example MCP access",
+        "env-vars:",
+        "  EXAMPLE_CLIENT_ID:",
+        "  EXAMPLE_CLIENT_SECRET:",
+        "mcp:",
+        "  url: https://mcp.example.com/mcp",
+        "  oauth-client:",
+        "    client-id-env: EXAMPLE_CLIENT_ID",
+        "    client-secret-env: EXAMPLE_CLIENT_SECRET",
+        "    scope: example.readonly",
+        "    authorize-params:",
+        "      access_type: offline",
+      ].join("\n"),
+      "/tmp/example",
+    );
+
+    expect(manifest.mcp?.oauthClient).toEqual({
+      clientIdEnv: "EXAMPLE_CLIENT_ID",
+      clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
+      scope: "example.readonly",
+      authorizeParams: { access_type: "offline" },
+    });
+  });
+
+  it.each([
+    [
+      "combined with bot auth",
+      [
+        "  auth:",
+        "    issuer: https://junior.example.com",
+        "    key-id: junior-1",
+        "    private-key-env: EXAMPLE_CLIENT_SECRET",
+      ],
+      "Plugin example mcp must not declare both auth and oauth-client",
+    ],
+    [
+      "with its secret exposed to command env",
+      ["command-env:", '  EXAMPLE_TOKEN: "${EXAMPLE_CLIENT_SECRET}"'],
+      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_CLIENT_SECRET, but credential/API header env vars must stay host-only",
+    ],
+  ])("rejects an MCP OAuth client %s", (_name, extraLines, message) => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "env-vars:",
+          "  EXAMPLE_CLIENT_ID:",
+          "  EXAMPLE_CLIENT_SECRET:",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  oauth-client:",
+          "    client-id-env: EXAMPLE_CLIENT_ID",
+          "    client-secret-env: EXAMPLE_CLIENT_SECRET",
+          ...extraLines,
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(message);
+  });
+
+  it("parses accounts with a service account", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example MCP access",
+        "mcp:",
+        "  url: https://mcp.example.com/mcp",
+        "  allowed-tools:",
+        "    - search",
+        "    - create",
+        "accounts:",
+        "  user-oauth: false",
+        "  service-account:",
+        "    tools:",
+        "      - search",
+      ].join("\n"),
+      "/tmp/example",
+    );
+    expect(manifest.accounts).toEqual({
+      userOAuth: false,
+      serviceAccount: { tools: ["search"] },
+    });
+  });
+
+  it.each([
+    [
+      "a tool outside mcp.allowed-tools",
+      ["  allowed-tools:", "    - search"],
+      ["accounts:", "  service-account:", "    tools:", "      - create"],
+      "Plugin example accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: create",
+    ],
+    [
+      "bot auth",
+      [
+        "  allowed-tools:",
+        "    - search",
+        "  auth:",
+        "    issuer: https://junior.example.com",
+        "    key-id: junior-1",
+        "    private-key-env: EXAMPLE_KEY",
+      ],
+      ["accounts:", "  service-account:", "    tools:", "      - search"],
+      "Plugin example accounts.service-account requires mcp without auth or oauth-client",
+    ],
+    [
+      "a key that no surface enforces",
+      ["  allowed-tools:", "    - search"],
+      [
+        "accounts:",
+        "  service-account:",
+        "    tools:",
+        "      - search",
+        "    grants:",
+        "      - default",
+      ],
+      "Plugin example accounts",
+    ],
+    [
+      "user OAuth off and no service account",
+      ["  allowed-tools:", "    - search"],
+      ["accounts:", "  user-oauth: false"],
+      "Plugin example accounts.user-oauth false requires accounts.service-account",
+    ],
+  ])("rejects accounts with %s", (_name, mcpLines, accountsLines, message) => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "env-vars:",
+          "  EXAMPLE_KEY:",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          ...mcpLines,
+          ...accountsLines,
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(message);
+  });
+
+  it("rejects command env references that reuse MCP header env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "env-vars:",
+          "  EXAMPLE_MCP_KEY:",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  headers:",
+          '    X-Api-Key: "${EXAMPLE_MCP_KEY}"',
+          "command-env:",
+          '  EXAMPLE_TOKEN: "${EXAMPLE_MCP_KEY}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_MCP_KEY, but credential/API header env vars must stay host-only",
     );
   });
 });

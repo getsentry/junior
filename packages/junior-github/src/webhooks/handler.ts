@@ -1,3 +1,4 @@
+import { updateGitHubAnnotation } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangeInput,
@@ -5,8 +6,9 @@ import type {
   PluginConversationAnnotations,
   PluginLogger,
   PluginRoute,
-  ResourceEventInput,
-  ResourceEventPublisher,
+  EventInput,
+  EventPerson,
+  EventPublisher,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
@@ -34,7 +36,11 @@ import {
   needsCheckSuitePullRequestFacts,
   parseCheckSuitePublishTargets,
 } from "./check-suite.js";
-import { normalizeGitHubResourceEvents } from "./resource-events.js";
+import { normalizeGitHubEvents } from "./events.js";
+import {
+  withGitHubPullRequestPeople,
+  type GitHubPullRequestPeopleTarget,
+} from "./pull-request-people.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -94,7 +100,7 @@ interface FeedbackTarget {
 
 /** Return comment-level pull request feedback that the webhook can mark. */
 function pullRequestFeedbackTarget(
-  events: ResourceEventInput[],
+  events: EventInput[],
 ): FeedbackTarget | undefined {
   const event = events.find(
     (candidate) =>
@@ -153,10 +159,14 @@ export function createGitHubWebhookRoute(args: {
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
+  /** Load the people involved in a pull request for approvals and merges. */
+  loadPullRequestPeople?(
+    target: GitHubPullRequestPeopleTarget,
+  ): Promise<EventPerson[]>;
   log?: Pick<PluginLogger, "error">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
-  resourceEvents: ResourceEventPublisher;
+  events: EventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -223,13 +233,15 @@ export function createGitHubWebhookRoute(args: {
             pullRequestOutcome.state === "merged" ? "merged" : "closed";
           await Promise.all(
             recordedOutcome.conversationIds.map((conversationId) =>
-              args.annotations.forConversation(conversationId).upsert({
-                kind: "resource_link",
-                key: `${pullRequestOutcome.repositoryFullName.toLowerCase()}#${pullRequestOutcome.number}`,
-                label: `${pullRequestOutcome.repositoryFullName}#${pullRequestOutcome.number}`,
-                url: `https://github.com/${pullRequestOutcome.repositoryFullName}/pull/${pullRequestOutcome.number}`,
-                status,
-              }),
+              updateGitHubAnnotation(
+                args.annotations.forConversation(conversationId),
+                {
+                  repo: pullRequestOutcome.repositoryFullName,
+                  number: pullRequestOutcome.number,
+                  objectType: "code_change",
+                  status,
+                },
+              ),
             ),
           );
         }
@@ -269,13 +281,15 @@ export function createGitHubWebhookRoute(args: {
         if (recordedOutcome.applied && issueOutcome.state === "closed") {
           await Promise.all(
             recordedOutcome.conversationIds.map((conversationId) =>
-              args.annotations.forConversation(conversationId).upsert({
-                kind: "resource_link",
-                key: `${issueOutcome.repositoryFullName.toLowerCase()}#${issueOutcome.number}`,
-                label: `${issueOutcome.repositoryFullName}#${issueOutcome.number}`,
-                url: `https://github.com/${issueOutcome.repositoryFullName}/issues/${issueOutcome.number}`,
-                status: "closed",
-              }),
+              updateGitHubAnnotation(
+                args.annotations.forConversation(conversationId),
+                {
+                  repo: issueOutcome.repositoryFullName,
+                  number: issueOutcome.number,
+                  objectType: "task",
+                  status: "closed",
+                },
+              ),
             ),
           );
         }
@@ -307,8 +321,8 @@ export function createGitHubWebhookRoute(args: {
           ? parseCheckSuitePublishTargets(body)
           : undefined;
       const checkSuiteMatchKeys =
-        checkSuitePublishTargets && args.resourceEvents.neededMatchKeys
-          ? await args.resourceEvents.neededMatchKeys(checkSuitePublishTargets)
+        checkSuitePublishTargets && args.events.neededMatchKeys
+          ? await args.events.neededMatchKeys(checkSuitePublishTargets)
           : [];
       const checkSuiteFacts =
         eventName === "check_suite"
@@ -322,19 +336,27 @@ export function createGitHubWebhookRoute(args: {
               privateKeyEnv: args.privateKeyEnv,
             })
           : undefined;
-      const resourceEvents = normalizeGitHubResourceEvents({
+      const hasMatch = args.events.hasMatch;
+      const events = await withGitHubPullRequestPeople({
         body,
-        ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
         deliveryId,
-        eventName,
+        events: normalizeGitHubEvents({
+          body,
+          botEmail,
+          ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
+          deliveryId,
+          eventName,
+        }),
+        hasMatch,
+        load: args.loadPullRequestPeople,
+        log: args.log,
       });
-      const feedbackTarget = pullRequestFeedbackTarget(resourceEvents);
-      const hasMatch = args.resourceEvents.hasMatch;
+      const feedbackTarget = pullRequestFeedbackTarget(events);
       const feedbackHasMatch =
         feedbackTarget && hasMatch
-          ? (
-              await Promise.all(resourceEvents.map((event) => hasMatch(event)))
-            ).some(Boolean)
+          ? (await Promise.all(events.map((event) => hasMatch(event)))).some(
+              Boolean,
+            )
           : false;
       if (feedbackTarget && feedbackHasMatch) {
         try {
@@ -348,8 +370,17 @@ export function createGitHubWebhookRoute(args: {
           });
         }
       }
-      for (const event of resourceEvents) {
-        await args.resourceEvents.publish(event);
+      for (const event of events) {
+        await args.events.publish({
+          ...event,
+          objectType: event.eventType.startsWith("pull_request.")
+            ? "code_change"
+            : event.eventType.startsWith("issue.")
+              ? "task"
+              : event.eventType.startsWith("deployment.")
+                ? "deployment"
+                : "item",
+        });
       }
       if (
         !pullRequestOutcome &&
@@ -357,7 +388,7 @@ export function createGitHubWebhookRoute(args: {
         !recordedIssueConversations &&
         !recordedPullRequestConversations &&
         !recordedPullRequestLinkedIssues &&
-        resourceEvents.length === 0
+        events.length === 0
       ) {
         return new Response("Ignored", { status: 202 });
       }

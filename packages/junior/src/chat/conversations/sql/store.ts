@@ -5,6 +5,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { recordConversationParticipant } from "./participants";
+import { replaceConversationMetrics } from "../metrics";
 import type { StoredSlackActor } from "@/chat/actor";
 import {
   normalizeSessionSource,
@@ -26,7 +27,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationReadColumns } from "@/db/schema/conversations";
-import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
+import type { AgentTurnUsage } from "@/chat/usage";
 import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
@@ -119,7 +120,7 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
     value === "internal" ||
     value === "local" ||
     value === "plugin" ||
-    value === "resource_event" ||
+    value === "event" ||
     value === "scheduler" ||
     value === "slack" ||
     value === "web"
@@ -127,12 +128,6 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
     return value;
   }
   return undefined;
-}
-
-function originTypeFromSource(
-  source: ConversationSource | undefined,
-): string | undefined {
-  return source;
 }
 
 function localWorkspaceFromConversationId(
@@ -342,68 +337,12 @@ function assertSameConversationDestination(args: {
   );
 }
 
-function tokenTotal(usage: AgentTurnUsage | undefined): number {
-  if (!usage) return 0;
-  if (usage.totalTokens !== undefined) return usage.totalTokens;
-  return (
-    (usage.inputTokens ?? 0) +
-    (usage.outputTokens ?? 0) +
-    (usage.cachedInputTokens ?? 0) +
-    (usage.cacheCreationTokens ?? 0)
-  );
-}
-
-function updateConversationUsage(args: {
-  current: AgentTurnUsage | undefined;
-  previousExecution: AgentTurnUsage | undefined;
-  nextExecution: AgentTurnUsage;
-}): AgentTurnUsage {
-  const usage: AgentTurnUsage = {
-    totalTokens:
-      tokenTotal(args.current) -
-      tokenTotal(args.previousExecution) +
-      tokenTotal(args.nextExecution),
-  };
-  if (
-    args.current?.reasoningTokens !== undefined ||
-    args.previousExecution?.reasoningTokens !== undefined ||
-    args.nextExecution.reasoningTokens !== undefined
-  ) {
-    usage.reasoningTokens =
-      (args.current?.reasoningTokens ?? 0) -
-      (args.previousExecution?.reasoningTokens ?? 0) +
-      (args.nextExecution.reasoningTokens ?? 0);
-  }
-  const costFields = [
-    "input",
-    "output",
-    "cacheRead",
-    "cacheWrite",
-    "total",
-  ] as const satisfies ReadonlyArray<keyof AgentTurnCost>;
-  const cost: AgentTurnCost = {};
-  for (const field of costFields) {
-    if (
-      args.current?.cost?.[field] === undefined &&
-      args.previousExecution?.cost?.[field] === undefined &&
-      args.nextExecution.cost?.[field] === undefined
-    ) {
-      continue;
-    }
-    cost[field] =
-      Math.round(
-        ((args.current?.cost?.[field] ?? 0) -
-          (args.previousExecution?.cost?.[field] ?? 0) +
-          (args.nextExecution.cost?.[field] ?? 0)) *
-          1e12,
-      ) / 1e12;
-  }
-  if (Object.keys(cost).length > 0) usage.cost = cost;
-  return usage;
-}
-
 export class SqlStore implements ConversationStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async getConversationIdByProviderConversation(
     args: ProviderConversationReference,
@@ -446,9 +385,6 @@ export class SqlStore implements ConversationStore {
             throw new Error(
               `Conversation parent is missing for ${args.childConversationId}`,
             );
-          }
-          if (parent.parentConversationId) {
-            throw new Error("Recursive agent delegation is not enabled");
           }
           const child: Conversation = {
             ...emptyConversation({
@@ -553,6 +489,9 @@ export class SqlStore implements ConversationStore {
     updatedAtMs: number;
     visibility?: ConversationPrivacy;
   }): Promise<void> {
+    if (args.metrics && !args.execution.runId) {
+      throw new Error("Conversation Run metrics require a Run id");
+    }
     await this.withConversationMutation(args.conversationId, async () => {
       const existingRow = await this.readConversationRow(args.conversationId);
       const existing = existingRow
@@ -568,9 +507,6 @@ export class SqlStore implements ConversationStore {
       const existingExecutionAt =
         existing?.execution.updatedAtMs ?? existing?.updatedAtMs ?? 0;
       const incomingIsFresh = incomingExecutionAt >= existingExecutionAt;
-      const metricRunId = existingRow?.conversation.metricRunId;
-      const sameRun =
-        Boolean(metricRunId) && metricRunId === args.execution.runId;
       const execution = incomingIsFresh
         ? args.execution
         : (existing?.execution ?? args.execution);
@@ -594,33 +530,25 @@ export class SqlStore implements ConversationStore {
           execution,
         },
       });
-      if (incomingIsFresh && args.metrics) {
-        const row = existingRow?.conversation;
-        const usage = args.metrics.usage
-          ? updateConversationUsage({
-              current: row?.usage ?? undefined,
-              previousExecution: sameRun
-                ? (row?.executionUsage ?? undefined)
-                : undefined,
-              nextExecution: args.metrics.usage,
+      if (args.metrics && args.execution.runId) {
+        await replaceConversationMetrics(this.executor, {
+          conversationId: args.conversationId,
+          runId: args.execution.runId,
+          occurredAtMs: args.createdAtMs,
+          updatedAtMs: incomingExecutionAt,
+          ...args.metrics,
+        });
+        if (incomingIsFresh) {
+          await this.executor
+            .db()
+            .update(juniorConversations)
+            .set({
+              metricRunId: args.execution.runId,
+              executionDurationMs: args.metrics.durationMs,
+              executionUsage: args.metrics.usage ?? null,
             })
-          : (row?.usage ?? undefined);
-        await this.executor
-          .db()
-          .update(juniorConversations)
-          .set({
-            durationMs:
-              (row?.durationMs ?? 0) -
-              (sameRun ? (row?.executionDurationMs ?? 0) : 0) +
-              args.metrics.durationMs,
-            usage: usage ?? null,
-            metricRunId: args.execution.runId ?? null,
-            executionDurationMs: args.metrics.durationMs,
-            executionUsage:
-              args.metrics.usage ??
-              (sameRun ? (row?.executionUsage ?? null) : null),
-          })
-          .where(eq(juniorConversations.conversationId, args.conversationId));
+            .where(eq(juniorConversations.conversationId, args.conversationId));
+        }
       }
     });
   }
@@ -836,9 +764,6 @@ export class SqlStore implements ConversationStore {
         schemaVersion: 1,
         source: conversation.source ?? null,
         sessionSource: conversation.sessionSource ?? null,
-        originType: originTypeFromSource(conversation.source) ?? null,
-        originId: null,
-        originRunId: null,
         location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
@@ -874,9 +799,6 @@ export class SqlStore implements ConversationStore {
           // Origin source is set-once so dashboard continues cannot rewrite a Slack root.
           source: sql`coalesce(${juniorConversations.source}, excluded.source)`,
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
-          originType: sql`coalesce(excluded.origin_type, ${juniorConversations.originType})`,
-          originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,
-          originRunId: sql`coalesce(excluded.origin_run_id, ${juniorConversations.originRunId})`,
           location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
           actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,

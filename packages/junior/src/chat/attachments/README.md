@@ -27,3 +27,23 @@ This module owns durable files linked to a conversation.
 - The retention job deletes object keys for purge-marked rows and for rows owned
   by purged conversations, then removes those SQL rows. A failed blob delete
   leaves the eligible row for the next run.
+
+## File output
+
+`sendFiles` requires attachment storage for web-only Conversations. It stores
+sandbox files and adds them to the transcript under the Conversation's access
+and retention rules. It does not create public URLs. Slack adds an upload to
+the active Location through `slack/tools/send-files.ts`.
+
+## Web image input
+
+Web input stores image bytes before it enqueues the Message. Mailbox rows and
+visible Messages keep file metadata. The host loads the bytes for model input.
+Existing access, purge, and retention rules apply, including files left by a
+failed send.
+
+The 3 MB total limit leaves room for base64 and message text below the host
+request limit. Draft images stay in browser memory, not localStorage.
+
+Slack previews need both saved file ids and stored bytes. Reporting does not
+fetch missing files from Slack.

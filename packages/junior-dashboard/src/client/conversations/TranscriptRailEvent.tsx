@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
+import type { ObjectType } from "@sentry/junior-plugin-api";
+import { ObjectIcon } from "../components/ObjectIcon";
 import {
   Activity,
   Bot,
@@ -27,32 +29,56 @@ type TranscriptRailEventKind =
   | "compaction"
   | "handoff"
   | "message_context"
-  | "resource_event"
+  | "event"
   | "structured_event"
   | "subagent";
+
+/**
+ * True inside an activity group. Grouped rows use the narrow activity icon
+ * column. Top-level rows put the icon in the avatar column, so their text
+ * lines up with message text.
+ */
+export const TranscriptActivityNesting = createContext(false);
 
 /** Mark noteworthy transcript events with an inline status icon. */
 export function TranscriptRailEvent(props: {
   children: ReactNode;
   icon?: LucideIcon;
+  objectType?: ObjectType;
   kind: TranscriptRailEventKind;
 }) {
   const marker = transcriptRailMarker(props.kind);
   const Icon = props.icon ?? marker.icon;
+  const nested = useContext(TranscriptActivityNesting);
 
   return (
     <div
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2"
+      className={cn(
+        "grid min-w-0 items-start",
+        nested
+          ? "grid-cols-[1rem_minmax(0,1fr)] gap-2"
+          : "grid-cols-[2rem_minmax(0,1fr)] gap-3",
+      )}
       data-transcript-rail-event={props.kind}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "mt-1.5 grid size-5 place-items-center",
+          nested
+            ? "grid h-6 w-4 place-items-center"
+            : "grid h-6 w-8 place-items-center",
+          // Card rows: center the icon on the card's first line.
+          !nested &&
+            (props.kind === "subagent" || props.kind === "message_context") &&
+            "mt-1.5",
           marker.className,
         )}
       >
-        <Icon size={11} strokeWidth={2.2} />
+        {props.objectType ? (
+          <ObjectIcon objectType={props.objectType} size={14} decorative />
+        ) : (
+          <Icon size={nested ? 14 : 15} strokeWidth={2} />
+        )}
       </span>
       <div className="min-w-0">{props.children}</div>
     </div>
@@ -69,7 +95,7 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
       icon: MessageSquareText,
     };
   }
-  if (kind === "resource_event") {
+  if (kind === "event") {
     return {
       className: "text-violet-200",
       icon: Webhook,

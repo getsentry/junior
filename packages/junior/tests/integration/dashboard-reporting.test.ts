@@ -24,7 +24,6 @@ import {
   waitUntilApplicationWaitsOnLock,
 } from "../fixtures/dashboard-reporting";
 
-
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
 
@@ -78,6 +77,10 @@ describe("dashboard canonical event reporting", () => {
         messageId: `${conversationId}:visible`,
         role: "assistant",
         text: "Visible answer",
+      },
+      {
+        type: "assistant_message",
+        parts: [],
       },
       {
         type: "tool_calls",
@@ -198,8 +201,8 @@ describe("dashboard canonical event reporting", () => {
   it("aggregates per-model tokens and costs without counting replayed history", async () => {
     const conversationId = "slack:C-reporting:model-usage";
     await recordRoot(conversationId, "public");
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        const componentUsageMessage = ({
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const componentUsageMessage = {
       role: "assistant",
       api: "responses",
       provider: "openai",
@@ -217,9 +220,9 @@ describe("dashboard canonical event reporting", () => {
           total: 0.037,
         },
       },
-    }) as PiMessage;
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        const totalOnlyUsageMessage = ({
+    } as PiMessage;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const totalOnlyUsageMessage = {
       role: "assistant",
       api: "responses",
       provider: "openai",
@@ -228,7 +231,7 @@ describe("dashboard canonical event reporting", () => {
       stopReason: "stop",
       timestamp: 11,
       usage: { totalTokens: 7, cost: { total: 0.005 } },
-    }) as PiMessage;
+    } as PiMessage;
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
       {
@@ -278,8 +281,8 @@ describe("dashboard canonical event reporting", () => {
   it("keys gateway assistant usage by the vendor model id", async () => {
     const conversationId = "slack:C-reporting:gateway-model-usage";
     await recordRoot(conversationId, "public");
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        const gatewayUsageMessage = ({
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const gatewayUsageMessage = {
       role: "assistant",
       api: "responses",
       provider: "vercel-ai-gateway",
@@ -293,7 +296,7 @@ describe("dashboard canonical event reporting", () => {
         totalTokens: 16,
         cost: { total: 0.03 },
       },
-    }) as PiMessage;
+    } as PiMessage;
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
       {
@@ -408,7 +411,19 @@ describe("dashboard canonical event reporting", () => {
       role: "assistant",
       redacted: true,
     });
-    expect(detail.events[1]?.data).toEqual({
+    // Text-only calls retain diagnostics without exposing model-only text.
+    expect(detail.events[1]).toMatchObject({
+      seq: 1,
+      data: { type: "assistant_message", parts: [] },
+      model: { modelId: "openai/gpt-5" },
+      modelCall: {
+        provider: "openai",
+        api: "responses",
+        stopReason: "stop",
+        usage: { inputTokens: 10, outputTokens: 2, cachedInputTokens: 3 },
+      },
+    });
+    expect(detail.events[2]?.data).toEqual({
       type: "tool_calls",
       calls: [
         {
@@ -422,6 +437,8 @@ describe("dashboard canonical event reporting", () => {
     });
     const serialized = JSON.stringify(detail);
     expect(serialized).not.toContain("Visible answer");
+    expect(serialized).not.toContain("private model-only duplicate");
+    expect(serialized).not.toContain("Inspect the tool request.");
     expect(serialized).not.toContain("visible tool query");
     expect(serialized).not.toContain("model-visible result");
     expect(serialized).not.toContain('"matches":2');

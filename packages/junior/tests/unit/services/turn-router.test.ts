@@ -1,3 +1,5 @@
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
+import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
@@ -28,9 +30,9 @@ const profiles = {
 const routeTurn = (
   args: Omit<
     Parameters<typeof selectTurnRoute>[0],
-    "defaultProfile" | "profiles"
+    "currentProfile" | "profiles"
   >,
-) => selectTurnRoute({ ...args, defaultProfile: "standard", profiles });
+) => selectTurnRoute({ ...args, currentProfile: "standard", profiles });
 
 describe("selectTurnRoute", () => {
   beforeEach(() => {
@@ -47,7 +49,9 @@ describe("selectTurnRoute", () => {
   });
 
   it("classifies even simple acknowledgment turns with the fast model", async () => {
-    const completeObject = vi.fn(async () => ({
+    const completeObject = vi.fn<
+      Parameters<typeof selectTurnRoute>[0]["completeObject"]
+    >(async () => ({
       costUsd: 0.00012,
       object: {
         reasoning_level: "none",
@@ -69,6 +73,9 @@ describe("selectTurnRoute", () => {
       profile: "standard",
       reason: "acknowledgment only",
     });
+    expect(
+      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
+    ).toEqual([]);
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "openai/gpt-5.4-mini",
@@ -79,32 +86,12 @@ describe("selectTurnRoute", () => {
         ),
       }),
     );
-    expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
-  });
-
-  it("includes profile descriptions in profile selection", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "none",
-        profile: "standard",
-        confidence: 0.99,
-        reason: "acknowledgment only",
-      },
-    }));
-
-    await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText: "thanks",
+    expect(
+      z.toJSONSchema(completeObject.mock.calls[0]![0].schema, { io: "input" }),
+    ).toMatchObject({
+      properties: { profile: { enum: ["standard", "handoff"] } },
     });
-
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        system: expect.stringContaining(
-          "use each description's use and avoid cases",
-        ),
-      }),
-    );
+    expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
   });
 
   it("classifies code-change asks as xhigh with the fast model", async () => {
@@ -198,7 +185,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "standard",
+      currentProfile: "standard",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "research this architecture",
       profiles: {
@@ -241,7 +228,7 @@ describe("selectTurnRoute", () => {
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");
   });
 
-  it("falls back to the configured default profile when confidence is low", async () => {
+  it("keeps the current profile when confidence is low", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         reasoning_level: "high",
@@ -253,7 +240,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
       profiles: {
@@ -276,7 +263,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
       profiles: {
@@ -318,7 +305,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "refactor this module and add tests",
       profiles: {
@@ -345,7 +332,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "refactor this module and add tests",
       profiles: {
@@ -371,7 +358,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "refactor this module and add tests",
       profiles: {

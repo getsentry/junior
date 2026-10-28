@@ -80,16 +80,8 @@ describe("conversation archive API", () => {
     expect(
       archiveConversationResponseSchema.parse(await archive.json()),
     ).toEqual({ archivedAt: expect.any(String) });
-    // Recently archived conversations stay in the default feed for a grace
-    // window (see RECENT_ARCHIVE_WINDOW_MS in api/conversations/list.ts) so
-    // the sidebar can undo without a search.
     await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
-      conversations: [
-        expect.objectContaining({
-          archivedAt: expect.any(String),
-          conversationId,
-        }),
-      ],
+      conversations: [],
     });
     await expect(
       readConversationFeed({ viewer: otherViewer }),
@@ -177,16 +169,8 @@ describe("conversation archive API", () => {
       },
     );
     expect(archive.status).toBe(200);
-    // Recently archived conversations stay in the default feed for a grace
-    // window (see RECENT_ARCHIVE_WINDOW_MS in api/conversations/list.ts) so
-    // the sidebar can undo without a search.
     await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
-      conversations: [
-        expect.objectContaining({
-          archivedAt: expect.any(String),
-          conversationId,
-        }),
-      ],
+      conversations: [],
     });
     expect(
       conversationDetailReportSchema.parse(

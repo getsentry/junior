@@ -39,7 +39,6 @@ afterEach(() => {
   vi.resetModules();
 });
 
-
 describe("Sentry context", () => {
   it("extends only the active sanitized log context", async () => {
     const { getLogContextAttributes, setTags, withLogContext } =
@@ -106,11 +105,8 @@ describe("Sentry context", () => {
       "messaging.destination.name",
       "C123",
     );
-    expect(sentry.setTag).not.toHaveBeenCalledWith("enduser.id", "U123");
-    expect(sentry.setTag).not.toHaveBeenCalledWith(
-      "enduser.pseudo.id",
-      "alice",
-    );
+    expect(sentry.setTag).not.toHaveBeenCalledWith("user.id", "U123");
+    expect(sentry.setTag).not.toHaveBeenCalledWith("user.name", "alice");
     expect(sentry.setTag).not.toHaveBeenCalledWith("app.run.id", "run_123");
   });
 
@@ -124,7 +120,7 @@ describe("Sentry context", () => {
 
     logging.setSentryScopeContext(
       // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-      (scope) as Scope,
+      scope as Scope,
       {
         conversationId: "thread_123",
         userId: "U123",
@@ -148,13 +144,14 @@ describe("Sentry context", () => {
       "gen_ai.conversation.id",
       "thread_123",
     );
-    expect(scope.setTag).not.toHaveBeenCalledWith("enduser.id", "U123");
-    expect(scope.setTag).not.toHaveBeenCalledWith("enduser.pseudo.id", "alice");
+    expect(scope.setTag).not.toHaveBeenCalledWith("user.id", "U123");
+    expect(scope.setTag).not.toHaveBeenCalledWith("user.name", "alice");
     expect(scope.setContext).toHaveBeenCalledWith(
       "app",
       expect.objectContaining({
-        "enduser.id": "U123",
-        "enduser.pseudo.id": "alice",
+        "user.id": "U123",
+        "user.name": "alice",
+        "user.email": "alice@example.com",
       }),
     );
   });
@@ -215,7 +212,7 @@ describe("Sentry context", () => {
     await withLogContext({}, async () => {
       setTags({ modelId: "xai/grok-4.5" });
       logException(new Error("boom"), "turn.failed", {
-        "gen_ai.request.model": "openai/gpt-5.6-luna",
+        "gen_ai.request.model": "openai/gpt-6-luna",
       });
     });
 
@@ -224,7 +221,7 @@ describe("Sentry context", () => {
     );
     expect(modelTagCalls.at(-1)).toEqual([
       "gen_ai.request.model",
-      "openai/gpt-5.6-luna",
+      "openai/gpt-6-luna",
     ]);
   });
 });

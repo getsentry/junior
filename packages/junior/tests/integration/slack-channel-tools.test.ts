@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSendFilesTool } from "@/chat/slack/tools/send-files";
+import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -156,7 +156,7 @@ describe("slack channel tools", () => {
     });
 
     await executeTool(
-      createSendFilesTool(
+      createSlackSendFilesTool(
         context,
         createToolState(),
         createMaterializeFile({
@@ -193,9 +193,12 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
+      channel_id: null,
       limit: 150,
+      cursor: null,
       oldest: "1690000000.000",
       latest: "1710000000",
+      inclusive: null,
       max_pages: 3,
     });
 

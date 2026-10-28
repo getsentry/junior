@@ -8,7 +8,7 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { gitHubDeploymentSourceSubscribable } from "../resource-events/deployment.js";
+import { gitHubDeploymentSourceSubscribable } from "../events/deployment.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -146,9 +146,10 @@ function repositoryUrl(repo: { name: string; owner: string }, path: string) {
 }
 
 /** Read deployment metadata and expose its stable subscription identity. */
-export function createGitHubGetDeploymentTool(
-  ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } },
-) {
+export function createGitHubGetDeploymentTool(ctx: {
+  egress: PluginEgress;
+  events: { canSubscribe: boolean };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -241,7 +242,7 @@ export function createGitHubGetDeploymentTool(
         };
       }
 
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubDeploymentSourceSubscribable({
             commitSha,
             environment: input.environment,

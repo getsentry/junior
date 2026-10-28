@@ -10,6 +10,7 @@ import {
   readConversationRecordFromSql,
 } from "@/api/conversations/list";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
+import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -23,6 +24,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 function dashboardAuthorIdFromEmail(email: string): string {
@@ -36,7 +38,7 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
       const archivedId = "slack:C123:archived";
-      const recentArchivedId = "slack:C123:recent-archived";
+      const privateId = "slack:D123:private";
       await store.recordActivity({
         conversationId: archivedId,
         nowMs: 1_000,
@@ -46,36 +48,50 @@ describe("conversation list API", () => {
           teamId: "T123",
           channelId: "C123",
         },
+        visibility: "public",
       });
       await store.recordActivity({
-        conversationId: recentArchivedId,
+        conversationId: privateId,
         nowMs: Date.now(),
-        title: "Recent archived conversation",
+        title: "Private roadmap conversation",
         destination: {
           platform: "slack" as const,
           teamId: "T123",
-          channelId: "C123",
+          channelId: "D123",
         },
+        visibility: "private",
+      });
+      await appendConversationBrief(fixture.sql.db(), {
+        conversationId: archivedId,
+        turnId: "archived-brief-1",
+        throughSeq: 0,
+        content: conversationBriefFixture({
+          summary: "The durable sapphire choice is current.",
+        }),
+        searchText: "durable sapphire choice",
+        modelId: "test-model",
+      });
+      await appendConversationBrief(fixture.sql.db(), {
+        conversationId: privateId,
+        turnId: "private-brief-1",
+        throughSeq: 0,
+        content: conversationBriefFixture({
+          summary: "The hidden marigold launch stays private.",
+        }),
+        searchText: "hidden marigold launch",
+        modelId: "test-model",
       });
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
       await fixture.sql
         .db()
         .insert(juniorConversationParticipants)
-        .values([
-          {
-            archivedAt: new Date(2_000),
-            lastMessageAt: new Date(1_000),
-            rootConversationId: archivedId,
-            userId: viewer!.id,
-          },
-          {
-            archivedAt: new Date(),
-            lastMessageAt: new Date(),
-            rootConversationId: recentArchivedId,
-            userId: viewer!.id,
-          },
-        ]);
+        .values({
+          archivedAt: new Date(2_000),
+          lastMessageAt: new Date(1_000),
+          rootConversationId: archivedId,
+          userId: viewer!.id,
+        });
       const app = createJuniorApi();
 
       const response = await app.request(
@@ -84,31 +100,38 @@ describe("conversation list API", () => {
       expect(response.status).toBe(200);
       expect(
         conversationFeedSchema.parse(await response.json()).conversations,
-      ).toEqual([
-        expect.objectContaining({ conversationId: recentArchivedId }),
-      ]);
+      ).toEqual([]);
       const searchResponse = await app.request(
-        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=recent%20archived",
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=archived",
       );
       expect(searchResponse.status).toBe(200);
       expect(
         conversationFeedSchema.parse(await searchResponse.json()).conversations,
-      ).toEqual([
-        expect.objectContaining({ conversationId: recentArchivedId }),
-      ]);
-      const oldSearchResponse = await app.request(
-        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=archived",
+      ).toEqual([expect.objectContaining({ conversationId: archivedId })]);
+      const briefSearchResponse = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=durable%20sapphire",
       );
-      expect(oldSearchResponse.status).toBe(200);
+      expect(briefSearchResponse.status).toBe(200);
       expect(
-        conversationFeedSchema.parse(await oldSearchResponse.json())
+        conversationFeedSchema.parse(await briefSearchResponse.json())
           .conversations,
-      ).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ conversationId: archivedId }),
-          expect.objectContaining({ conversationId: recentArchivedId }),
-        ]),
+      ).toEqual([expect.objectContaining({ conversationId: archivedId })]);
+      const privateBriefSearchResponse = await app.request(
+        "http://localhost/api/conversations?q=hidden%20marigold",
       );
+      expect(privateBriefSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await privateBriefSearchResponse.json())
+          .conversations,
+      ).toEqual([]);
+      const privateTitleSearchResponse = await app.request(
+        "http://localhost/api/conversations?q=private%20roadmap",
+      );
+      expect(privateTitleSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await privateTitleSearchResponse.json())
+          .conversations,
+      ).toEqual([expect.objectContaining({ conversationId: privateId })]);
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );
@@ -116,15 +139,12 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await archivedResponse.json())
           .conversations,
-      ).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            archivedAt: new Date(2_000).toISOString(),
-            conversationId: archivedId,
-          }),
-          expect.objectContaining({ conversationId: recentArchivedId }),
-        ]),
-      );
+      ).toEqual([
+        expect.objectContaining({
+          archivedAt: new Date(2_000).toISOString(),
+          conversationId: archivedId,
+        }),
+      ]);
 
       const invalid = await app.request(
         "http://localhost/api/conversations?actorEmail=not-an-email",
@@ -207,7 +227,7 @@ describe("conversation list API", () => {
               content: "Pull request merged.",
               provenance: {
                 authority: "instruction",
-                actor: { name: "resource-event", platform: "system" },
+                actor: { name: "event", platform: "system" },
               },
               timestamp: nowMs - 30_000,
             },
@@ -455,6 +475,7 @@ describe("conversation list API", () => {
         },
         nowMs: 4_000,
         source: "slack",
+        title: "Launch plan",
       });
       const otherUser = await fixture.sql
         .db()
@@ -522,6 +543,7 @@ describe("conversation list API", () => {
         },
         nowMs: 2_000,
         source: "slack",
+        title: "Launch plan follow-up",
         visibility: "private",
       });
       const linkedUser = await fixture.sql
@@ -570,6 +592,17 @@ describe("conversation list API", () => {
           isParticipant: true,
         }),
       ]);
+      // Search keeps the same membership: a newer match from someone else
+      // must not use up the limit.
+      await expect(
+        readConversationFeedFromSql({ viewer, q: "launch", limit: 1 }),
+      ).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: "slack:D1:morgan-linked",
+          }),
+        ],
+      });
       await expect(
         readConversationFeedFromSql({ actorEmail: "other@example.com" }),
       ).resolves.toMatchObject({ conversations: [] });
@@ -656,7 +689,7 @@ describe("conversation list API", () => {
           emailVerified: true,
           kind: "user",
           provider: "slack",
-          providerSubjectId: "U-PARTICIPANT",
+          providerSubjectId: "UPARTICIPANT1",
           providerTenantId: "T1",
           updatedAt: new Date(1_000),
           userId: participantUserId!,
@@ -676,7 +709,7 @@ describe("conversation list API", () => {
                 author: {
                   fullName: "Participant",
                   isBot: false,
-                  userId: "U-PARTICIPANT",
+                  userId: "UPARTICIPANT1",
                   userName: "participant",
                 },
                 explicitMention: true,
@@ -694,7 +727,7 @@ describe("conversation list API", () => {
             payload: {
               messageId: "1786500342.616840",
               role: "assistant",
-              text: "I updated the links and checked the result.",
+              text: "<@UPARTICIPANT1> I updated the links and checked the result.",
             },
             seq: 1,
             type: "message",
@@ -724,14 +757,33 @@ describe("conversation list API", () => {
       expect(feed.conversations[0]).toMatchObject({
         activityPreview: {
           createdAt: new Date(5_400).toISOString(),
+          // Previews resolve mentions like transcript messages do.
+          mentions: [
+            {
+              email: "participant@example.com",
+              fullName: "Participant",
+              slackUserId: "UPARTICIPANT1",
+            },
+          ],
           role: "assistant",
-          text: "I updated the links and checked the result.",
+          text: "<@UPARTICIPANT1> I updated the links and checked the result.",
         },
         actorIdentity: expect.objectContaining({
           slackUserId: "U-OWNER",
         }),
         conversationId: "slack:C1:shared-thread",
         isParticipant: true,
+        participants: [
+          expect.objectContaining({
+            email: "owner@example.com",
+            slackUserId: "U-OWNER",
+          }),
+          expect.objectContaining({
+            email: "participant@example.com",
+            fullName: "Participant",
+            slackUserId: "UPARTICIPANT1",
+          }),
+        ],
       });
     } finally {
       await fixture.close();

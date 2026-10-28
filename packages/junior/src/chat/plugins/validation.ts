@@ -76,12 +76,9 @@ export function validatePluginEgressCredentialHooks(
         `Plugin "${provider.manifest.name}" egress credential hooks must include both grantForEgress and issueCredential.`,
       );
     }
-    if (hasGenericCredentials) {
-      throw new Error(
-        `Plugin "${provider.manifest.name}" egress credential hooks must use manifest.domains instead of generic credentials or apiHeaders.`,
-      );
-    }
-    if (!hasDomains) {
+    // Generic credentials keep their own domains. Hooks can then add grants on
+    // top and return no grant to use the generic credentials.
+    if (!hasDomains && !hasGenericCredentials) {
       throw new Error(
         `Plugin "${provider.manifest.name}" egress credential hooks require manifest.domains to list sandbox egress hosts.`,
       );

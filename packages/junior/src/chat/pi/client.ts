@@ -5,6 +5,7 @@ import {
   registerApiProvider,
   streamAnthropic,
   streamSimpleAnthropic,
+  type CacheRetention,
   type Message,
   type Model,
   type ThinkingLevel,
@@ -20,8 +21,13 @@ export {
 } from "@/chat/pi/gateway-auth";
 import {
   embedMany,
+  experimental_decide,
+  Experimental_DecisionRefusalError,
   generateObject,
   NoObjectGeneratedError,
+  type Experimental_DecisionQuestion,
+  type Experimental_DecisionResult,
+  type Experimental_DecisionState,
   type GenerateObjectResult,
   type LanguageModelUsage,
 } from "ai";
@@ -60,11 +66,125 @@ import {
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
+const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
+// Pi's bundled catalog can lag behind the gateway. Keep missing models and
+// metadata corrections here until the catalog includes them. Remove these
+// overrides when Pi supplies the same metadata or Junior uses a live catalog.
+const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "anthropic/claude-opus-5.5": {
+    id: "anthropic/claude-opus-5.5",
+    name: "Claude Opus 5.5",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 4,
+      output: 20,
+      cacheRead: 0.2,
+      cacheWrite: 5,
+    },
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+    compat: {
+      forceAdaptiveThinking: true,
+      supportsTemperature: false,
+    },
+  },
+  "xai/grok-4.5": {
+    id: "xai/grok-4.5",
+    name: "Grok 4.5",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 2,
+      output: 6,
+      cacheRead: 0.3,
+      cacheWrite: 0,
+    },
+    contextWindow: 500_000,
+    maxTokens: 500_000,
+  },
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "openai/gpt-6-luna": {
+    id: "openai/gpt-6-luna",
+    name: "GPT-6 Luna",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+      tiers: [
+        {
+          inputTokensAbove: 272_000,
+          input: 0.2,
+          output: 0.75,
+          cacheRead: 0.02,
+          cacheWrite: 0.25,
+        },
+      ],
+    },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+  },
+  "openai/gpt-6-astra": {
+    id: "openai/gpt-6-astra",
+    name: "GPT-6 Astra",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 10,
+      output: 50,
+      cacheRead: 1,
+      cacheWrite: 12.5,
+      tiers: [
+        {
+          inputTokensAbove: 272_000,
+          input: 20,
+          output: 75,
+          cacheRead: 2,
+          cacheWrite: 25,
+        },
+      ],
+    },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+    compat: {
+      supportsTemperature: false,
+    },
+  },
+};
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
+const GEN_AI_OPERATION_DECIDE = "decide" as const;
 // AI Gateway input rates in USD per million tokens. Keep estimates
 // model-specific so unlisted configured models remain explicitly unknown.
 const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -80,6 +200,25 @@ const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
   "voyage/voyage-3.5": 0.06,
   "voyage/voyage-3.5-lite": 0.02,
 };
+// Decision models bill input tokens only.
+const DECISION_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
+  Record<string, number>
+> = {
+  "openai/gpt-6-luna-decisions": 0.1,
+  "typesafe-ai/jev": 0.042,
+};
+
+function decisionCostUsd(
+  modelId: string,
+  inputTokens: number | undefined,
+): number | undefined {
+  const costPerMillionTokens =
+    DECISION_INPUT_COST_USD_PER_MILLION_TOKENS[modelId];
+  return costPerMillionTokens === undefined || inputTokens === undefined
+    ? undefined
+    : (inputTokens * costPerMillionTokens) / 1_000_000;
+}
+
 function embeddingCostUsd(
   modelId: string,
   inputTokens: number,
@@ -101,15 +240,13 @@ function extractText(message: {
     .trim();
 }
 
-/**
- * Look up a gateway model by id. Throws `Unknown AI Gateway model id: …` if
- * the id is not in pi-ai's registry — callers at the config boundary can use
- * this to fail fast at startup instead of mid-turn.
- */
+/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
 export function resolveGatewayModel(modelId: string): Model<any> {
-  const matched = getModels(GATEWAY_PROVIDER).find(
-    (model: Model<any>) => model.id === modelId,
-  );
+  const matched =
+    GATEWAY_MODEL_OVERRIDES[modelId] ??
+    getModels(GATEWAY_PROVIDER).find(
+      (model: Model<any>) => model.id === modelId,
+    );
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }
@@ -122,6 +259,7 @@ export async function completeText(params: {
   system?: string;
   messages: Message[];
   messageAttributeMode?: "content" | "metadata";
+  cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
@@ -150,7 +288,9 @@ export async function completeText(params: {
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
     "gen_ai.output.type": "text",
-    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : undefined),
+    ...(params.promptName
+      ? { "gen_ai.prompt.name": params.promptName }
+      : undefined),
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
     ...(hasCompactedConversationContext(params.messages)
@@ -199,6 +339,7 @@ export async function completeText(params: {
             temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
+            cacheRetention: params.cacheRetention,
             signal: params.signal,
             metadata: params.metadata,
           },
@@ -232,7 +373,9 @@ export async function completeText(params: {
               ],
             }
           : undefined),
-        ...(message.model ? { "gen_ai.response.model": message.model } : undefined),
+        ...(message.model
+          ? { "gen_ai.response.model": message.model }
+          : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -368,7 +511,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           model: provider.chat(params.modelId),
           schema: params.schema,
           prompt: params.prompt,
-          ...(params.system !== undefined ? { system: params.system } : undefined),
+          ...(params.system !== undefined
+            ? { system: params.system }
+            : undefined),
           ...(params.temperature !== undefined
             ? { temperature: params.temperature }
             : undefined),
@@ -430,6 +575,80 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     object: result.object as z.infer<TSchema>,
     ...(costUsd !== undefined ? { costUsd } : undefined),
   };
+}
+
+/** Answer typed decision questions with an AI Gateway decision model, such as Jev. */
+export async function completeDecision<
+  const TQuestions extends Record<string, Experimental_DecisionQuestion>,
+>(params: {
+  modelId: string;
+  state: Experimental_DecisionState;
+  questions: TQuestions;
+  signal?: AbortSignal;
+  metadata?: Record<string, unknown>;
+  promptName?: string;
+}): Promise<{
+  answers: Experimental_DecisionResult<TQuestions>["answers"];
+  costUsd?: number;
+}> {
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider(
+    credential ? { apiKey: credential.token } : {},
+  );
+  try {
+    const result = await withSpan(
+      `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
+      "gen_ai.decide",
+      logContextFromMetadata(params.modelId, params.metadata),
+      async (setSpanAttributes) => {
+        const result = await experimental_decide({
+          model: provider.decisionModel(params.modelId),
+          state: params.state,
+          questions: params.questions,
+          ...(params.signal !== undefined
+            ? { abortSignal: params.signal }
+            : undefined),
+        });
+        const costUsd = decisionCostUsd(
+          params.modelId,
+          result.usage.inputTokens,
+        );
+        setSpanAttributes(
+          extractGenAiUsageAttributes({
+            ...result.usage,
+            ...(costUsd !== undefined
+              ? { cost: { input: costUsd, total: costUsd } }
+              : undefined),
+          }),
+        );
+        return { answers: result.answers, costUsd };
+      },
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_DECIDE,
+        "gen_ai.request.model": params.modelId,
+        ...(params.promptName
+          ? { "gen_ai.prompt.name": params.promptName }
+          : undefined),
+        "server.address": GEN_AI_SERVER_ADDRESS,
+        "server.port": GEN_AI_SERVER_PORT,
+        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+      },
+    );
+    return {
+      answers: result.answers,
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
+    };
+  } catch (error) {
+    throw createProviderError(error, {
+      ...(Experimental_DecisionRefusalError.isInstance(error)
+        ? { kind: "invalid_response" }
+        : undefined),
+      modelId: params.modelId,
+    });
+  }
 }
 
 /** Generate text embeddings through the host-owned AI Gateway provider. */
@@ -504,7 +723,9 @@ export async function embedTexts(params: {
       },
     );
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

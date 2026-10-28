@@ -1,0 +1,12 @@
+name: tts
+display-name: Text to Speech
+description: Generate narrated audio with Gemini through Vercel AI Gateway
+
+env-vars:
+  AI_GATEWAY_API_KEY:
+
+domains:
+  - ai-gateway.vercel.sh
+
+api-headers:
+  Authorization: Bearer ${AI_GATEWAY_API_KEY}

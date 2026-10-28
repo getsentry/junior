@@ -59,7 +59,7 @@ function parsePrefixFlag(
     const prefix = extras[1]?.trim();
     return { ok: true, ...(prefix ? { prefix } : undefined) };
   }
-  if (extras.length === 1 && extras[0].startsWith("--prefix=")) {
+  if (extras.length === 1 && extras[0]?.startsWith("--prefix=")) {
     const prefix = extras[0].slice("--prefix=".length).trim();
     return { ok: true, ...(prefix ? { prefix } : undefined) };
   }

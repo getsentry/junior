@@ -17,9 +17,10 @@ const [
 ]);
 
 const app = await createApp({
+  allowedDomains: ["sentry.io"],
+  briefs: { enabled: true },
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
-    allowedGoogleDomains: ["sentry.io"],
     componentGallery: exampleDashboardComponentGallery(),
     mockConversations: exampleDashboardMockConversations(),
   },

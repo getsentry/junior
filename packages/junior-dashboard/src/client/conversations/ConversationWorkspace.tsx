@@ -1,4 +1,5 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import type { InputImage } from "@sentry/junior/api/schema";
+import { useEffect, useMemo, useState } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
@@ -15,19 +16,20 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
-import { buildConversations } from "../format";
-import type { DashboardCoreData } from "../types";
+import { buildConversations, getDashboardTimeZone } from "../format";
+import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
+import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
 const CONVERSATION_PAGE_SIZE = 20;
 
 /** Render the conversation home page or one selected conversation. */
-export function ConversationWorkspace(props: { data: DashboardCoreData }) {
+export function ConversationWorkspace() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const search = useDeferredValue(query.trim());
+  const search = useDebouncedValue(query.trim());
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
@@ -40,8 +42,9 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       applyPendingArchiveUpdates(
         buildConversations(feed.data?.conversations ?? []),
         pendingArchiveUpdates,
+        Boolean(search),
       ),
-    [feed.data?.conversations, pendingArchiveUpdates],
+    [feed.data?.conversations, pendingArchiveUpdates, search],
   );
   const openCreate = () => {
     createConversation.reset();
@@ -59,6 +62,13 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+  const { finishedConversationIds, markRead } =
+    useConversationFinishedIndicators(
+      conversations,
+      selectedId,
+      Boolean(feed.data),
+      !search,
+    );
 
   const createView = (
     <NewConversationView
@@ -67,10 +77,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           ? "Could not create the conversation. Try again."
           : undefined
       }
-      onSubmit={async (message, idempotencyKey, visibility) => {
+      onSubmit={async (message, idempotencyKey, visibility, images) => {
         const accepted = await createConversation.mutateAsync({
           idempotencyKey,
           message,
+          images,
           visibility,
         });
         navigate(conversationPath(accepted.conversationId));
@@ -83,7 +94,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       <main
         className={cn(
           dashboardContainerClass,
-          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
+          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
         )}
       >
         <div className="mx-auto grid w-full max-w-6xl gap-8">
@@ -99,8 +110,9 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
+              finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
-              timeZone={props.data.config.timeZone}
+              timeZone={getDashboardTimeZone()}
             />
             <PagePagination
               className="pt-1"
@@ -117,27 +129,23 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   }
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
-      )}
-    >
+    <div className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]">
       <div className="hidden h-full min-h-0 overflow-hidden md:block">
         <ConversationSidebar
           conversations={conversations}
           error={feed.error?.message}
+          finishedConversationIds={finishedConversationIds}
           loading={feed.isPending}
           onNewConversation={openCreate}
           onQueryChange={setQuery}
           query={query}
           selectedId={selectedId}
-          timeZone={props.data.config.timeZone}
+          timeZone={getDashboardTimeZone()}
         />
       </div>
       <section
         aria-label="Selected conversation"
-        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
       >
         <ConversationPage
           key={selectedId}
@@ -149,6 +157,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 }
               : undefined
           }
+          onRead={markRead}
           pendingArchiveUpdate={pendingArchiveUpdates.find(
             (update) => update.conversationId === selectedId,
           )}
@@ -164,6 +173,7 @@ function NewConversationView(props: {
     message: string,
     idempotencyKey: string,
     visibility: "private" | "public",
+    images?: InputImage[],
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
@@ -209,8 +219,8 @@ function NewConversationView(props: {
         label="Start a conversation"
         restoreDraftOnError
         submitLabel="Send"
-        onSubmit={(message, idempotencyKey) =>
-          props.onSubmit(message, idempotencyKey, visibility)
+        onSubmit={(message, idempotencyKey, images) =>
+          props.onSubmit(message, idempotencyKey, visibility, images)
         }
       />
     </section>
@@ -220,11 +230,22 @@ function NewConversationView(props: {
 function applyPendingArchiveUpdates(
   conversations: Conversation[],
   updates: PendingArchiveConversationUpdate[],
+  includeArchived: boolean,
 ): Conversation[] {
+  // The optimistic cache write in useArchiveConversation sets archivedAt on
+  // success too, ahead of the feed invalidation settling. Drop already-
+  // archived rows here so they cannot reappear until the mutation leaves
+  // "pending" but the stale cache has not refetched yet.
   const byId = new Map(
-    conversations.map((conversation) => [conversation.id, conversation]),
+    conversations
+      .filter((conversation) => includeArchived || !conversation.archivedAt)
+      .map((conversation) => [conversation.id, conversation]),
   );
   for (const update of updates) {
+    if (update.archived && !includeArchived) {
+      byId.delete(update.conversationId);
+      continue;
+    }
     const existing = byId.get(update.conversationId);
     const conversation =
       existing ??

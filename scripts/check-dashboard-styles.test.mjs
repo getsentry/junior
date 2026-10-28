@@ -1,14 +1,60 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  dashboardColorTokens,
   findAdditiveSafeAreaPadding,
   findArbitraryTextSizes,
   findClassicViewportHeights,
   findComposerSafeAreaBottomPadding,
   findDashboardUtilityAssertions,
+  findNeutralSurfaceLiterals,
   findNonstandardNeutralTextColors,
   findUndersizedHardcodedFontSizes,
+  findUnknownDashboardColorTokens,
 } from "./check-dashboard-styles.mjs";
+
+test("reports raw white and black surfaces", () => {
+  assert.deepEqual(
+    findNeutralSurfaceLiterals([
+      {
+        path: "src/example.tsx",
+        contents: [
+          'const fill = "bg-white/[0.04]";',
+          'const edge = "hover:border-black/40";',
+          'const row = "border-b border-b-white/[0.055]";',
+          'const shadow = "shadow-black/40 bg-dashboard-fill-soft";',
+        ].join("\n"),
+      },
+    ]),
+    [
+      'src/example.tsx:1: const fill = "bg-white/[0.04]";',
+      'src/example.tsx:2: const edge = "hover:border-black/40";',
+      'src/example.tsx:3: const row = "border-b border-b-white/[0.055]";',
+    ],
+  );
+});
+
+test("reports dashboard color utilities without a theme token", () => {
+  const tokens = dashboardColorTokens(
+    "--color-dashboard-surface-panel: #000;\n--color-dashboard-text: #fff;",
+  );
+  assert.deepEqual(
+    findUnknownDashboardColorTokens(
+      [
+        {
+          path: "src/example.tsx",
+          contents: [
+            'const missing = "bg-dashboard-surface";',
+            'const known = "bg-dashboard-surface-panel/80 hover:text-dashboard-text";',
+            'const data = "data-dashboard-drawer";',
+          ].join("\n"),
+        },
+      ],
+      tokens,
+    ),
+    ["src/example.tsx:1: unknown dashboard color surface"],
+  );
+});
 
 test("reports one-off neutral text colors", () => {
   assert.deepEqual(

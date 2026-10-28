@@ -28,10 +28,10 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
               : cn(
                   "col-span-2 block min-w-0 break-words text-dashboard-text",
                   line.valueStyle === "heading" &&
-                    "font-mono font-semibold text-dashboard-text",
+                    "font-sans tabular-nums font-semibold text-dashboard-text",
                   line.valueStyle === "heading" &&
                     index > 0 &&
-                    "mt-1 border-t border-white/10 pt-2",
+                    "mt-1 border-t border-dashboard-border-strong pt-2",
                 )
           }
           key={`${index}-${line.label ?? ""}-${line.value}-${line.live ? "live" : ""}`}
@@ -74,16 +74,13 @@ export function MetricValue(props: {
   children: ReactNode;
   className?: string;
   tooltip?: MetricTooltipLine[];
-  tooltipColumns?: MetricTooltipLine[][];
+  /** Custom tooltip content, such as a usage summary, instead of lines. */
+  tooltipCard?: ReactNode;
   tooltipPlacement?: "above" | "below";
 }) {
   const tooltip = props.tooltip?.filter((line) => line.value.trim());
-  const tooltipColumns = props.tooltipColumns
-    ?.map((column) => column.filter((line) => line.value.trim()))
-    .filter((column) => column.length);
-  const wide = Boolean(tooltipColumns?.length);
 
-  if (!tooltip?.length && !tooltipColumns?.length) {
+  if (!props.tooltipCard && !tooltip?.length) {
     return <span className={props.className}>{props.children}</span>;
   }
 
@@ -91,15 +88,13 @@ export function MetricValue(props: {
     <Tooltip
       align={props.align}
       className={cn(
-        "w-[calc(100vw-2rem)] rounded-lg border border-white/15 bg-[#050505] px-3 py-2 text-left text-xs font-normal leading-relaxed text-dashboard-text-muted shadow-xl shadow-black/35",
-        wide ? "max-w-[32.5rem]" : "max-w-80",
+        "w-[calc(100vw-2rem)] max-w-80 rounded-lg border border-dashboard-border-emphasis bg-dashboard-bg text-left text-xs font-normal text-dashboard-text-muted shadow-xl shadow-black/35",
+        props.tooltipCard ? "p-3 leading-snug" : "px-3 py-2 leading-relaxed",
       )}
       content={
-        tooltipColumns?.length ? (
-          <span className="grid max-h-72 grid-cols-1 items-start gap-4 overflow-y-auto sm:grid-cols-2 sm:gap-6">
-            {tooltipColumns.map((column, index) => (
-              <TooltipLines key={index} lines={column} />
-            ))}
+        props.tooltipCard ? (
+          <span className="block max-h-[min(30rem,var(--radix-hover-card-content-available-height,30rem))] overflow-y-auto">
+            {props.tooltipCard}
           </span>
         ) : tooltip ? (
           <span className="block max-h-72 overflow-y-auto">
@@ -111,7 +106,7 @@ export function MetricValue(props: {
     >
       <span
         className={cn(
-          "inline-flex border-b border-dotted border-white/20 outline-none transition-colors hover:border-white/45 focus-visible:border-white/45",
+          "inline-flex border-b border-dotted border-dashboard-border-interactive outline-none transition-colors hover:border-dashboard-border-heavy focus-visible:border-dashboard-border-heavy",
           props.className,
         )}
         tabIndex={0}

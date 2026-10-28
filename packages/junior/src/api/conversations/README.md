@@ -18,7 +18,7 @@ event sequence. Callers must not derive or modify cursor positions.
 
 Canonical storage contains runtime and Pi-shaped events that are not a suitable
 REST contract. The reporting adapter projects those facts into normalized
-resource events:
+events:
 
 - `tool_calls` carries one or more tool observations. Each observation has a
   stable tool call id, name, and current status; input and model-visible output
@@ -30,7 +30,42 @@ resource events:
   include the generated continuation summary, but never the full replacement
   history.
 
-The projection is append-only: later canonical facts produce new observations
+Each report event can include `model`: the recorded model ID, model profile,
+and reasoning level at that event. Route and handoff events set these values.
+Assistant calls supply the actual model ID. Turn boundaries clear the context.
+Pages resolve the last route boundary and assistant call before the scanned rows
+with bounded lookups. Missing settings stay absent; current host configuration
+is never used to fill historical gaps.
+
+`modelCall` appears only on an assistant call. It contains allowlisted provider,
+API, stop reason, token counters, and estimated USD costs. Text-only calls have
+empty reporting `parts` so the event log retains their usage without duplicating
+the delivered Message in the transcript. Tool starts and results do not repeat
+call usage. Router cost stays on `turn_routed.costUsd`. Opaque provider metadata
+and replacement history remain outside the reporting API.
+
+`/agents` lists the direct child agents of a Conversation. It reads the same
+agent invocation records as the `listAgents` tool, so each status comes from
+the runtime, not from model output. Viewers who cannot see private content get
+only the status and time of each child agent.
+
+The detail of a child Conversation has `agentTree`: its parent chain, root
+first, with the child last. A child label is its task title or agent name. The
+root label is its display title. Each Conversation has its own access check, so
+a viewer who cannot see private content gets a generic child label. A root
+Conversation has no `agentTree`.
+
+Message attachments can appear after the source file finishes storing. Clients
+must compare attachment metadata as well as event sequence on refresh.
+
+Message text keeps Slack user mentions as `<@U123>`. The event log does not
+store who they are. Each read resolves them into `mentions` on the message:
+known Junior identities first, then a cached Slack lookup. So names stay
+current and old Conversations also get names. `email` is set only for a linked,
+verified Junior user, because it is the People profile route. A mention without
+`email` has no profile to link to.
+
+Other projections are append-only: later canonical facts produce new observations
 instead of changing previously returned events. Clients reduce observations by
 stable identity. A terminal tool or subagent observation includes its start
 context even when the canonical start is outside the requested page. Resolving

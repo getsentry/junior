@@ -1,3 +1,4 @@
+import { objectIconImages } from "./object-icon-images";
 import { Hono, type Context, type Next } from "hono";
 import {
   authenticatePersonalToken,
@@ -5,11 +6,14 @@ import {
   jsonResponse,
   resolveViewerUser,
   updateViewerDisplayName,
+  type ConversationWorkQueue,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
+import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
+import { revalidateConversation } from "./conversation-cache";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -21,11 +25,9 @@ import {
   dashboardProfileUpdateSchema,
 } from "./api/schema";
 import {
-  createDashboardAuth,
   dashboardBearerSession,
   dashboardPersonalBearerToken,
   dashboardSessionIsAuthorized,
-  resolveGoogleHostedDomainHint,
   sanitizeDashboardSession,
   verifiedDashboardSessionEmail,
   type DashboardAuth,
@@ -42,6 +44,7 @@ import {
   dashboardPagePaths,
   readDashboardAvatarHeader,
   readDashboardClient,
+  readDashboardClientChunk,
   renderDashboard,
   renderFavicon,
   renderForbiddenPage,
@@ -75,17 +78,17 @@ export interface JuniorDashboardOptions {
   baseURL?: string;
   authPath?: string;
   authRequired?: boolean;
-  allowedGoogleDomains?: string[];
-  allowedEmails?: string[];
-  sessionMaxAgeSeconds?: number;
-  trustedOrigins?: string[];
   auth?: DashboardAuth;
   componentGallery?: boolean;
   mockConversations?: boolean;
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
+  /** The app's `allowedDomains`, from core. Auth requires at least one. */
+  allowedDomains?: string[];
   authenticatedRoutes?: readonly AuthenticatedRoute[];
+  /** The queue `createApp()` uses, so web input reaches the same worker. */
+  conversationWorkQueue?: ConversationWorkQueue;
   pluginRoutes?: DashboardPluginRoute[];
 }
 
@@ -110,37 +113,6 @@ function normalizeValues(values: string[] | undefined): string[] {
   ];
 }
 
-/** Read dashboard list env vars as comma-separated strings or JSON arrays. */
-function readEnvList(name: string): string[] | undefined {
-  const value = process.env[name];
-  if (!value?.trim()) {
-    return undefined;
-  }
-
-  if (value.trim().startsWith("[")) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(value);
-    } catch (error) {
-      throw new Error(`${name} must be a JSON string array`, {
-        cause: error,
-      });
-    }
-    if (
-      !Array.isArray(parsed) ||
-      parsed.some((item) => typeof item !== "string")
-    ) {
-      throw new Error(`${name} must be a JSON string array`);
-    }
-    return parsed;
-  }
-
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 /** Read dashboard boolean env vars; only explicit true/false values apply. */
 function readEnvFlag(name: string): boolean | undefined {
   const value = process.env[name]?.trim();
@@ -157,13 +129,6 @@ function resolveDashboardOptions(
     ...options,
     authRequired:
       options.authRequired ?? readEnvFlag("JUNIOR_DASHBOARD_AUTH_REQUIRED"),
-    allowedGoogleDomains:
-      options.allowedGoogleDomains ??
-      readEnvList("JUNIOR_DASHBOARD_GOOGLE_DOMAINS"),
-    allowedEmails:
-      options.allowedEmails ?? readEnvList("JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
-    trustedOrigins:
-      options.trustedOrigins ?? readEnvList("JUNIOR_DASHBOARD_TRUSTED_ORIGINS"),
     componentGallery:
       options.componentGallery ??
       readEnvFlag("JUNIOR_DASHBOARD_COMPONENT_GALLERY"),
@@ -346,8 +311,9 @@ function mockViewerFromSession(session: DashboardSession) {
   };
 }
 
-function dashboardTimeZone(): string {
-  return process.env.JUNIOR_TIMEZONE || "America/Los_Angeles";
+/** Return an operator-configured timezone override, or undefined to let each viewer's browser use its own local timezone. */
+function dashboardTimeZone(): string | undefined {
+  return process.env.JUNIOR_TIMEZONE || undefined;
 }
 
 function pluginRoutePrefix(pluginName: string): string {
@@ -368,6 +334,7 @@ function pluginRouteRequest(request: Request, prefix: string): Request {
 function pluginRouteContext(
   pluginName: string,
   session: DashboardSession,
+  viewer: Variables["viewer"],
 ): PluginApiRouteRequestContext {
   const { email, emailVerified, name } = session.user;
   return {
@@ -375,6 +342,7 @@ function pluginRouteContext(
       user: {
         email,
         emailVerified,
+        isAdmin: viewer?.isAdmin === true,
         name,
       },
     },
@@ -400,8 +368,7 @@ export function createDashboardApp(
     options.authPath ?? DEFAULT_AUTH_PATH,
     DEFAULT_AUTH_PATH,
   );
-  const allowedDomains = normalizeValues(options.allowedGoogleDomains);
-  const allowedEmails = normalizeValues(options.allowedEmails);
+  const allowedDomains = normalizeValues(options.allowedDomains);
   const agentName = options.agentName?.trim() || "Junior";
 
   const authRequired = options.authRequired !== false;
@@ -411,29 +378,21 @@ export function createDashboardApp(
     canonicalBaseURL = resolveDashboardBaseURL({ baseURL: configuredBaseURL });
   }
 
-  if (
-    authRequired &&
-    allowedDomains.length === 0 &&
-    allowedEmails.length === 0
-  ) {
-    throw new Error(
-      "Junior dashboard auth requires allowedGoogleDomains or allowedEmails",
-    );
+  if (authRequired && allowedDomains.length === 0) {
+    throw new Error("Junior dashboard auth requires allowedDomains");
   }
 
-  const auth = authRequired
-    ? (options.auth ??
-      createDashboardAuth({
-        agentName,
-        authPath,
-        baseURL: options.baseURL,
-        trustedOrigins: options.trustedOrigins ?? [],
-        googleHostedDomain: resolveGoogleHostedDomainHint(allowedDomains),
-        sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
-      }))
-    : undefined;
+  // Core owns the Google sign-in session.
+  const auth = options.auth;
+  if (authRequired && !auth) {
+    throw new Error("Junior dashboard auth requires the core sign-in session");
+  }
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
+  app.use("*", async (c, next) => {
+    await next();
+    c.header(DASHBOARD_VERSION_HEADER, JUNIOR_VERSION);
+  });
 
   app.get(dashboardLoginPath(basePath), async (c) => {
     const canonicalUrl = canonicalRequestUrl(c.req.raw, canonicalBaseURL);
@@ -442,14 +401,11 @@ export function createDashboardApp(
       authenticatedRoutes,
       componentGallery: options.componentGallery,
     });
-    if (!auth) {
+    if (!authRequired || !auth) {
       return Response.redirect(returnUrl, 302);
     }
     const session = await auth.getSession(c.req.raw);
-    if (
-      session &&
-      dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)
-    ) {
+    if (session && dashboardSessionIsAuthorized(session, allowedDomains)) {
       return Response.redirect(returnUrl, 302);
     }
     return auth.signInWithGoogle(c.req.raw, returnUrl);
@@ -459,6 +415,24 @@ export function createDashboardApp(
     app.on(["GET", "POST"], `${authPath}/*`, (c) => auth.handler(c.req.raw));
   }
 
+  // These fixed, non-sensitive images must be public so Slack can fetch them.
+  app.get("/_junior/dashboard/object-icons/v1/:file", (c) => {
+    const file = c.req.param("file");
+    if (!file?.endsWith(".png")) return c.notFound();
+    const icon = file.slice(0, -4);
+    const image =
+      icon && Object.hasOwn(objectIconImages, icon)
+        ? objectIconImages[icon]
+        : undefined;
+    if (!image) return c.notFound();
+    return new Response(Buffer.from(image, "base64"), {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "public, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  });
   app.get("/favicon.ico", () => renderFavicon());
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
@@ -520,7 +494,7 @@ export function createDashboardApp(
         componentGallery: options.componentGallery,
       });
     }
-    if (!dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)) {
+    if (!dashboardSessionIsAuthorized(session, allowedDomains)) {
       return forbidden(c.req.raw, agentName);
     }
     const sanitizedSession = sanitizeDashboardSession(session);
@@ -543,9 +517,11 @@ export function createDashboardApp(
       c.set("viewer", viewer);
     }
     await next();
+    return undefined;
   };
 
   app.use("*", requireAuth);
+  app.use("/api/conversations/:conversationId", revalidateConversation);
 
   for (const route of authenticatedRoutes) {
     const handler = (c: Context<{ Variables: Variables }>) => {
@@ -581,7 +557,11 @@ export function createDashboardApp(
       route.app.fetch(
         pluginRouteRequest(c.req.raw, prefix),
         pluginApiRouteRequestContextSchema.parse(
-          pluginRouteContext(route.pluginName, c.get("authSession")),
+          pluginRouteContext(
+            route.pluginName,
+            c.get("authSession"),
+            c.get("viewer"),
+          ),
         ),
       );
     app.all(prefix, handler);
@@ -590,11 +570,13 @@ export function createDashboardApp(
   if (options.mockConversations) {
     app.route("/api", createMockReportingApi());
   }
-  app.route("/", createJuniorApi());
+  app.route(
+    "/",
+    createJuniorApi({ conversationWorkQueue: options.conversationWorkQueue }),
+  );
   app.get("/api/config", () => {
     return jsonResponse(dashboardConfigSchema, {
-      allowedEmailCount: allowedEmails.length,
-      allowedGoogleDomainCount: allowedDomains.length,
+      allowedDomainCount: allowedDomains.length,
       authRequired,
       authPath,
       basePath,
@@ -611,6 +593,7 @@ export function createDashboardApp(
       user: {
         email: session.user.email,
         emailVerified: session.user.emailVerified,
+        isAdmin: viewer?.isAdmin === true,
         name: viewer?.displayName ?? session.user.name,
       },
     });
@@ -650,6 +633,7 @@ export function createDashboardApp(
         user: {
           email: session.user.email,
           emailVerified: session.user.emailVerified,
+          isAdmin: viewer.isAdmin === true,
           name: parsed.data.displayName,
         },
       });
@@ -669,6 +653,7 @@ export function createDashboardApp(
       user: {
         email: session.user.email,
         emailVerified: session.user.emailVerified,
+        isAdmin: updated.isAdmin === true,
         name: updated.displayName,
       },
     });
@@ -678,6 +663,17 @@ export function createDashboardApp(
       headers: {
         "cache-control": "no-store",
         "content-type": "application/javascript; charset=utf-8",
+      },
+    });
+  });
+  app.get("/_junior/dashboard/chunks/:file", (c) => {
+    const chunk = readDashboardClientChunk(c.req.param("file"));
+    if (!chunk) return c.notFound();
+    return new Response(chunk, {
+      headers: {
+        "cache-control": "private, max-age=31536000, immutable",
+        "content-type": "application/javascript; charset=utf-8",
+        "x-content-type-options": "nosniff",
       },
     });
   });

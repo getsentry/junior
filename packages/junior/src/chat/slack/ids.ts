@@ -4,17 +4,17 @@ import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 // Slack-owned runtime boundaries parse raw strings into branded IDs here.
 // Exact ID parsers reject Junior reference strings; reference parsing stays
 // explicit for persisted `slack:<channel>` and `slack:<channel>:<ts>` values.
-const slackChannelIdSchema = z
+export const slackChannelIdSchema = z
   .string()
   .regex(/^[CDG][A-Z0-9]+$/)
   .brand<"SlackChannelId">();
 
-const slackTeamIdSchema = z
+export const slackTeamIdSchema = z
   .string()
   .regex(/^T[A-Z0-9]+$/)
   .brand<"SlackTeamId">();
 
-const slackUserIdSchema = z
+export const slackUserIdSchema = z
   .string()
   .regex(/^[UW][A-Z0-9]+$/)
   .brand<"SlackUserId">();

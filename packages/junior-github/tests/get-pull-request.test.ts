@@ -10,12 +10,29 @@ function toolContext(
       body: {
         base: { ref: "main" },
         draft: false,
-        head: { ref: "feat/resource-events", sha: HEAD_SHA },
+        head: { ref: "feat/events", sha: HEAD_SHA },
         html_url: "https://github.com/getsentry/junior/pull/691",
         merged: false,
         number: 691,
         state: "open",
-        title: "Add resource events",
+        title: "Add events",
+        body: `Add **events**.<!-- Internal template note --><<!-- nested -->!-- hidden -->
+
+<!-- junior-request-attribution:start -->
+via **Alex**.
+<!-- junior-request-attribution:end -->
+
+<!-- junior-session-footer:start -->
+[View Junior Session](https://example.com/session)
+<!-- junior-session-footer:end -->
+<!-- unfinished comment`,
+        user: { login: "alex" },
+        requested_reviewers: [{ login: "sam" }],
+        mergeable: null,
+        changed_files: 8,
+        additions: 120,
+        deletions: 30,
+        updated_at: "2026-09-25T13:00:00Z",
       },
     },
   ],
@@ -23,7 +40,7 @@ function toolContext(
   const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
-    resourceEvents: { canSubscribe },
+    events: { canSubscribe },
   };
   return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
 }
@@ -43,6 +60,23 @@ describe("getPullRequest", () => {
         { toolCallId: "get-pr" },
       ),
     ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          displayType: "Pull request",
+          description: "Add **events**.",
+          sourceUpdatedAt: "2026-09-25T13:00:00Z",
+          facts: {
+            type: "code_change",
+            author: "alex",
+            reviewers: ["sam"],
+            sourceBranch: "feat/events",
+            targetBranch: "main",
+            changedFiles: 8,
+            additions: 120,
+            deletions: 30,
+          },
+        },
+      ],
       headSha: HEAD_SHA,
       number: 691,
       subscribable: {

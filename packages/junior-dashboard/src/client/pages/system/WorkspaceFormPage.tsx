@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
+  workspaceListSchema,
   workspaceSchema,
-  type BaselineSnapshotReport,
-  type WorkspaceReport,
+  type WorkspaceListReport,
 } from "@sentry/junior/api/schema";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -16,10 +16,7 @@ import { fetchDashboardJson, post, put } from "../../http";
 import { SystemPageLayout } from "./SystemPageLayout";
 import { WorkspaceDetails } from "./WorkspaceDetails";
 import { WorkspaceEditor } from "./WorkspaceEditor";
-import {
-  readWorkspaceApiError,
-  workspacesQueryKey,
-} from "./WorkspacesPage";
+import { readWorkspaceApiError, workspacesQueryKey } from "./WorkspacesPage";
 import {
   canSaveWorkspaceDraft,
   createWorkspaceDraft,
@@ -56,6 +53,14 @@ export function WorkspaceFormPage() {
       ),
     retry: false,
   });
+  // Shares the list cache so the default size is usually loaded already.
+  const workspacesQuery = useQuery({
+    queryKey: workspacesQueryKey,
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(workspaceListSchema, "/api/workspaces", signal),
+    retry: false,
+  });
+  const defaultVcpus = workspacesQuery.data?.defaultVcpus ?? null;
 
   // Seed the edit draft once per Workspace id. editWorkspaceDraft assigns fresh
   // repo keys, so calling it during every query-driven render remounts fields.
@@ -87,18 +92,17 @@ export function WorkspaceFormPage() {
     },
     onSuccess: async (workspace) => {
       await queryClient.cancelQueries({ queryKey: workspacesQueryKey });
-      queryClient.setQueryData<{
-        baselineSnapshot: BaselineSnapshotReport | null;
-        workspaces: WorkspaceReport[];
-      }>(workspacesQueryKey, (current) => ({
-        baselineSnapshot: current?.baselineSnapshot ?? null,
-        workspaces: [
-          workspace,
-          ...(current?.workspaces ?? []).filter(
-            (item) => item.id !== workspace.id,
-          ),
-        ].sort((left, right) => left.name.localeCompare(right.name)),
-      }));
+      queryClient.setQueryData<WorkspaceListReport>(
+        workspacesQueryKey,
+        (current) =>
+          current && {
+            ...current,
+            workspaces: [
+              workspace,
+              ...current.workspaces.filter((item) => item.id !== workspace.id),
+            ].sort((left, right) => left.name.localeCompare(right.name)),
+          },
+      );
       navigate("/system/workspaces");
     },
   });
@@ -135,7 +139,11 @@ export function WorkspaceFormPage() {
         />
 
         {editing && workspaceQuery.data ? (
-          <WorkspaceDetails range={range} workspace={workspaceQuery.data} />
+          <WorkspaceDetails
+            defaultVcpus={defaultVcpus}
+            range={range}
+            workspace={workspaceQuery.data}
+          />
         ) : null}
 
         {workspaceQuery.error ? (
@@ -150,6 +158,7 @@ export function WorkspaceFormPage() {
         ) : draft ? (
           <WorkspaceEditor
             busy={saveMutation.isPending}
+            defaultVcpus={defaultVcpus}
             canSave={canSaveWorkspaceDraft(draft, saveMutation.isPending)}
             draft={draft}
             editing={editing}

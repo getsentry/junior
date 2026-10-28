@@ -1,0 +1,1 @@
+ALTER TABLE "junior_agent_invocations" ADD COLUMN "title" text;

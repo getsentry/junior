@@ -1,6 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
 import {
-  type ConversationAnnotationInput,
   EgressAuthRequired,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
@@ -10,6 +9,11 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../src/index";
+import { gitHubDeploymentSourceResource } from "../src/events/deployment";
+import { gitHubIssueResource } from "../src/events/issue";
+import { gitHubPullRequestResource } from "../src/events/pull-request";
+import { gitHubReleaseSourceResource } from "../src/events/release";
+import { gitHubRepositoryResource } from "../src/events/repository";
 import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -58,6 +62,7 @@ class TestTokenStore {
 type TestActor = {
   email?: string;
   fullName?: string;
+  name?: string;
   platform?: string;
   teamId?: string;
   userId?: string;
@@ -259,6 +264,37 @@ function mockGitHubUserApi(input?: {
   return requests;
 }
 
+function mockGitHubUserEmailsApi(input: {
+  payload: unknown;
+  status?: number;
+}): CapturedRequest[] {
+  const requests: CapturedRequest[] = [];
+  mswServer.use(
+    http.get("https://api.github.com/user/emails", async ({ request }) => {
+      requests.push(await captureRequest(request));
+      return HttpResponse.json(input.payload as Record<string, unknown>, {
+        status: input.status ?? 200,
+      });
+    }),
+  );
+  return requests;
+}
+
+async function resolveGitHubOAuthAccount(
+  plugin: ReturnType<typeof githubPlugin>,
+) {
+  return await plugin.hooks?.resolveOAuthAccount?.({
+    db,
+    log: pluginLog,
+    plugin: { name: "github" },
+    tokenResponse: {},
+    tokens: {
+      accessToken: "user-token",
+      refreshToken: "refresh-token",
+    },
+  });
+}
+
 function mockGitHubRefresh(
   status: number,
   payload: Record<string, unknown>,
@@ -300,9 +336,6 @@ async function grantForEgress(input: {
 
 function githubToolsContext(input?: {
   actor?: TestActor;
-  annotationUpsert?: (
-    annotation: ConversationAnnotationInput,
-  ) => Promise<void> | void;
   conversationId?: string;
   conversationLink?: string;
   egressFetch?: (request: {
@@ -311,11 +344,11 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
+  source?: ToolRegistrationHookContext["source"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
-  subscribe?: ToolRegistrationHookContext["resourceEvents"]["subscribe"];
+  subscribe?: ToolRegistrationHookContext["events"]["subscribe"];
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
-  const annotations: ConversationAnnotationInput[] = [];
   const state = new Map<string, unknown>();
   const requests: Array<{
     operation: string;
@@ -327,15 +360,9 @@ function githubToolsContext(input?: {
     log: pluginLog,
     plugin: { name: "github" },
     ...(input?.actor ? { actor: input.actor } : undefined),
-    annotations: {
-      async upsert(annotation: ConversationAnnotationInput) {
-        await input?.annotationUpsert?.(annotation);
-        annotations.push(structuredClone(annotation));
-      },
-    },
     conversationId,
     destination: { platform: "local" as const, conversationId },
-    source: {
+    source: input?.source ?? {
       kind: "local" as const,
       visibility: "private" as const,
       conversationId,
@@ -364,7 +391,7 @@ function githubToolsContext(input?: {
       },
     },
     model: {},
-    resourceEvents: {
+    events: {
       canSubscribe: true,
       subscribe:
         input?.subscribe ??
@@ -404,9 +431,6 @@ function githubToolsContext(input?: {
     },
     egressRequests() {
       return requests;
-    },
-    annotationInputs() {
-      return annotations;
     },
     setState(key: string, value: unknown) {
       state.set(key, cloneStateValue(value));
@@ -521,7 +545,7 @@ describe("github plugin", () => {
   });
 
   it("suggests issue and pull request events for repository watches", () => {
-    const repository = githubPlugin().resourceEvents?.resourceTypes.find(
+    const repository = githubPlugin().events?.resourceTypes.find(
       (resourceType) => resourceType.type === "repository",
     );
 
@@ -566,7 +590,7 @@ describe("github plugin", () => {
           "pull_request.checks.failed": "Inspect the failed checks.",
         },
       },
-    }).resourceEvents?.resourceTypes.find(
+    }).events?.resourceTypes.find(
       (resourceType) => resourceType.type === "pull_request",
     );
 
@@ -600,13 +624,47 @@ describe("github plugin", () => {
   });
 
   it("registers release source watches", () => {
-    const releaseSource = githubPlugin().resourceEvents?.resourceTypes.find(
+    const releaseSource = githubPlugin().events?.resourceTypes.find(
       (resourceType) => resourceType.type === "release_source",
     );
 
     expect(releaseSource).toMatchObject({
       supportedEvents: ["release.published"],
       suggestedEvents: ["release.published"],
+    });
+  });
+
+  it("declares an identifier shape that fits only its own resource type", () => {
+    const repo = "getsentry/junior";
+    const built = {
+      deployment_source: gitHubDeploymentSourceResource({
+        commitSha: "0123456789abcdef0123456789abcdef01234567",
+        environment: "Production EU",
+        repo,
+      }),
+      issue: gitHubIssueResource({ number: 208, repo }),
+      pull_request: gitHubPullRequestResource({ number: 691, repo }),
+      release_source: gitHubReleaseSourceResource({ repo, tag: "v1.2.0" }),
+      repository: gitHubRepositoryResource({ repo }),
+    };
+    const fitting = Object.fromEntries(
+      Object.entries(built).map(([type, resource]) => [
+        type,
+        githubPlugin()
+          .events!.resourceTypes.filter((resourceType) =>
+            resourceType.identifier!.pattern.test(resource.identifier),
+          )
+          .map((resourceType) => resourceType.type),
+      ]),
+    );
+
+    // Issues and pull requests share one number space in a repository.
+    expect(fitting).toEqual({
+      deployment_source: ["deployment_source"],
+      issue: ["issue", "pull_request"],
+      pull_request: ["issue", "pull_request"],
+      release_source: ["release_source"],
+      repository: ["repository"],
     });
   });
 
@@ -782,6 +840,27 @@ describe("github plugin", () => {
     });
   });
 
+  it("allows stacked pull request writes that carry only PR numbers", async () => {
+    for (const path of ["stacks", "stacks/12/add", "stacks/12/unstack"]) {
+      expect(
+        await grantForEgress({
+          method: "POST",
+          url: `https://api.github.com/repos/getsentry/junior/${path}`,
+        }),
+      ).toMatchObject({
+        name: "installation-write",
+        access: "write",
+        reason: "github.installation-write",
+      });
+    }
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        url: "https://api.github.com/repos/getsentry/junior/stacks/12",
+      }),
+    ).rejects.toThrow("Junior does not support this GitHub write request.");
+  });
+
   it("creates issues with deterministic requester attribution", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
@@ -847,15 +926,19 @@ describe("github plugin", () => {
       body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
       labels: ["bug", "high-priority"],
     });
-    expect(ctx.annotationInputs()).toEqual([
-      {
-        kind: "resource_link",
-        key: "getsentry/junior#660",
-        label: "getsentry/junior#660",
-        status: "open",
-        url: "https://github.com/getsentry/junior/issues/660",
-      },
-    ]);
+    expect(result).toMatchObject({
+      objectAnnotations: [
+        {
+          kind: "object",
+          objectType: "task",
+          key: "getsentry/junior#660",
+          label: "getsentry/junior#660",
+          title: "Typed issue",
+          status: "open",
+          url: "https://github.com/getsentry/junior/issues/660",
+        },
+      ],
+    });
   });
 
   it("accumulates requester attribution instead of overwriting prior requesters", async () => {
@@ -876,7 +959,7 @@ describe("github plugin", () => {
       {
         repo: "getsentry/junior",
         title: "Typed issue",
-        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**.\n<!-- junior-request-attribution:end -->",
         labels: ["bug"],
       },
       { toolCallId: "call-create-issue-accumulate" },
@@ -884,7 +967,7 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -948,6 +1031,38 @@ describe("github plugin", () => {
     });
   });
 
+  it("attributes automation writes to the Automation run", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = {
+      ...githubToolsContext({
+        actor: { platform: "system", name: "junior" },
+        conversationId: "agent-dispatch:dispatch_1",
+        source: {
+          kind: "event_automation",
+          automationId: "evt_1",
+          automationRunId: "dispatch_1",
+        },
+      }),
+      automationLink: { url: "https://junior.example.com/automations/evt_1" },
+    };
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-automation" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
   it("keeps issue annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext();
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
@@ -960,9 +1075,10 @@ describe("github plugin", () => {
         },
         { toolCallId: "call-create-issue-long-title" },
       ),
-    ).resolves.toMatchObject({ number: 660 });
-
-    expect(ctx.annotationInputs()[0]?.label).toBe("getsentry/junior#660");
+    ).resolves.toMatchObject({
+      number: 660,
+      objectAnnotations: [{ label: "getsentry/junior#660" }],
+    });
   });
 
   it("adds dashboard and Sentry session links to issue footers when configured", async () => {
@@ -1027,21 +1143,30 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("returns the stored issue result when a createIssue tool call is retried", async () => {
-    const ctx = githubToolsContext();
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        Response.json({
+          number: 660,
+          html_url: "https://github.com/getsentry/junior/issues/660",
+          body: "Issue summary\n\n<!-- junior-session-footer:start -->\nFooter\n<!-- junior-session-footer:end -->",
+        }),
+    });
     const plugin = githubPlugin();
     const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
     };
-
-    await expect(
-      tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
-    ).resolves.toMatchObject({
+    const expected = {
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
-    });
+      objectAnnotations: [{ description: "Issue summary" }],
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
+    ).resolves.toMatchObject(expected);
     await expect(
       tool?.execute?.(
         {
@@ -1051,29 +1176,9 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-idempotent-create" },
       ),
-    ).resolves.toMatchObject({
-      target: "createIssue",
-      number: 660,
-      url: "https://github.com/getsentry/junior/issues/660",
-    });
+    ).resolves.toMatchObject(expected);
 
     expect(ctx.egressRequests()).toHaveLength(1);
-    expect(ctx.annotationInputs()).toEqual([
-      {
-        kind: "resource_link",
-        key: "getsentry/junior#660",
-        label: "getsentry/junior#660",
-        status: "open",
-        url: "https://github.com/getsentry/junior/issues/660",
-      },
-      {
-        kind: "resource_link",
-        key: "getsentry/junior#660",
-        label: "getsentry/junior#660",
-        status: "open",
-        url: "https://github.com/getsentry/junior/issues/660",
-      },
-    ]);
   });
 
   it("refuses to duplicate issue creation after an uncertain pending attempt", async () => {
@@ -1323,6 +1428,17 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-create-pull-request" },
       ),
     ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          kind: "object",
+          objectType: "code_change",
+          key: "getsentry/junior#691",
+          label: "getsentry/junior#691",
+          title: "Typed PR",
+          status: "draft",
+          url: "https://github.com/getsentry/junior/pull/691",
+        },
+      ],
       number: 691,
       subscribable: {
         label: "GitHub PR getsentry/junior#691",
@@ -1382,15 +1498,6 @@ Conversation: \`local:test:old-conversation\`
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
       draft: true,
     });
-    expect(ctx.annotationInputs()).toEqual([
-      {
-        kind: "resource_link",
-        key: "getsentry/junior#691",
-        label: "getsentry/junior#691",
-        status: "draft",
-        url: "https://github.com/getsentry/junior/pull/691",
-      },
-    ]);
   });
 
   it("subscribes configured events after creating a pull request", async () => {
@@ -1433,19 +1540,35 @@ Conversation: \`local:test:old-conversation\`
         events: [
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
+          "pull_request.review.approved",
+          "pull_request.merged",
         ],
         id: "subscription-1",
       },
     });
-    expect(subscribe).toHaveBeenCalledWith(
-      expect.objectContaining({
-        intent: "Report failed checks and requested changes.",
-        resource: expect.objectContaining({
-          identifier: "getsentry/junior#660",
-          type: "pull_request",
-        }),
+    // Approval and merge always reach the people involved, so the Watch
+    // stores guidance for those outcomes.
+    expect(subscribe).toHaveBeenCalledWith({
+      events: [
+        "pull_request.checks.failed",
+        "pull_request.review.changes_requested",
+        "pull_request.review.approved",
+        "pull_request.merged",
+      ],
+      guidance: {
+        "pull_request.review.approved": expect.stringContaining(
+          "Mention each person in People involved",
+        ),
+        "pull_request.merged": expect.stringContaining(
+          "Mention each person in People involved",
+        ),
+      },
+      intent: "Report failed checks and requested changes.",
+      resource: expect.objectContaining({
+        identifier: "getsentry/junior#660",
+        type: "pull_request",
       }),
-    );
+    });
   });
 
   it("returns the created pull request when subscribe-after-create fails", async () => {
@@ -1493,7 +1616,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("prefers stored identity names for requester attribution", async () => {
+  it("assigns pull requests to the linked requester and mentions them in attribution", async () => {
     const ctx = githubToolsContext({
       actor: {
         platform: "slack",
@@ -1513,17 +1636,26 @@ Conversation: \`local:test:old-conversation\`
           displayName: "David Cramer",
           email: "david@example.com",
           id: "user-1",
-          identities: [],
+          identities: [
+            {
+              id: "github-identity",
+              provider: "github",
+              providerSubjectId: "1473041",
+              handle: "dcramer_sentry",
+            },
+          ],
         },
       }),
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            number: 692,
-            html_url: "https://github.com/getsentry/junior/pull/692",
-          }),
-          { status: 201 },
-        ),
+      egressFetch: async ({ operation }) =>
+        operation === "github.pull.assign"
+          ? Response.json({ assignees: [{ login: "dcramer_sentry" }] })
+          : new Response(
+              JSON.stringify({
+                number: 692,
+                html_url: "https://github.com/getsentry/junior/pull/692",
+              }),
+              { status: 201 },
+            ),
     });
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
 
@@ -1539,9 +1671,22 @@ Conversation: \`local:test:old-conversation\`
       { toolCallId: "call-create-identity-pull-request" },
     );
 
+    expect(ctx.egressRequests()).toHaveLength(2);
+    const assignment = ctx.egressRequests()[1];
+    expect(assignment).toMatchObject({
+      provider: "github",
+      operation: "github.pull.assign",
+    });
+    expect(assignment.request.method).toBe("POST");
+    expect(assignment.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/issues/692/assignees",
+    );
+    await expect(assignment.request.json()).resolves.toEqual({
+      assignees: ["dcramer_sentry"],
+    });
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -1591,7 +1736,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("keeps GitHub writes when identity lookup fails", async () => {
+  it("returns the created pull request when requester lookup fails", async () => {
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -1603,33 +1748,29 @@ Conversation: \`local:test:old-conversation\`
       resolveActor: async () => {
         throw new Error("identity storage unavailable");
       },
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            number: 694,
-            html_url: "https://github.com/getsentry/junior/pull/694",
-          }),
-          { status: 201 },
-        ),
     });
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
 
-    await tool?.execute?.(
-      {
-        repo: "getsentry/junior",
-        title: "Typed PR",
-        head: "dcramer/gh-660-pr-create",
-        base: "main",
-        body: "PR body",
-        draft: true,
-      },
-      { toolCallId: "call-create-identity-lookup-failed" },
-    );
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+          body: "PR body",
+          draft: true,
+        },
+        { toolCallId: "call-create-identity-lookup-failed" },
+      ),
+    ).resolves.toMatchObject({ number: 660 });
 
-    const request = ctx.egressRequests()[0];
-    await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
-    });
+    expect(ctx.egressRequests()).toHaveLength(1);
+    await expect(ctx.egressRequests()[0].request.json()).resolves.toMatchObject(
+      {
+        body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      },
+    );
   });
 
   it("keeps pull request annotation labels compact for long titles", async () => {
@@ -1655,9 +1796,10 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-create-pull-request-long-title" },
       ),
-    ).resolves.toMatchObject({ number: 691 });
-
-    expect(ctx.annotationInputs()[0]?.label).toBe("getsentry/junior#691");
+    ).resolves.toMatchObject({
+      number: 691,
+      objectAnnotations: [{ label: "getsentry/junior#691" }],
+    });
   });
 
   it("omits pull request subscription hints when GitHub webhooks are not configured", async () => {
@@ -1734,54 +1876,132 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("returns the stored pull request result when a createPullRequest tool call is retried", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
-    const ctx = githubToolsContext({
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            number: 691,
-            html_url: "https://github.com/getsentry/junior/pull/691",
-          }),
-          { status: 201 },
-        ),
-    });
-    const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
-    const input = {
-      repo: "getsentry/junior",
-      title: "Typed PR",
-      head: "dcramer/gh-660-pr-create",
-      base: "main",
-    };
-
-    await expect(
-      tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
-    ).resolves.toMatchObject({
-      number: 691,
-      subscribable: {
-        identifier: "getsentry/junior#691",
-      },
-      url: "https://github.com/getsentry/junior/pull/691",
-    });
-    await expect(
-      tool?.execute?.(
-        {
-          ...input,
-          repo: "getsentry/other",
+  it.each(["rejected", "ignored", "network", "auth"])(
+    "returns and replays the created pull request after %s assignment",
+    async (failure) => {
+      process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+      let handle = "dcramer";
+      const ctx = githubToolsContext({
+        actor: { platform: "slack", teamId: "T1", userId: "U1" },
+        resolveActor: async () => ({
+          identity: {
+            id: "slack-id",
+            provider: "slack",
+            providerSubjectId: "U1",
+          },
+          user: {
+            id: "user-1",
+            email: "david@example.com",
+            identities: [
+              {
+                id: "github-id",
+                provider: "github",
+                providerSubjectId: "1473041",
+                handle,
+              },
+            ],
+          },
+        }),
+        egressFetch: async ({ operation }) => {
+          if (operation === "github.pull.assign") {
+            if (failure === "network") throw new Error("network unavailable");
+            if (failure === "auth")
+              throw new EgressAuthRequired("GitHub authorization required.", {
+                authorization: {
+                  provider: "github",
+                  scope: "repo",
+                  type: "oauth",
+                },
+              });
+            return failure === "rejected"
+              ? Response.json({ message: "Validation Failed" }, { status: 422 })
+              : Response.json({ assignees: [] });
+          }
+          return new Response(
+            JSON.stringify({
+              body: "A".repeat(4001),
+              user: { login: "alex" },
+              head: { ref: "feature/cards" },
+              base: { ref: "main" },
+              number: 691,
+              html_url: "https://github.com/getsentry/junior/pull/691",
+            }),
+            { status: 201 },
+          );
         },
-        { toolCallId: "call-idempotent-pr-create" },
-      ),
-    ).resolves.toMatchObject({
-      number: 691,
-      subscribable: {
-        identifier: "getsentry/junior#691",
-      },
-      url: "https://github.com/getsentry/junior/pull/691",
-    });
+      });
+      const plugin = githubPlugin();
+      const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+      const input = {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+      };
 
-    expect(ctx.egressRequests()).toHaveLength(1);
-  });
+      await expect(
+        tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
+      ).resolves.toMatchObject({
+        objectAnnotations: [
+          {
+            description: `${"A".repeat(3999)}…`,
+            facts: {
+              type: "code_change",
+              author: "alex",
+              sourceBranch: "feature/cards",
+              targetBranch: "main",
+            },
+          },
+        ],
+        number: 691,
+        subscribable: {
+          identifier: "getsentry/junior#691",
+        },
+        url: "https://github.com/getsentry/junior/pull/691",
+      });
+      // A replay must not try assignment again, even if the requester changes.
+      handle = "someone-else";
+      await expect(
+        tool?.execute?.(
+          {
+            ...input,
+            repo: "getsentry/other",
+          },
+          { toolCallId: "call-idempotent-pr-create" },
+        ),
+      ).resolves.toMatchObject({
+        objectAnnotations: [
+          {
+            description: `${"A".repeat(3999)}…`,
+            facts: {
+              type: "code_change",
+              author: "alex",
+              sourceBranch: "feature/cards",
+              targetBranch: "main",
+            },
+          },
+        ],
+        number: 691,
+        subscribable: {
+          identifier: "getsentry/junior#691",
+        },
+        url: "https://github.com/getsentry/junior/pull/691",
+      });
+
+      expect(ctx.egressRequests()).toHaveLength(2);
+      expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
+        "github.pull.create",
+        "github.pull.assign",
+      ]);
+      const assignment = ctx.egressRequests()[1].request;
+      expect(assignment.url).toBe(
+        "https://api.github.com/repos/getsentry/junior/issues/691/assignees",
+      );
+      await expect(assignment.json()).resolves.toEqual({
+        assignees: ["dcramer"],
+      });
+    },
+  );
 
   it("returns legacy stored pull request results without stored input", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
@@ -2090,6 +2310,46 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("GraphQL mutations are not enabled");
   });
 
+  it.each([
+    ["MarkPullRequestReadyForReview", "markPullRequestReadyForReview"],
+    ["ConvertPullRequestToDraft", "convertPullRequestToDraft"],
+  ])(
+    "allows only the typed %s mutation with repository scope",
+    async (operationName, field) => {
+      const bodyText = JSON.stringify({
+        operationName,
+        query: `mutation ${operationName}($id: ID!) { ${field}(input: {pullRequestId: $id}) { pullRequest { isDraft } } }`,
+        variables: { id: "PR_kwDO" },
+      });
+      await expect(
+        grantForEgress({
+          method: "POST",
+          operation: "github.pull.draft.update:getsentry/junior",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).resolves.toMatchObject({
+        name: "installation-write",
+        access: "write",
+      });
+      await expect(
+        grantForEgress({
+          method: "POST",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).rejects.toThrow("GraphQL mutations are not enabled");
+      await expect(
+        grantForEgress({
+          method: "POST",
+          operation: "github.pull.review-thread.resolve:getsentry/junior",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).rejects.toThrow("GraphQL mutations are not enabled");
+    },
+  );
+
   it("routes pull request review and feedback writes to typed tools", async () => {
     await expect(
       grantForEgress({
@@ -2392,7 +2652,7 @@ Conversation: \`local:test:old-conversation\`
     });
 
     const result = await plugin.hooks?.issueCredential?.({
-      actor: { platform: "system", name: "resource-event" },
+      actor: { platform: "system", name: "event" },
       grant: {
         name: "installation-write",
         access: "write",
@@ -2613,25 +2873,25 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("resolves the GitHub account for user OAuth tokens", async () => {
+  it("resolves the GitHub account and verified emails for user OAuth tokens", async () => {
     const requests = mockGitHubUserApi();
+    const emailRequests = mockGitHubUserEmailsApi({
+      payload: [
+        { email: "actor@example.com", primary: true, verified: true },
+        { email: "actor@users.noreply.github.com", verified: true },
+        { email: "unverified@example.com", verified: false },
+      ],
+    });
 
     const plugin = githubPlugin();
-    const account = await plugin.hooks?.resolveOAuthAccount?.({
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {
-        accessToken: "user-token",
-        refreshToken: "refresh-token",
-      },
-    });
+    const account = await resolveGitHubOAuthAccount(plugin);
 
     expect(account).toEqual({
       handle: "actor",
       id: "12345",
       label: "actor",
       url: "https://github.com/actor",
+      verifiedEmails: ["actor@example.com", "actor@users.noreply.github.com"],
     });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -2639,7 +2899,28 @@ Conversation: \`local:test:old-conversation\`
       method: "GET",
     });
     expect(requests[0]?.headers.authorization).toBe("Bearer user-token");
+    expect(emailRequests[0]?.headers.authorization).toBe("Bearer user-token");
   });
+
+  it.each([
+    [403, { message: "Resource not accessible by integration" }],
+    [500, { message: "server error" }],
+  ])(
+    "resolves the GitHub account without emails when the emails lookup returns %i",
+    async (status, payload) => {
+      mockGitHubUserApi();
+      mockGitHubUserEmailsApi({ payload, status });
+
+      const account = await resolveGitHubOAuthAccount(githubPlugin());
+
+      expect(account).toEqual({
+        handle: "actor",
+        id: "12345",
+        label: "actor",
+        url: "https://github.com/actor",
+      });
+    },
+  );
 
   it("surfaces operational failures while lazily resolving GitHub account identity", async () => {
     mockGitHubUserApi({
@@ -3249,7 +3530,8 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(runs).toEqual([
       ["-p", "--", "repos"],
@@ -3262,63 +3544,19 @@ Conversation: \`local:test:old-conversation\`
         "--symbolic-full-name",
         "@{upstream}",
       ],
-      ["-d", "/vercel/sandbox/.junior/workspace-refresh.XXXXXX"],
       [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "init",
-        "--quiet",
-        "--initial-branch",
-        "feature",
-      ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/getsentry/junior.git",
-      ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
+        "-c",
+        "credential.helper=",
+        "-C",
         "repos/junior",
         "fetch",
         "--quiet",
-        "--prune",
-        "--tags",
-        "origin",
-        "+refs/heads/*:refs/remotes/origin/*",
+        "--no-tags",
+        "--no-recurse-submodules",
+        "https://github.com/getsentry/junior.git",
+        "+refs/heads/stable:refs/remotes/origin/stable",
       ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "reset",
-        "--hard",
-        "refs/remotes/origin/stable",
-      ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "branch",
-        "--set-upstream-to=origin/stable",
-        "feature",
-      ],
-      ["-rf", "--", "repos/junior/.git"],
-      [
-        "--",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "repos/junior/.git",
-      ],
+      ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/stable"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
     expect(runs.some((args) => args[0] === "clone")).toBe(false);
@@ -3358,37 +3596,16 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
+    expect(runs.some((args) => args.includes("fetch"))).toBe(false);
     expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
-      "repos/junior",
-      "fetch",
-      "--quiet",
-      "--prune",
-      "--tags",
-      "origin",
-      "+refs/heads/*:refs/remotes/origin/*",
-    ]);
-    expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
+      "-C",
       "repos/junior",
       "reset",
       "--hard",
-      "refs/remotes/origin/feature",
-    ]);
-    expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
-      "repos/junior",
-      "branch",
-      "--set-upstream-to=origin/feature",
-      "feature",
+      "HEAD",
     ]);
     expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
   });
@@ -3428,26 +3645,16 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
+    expect(runs.some((args) => args.includes("fetch"))).toBe(false);
     expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
-      "repos/junior",
-      "update-ref",
-      "--no-deref",
-      "HEAD",
-      sha,
-    ]);
-    expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
+      "-C",
       "repos/junior",
       "reset",
       "--hard",
-      sha,
+      "HEAD",
     ]);
     expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
   });
@@ -3535,9 +3742,8 @@ Conversation: \`local:test:old-conversation\`
     await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
       "GitHub workspace clone failed",
     );
-    await expect(
-      githubPlugin().hooks?.workspacePrepare?.(ctx),
-    ).resolves.toBeUndefined();
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(
       runs.filter(

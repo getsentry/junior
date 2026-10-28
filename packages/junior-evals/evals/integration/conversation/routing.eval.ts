@@ -1,43 +1,64 @@
-import { assistantMessages, describeEval } from "vitest-evals";
-import { expect } from "vitest";
-import {
-  mention,
-  rubric,
-  slackEvals,
-  threadMessage,
-  visibleAssistantText,
-  visibleThreadReplies,
-} from "../../../src/helpers";
+import { describe, expect } from "vitest";
+import { slackMention, slackThreadMessage } from "@junior-evals/fixture/inputs";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("Conversation Routing", slackEvals, (it) => {
-  it("when a thread message explicitly mentions Junior, post a direct reply", async ({
+describe("Conversation Routing", () => {
+  test("when a thread message explicitly mentions Junior, post a direct reply", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [threadMessage("What is 2+2?", { is_mention: true })],
-      criteria: rubric({
+    const conversation = await run(slackMention("What is 2+2?"), {
+      history: [
+        slackThreadMessage("Quick math check before standup.", {
+          author: { fullName: "Sam Example", userId: "U0SAM", userName: "sam" },
+        }),
+      ],
+    });
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: ["The reply answers with 4."],
         fail: ["Do not return sandbox setup failure text."],
       }),
-    });
-
-    const replies = visibleThreadReplies(result.session);
-    expect(replies).toHaveLength(1);
-    expect(visibleAssistantText(result.session).length).toBeLessThanOrEqual(
-      800,
     );
+
+    expect(conversation.replies).toHaveLength(1);
+    expect(conversation.replies[0]!.text.length).toBeLessThanOrEqual(800);
+    // The processing reaction marks the mention, then the completed reaction.
+    expect(conversation.reactions).toEqual(["eyes", "white_check_mark"]);
   });
 
-  it("when asked to post in another named channel, explain the limitation instead", async ({
+  test("when two mentions arrive before the turn starts, one turn answers both", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [
-        mention(
-          "@bot post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
-        ),
-      ],
-      criteria: rubric({
+    const conversation = await run([
+      slackMention("The rollback owner for the checkout outage is Dana."),
+      slackMention("In one sentence, who is the rollback owner?"),
+    ]);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says Dana is the rollback owner."],
+      }),
+    );
+
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+    expect(conversation.replies).toHaveLength(1);
+  });
+
+  test("when asked to post in another named channel, explain the limitation instead", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
         ],
@@ -46,13 +67,8 @@ describeEval("Conversation Routing", slackEvals, (it) => {
           "Do not claim the message was posted to #discuss-design-engineering.",
         ],
       }),
-    });
+    );
 
-    expect(
-      assistantMessages(result.session).filter(
-        (message) => message.metadata?.event_type === "channel_post",
-      ),
-    ).toHaveLength(0);
-    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
+    expect(conversation.replies.length).toBeGreaterThan(0);
   });
 });

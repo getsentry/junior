@@ -10,6 +10,7 @@ import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import type { PiMessage } from "@/chat/pi/messages";
+import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
@@ -106,7 +107,7 @@ describe("agent resume", () => {
       surface: "internal",
     });
     const { resume } = await resumeState(conversationId, turnId);
-    resume.admitToolCall();
+    expect(resume.countToolCall()).toBe(18);
     await expect(resume.persistSafeBoundary([first, second])).resolves.toBe(
       true,
     );
@@ -114,6 +115,69 @@ describe("agent resume", () => {
       cumulativeToolCallCount: 18,
       state: "running",
     });
+  });
+
+  it("restores and checkpoints the turn-limit wrap-up across slices", async () => {
+    const conversationId = "local:test:turn-limit-wrap-up";
+    const turnId = "turn-limit-wrap-up";
+    const first: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "keep going" }],
+      timestamp: 1,
+    };
+    const second: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "after wrap-up" }],
+      timestamp: 2,
+    };
+    await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "yield",
+      conversationId,
+      turnId,
+      sliceId: 1,
+      messages: [first],
+      surface: "internal",
+    });
+    const sliceTwo = await resumeState(conversationId, turnId);
+    expect(sliceTwo.resume.turnLimitWrappedUp).toBe(false);
+    sliceTwo.resume.markTurnLimitWrappedUp();
+    await expect(
+      sliceTwo.resume.persistSafeBoundary([first, second]),
+    ).resolves.toBe(true);
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      turnLimitWrappedUp: true,
+    });
+
+    const sliceThree = await resumeState(conversationId, turnId);
+    expect(sliceThree.resume.turnLimitWrappedUp).toBe(true);
+  });
+
+  it("fails a durable turn when committed history rejects its input checkpoint", async () => {
+    const conversationId = "local:test:input-commit-lost";
+    const turnId = "turn-input-commit-lost";
+    await saveTurnCheckpoint({
+      mode: "running",
+      conversationId,
+      turnId,
+      sliceId: 1,
+      messages: [message("committed")],
+    });
+    const resume = createResumeState({
+      destination: { platform: "local", conversationId },
+      durability: { onInputCommitted: async () => undefined },
+      recordActiveMcpProviders: async () => undefined,
+      runSource: createLocalSource(conversationId),
+      conversationId,
+      turnId,
+      checkpoint: await loadTurnCheckpoint({ conversationId, turnId }),
+      startedAtMs: Date.now(),
+      surface: "internal",
+    });
+
+    await expect(
+      resume.requireDurableInputCheckpoint([message("branch")]),
+    ).rejects.toBeInstanceOf(TurnInputCommitLostError);
   });
 
   it("preserves the execution-limit error while parking for auth", async () => {

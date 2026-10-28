@@ -1,16 +1,10 @@
-import {
-  memo,
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
   ConversationPendingMessagesReport,
+  InputImage,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -18,32 +12,46 @@ import {
   useArchiveConversation,
   useCancelConversationPendingMessages,
   useConversationData,
+  useStopConversationTurn,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import { conversationIsResponding } from "./transcript";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import { ConversationBrief } from "./ConversationBrief";
+import {
+  CONVERSATION_EVENT_PARAM,
+  parseConversationEventSeq,
+} from "./conversationRoutes";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationForkLinks } from "./ConversationForkLinks";
+import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
-  ConversationIdentity,
   ConversationPrivacyChip,
   ConversationStats,
   hasConversationAnnotations,
-  hasConversationIdentity,
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
+import { ConversationUsageBreakdown } from "./ConversationUsageBreakdown";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
+  conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
   visualStatusForConversation,
 } from "../format";
+import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { Transcript } from "./TranscriptView";
@@ -65,14 +73,24 @@ export { liveModelId } from "./ConversationMeta";
 export function ConversationPage(props: {
   conversationId: string;
   data?: { conversations: ConversationFeed };
+  onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
-  const [view, setView] = useState<TranscriptViewMode>("rich");
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The URL owns the open event log entry so readers can share that link.
+  const selectedEventSeq = parseConversationEventSeq(
+    searchParams.get(CONVERSATION_EVENT_PARAM),
+  );
+  const [viewState, setView] = useState<TranscriptViewMode>(() =>
+    selectedEventSeq === undefined ? "rich" : "raw",
+  );
+  const view = selectedEventSeq === undefined ? viewState : "raw";
   const [search, setSearch] = useState("");
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
+  const onRead = props.onRead;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
@@ -84,17 +102,26 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
+  const participants = conversationParticipants(conversation);
+  const identity =
+    participants.length > 0 ? (
+      <ParticipantAvatarStack participants={participants} size="detail" />
+    ) : null;
   const conversationDetail = detail.data;
-  // Live polls can rebuild a large transcript tree every 2s. Defer that paint so
-  // composer keystrokes stay urgent without changing visible transcript content.
-  // Fall back to the latest detail on first load so the body is never blank while
-  // the deferred value catches up from undefined.
-  const deferredTranscript = useDeferredValue(detail.data);
-  const transcript = deferredTranscript ?? detail.data;
+  const title =
+    conversationDetailTitle(detail.data) ??
+    conversationDisplayTitle(conversation);
+  useDocumentTitle(detail.data || conversation ? title : undefined);
+  const agentTree = detail.data?.agentTree;
+  useEffect(() => {
+    if (!conversation) return;
+    onRead?.(conversation.id, conversation.lastSeenAt);
+  }, [conversation, onRead]);
+  const transcript = detail.data;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
-  // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
+  // History and mailbox use the same deferred server snapshot.
   const live = conversationIsLive(visualStatus, detail.data);
   // Key on the event array, not the whole detail object. Metadata-only polls
   // reuse events via structural sharing, so the footer keeps a stable id list.
@@ -106,6 +133,48 @@ export function ConversationPage(props: {
   // polls refresh generatedAt every 2s even when the queue is unchanged.
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
+  const setSelectedEventSeq = useCallback(
+    (seq: number | undefined) => {
+      // Keep the event log after close, even when a link opened the page.
+      setView("raw");
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (seq === undefined) next.delete(CONVERSATION_EVENT_PARAM);
+          else next.set(CONVERSATION_EVENT_PARAM, String(seq));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const onViewChange = useCallback(
+    (value: TranscriptViewMode) => {
+      if (value !== "raw" && selectedEventSeq !== undefined) {
+        setSelectedEventSeq(undefined);
+      }
+      setView(value);
+    },
+    [selectedEventSeq, setSelectedEventSeq],
+  );
+  // A linked event can be older than the first page. Load earlier pages until
+  // it is present or history ends.
+  const loadPreviousPageRef = useRef(detail.loadPreviousPage);
+  loadPreviousPageRef.current = detail.loadPreviousPage;
+  const oldestLoadedSeq = transcript?.events[0]?.seq;
+  const linkedEventMissing =
+    selectedEventSeq !== undefined &&
+    oldestLoadedSeq !== undefined &&
+    selectedEventSeq < oldestLoadedSeq;
+  const loadLinkedEvent =
+    linkedEventMissing &&
+    detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage &&
+    !detail.historyError;
+  useEffect(() => {
+    if (loadLinkedEvent) loadPreviousPageRef.current();
+  }, [loadLinkedEvent, oldestLoadedSeq]);
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -117,8 +186,10 @@ export function ConversationPage(props: {
       conversation: ConversationTranscript;
     }) => {
       setSubagentTarget({
+        ...(part.agentName ? { agentName: part.agentName } : undefined),
         conversationId: part.childConversationId,
-        part,
+        label: part.title ?? part.agentName,
+        status: part.status,
       });
     },
     [],
@@ -129,11 +200,28 @@ export function ConversationPage(props: {
       <ChatLayout
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
-        scrollClassName="px-3 pb-1.5 md:px-7 md:pb-2"
+        scrollClassName="px-4 pb-4 md:px-7 md:pb-6"
         scroll={
           <section className="min-w-0">
             <ConversationHeader
+              agentTree={
+                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+              }
               conversationId={conversationId}
+              forks={
+                detail.data?.forkedFromConversationId ||
+                detail.data?.forks?.length ? (
+                  <ConversationForkLinks
+                    forkedFromConversationId={
+                      detail.data.forkedFromConversationId
+                    }
+                    forkedFromTitle={detail.data.forkedFromTitle}
+                    forks={detail.data.forks}
+                  />
+                ) : null
+              }
+              lastActivityAt={conversation?.lastSeenAt}
+              sentryConversationUrl={detail.data?.sentryConversationUrl}
               copyAction={
                 <CopyMarkdownButton
                   key={conversationDetail?.conversationId ?? "loading"}
@@ -153,6 +241,14 @@ export function ConversationPage(props: {
                   <ConversationAnnotations detail={detail.data} />
                 ) : null
               }
+              linkedWork={
+                hasConversationAnnotations(detail.data?.annotations) ? (
+                  <ConversationAnnotations
+                    detail={detail.data}
+                    layout="strip"
+                  />
+                ) : null
+              }
               archive={{
                 archived: Boolean(conversation?.archivedAt),
                 disabled: !conversation || archive.isPending,
@@ -164,37 +260,19 @@ export function ConversationPage(props: {
                   }),
                 pending: archive.isPending,
               }}
-              identity={
-                hasConversationIdentity({
-                  conversation,
-                  conversationId,
-                  detail: detail.data,
-                }) ? (
-                  <ConversationIdentity
-                    conversation={conversation}
-                    conversationId={conversationId}
-                    detail={detail.data}
+              brief={
+                detail.data?.brief ? (
+                  <ConversationBrief
+                    brief={detail.data.brief}
+                    variant="summary"
                   />
                 ) : null
               }
+              identity={identity}
               live={live}
               meta={
                 <ConversationHeaderMeta
-                  identity={
-                    hasConversationIdentity({
-                      conversation,
-                      conversationId,
-                      detail: detail.data,
-                      variant: "compact",
-                    }) ? (
-                      <ConversationIdentity
-                        conversation={conversation}
-                        conversationId={conversationId}
-                        detail={detail.data}
-                        variant="compact"
-                      />
-                    ) : null
-                  }
+                  identity={identity}
                   stats={
                     hasConversationStats({
                       conversation,
@@ -210,10 +288,13 @@ export function ConversationPage(props: {
                   }
                 />
               }
+              onOpenSubagent={setSubagentTarget}
               onSearchChange={setSearch}
-              onViewChange={setView}
+              onViewChange={onViewChange}
               privacy={
-                <ConversationPrivacyChip visibility={conversation?.visibility} />
+                <ConversationPrivacyChip
+                  visibility={conversation?.visibility}
+                />
               }
               search={search}
               stats={
@@ -221,49 +302,70 @@ export function ConversationPage(props: {
                   conversation,
                   detail: detail.data,
                 }) ? (
-                  <ConversationStats
-                    conversation={conversation}
-                    detail={detail.data}
-                  />
+                  <div className="grid min-w-0 gap-5">
+                    <ConversationStats
+                      conversation={conversation}
+                      detail={detail.data}
+                    />
+                    <ConversationUsageBreakdown
+                      conversation={conversation}
+                      detail={detail.data}
+                    />
+                  </div>
                 ) : null
               }
-              title={conversationDisplayTitle(conversation)}
+              title={title}
               view={view}
             />
 
-            {detail.isPending ? (
-              <TranscriptLoading />
-            ) : detail.error && !detail.data ? (
-              <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-                {detail.error.message}
-              </Card>
-            ) : (
-              <>
-                {detail.error ? (
-                  <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                    Transcript refresh failed. Showing the latest available data.
-                  </div>
-                ) : null}
-                <Transcript
-                  hasPreviousPage={detail.hasPreviousPage}
-                  historyError={detail.historyError}
-                  historyVersion={detail.historyVersion}
-                  live={live}
-                  loadingPreviousPage={detail.isLoadingPreviousPage}
-                  onLoadPreviousPage={detail.loadPreviousPage}
-                  pinRequestVersion={pinRequestVersion}
-                  responding={!detail.error && live}
-                  onOpenSubagentTranscript={onOpenSubagentTranscript}
-                  search={search}
-                  transcript={transcript}
-                  view={view}
-                />
-              </>
-            )}
+            <div
+              className={
+                view === "raw"
+                  ? "w-full pt-5 md:pt-7"
+                  : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
+              }
+            >
+              {detail.isPending ? (
+                <TranscriptLoading />
+              ) : detail.error && !detail.data ? (
+                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                  {detail.error.message}
+                </Card>
+              ) : (
+                <>
+                  {detail.error ? (
+                    <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                      Transcript refresh failed. Showing the latest available
+                      data.
+                    </div>
+                  ) : null}
+                  <Transcript
+                    hasPreviousPage={detail.hasPreviousPage}
+                    historyError={detail.historyError}
+                    historyVersion={detail.historyVersion}
+                    live={live}
+                    loadingPreviousPage={detail.isLoadingPreviousPage}
+                    onLoadPreviousPage={detail.loadPreviousPage}
+                    onSelectedEventSeqChange={setSelectedEventSeq}
+                    pinRequestVersion={pinRequestVersion}
+                    responding={
+                      !detail.error && conversationIsResponding(transcript)
+                    }
+                    onOpenSubagentTranscript={onOpenSubagentTranscript}
+                    search={search}
+                    selectedEventSeq={selectedEventSeq}
+                    transcript={transcript}
+                    view={view}
+                  />
+                </>
+              )}
+            </div>
           </section>
         }
         dock={
-          detail.data?.isParticipant ? (
+          // A child Conversation takes input only from its parent agent, and it
+          // runs without interactive auth, so it has no approval to show.
+          view === "rich" && detail.data?.isParticipant && !agentTree ? (
             <ConversationReplyFooter
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is
@@ -275,6 +377,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              stoppable={live}
             />
           ) : undefined
         }
@@ -286,7 +389,6 @@ export function ConversationPage(props: {
     </>
   );
 }
-
 
 /**
  * Own mutation state and mailbox chrome outside the page tree that re-renders
@@ -302,8 +404,13 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** True while the conversation has a Turn that a stop can end. */
+  stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
+  const stopTurn = useStopConversationTurn(props.conversationId);
+  const stopTurnRef = useRef(stopTurn);
+  stopTurnRef.current = stopTurn;
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
@@ -333,19 +440,22 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
   const onSubmit = useCallback(
-    async (message: string, idempotencyKey: string) => {
+    async (message: string, idempotencyKey: string, images?: InputImage[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
         message,
+        images,
       });
     },
     [],
   );
   const onRetry = useCallback((message: ConversationMailboxMessage) => {
-    if (!message.idempotencyKey || !message.text) return;
+    if (!message.idempotencyKey || (!message.text && !message.images?.length))
+      return;
     void appendMessageRef.current.mutateAsync({
       idempotencyKey: message.idempotencyKey,
-      message: message.text,
+      message: message.text ?? "",
+      images: message.images,
     });
   }, []);
   const onSubmitStart = useCallback(() => {
@@ -353,19 +463,23 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!cancelPendingMessagesRef.current.isPending) {
       cancelPendingMessagesRef.current.reset();
     }
+    if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
-  const onCancelMessage = useCallback((message: ConversationMailboxMessage) => {
-    const receivedBefore = props.pendingGeneratedAtRef.current;
-    if (!receivedBefore) return;
-    cancelPendingMessagesRef.current.mutate({
-      inboundMessageIds: [message.inboundMessageId],
-      receivedBefore,
-    });
-  }, [props.pendingGeneratedAtRef]);
+  const onCancelMessage = useCallback(
+    (message: ConversationMailboxMessage) => {
+      const receivedBefore = props.pendingGeneratedAtRef.current;
+      if (!receivedBefore) return;
+      cancelPendingMessagesRef.current.mutate({
+        inboundMessageIds: [message.inboundMessageId],
+        receivedBefore,
+      });
+    },
+    [props.pendingGeneratedAtRef],
+  );
   const cancelTargetInboundMessageId =
     cancelPendingMessages.variables?.inboundMessageIds[0];
   const cancelError = Boolean(
@@ -374,6 +488,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancellableMessageIds.includes(id),
     ),
   );
+
+  const onStop = useCallback(async () => {
+    const result = await stopTurnRef.current.mutateAsync();
+    const restored = result.stoppedMessages.map((message) => message.text);
+    return restored.length ? restored.join("\n") : undefined;
+  }, []);
 
   const onMailboxLayoutChange = useCallback(() => {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
@@ -408,9 +528,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     >
       <ConversationComposer
         draftId={props.conversationId}
+        error={stopTurn.error ? "Could not stop Junior. Try again." : undefined}
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}
+        onStop={props.stoppable ? onStop : undefined}
+        stopPending={stopTurn.isPending}
         onSubmitStart={onSubmitStart}
         onSubmit={onSubmit}
       />

@@ -23,14 +23,14 @@ describe("automated turn limit", () => {
   it("classifies automated sources", () => {
     expect(
       isAutomatedTurnSource({
-        kind: "resource_event",
+        kind: "event",
         eventKey: "e",
         eventType: "x",
         identifier: "i",
         namespace: "n",
       }),
     ).toBe(true);
-    expect(isAutomatedTurnSource({ kind: "event_task" })).toBe(true);
+    expect(isAutomatedTurnSource({ kind: "event_automation" })).toBe(true);
     expect(
       isAutomatedTurnSource({
         kind: "slack",
@@ -51,7 +51,7 @@ describe("automated turn limit", () => {
     );
     expect(response).toContain("Send a message or @mention me in this thread");
     expect(response).not.toContain("event-driven");
-    expect(response).not.toContain("resource event");
+    expect(response).not.toContain("event");
     expect(response).not.toContain("budget");
     expect(response).not.toContain("circuit");
     expect(response).not.toContain("channel");
@@ -185,7 +185,7 @@ describe("automated turn limit", () => {
         conversationId,
         maxTurns: 10,
         nowMs: 10,
-        source: { kind: "event_task" },
+        source: { kind: "event_automation" },
       }),
     ).resolves.toMatchObject({
       consecutiveAutomatedTurns: 1,
@@ -203,7 +203,7 @@ describe("automated turn limit", () => {
     await resetAutomatedTurnLimit({ conversationId });
   });
 
-  it("counts resource-event finishes on the conversation", async () => {
+  it("counts event finishes on the conversation", async () => {
     const conversationId = "slack:C3:3.0";
     await expect(
       recordFinishedTurnForAutomatedLimit({
@@ -211,7 +211,7 @@ describe("automated turn limit", () => {
         maxTurns: 10,
         nowMs: 1,
         source: {
-          kind: "resource_event",
+          kind: "event",
           eventKey: "e",
           eventType: "pull_request.opened",
           identifier: "getsentry/junior#1",

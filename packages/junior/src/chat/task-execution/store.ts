@@ -14,6 +14,7 @@ export {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
   type AgentInput,
@@ -169,14 +170,16 @@ export function hasRunnableConversationWork(
 /**
  * Ensure runnable conversation work has one accepted queue wake-up nudge.
  *
- * Ordinary wakes coalesce on a recent accepted marker. Replacement is only for
- * consumed or known-stale deliveries where another queue nudge must exist.
+ * Ordinary wakes coalesce on a recent accepted marker. A caller can ignore the
+ * marker without replacing an active lease. Replacement is only for consumed
+ * or known-stale deliveries where another queue nudge must exist.
  */
 export async function ensureConversationWake(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   delayMs?: number;
   idempotencyKey: string;
+  ignoreEnqueueMarker?: true;
   nowMs?: number;
   queue: ConversationWorkQueue;
   replaceExistingWake?: true;
@@ -198,6 +201,7 @@ export async function ensureConversationWake(args: {
     return { status: "lease_active" };
   }
   if (
+    args.ignoreEnqueueMarker !== true &&
     args.replaceExistingWake !== true &&
     hasRecentEnqueueMarker(conversation, nowMs)
   ) {
@@ -245,6 +249,8 @@ async function enqueueAfterAppend(args: {
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
+  queueDelayMs?: number;
+  replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
@@ -283,9 +289,14 @@ async function enqueueAfterAppend(args: {
   const wake = await ensureConversationWake({
     conversationId: args.message.conversationId,
     conversationStore: args.conversationStore,
+    delayMs: args.queueDelayMs,
     idempotencyKey,
+    // Human input must not wait out an event's queue delay. An active worker
+    // still owns the mailbox, so do not replace its wake.
+    ignoreEnqueueMarker: args.message.source === "event" ? undefined : true,
     nowMs,
     queue: args.queue,
+    replaceExistingWake: args.replaceExistingWake,
     state: args.state,
   });
   if (wake.status !== "enqueued") {
@@ -309,6 +320,8 @@ export async function appendAndEnqueueInboundMessage(args: {
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
+  queueDelayMs?: number;
+  replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
@@ -333,6 +346,7 @@ export async function appendAndEnqueueExclusiveInboundMessage(args: {
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
+  replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();

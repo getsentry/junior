@@ -72,13 +72,13 @@ describe("dashboard canonical-event mock routes", () => {
   it("serves canonical detail, directory, and aggregate reports", async () => {
     const app = createDashboardApp({
       authRequired: false,
-      allowedGoogleDomains: [],
+      allowedDomains: [],
       mockConversations: true,
     });
 
     const me = await app.fetch(new Request("http://localhost/api/me"));
     await expect(me.json()).resolves.toEqual({
-      user: { email: "dev@example.com", emailVerified: true },
+      user: { email: "dev@example.com", emailVerified: true, isAdmin: false },
     });
 
     const code = await app.fetch(new Request("http://localhost/api/code"));
@@ -257,7 +257,7 @@ describe("dashboard canonical-event mock routes", () => {
   it("serves direct canonical event fixtures for every dashboard state", async () => {
     const app = createDashboardApp({
       authRequired: false,
-      allowedGoogleDomains: [],
+      allowedDomains: [],
       mockConversations: true,
     });
 
@@ -409,7 +409,7 @@ describe("dashboard canonical-event mock routes", () => {
   it("loads canonical child conversations through the ordinary detail route", async () => {
     const app = createDashboardApp({
       authRequired: false,
-      allowedGoogleDomains: [],
+      allowedDomains: [],
       mockConversations: true,
     });
     const parentResponse = await app.fetch(

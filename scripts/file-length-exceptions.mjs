@@ -4,10 +4,6 @@
  * Every entry needs a reason. Remove the entry when the file is split.
  */
 export const fileLengthExceptions = {
-  "packages/junior-evals/src/behavior-harness.ts":
-    "Existing eval harness; split by harness concern.",
-  "packages/junior-evals/src/helpers.ts":
-    "Existing shared eval helpers; split by helper concern.",
   "packages/junior-dashboard/src/mock-reporting/fixtures.ts":
     "Large static reporting fixture set.",
   "packages/junior-dashboard/tests/telemetry-components.test.tsx":
@@ -54,18 +50,12 @@ export const fileLengthExceptions = {
     "Existing broad conversation work suite; split by behavior.",
   "packages/junior/tests/component/task-execution/slack-conversation-work.test.ts":
     "Existing broad Slack conversation work suite; split by behavior.",
-  "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts":
-    "Existing broad MCP auth suite; split by behavior.",
   "packages/junior/tests/component/runtime/agent-run-provider-retry.test.ts":
     "Existing broad provider retry suite; split by behavior.",
   "packages/junior/tests/integration/sandbox-egress-proxy.test.ts":
     "Existing broad sandbox egress suite; split by behavior.",
-  "packages/junior/tests/integration/slack/bot-handlers.test.ts":
-    "Existing broad Slack handler suite; split by handler.",
   "packages/junior/tests/integration/slack-schedule-tools.test.ts":
     "Existing broad Slack scheduler suite; split by tool.",
-  "packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts":
-    "Existing broad subscribed-message suite; split by behavior.",
   "packages/junior/tests/unit/api/conversation-events.test.ts":
     "Existing broad conversation events suite; split by behavior.",
   "packages/junior/tests/unit/plugins/agent-hooks.test.ts":

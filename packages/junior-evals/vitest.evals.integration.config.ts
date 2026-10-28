@@ -1,8 +1,12 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
+import type { InlineConfig } from "vitest/node";
 import { randomUUID } from "node:crypto";
 import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
+import { authSuite } from "./src/suites/auth";
+import { codingSuite } from "./src/suites/coding";
+import { googleSuite } from "./src/suites/google";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -24,6 +28,12 @@ loadJuniorTestEnvFiles({
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
+// The agent test fixture calls the heartbeat route with this secret.
+process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
+// The agent test fixture mocks Vercel Blob, which stores attachments.
+process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_evalstore_secret";
+// The agent test fixture signs GitHub webhooks with this secret.
+process.env.GITHUB_WEBHOOK_SECRET ??= "junior-test-github-webhook-secret";
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-integration:${randomUUID()}`;
 process.env.REDIS_URL =
@@ -34,45 +44,98 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
     `JUNIOR_EVAL_REDIS_URL must point at localhost or 127.0.0.1, got ${evalRedisHostname}`,
   );
 }
-process.env.AI_MODEL = "xai/grok-4.5";
-process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
-process.env.AI_GUARDIAN_MODEL = "openai/gpt-5.6-luna";
-process.env.AI_HANDOFF_MODEL = "openai/gpt-5.6-sol";
-process.env.AI_MODEL_PROFILES = JSON.stringify({
-  coding: "openai/gpt-5.6-sol",
-});
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
-export default defineConfig({
-  resolve: {
-    alias: {
-      "@": path.resolve(juniorPackageRoot, "src"),
-      "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
-      "@sentry/junior-plugin-api": path.resolve(
-        pluginApiPackageRoot,
-        "src/index.ts",
-      ),
-    },
-    // Vite 8 resolves tsconfig `paths` natively here:
-    // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
-    // The aliases above keep workspace package internals on source instead of package dist.
-    tsconfigPaths: true,
+const resolve = {
+  alias: {
+    "@": path.resolve(juniorPackageRoot, "src"),
+    "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+    "@sentry/junior-plugin-api": path.resolve(
+      pluginApiPackageRoot,
+      "src/index.ts",
+    ),
   },
+  // Vite 8 resolves tsconfig `paths` natively here:
+  // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
+  // The aliases above keep workspace package internals on source instead of package dist.
+  tsconfigPaths: true,
+};
+
+const projectTest = {
+  environment: "node",
+  sequence: { setupFiles: "list", hooks: "stack" },
+  setupFiles: [
+    path.resolve(__dirname, "src/stable-setup.ts"),
+    path.resolve(__dirname, "src/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+    path.resolve(__dirname, "src/recording-setup.ts"),
+    path.resolve(__dirname, "src/eval-cleanup.ts"),
+  ],
+  testTimeout: EVAL_TEST_TIMEOUT_MS,
+} satisfies InlineConfig;
+
+// The directory of the auth suite. See `src/suites/auth.ts`.
+const authSuiteRoot = "evals/integration/auth";
+// The integration directory of the coding suite. See `src/suites/coding.ts`.
+const codingSuiteRoot = "evals/integration/coding";
+// The integration directory of the Google suite. See `src/suites/google.ts`.
+const googleSuiteRoot = "evals/integration/google";
+
+export default defineConfig({
+  resolve,
   test: {
-    environment: "node",
     fileParallelism: false,
+    // Projects do not extend this config, so this global setup runs one time
+    // and every project reads what it provides.
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
-    // Strict system-correctness cases. Any failure fails the suite hard.
-    include: ["evals/integration/**/*.eval.ts"],
     maxWorkers: 1,
-    setupFiles: [
-      path.resolve(__dirname, "src/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
-    ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
-    testTimeout: EVAL_TEST_TIMEOUT_MS,
+    projects: [
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          name: "integration",
+          // Strict system-correctness cases. Any failure fails the suite hard.
+          // Fixture tests check the agent test fixture against real turns.
+          include: [
+            "evals/integration/**/*.eval.ts",
+            "src/fixture/**/*.eval.ts",
+          ],
+          exclude: [
+            ...configDefaults.exclude,
+            `${authSuiteRoot}/**`,
+            `${codingSuiteRoot}/**`,
+            `${googleSuiteRoot}/**`,
+          ],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...authSuite,
+          include: [`${authSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...codingSuite,
+          include: [`${codingSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...googleSuite,
+          include: [`${googleSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+    ],
   },
 });

@@ -72,12 +72,42 @@ export const codeOverviewReportSchema = z
   })
   .strict();
 
-/** Person-scoped code activity for one People profile. */
+export const codeRepositoryParamsSchema = z
+  .object({ repositoryId: z.string().uuid() })
+  .strict();
+
+/** Code activity, recent changes, and Workspaces for one repository. */
+export const codeRepositoryReportSchema = z
+  .object({
+    activityDays: z.array(codeActivityDaySchema),
+    activityHours: z.array(codeActivityDaySchema).optional(),
+    activitySixHours: z.array(codeActivityDaySchema).optional(),
+    changes: z.array(codeChangeSummaryReportSchema),
+    generatedAt: z.string(),
+    repository: z
+      .object({
+        id: z.string().uuid(),
+        name: z.string().min(1),
+        provider: z.string().min(1),
+        url: z.string().url().optional(),
+      })
+      .strict(),
+    summary: codeChangeSummarySchema,
+    windowEnd: z.string(),
+    windowStart: z.string(),
+    workspaces: z.array(
+      z.object({ id: z.string().min(1), name: z.string().min(1) }).strict(),
+    ),
+  })
+  .strict();
+
+/** Person-scoped code activity and recent code changes for one People profile. */
 export const codePersonReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
     activitySixHours: z.array(codeActivityDaySchema).optional(),
+    changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
     summary: codeChangeSummarySchema,
     windowEnd: z.string(),
@@ -91,4 +121,5 @@ export type CodeChangeSummaryReport = z.infer<
 >;
 export type CodeOverviewReport = z.infer<typeof codeOverviewReportSchema>;
 export type CodePersonReport = z.infer<typeof codePersonReportSchema>;
+export type CodeRepositoryReport = z.infer<typeof codeRepositoryReportSchema>;
 export type CodeRepositorySummary = z.infer<typeof codeRepositorySummarySchema>;

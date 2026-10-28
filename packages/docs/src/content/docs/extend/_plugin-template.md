@@ -6,7 +6,7 @@ prerequisites:
   - /extend/
 related:
   - /extend/
-  - /concepts/resource-subscriptions/
+  - /concepts/watches/
   - /reference/config-and-env/
 ---
 
@@ -108,27 +108,27 @@ override. If the plugin has no configuration, keep the heading and say:
 
 Explain provider-specific setup after install and config. Keep this section concrete and action-oriented.
 
-## Resource subscriptions
+## Watches
 
-If the plugin publishes resource events, list every resource type the agent can
-subscribe to. Link to [Resource Subscriptions](/concepts/resource-subscriptions/)
-for the core distinction between temporary resource subscriptions and durable
-event tasks; do not redefine those behaviors on every plugin page.
+If the plugin publishes events, list every resource type the agent can
+subscribe to. Link to [Watches](/concepts/watches/) for the core distinction
+between temporary watches and durable
+event automations; do not redefine those behaviors on every plugin page.
 
 Use one subsection per resource type, then one collapsed disclosure per event.
 Show the exact event name in the summary and its plain-language description
-inside. Do not add a separate subscription-details row.
+inside. Do not add a separate watch-details row.
 
 ### `issue`
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.closed</code></summary>
 
 The issue was closed.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.reopened</code></summary>
 
 The issue was reopened.
@@ -140,9 +140,9 @@ the plugin. Do not omit registered events. Keep descriptions to one sentence.
 Explain provider setup and identifier formats in normal prose after the resource
 subsections only when users need that information.
 
-If the plugin does not publish resource events, use this sentence instead:
+If the plugin does not publish events, use this sentence instead:
 
-`This plugin does not support resource subscriptions.`
+`This plugin does not support watches.`
 
 ## Verify
 

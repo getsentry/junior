@@ -76,7 +76,7 @@ export function LocationDirectory(props: {
                 <>Last active {formatRelativeTime(location.lastSeenAt)}</>
               }
               icon={<Hash aria-hidden="true" size={16} strokeWidth={1.8} />}
-              iconClassName="bg-cyan-400/[0.06] text-cyan-300 group-hover:border-cyan-400/25"
+              iconClassName="bg-dashboard-accent/[0.06] text-dashboard-accent group-hover:border-dashboard-accent/25"
               title={location.label}
             />
             <DirectoryMetric

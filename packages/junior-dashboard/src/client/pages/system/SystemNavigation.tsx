@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 import { systemPluginsPath } from "./SystemPlugins";
 
@@ -10,11 +12,13 @@ const systemNavigationItems = [
 ];
 
 /** Render the stable secondary navigation shared by System pages. */
-export function SystemNavigation() {
+export function SystemNavigation(props: { children: ReactNode }) {
   return (
     <SecondaryNavigation
       ariaLabel="System navigation"
       items={systemNavigationItems}
-    />
+    >
+      {props.children}
+    </SecondaryNavigation>
   );
 }

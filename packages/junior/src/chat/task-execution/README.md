@@ -32,8 +32,11 @@ The reliability rules are small:
   releases the lease.
 - A process can stop while a turn runs. The next worker stops that turn and
   records the error. The user can start new work. Committed SQL history remains.
-- A paused turn does not take a second lock. OAuth can run outside the queue and
-  uses the thread lock.
+- A paused Turn runs under the conversation lease. Slack OAuth callbacks save
+  a `turn_authorized` event for the exact checkpoint version and wake the worker.
+  They do not run the agent or write agent history. The worker checks the saved
+  authorization against the pending request before it resumes. This keeps
+  queued input and OAuth continuation under one execution owner.
 
 Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 `awaiting_resume`; that historical SQL label does not define execution state.
@@ -48,12 +51,12 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
   delivery. A provider conversation stores its destination. Child work without
   a destination gets its authority from its stored agent invocation.
 - The Conversation always stores each completed assistant Message. Slack input
-  delivers to Slack. Web and local input stay in Junior. Resource events use the
-  Conversation Location. Scheduled, Event task, and plugin dispatch work uses
+  delivers to Slack. Web and local input stay in Junior. Events use the
+  Conversation Location. Scheduled, Event automation, and plugin dispatch work uses
   its explicit Destination. Agent invocation has no Delivery. A child
   Conversation does not use its parent's Location for Delivery.
-- The shared web and Resource event worker still uses Run Delivery to store the
-  completed assistant Message. It checks Resource event Source before it also
+- The shared web and Event worker still uses Run Delivery to store the
+  completed assistant Message. It checks Event Source before it also
   calls Slack. This is temporary. The owning code has a removal TODO for the
   Source check and for storing the Message through Run Delivery.
 - A lease grants one worker temporary execution ownership.

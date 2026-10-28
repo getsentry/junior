@@ -112,12 +112,62 @@ describe("slackThreadRead", () => {
       fetched_count: 2,
       truncated: false,
     });
+    expect(result).not.toHaveProperty("conversation_ids");
     expect(result.messages).toHaveLength(2);
     expect(result.messages[0].text).toBe("root message");
     expect(result.messages[1].text).toBe("reply message");
 
     // Live channel metadata may be fetched even when persisted public visibility exists.
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+  });
+
+  it("returns Conversation ids for the thread", async () => {
+    const store = getConversationStore();
+    const nowMs = Date.parse("2026-07-01T12:00:00.000Z");
+    for (const conversationId of [
+      "automation-run:1",
+      "slack:C0AHB7N2JCR:1700000000.123456",
+    ]) {
+      await store.recordActivity({
+        conversationId,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C0AHB7N2JCR",
+        },
+        nowMs,
+        source: "slack",
+      });
+    }
+    await store.bindProviderConversation({
+      conversationId: "automation-run:1",
+      provider: "slack",
+      providerDestinationId: "C0AHB7N2JCR",
+      providerTenantId: "T123",
+      providerConversationId: "1700000000.123456",
+    });
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.123456",
+        messages: [
+          {
+            ts: "1700000000.123456",
+            thread_ts: "1700000000.123456",
+            user: "U1",
+            text: "root message",
+          },
+        ],
+      }),
+    });
+
+    const result = await executeTool(createTool({}), {
+      url: "https://sentry.slack.com/archives/C0AHB7N2JCR/p1700000000123456",
+    });
+
+    expect(result.conversation_ids).toEqual([
+      "automation-run:1",
+      "slack:C0AHB7N2JCR:1700000000.123456",
+    ]);
   });
 
   it("uses thread_ts from the URL when present", async () => {
@@ -171,6 +221,14 @@ describe("slackThreadRead", () => {
             thread_ts: "1700000000.500000",
             user: "U1",
             text: "standalone message",
+            subtype: "bot_message",
+            reactions: [
+              {
+                name: "raised_hands",
+                count: 2,
+                users: ["U2", "U3"],
+              },
+            ],
           },
         ],
       }),
@@ -180,13 +238,28 @@ describe("slackThreadRead", () => {
     const result = await executeTool(tool, {
       channel_id: "C0MANUAL",
       ts: "1700000000.500000",
+      url: null,
+      limit: null,
+      max_pages: null,
     });
 
     expect(result).toMatchObject({
       channel_id: "C0MANUAL",
       count: 1,
+      messages: [
+        {
+          text: "standalone message",
+          subtype: "bot_message",
+          reactions: [
+            {
+              name: "raised_hands",
+              count: 2,
+              users: ["U2", "U3"],
+            },
+          ],
+        },
+      ],
     });
-    expect(result.messages[0].text).toBe("standalone message");
   });
 
   it("allows reading a private channel when it matches the current channel", async () => {
@@ -606,8 +679,18 @@ describe("slackThreadRead", () => {
     });
 
     expect(result.messages[0].files).toEqual([
-      { id: "F_SHARED_1", name: "billing.png", mimetype: "image/png", size: 111 },
-      { id: "F_SHARED_2", name: "payment-form.png", mimetype: "image/png", size: 222 },
+      {
+        id: "F_SHARED_1",
+        name: "billing.png",
+        mimetype: "image/png",
+        size: 111,
+      },
+      {
+        id: "F_SHARED_2",
+        name: "payment-form.png",
+        mimetype: "image/png",
+        size: 222,
+      },
     ]);
     expect(result.messages[0].files[0]).not.toHaveProperty("url_private");
   });

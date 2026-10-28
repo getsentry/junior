@@ -5,7 +5,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
-    resourceEvents: { canSubscribe: true },
+    events: { canSubscribe: true },
   };
   return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
 }

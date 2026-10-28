@@ -17,7 +17,10 @@ import { z } from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
-  contextProvenance,
+  credentialSubjectSchema,
+  type CredentialSubject,
+} from "@/chat/credentials/context";
+import {
   instructionActors,
   instructionProvenanceFor,
   type ConversationMessageProvenance,
@@ -33,11 +36,6 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
-import {
-  retainRuntimeTurnContext,
-  stripRuntimeTurnContext,
-} from "@/chat/pi/transcript";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
@@ -116,6 +114,8 @@ export interface TurnRecord {
    */
   actor?: Actor;
   channelName?: string;
+  /** Delegated subject the Turn started with. Resume must verify it again. */
+  credentialSubject?: CredentialSubject;
   schemaVersion: 2;
   version: number;
   conversationId: string;
@@ -123,6 +123,8 @@ export interface TurnRecord {
   /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
+  /** The turn limit already blocked one step; survives history replacement. */
+  turnLimitWrappedUp?: boolean;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   /** Provider-owned identifier returned after visible delivery is accepted. */
@@ -186,14 +188,18 @@ interface StoredTurnRecord extends Omit<
    * this record's committed Pi messages; -1 when nothing was committed.
    */
   committedSeq: number;
-  /** History version that owns `committedSeq` and any volatile bootstrap. */
+  /** History version that owns `committedSeq`. */
   historyVersion?: number;
   /**
    * `seq` boundary where this turn's fresh prompt starts: the seq of the last
    * projected message before the prompt, or -1 when the turn starts the epoch.
    */
   turnStartSeq?: number;
-  /** Volatile bootstrap retained only in the resumable turn cursor, never SQL. */
+  /**
+   * Old cursors can contain model context that SQL did not retain. Parse the
+   * field so those cursors remain readable, but do not add it back during
+   * resume. Adding it would rewrite the committed history prefix.
+   */
   runtimeContext?: PiMessage[];
 }
 
@@ -248,6 +254,7 @@ const storedTurnRecordSchema = z
     schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
+    credentialSubject: credentialSubjectSchema.optional(),
     dispatchId: z.string().min(1).optional(),
     dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
     resultMessageId: z.string().min(1).optional(),
@@ -267,6 +274,7 @@ const storedTurnRecordSchema = z
     historyVersion: z.number().int().nonnegative().optional(),
     errorMessage: z.string().optional(),
     cumulativeToolCallCount: z.number().int().nonnegative().optional(),
+    turnLimitWrappedUp: z.boolean().optional(),
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
@@ -431,14 +439,8 @@ function materializeTurnRecord(
   stored: StoredTurnRecord,
   piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
-  restoreVolatileContext = true,
   runtimeMetrics?: ConversationRuntimeMetrics,
 ): TurnRecord {
-  const restoredProjection =
-    restoreVolatileContext &&
-    (stored.state === "running" || stored.state === "paused")
-      ? restoreRuntimeContext(piProjection, stored.runtimeContext)
-      : piProjection;
   return {
     ...definedProps({ actor: stored.actor }),
     schemaVersion: stored.schemaVersion,
@@ -450,13 +452,15 @@ function materializeTurnRecord(
     startedAtMs: stored.startedAtMs,
     lastProgressAtMs: stored.lastProgressAtMs,
     updatedAtMs: stored.updatedAtMs,
-    piMessages: restoredProjection.messages,
-    piMessageProvenance: restoredProjection.provenance,
+    piMessages: piProjection.messages,
+    piMessageProvenance: piProjection.provenance,
     actors: instructionActors(piProjection.provenance),
     cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
       channelName: runtimeMetrics?.channelName,
+      credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
+      turnLimitWrappedUp: stored.turnLimitWrappedUp,
       cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
       dispatchOutcome: stored.dispatchOutcome,
@@ -469,56 +473,6 @@ function materializeTurnRecord(
       traceId: stored.traceId,
       turnStartMessageIndex,
     }),
-  };
-}
-
-function restoreRuntimeContext(
-  projection: ConversationMessageProjection,
-  runtimeContext: PiMessage[] | undefined,
-): ConversationMessageProjection {
-  if (!runtimeContext || runtimeContext.length === 0) return projection;
-  const restoredMessages = [...projection.messages];
-  const restoredProvenance = [...projection.provenance];
-  const unmatchedRuntimeContext: PiMessage[] = [];
-  for (const runtimeMessage of runtimeContext) {
-    const runtime = runtimeMessage as {
-      timestamp?: unknown;
-      content?: unknown;
-    };
-    const targetIndex = restoredMessages.findIndex((message) => {
-      const candidate = message as { role?: unknown; timestamp?: unknown };
-      return (
-        candidate.role === "user" && candidate.timestamp === runtime.timestamp
-      );
-    });
-    if (targetIndex < 0) {
-      if (isAgentsInstructionsMessage(runtimeMessage)) {
-        const followingIndex = restoredMessages.findIndex((message) => {
-          const timestamp = (message as { timestamp?: unknown }).timestamp;
-          return (
-            typeof runtime.timestamp === "number" &&
-            typeof timestamp === "number" &&
-            timestamp > runtime.timestamp
-          );
-        });
-        const insertionIndex =
-          followingIndex < 0 ? restoredMessages.length : followingIndex;
-        restoredMessages.splice(insertionIndex, 0, runtimeMessage);
-        restoredProvenance.splice(insertionIndex, 0, contextProvenance);
-      } else {
-        unmatchedRuntimeContext.push(runtimeMessage);
-      }
-      continue;
-    }
-    restoredMessages.splice(targetIndex, 0, runtimeMessage);
-    restoredProvenance.splice(targetIndex, 0, contextProvenance);
-  }
-  return {
-    messages: [...unmatchedRuntimeContext, ...restoredMessages],
-    provenance: [
-      ...unmatchedRuntimeContext.map(() => contextProvenance),
-      ...restoredProvenance,
-    ],
   };
 }
 
@@ -576,19 +530,11 @@ async function materializeStoredTurnRecord(
 
   const conversation = await getConversationStore().get({ conversationId });
   const executionMetrics = executionMetricsForTurn(conversation, turnId);
-  return materializeTurnRecord(
-    parsed,
-    piProjection,
-    turnStartMessageIndex,
-    !followsReplacement &&
-      (parsed.historyVersion === undefined ||
-        parsed.historyVersion === currentHistoryVersion),
-    {
-      channelName: conversation?.channelName,
-      cumulativeDurationMs: executionMetrics?.durationMs,
-      cumulativeUsage: executionMetrics?.usage,
-    },
-  );
+  return materializeTurnRecord(parsed, piProjection, turnStartMessageIndex, {
+    channelName: conversation?.channelName,
+    cumulativeDurationMs: executionMetrics?.durationMs,
+    cumulativeUsage: executionMetrics?.usage,
+  });
 }
 
 /** Read a turn record pinned to the history version containing its checkpoint. */
@@ -611,6 +557,7 @@ export async function getTurnRecordForResume(
 function buildStoredRecord(args: {
   actor?: Actor;
   conversationId: string;
+  credentialSubject?: CredentialSubject;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
@@ -630,8 +577,8 @@ function buildStoredRecord(args: {
   resumedFromSliceId?: number;
   traceId?: string;
   cumulativeToolCallCount?: number;
+  turnLimitWrappedUp?: boolean;
   turnStartSeq?: number;
-  runtimeContext?: PiMessage[];
 }): StoredTurnRecord {
   const nowMs = Date.now();
   return {
@@ -647,7 +594,9 @@ function buildStoredRecord(args: {
     committedSeq: args.committedSeq,
     ...definedProps({
       actor: args.actor,
+      credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
+      turnLimitWrappedUp: args.turnLimitWrappedUp,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
       errorMessage: args.errorMessage,
@@ -657,10 +606,6 @@ function buildStoredRecord(args: {
       source: args.source,
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
-      runtimeContext:
-        args.runtimeContext && args.runtimeContext.length > 0
-          ? args.runtimeContext
-          : undefined,
       surface: args.surface,
       traceId: args.traceId,
       turnStartSeq: args.turnStartSeq,
@@ -729,7 +674,6 @@ async function setStoredRecord(args: {
       provenance: [...args.piMessageProvenance],
     },
     args.turnStartMessageIndex,
-    true,
     args.runtimeMetrics,
   );
 }
@@ -780,7 +724,9 @@ async function updateTurnState(args: {
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
       ...definedProps({
+        credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
+        turnLimitWrappedUp: args.existing.turnLimitWrappedUp,
         dispatchId: args.existing.dispatchId,
         dispatchOutcome: args.existing.dispatchOutcome,
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
@@ -802,9 +748,11 @@ async function updateTurnState(args: {
 export async function upsertTurnRecord(args: {
   channelName?: string;
   conversationId: string;
+  credentialSubject?: CredentialSubject;
   cumulativeDurationMs?: number;
   cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
+  turnLimitWrappedUp?: boolean;
   destination?: Destination;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
@@ -888,19 +836,7 @@ async function upsertTurnRecordLocked(
         }
       : undefined),
   });
-  const durableTurnStartMessageIndex =
-    args.turnStartMessageIndex === undefined
-      ? undefined
-      : stripRuntimeTurnContext(
-          args.piMessages.slice(0, args.turnStartMessageIndex),
-        ).length;
-  const runtimeContext = retainRuntimeTurnContext(args.piMessages);
-  const retainedRuntimeContext =
-    runtimeContext.length > 0
-      ? runtimeContext
-      : existingRecord?.historyVersion === commit.historyVersion
-        ? existingRecord.runtimeContext
-        : undefined;
+  const durableTurnStartMessageIndex = args.turnStartMessageIndex;
   // Flip the caller's message-index cursor into a durable seq reference: the
   // seq of the last committed message before the turn's fresh prompt.
   const turnStartSeq =
@@ -927,7 +863,7 @@ async function upsertTurnRecordLocked(
       ? hasProviderLocation &&
         (Boolean(dispatchId) ||
           turnSource?.kind === "slack" ||
-          turnSource?.kind === "resource_event")
+          turnSource?.kind === "event")
       : (existingRecord?.publishExternally ?? false);
 
   return await setStoredRecord({
@@ -962,8 +898,13 @@ async function upsertTurnRecordLocked(
       historyVersion: commit.historyVersion,
       previousVersion: existingRecord?.version,
       ...definedProps({
+        credentialSubject:
+          existingRecord?.credentialSubject ?? args.credentialSubject,
         cumulativeToolCallCount:
-          args.cumulativeToolCallCount ?? existingRecord?.cumulativeToolCallCount,
+          args.cumulativeToolCallCount ??
+          existingRecord?.cumulativeToolCallCount,
+        turnLimitWrappedUp:
+          args.turnLimitWrappedUp ?? existingRecord?.turnLimitWrappedUp,
         dispatchId,
         dispatchOutcome:
           args.dispatchOutcome ?? existingRecord?.dispatchOutcome,
@@ -975,10 +916,6 @@ async function upsertTurnRecordLocked(
         resultMessageId:
           args.resultMessageId ?? existingRecord?.resultMessageId,
         resumedFromSliceId: args.resumedFromSliceId,
-        runtimeContext:
-          args.state === "running" || args.state === "paused"
-            ? retainedRuntimeContext
-            : undefined,
         startedAtMs: existingRecord?.startedAtMs,
         surface: args.surface ?? existingRecord?.surface,
         traceId: args.traceId ?? existingRecord?.traceId,

@@ -33,6 +33,7 @@ import {
 } from "./event-actor";
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
+import { encodeHistoryPayload } from "../history-payload";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -55,7 +56,7 @@ const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
 /**
  * Whether one event should restore an archived conversation to the feed.
  *
- * Archive hides finished noise until a human comes back. Resource events,
+ * Archive hides finished noise until a human comes back. Events,
  * turn lifecycle, compaction, and other system writes may still refresh
  * activity clocks, but they must not unarchive on their own.
  */
@@ -97,15 +98,16 @@ function insertFromEvent(
   actorIdentityId?: string,
 ): ConversationEventInsert {
   const stripped = stripPayloadAuthorIdentityId(event.data);
-  const { type, ...payload } = conversationEventDataSchema.parse(stripped);
+  const data = conversationEventDataSchema.parse(stripped);
+  const encoded = encodeHistoryPayload(data);
   return {
     conversationId,
     seq,
     historyVersion,
-    schemaVersion: 1,
+    schemaVersion: encoded.schemaVersion,
     idempotencyKey: event.idempotencyKey ?? null,
-    type,
-    payload: sanitizePostgresJson(payload),
+    type: data.type,
+    payload: sanitizePostgresJson(encoded.payload),
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
@@ -126,7 +128,9 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : undefined),
+    ...(row.idempotencyKey
+      ? { idempotencyKey: row.idempotencyKey }
+      : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload,
@@ -147,7 +151,11 @@ function messagesSummarizedEventFromRow(
 }
 
 class SqlConversationEventStore implements ConversationEventStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async append(
     conversationId: string,

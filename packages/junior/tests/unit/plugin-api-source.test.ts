@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createResourceEventSource,
+  createEventSource,
   createSlackSource,
   sourceSchema,
 } from "@sentry/junior-plugin-api";
@@ -73,16 +73,16 @@ describe("plugin source helpers", () => {
     });
   });
 
-  it("builds a Resource event Source from event identity", () => {
+  it("builds an Event Source from event identity", () => {
     expect(
-      createResourceEventSource({
+      createEventSource({
         eventKey: "delivery-1",
         eventType: "issue.updated",
         identifier: "PROJ-123",
         namespace: "sentry",
       }),
     ).toEqual({
-      kind: "resource_event",
+      kind: "event",
       eventKey: "delivery-1",
       eventType: "issue.updated",
       identifier: "PROJ-123",
@@ -90,7 +90,7 @@ describe("plugin source helpers", () => {
     });
     expect(
       sourceSchema.safeParse({
-        platform: "resource_event",
+        platform: "event",
         eventKey: "delivery-1",
         eventType: "issue.updated",
         identifier: "PROJ-123",
@@ -99,10 +99,10 @@ describe("plugin source helpers", () => {
     ).toBe(false);
   });
 
-  it("accepts Scheduled task, event task, Plugin dispatch, and Agent invocation Sources", () => {
+  it("accepts Scheduled automation, event automation, Plugin dispatch, and Agent invocation Sources", () => {
     for (const kind of [
-      "scheduled_task",
-      "event_task",
+      "scheduled_automation",
+      "event_automation",
       "plugin_dispatch",
       "agent_invocation",
     ] as const) {

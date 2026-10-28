@@ -24,20 +24,19 @@ function isMemoriesLibraryPath(pathname: string): boolean {
 /** Place the shared secondary navigation above one Memories page. */
 export function MemoryPageLayout(props: { children: ReactNode }) {
   return (
-    <>
-      <SecondaryNavigation
-        ariaLabel="Memory navigation"
-        items={[
-          { end: true, label: "Overview", to: MEMORY_BASE_PATH },
-          {
-            isActive: isMemoriesLibraryPath,
-            label: "Memories",
-            to: MEMORY_LIBRARY_PATH,
-          },
-        ]}
-      />
+    <SecondaryNavigation
+      ariaLabel="Memory navigation"
+      items={[
+        { end: true, label: "Overview", to: MEMORY_BASE_PATH },
+        {
+          isActive: isMemoriesLibraryPath,
+          label: "Memories",
+          to: MEMORY_LIBRARY_PATH,
+        },
+      ]}
+    >
       <PageLayout className="gap-6 sm:gap-8">{props.children}</PageLayout>
-    </>
+    </SecondaryNavigation>
   );
 }
 

@@ -1,26 +1,10 @@
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  createLocalPgliteFixture,
-  pgliteBtreeGinExtension,
-  pgliteVectorExtension,
-  type LocalPgliteFixture,
-} from "@sentry/junior-testing/pglite";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
-import * as memorySqlSchema from "../src/db/schema";
-import {
-  createMemoryStore,
-  type MemoryDb,
-  type MemoryEmbeddingProvider,
-} from "../src/store";
+import { createMemoryStore, type MemoryEmbeddingProvider } from "../src/store";
+import { createMemoryFixture } from "./fixture";
 
 const EMBEDDING_DIMENSIONS = 1536;
 const NOW_MS = Date.parse("2026-07-29T12:00:00.000Z");
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-type MemoryFixture = LocalPgliteFixture<MemoryDb>;
 
 function unitEmbedding(index: number): number[] {
   const embedding = Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0);
@@ -41,25 +25,6 @@ function testEmbedder(
       };
     },
   };
-}
-
-async function createFixture(): Promise<MemoryFixture> {
-  const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema, {
-    extensions: {
-      btree_gin: pgliteBtreeGinExtension,
-      vector: pgliteVectorExtension,
-    },
-  });
-  const migrationsDir = resolve(__dirname, "../migrations");
-  const migrations = (await readdir(migrationsDir))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort();
-  for (const filename of migrations) {
-    await fixture.execute(
-      await readFile(resolve(migrationsDir, filename), "utf8"),
-    );
-  }
-  return fixture;
 }
 
 function runtimeContext() {
@@ -85,7 +50,7 @@ function runtimeContext() {
 
 describe("memory retrieval quality", () => {
   it("keeps lexical and semantic facts ahead of plausible distractors", async () => {
-    const fixture = await createFixture();
+    const fixture = await createMemoryFixture();
     const targetedContent = "getsentry/junior CI runs package tests with pnpm.";
     const genericContent =
       "Repository CI guidance is available in the engineering dashboard.";

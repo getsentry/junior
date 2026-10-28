@@ -6,9 +6,11 @@ import { Button } from "../../components/Button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
+import { formatSandboxSize } from "./SandboxSizeSummary";
 
 type WorkspaceListProps = {
   busy: boolean;
+  defaultVcpus: number | null;
   onDelete(workspace: WorkspaceReport): void;
   workspaces: WorkspaceReport[];
 };
@@ -29,6 +31,7 @@ export function WorkspaceList(props: WorkspaceListProps) {
           {props.workspaces.map((workspace) => (
             <WorkspaceListItem
               busy={props.busy}
+              defaultVcpus={props.defaultVcpus}
               key={workspace.id}
               onDelete={props.onDelete}
               workspace={workspace}
@@ -42,6 +45,7 @@ export function WorkspaceList(props: WorkspaceListProps) {
 
 function WorkspaceListItem(props: {
   busy: boolean;
+  defaultVcpus: number | null;
   onDelete(workspace: WorkspaceReport): void;
   workspace: WorkspaceReport;
 }) {
@@ -50,7 +54,7 @@ function WorkspaceListItem(props: {
   const openWorkspace = () =>
     navigate(`/system/workspaces/${encodeURIComponent(workspace.id)}`);
   return (
-    <li className="border-b border-white/[0.055] last:border-b-0">
+    <li className="border-b border-dashboard-border-subtle last:border-b-0">
       <SelectableRow
         className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5"
         onSelect={openWorkspace}
@@ -62,7 +66,7 @@ function WorkspaceListItem(props: {
           onClick={openWorkspace}
           type="button"
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.03] text-[#beaaff] transition-colors group-hover:border-cyan-300/20 group-hover:bg-cyan-300/[0.06] group-hover:text-cyan-200">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border-strong bg-dashboard-fill-soft text-dashboard-accent transition-colors group-hover:border-dashboard-accent/20 group-hover:bg-dashboard-accent/[0.06] group-hover:text-dashboard-accent-text">
             <FolderGit2 aria-hidden="true" size={16} />
           </span>
           <span className="min-w-0 flex-1">
@@ -72,7 +76,8 @@ function WorkspaceListItem(props: {
               </span>
               <span className="font-mono text-xs text-dashboard-text-muted">
                 {workspace.repos.length} repo
-                {workspace.repos.length === 1 ? "" : "s"}
+                {workspace.repos.length === 1 ? "" : "s"} ·{" "}
+                {formatSandboxSize(workspace.vcpus ?? props.defaultVcpus)}
               </span>
             </span>
             <span className="mt-1.5 block truncate font-mono text-xs text-dashboard-text-muted">

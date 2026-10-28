@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
+  type QueryClient,
   useInfiniteQuery,
   useMutation,
   useMutationState,
@@ -8,34 +9,41 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
+  ActorIdentity,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
   ConversationPendingMessagesReport,
   ConversationSummaryReport,
+  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
+  webMessageId,
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
+  forkConversationResponseSchema,
+  stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
+import type { DashboardCoreData } from "../types";
 import {
   DashboardApiError,
   del,
   fetchDashboardJson,
   patch,
   post,
+  readDashboardResponse,
 } from "../http";
 import {
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
   failConversationOutboxMessage,
   mergeConversationMailboxMessages,
-  removeConversationOutboxMessage,
+  acceptConversationOutboxMessage,
   upsertConversationOutboxMessage,
   type ConversationMailboxMessage,
   type ConversationOutboxMessage,
@@ -122,55 +130,69 @@ export function usePendingArchiveConversationUpdates() {
   });
 }
 
-/** Return the stable cache key for one conversation mailbox snapshot. */
-export function conversationPendingMessagesQueryKey(
-  conversationId: string | undefined,
-) {
-  return ["conversation", conversationId, "pending-messages"] as const;
+type ConversationSnapshot = ConversationDetailReport & {
+  mailbox?: ConversationPendingMessagesReport;
+  detailEtag?: string;
+};
+
+/** Read the mailbox before history so acknowledged input is already committed. */
+async function readConversationSnapshot(
+  conversationId: string,
+  signal?: AbortSignal,
+  previous?: ConversationSnapshot,
+): Promise<ConversationSnapshot> {
+  const mailbox = await readConversationPendingMessages(conversationId, signal);
+  const detail = await readConversationData(conversationId, signal, previous);
+  return { ...detail, mailbox };
 }
 
-/** Define the bounded, polling conversation-detail resource. */
+/** Refresh history and mailbox as one visible snapshot, including idle input. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
+  options?: { awaitingMessage?: boolean },
 ) {
   return queryOptions({
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
-    queryFn: ({ signal }) => readConversationData(conversationId!, signal),
-    // Keep immutable events stable across metadata-only polls. Consumers can
-    // skip transcript work while status and timing metadata still stay fresh.
+    queryFn: ({ signal, client }) =>
+      readConversationSnapshot(
+        conversationId!,
+        signal,
+        client.getQueryData<ConversationSnapshot>(
+          conversationDetailQueryKey(conversationId),
+        ),
+      ),
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
       if (!previous || typeof previous !== "object") return next;
       return reuseConversationEventReferences(
-        previous as ConversationDetailReport,
-        next as ConversationDetailReport,
+        previous as ConversationSnapshot,
+        next as ConversationSnapshot,
       );
     },
     refetchInterval: (query) =>
-      query.state.data?.status === "active" ? 2_000 : false,
+      options?.awaitingMessage ||
+      query.state.data?.status === "active" ||
+      Boolean(query.state.data?.mailbox?.messages.length) ||
+      Boolean(query.state.data?.mailbox?.authorization)
+        ? 2_000
+        : 10_000,
     retry: false,
   });
 }
 
-/** Define the bounded mailbox snapshot polled while work may still be queued. */
-export function conversationPendingMessagesQueryOptions(
-  conversationId: string | undefined,
-  options?: { activeConversation?: boolean },
-) {
-  return queryOptions({
-    enabled: Boolean(conversationId),
-    queryKey: conversationPendingMessagesQueryKey(conversationId),
-    queryFn: ({ signal }) =>
-      readConversationPendingMessages(conversationId!, signal),
-    refetchInterval: (query) =>
-      options?.activeConversation ||
-      Boolean(query.state.data?.messages.length) ||
-      Boolean(query.state.data?.authorization)
-        ? 2_000
-        : false,
-    retry: false,
-  });
+function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    email: user.email,
+    fullName: user.name || undefined,
+  };
 }
 
 /** Create one dashboard conversation and refresh the personal feed. */
@@ -180,15 +202,72 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
+      images?: InputImage[];
       visibility?: "private" | "public";
     }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
-    onSuccess: (accepted) => {
+    onSuccess: (accepted, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(accepted.conversationId),
+        (current) =>
+          upsertConversationOutboxMessage(current, {
+            ...conversationOutboxMessageForSubmit({
+              ...args,
+              actorIdentity: outboxActorIdentity(queryClient),
+              messageId: accepted.messageId,
+            }),
+            status: "accepted",
+          }),
+      );
       void queryClient.invalidateQueries({
         queryKey: ["dashboard", "conversations"],
       });
       void queryClient.invalidateQueries({
         exact: true,
-        queryKey: conversationPendingMessagesQueryKey(accepted.conversationId),
+        queryKey: conversationDetailQueryKey(accepted.conversationId),
+      });
+    },
+  });
+}
+
+/**
+ * Fork a conversation at one assistant reply and send the first message to
+ * the fork. A retry with the same key returns the same fork and message.
+ */
+export function useForkConversation(sourceConversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      idempotencyKey: string;
+      message: string;
+      messageId: string;
+    }) => {
+      const fork = await post(
+        forkConversationResponseSchema,
+        `/api/conversations/${encodeURIComponent(sourceConversationId)}/forks`,
+        { messageId: args.messageId, idempotencyKey: args.idempotencyKey },
+      );
+      return post(
+        acceptedConversationMessageSchema,
+        `/api/conversations/${encodeURIComponent(fork.conversationId)}/messages`,
+        { idempotencyKey: args.idempotencyKey, message: args.message },
+      );
+    },
+    onSuccess: (accepted, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(accepted.conversationId),
+        (current) =>
+          upsertConversationOutboxMessage(current, {
+            ...conversationOutboxMessageForSubmit({
+              idempotencyKey: args.idempotencyKey,
+              message: args.message,
+              actorIdentity: outboxActorIdentity(queryClient),
+              messageId: accepted.messageId,
+            }),
+            status: "accepted",
+          }),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
       });
     },
   });
@@ -199,14 +278,28 @@ export function useAppendConversationMessage(conversationId: string) {
   const queryClient = useQueryClient();
   const outboxQueryKey = conversationOutboxQueryKey(conversationId);
   return useMutation({
-    mutationFn: (args: { idempotencyKey: string; message: string }) =>
+    mutationFn: (args: {
+      idempotencyKey: string;
+      message: string;
+      images?: InputImage[];
+    }) =>
       post(
         acceptedConversationMessageSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         args,
       ),
     onMutate: async (args) => {
-      const optimistic = conversationOutboxMessageForSubmit(args);
+      // Use the durable id from the first render. No server read is needed,
+      // and a poll that beats POST cannot create a second copy.
+      const messageId = await webMessageId({
+        conversationId,
+        idempotencyKey: args.idempotencyKey,
+      });
+      const optimistic = conversationOutboxMessageForSubmit({
+        ...args,
+        actorIdentity: outboxActorIdentity(queryClient),
+        messageId,
+      });
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         outboxQueryKey,
         (current) => upsertConversationOutboxMessage(current, optimistic),
@@ -219,11 +312,15 @@ export function useAppendConversationMessage(conversationId: string) {
           failConversationOutboxMessage(current, args.idempotencyKey),
       );
     },
-    onSuccess: (_accepted, args) => {
+    onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         outboxQueryKey,
         (current) =>
-          removeConversationOutboxMessage(current, args.idempotencyKey),
+          acceptConversationOutboxMessage(
+            current,
+            args.idempotencyKey,
+            accepted.messageId,
+          ),
       );
       void queryClient.invalidateQueries({
         queryKey: ["dashboard", "conversations"],
@@ -231,10 +328,6 @@ export function useAppendConversationMessage(conversationId: string) {
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(conversationId),
-      });
-      void queryClient.invalidateQueries({
-        exact: true,
-        queryKey: conversationPendingMessagesQueryKey(conversationId),
       });
     },
   });
@@ -256,21 +349,23 @@ export function useCancelConversationPendingMessages(conversationId: string) {
     onMutate: async (args) => {
       await queryClient.cancelQueries({
         exact: true,
-        queryKey: conversationPendingMessagesQueryKey(conversationId),
+        queryKey: conversationDetailQueryKey(conversationId),
       });
-      const previousPending =
-        queryClient.getQueryData<ConversationPendingMessagesReport>(
-          conversationPendingMessagesQueryKey(conversationId),
-        );
-      if (previousPending) {
-        queryClient.setQueryData<ConversationPendingMessagesReport>(
-          conversationPendingMessagesQueryKey(conversationId),
+      const previousPending = queryClient.getQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+      );
+      if (previousPending?.mailbox) {
+        queryClient.setQueryData<ConversationSnapshot>(
+          conversationDetailQueryKey(conversationId),
           {
             ...previousPending,
-            messages: previousPending.messages.filter(
-              (message) =>
-                !args.inboundMessageIds.includes(message.inboundMessageId),
-            ),
+            mailbox: {
+              ...previousPending.mailbox,
+              messages: previousPending.mailbox.messages.filter(
+                (message) =>
+                  !args.inboundMessageIds.includes(message.inboundMessageId),
+              ),
+            },
           },
         );
       }
@@ -278,9 +373,12 @@ export function useCancelConversationPendingMessages(conversationId: string) {
     },
     onError: (_error, _args, context) => {
       if (context?.previousPending) {
-        queryClient.setQueryData(
-          conversationPendingMessagesQueryKey(conversationId),
-          context.previousPending,
+        queryClient.setQueryData<ConversationSnapshot>(
+          conversationDetailQueryKey(conversationId),
+          (current) =>
+            current
+              ? { ...current, mailbox: context.previousPending?.mailbox }
+              : current,
         );
       }
     },
@@ -293,11 +391,50 @@ export function useCancelConversationPendingMessages(conversationId: string) {
           exact: true,
           queryKey: conversationDetailQueryKey(conversationId),
         }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationPendingMessagesQueryKey(conversationId),
-        }),
       ]);
+    },
+  });
+}
+
+/**
+ * Local cache of queued rows that a stop removed. The worker drops them only
+ * when it observes the stop, so the mailbox can still list them for a while.
+ * Inbound ids are unique, so the cache never needs to forget one.
+ */
+function stoppedMessageIdsQueryKey(conversationId: string | undefined) {
+  return ["conversation", conversationId, "stopped-messages"] as const;
+}
+
+/** Stop the active Turn and hide its removed queued rows until polls agree. */
+export function useStopConversationTurn(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      post(
+        stopConversationTurnResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/stop`,
+        {},
+      ),
+    onSuccess: (result) => {
+      const stopped = result.stoppedInboundMessageIds;
+      if (!stopped.length) return;
+      queryClient.setQueryData<readonly string[]>(
+        stoppedMessageIdsQueryKey(conversationId),
+        (current) => [...(current ?? []), ...stopped],
+      );
+      // A web row keeps its Message id as its inbound id. Drop local sends the
+      // stop removed so they do not wait for a mailbox row that never comes.
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(conversationId),
+        (current) =>
+          current?.filter((message) => !stopped.includes(message.messageId)),
+      );
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }
@@ -368,9 +505,10 @@ export function useArchiveConversation(
           conversations,
         });
       });
-      queryClient.setQueryData<ConversationDetailReport>(
+      queryClient.setQueryData<ConversationSnapshot>(
         detailQueryKey,
-        (detail) => (detail ? { ...detail, archivedAt } : detail),
+        (detail) =>
+          detail ? { ...detail, archivedAt, detailEtag: undefined } : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
@@ -408,10 +546,16 @@ export function useArchiveConversation(
       options?.onError?.();
     },
     onSuccess: (result, args) => {
-      queryClient.setQueryData<ConversationDetailReport>(
+      queryClient.setQueryData<ConversationSnapshot>(
         conversationDetailQueryKey(conversationId),
         (detail) =>
-          detail ? { ...detail, archivedAt: result.archivedAt } : detail,
+          detail
+            ? {
+                ...detail,
+                archivedAt: result.archivedAt,
+                detailEtag: undefined,
+              }
+            : detail,
       );
       if (!args.archived) {
         queryClient.removeQueries({
@@ -459,13 +603,67 @@ function buildArchivedConversationSnapshot(
 /** Fetch a bounded conversation snapshot and older pages on demand. */
 export function useConversationData(conversationId: string | undefined) {
   const queryClient = useQueryClient();
-  const detail = useQuery(conversationDetailQueryOptions(conversationId));
-  const pending = useQuery(
-    conversationPendingMessagesQueryOptions(conversationId, {
-      activeConversation: detail.data?.status === "active",
-    }),
+  const outbox = useQuery({
+    enabled: Boolean(conversationId),
+    // Local-only cache. Never replace optimistic rows with an empty fetch result.
+    queryFn: async (): Promise<ConversationOutboxMessage[]> =>
+      queryClient.getQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(conversationId),
+      ) ?? [],
+    queryKey: conversationOutboxQueryKey(conversationId),
+    initialData: [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const stoppedMessageIds = useQuery({
+    enabled: Boolean(conversationId),
+    // Local-only cache written by useStopConversationTurn.
+    queryFn: async (): Promise<readonly string[]> =>
+      queryClient.getQueryData<readonly string[]>(
+        stoppedMessageIdsQueryKey(conversationId),
+      ) ?? [],
+    queryKey: stoppedMessageIdsQueryKey(conversationId),
+    initialData: [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const awaitingMessage = outbox.data.some(
+    (message) => message.status !== "failed",
   );
-  const historyStatus = detail.data?.eventHistory.status;
+  const detail = useQuery(
+    conversationDetailQueryOptions(conversationId, { awaitingMessage }),
+  );
+  // Defer the whole server snapshot, not history alone. Queue removal and the
+  // matching transcript must paint together while composer input stays urgent.
+  const deferredDetail = useDeferredValue(detail.data);
+  // Defer refreshes only within this Conversation. First load and navigation
+  // must use the current query, never an empty or different Conversation snapshot.
+  const detailData =
+    deferredDetail && deferredDetail.conversationId === conversationId
+      ? deferredDetail
+      : detail.data;
+  const mailbox = detailData?.mailbox;
+  // Accept is not visibility. Keep a local row until either server resource
+  // contains its real Message id. History and mailbox arrive in one render.
+  useEffect(() => {
+    if (!mailbox || !detailData) return;
+    const observedIds = new Set(
+      mailbox.messages.map((message) => message.messageId),
+    );
+    for (const event of detailData.events) {
+      if (event.data.type === "message") observedIds.add(event.data.messageId);
+    }
+    queryClient.setQueryData<ConversationOutboxMessage[]>(
+      conversationOutboxQueryKey(conversationId),
+      (current) => {
+        const next = current?.filter(
+          (message) => !observedIds.has(message.messageId),
+        );
+        return next?.length === current?.length ? current : next;
+      },
+    );
+  }, [conversationId, detailData, mailbox, outbox.data, queryClient]);
+  const historyStatus = detailData?.eventHistory.status;
   const historyQueryKey = useMemo(
     () => ["conversation", conversationId, "history", historyStatus] as const,
     [conversationId, historyStatus],
@@ -480,32 +678,20 @@ export function useConversationData(conversationId: string | undefined) {
       ...(await readConversationEvents(conversationId!, pageParam, signal)),
       requestedBefore: pageParam,
     }),
-    initialPageParam: detail.data?.previousCursor ?? "",
+    initialPageParam: detailData?.previousCursor ?? "",
     getNextPageParam: (_page, pages) =>
-      nextConversationHistoryCursor(detail.data?.previousCursor, pages),
+      nextConversationHistoryCursor(detailData?.previousCursor, pages),
     retry: false,
   });
 
   const historyPages = history.data?.pages;
   const data = useMemo(
     () =>
-      detail.data
-        ? buildConversationTranscript(detail.data, historyPages ?? [])
+      detailData
+        ? buildConversationTranscript(detailData, historyPages ?? [])
         : undefined,
-    [detail.data, historyPages],
+    [detailData, historyPages],
   );
-  const outbox = useQuery({
-    enabled: Boolean(conversationId),
-    // Local-only cache. Never replace optimistic rows with an empty fetch result.
-    queryFn: async (): Promise<ConversationOutboxMessage[]> =>
-      queryClient.getQueryData<ConversationOutboxMessage[]>(
-        conversationOutboxQueryKey(conversationId),
-      ) ?? [],
-    queryKey: conversationOutboxQueryKey(conversationId),
-    initialData: [],
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
   // Live polls mint fresh server arrays every 2s. Reuse the previous list when
   // visible mailbox rows are unchanged so the reply footer can skip work while
   // the reader types.
@@ -513,26 +699,35 @@ export function useConversationData(conversationId: string | undefined) {
     undefined,
   );
   const pendingMessages = useMemo(() => {
+    // Hide stopped rows from both sources, or the outbox copy of a stopped
+    // send would look unseen and come back.
+    const stopped = stoppedMessageIds.data;
     const next = mergeConversationMailboxMessages(
-      pending.data?.messages,
-      outbox.data,
+      stopped.length
+        ? mailbox?.messages.filter(
+            (message) => !stopped.includes(message.inboundMessageId),
+          )
+        : mailbox?.messages,
+      stopped.length
+        ? outbox.data.filter((message) => !stopped.includes(message.messageId))
+        : outbox.data,
       pendingMessagesRef.current,
     );
     pendingMessagesRef.current = next;
     return next;
-  }, [outbox.data, pending.data?.messages]);
+  }, [outbox.data, mailbox?.messages, stoppedMessageIds.data]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
-    detail.data &&
-    (conversationHistoryChanged(detail.data, historyPages ?? []) ||
+    detailData &&
+    (conversationHistoryChanged(detailData, historyPages ?? []) ||
       invalidHistoryCursor),
   );
   const historyError = invalidHistoryCursor ? null : history.error;
   const historyNeedsReconciliation = Boolean(
-    detail.data?.previousCursor &&
+    detailData?.previousCursor &&
     history.data &&
     conversationHistoryBridgeCursor(
-      detail.data.previousCursor,
+      detailData.previousCursor,
       history.data.pages,
     ) &&
     !shouldRefreshDetail &&
@@ -568,18 +763,18 @@ export function useConversationData(conversationId: string | undefined) {
     historyVersion: conversationHistoryVersion(historyPages ?? []),
     hasPreviousPage: history.data
       ? history.hasNextPage
-      : Boolean(detail.data?.previousCursor),
+      : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
     isLoadingPreviousPage,
-    pendingAuthorization: pending.data?.authorization,
-    pendingGeneratedAt: pending.data?.generatedAt,
+    pendingAuthorization: mailbox?.authorization,
+    pendingGeneratedAt: mailbox?.generatedAt,
     pendingMessages,
     loadCompleteTranscript: () => {
-      if (!conversationId || !detail.data) {
+      if (!conversationId || !detailData) {
         throw new Error("Cannot load a conversation without an id");
       }
       return loadCompleteConversationTranscript({
-        detail: detail.data,
+        detail: detailData,
         historyPages: history.data?.pages ?? [],
         readPage: (before) => readConversationEvents(conversationId, before),
       });
@@ -587,7 +782,7 @@ export function useConversationData(conversationId: string | undefined) {
     loadPreviousPage: () => {
       const hasPreviousPage = history.data
         ? history.hasNextPage
-        : Boolean(detail.data?.previousCursor);
+        : Boolean(detailData?.previousCursor);
       if (conversationId && hasPreviousPage && !history.isFetchingNextPage) {
         void history.fetchNextPage();
       }
@@ -595,16 +790,20 @@ export function useConversationData(conversationId: string | undefined) {
   };
 }
 
-/** Read one bounded conversation-detail resource. */
-export function readConversationData(
+/** Reuse the cached detail when the server reports no change. */
+export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
-): Promise<ConversationDetailReport> {
-  return fetchDashboardJson(
-    conversationDetailReportSchema,
+  previous?: ConversationSnapshot,
+): Promise<ConversationSnapshot> {
+  const response = await readDashboardResponse(
     `/api/conversations/${encodeURIComponent(conversationId)}`,
     signal,
+    previous?.detailEtag,
   );
+  if (response.status === 304 && previous) return previous;
+  const report = conversationDetailReportSchema.parse(await response.json());
+  return { ...report, detailEtag: response.headers.get("etag") ?? undefined };
 }
 
 /** Read accepted mailbox messages that have not reached durable history yet. */

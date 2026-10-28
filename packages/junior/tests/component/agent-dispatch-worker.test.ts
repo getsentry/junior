@@ -37,7 +37,7 @@ async function createDispatch(idempotencyKey: string) {
         destinationVisibility: "private",
         idempotencyKey,
         input: "Post the scheduled digest.",
-        source: { kind: "scheduled_task" },
+        source: { kind: "scheduled_automation" },
       },
       plugin: "scheduler",
     })

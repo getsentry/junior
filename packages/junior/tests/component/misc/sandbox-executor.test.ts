@@ -38,7 +38,7 @@ vi.mock("@vercel/sandbox", () => ({
     };
 
     constructor(session: { fs: MockSandbox["fs"] }) {
-      this.fs = (session.fs as typeof this.fs);
+      this.fs = session.fs as typeof this.fs;
     }
 
     readFile(
@@ -113,37 +113,37 @@ const {
   missingErrorMock,
   hashMock,
 } = vi.hoisted(() => ({
-    resolveMock: vi.fn<
-      (...args: any[]) => Promise<{
-        snapshotId?: string;
-        profileHash?: string;
-        dependencyCount: number;
-        cacheHit: boolean;
-        resolveOutcome: string;
-        rebuildReason?: string;
-      }>
-    >(async () => ({
-      dependencyCount: 0,
-      cacheHit: false,
-      resolveOutcome: "no_profile",
-    })),
-    ensureWorkspaceSnapshotBuildMock: vi.fn(async () => "building" as const),
-    getReadyWorkspaceMock: vi.fn<
-      (...args: any[]) => Promise<{
-        snapshotId?: string;
-        profileHash?: string;
-        dependencyCount: number;
-        cacheHit: boolean;
-        resolveOutcome: string;
-      }>
-    >(async () => ({
-      dependencyCount: 0,
-      cacheHit: false,
-      resolveOutcome: "no_profile",
-    })),
-    missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
-    hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
-  }));
+  resolveMock: vi.fn<
+    (...args: any[]) => Promise<{
+      snapshotId?: string;
+      profileHash?: string;
+      dependencyCount: number;
+      cacheHit: boolean;
+      resolveOutcome: string;
+      rebuildReason?: string;
+    }>
+  >(async () => ({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  })),
+  ensureWorkspaceSnapshotBuildMock: vi.fn(async () => "building" as const),
+  getReadyWorkspaceMock: vi.fn<
+    (...args: any[]) => Promise<{
+      snapshotId?: string;
+      profileHash?: string;
+      dependencyCount: number;
+      cacheHit: boolean;
+      resolveOutcome: string;
+    }>
+  >(async () => ({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  })),
+  missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
+  hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
+}));
 
 vi.mock("@/chat/sandbox/snapshot/job-runner", () => ({
   ensureWorkspaceSnapshotBuild: ensureWorkspaceSnapshotBuildMock,
@@ -1027,6 +1027,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1044,6 +1045,56 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
     expect(initialSandbox.stop).toHaveBeenCalledTimes(1);
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_refreshed");
+  });
+
+  it("keeps a workspace sandbox usable after the tool call that switched to it ends", async () => {
+    let sandboxFetch: typeof globalThis.fetch | undefined;
+    sandboxCreateMock
+      .mockResolvedValueOnce(makeSandbox("sbx_workspace_initial"))
+      .mockImplementationOnce(
+        async (params: { fetch?: typeof globalThis.fetch }) => {
+          sandboxFetch = params.fetch;
+          return makeSandbox("sbx_workspace_next");
+        },
+      );
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const runtime = createSandboxRuntime({
+      workspace: {
+        id: "workspace-1",
+        name: "sentry",
+        setupScript: "",
+        vcpus: null,
+        snapshot: null,
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+    });
+    await runtime.acquire();
+    const toolCall = new AbortController();
+
+    await runtime.switchWorkspace(
+      {
+        id: "workspace-2",
+        name: "junior",
+        setupScript: "",
+        vcpus: null,
+        snapshot: null,
+        repos: [],
+      },
+      toolCall.signal,
+    );
+    // The run ends, for example to wait for an authorization.
+    toolCall.abort(new Error("run aborted"));
+
+    await sandboxFetch!("https://api.vercel.test/sandboxes/sbx_workspace_next");
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.signal?.aborted).not.toBe(true);
   });
 
   it("keeps the live sandbox when workspace switch is cancelled mid-boot", async () => {
@@ -1066,6 +1117,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1102,6 +1154,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1178,6 +1231,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry-docs",
         setupScript: "echo new",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1219,6 +1273,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1239,6 +1294,7 @@ describe("createTestSandbox", () => {
   });
 
   it("loads a ready Workspace snapshot without starting a build", async () => {
+    process.env.SANDBOX_VCPUS = "4";
     const controller = new AbortController();
     getReadyWorkspaceMock.mockResolvedValueOnce({
       snapshotId: "snap_workspace_setup",
@@ -1253,6 +1309,7 @@ describe("createTestSandbox", () => {
       id: "workspace-setup",
       name: "setup",
       setupScript: "echo ready",
+      vcpus: 8,
       snapshot: null,
       repos: [],
     };
@@ -1269,6 +1326,10 @@ describe("createTestSandbox", () => {
       runtime: "node22",
     });
     expect(resolveMock).not.toHaveBeenCalled();
+    // The Workspace size wins over the app setting.
+    expect(sandboxCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ resources: { vcpus: 8 } }),
+    );
   });
 
   it("forwards abort signal into Workspace provider preparation", async () => {
@@ -1302,6 +1363,7 @@ describe("createTestSandbox", () => {
         id: "workspace-provider",
         name: "provider",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1340,6 +1402,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1397,6 +1460,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -2936,6 +3000,7 @@ describe("createTestSandbox", () => {
       id: "workspace-snapshot-not-ready",
       name: "snapshot-not-ready",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -2949,7 +3014,9 @@ describe("createTestSandbox", () => {
       isWorkspaceSnapshotNotReadyError,
     );
 
-    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({
+      workspace,
+    });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -2961,6 +3028,7 @@ describe("createTestSandbox", () => {
       id: "workspace-sentry-docs",
       name: "sentry-docs",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -2984,7 +3052,9 @@ describe("createTestSandbox", () => {
       },
     });
 
-    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({
+      workspace,
+    });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -2996,6 +3066,7 @@ describe("createTestSandbox", () => {
       id: "workspace-sentry-docs-helpers",
       name: "sentry-docs",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -3016,7 +3087,9 @@ describe("createTestSandbox", () => {
         isWorkspaceSnapshotNotReadyError(error),
     );
 
-    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({
+      workspace,
+    });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -3043,6 +3116,7 @@ describe("createTestSandbox", () => {
         id: "workspace-missing-snapshot",
         name: "missing-snapshot",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },

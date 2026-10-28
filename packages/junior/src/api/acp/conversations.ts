@@ -10,6 +10,8 @@ import {
 } from "@/chat/conversations/web-input";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import { stopConversationTurn } from "@/chat/conversations/stop";
+import { clearSlackPendingReactions } from "@/chat/task-execution/slack-work";
+import { getProductionSlackAdapter } from "@/chat/app/production";
 import type { ConversationEventStore } from "@/chat/conversations/history";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -145,12 +147,19 @@ export function createAcpConversations(
       if (!(await hasConversationAccess(conversationId, user))) {
         return "not_found";
       }
-      await stopConversationTurn({
+      const stopped = await stopConversationTurn({
         conversationId,
         conversationStore: options.conversationStore,
         queue: options.queue,
         state: options.state,
       });
+      if (stopped.status === "requested") {
+        await clearSlackPendingReactions({
+          getSlackAdapter: getProductionSlackAdapter,
+          messages: stopped.pendingMessages,
+          state: options.state,
+        });
+      }
       return "cancelled";
     },
 

@@ -57,15 +57,12 @@ import {
   createWaitUntilCollector,
   type WaitUntilCollector,
 } from "../../fixtures/wait-until";
-import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 
 let waitUntil: WaitUntilCollector;
 
 function makeRequest(url: string): Request {
   return new Request(url, { method: "GET" });
 }
-
-const testAgentRunner = neverRunAgentRunner();
 
 describe("mcp oauth callback handler", () => {
   beforeEach(() => {
@@ -117,7 +114,7 @@ describe("mcp oauth callback handler", () => {
       makeRequest("https://example.com/api/oauth/callback/mcp/demo?code=abc"),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -139,7 +136,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -165,16 +162,20 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
-    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith("U123", "demo", {
-      tokens: {
-        access_token: "keep-me",
-        token_type: "Bearer",
+    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
+      "U123",
+      "demo",
+      {
+        tokens: {
+          access_token: "keep-me",
+          token_type: "Bearer",
+        },
       },
-    });
+    );
     expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
     expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
     expect(waitUntil.pendingCount()).toBe(0);
@@ -210,7 +211,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -236,7 +237,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(500);
@@ -279,7 +280,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -333,7 +334,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -363,7 +364,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);
@@ -418,7 +419,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);

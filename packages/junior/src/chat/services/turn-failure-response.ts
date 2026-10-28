@@ -54,7 +54,9 @@ export function getTurnFailureReason(
     return undefined;
   }
   if (reply.diagnostics.outcome === "provider_error") {
-    return findProviderError(reply.diagnostics.providerError)?.kind ?? "unknown";
+    return (
+      findProviderError(reply.diagnostics.providerError)?.kind ?? "unknown"
+    );
   }
   if (reply.diagnostics.toolErrorCount > 0) {
     return "tool_errors";
@@ -113,6 +115,9 @@ export function getAgentTurnDiagnosticsAttributes(
     "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
     "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
     "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
+    ...(reply.automation
+      ? { "app.automation.result": reply.automation.result }
+      : undefined),
     ...(reply.diagnostics.reasoningLevel
       ? {
           "gen_ai.request.reasoning.level": reply.diagnostics.reasoningLevel,

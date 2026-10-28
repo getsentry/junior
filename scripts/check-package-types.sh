@@ -9,7 +9,6 @@ for package_name in \
   junior \
   junior-dashboard \
   junior-github \
-  junior-gocd \
   junior-linear \
   junior-memory \
   junior-plugin-api \

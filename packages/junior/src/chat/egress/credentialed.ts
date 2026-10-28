@@ -1,4 +1,4 @@
-import { logInfo, logWarn } from "@/chat/logging";
+import { logAudit, logException, logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
@@ -170,15 +170,23 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.egressId
+      ? { "app.sandbox.egress_id": input.egressId }
+      : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.grantName ? { "app.grant.name": input.grantName } : undefined),
-    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : undefined),
-    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : undefined),
+    ...(input.grantAccess
+      ? { "app.grant.access": input.grantAccess }
+      : undefined),
+    ...(input.grantReason
+      ? { "app.grant.reason": input.grantReason }
+      : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status ? { "http.response.status_code": input.status } : undefined),
+    ...(input.status
+      ? { "http.response.status_code": input.status }
+      : undefined),
   };
 }
 
@@ -270,6 +278,11 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
   );
 }
 
+/**
+ * Record one forwarded provider request. Write-grant requests are audit
+ * events, so they reach Sentry in production. Other requests log only outside
+ * production.
+ */
 function logSandboxEgressUpstreamRequest(input: {
   egressId: string;
   grantAccess?: "read" | "write";
@@ -280,11 +293,12 @@ function logSandboxEgressUpstreamRequest(input: {
   upstream: Response;
   upstreamUrl: URL;
 }): void {
-  if (!shouldLogSandboxEgressInfo()) {
+  const isWrite = input.grantAccess === "write";
+  if (!isWrite && !shouldLogSandboxEgressInfo()) {
     return;
   }
 
-  logInfo("sandbox.egress.upstream.requested", {
+  (isWrite ? logAudit : logInfo)("sandbox.egress.upstream.requested", {
     ...egressAttributes({
       egressId: input.egressId,
       grantAccess: input.grantAccess,
@@ -307,11 +321,30 @@ async function requestBodyBytes(
   if (
     request.method === "GET" ||
     request.method === "HEAD" ||
+    request.method === "OPTIONS" ||
     request.body === null
   ) {
     return undefined;
   }
   return await request.arrayBuffer();
+}
+
+/**
+ * Explain a request body that the runtime delivered already used.
+ *
+ * The forwarded headers cannot show whether the body was empty, so the proxy
+ * does not send a credentialed write upstream without its payload.
+ */
+function unreadableBodyResponse(eventId: string | undefined): Response {
+  return Response.json(
+    {
+      source: "junior-egress",
+      error:
+        "Junior's sandbox egress proxy could not read the request body, so it did not send the request upstream.",
+      ...(eventId ? { sentryEventId: eventId } : undefined),
+    },
+    { status: 500, headers: { "cache-control": "no-store" } },
+  );
 }
 
 type GitHubBodyInspection = "graphql" | "pull-request-review";
@@ -545,7 +578,9 @@ async function recordSandboxAuthRequired(input: {
     provider: input.provider,
     grant: input.grant,
     kind: input.kind ?? "auth_required",
-    ...(input.authorization ? { authorization: input.authorization } : undefined),
+    ...(input.authorization
+      ? { authorization: input.authorization }
+      : undefined),
     message: input.message,
   });
 }
@@ -600,12 +635,33 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
+  let body: ArrayBuffer | undefined;
+  try {
+    body = await requestBodyBytes(request);
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw error;
+    }
+    return unreadableBodyResponse(
+      logException(error, "sandbox.egress.request_body.unreadable", {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: 500,
+        }),
+        ...routingAttributes(request, upstreamUrl),
+      }),
+    );
+  }
   const bodyForGrantSelection = githubBodyInspection({
     provider,
     requestMethod: request.method,
     upstreamUrl,
   })
-    ? await requestBodyBytes(request)
+    ? body
     : undefined;
   let grantSelection: SandboxEgressGrantSelection;
   try {
@@ -648,7 +704,9 @@ export async function executeCredentialedEgressRequest(input: {
   const recordPermissionDenied =
     deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
-  async function resolveLease(): Promise<SandboxEgressCredentialLease | Response> {
+  async function resolveLease(): Promise<
+    SandboxEgressCredentialLease | Response
+  > {
     try {
       return await issueCredentialLease(
         provider,
@@ -730,7 +788,6 @@ export async function executeCredentialedEgressRequest(input: {
   }
 
   const fetchImpl = deps.fetch ?? fetch;
-  const body = bodyForGrantSelection ?? (await requestBodyBytes(request));
   // One retry after upstream 403: clear/replace the cached lease, then try again.
   let retriedAfter403 = false;
 
@@ -754,8 +811,7 @@ export async function executeCredentialedEgressRequest(input: {
       return intercepted;
     }
 
-    const requestBody =
-      body instanceof ArrayBuffer ? body.slice(0) : body;
+    const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
     const upstream = await fetchImpl(upstreamUrl, {
       method: request.method,
       headers,

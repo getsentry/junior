@@ -11,29 +11,21 @@ import {
 } from "@/chat/conversations/projection";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
+import { getConversationInfo } from "@/chat/slack/channel";
+import { SlackActionError } from "@/chat/slack/client";
+import {
+  resolveSlackChannelTypeFromMessage,
+  slackChannelTypeFromConversationInfo,
+  type SlackEventChannelType,
+} from "@/chat/slack/conversation-context";
+import { parseSlackChannelId } from "@/chat/slack/ids";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { escapeXml } from "@/chat/xml";
-
-/**
- * Return a stable key for one steering message. Resolved attachments may change
- * when Junior retries a mailbox delivery, so only the message time and text
- * form the key.
- */
-export function steeringMessageKey(message: PiMessage): string | undefined {
-  if (message.role !== "user") {
-    return undefined;
-  }
-  const first = Array.isArray(message.content) ? message.content[0] : undefined;
-  const text =
-    first && typeof first === "object" && "text" in first
-      ? String((first as { text?: unknown }).text ?? "")
-      : "";
-  return `${message.timestamp}:${text}`;
-}
+import { withoutSavedSteeringMessages } from "@/chat/agent/prompt";
 
 function renderRecentThreadMessageLines(
   conversationContext: string | undefined,
@@ -135,6 +127,40 @@ export async function resolveChannelName(
   }
 }
 
+/**
+ * Return the Slack channel type of a message.
+ *
+ * Slack delivers a channel mention as two events with the same `ts`: `message`
+ * has `channel_type`, and `app_mention` does not. Junior stores the event that
+ * arrives first. When that event has no `channel_type`, ask Slack for the
+ * conversation, so the turn does not depend on the order of the two events.
+ */
+export async function resolveSlackChannelType(
+  message: Message,
+  channelId: string | undefined,
+): Promise<SlackEventChannelType | undefined> {
+  const eventChannelType = resolveSlackChannelTypeFromMessage(message);
+  if (eventChannelType) {
+    return eventChannelType;
+  }
+  const slackChannelId = parseSlackChannelId(channelId);
+  if (!slackChannelId) {
+    return undefined;
+  }
+  try {
+    return slackChannelTypeFromConversationInfo(
+      await getConversationInfo(slackChannelId),
+    );
+  } catch (error) {
+    // Slack can refuse the lookup, for example when an install has no read
+    // scope for this conversation. The turn then has no confirmed visibility.
+    if (error instanceof SlackActionError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 /** Collect attachments from the current Slack message and its batch. */
 export function collectAttachments(
   message: Message,
@@ -170,16 +196,11 @@ export async function saveSteeringMessages(args: {
     const projection = await loadConversationProjection({
       conversationId: args.conversationId,
     });
-    // A repeated mailbox delivery can contain saved and unsaved messages.
-    const savedKeys = new Set(
-      projection.messages
-        .map(steeringMessageKey)
-        .filter((key): key is string => key !== undefined),
+    const missing = withoutSavedSteeringMessages(
+      projection.messages,
+      args.messages,
+      (entry) => entry.message,
     );
-    const missing = args.messages.filter((entry) => {
-      const key = steeringMessageKey(entry.message);
-      return key === undefined || !savedKeys.has(key);
-    });
     if (missing.length === 0) {
       return true;
     }

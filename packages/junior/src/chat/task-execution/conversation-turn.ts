@@ -1,4 +1,9 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import {
+  readMessageAttachments,
+  type MessageAttachment,
+} from "@/chat/attachments/input";
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
@@ -71,6 +76,7 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
+  getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
   type MailboxTurnWork,
@@ -79,10 +85,16 @@ import {
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
-  isResourceEventMailboxMetadata,
-  type ResourceEventMailboxMetadata,
-} from "@/chat/resource-events/notification";
-import { isResourceEventConversationMessage } from "@/chat/resource-events/actor";
+  eventBatchMessageEvents,
+  isEventMailboxMetadata,
+  renderEventBatchText,
+  timerWatchCredentialSubject,
+  type EventMailboxMetadata,
+} from "@/chat/events/notification";
+import type { ConversationMessageEvent } from "@/chat/state/conversation";
+import { isEventConversationMessage } from "@/chat/events/actor";
+import type { CredentialSubject } from "@/chat/credentials/context";
+import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -108,6 +120,21 @@ function captureConversationTurnFailure(args: {
     },
   );
   return typeof eventId === "string" ? eventId : undefined;
+}
+
+/** Return the saved timer creator subject when it is still valid here. */
+function resumedTimerWatchCredentialSubject(
+  conversationId: string,
+  subject: CredentialSubject | undefined,
+): CredentialSubject | undefined {
+  if (subject?.binding.type !== "timer-watch") return undefined;
+  return verifyTimerWatchCredentialSubject({
+    conversationId,
+    subject,
+    watchId: subject.binding.watchId,
+  })
+    ? subject
+    : undefined;
 }
 
 function hasLostTurnInputCommit(error: unknown): boolean {
@@ -164,7 +191,7 @@ async function completeCancelledConversationTurn(args: {
 }
 
 /**
- * Create the shared mailbox worker for web and resource-event Turns.
+ * Create the shared mailbox worker for web and event Turns.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
@@ -174,6 +201,15 @@ export function createConversationTurnWorker(
     context: ConversationWorkerContext,
     resolved: MailboxTurnWork,
   ): Promise<ConversationWorkerResult> => {
+    // Wait out the event debounce window without sleeping in process. The
+    // worker re-enqueues this wake with the remaining delay.
+    if (resolved.kind === "mailbox") {
+      const delayMs = getEventBatchDelayMs(
+        resolved.batch.map((entry) => entry.message),
+      );
+      if (delayMs > 0) return { status: "deferred", delayMs };
+    }
+
     const lifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
     );
@@ -181,13 +217,13 @@ export function createConversationTurnWorker(
     const isResume = resolved.kind === "resume";
     let turnInputFacts: TurnInputFacts | undefined;
     let text = "";
+    let attachments: MessageAttachment[] = [];
     let turnId = "";
     let userMessageId = "";
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
-    let resourceEvent:
-      | ResourceEventMailboxMetadata["resourceEvent"]
-      | undefined;
+    let event: EventMailboxMetadata["event"] | undefined;
+    let batchEvents: ConversationMessageEvent[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -205,7 +241,18 @@ export function createConversationTurnWorker(
     });
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
-      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
+      const messages = resolved.batch.map((entry) => entry.message);
+      const firstMetadata = first.message.input.metadata;
+      if (isEventMailboxMetadata(firstMetadata)) {
+        text = renderEventBatchText(messages);
+        event = firstMetadata.event;
+        batchEvents = eventBatchMessageEvents(messages);
+      } else {
+        text = joinMailboxText(messages);
+      }
+      attachments = resolved.batch.flatMap((entry) =>
+        readMessageAttachments(entry.message.input.attachments),
+      );
       startedAtMs = first.message.createdAtMs;
       userMessageId = first.message.inboundMessageId;
       turnId = buildDeterministicTurnId(userMessageId);
@@ -213,9 +260,6 @@ export function createConversationTurnWorker(
         (entry) => entry.message.inboundMessageId,
       );
       turnInputFacts = first;
-      if (isResourceEventMailboxMetadata(first.message.input.metadata)) {
-        resourceEvent = first.message.input.metadata.resourceEvent;
-      }
     } else {
       turnId = resolved.turnId;
     }
@@ -229,7 +273,7 @@ export function createConversationTurnWorker(
     const savedTurn = isResume
       ? await getTurnRecord(context.conversationId, turnId)
       : undefined;
-    let savedMessageIsResourceEvent = false;
+    let savedMessageIsEvent = false;
     if (isResume) {
       const userMessage = getTurnUserMessage(conversation, turnId);
       if (!userMessage) {
@@ -237,8 +281,7 @@ export function createConversationTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      savedMessageIsResourceEvent =
-        isResourceEventConversationMessage(userMessage);
+      savedMessageIsEvent = isEventConversationMessage(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -251,6 +294,7 @@ export function createConversationTurnWorker(
       });
       userMessageId = userMessage.id;
       text = userMessage.text;
+      attachments = userMessage.meta?.attachments ?? [];
       startedAtMs = userMessage.createdAtMs;
       inputMessageIds = [userMessageId];
     }
@@ -260,6 +304,20 @@ export function createConversationTurnWorker(
       );
     }
     const { actor, author } = turnInputFacts;
+    // A timer Turn stays system-acted but may use its creator's grants.
+    let credentialSubject: CredentialSubject | undefined;
+    if (actor.platform === "system") {
+      credentialSubject =
+        resolved.kind === "mailbox"
+          ? timerWatchCredentialSubject(
+              context.conversationId,
+              resolved.batch.map((entry) => entry.message),
+            )
+          : resumedTimerWatchCredentialSubject(
+              context.conversationId,
+              savedTurn?.credentialSubject,
+            );
+    }
     const source = sourceFromTurnInput({
       conversationId: context.conversationId,
       source: turnInputFacts.source,
@@ -268,15 +326,15 @@ export function createConversationTurnWorker(
     const webActor = actor.platform === "web" ? actor : undefined;
     const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
-    // cursor stores Resource event Source.
+    // cursor stores Event Source.
     // TODO(dcramer): Remove this Source-based Delivery choice after the core
-    // Turn lifecycle stores assistant Messages and web and Resource event work
+    // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
     const deliverToProvider =
       Boolean(conversationLocation) &&
-      (source.kind === "resource_event" || savedMessageIsResourceEvent);
+      (source.kind === "event" || savedMessageIsEvent);
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
-    // lookup and reporting read Source for web and Resource event Turns.
+    // lookup and reporting read Source for web and Event Turns.
     const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
 
     return await withLogContext(
@@ -344,16 +402,21 @@ export function createConversationTurnWorker(
             createdAtMs: startedAtMs,
             author,
             meta: {
+              ...(attachments.length ? { attachments } : undefined),
               explicitMention: true,
               replied: false,
               ...(source.kind === "web"
                 ? { source: "web" as const }
                 : undefined),
-              ...(resourceEvent
+              ...(event
                 ? {
-                    eventType: resourceEvent.eventType,
-                    ...(resourceEvent.trustedSummary
-                      ? { trustedSummary: resourceEvent.trustedSummary }
+                    eventType: event.eventType,
+                    eventObjectType: event.objectType,
+                    ...(event.trustedSummary
+                      ? { trustedSummary: event.trustedSummary }
+                      : undefined),
+                    ...(batchEvents.length > 1
+                      ? { events: batchEvents }
                       : undefined),
                   }
                 : undefined),
@@ -396,6 +459,7 @@ export function createConversationTurnWorker(
             return;
           }
           failureCode = "delivery_failed";
+          const cards = await loadPendingMessageCards(context.conversationId);
           let deliveryResult: DeliveryResult | undefined;
           if (deliverToProvider) {
             if (!conversationLocation || !deliverMessage) {
@@ -404,12 +468,14 @@ export function createConversationTurnWorker(
               );
             }
             deliveryResult = await deliverMessage({
+              cards,
               conversationId: context.conversationId,
               location: conversationLocation,
               text: replyText,
             });
           }
           await commitAssistantMessage({
+            cards,
             ...(agentMessage ? { agentMessage } : undefined),
             conversation,
             conversationId: context.conversationId,
@@ -494,13 +560,17 @@ export function createConversationTurnWorker(
               runId: currentRunId,
               instruction: {
                 text,
+                storedAttachments: attachments,
                 context: buildConversationContext(conversation, {
                   excludeMessageId: userMessageId,
                 }),
               },
               history: piMessages,
               actor,
-              credentialContext: credentialContextForActor(actor),
+              credentialContext: credentialContextForActor(
+                actor,
+                credentialSubject,
+              ),
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

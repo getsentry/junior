@@ -56,7 +56,7 @@ function ProfilePluginReport(props: {
       {metrics.length ? (
         <div
           className={cn(
-            "grid gap-px overflow-hidden rounded border border-white/[0.07] bg-white/[0.055]",
+            "grid gap-px overflow-hidden rounded-md border border-dashboard-border bg-dashboard-fill-hover",
             metrics.length === 1 ? "grid-cols-1" : "grid-cols-2",
             metrics.length === 3
               ? "lg:grid-cols-3"
@@ -81,7 +81,7 @@ function ProfilePluginReport(props: {
               <div className="truncate font-display text-2xl font-light leading-none text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <div className="mt-2 font-sans font-medium text-xs text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>

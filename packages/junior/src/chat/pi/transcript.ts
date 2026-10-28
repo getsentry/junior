@@ -1,11 +1,10 @@
 /**
  * Pi transcript utilities.
  *
- * Shape predicates and durable-history manipulation for raw Pi messages,
- * shared by the agent executor and the services that persist, trim, or
- * summarize transcripts. The utilities here strip stale
- * `<runtime-turn-context>` bootstrap blocks before history is reused or
- * replaced; an active completed projection may retain its current bootstrap.
+ * Shape predicates and message projections for raw Pi messages, shared by the
+ * agent executor and services that compare, summarize, or replace history.
+ * Normal model replay keeps `<runtime-turn-context>` unchanged. Narrow
+ * projections can omit it when they do not represent model history.
  */
 import type {
   AssistantMessage,
@@ -259,7 +258,7 @@ export function getUserMessageInstructionText(message: PiMessage): string {
   return instructionTextForProjection(text).trim();
 }
 
-/** Remove volatile runtime context before reusing messages as history. */
+/** Remove runtime context from a non-model projection or explicit replacement. */
 export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
   return messages.flatMap((message, index) => {
     if (isStandaloneRuntimeContextMessage(messages, index)) {

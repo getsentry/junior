@@ -1,3 +1,4 @@
+import { mockAutomationCollection } from "./automation-collection";
 /** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
   ActorDirectoryReport,
@@ -7,6 +8,7 @@ import type {
   ActorProfileReport,
   ActorSummaryReport,
   ActorWindowMetrics,
+  ConversationChildAgentsReport,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -26,9 +28,9 @@ import type {
   PeopleActivityDayReport,
   PersonalSpendReport,
   PluginOperationalReportFeed,
-  TaskExecutionList,
-  TaskList,
-  TaskSummary,
+  AutomationExecutionList,
+  AutomationList,
+  AutomationSummary,
 } from "@sentry/junior/api/schema";
 
 /** Fixed current time for mock reports and browser tests. */
@@ -123,10 +125,14 @@ const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
+/** Event automation run. Its trigger message id equals the conversation id. */
+const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
 const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
+const DASHBOARD_QA_PLAN_CHECK_ID =
+  "junior:internal:dashboard-qa:advisor-plan:claim-check";
 /** Process-local archive state so mock restore can be exercised in visual QA. */
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 
@@ -162,8 +168,9 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
+  metadata?: Pick<ConversationReportEvent, "mentions" | "model" | "modelCall">,
 ): ConversationReportEvent {
-  return { seq, createdAt, data };
+  return { seq, createdAt, data, ...metadata };
 }
 
 type DetailOptions = Omit<
@@ -213,11 +220,124 @@ function detail(
   };
 }
 
+function mockBrief(
+  nowMs: number,
+  kind: "live" | "expired",
+): NonNullable<ConversationDetailReport["brief"]> {
+  const live = kind === "live";
+  const startedAt = iso(nowMs, live ? -6 * 60_000 : -44 * 60_000);
+  const updatedAt = iso(nowMs, live ? -60_000 : -41 * 60_000);
+  return {
+    content: {
+      schemaVersion: 1,
+      record: {
+        startedAt,
+        lastActivityAt: updatedAt,
+        durationMs: live ? 5 * 60_000 : 3 * 60_000,
+        participants: [{ name: "Morgan Lee", messages: live ? 2 : 1 }],
+        userMessages: live ? 2 : 1,
+        assistantMessages: 1,
+        toolResults: live ? 2 : 1,
+        events: 0,
+        turns: live ? 2 : 1,
+        location: { provider: "slack", channelName: "proj-checkout" },
+        codeChanges: [
+          {
+            repository: "getsentry/payments",
+            number: live ? 42 : 77,
+            title: live
+              ? "Reduce checkout latency"
+              : "Roll back the checkout regression",
+            url: live
+              ? "https://github.com/getsentry/payments/pull/42"
+              : "https://github.com/getsentry/payments/pull/77",
+            state: live ? "open" : "merged",
+            openedAt: startedAt,
+            mergedAt: live ? undefined : updatedAt,
+          },
+        ],
+      },
+      summary: live
+        ? "Checkout p95 rose after payments-v42. Junior linked the spike to the slow serializer path and is comparing deployment spans before a rollback decision."
+        : "The checkout regression was traced to payments-v42. The team chose to roll it back and merged the change that restored normal latency.",
+      intent: live
+        ? "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans."
+        : "Draft the rollback note with the exact evidence for the checkout latency regression.",
+      outcome: live
+        ? {
+            status: "in_progress",
+            text: "The deployment correlation is confirmed. The span comparison is still running.",
+          }
+        : {
+            status: "done",
+            text: "The rollback note was completed and the rollback change was merged.",
+          },
+      decisions: live
+        ? [
+            {
+              text: "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
+              by: "Morgan Lee",
+              kind: "stated",
+            },
+            {
+              text: "Use checkout.complete p95 as the primary comparison signal.",
+              by: "Junior",
+              kind: "assumed",
+            },
+          ]
+        : [
+            {
+              text: "Roll back payments-v42 instead of patching the serializer in place.",
+              by: "Morgan Lee",
+              kind: "confirmed",
+            },
+          ],
+      openDecisions: live
+        ? [
+            {
+              text: "Roll back payments-v42 or patch the serializer path.",
+              owner: "Morgan Lee",
+            },
+          ]
+        : [],
+      facts: live
+        ? [
+            "Checkout p95 increased from 210ms to 890ms.",
+            "Error volume stayed flat during the latency increase.",
+          ]
+        : [
+            "PAYMENTS-42 contained 418 events.",
+            "The regression started with payments-v42.",
+          ],
+      links: [
+        {
+          kind: "code_change",
+          label: `getsentry/payments#${live ? 42 : 77}`,
+          url: live
+            ? "https://github.com/getsentry/payments/pull/42"
+            : "https://github.com/getsentry/payments/pull/77",
+          status: live ? "open" : "merged",
+        },
+        {
+          kind: "resource",
+          label: "Checkout latency dashboard",
+          url: "https://sentry.example.com/organizations/acme/explore/traces/",
+          status: live ? "open" : "resolved",
+        },
+      ],
+      keywords: ["checkout", "latency", "payments-v42", "rollback"],
+    },
+    updatedAt,
+    version: live ? 2 : 3,
+  };
+}
+
 function activeConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -6 * 60_000);
   return detail(nowMs, {
     conversationId: ACTIVE_CONVERSATION_ID,
     displayTitle: "Investigate checkout latency",
+    brief: mockBrief(nowMs, "live"),
     // Visual QA needs the composer + pending mailbox stack attached above it.
     isParticipant: true,
     startedAt,
@@ -228,6 +348,12 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+    participants: [
+      actor("dev@example.com", "Morgan Lee", "morgan"),
+      actor("avery@sentry.io", "Avery Chen", "avery"),
+      actor("riley@sentry.io", "Riley Park", "riley"),
+      actor("jordan@sentry.io", "Jordan Blake", "jordan"),
+    ],
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
@@ -334,38 +460,81 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         reasoningLevel: "high",
         confidence: 0.93,
         source: "router",
+        costUsd: 0.0012,
       }),
-      reportEvent(4, iso(Date.parse(startedAt), 10_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "active-search",
-            name: "webSearch",
-            status: "running",
+      reportEvent(
+        4,
+        iso(Date.parse(startedAt), 10_000),
+        {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "active-search",
+              name: "webSearch",
+              status: "running",
+            },
+          ],
+        },
+        {
+          model: {
+            modelId: "openai/gpt-5.6-sol",
+            modelProfile: "handoff",
+            reasoningLevel: "high",
           },
-        ],
-      }),
-      reportEvent(5, iso(Date.parse(startedAt), 14_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "active-search",
-            name: "webSearch",
-            status: "completed",
-            startedSeq: 4,
-            startedAt: iso(Date.parse(startedAt), 10_000),
-            input: { query: "checkout latency last deployment" },
-            output: {
-              results: [
-                {
-                  title: "payments-v42 deploy notes",
-                  url: "https://docs.sentry.io",
-                },
-              ],
+          modelCall: {
+            provider: "vercel-ai-gateway",
+            api: "openai-responses",
+            stopReason: "toolUse",
+            usage: {
+              inputTokens: 12500,
+              outputTokens: 800,
+              cachedInputTokens: 32000,
+              cacheCreationTokens: 2000,
+              reasoningTokens: 600,
+              totalTokens: 47300,
+              cost: {
+                input: 0.025,
+                output: 0.008,
+                cacheRead: 0.0064,
+                cacheWrite: 0.005,
+                total: 0.0444,
+              },
             },
           },
-        ],
-      }),
+        },
+      ),
+      reportEvent(
+        5,
+        iso(Date.parse(startedAt), 14_000),
+        {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "active-search",
+              name: "webSearch",
+              status: "completed",
+              startedSeq: 4,
+              startedAt: iso(Date.parse(startedAt), 10_000),
+              input: { query: "checkout latency last deployment" },
+              output: {
+                results: [
+                  {
+                    title: "payments-v42 deploy notes",
+                    url: "https://docs.sentry.io",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          model: {
+            modelId: "openai/gpt-5.6-sol",
+            modelProfile: "handoff",
+            reasoningLevel: "high",
+          },
+        },
+      ),
       // Mixed markdown keeps font/legibility QA honest for long assistant replies.
       reportEvent(6, iso(Date.parse(startedAt), 22_000), {
         type: "message",
@@ -507,11 +676,37 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 20_000),
       },
     ],
-    cumulativeDurationMs: 98_000,
+    // Totals include all three subagents, like the API.
+    childAgentTotals: {
+      count: 3,
+      cumulativeDurationMs: 88_400,
+      cumulativeUsage: {
+        inputTokens: 48_700,
+        outputTokens: 2_680,
+        cachedInputTokens: 21_600,
+        cost: { total: 0.172 },
+      },
+    },
+    cumulativeDurationMs: 186_400,
+    cumulativeUsage: {
+      inputTokens: 100_700,
+      outputTokens: 6_080,
+      cachedInputTokens: 51_600,
+      cost: { total: 0.382 },
+    },
     events: [
       reportEvent(0, startedAt, {
         type: "message",
         messageId: "qa-user",
+        source: "slack",
+        attachments: [
+          {
+            id: "qa-chart-png",
+            filename: "input-chart.png",
+            contentType: "image/png",
+            bytes: 6400,
+          },
+        ],
         role: "user",
         text: "Review the dashboard plan before editing.",
         actorIdentity: actor(undefined, "Taylor Chen", "taylor"),
@@ -521,7 +716,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
           },
         ],
@@ -531,11 +726,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            input: { task: "Review the dashboard plan" },
+            input: { task: "Review the dashboard plan before editing." },
           },
         ],
       }),
@@ -544,7 +739,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
+        agentName: "planner",
+        task: "Review the dashboard plan before editing.",
+        title: "Review the dashboard plan",
         parentToolCallId: "qa-advisor",
         status: "running",
       }),
@@ -553,7 +751,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
+        agentName: "planner",
+        task: "Review the dashboard plan before editing.",
+        title: "Review the dashboard plan",
         parentToolCallId: "qa-advisor",
         status: "completed",
       }),
@@ -562,11 +763,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "completed",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            output: { child_conversation_id: DASHBOARD_QA_PLAN_ID },
+            output: { conversation_id: DASHBOARD_QA_PLAN_ID },
           },
         ],
       }),
@@ -575,7 +776,8 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
+        agentName: "reviewer",
         status: "running",
       }),
       reportEvent(7, iso(Date.parse(startedAt), 44_000), {
@@ -583,8 +785,9 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
-        status: "completed",
+        subagentKind: "agent",
+        agentName: "reviewer",
+        status: "blocked",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
         type: "tool_calls",
@@ -789,6 +992,11 @@ function advisorConversation(
   nowMs: number,
   conversationId: string,
   text: string,
+  metrics: Pick<
+    ConversationDetailReport,
+    "childAgentTotals" | "cumulativeDurationMs" | "cumulativeUsage"
+  >,
+  parentConversationId = DASHBOARD_QA_CONVERSATION_ID,
 ): MockConversation {
   const startedAt = iso(nowMs, -10 * 60_000);
   const conversation = detail(nowMs, {
@@ -797,7 +1005,7 @@ function advisorConversation(
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 18_000),
     lastProgressAt: iso(Date.parse(startedAt), 18_000),
-    cumulativeDurationMs: 18_000,
+    ...metrics,
     events: [
       reportEvent(0, startedAt, {
         type: "message",
@@ -813,10 +1021,7 @@ function advisorConversation(
       }),
     ],
   });
-  return {
-    ...conversation,
-    parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
-  };
+  return { ...conversation, parentConversationId };
 }
 
 function longConversation(nowMs: number): ConversationDetailReport {
@@ -997,6 +1202,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: INCIDENT_CONVERSATION_ID,
     displayTitle: "Checkout latency triage",
+    brief: mockBrief(nowMs, "expired"),
     startedAt,
     lastSeenAt: iso(nowMs, -41 * 60_000),
     lastProgressAt: iso(nowMs, -42 * 60_000),
@@ -1044,59 +1250,11 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     ],
     cumulativeDurationMs: 206_000,
     cumulativeUsage: usage(0.0332),
-    events: [
-      reportEvent(0, startedAt, {
-        type: "message",
-        messageId: "incident-user",
-        role: "user",
-        text: "Draft the rollback note with the exact evidence.",
-      }),
-      reportEvent(1, iso(Date.parse(startedAt), 12_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "incident-issue",
-            name: "sentry.get_issue",
-            status: "running",
-          },
-        ],
-      }),
-      reportEvent(2, iso(Date.parse(startedAt), 13_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "incident-issue",
-            name: "sentry.get_issue",
-            status: "running",
-            startedSeq: 1,
-            startedAt: iso(Date.parse(startedAt), 12_000),
-            input: { issueId: "PAYMENTS-42" },
-          },
-        ],
-      }),
-      reportEvent(3, iso(Date.parse(startedAt), 28_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "incident-issue",
-            name: "sentry.get_issue",
-            status: "completed",
-            startedSeq: 1,
-            startedAt: iso(Date.parse(startedAt), 12_000),
-            output: {
-              culprit: "payments-v42",
-              eventCount: 418,
-            },
-          },
-        ],
-      }),
-      reportEvent(4, iso(Date.parse(startedAt), 35_000), {
-        type: "message",
-        messageId: "incident-assistant",
-        role: "assistant",
-        text: "The regression started with payments-v42; rollback is recommended.",
-      }),
-    ],
+    eventHistory: {
+      status: "expired",
+      expiredAt: iso(nowMs, -20 * 60_000),
+    },
+    events: [],
   });
 }
 
@@ -1239,6 +1397,98 @@ function simpleConversation(
   });
 }
 
+const MOCK_MENTION_MORGAN: ActorIdentity = {
+  email: "dev@example.com",
+  fullName: "Morgan Lee",
+  slackUserId: "U123",
+  slackUserName: "morgan",
+};
+
+function eventAutomationRunConversation(
+  nowMs: number,
+): ConversationDetailReport {
+  const startedAt = iso(nowMs, -3 * 60 * 60_000);
+  const at = (offsetMs: number) => iso(Date.parse(startedAt), offsetMs);
+  return detail(nowMs, {
+    conversationId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+    displayTitle: "Closed issue summary",
+    surface: "internal",
+    startedAt,
+    lastSeenAt: at(14_000),
+    lastProgressAt: at(14_000),
+    cumulativeDurationMs: 14_000,
+    sourceTask: {
+      id: "event-1",
+      kind: "event",
+      label: "Summarize the closed issue",
+      title: "Closed issue summary",
+      triggerMessageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+      triggerLabel: "Linear issue ACME-42 closed",
+      credentialMode: "creator",
+      credentialUser: "Alex Rivera",
+    },
+    events: [
+      reportEvent(
+        0,
+        startedAt,
+        {
+          type: "message",
+          messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+          role: "user",
+          // Dispatch input is authored by the dispatch owner, not a person.
+          actorIdentity: {
+            fullName: "junior",
+            slackUserId: "junior",
+            slackUserName: "junior",
+          },
+          text: [
+            "[task]",
+            "",
+            "This is a task, not a message from a person.",
+            "",
+            "About: Issue · ACME-42",
+            'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
+            "Instructions: Summarize the closed issue",
+            "",
+            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
+            "",
+            "End with `finishAutomationRun`.",
+          ].join("\n"),
+        },
+        { mentions: [MOCK_MENTION_MORGAN] },
+      ),
+      reportEvent(1, at(1_000), {
+        type: "turn_lifecycle",
+        turnId: "dispatch:event-1",
+        state: "started",
+        inputMessageIds: [EVENT_AUTOMATION_RUN_CONVERSATION_ID],
+      }),
+      reportEvent(
+        2,
+        at(13_000),
+        {
+          type: "message",
+          messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
+          role: "assistant",
+          text: "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>.",
+        },
+        // U456 has no People profile, and U999 is not resolved.
+        {
+          mentions: [
+            MOCK_MENTION_MORGAN,
+            { fullName: "Casey Nguyen", slackUserId: "U456" },
+          ],
+        },
+      ),
+      reportEvent(3, at(14_000), {
+        type: "turn_lifecycle",
+        turnId: "dispatch:event-1",
+        state: "succeeded",
+      }),
+    ],
+  });
+}
+
 function actor(
   email: string | undefined,
   fullName: string,
@@ -1264,11 +1514,51 @@ function mockConversations(nowMs: number): MockConversation[] {
       nowMs,
       DASHBOARD_QA_PLAN_ID,
       "Review the dashboard plan before editing.",
+      {
+        childAgentTotals: {
+          count: 1,
+          cumulativeDurationMs: 6_200,
+          cumulativeUsage: {
+            inputTokens: 4_100,
+            outputTokens: 220,
+            cost: { total: 0.011 },
+          },
+        },
+        cumulativeDurationMs: 78_600,
+        cumulativeUsage: {
+          inputTokens: 42_500,
+          outputTokens: 2_370,
+          cachedInputTokens: 21_600,
+          cost: { input: 0.1, output: 0.053, total: 0.153 },
+        },
+      },
+    ),
+    advisorConversation(
+      nowMs,
+      DASHBOARD_QA_PLAN_CHECK_ID,
+      "Check one claim in the dashboard plan.",
+      {
+        cumulativeDurationMs: 6_200,
+        cumulativeUsage: {
+          inputTokens: 4_100,
+          outputTokens: 220,
+          cost: { total: 0.011 },
+        },
+      },
+      DASHBOARD_QA_PLAN_ID,
     ),
     advisorConversation(
       nowMs,
       DASHBOARD_QA_REVIEW_ID,
       "Review the implementation after the first advisor pass.",
+      {
+        cumulativeDurationMs: 9_800,
+        cumulativeUsage: {
+          inputTokens: 6_200,
+          outputTokens: 310,
+          cost: { input: 0.015, output: 0.004, total: 0.019 },
+        },
+      },
     ),
     longConversation(nowMs),
     incidentConversation(nowMs),
@@ -1292,6 +1582,7 @@ function mockConversations(nowMs: number): MockConversation[] {
         title: "Weekly project summary",
       },
     }),
+    eventAutomationRunConversation(nowMs),
     simpleConversation(nowMs, {
       conversationId: ARCHIVED_CONVERSATION_ID,
       displayTitle: "Archived restore target",
@@ -1320,11 +1611,15 @@ function summaryFromConversation(
     activityEvent?.data.type === "message" && activityEvent.data.text
       ? {
           createdAt: activityEvent.createdAt,
+          ...(activityEvent.mentions
+            ? { mentions: activityEvent.mentions }
+            : undefined),
           role: activityEvent.data.role as "assistant" | "user",
           text: activityEvent.data.text,
         }
       : undefined;
   const {
+    brief: _brief,
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,
@@ -1689,6 +1984,102 @@ export function readMockConversationPendingMessages(
   };
 }
 
+/** Return the child agents of one mock Conversation, matching its transcript. */
+export function readMockConversationChildAgents(
+  conversationId: string,
+): ConversationChildAgentsReport | undefined {
+  const conversations = mockConversations(NOW_MS);
+  const conversation = conversations.find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  const startedAtMs = NOW_MS - 5 * 60 * 60_000;
+  // Match the API: each row has the usage of its child Conversation and of
+  // that child's own subagents.
+  const childMetrics = (childConversationId: string) => {
+    const child = conversations.find(
+      (candidate) => candidate.conversationId === childConversationId,
+    )!;
+    return {
+      ...(child.childAgentTotals
+        ? { childAgentTotals: child.childAgentTotals }
+        : undefined),
+      cumulativeDurationMs: child.cumulativeDurationMs,
+      cumulativeUsage: child.cumulativeUsage,
+    };
+  };
+  if (conversationId === DASHBOARD_QA_PLAN_ID) {
+    return {
+      agents: [
+        {
+          ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
+          conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
+          status: "completed",
+          task: "Check one claim in the dashboard plan.",
+          title: "Check one plan claim",
+          updatedAt: iso(startedAtMs, 16_000),
+        },
+      ],
+      conversationId,
+    };
+  }
+  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
+    return { agents: [], conversationId };
+  }
+  return {
+    agents: [
+      {
+        ...childMetrics(DASHBOARD_QA_REVIEW_ID),
+        conversationId: DASHBOARD_QA_REVIEW_ID,
+        error: "GitHub access is needed to read the pull request.",
+        name: "reviewer",
+        status: "blocked",
+        task: "Review the open dashboard pull requests and list risky changes.",
+        updatedAt: iso(startedAtMs, 44_000),
+      },
+      {
+        ...childMetrics(DASHBOARD_QA_PLAN_ID),
+        conversationId: DASHBOARD_QA_PLAN_ID,
+        status: "completed",
+        task: "Review the dashboard plan before editing.",
+        title: "Review the dashboard plan",
+        updatedAt: iso(startedAtMs, 20_000),
+      },
+    ],
+    conversationId,
+  };
+}
+
+/** Build the agent tree of a mock child Conversation, like the API. */
+function mockAgentTree(
+  conversation: MockConversation,
+): ConversationDetailReport["agentTree"] {
+  if (!conversation.parentConversationId) return undefined;
+  const conversations = mockConversations(NOW_MS);
+  const chain = [conversation];
+  let current = conversation;
+  while (current.parentConversationId) {
+    const parent = conversations.find(
+      (candidate) => candidate.conversationId === current.parentConversationId,
+    );
+    if (!parent) break;
+    chain.unshift(parent);
+    current = parent;
+  }
+  return chain.map((item) => {
+    if (!item.parentConversationId) {
+      return { conversationId: item.conversationId, label: item.displayTitle };
+    }
+    const agent = readMockConversationChildAgents(
+      item.parentConversationId,
+    )?.agents.find((child) => child.conversationId === item.conversationId);
+    return {
+      conversationId: item.conversationId,
+      label: agent?.title ?? agent?.name ?? "Subagent",
+    };
+  });
+}
+
 /** Return one canonical-event visual-QA conversation detail fixture. */
 export function readMockConversationDetail(
   conversationId: string,
@@ -1698,8 +2089,16 @@ export function readMockConversationDetail(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  const { parentConversationId: _parentConversationId, ...detail } =
-    conversation;
+  const { parentConversationId, ...conversationDetail } = conversation;
+  const agentTree = mockAgentTree(conversation);
+  // Match the API: only readable root Conversations can be forked.
+  const detail = {
+    ...conversationDetail,
+    ...(agentTree ? { agentTree } : undefined),
+    canFork:
+      !parentConversationId &&
+      conversationDetail.eventHistory.status !== "redacted",
+  };
   const withArchiveState = mockArchivedConversationIds.has(conversationId)
     ? {
         ...detail,
@@ -2238,6 +2637,53 @@ export function readMockPeopleProfile(
   };
 }
 
+/** Build mock System operational reports for local dashboard QA. */
+export function readMockPluginReports(): PluginOperationalReportFeed {
+  const categories = activityDates(NOW_MS, 90).map((date, index) => {
+    const briefs = index < 60 ? 0 : index % 6 === 0 ? 4 : (index % 3) + 1;
+    return {
+      id: date,
+      label: date,
+      values: { briefs, costUsd: briefs * 0.0037 },
+    };
+  });
+  return {
+    generatedAt: NOW,
+    reports: [
+      {
+        generatedAt: NOW,
+        pluginName: "briefs",
+        title: "Briefs",
+        metrics: [
+          { label: "briefs stored", tone: "good", value: "148" },
+          { label: "conversations with a brief", value: "93" },
+          { label: "briefs · 30d", value: "61" },
+          { label: "cost · 30d · retained", value: "$0.23" },
+          {
+            label: "average cost per brief · 30d · retained",
+            value: "$0.0037",
+          },
+        ],
+        widgets: [
+          {
+            categories,
+            description: "Stored Brief versions and estimated model cost",
+            id: "briefs-created",
+            series: [
+              { key: "briefs", label: "Briefs" },
+              { format: "usd", key: "costUsd", label: "Cost" },
+            ],
+            timeRangeDays: [7, 30, 90],
+            title: "Briefs created",
+            type: "bar_chart",
+          },
+        ],
+      },
+    ],
+    source: "plugins",
+  };
+}
+
 /** Build mock person-scoped plugin reports for local profile QA. */
 export function readMockPeoplePluginReports(
   _email: string,
@@ -2262,6 +2708,7 @@ export function readMockPeopleCode(
   const overview = readMockCodeOverview();
   return {
     activityDays: overview.activityDays,
+    changes: overview.changes,
     generatedAt: overview.generatedAt,
     summary: overview.summary,
     windowEnd: overview.windowEnd,
@@ -2457,7 +2904,9 @@ export function readMockLocationDetail(
   };
 }
 
-function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
+function mockAutomationExecutionDays(
+  nowMs: number,
+): AutomationList["executionDays"] {
   return Array.from({ length: 90 }, (_, index) => {
     const date = new Date(nowMs - (89 - index) * 86_400_000)
       .toISOString()
@@ -2476,7 +2925,7 @@ function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
   });
 }
 
-function mockTasks(): TaskSummary[] {
+function mockTasks(): AutomationSummary[] {
   return [
     {
       createdAt: "2026-07-28T16:00:00.000Z",
@@ -2494,8 +2943,10 @@ function mockTasks(): TaskSummary[] {
       lastConversationId: "scheduler:daily-ops-digest",
       lastRunAt: "2026-08-06T16:00:00.000Z",
       nextRunAt: "2026-08-10T16:00:00.000Z",
+      credentialMode: "creator",
       ownedByViewer: true,
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
+      timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
       status: "active",
       outcomes: [
@@ -2523,6 +2974,7 @@ function mockTasks(): TaskSummary[] {
       kind: "event",
       lastConversationId: "agent-dispatch:event-1",
       lastRunAt: "2026-08-05T18:30:00.000Z",
+      credentialMode: "creator",
       ownedByViewer: true,
       resource: "Issue · ACME-42",
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
@@ -2531,6 +2983,7 @@ function mockTasks(): TaskSummary[] {
       title: "Closed issue summary",
       totalRuns: 7,
       triggerAvailable: true,
+      status: "active",
     },
     {
       createdAt: "2026-07-30T16:00:00.000Z",
@@ -2546,6 +2999,7 @@ function mockTasks(): TaskSummary[] {
       id: "event-2",
       instruction: "Notify responders when the incident changes",
       kind: "event",
+      credentialMode: "creator",
       ownedByViewer: false,
       resource: "Incident · INC-17",
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
@@ -2559,14 +3013,15 @@ function mockTasks(): TaskSummary[] {
       title: "Incident change alerts",
       totalRuns: 0,
       triggerAvailable: false,
+      status: "active",
     },
   ];
 }
 
 /** Build mock Tasks list for local dashboard development. */
-export function readMockTaskList(nowMs = NOW_MS): TaskList {
-  return {
-    executionDays: mockTaskExecutionDays(nowMs),
+export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
+  return mockAutomationCollection({
+    executionDays: mockAutomationExecutionDays(nowMs),
     executionHours: trailingMetricHours(nowMs, (date) => ({
       costUsd: 0,
       date,
@@ -2583,12 +3038,13 @@ export function readMockTaskList(nowMs = NOW_MS): TaskList {
       })),
       (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
     ),
-    tasks: mockTasks(),
-    truncated: false,
-  };
+    automations: mockTasks(),
+  });
 }
 
-function mockStatusDays(nowMs: number): TaskExecutionList["executionDays"] {
+function mockStatusDays(
+  nowMs: number,
+): AutomationExecutionList["executionDays"] {
   return Array.from({ length: 90 }, (_, index) => {
     const date = new Date(nowMs - (89 - index) * 86_400_000)
       .toISOString()
@@ -2601,14 +3057,11 @@ function mockStatusDays(nowMs: number): TaskExecutionList["executionDays"] {
 }
 
 /** Build mock terminal executions for one viewer-visible task. */
-export function readMockTaskExecutions(
-  kind: "scheduled" | "event",
+export function readMockAutomationExecutions(
   id: string,
   nowMs = NOW_MS,
-): TaskExecutionList | undefined {
-  const task = mockTasks().find(
-    (candidate) => candidate.kind === kind && candidate.id === id,
-  );
+): AutomationExecutionList | undefined {
+  const task = mockTasks().find((candidate) => candidate.id === id);
   if (!task) return undefined;
   if (task.totalRuns === 0) {
     return {
@@ -2630,7 +3083,7 @@ export function readMockTaskExecutions(
         (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
       ),
       executions: [],
-      task,
+      automation: task,
       truncated: false,
     };
   }
@@ -2697,7 +3150,7 @@ export function readMockTaskExecutions(
       (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
     ),
     executions,
-    task,
+    automation: task,
     truncated: task.totalRuns > executions.length,
   };
 }

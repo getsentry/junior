@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  getConversationWorkState,
+  startConversationWork,
+  releaseConversationWork,
+} from "@/chat/task-execution/store";
+import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   getTurnRecord,
@@ -160,19 +165,41 @@ describe("paused turn scheduling", () => {
       },
     });
 
-    const owner = await state.acquireLock(conversationId, 90_000);
-    expect(owner).toBeTruthy();
-    await runNextPausedTurn(conversationId, {
-      agentRunner: agentRunnerShouldNotRun,
-    });
+    const queue = createConversationWorkQueueTestAdapter();
+    await wakePausedTurn(
+      {
+        conversationId,
+        destination: SLACK_DESTINATION,
+        turnId,
+        expectedVersion: 1,
+      },
+      { queue, state },
+    );
+    const owner = await startConversationWork({ conversationId, state });
+    if (owner.status !== "acquired") throw new Error("Expected worker lease");
+    const worker = {
+      queue,
+      state,
+      run: async () => {
+        await runNextPausedTurn(conversationId, {
+          agentRunner: agentRunnerShouldNotRun,
+        });
+        return { status: "completed" as const };
+      },
+    };
+    await expect(
+      processConversationWork(queue.takeMessage(), worker),
+    ).resolves.toEqual({ status: "active" });
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       state: "running",
     });
 
-    await state.releaseLock(owner!);
-    await runNextPausedTurn(conversationId, {
-      agentRunner: agentRunnerShouldNotRun,
+    await releaseConversationWork({
+      conversationId,
+      leaseToken: owner.leaseToken,
+      state,
     });
+    await processConversationWork(queue.takeMessage(), worker);
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Turn lost its worker before reaching a safe boundary",

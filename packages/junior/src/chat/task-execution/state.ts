@@ -67,7 +67,7 @@ const inboundMessageSourceSchema = z.enum([
   "internal",
   "local",
   "plugin",
-  "resource_event",
+  "event",
   "scheduler",
   "slack",
   "web",
@@ -135,7 +135,7 @@ export interface Lease {
   token: string;
 }
 
-/** Durable request to stop the current Conversation run. */
+/** Durable request to stop one Conversation run. */
 export interface ConversationStop {
   inboundMessageIds: string[];
   runId: string;
@@ -152,7 +152,6 @@ export interface ConversationExecution {
   pendingMessages: InboundMessage[];
   runId?: string;
   status: ExecutionStatus;
-  stop?: ConversationStop;
   updatedAtMs?: number;
 }
 
@@ -217,7 +216,7 @@ export interface AppendAndEnqueueInboundMessageResult extends AppendInboundMessa
 /** Result of requesting that the current Conversation run stop. */
 export type StopConversationWorkResult =
   | { status: "no_work" }
-  | { runId: string; status: "requested" };
+  | { runId: string; status: "requested"; pendingMessages: InboundMessage[] };
 
 /** Result of clearing one stop observed by the matching leased run. */
 export interface CompleteConversationStopResult {
@@ -266,6 +265,10 @@ type RedisCommandClient = {
 
 function conversationKey(conversationId: string): string {
   return `${CONVERSATION_PREFIX}:${conversationId}`;
+}
+
+function conversationStopKey(conversationId: string): string {
+  return `${CONVERSATION_PREFIX}:stop:${conversationId}`;
 }
 
 function indexLockKey(indexKey: string): string {
@@ -469,8 +472,6 @@ function normalizeExecution(
 
   const lease = normalizeLease(value.lease);
   const runId = toOptionalString(value.runId);
-  const normalizedStop = normalizeStop(value.stop);
-  const stop = normalizedStop?.runId === runId ? normalizedStop : undefined;
   const normalizedStatus =
     status === "idle" && lease
       ? "running"
@@ -492,7 +493,6 @@ function normalizeExecution(
     lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
     retryCount: toOptionalNumber(value.retryCount),
     runId,
-    stop,
     updatedAtMs: toOptionalNumber(value.updatedAtMs),
   };
 }
@@ -1011,13 +1011,7 @@ async function writeConversation(
     ...conversation,
     execution,
   };
-  const fenced = await state.extendLock(
-    lock,
-    CONVERSATION_MUTATION_LOCK_TTL_MS,
-  );
-  if (!fenced) {
-    throw new ConversationMutationFencedError(next.conversationId);
-  }
+  await fenceConversationMutation(state, lock, next.conversationId);
   // TODO(dcramer): Remove the stored publishExternally field after no deployed
   // mailbox reader requires it. Destination is used only to write this old
   // Redis shape. Current workers ignore the field.
@@ -1031,7 +1025,7 @@ async function writeConversation(
           message,
           hasSlackDestination &&
             (message.source === "slack" ||
-              message.source === "resource_event" ||
+              message.source === "event" ||
               message.source === "plugin" ||
               message.source === "scheduler"),
         ),
@@ -1740,6 +1734,36 @@ function isHumanFacingMessage(message: InboundMessage): boolean {
   return message.source === "web" || message.source === "slack";
 }
 
+async function readConversationStop(
+  state: StateAdapter,
+  conversationId: string,
+): Promise<ConversationStop | undefined> {
+  return normalizeStop(await state.get(conversationStopKey(conversationId)));
+}
+
+async function fenceConversationMutation(
+  state: StateAdapter,
+  lock: Lock,
+  conversationId: string,
+): Promise<void> {
+  if (!(await state.extendLock(lock, CONVERSATION_MUTATION_LOCK_TTL_MS))) {
+    throw new ConversationMutationFencedError(conversationId);
+  }
+}
+
+/** Return whether one Conversation run has a durable stop request. */
+export async function hasConversationStop(args: {
+  conversationId: string;
+  runId: string;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const state = await getConnectedState(args.state);
+  return (
+    (await readConversationStop(state, args.conversationId))?.runId ===
+    args.runId
+  );
+}
+
 /** Persist a stop request for the current run without process affinity. */
 export async function stopConversationWork(args: {
   conversationId: string;
@@ -1754,23 +1778,25 @@ export async function stopConversationWork(args: {
     }
 
     const runId = current.execution.runId ?? randomUUID();
-    const inboundMessageIds = current.execution.pendingMessages
-      .filter(isHumanFacingMessage)
-      .map((message) => message.inboundMessageId);
-    await writeConversation(
-      state,
-      lock,
-      withExecutionUpdate(
-        current,
-        {
-          ...current.execution,
-          runId,
-          stop: { inboundMessageIds, runId },
-        },
-        nowMs,
-      ),
+    const pendingMessages =
+      current.execution.pendingMessages.filter(isHumanFacingMessage);
+    const inboundMessageIds = pendingMessages.map(
+      (message) => message.inboundMessageId,
     );
-    return { runId, status: "requested" };
+    if (current.execution.runId === undefined) {
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(current, { ...current.execution, runId }, nowMs),
+      );
+    }
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.set(
+      conversationStopKey(args.conversationId),
+      { inboundMessageIds, runId } satisfies ConversationStop,
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+    return { runId, status: "requested", pendingMessages };
   });
 }
 
@@ -1788,7 +1814,7 @@ export async function completeConversationStop(args: {
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return { status: "lost_lease", removedInboundMessageIds: [] };
     }
-    const stop = current.execution.stop;
+    const stop = await readConversationStop(state, args.conversationId);
     if (!stop || stop.runId !== args.runId) {
       return { status: "none", removedInboundMessageIds: [] };
     }
@@ -1818,11 +1844,12 @@ export async function completeConversationStop(args: {
               ? undefined
               : current.execution.lastEnqueuedAtMs,
           pendingMessages,
-          stop: undefined,
         },
         nowMs,
       ),
     );
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.delete(conversationStopKey(args.conversationId));
     return { status: "cleared", removedInboundMessageIds };
   });
 }
@@ -1834,7 +1861,10 @@ export async function cancelHumanFacingPendingMessages(args: {
   receivedBeforeMs?: number;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<{ cancelledInboundMessageIds: string[] }> {
+}): Promise<{
+  cancelledInboundMessageIds: string[];
+  cancelledMessages: InboundMessage[];
+}> {
   const nowMs = args.nowMs ?? now();
   const requestedIds =
     args.inboundMessageIds === undefined
@@ -1843,10 +1873,11 @@ export async function cancelHumanFacingPendingMessages(args: {
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current) {
-      return { cancelledInboundMessageIds: [] };
+      return { cancelledInboundMessageIds: [], cancelledMessages: [] };
     }
 
     const cancelledInboundMessageIds: string[] = [];
+    const cancelledMessages: InboundMessage[] = [];
     const pendingMessages: InboundMessage[] = [];
     for (const message of current.execution.pendingMessages) {
       const isRequested =
@@ -1857,13 +1888,14 @@ export async function cancelHumanFacingPendingMessages(args: {
         message.receivedAtMs <= args.receivedBeforeMs;
       if (isHumanFacingMessage(message) && isRequested && isInSnapshot) {
         cancelledInboundMessageIds.push(message.inboundMessageId);
+        cancelledMessages.push(message);
         continue;
       }
       pendingMessages.push(message);
     }
 
     if (cancelledInboundMessageIds.length === 0) {
-      return { cancelledInboundMessageIds };
+      return { cancelledInboundMessageIds, cancelledMessages };
     }
 
     const becomesIdle =
@@ -1884,13 +1916,12 @@ export async function cancelHumanFacingPendingMessages(args: {
           retryCount: becomesIdle ? 0 : current.execution.retryCount,
           runId: becomesIdle ? undefined : current.execution.runId,
           status: becomesIdle ? "idle" : current.execution.status,
-          stop: becomesIdle ? undefined : current.execution.stop,
         },
         nowMs,
       ),
     );
 
-    return { cancelledInboundMessageIds };
+    return { cancelledInboundMessageIds, cancelledMessages };
   });
 }
 
@@ -2023,7 +2054,6 @@ export async function recordConversationRetry(args: {
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
           status: stopped ? "failed" : "paused",
-          stop: stopped ? undefined : current.execution.stop,
         },
         nowMs,
       ),
@@ -2049,9 +2079,11 @@ export async function completeConversationWork(args: {
       return "lost_lease";
     }
     const hasPending = pendingMessages(current).length > 0;
-    const needsRun =
-      current.execution.status === "paused" ||
-      (args.resumeIfStopped === true && current.execution.stop !== undefined);
+    const stopped =
+      args.resumeIfStopped === true &&
+      (await readConversationStop(state, args.conversationId))?.runId ===
+        current.execution.runId;
+    const needsRun = current.execution.status === "paused" || stopped;
     const runnable = needsRun || hasPending;
     await writeConversation(
       state,
@@ -2071,7 +2103,6 @@ export async function completeConversationWork(args: {
               ? current.execution.retryCount
               : 0,
           runId: runnable ? current.execution.runId : undefined,
-          stop: runnable ? current.execution.stop : undefined,
         },
         nowMs,
       ),
@@ -2206,7 +2237,6 @@ export async function deadLetterAttempt(args: {
           lease: undefined,
           status: runnable ? "pending" : "failed",
           runId: runnable ? current.execution.runId : undefined,
-          stop: runnable ? current.execution.stop : undefined,
         },
         nowMs,
       ),
@@ -2245,7 +2275,6 @@ export async function clearExpiredConversationLease(args: {
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
           status: stopped ? "failed" : "paused",
-          stop: stopped ? undefined : current.execution.stop,
         },
         nowMs,
       ),
@@ -2261,6 +2290,7 @@ export async function deleteConversationState(args: {
 }): Promise<void> {
   await withConversationMutation(args, async (state) => {
     await state.delete(conversationKey(args.conversationId));
+    await state.delete(conversationStopKey(args.conversationId));
     await removeIndexEntry({
       state,
       indexKey: CONVERSATION_ACTIVE_INDEX_KEY,

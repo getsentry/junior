@@ -180,7 +180,7 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("Release notes live in Notion.");
   });
 
-  it("exports resource events without attributing them to the actor", () => {
+  it("exports events without attributing them to the actor", () => {
     const markdown = buildConversationMarkdown(
       conversation([
         event(0, {

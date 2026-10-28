@@ -39,8 +39,19 @@ traffic through verified host egress.
 - Automatic selection currently uses the worktree root, so Junior reads only
   its root `AGENTS.md`. Changed instructions are added as runtime-owned user
   context; sandbox tool results never contain them.
-- Only `AGENTS.md` is supported. Overrides, Git hooks, recursive repository
-  discovery, and filesystem watchers are intentionally out of scope.
+- Junior also lists the repository skills in `.agents/skills/` and
+  `.claude/skills/` at the Git root. The first directory wins when both have a
+  skill with the same name. The list holds the name, description, and
+  `SKILL.md` path of each skill. Junior leaves out skills that set
+  `disable-model-invocation`. The model reads a skill body with `readFile`.
+  Repository skills do not go into `<available-skills>`, and `loadSkill`
+  cannot load them.
+- `AGENTS.md` comes first in the shared byte budget. Repository skills use the
+  remaining budget, one whole entry at a time.
+- Repository skills have the same trust level as `AGENTS.md`. Direct
+  instructions take precedence over both.
+- Overrides, Git hooks, recursive repository discovery, and filesystem
+  watchers are intentionally out of scope.
 
 ## Dependency Snapshots
 
@@ -58,7 +69,7 @@ traffic through verified host egress.
   slice records its phase in SQL. The next job can continue after a soft yield
   or a worker stop.
 - When `switchWorkspace` finds no ready snapshot, it returns
-  `status: "building"` and a temporary resource subscription for
+  `status: "building"` and a temporary watch for
   `workspace_snapshot.ready` and `workspace_snapshot.failed`. It does not keep
   the tool call open. The build job publishes those core `junior` events when it
   finishes. The next Turn should call `switchWorkspace` again with the same

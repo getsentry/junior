@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { SlackActionError } from "@/chat/slack/client";
+import { slackMention } from "@/chat/slack/mrkdwn";
 import { parseSlackUserId, type SlackTeamId } from "@/chat/slack/ids";
 import {
   lookupSlackUserProfile,
@@ -16,9 +17,14 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const linkedSlackIdentity = alias(juniorIdentities, "user_lookup_slack_identity");
+const linkedSlackIdentity = alias(
+  juniorIdentities,
+  "user_lookup_slack_identity",
+);
 
-type UserLookupProfile = SlackUserProfile | Pick<SlackUserProfile, "id" | "name">;
+type UserLookupProfile =
+  | SlackUserProfile
+  | Pick<SlackUserProfile, "id" | "name">;
 type UserLookupMatch = UserLookupProfile & { mention: string };
 
 type UserLookupSearchMeta = {
@@ -52,10 +58,6 @@ function explicitUserLookupError(error: SlackActionError): string | undefined {
     return "User lookup is not available for this workspace or app installation.";
   }
   return undefined;
-}
-
-function slackMention(userId: string): string {
-  return `<@${userId}>`;
 }
 
 function asMatch(user: UserLookupProfile): UserLookupMatch {
@@ -228,7 +230,7 @@ export function createUserLookupTool(
 ) {
   return zodTool({
     description:
-      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. The `slack` provider also accepts email and name searches. Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
+      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -237,12 +239,16 @@ export function createUserLookupTool(
     },
     inputSchema: z
       .object({
-        provider: z.enum(providers).describe("Enabled identity provider to query."),
+        provider: z
+          .enum(providers)
+          .describe("Enabled identity provider to query."),
         query: z
           .string()
           .trim()
           .min(1)
-          .describe("Provider subject ID, handle, Slack email, or Slack name."),
+          .describe(
+            "Provider subject ID, handle, Slack email, or Slack name. Prefer a Slack user ID (U…) when one is known.",
+          ),
       })
       .strict(),
     outputSchema: juniorToolOutputSchema,

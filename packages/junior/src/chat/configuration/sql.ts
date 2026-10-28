@@ -10,6 +10,7 @@ import {
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigEntry,
+  ConfigValue,
   LocationConfigurationService,
 } from "@/chat/configuration/types";
 
@@ -167,6 +168,21 @@ function createSqlLocationConfigurationStorage(
         .onConflictDoNothing();
     },
   };
+}
+
+/**
+ * Read SQL Location configuration values by key. This read does not create
+ * the Location or copy legacy entries, so callers must treat it as best effort.
+ */
+export async function readLocationConfigurationValues(args: {
+  db: JuniorDatabase;
+  destination: SlackDestination;
+}): Promise<Record<string, ConfigValue>> {
+  const entries = await createSqlLocationConfigurationStorage(
+    args.db,
+    args.destination,
+  ).list();
+  return Object.fromEntries(entries.map((entry) => [entry.key, entry.value]));
 }
 
 /** Resolve SQL-owned Location configuration and copy live legacy entries once. */

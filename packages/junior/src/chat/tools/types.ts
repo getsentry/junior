@@ -1,9 +1,9 @@
 import type { FileUpload } from "chat";
 import type {
   AgentInvocationSource,
-  EventTaskSource,
+  EventAutomationSource,
   WebSource,
-  ResourceEventSource,
+  EventSource,
   Destination,
   Identity,
   Location,
@@ -14,7 +14,7 @@ import type {
   SlackDestination,
   SlackSource,
   Source,
-  ScheduledTaskSource,
+  ScheduledAutomationSource,
   User,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -24,9 +24,12 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type { ModelProfile } from "@/chat/model-profile";
+import type {
+  ModelProfile,
+  ModelProfileConfig,
+} from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
-import type { SpawnAgent } from "@/chat/agent/types";
+import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -36,8 +39,15 @@ interface HandoffProfile {
   name: ModelProfile;
 }
 
+export interface SpawnAgentProfileControl {
+  activeProfile: () => ModelProfile;
+  defaultProfile: ModelProfile;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
+}
+
 interface HandoffControl {
-  /** Non-empty list of configured profiles. */
+  activeProfile: HandoffProfile;
+  /** Non-empty list of other configured profiles. */
   profiles: readonly [HandoffProfile, ...HandoffProfile[]];
   execute: (
     profile: ModelProfile,
@@ -87,8 +97,15 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage;
+  /** Present only for Scheduled automation and Event automation runs. */
+  automation?: {
+    /** True when a successful run sends a message to stored Destinations. */
+    sendsMessage: boolean;
+  };
   handoff?: HandoffControl;
+  messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
+  spawnAgentProfiles?: SpawnAgentProfileControl;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
@@ -96,6 +113,8 @@ interface BaseToolRuntimeContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId: string;
+  /** Parent of a child agent Conversation. Unset for a root Conversation. */
+  parentConversationId?: string;
   /** Location associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Remove locationId after memory and plugin contexts read
@@ -159,10 +178,10 @@ export type ToolRuntimeContext =
       actor?: Actor;
       source:
         | AgentInvocationSource
-        | EventTaskSource
+        | EventAutomationSource
         | PluginDispatchSource
-        | ResourceEventSource
-        | ScheduledTaskSource;
+        | EventSource
+        | ScheduledAutomationSource;
       slackActionToken?: never;
     });
 

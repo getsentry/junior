@@ -146,10 +146,7 @@ export function isAbortError(error: unknown): boolean {
     ) {
       return candidate.name === "AbortError";
     }
-    if (!(candidate instanceof Error)) return false;
-    if (candidate.name === "AbortError") return true;
-    const message = candidate.message.toLowerCase();
-    return message.startsWith("executeagentrun timed out after");
+    return candidate instanceof Error && candidate.name === "AbortError";
   });
 }
 

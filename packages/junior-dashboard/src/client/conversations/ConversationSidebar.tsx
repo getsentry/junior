@@ -1,11 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Archive,
-  ArchiveRestore,
-  CircleAlert,
-  LockKeyhole,
-  SquarePen,
-} from "lucide-react";
+import { Archive, ArchiveRestore, CircleAlert, SquarePen } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -16,8 +10,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { cn } from "../styles";
-import type { Conversation, VisualStatus } from "../types";
-import { ActiveIndicator } from "../components/ActiveIndicator";
+import type { Conversation } from "../types";
 import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
 import {
@@ -28,6 +21,7 @@ import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
 import { Skeleton } from "../components/Skeleton";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
+import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 
 type ConversationSidebarEntry =
   | { first: boolean; key: string; kind: "section"; label: string }
@@ -43,6 +37,7 @@ const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
+  finishedConversationIds: ReadonlySet<string>;
   loading: boolean;
   query: string;
   selectedId?: string;
@@ -93,11 +88,11 @@ export function ConversationSidebar(props: {
       className={cn(
         "relative min-w-0",
         isLanding
-          ? "border-t border-white/[0.07] bg-transparent"
-          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]",
+          ? "border-t border-dashboard-border bg-transparent"
+          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel",
       )}
     >
-      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")}>
+      <div className="px-5 py-3">
         <div className="flex items-center justify-between gap-2">
           <h2
             className={cn(
@@ -111,7 +106,7 @@ export function ConversationSidebar(props: {
             {isLanding ? null : (
               <button
                 aria-label="New conversation"
-                className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+                className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
                 onClick={props.onNewConversation}
                 title="New conversation"
                 type="button"
@@ -122,7 +117,7 @@ export function ConversationSidebar(props: {
           </div>
         </div>
       </div>
-      <div className="px-2 pb-2">
+      <div className="px-4 pb-2">
         <SearchInput
           label="Search your conversations"
           onChange={props.onQueryChange}
@@ -133,7 +128,7 @@ export function ConversationSidebar(props: {
       </div>
       <div
         className={cn(
-          "px-1.5",
+          "px-3",
           isLanding
             ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
             : "min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
@@ -164,8 +159,8 @@ export function ConversationSidebar(props: {
               entry.kind === "section" ? (
                 <h3
                   className={cn(
-                    "m-0 px-2.5 pb-0.5 font-display text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/55",
-                    entry.first ? "pt-1.5" : "pt-4",
+                    "m-0 px-3 pb-1 font-sans text-xs font-medium text-dashboard-text-muted",
+                    entry.first ? "pt-1" : "pt-3",
                   )}
                 >
                   {entry.label}
@@ -173,6 +168,9 @@ export function ConversationSidebar(props: {
               ) : (
                 <ConversationSidebarRow
                   conversation={entry.conversation}
+                  finishedSinceSeen={props.finishedConversationIds.has(
+                    entry.conversation.id,
+                  )}
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
                   selected={entry.conversation.id === props.selectedId}
@@ -226,11 +224,11 @@ function ConversationRowsLoading() {
       <span className="sr-only">Loading your conversations</span>
       <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 7 }, (_, index) => (
-        <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
+        <div className="grid gap-1 rounded-lg px-3 py-2" key={index}>
           <Skeleton
-            className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
+            className={cn("h-4", index % 3 === 0 ? "w-4/5" : "w-3/5")}
           />
-          <Skeleton className="h-2.5 w-2/5 opacity-70" />
+          <Skeleton className="h-3 w-2/5 opacity-70" />
         </div>
       ))}
     </div>
@@ -255,44 +253,9 @@ function conversationSidebarEntries(
   ]);
 }
 
-/** Status glyph for a sidebar row; private rows use the lock instead of a dot. */
-function ConversationListStatusIcon(props: {
-  isPrivate: boolean;
-  status: VisualStatus;
-}) {
-  if (props.isPrivate) {
-    return (
-      <LockKeyhole
-        aria-label="Private conversation"
-        className={cn(
-          "size-3 shrink-0",
-          props.status === "active" &&
-            "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
-          props.status === "failed" && "text-rose-300",
-          props.status === "idle" && "text-dashboard-text-muted",
-        )}
-      />
-    );
-  }
-
-  if (props.status === "active") {
-    return <ActiveIndicator className="size-1.5" />;
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        props.status === "failed" && "bg-rose-300",
-        props.status === "idle" && "bg-white/25",
-      )}
-    />
-  );
-}
-
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
+  finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   selected: boolean;
@@ -330,20 +293,24 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-md px-2.5 py-1.5 text-inherit no-underline transition-colors hover:bg-white/[0.04] max-sm:pr-10",
-          props.selected && "bg-white/[0.06]",
+          "block min-w-0 rounded-lg px-3 py-2 text-inherit no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+          props.selected && "bg-dashboard-surface-active",
         )}
         to={conversationPath(props.conversation.id)}
       >
         <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5">
           <div className="col-start-1 row-start-1 mt-[0.3rem] grid size-3 shrink-0 place-items-center">
-            <ConversationListStatusIcon isPrivate={isPrivate} status={status} />
+            <ConversationListStatusIcon
+              finishedSinceSeen={props.finishedSinceSeen}
+              isPrivate={isPrivate}
+              status={status}
+            />
           </div>
-          <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
+          <div className="col-start-2 row-start-1 min-w-0 truncate font-sans text-sm font-medium leading-snug text-dashboard-text">
             {title}
           </div>
           {hasMeta ? (
-            <div className="col-start-2 row-start-2 mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-2xs leading-tight text-dashboard-text-muted">
+            <div className="col-start-2 row-start-2 mt-1 flex min-w-0 items-center gap-1.5 font-sans text-xs leading-tight text-dashboard-text-muted">
               {showLocation ? (
                 <span className="truncate">{location}</span>
               ) : null}
@@ -356,7 +323,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       </Link>
       <button
         aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-        className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35 sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
+        className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
@@ -446,7 +413,7 @@ function ArchivedConversationNotice(props: {
     >
       {restore.error ? (
         <div
-          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-mono text-xs text-rose-50/85"
+          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-sans text-xs text-rose-50/85"
           role="alert"
         >
           Could not restore the conversation.

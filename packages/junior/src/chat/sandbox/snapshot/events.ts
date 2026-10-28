@@ -1,11 +1,11 @@
 import type {
-  PluginResourceEvents,
-  ResourceEvent,
+  PluginEvents,
+  Event,
   SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { CORE_RESOURCE_EVENT_NAMESPACE } from "@/chat/resource-events/catalog";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 
-export const WORKSPACE_SNAPSHOT_NAMESPACE = CORE_RESOURCE_EVENT_NAMESPACE;
+export const WORKSPACE_SNAPSHOT_NAMESPACE = CORE_EVENT_NAMESPACE;
 export const WORKSPACE_SNAPSHOT_RESOURCE_TYPE = "workspace_snapshot";
 export const WORKSPACE_SNAPSHOT_READY_EVENT = "workspace_snapshot.ready";
 export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
@@ -16,7 +16,7 @@ export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
  * Uses the same registration shape as plugins so search, guidance, and tool
  * schemas treat these events like any other resource type.
  */
-export function workspaceSnapshotResourceEvents(): PluginResourceEvents {
+export function workspaceSnapshotEvents(): PluginEvents {
   return {
     resourceTypes: [
       {
@@ -60,16 +60,12 @@ type WorkspaceSnapshotResult = {
   workspaceId: string;
   resultId: string;
   occurredAtMs?: number;
-} &
-  (
-    | { status: "ready" }
-    | { status: "failed"; error?: string | null }
-  );
+} & ({ status: "ready" } | { status: "failed"; error?: string | null });
 
 /** Report that a Workspace snapshot build is ready or failed. */
 export function workspaceSnapshotFinishedEvent(
   input: WorkspaceSnapshotResult,
-): ResourceEvent {
+): Event {
   const occurredAtMs = input.occurredAtMs ?? Date.now();
   const eventType =
     input.status === "ready"
@@ -79,7 +75,7 @@ export function workspaceSnapshotFinishedEvent(
     input.status === "ready"
       ? "Workspace snapshot is ready."
       : "Workspace snapshot build failed.";
-  const event: ResourceEvent = {
+  const event: Event = {
     eventKey: `${WORKSPACE_SNAPSHOT_NAMESPACE}:${input.workspaceId}:${input.resultId}:${input.status}`,
     eventType,
     identifier: input.workspaceId,

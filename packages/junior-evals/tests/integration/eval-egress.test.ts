@@ -1,5 +1,7 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createConnection } from "node:net";
+import { once } from "node:events";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { startEvalEgress } from "../../src/eval-egress";
@@ -32,6 +34,7 @@ afterEach(() => {
 describe("eval egress", () => {
   it("retries a failed Quick Tunnel allocation through teardown", async () => {
     let resetCount = 0;
+    const resetTimes: number[] = [];
     let publicVerificationAttempts = 0;
     const fixtureDir = await mkdtemp(path.join(tmpdir(), "eval-egress-test-"));
     const cloudflaredPath = path.join(fixtureDir, "cloudflared");
@@ -79,36 +82,54 @@ setInterval(() => undefined, 1000);
 
     try {
       const egress = await startEvalEgress({
-        readFixtureState: () => ({ resetCount }),
-        resetFixtures: () => {
+        readFixtureState: () => ({ resetCount, resetTimes }),
+        resetFixtures: ({ nowMs }) => {
           resetCount += 1;
+          resetTimes.push(nowMs);
         },
         verifyPublicUrl: async () => {
           publicVerificationAttempts += 1;
+          if (publicVerificationAttempts === 1)
+            throw new Error("DNS not ready");
         },
       });
-      expect(publicVerificationAttempts).toBe(1);
-      await expect(readFile(attemptMarker, "utf8")).resolves.toBe("2");
+      expect(publicVerificationAttempts).toBe(2);
+      await expect(readFile(attemptMarker, "utf8")).resolves.toBe("3");
       expect(egress.baseUrl).toBe("https://eval-suite.trycloudflare.com");
       await expect(
         fetch(egress.controlUrl, {
           method: "POST",
           headers: { authorization: `Bearer ${egress.controlToken}` },
+          body: JSON.stringify({ nowMs: 1_000 }),
         }).then((response) => response.status),
       ).resolves.toBe(204);
       await expect(
         fetch(egress.controlUrl, {
           method: "POST",
           headers: { authorization: `Bearer ${egress.controlToken}` },
+          body: JSON.stringify({ nowMs: 2_000 }),
         }).then((response) => response.status),
       ).resolves.toBe(204);
       await expect(
         fetch(egress.stateUrl, {
           headers: { authorization: `Bearer ${egress.controlToken}` },
         }).then((response) => response.json()),
-      ).resolves.toEqual({ resetCount: 2 });
-      await egress.close();
-      await expect(egress.close()).resolves.toBeUndefined();
+      ).resolves.toEqual({ resetCount: 2, resetTimes: [1_000, 2_000] });
+      // A disconnected tunnel can leave a partial HTTP request on the proxy.
+      const socket = createConnection({
+        host: "127.0.0.1",
+        port: Number(new URL(egress.controlUrl).port),
+      });
+      try {
+        await once(socket, "connect");
+        socket.write("GET /health HTTP/1.1\r\nHost: localhost\r\n");
+        const disconnected = once(socket, "close");
+        await egress.close();
+        await disconnected;
+        await expect(egress.close()).resolves.toBeUndefined();
+      } finally {
+        socket.destroy();
+      }
       await expect(readFile(closeMarker, "utf8")).resolves.toBe("closed");
     } finally {
       await rm(fixtureDir, { force: true, recursive: true });

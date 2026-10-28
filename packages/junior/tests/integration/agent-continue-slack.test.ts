@@ -651,9 +651,9 @@ describe("paused turn Slack integration", () => {
     expect(agentRuns).toEqual([]);
   });
 
-  it("resumes resource-event turns with the rebuilt system actor", async () => {
+  it("resumes event turns with the rebuilt system actor", async () => {
     const conversationId = "slack:C123:1712345.0012";
-    const sessionId = "turn_resource-event-msg_12";
+    const sessionId = "turn_event-msg_12";
     const storedSource = slackSource("1712345.0012");
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
@@ -680,7 +680,7 @@ describe("paused turn Slack integration", () => {
         compactions: [],
         messages: [
           {
-            id: "resource-event-msg.12",
+            id: "event-msg.12",
             role: "user",
             text: "subscribed PR checks failed",
             createdAtMs: 1,
@@ -709,9 +709,9 @@ describe("paused turn Slack integration", () => {
     expect(continued).toBe(true);
     expect(agentRuns).toHaveLength(1);
     expect(agentRuns[0]).toMatchObject({
-      actor: { platform: "system", name: "resource-event" },
+      actor: { platform: "system", name: "event" },
       credentialContext: {
-        actor: { platform: "system", name: "resource-event" },
+        actor: { platform: "system", name: "event" },
       },
       destination: SLACK_DESTINATION,
       source: storedSource,

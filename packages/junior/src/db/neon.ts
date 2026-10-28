@@ -10,6 +10,8 @@ import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
+import { traceQueries } from "./tracing";
+import { logException } from "@/chat/logging";
 
 type QueryClient = Pool | PoolClient | Client;
 
@@ -19,8 +21,15 @@ export type NeonJuniorSqlExecutor = JuniorSqlExecutor;
 class NeonExecutor implements NeonJuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
   private savepointId = 0;
+  private isolatedQueryId = 0;
 
-  constructor(private readonly pool: Pool) {}
+  private readonly pool: Pool;
+  private readonly connectionString: string;
+
+  constructor(pool: Pool, connectionString: string) {
+    this.pool = pool;
+    this.connectionString = connectionString;
+  }
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {
@@ -43,6 +52,27 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
       ...params,
     ]);
     return result.rows as T[];
+  }
+
+  async queryIsolated<T = unknown>(
+    statement: string,
+    params: readonly unknown[] = [],
+  ): Promise<T[]> {
+    const client = traceQueries(await this.pool.connect(), {
+      connectionString: this.connectionString,
+      driver: "neon",
+    });
+    try {
+      // A named statement uses the extended protocol, which accepts one statement only.
+      const result = await client.query<QueryResultRow>({
+        name: `junior_isolated_${++this.isolatedQueryId}`,
+        text: statement,
+        values: [...params],
+      });
+      return result.rows as T[];
+    } finally {
+      client.release(true);
+    }
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
@@ -135,7 +165,10 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return this.transactionClient.getStore() ?? this.pool;
+    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
+      connectionString: this.connectionString,
+      driver: "neon",
+    });
   }
 }
 
@@ -144,11 +177,15 @@ export function createNeonJuniorSqlExecutor(args: {
   connectionString: string;
   statementTimeoutMs?: number | false;
 }): NeonJuniorSqlExecutor {
-  return new NeonExecutor(
-    new Pool({
-      connectionString: args.connectionString,
-      max: 3,
-      statement_timeout: args.statementTimeoutMs,
-    }),
-  );
+  const pool = new Pool({
+    connectionString: args.connectionString,
+    max: 3,
+    statement_timeout: args.statementTimeoutMs,
+  });
+  // An idle client can fail when the server closes it. The pool replaces the
+  // client, so report the error instead of crashing the process.
+  pool.on("error", (error: Error) => {
+    logException(error, "db.pool.client.failed", { "app.db.driver": "neon" });
+  });
+  return new NeonExecutor(pool, args.connectionString);
 }

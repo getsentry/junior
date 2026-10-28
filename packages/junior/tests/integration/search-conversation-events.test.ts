@@ -26,7 +26,7 @@ function context(): ToolRuntimeContext {
       channelId: "C123",
       threadTs: "1700000000.100000",
     },
-    source: { kind: "scheduled_task" },
+    source: { kind: "scheduled_automation" },
     egress: {
       async fetch() {
         return new Response("ok");
@@ -280,7 +280,7 @@ describe("searchConversationEvents", () => {
         conversationId: CURRENT_CONVERSATION_ID,
         seq: 0,
         historyVersion: 1,
-        schemaVersion: 2,
+        schemaVersion: 99,
         type: "handoff",
         payload: {
           modelId: "future/model",

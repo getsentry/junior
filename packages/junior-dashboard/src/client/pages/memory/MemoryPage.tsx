@@ -34,9 +34,11 @@ import { cn } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
+  useMemorySearchCounts,
 } from "./memoryDashboard";
 import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
 import { MemoryPageLayout } from "./MemoryPageLayout";
+import { MemorySearchHighlight } from "./MemorySearchHighlight";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
@@ -151,6 +153,11 @@ function MemoryLibrary(props: {
     setSearchText,
   } = usePluginUserPageData(props.page);
   const dashboardQuery = useMemoryDashboardData();
+  const searchCountsQuery = useMemorySearchCounts(searchQuery);
+  // Tab totals follow the search. Without a search, the summary owns them.
+  const counts = searchQuery
+    ? searchCountsQuery.data
+    : dashboardQuery.data?.stats;
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
@@ -217,17 +224,17 @@ function MemoryLibrary(props: {
         ariaLabel="Memory collections"
         items={[
           {
-            count: dashboardQuery.data?.stats?.active,
+            count: counts?.active,
             label: "All",
             value: "",
           },
           {
-            count: dashboardQuery.data?.stats?.personal,
+            count: counts?.personal,
             label: "Private",
             value: "private",
           },
           {
-            count: dashboardQuery.data?.stats?.public,
+            count: counts?.public,
             label: "Public",
             value: "public",
           },
@@ -274,6 +281,7 @@ function MemoryLibrary(props: {
                   )
                 }
                 record={record}
+                searchQuery={searchQuery}
                 selected={record.id === memoryId}
               />
             ))}
@@ -307,7 +315,7 @@ function MemoryListHeader() {
   return (
     <div
       className={cn(
-        "hidden items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid",
+        "hidden items-center gap-3 border-b border-dashboard-border px-4 py-2.5 text-left font-sans font-medium text-xs text-dashboard-text-muted sm:grid",
         MEMORY_GRID,
       )}
       role="row"
@@ -336,7 +344,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
     {
       detail: "workspace shareable",
       label: "Public",
-      tone: "text-cyan-100",
+      tone: "text-dashboard-accent-text",
       value: stats.public.toLocaleString("en-US"),
     },
     {
@@ -348,11 +356,11 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   return (
     <section
       aria-label="Memory summary"
-      className="grid grid-cols-2 gap-px border-y border-white/[0.06] bg-white/[0.06] lg:grid-cols-4"
+      className="grid grid-cols-2 gap-px border-y border-dashboard-border-subtle bg-dashboard-fill-hover lg:grid-cols-4"
     >
       {items.map((item) => (
-        <div className="bg-[#050507] px-4 py-4 sm:px-5" key={item.label}>
-          <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+        <div className="bg-dashboard-bg px-4 py-4 sm:px-5" key={item.label}>
+          <div className="font-sans font-medium text-xs text-dashboard-text-muted">
             {item.label}
           </div>
           <div
@@ -363,7 +371,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
           >
             {item.value}
           </div>
-          <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             {item.detail}
           </div>
         </div>
@@ -379,10 +387,10 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
       <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
         What Junior remembers
       </h2>
-      <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+      <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
         Across personal and public scopes.
       </p>
-      <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
+      <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
         <OverviewBreakdownRow
           detail="Almost entirely personal"
           icon={UserRound}
@@ -414,10 +422,10 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
       <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
         How they got here
       </h2>
-      <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+      <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
         Same totals, split by how they were written.
       </p>
-      <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
+      <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
         <OverviewBreakdownRow
           detail="Passive extraction after runs"
           icon={Sparkles}
@@ -449,15 +457,15 @@ function OverviewBreakdownRow(props: {
 }) {
   const Icon = props.icon;
   return (
-    <div className="flex items-center gap-3 bg-[#09090b] px-3 py-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted">
+    <div className="flex items-center gap-3 bg-dashboard-bg-elevated px-3 py-3">
+      <div className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
         <Icon aria-hidden="true" size={15} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="font-display text-base font-medium text-dashboard-text">
           {props.label}
         </div>
-        <div className="mt-0.5 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <div className="mt-0.5 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {props.detail}
         </div>
       </div>
@@ -472,6 +480,7 @@ function MemoryRow(props: {
   first: boolean;
   onSelect(): void;
   record: PluginUserPageRecord;
+  searchQuery: string;
   selected: boolean;
 }) {
   const kind = metadataValue(props.record, "Type");
@@ -483,7 +492,7 @@ function MemoryRow(props: {
     <SelectableRow
       className={cn(
         "flex items-stretch",
-        !props.first && "border-t border-white/[0.055]",
+        !props.first && "border-t border-dashboard-border-subtle",
       )}
       onSelect={props.onSelect}
       selected={props.selected}
@@ -506,10 +515,13 @@ function MemoryRow(props: {
               size={14}
             />
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
-              {props.record.title}
+              <MemorySearchHighlight
+                query={props.searchQuery}
+                text={props.record.title}
+              />
             </h3>
           </div>
-          <div className="mt-1.5 truncate font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1.5 truncate font-sans text-xs leading-relaxed text-dashboard-text-muted">
             Source: {source}
             <span className="sm:hidden">
               {" "}

@@ -29,8 +29,8 @@ export const realAgentRunner: AgentRunner = {
 
 /** Create native Turn execution with a test AgentRunner. */
 export function createTestTurnExecution(agentRunner: AgentRunner): ExecuteTurn {
-  return async (run, saveResult, timeoutMs) =>
-    await executeTurn(agentRunner, run, saveResult, timeoutMs);
+  return async (run, saveResult) =>
+    await executeTurn(agentRunner, run, saveResult);
 }
 
 /** Run the real agent while replacing only model output. */

@@ -6,6 +6,7 @@ import { Field } from "../../components/Field";
 import { InlineError } from "../../components/InlineError";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
+import { formatSandboxSize } from "./SandboxSizeSummary";
 import {
   createRepoDraft,
   type RepoDraft,
@@ -15,6 +16,7 @@ import {
 type WorkspaceEditorProps = {
   busy: boolean;
   canSave: boolean;
+  defaultVcpus: number | null;
   draft: WorkspaceDraft;
   error?: string;
   editing: boolean;
@@ -114,7 +116,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           <div className="grid gap-3">
             {props.draft.repos.map((repo, index) => (
               <div
-                className="grid gap-3 rounded-lg border border-white/10 bg-black/20 p-3 sm:p-4"
+                className="grid gap-3 rounded-lg border border-dashboard-border-strong bg-dashboard-overlay-soft p-3 sm:p-4"
                 key={repo.key}
               >
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_auto] sm:items-end">
@@ -169,12 +171,16 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
             <>
               Runs once while Junior builds the reusable snapshot. Current
               working directory is{" "}
-              <code className="text-dashboard-text">$JUNIOR_WORKSPACE_ROOT</code>{" "}
+              <code className="text-dashboard-text">
+                $JUNIOR_WORKSPACE_ROOT
+              </code>{" "}
               (the Sandbox root, usually{" "}
               <code className="text-dashboard-text">/vercel/sandbox</code>).
               Cloned repositories live under{" "}
-              <code className="text-dashboard-text">$JUNIOR_REPOS_ROOT</code>{" "}
-              (<code className="text-dashboard-text">$JUNIOR_WORKSPACE_ROOT/repos</code>
+              <code className="text-dashboard-text">$JUNIOR_REPOS_ROOT</code> (
+              <code className="text-dashboard-text">
+                $JUNIOR_WORKSPACE_ROOT/repos
+              </code>
               ). Use those variables instead of hard-coded absolute paths.
             </>
           }
@@ -196,9 +202,26 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           />
         </Field>
 
+        <Field
+          help="Sandbox vCPUs for this Workspace. Each vCPU adds 2 GB of memory. Leave empty to use the app default."
+          htmlFor="workspace-vcpus"
+          label="vCPUs"
+        >
+          <TextInput
+            autoComplete="off"
+            id="workspace-vcpus"
+            inputMode="numeric"
+            onChange={(event) =>
+              props.onChange({ ...props.draft, vcpus: event.target.value })
+            }
+            placeholder={formatSandboxSize(props.defaultVcpus)}
+            value={props.draft.vcpus}
+          />
+        </Field>
+
         {props.error ? <InlineError>{props.error}</InlineError> : null}
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-5">
+        <div className="flex flex-wrap items-center gap-3 border-t border-dashboard-border-subtle pt-5">
           <Button disabled={!props.canSave} type="submit">
             {props.busy
               ? "Saving…"

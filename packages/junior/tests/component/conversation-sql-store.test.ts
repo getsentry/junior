@@ -27,12 +27,12 @@ import {
 } from "../fixtures/conversation-work";
 import {
   createConfiguredJuniorSqlFixture,
-  createLocalJuniorSqlFixture,
+  createJuniorSqlFixture,
 } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
   it("binds one provider conversation to an existing durable conversation", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -89,7 +89,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects provider conversation rebinding to another conversation", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -127,7 +127,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects updates to a child whose parent has no persisted root", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -168,7 +168,7 @@ describe("conversation SQL store", () => {
   });
 
   it("requires a destination on first root upsert", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -188,7 +188,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists queryable conversation records and linked identities", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -384,7 +384,7 @@ describe("conversation SQL store", () => {
   });
 
   it("links actor identities to users by case-insensitive verified email", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -493,7 +493,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects a provider account already linked to another user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -537,7 +537,7 @@ describe("conversation SQL store", () => {
   });
 
   it("falls back to the provider name when an actor has no linked user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -575,7 +575,7 @@ describe("conversation SQL store", () => {
   });
 
   it("preserves an existing verified identity email when linking its user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -647,7 +647,7 @@ describe("conversation SQL store", () => {
   }, 15_000);
 
   it("fills missing actor identity from later trusted profile observations", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -694,7 +694,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists session source set-once and ignores later turn anchors", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -757,7 +757,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists visibility from source signals and converges on newer signals", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -824,7 +824,7 @@ describe("conversation SQL store", () => {
   });
 
   it("leaves Slack visibility missing without a live signal", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -854,7 +854,7 @@ describe("conversation SQL store", () => {
   });
 
   it("resolves a known Slack destination by exact display name", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -899,7 +899,7 @@ describe("conversation SQL store", () => {
   });
 
   it("fails closed when a destination display name is ambiguous", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -940,7 +940,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects legacy JSON metadata that was not migrated to foreign keys", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1000,7 +1000,7 @@ INSERT INTO junior_conversations (
   });
 
   it("keeps newer SQL execution when a stale mirror arrives later", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1054,15 +1054,30 @@ INSERT INTO junior_conversations (
   });
 
   it("replaces the matching run metrics after execution cursor changes", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
-        createdAtMs: 1_000,
+        createdAtMs: 500,
         destination: inboundMessage("exec-metrics").destination,
+        execution: {
+          runId: "run-opaque",
+          status: "running",
+          updatedAtMs: 1_000,
+        },
+        metrics: {
+          durationMs: 100,
+          usage: { totalTokens: 100, cost: { total: 0.01 } },
+        },
+        lastActivityAtMs: 1_000,
+        updatedAtMs: 1_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
         execution: {
           runId: "run-1",
           status: "running",
@@ -1070,7 +1085,14 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_000,
-          usage: { totalTokens: 10, cost: { total: 0.01 } },
+          usage: {
+            inputTokens: 4,
+            outputTokens: 2,
+            cachedInputTokens: 3,
+            cacheCreationTokens: 1,
+            reasoningTokens: 1,
+            cost: { total: 0.01 },
+          },
         },
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
@@ -1097,10 +1119,29 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_500,
-          usage: { totalTokens: 15, cost: { total: 0.015 } },
+          usage: {
+            inputTokens: 5,
+            outputTokens: 3,
+            cachedInputTokens: 5,
+            cacheCreationTokens: 2,
+            reasoningTokens: 2,
+            cost: { total: 0.015 },
+          },
         },
         lastActivityAtMs: 4_000,
         updatedAtMs: 4_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-1",
+          status: "running",
+          updatedAtMs: 3_500,
+        },
+        metrics: { durationMs: 1, usage: { totalTokens: 1 } },
+        lastActivityAtMs: 3_500,
+        updatedAtMs: 3_500,
       });
 
       const [metrics] = await fixture.sql.query<{
@@ -1121,18 +1162,42 @@ WHERE conversation_id = $1
         [CONVERSATION_ID],
       );
       expect(metrics).toMatchObject({
-        durationMs: 1_500,
+        durationMs: 1_600,
         executionDurationMs: 1_500,
         metricRunId: "run-1",
-        usage: { cost: { total: 0.015 }, totalTokens: 15 },
+        usage: {
+          cost: { total: 0.025 },
+          reasoningTokens: 2,
+          totalTokens: 115,
+        },
       });
+      expect(
+        await fixture.sql.query<{ metric: string; value: number }>(
+          `
+SELECT metric, value
+FROM junior_conversation_metrics
+WHERE conversation_id = $1 AND run_id = 'run-1'
+ORDER BY metric
+`,
+          [CONVERSATION_ID],
+        ),
+      ).toEqual([
+        { metric: "cache_creation_tokens", value: 2 },
+        { metric: "cached_input_tokens", value: 5 },
+        { metric: "cost_usd", value: 0.015 },
+        { metric: "duration_ms", value: 1_500 },
+        { metric: "input_tokens", value: 5 },
+        { metric: "output_tokens", value: 3 },
+        { metric: "reasoning_tokens", value: 2 },
+        { metric: "total_tokens", value: 15 },
+      ]);
     } finally {
       await fixture.close();
     }
   });
 
   it("keeps SQL execution timestamps when a fresh summary omits them", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1183,7 +1248,7 @@ WHERE conversation_id = $1
   });
 
   it("keeps the earliest creation time across SQL metadata updates", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1377,7 +1442,7 @@ WHERE conversation_id = $1
   });
 
   it("mirrors worker check-ins into SQL execution progress", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       vi.useFakeTimers({ now: 1_000 });
@@ -1431,7 +1496,7 @@ WHERE conversation_id = $1
   });
 
   it("mirrors mailbox drains into SQL execution progress", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await disconnectStateAdapter();

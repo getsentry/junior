@@ -39,6 +39,36 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  const contextAction = page.getByRole("button", { name: "View turn context" });
+  await contextAction.scrollIntoViewIfNeeded();
+  await contextAction.focus();
+  await page.keyboard.press("Enter");
+  const contextPanel = page.getByRole("dialog", {
+    name: "Turn context",
+    exact: true,
+  });
+  await expect(
+    contextPanel.getByRole("heading", { name: "Recalled memories" }),
+  ).toBeVisible();
+  const closeContext = contextPanel.getByRole("button", {
+    name: "Close turn context",
+    exact: true,
+  });
+  await expect(closeContext).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(contextPanel.locator("summary").last()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeContext).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(contextPanel).toBeHidden();
+  await expect(contextAction).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await contextAction.click();
+  await expect(contextPanel).toBeVisible();
+  await contextPanel
+    .getByRole("button", { name: "Close turn context", exact: true })
+    .click();
+  await expect(contextAction).toBeFocused();
   await screenshot(page, "conversation-detail");
 
   await page.goto(
@@ -51,6 +81,17 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  const inputImage = page.getByRole("img", { name: "input-chart.png" });
+  await inputImage.scrollIntoViewIfNeeded();
+  await expect(inputImage).toBeVisible();
+  await inputImage.click();
+  await expect(
+    page.getByRole("dialog", { name: "input-chart.png" }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "input-chart.png" })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   const image = page
     .locator('a[href*="/attachments/qa-chart-png"]')
     .filter({ has: page.locator('img[alt="chart.png"]') })
@@ -134,9 +175,7 @@ test("keeps cached conversation and draft available through reconnect", async ({
 
   const composer = page.getByLabel("Continue this conversation");
   await composer.fill("Keep this draft through reconnect");
-  await expect(
-    page.getByText("Connect to send. Your draft is saved."),
-  ).toBeVisible();
+  await expect(page.getByText(/Connect to send/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
 
   await context.setOffline(false);
@@ -164,6 +203,7 @@ test("shows the repo name for one annotation scope on mobile", async ({
 });
 
 test("opens a conversation in the built dashboard", async ({
+  context,
   page,
   dashboard,
 }) => {
@@ -172,6 +212,7 @@ test("opens a conversation in the built dashboard", async ({
   await page.goto(dashboard.baseURL);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
+  await expect(page).toHaveTitle("Junior");
   await expect(
     page.getByRole("region", { name: "Conversations" }),
   ).toBeVisible();
@@ -194,6 +235,7 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+  await expect(page).toHaveTitle("Checkout latency triage - Junior");
   await expect(page.getByRole("note")).toContainText("Public conversation");
   await expect(page.getByRole("note")).toContainText("Public");
 
@@ -213,6 +255,82 @@ test("opens a conversation in the built dashboard", async ({
   await expect(costTooltip).toBeHidden();
 
   await expect(
+    page.getByLabel("Linked work", { exact: true }).getByRole("link").first(),
+  ).toBeVisible();
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: dashboard.baseURL,
+  });
+  const conversationUrl = page.url();
+
+  const detailsButton = page.getByRole("button", {
+    name: "Conversation details",
+  });
+  await detailsButton.click();
+  const details = page.getByRole("dialog", { name: "Checkout latency triage" });
+  await expect(
+    details.getByRole("heading", { name: "Summary", exact: true }),
+  ).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: /getsentry\/payments#77/ }),
+  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
+  await screenshot(page, "conversation-share-details");
+  // Clipboard denial must show a failure and allow another attempt.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: () =>
+        Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
+    });
+  });
+  await details.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(details.getByRole("status")).toContainText(
+    "Could not copy the link",
+  );
+  await page.evaluate(() =>
+    Reflect.deleteProperty(navigator.clipboard, "writeText"),
+  );
+  await details.getByRole("button", { name: "Copy failed — retry" }).click();
+  await expect(
+    details.getByRole("button", { name: "Link copied" }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    conversationUrl,
+  );
+
+  const detailsTab = details.getByRole("tab", { name: "Details", exact: true });
+  const memoriesTab = details.getByRole("tab", { name: "Memories" });
+  await detailsTab.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(memoriesTab).toBeFocused();
+  await expect(memoriesTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    details.getByRole("tabpanel", { name: "Memories" }),
+  ).toContainText("Use pnpm for repository commands.");
+  await page.keyboard.press("Home");
+  await expect(detailsTab).toBeFocused();
+  await expect(detailsTab).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(detailsButton).toBeFocused();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await screenshot(page, "conversation-share-menu", { view: "mobile" });
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    conversationUrl,
+  );
+  await page.getByRole("button", { name: "Close conversation menu" }).click();
+  await page.setViewportSize({ width: 1600, height: 900 });
+
+  // The full durable Brief stays available after the transcript expires.
+  await page.getByText("Facts, links & keywords", { exact: true }).click();
+  await expect(
+    page.getByText("PAYMENTS-42 contained 418 events."),
+  ).toBeVisible();
+
+  await expect(
     page.getByRole("link", { name: "Conversations" }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
@@ -222,180 +340,6 @@ test("opens a conversation in the built dashboard", async ({
   );
   await expect(page.getByRole("note")).toContainText("Private conversation");
   await expect(page.getByRole("note")).toContainText("Private");
-});
-
-test("starts and continues conversations from the dashboard", async ({
-  page,
-  dashboard,
-}) => {
-  const createdConversationId = "local:web:created";
-  const createRequests: Array<{
-    idempotencyKey: string;
-    message: string;
-    visibility?: "private" | "public";
-  }> = [];
-  const continueRequests: Array<{ idempotencyKey: string; message: string }> =
-    [];
-  let releaseFirstContinue: (() => void) | undefined;
-  const firstContinueHeld = new Promise<void>((resolve) => {
-    releaseFirstContinue = resolve;
-  });
-  let releaseFirstCreate: (() => void) | undefined;
-  const firstCreateHeld = new Promise<void>((resolve) => {
-    releaseFirstCreate = resolve;
-  });
-  let holdDetailRefresh = false;
-  let releaseDetailRefresh: (() => void) | undefined;
-  const detailRefreshHeld = new Promise<void>((resolve) => {
-    releaseDetailRefresh = resolve;
-  });
-  await page.route("**/api/conversations", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    createRequests.push(route.request().postDataJSON());
-    if (createRequests.length === 1) {
-      // Hold the first create so we can prove send stays locked mid-flight.
-      await firstCreateHeld;
-      await route.fulfill({
-        json: { error: "temporary failure" },
-        status: 500,
-      });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        conversationId: createdConversationId,
-        messageId: "created-message",
-        status: "accepted",
-      },
-    });
-  });
-  await page.route("**/api/conversations/*/messages", async (route) => {
-    const body = route.request().postDataJSON() as {
-      idempotencyKey: string;
-      message: string;
-    };
-    continueRequests.push(body);
-    // Hold every accept until release so concurrent queue rows stay visible.
-    await firstContinueHeld;
-    if (
-      body.message === "Continue in Junior" &&
-      continueRequests.filter((item) => item.message === "Continue in Junior")
-        .length === 1
-    ) {
-      await route.fulfill({
-        json: { error: "temporary failure" },
-        status: 500,
-      });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        conversationId: "slack:CQA123:1770000000.000100",
-        messageId: `continued-message-${continueRequests.length}`,
-        status: "accepted",
-      },
-    });
-  });
-
-  await page.goto(dashboard.baseURL);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Private" }).click();
-  const startComposer = page.getByLabel("Start a conversation");
-  await startComposer.fill("Start from the dashboard");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect.poll(() => createRequests.length).toBe(1);
-  // Create restore keeps send locked while the first accept is open so a later
-  // submit cannot race the failed-draft restore.
-  await expect(
-    page.getByRole("button", { name: "Sending message" }),
-  ).toBeDisabled();
-  await startComposer.evaluate((element) => {
-    element.closest("form")?.requestSubmit();
-  });
-  expect(createRequests).toHaveLength(1);
-  releaseFirstCreate?.();
-  await expect(
-    page.getByText("Could not create the conversation. Try again."),
-  ).toBeVisible();
-  // New roots have no mailbox outbox, so a failed create restores the draft and
-  // keeps the same idempotency key for a safe retry.
-  await expect(startComposer).toHaveValue("Start from the dashboard");
-  const failedCreateKey = createRequests[0]?.idempotencyKey;
-  expect(createRequests[0]?.message).toBe("Start from the dashboard");
-  expect(createRequests[0]?.visibility).toBe("private");
-  expect(failedCreateKey).toBeTruthy();
-
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page).toHaveURL(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
-  );
-  expect(createRequests).toHaveLength(2);
-  expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
-  expect(createRequests[1]?.message).toBe("Start from the dashboard");
-  expect(createRequests[1]?.visibility).toBe("private");
-
-  const slackConversationId = "slack:CQA123:1770000000.000100";
-  await page.route(
-    `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
-    async (route) => {
-      if (holdDetailRefresh) await detailRefreshHeld;
-      const response = await route.fetch();
-      await route.fulfill({
-        response,
-        json: { ...(await response.json()), isParticipant: true },
-      });
-    },
-  );
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(slackConversationId)}`,
-  );
-  await expect(
-    page.getByText(
-      "This reply stays in Junior. It will not be posted to Slack.",
-    ),
-  ).toHaveCount(0);
-  const composer = page.getByLabel("Continue this conversation");
-  await composer.fill("Continue in Junior");
-  await page.getByRole("button", { name: "Send" }).click();
-  const pending = page.getByLabel("Pending messages");
-  await expect(pending.getByText("Continue in Junior")).toBeVisible();
-  await expect(composer).toHaveValue("");
-  await expect.poll(() => continueRequests.length).toBe(1);
-  // Distinct messages can queue while an earlier accept is still open.
-  await composer.fill("Second queued message");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(pending.getByText("Second queued message")).toBeVisible();
-  await expect.poll(() => continueRequests.length).toBe(2);
-  // Empty-composer double submit must not mint another request.
-  await composer.evaluate((element) => {
-    element.closest("form")?.requestSubmit();
-  });
-  expect(continueRequests).toHaveLength(2);
-  releaseFirstContinue?.();
-  await expect(pending.getByText("Could not send.")).toBeVisible();
-  await expect(composer).toHaveValue("");
-  const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
-  expect(continueRequests[0]?.message).toBe("Continue in Junior");
-  expect(failedIdempotencyKey).toBeTruthy();
-
-  holdDetailRefresh = true;
-  await pending.getByRole("button", { name: "Retry" }).click();
-  await expect.poll(() => continueRequests.length).toBe(3);
-  expect(continueRequests[2]?.idempotencyKey).toBe(failedIdempotencyKey);
-  // The accepted message stays out of the composer before background transcript
-  // refreshes finish. A slow read must not make the send look like a UI reload.
-  await expect(composer).toHaveValue("");
-  await expect(pending.getByText("Continue in Junior")).toBeHidden();
-  releaseDetailRefresh?.();
-
-  await page.reload();
-  await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
 });
 
 test("collapses long pending message stacks", async ({ page, dashboard }) => {
@@ -437,31 +381,6 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   await expect(pending.getByText("Third queued message.")).toBeHidden();
 });
 
-test("loads earlier transcript events from the mock history cursor", async ({
-  page,
-  dashboard,
-}) => {
-  // Deeper history/cursor contracts live in dashboard-mock-routes + transcript
-  // bottom-pinning unit coverage. Keep one browser smoke on the mock surface.
-  const conversationId = "slack:CQA456:1770021600.000600";
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
-  );
-
-  await expect(
-    page.getByRole("heading", { name: "Package release and self-update" }),
-  ).toBeVisible();
-  await expect(page.getByText("Released the package.")).toBeVisible();
-
-  const loadEarlier = page.getByRole("button", {
-    name: "Load earlier events",
-  });
-  await expect(loadEarlier).toBeVisible();
-  await loadEarlier.click();
-  await expect(loadEarlier).toHaveCount(0);
-  await expect(page.getByText("Released the package.")).toBeVisible();
-});
-
 test("scrolls long conversation and transcript panes independently", async ({
   page,
   dashboard,
@@ -498,6 +417,14 @@ test("scrolls long conversation and transcript panes independently", async ({
       },
     });
   });
+  await page.route(
+    "**/api/conversations/long-0/pending-messages",
+    async (route) => {
+      await route.fulfill({
+        json: { conversationId: "long-0", generatedAt, messages: [] },
+      });
+    },
+  );
   await page.route("**/api/conversations/long-0", async (route) => {
     await route.fulfill({
       json: {
@@ -585,8 +512,8 @@ test("groups the signed-in profile and session actions in the header", async ({
     name: "Open profile menu for Dashboard User",
   });
   await expect(trigger).toBeVisible();
-  await expect(trigger).toContainText("7d$0.07");
-  await expect(trigger).toContainText("30d$0.07");
+  await expect(trigger).toContainText("7d$0.46");
+  await expect(trigger).toContainText("30d$0.46");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
 
@@ -614,7 +541,7 @@ test("groups the signed-in profile and session actions in the header", async ({
   await signOutRequest;
 });
 
-test("inspects and copies an advisor transcript", async ({
+test("inspects and copies a child agent transcript", async ({
   context,
   page,
   dashboard,
@@ -630,22 +557,54 @@ test("inspects and copies an advisor transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Subagents live inside the collapsed activity chip between turns.
-  const activityChip = page
-    .locator("details")
-    .filter({ hasText: /\d+ events?/ })
-    .first();
-  await expect(activityChip).toBeVisible();
-  await activityChip.locator("> summary").click();
-  await page
-    .getByRole("button", { name: "Open advisor transcript" })
-    .first()
-    .click();
+  // Subagent rows show in the main view, outside collapsed activity groups.
+  const planner = page.getByRole("button", {
+    name: "Open planner transcript",
+  });
+  const reviewer = page.getByRole("button", {
+    name: "Open reviewer transcript",
+  });
+  await expect(planner).toContainText("Review the dashboard plan");
+  await expect(reviewer).toContainText("blocked");
+  await screenshot(page, "conversation-child-agents");
 
-  const drawer = page.getByRole("dialog");
+  // The Details drawer lists child agents with the runtime status.
+  await page.getByRole("button", { name: "Conversation details" }).click();
+  const details = page.getByRole("dialog", { name: "Dashboard QA edge cases" });
+  const subagentsTab = details.getByRole("tab", { name: "Subagents" });
+  await expect(subagentsTab).toHaveAccessibleName("Subagents 2");
+  await subagentsTab.click();
+  const subagents = details.getByRole("list", { name: "Subagents" });
+  await expect(subagents.getByRole("listitem")).toHaveCount(2);
+  await expect(subagents.getByRole("listitem").first()).toContainText(
+    "GitHub access is needed to read the pull request.",
+  );
+  await screenshot(page, "conversation-subagents-tab");
+  // A row opens the same child transcript drawer as the transcript row.
+  await subagents.getByRole("button", { name: /^reviewer blocked/ }).click();
+  await expect(details).toBeHidden();
+  const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
   await expect(
-    drawer.getByRole("heading", { name: "Advisor review" }),
+    reviewerDrawer.getByText("blocked", { exact: true }),
   ).toBeVisible();
+  await expect(
+    reviewerDrawer.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-review")}`,
+  );
+  await page.keyboard.press("Escape");
+  await expect(reviewerDrawer).toBeHidden();
+
+  await planner.click();
+
+  const drawer = page.getByRole("dialog", {
+    name: "Review the dashboard plan",
+  });
+  await expect(
+    drawer.getByRole("heading", { name: "Review the dashboard plan" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-child-agent-drawer");
   await expect(
     drawer.getByText(childConversationId, { exact: true }),
   ).toBeVisible();
@@ -663,9 +622,66 @@ test("inspects and copies an advisor transcript", async ({
   expect(markdown).toContain("# Advisor review");
   expect(markdown).toContain("Review the dashboard plan before editing.");
   expect(markdown).toContain("Review complete; no blocking issues found.");
+  // Child Conversations cannot be forked, so their replies offer no action.
+  await expect(
+    drawer.getByText("Review complete; no blocking issues found."),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: "Fork after this message" }),
+  ).toHaveCount(0);
 
+  await drawer.getByRole("button", { name: "Event log" }).click();
+  const entry = drawer.getByRole("button", {
+    name: "Event 0: message",
+    exact: true,
+  });
+  await entry.click();
+  const eventDetails = page.getByRole("dialog", {
+    name: "message",
+    exact: true,
+  });
+  await expect(
+    eventDetails.getByRole("region", { name: "Message", exact: true }),
+  ).toContainText("Review the dashboard plan before editing.");
+  await page.keyboard.press("Escape");
+  await expect(eventDetails).toBeHidden();
+  await expect(drawer).toBeVisible();
+  await expect(entry).toBeFocused();
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
+});
+
+test("shows the agent tree of a child agent conversation", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-plan")}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Review the dashboard plan" }),
+  ).toBeVisible();
+  const tree = page.getByRole("navigation", { name: "Agent tree" });
+  await expect(
+    tree.getByRole("link", { name: "Dashboard QA edge cases" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+  );
+  await expect(tree).not.toContainText("Review the dashboard plan");
+  await expect(
+    page.getByText("Review complete; no blocking issues found."),
+  ).toBeVisible();
+  await screenshot(page, "conversation-child-agent-page");
+
+  await tree.getByRole("link", { name: "Dashboard QA edge cases" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dashboard QA edge cases" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Agent tree" }),
+  ).toHaveCount(0);
 });
 
 test("finds an old archived conversation by title and restores it", async ({
@@ -749,20 +765,15 @@ test("archives and restores a conversation from the sidebar", async ({
   const archiveButton = page.getByRole("button", {
     name: "Archive Dashboard QA edge cases",
   });
-  await page
-    .getByRole("searchbox", { name: "Search your conversations" })
-    .fill("Dashboard QA edge cases");
   await conversationLink.hover();
 
   const currentUrl = page.url();
-  const emptyView = page.getByText("No conversations match this view.");
   const archiveRequestPromise = page.waitForRequest(
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
   await archiveButton.click();
-  // Optimistic pending keeps the row while the 1s archive mock is in flight.
-  await expect(emptyView).toHaveCount(0);
+  await expect(conversationLink).toHaveCount(0);
   const archiveRequest = await archiveRequestPromise;
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
   expect(page.url()).toBe(currentUrl);

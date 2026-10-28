@@ -97,8 +97,9 @@ export function createAssistantStatusScheduler(args: {
   ): string[] | undefined => (visible ? [visible] : undefined);
 
   const getInitialStatusText = (): string => {
-    if (loadingMessages?.length) {
-      return loadingMessages[0];
+    const [firstLoadingMessage] = loadingMessages ?? [];
+    if (firstLoadingMessage) {
+      return firstLoadingMessage;
     }
 
     return defaultStatus.text;

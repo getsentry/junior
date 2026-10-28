@@ -11,7 +11,7 @@ import {
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
-import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
@@ -748,7 +748,7 @@ describe("createApp plugin config", () => {
     ).toThrow("defineJuniorPlugin() uses manifest.name for identity.");
   });
 
-  it("rejects invalid plugin resource event registrations", () => {
+  it("rejects invalid plugin event registrations", () => {
     expect(() =>
       defineJuniorPlugin({
         manifest: {
@@ -756,11 +756,11 @@ describe("createApp plugin config", () => {
           displayName: "Event Demo",
           description: "Invalid event registration",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [{ type: "issue", supportedEvents: ["closed"] }],
         },
       }),
-    ).toThrow('Junior plugin "event-demo" resourceEvents is invalid.');
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -769,7 +769,7 @@ describe("createApp plugin config", () => {
           displayName: "Event Demo",
           description: "Duplicate event registration",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [
             {
               type: "issue",
@@ -778,7 +778,7 @@ describe("createApp plugin config", () => {
           ],
         },
       }),
-    ).toThrow('Junior plugin "event-demo" resourceEvents is invalid.');
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
   });
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {
@@ -806,7 +806,6 @@ describe("createApp plugin config", () => {
       functionMaxDurationSeconds: undefined,
       dashboard: {
         authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
         componentGallery: true,
       },
       pluginSet: defineJuniorPlugins([
@@ -915,7 +914,6 @@ describe("createApp plugin config", () => {
         createApp({
           dashboard: {
             authRequired: false,
-            allowedGoogleDomains: ["sentry.io"],
           },
           plugins: defineJuniorPlugins([
             defineJuniorPlugin({
@@ -959,7 +957,6 @@ describe("createApp plugin config", () => {
 
     await createApp({
       dashboard: {
-        allowedGoogleDomains: ["sentry.io"],
         authRequired: false,
         basePath: "/ops",
         baseURL: "https://junior.example.com",

@@ -31,14 +31,13 @@ import {
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { startLocationThread } from "@/chat/conversations/sql/location";
 import {
   historyItemFromPiMessage,
   projectConversationEvents,
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
-import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -77,11 +76,9 @@ export class AgentHistoryBranchError extends Error {
   }
 }
 
-/** Match the exact JSONB shape used for prefix comparison and replay. */
+/** Snapshot Pi's JSON message without changing text or nested object order. */
 function normalizeDurableMessage(message: PiMessage): PiMessage {
-  return piMessageSchema.parse(
-    JSON.parse(JSON.stringify(sanitizePostgresJson(message))),
-  );
+  return piMessageSchema.parse(JSON.parse(JSON.stringify(message)));
 }
 
 /**
@@ -341,7 +338,7 @@ export async function commitMessages(args: {
   historyVersion: number;
   /** Event sequence for every projected agent history item. */
   messageSeqs: number[];
-  /** Normalized durable messages after volatile runtime context is removed. */
+  /** Normalized durable messages committed as exact model history. */
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
 }> {
@@ -397,11 +394,10 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
-      for (const binding of args.providerConversationBindings ?? []) {
-        await bindProviderConversation(executor, {
-          conversationId: args.conversationId,
-          ...binding,
-        });
+      for (const reference of args.providerConversationBindings ?? []) {
+        const binding = { conversationId: args.conversationId, ...reference };
+        await bindProviderConversation(executor, binding);
+        await startLocationThread(executor, binding);
       }
     }),
   );
@@ -418,12 +414,7 @@ async function commitMessagesLocked(
   const current = projectConversationEvents(currentEvents, {
     defaultProfile: botConfig.defaultProfile,
   });
-  // Runtime bootstrap is per-run input, not durable agent history. Session
-  // records may retain it while a turn is live, but event replay must not need
-  // a compensating history rewrite when that bootstrap changes.
-  const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
-    normalizeDurableMessage,
-  );
+  const nextLocalMessages = args.messages.map(normalizeDurableMessage);
   const matchingPrefix = countDurablePrefix(
     current.messages,
     nextLocalMessages,
@@ -784,6 +775,24 @@ export async function recordSubscribedReplyRoute(args: {
       },
     },
   ]);
+}
+
+/**
+ * Load the profile of the newest Turn route or handoff.
+ *
+ * The projection profile is not enough: a Turn route does not replace history.
+ */
+export async function loadLastModelProfile(
+  args: ScopedConversation,
+): Promise<ModelProfile | undefined> {
+  const page = await getConversationEventStore().query(args.conversationId, {
+    limit: 1,
+    types: ["turn_routed", "handoff"],
+  });
+  const data = page.events[0]?.data;
+  return data?.type === "turn_routed" || data?.type === "handoff"
+    ? data.modelProfile
+    : undefined;
 }
 
 /** Load a previously selected model profile for a resumed turn. */

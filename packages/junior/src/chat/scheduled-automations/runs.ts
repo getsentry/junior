@@ -1,0 +1,653 @@
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import { getNextRunAtMs } from "./cadence";
+import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
+import { existingConversationId } from "@/chat/automations/execution-stats";
+import { automationVersionOf } from "@/chat/automations/versions";
+import type { JuniorDatabase } from "@/db/db";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
+import { juniorAutomations } from "@/db/schema/automations";
+import {
+  listScheduledAutomationsForTeam,
+  readScheduledAutomation,
+  saveScheduledAutomationInLock,
+  scheduledRunId,
+  withScheduledAutomationLock,
+} from "./tasks";
+import { logScheduledAutomationRunSkipped } from "./telemetry";
+import {
+  scheduledRunSchema,
+  type ScheduledRun,
+  type ScheduledAutomation,
+  type ScheduledAutomationStatus,
+} from "./types";
+
+const PENDING_CLAIM_STALE_MS = 60_000;
+const MISSED_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const INCOMPLETE_RUN_STATUSES = ["pending", "running"] as const;
+
+type SkippedRunTelemetry = {
+  errorMessage: string;
+  run: ScheduledRun;
+  task: ScheduledAutomation;
+};
+
+/** Decode a Scheduled automation run row. Returns undefined for an invalid row. */
+function parseScheduledRunRow(
+  row: typeof juniorAutomationRuns.$inferSelect,
+): ScheduledRun | undefined {
+  const parsed = scheduledRunSchema.safeParse({
+    id: row.id,
+    attempt: row.attempt,
+    claimedAtMs: row.claimedAtMs,
+    completedAtMs: row.completedAtMs ?? undefined,
+    dispatchId: row.dispatchId ?? undefined,
+    errorMessage: row.errorMessage ?? undefined,
+    resultMessageTs: row.resultMessageTs ?? undefined,
+    scheduledForMs: row.scheduledForMs,
+    startedAtMs: row.startedAtMs ?? undefined,
+    status: row.status,
+    taskId: row.automationId,
+  });
+  return parsed.success ? parsed.data : undefined;
+}
+
+function present<T>(value: T | undefined): value is T {
+  return value !== undefined;
+}
+
+async function readRun(
+  db: JuniorDatabase,
+  runId: string,
+): Promise<ScheduledRun | undefined> {
+  const rows = await db
+    .select()
+    .from(juniorAutomationRuns)
+    .where(eq(juniorAutomationRuns.id, runId))
+    .limit(1);
+  return rows[0] ? parseScheduledRunRow(rows[0]) : undefined;
+}
+
+/**
+ * Save a Scheduled automation run. Pass `automationVersion` only when the run
+ * is dispatched. Later writes keep the stored version.
+ */
+async function writeRun(
+  db: JuniorDatabase,
+  run: ScheduledRun,
+  automationVersion?: SQL,
+): Promise<void> {
+  const stored = scheduledRunSchema.parse(run);
+  const columns = {
+    ...(automationVersion ? { automationVersion } : undefined),
+    attempt: stored.attempt,
+    automationId: stored.taskId,
+    claimedAtMs: stored.claimedAtMs,
+    completedAtMs: stored.completedAtMs ?? null,
+    conversationId: stored.dispatchId
+      ? existingConversationId(
+          getDispatchConversationId({ id: stored.dispatchId }),
+        )
+      : null,
+    dispatchId: stored.dispatchId ?? null,
+    errorMessage: stored.errorMessage ?? null,
+    resultMessageTs: stored.resultMessageTs ?? null,
+    scheduledForMs: stored.scheduledForMs,
+    startedAtMs: stored.startedAtMs ?? null,
+    status: stored.status,
+  };
+  await db
+    .insert(juniorAutomationRuns)
+    .values({ id: stored.id, ...columns })
+    .onConflictDoUpdate({ target: juniorAutomationRuns.id, set: columns });
+}
+
+/**
+ * List incomplete Scheduled automation runs, optionally for one automation.
+ * Deleted automations are included: a run that was already dispatched when
+ * its automation was deleted must still settle.
+ */
+export async function listIncompleteScheduledRuns(
+  db: JuniorDatabase,
+  automationId?: string,
+): Promise<ScheduledRun[]> {
+  const rows = await db
+    .select({ run: juniorAutomationRuns })
+    .from(juniorAutomationRuns)
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationRuns.automationId),
+    )
+    .where(
+      and(
+        eq(juniorAutomations.kind, "scheduled"),
+        automationId === undefined
+          ? undefined
+          : eq(juniorAutomationRuns.automationId, automationId),
+        inArray(juniorAutomationRuns.status, [...INCOMPLETE_RUN_STATUSES]),
+      ),
+    )
+    .orderBy(
+      asc(juniorAutomationRuns.scheduledForMs),
+      asc(juniorAutomationRuns.id),
+    );
+  return rows.map(({ run }) => parseScheduledRunRow(run)).filter(present);
+}
+
+function getDueRunAtMs(
+  task: ScheduledAutomation,
+  nowMs: number,
+): number | undefined {
+  if (
+    typeof task.runNowAtMs === "number" &&
+    Number.isFinite(task.runNowAtMs) &&
+    task.runNowAtMs <= nowMs
+  ) {
+    return task.runNowAtMs;
+  }
+  if (
+    typeof task.nextRunAtMs === "number" &&
+    Number.isFinite(task.nextRunAtMs) &&
+    task.nextRunAtMs <= nowMs
+  ) {
+    return task.nextRunAtMs;
+  }
+  return undefined;
+}
+
+function isStalePendingRun(
+  run: ScheduledRun | undefined,
+  nowMs: number,
+): boolean {
+  return (
+    run?.status === "pending" &&
+    run.claimedAtMs + PENDING_CLAIM_STALE_MS <= nowMs
+  );
+}
+
+function normalizedText(value: string | undefined): string {
+  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+}
+
+function taskDedupeFingerprint(task: ScheduledAutomation): string {
+  return JSON.stringify({
+    credentialMode: task.credentialMode,
+    credentialUserId:
+      task.credentialMode === "creator" ? task.createdBy.slackUserId : null,
+    destination: task.destination,
+    schedule: {
+      kind: task.schedule.kind,
+      oneOffAtMs: task.schedule.kind === "one_off" ? task.nextRunAtMs : null,
+      recurrence: task.schedule.recurrence
+        ? {
+            dayOfMonth: task.schedule.recurrence.dayOfMonth ?? null,
+            frequency: task.schedule.recurrence.frequency,
+            interval: task.schedule.recurrence.interval,
+            month: task.schedule.recurrence.month ?? null,
+            startDate: task.schedule.recurrence.startDate,
+            time: task.schedule.recurrence.time,
+            weekdays: [...(task.schedule.recurrence.weekdays ?? [])].sort(),
+          }
+        : null,
+      timezone: task.schedule.timezone,
+    },
+    task: normalizedText(task.task.text),
+  });
+}
+
+async function findStaleRecoveryCanonicalTask(
+  db: JuniorDatabase,
+  task: ScheduledAutomation,
+): Promise<ScheduledAutomation | undefined> {
+  const fingerprint = taskDedupeFingerprint(task);
+  return (await listScheduledAutomationsForTeam(db, task.destination.teamId))
+    .filter(
+      (candidate) =>
+        candidate.id !== task.id &&
+        candidate.status === "active" &&
+        (candidate.createdAtMs < task.createdAtMs ||
+          (candidate.createdAtMs === task.createdAtMs &&
+            candidate.id < task.id)) &&
+        taskDedupeFingerprint(candidate) === fingerprint,
+    )
+    .at(0);
+}
+
+function statusAfterTerminalOccurrence(args: {
+  nextRunAtMs: number | undefined;
+  outcome?: "blocked" | "completed" | "failed";
+  previousStatus?: ScheduledAutomationStatus;
+}): ScheduledAutomationStatus {
+  if (args.outcome === "blocked") return "blocked";
+  if (args.nextRunAtMs) return args.previousStatus ?? "active";
+  if (args.outcome === "completed") return "completed";
+  return "deleted";
+}
+
+async function skipMissedRun(
+  db: JuniorDatabase,
+  args: {
+    nowMs: number;
+    scheduledForMs: number;
+    task: ScheduledAutomation;
+  },
+): Promise<SkippedRunTelemetry | undefined> {
+  const current = args.task;
+  if (
+    current.status !== "active" ||
+    getDueRunAtMs(current, args.nowMs) !== args.scheduledForMs
+  ) {
+    return undefined;
+  }
+  const duplicateOf = await findStaleRecoveryCanonicalTask(db, current);
+  const errorMessage = duplicateOf
+    ? `Duplicate stale scheduled automation was skipped without dispatch. Canonical task: ${duplicateOf.id}.`
+    : "Scheduled occurrence was more than 24 hours late and was skipped without dispatch.";
+  const skipped: ScheduledRun = {
+    id: scheduledRunId(current.id, args.scheduledForMs),
+    attempt: 1,
+    claimedAtMs: args.nowMs,
+    completedAtMs: args.nowMs,
+    errorMessage,
+    scheduledForMs: args.scheduledForMs,
+    status: "skipped",
+    taskId: current.id,
+  };
+  await writeRun(db, skipped);
+  const isRunNow = current.runNowAtMs === args.scheduledForMs;
+  let nextRunAtMs: number | undefined;
+  if (!duplicateOf) {
+    nextRunAtMs =
+      isRunNow && current.nextRunAtMs !== args.scheduledForMs
+        ? current.nextRunAtMs
+        : current.schedule.kind === "recurring"
+          ? getNextRunAtMs(current, args.scheduledForMs, args.nowMs)
+          : undefined;
+  }
+  const status = statusAfterTerminalOccurrence({ nextRunAtMs });
+  await saveScheduledAutomationInLock(
+    db,
+    {
+      ...current,
+      nextRunAtMs,
+      runNowAtMs: isRunNow ? undefined : current.runNowAtMs,
+      status,
+      statusReason: status === "deleted" ? errorMessage : undefined,
+      updatedAtMs: args.nowMs,
+    },
+    current,
+  );
+  return { errorMessage, run: skipped, task: current };
+}
+
+/** Claim one due scheduler run under the deployed global claim lock. */
+export async function claimDueScheduledRun(
+  db: JuniorDatabase,
+  args: { nowMs: number },
+): Promise<ScheduledRun | undefined> {
+  const skippedRuns: SkippedRunTelemetry[] = [];
+  const claimed = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('junior:scheduler:claim'))`,
+    );
+    const rows = await tx
+      .select({ id: juniorAutomations.id })
+      .from(juniorAutomations)
+      .where(
+        and(
+          eq(juniorAutomations.kind, "scheduled"),
+          eq(juniorAutomations.status, "active"),
+          or(
+            and(
+              isNotNull(juniorAutomations.runNowAtMs),
+              lte(juniorAutomations.runNowAtMs, args.nowMs),
+            ),
+            and(
+              isNotNull(juniorAutomations.nextRunAtMs),
+              lte(juniorAutomations.nextRunAtMs, args.nowMs),
+            ),
+          ),
+        ),
+      )
+      .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
+
+    for (const row of rows) {
+      const run = await withScheduledAutomationLock(
+        tx,
+        row.id,
+        async (taskTx) => {
+          const task = await readScheduledAutomation(taskTx, row.id);
+          if (!task || task.status !== "active") return undefined;
+          const scheduledForMs = getDueRunAtMs(task, args.nowMs);
+          if (scheduledForMs === undefined) return undefined;
+          const runId = scheduledRunId(task.id, scheduledForMs);
+          const incompleteRuns = await listIncompleteScheduledRuns(
+            taskTx,
+            task.id,
+          );
+          const incompleteRun = incompleteRuns.find(
+            (item) => item.id === runId,
+          );
+          const blockingRun = incompleteRuns.find(
+            (item) => item.id !== runId && !isStalePendingRun(item, args.nowMs),
+          );
+          if (blockingRun) return undefined;
+          if (incompleteRun) {
+            if (!isStalePendingRun(incompleteRun, args.nowMs)) return undefined;
+            const reclaimed = {
+              ...incompleteRun,
+              attempt: incompleteRun.attempt + 1,
+              claimedAtMs: args.nowMs,
+            };
+            await writeRun(taskTx, reclaimed);
+            return reclaimed;
+          }
+          const finishedRun = await readRun(taskTx, runId);
+          if (finishedRun) {
+            // The run finished, but the advance after it was not saved. A
+            // crash or an old worker during the #2176 deploy can cause this.
+            if (
+              finishedRun.status === "blocked" ||
+              finishedRun.status === "completed" ||
+              finishedRun.status === "failed"
+            ) {
+              await advanceScheduledAutomationAfterRun(taskTx, {
+                errorMessage: finishedRun.errorMessage,
+                nowMs: args.nowMs,
+                run: finishedRun,
+                status: finishedRun.status,
+              });
+            }
+            return undefined;
+          }
+          if (scheduledForMs + MISSED_RUN_MAX_AGE_MS < args.nowMs) {
+            const skipped = await skipMissedRun(taskTx, {
+              nowMs: args.nowMs,
+              scheduledForMs,
+              task,
+            });
+            if (skipped) skippedRuns.push(skipped);
+            return undefined;
+          }
+          const next: ScheduledRun = {
+            id: runId,
+            attempt: 1,
+            claimedAtMs: args.nowMs,
+            scheduledForMs,
+            status: "pending",
+            taskId: task.id,
+          };
+          await writeRun(taskTx, next);
+          return next;
+        },
+      );
+      if (run) return run;
+    }
+    return undefined;
+  });
+  for (const skipped of skippedRuns) {
+    logScheduledAutomationRunSkipped(skipped.task, skipped.run, {
+      "app.task.run.error": skipped.errorMessage,
+    });
+  }
+  return claimed;
+}
+
+async function updateRun(
+  db: JuniorDatabase,
+  runId: string,
+  update: (run: ScheduledRun) => ScheduledRun | undefined,
+  automationVersion?: SQL,
+): Promise<ScheduledRun | undefined> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`junior:scheduler:run:${runId}:lock`}))`,
+    );
+    const current = await readRun(tx, runId);
+    if (!current) return undefined;
+    const next = update(current);
+    if (!next) return undefined;
+    await writeRun(tx, next, automationVersion);
+    return next;
+  });
+}
+
+function canFinishRun(
+  run: ScheduledRun,
+  startedAtMs: number | undefined,
+): boolean {
+  if (run.status === "pending") return startedAtMs === undefined;
+  return run.status === "running" && run.startedAtMs === startedAtMs;
+}
+
+/**
+ * Mark a pending run dispatched only for the active claim, and store the
+ * version of `task` that the dispatch ran.
+ */
+export async function markScheduledRunDispatched(
+  db: JuniorDatabase,
+  args: {
+    claimedAtMs: number;
+    dispatchId: string;
+    nowMs: number;
+    runId: string;
+    task: ScheduledAutomation;
+  },
+): Promise<ScheduledRun | undefined> {
+  return await updateRun(
+    db,
+    args.runId,
+    (run) =>
+      run.status === "pending" && run.claimedAtMs === args.claimedAtMs
+        ? {
+            ...run,
+            dispatchId: args.dispatchId,
+            startedAtMs: args.nowMs,
+            status: "running",
+          }
+        : undefined,
+    automationVersionOf(args.task),
+  );
+}
+
+/** Complete a run only for its active start timestamp. */
+export async function markScheduledRunCompleted(
+  db: JuniorDatabase,
+  args: {
+    completedAtMs: number;
+    resultMessageTs?: string;
+    runId: string;
+    startedAtMs: number;
+  },
+): Promise<ScheduledRun | undefined> {
+  return await updateRun(db, args.runId, (run) =>
+    canFinishRun(run, args.startedAtMs)
+      ? {
+          ...run,
+          completedAtMs: args.completedAtMs,
+          resultMessageTs: args.resultMessageTs,
+          status: "completed",
+        }
+      : undefined,
+  );
+}
+
+/** Fail a claimed or running run only for its active transition guard. */
+export async function markScheduledRunFailed(
+  db: JuniorDatabase,
+  args: {
+    completedAtMs: number;
+    errorMessage: string;
+    startedAtMs?: number;
+    runId: string;
+  },
+): Promise<ScheduledRun | undefined> {
+  return await updateRun(db, args.runId, (run) =>
+    canFinishRun(run, args.startedAtMs)
+      ? {
+          ...run,
+          completedAtMs: args.completedAtMs,
+          errorMessage: args.errorMessage,
+          status: "failed",
+        }
+      : undefined,
+  );
+}
+
+/** Block a claimed or running run only for its active transition guard. */
+export async function markScheduledRunBlocked(
+  db: JuniorDatabase,
+  args: {
+    completedAtMs: number;
+    errorMessage: string;
+    runId: string;
+    startedAtMs?: number;
+  },
+): Promise<ScheduledRun | undefined> {
+  return await updateRun(db, args.runId, (run) =>
+    canFinishRun(run, args.startedAtMs)
+      ? {
+          ...run,
+          completedAtMs: args.completedAtMs,
+          errorMessage: args.errorMessage,
+          status: "blocked",
+        }
+      : undefined,
+  );
+}
+
+/** Skip a pending run only before dispatch begins. */
+export async function markScheduledRunSkipped(
+  db: JuniorDatabase,
+  args: { completedAtMs: number; errorMessage: string; runId: string },
+): Promise<ScheduledRun | undefined> {
+  return await updateRun(db, args.runId, (run) =>
+    run.status === "pending"
+      ? {
+          ...run,
+          completedAtMs: args.completedAtMs,
+          errorMessage: args.errorMessage,
+          status: "skipped",
+        }
+      : undefined,
+  );
+}
+
+/**
+ * Advance a scheduled automation after a terminal run under its task lock.
+ * Returns true only when this call set the automation to blocked, so the
+ * caller can tell the creator once and only when the dashboard agrees. A
+ * paused automation keeps the reason and stays paused.
+ */
+export async function advanceScheduledAutomationAfterRun(
+  db: JuniorDatabase,
+  args: {
+    errorMessage?: string;
+    nowMs: number;
+    run: ScheduledRun;
+    status: "blocked" | "completed" | "failed";
+  },
+): Promise<boolean> {
+  return await withScheduledAutomationLock(db, args.run.taskId, async (tx) => {
+    const current = await readScheduledAutomation(tx, args.run.taskId);
+    if (
+      !current ||
+      current.status === "deleted" ||
+      current.status === "completed"
+    ) {
+      return false;
+    }
+    if (current.status === "paused") {
+      await saveScheduledAutomationInLock(
+        tx,
+        {
+          ...current,
+          lastRunAtMs: args.run.scheduledForMs,
+          statusReason:
+            args.status === "blocked"
+              ? args.errorMessage
+              : current.statusReason,
+          updatedAtMs: args.nowMs,
+        },
+        current,
+      );
+      // It stays paused. Resume returns it to blocked, and its creator sees
+      // the reason then.
+      return false;
+    }
+    const isRunNow = current.runNowAtMs === args.run.scheduledForMs;
+    if (isRunNow) {
+      let nextRunAtMs = current.nextRunAtMs;
+      if (
+        args.status !== "blocked" &&
+        typeof current.nextRunAtMs === "number" &&
+        current.nextRunAtMs <= args.run.scheduledForMs
+      ) {
+        nextRunAtMs = getNextRunAtMs(current, current.nextRunAtMs, args.nowMs);
+      }
+      await saveScheduledAutomationInLock(
+        tx,
+        {
+          ...current,
+          lastRunAtMs: args.run.scheduledForMs,
+          nextRunAtMs,
+          runNowAtMs: undefined,
+          status: statusAfterTerminalOccurrence({
+            nextRunAtMs,
+            outcome: args.status,
+            previousStatus: current.status,
+          }),
+          statusReason:
+            args.status === "blocked" ? args.errorMessage : undefined,
+          updatedAtMs: args.nowMs,
+        },
+        current,
+      );
+      return args.status === "blocked";
+    }
+    if (
+      current.status !== "active" ||
+      current.nextRunAtMs !== args.run.scheduledForMs
+    ) {
+      await saveScheduledAutomationInLock(
+        tx,
+        {
+          ...current,
+          lastRunAtMs: args.run.scheduledForMs,
+          updatedAtMs: args.nowMs,
+        },
+        current,
+      );
+      return false;
+    }
+    const nextRunAtMs =
+      args.status === "blocked"
+        ? undefined
+        : getNextRunAtMs(current, args.run.scheduledForMs, args.nowMs);
+    await saveScheduledAutomationInLock(
+      tx,
+      {
+        ...current,
+        lastRunAtMs: args.run.scheduledForMs,
+        nextRunAtMs,
+        status: statusAfterTerminalOccurrence({
+          nextRunAtMs,
+          outcome: args.status,
+        }),
+        statusReason: args.status === "blocked" ? args.errorMessage : undefined,
+        updatedAtMs: args.nowMs,
+      },
+      current,
+    );
+    return args.status === "blocked";
+  });
+}

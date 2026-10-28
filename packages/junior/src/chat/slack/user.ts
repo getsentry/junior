@@ -7,12 +7,15 @@ interface SlackUserLookupResult {
   userName?: string;
   fullName?: string;
   email?: string;
+  /** Slack profile timezone. Do not copy it onto the Actor. */
+  timezone?: string;
 }
 
 const slackUserInfoSchema = z.object({
   ok: z.literal(true),
   user: z.object({
     name: z.string().nullish(),
+    tz: z.string().nullish(),
     profile: z
       .object({
         email: z.string().nullish(),
@@ -87,7 +90,7 @@ export async function lookupSlackUser(
 
     if (!response.ok) {
       logWarn("slack.user.lookup.failed", {
-        "enduser.id": userId,
+        "app.slack.user_id": userId,
         "app.slack.team_id": teamId,
         "http.response.status_code": response.status,
       });
@@ -106,12 +109,13 @@ export async function lookupSlackUser(
       userName,
       fullName,
       email: payload.user.profile?.email?.trim() || undefined,
+      timezone: payload.user.tz?.trim() || undefined,
     };
     writeToCache(teamId, userId, result);
     return result;
   } catch (error) {
     logWarn("slack.user.lookup.failed", {
-      "enduser.id": userId,
+      "app.slack.user_id": userId,
       "app.slack.team_id": teamId,
       "exception.message":
         error instanceof Error ? error.message : String(error),

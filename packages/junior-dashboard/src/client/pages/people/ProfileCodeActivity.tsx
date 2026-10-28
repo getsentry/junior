@@ -10,6 +10,7 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "../code/CodeActivityChart";
+import { ProfileCodeChanges } from "./ProfileCodeChanges";
 
 function mergeRate(value: number | undefined): string {
   return value === undefined ? "—" : `${Math.round(value * 100)}%`;
@@ -20,21 +21,22 @@ function medianMergeTime(value: number | undefined): string {
 }
 
 function costUsd(value: number | undefined): string {
-  return formatCostSummary(value === undefined ? undefined : { total: value }) || "—";
+  return (
+    formatCostSummary(value === undefined ? undefined : { total: value }) || "—"
+  );
 }
 
 function hasCodeActivity(report: CodePersonReport): boolean {
   const summary = report.summary;
   return (
+    report.changes.length > 0 ||
     summary.created + summary.merged + summary.closed > 0 ||
     (summary.costUsd ?? 0) > 0 ||
-    report.activityDays.some(
-      (day) => day.created + day.merged + day.closed > 0,
-    )
+    report.activityDays.some((day) => day.created + day.merged + day.closed > 0)
   );
 }
 
-/** Render person-scoped native code change activity. */
+/** Render person-scoped native code change activity and recent code changes. */
 export function ProfileCodeActivity(props: {
   range: TimeRangeDays;
   report: CodePersonReport;
@@ -86,6 +88,12 @@ export function ProfileCodeActivity(props: {
         })}
         range={props.range}
       />
+      {props.report.changes.length > 0 ? (
+        <ProfileCodeChanges
+          changes={props.report.changes}
+          generatedAt={props.report.generatedAt}
+        />
+      ) : null}
     </section>
   );
 }

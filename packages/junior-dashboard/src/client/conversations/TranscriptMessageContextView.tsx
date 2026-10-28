@@ -10,6 +10,7 @@ import { HighlightText } from "./transcriptSearch";
 import { messageRawText } from "./transcriptRenderModel";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 /** Render ambient conversation context that is not a primary chat bubble. */
 export function TranscriptMessageContextView(props: {
@@ -30,18 +31,21 @@ export function TranscriptMessageContextView(props: {
   return (
     <>
       <details
-        className="group/message-context min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:hidden"
+        className="group/message-context min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:hidden"
         data-transcript-message-context
       >
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted [&::-webkit-details-marker]:hidden">
+        <TranscriptSummary
+          flush
+          className="flex items-center justify-between gap-2 font-sans text-xs font-medium text-dashboard-text-muted"
+        >
           <span className="min-w-0 truncate">Context from {actor}</span>
           <ChevronRight
             aria-hidden="true"
             className="shrink-0 transition-transform group-open/message-context:rotate-90"
             size={14}
           />
-        </summary>
-        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text/75">
+        </TranscriptSummary>
+        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text-subtle">
           {content}
         </div>
         {!props.redacted && props.message.contexts?.length ? (
@@ -51,25 +55,25 @@ export function TranscriptMessageContextView(props: {
         ) : null}
       </details>
       <article
-        className="hidden min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:block"
+        className="hidden min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:block"
         data-transcript-message-context
       >
         <TranscriptHeadingRow
           left={
-            <span className="font-display text-xs font-semibold text-dashboard-text-muted">
+            <span className="font-sans text-xs font-medium text-dashboard-text-muted">
               Context from {actor}
             </span>
           }
           leftClassName="min-w-0"
           right={
             timestamp ? (
-              <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70">
+              <TranscriptHeadingMeta className="text-xs tabular-nums text-dashboard-text-muted">
                 {timestamp}
               </TranscriptHeadingMeta>
             ) : undefined
           }
         />
-        <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text/75">
+        <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text-subtle">
           {content}
         </div>
         {!props.redacted && props.message.contexts?.length ? (

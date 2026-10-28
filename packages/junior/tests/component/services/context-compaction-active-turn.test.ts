@@ -154,17 +154,41 @@ describe("active-turn context compaction", () => {
         2,
       ),
       user("Make the requested edit.", 3),
-      assistantWithUsage("I will apply the edit.", {
-        totalTokens: 20_000,
-        timestamp: 4,
-      }),
+      {
+        ...assistantWithUsage("", {
+          totalTokens: 20_000,
+          timestamp: 4,
+        }),
+        content: [
+          {
+            type: "toolCall",
+            id: "plan-active",
+            name: "updatePlan",
+            arguments: {
+              plan: [
+                { step: "Apply requested edit", status: "in_progress" },
+                { step: "Run focused test", status: "pending" },
+              ],
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "plan-active",
+        toolName: "updatePlan",
+        content: [{ type: "text", text: "Plan updated" }],
+        isError: false,
+        timestamp: 5,
+      } as PiMessage,
       {
         role: "toolResult",
         toolCallId: "edit-1",
         toolName: "editFile",
         content: [{ type: "text", text: OVERSIZED_CONTEXT_TEXT }],
         isError: false,
-        timestamp: 5,
+        timestamp: 6,
       } as PiMessage,
     ];
     const result = await compactActiveContextIfNeeded(
@@ -176,7 +200,7 @@ describe("active-turn context compaction", () => {
           {
             message: user(
               "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
-              6,
+              7,
             ),
             provenance: {
               authority: "instruction",
@@ -208,27 +232,31 @@ describe("active-turn context compaction", () => {
       "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
     );
     expect(textOf(result.piMessages![2]!)).toContain("No outstanding asks.");
+    expect(textOf(result.piMessages![2]!)).toContain(
+      '<open-plan>\n[{"step":"Apply requested edit","status":"in_progress"},{"step":"Run focused test","status":"pending"}]\n</open-plan>',
+    );
     expect(textOf(result.piMessages![2]!)).not.toContain(
       "<runtime-turn-context>",
     );
     expect(textOf(result.piMessages![2]!)).not.toContain(
       "<current-instruction>",
     );
+    await expect(
+      commitMessages({
+        conversationId,
+        messages: result.piMessages!,
+      }),
+    ).resolves.toBeDefined();
     const durable = await loadProjection({ conversationId });
-    expect(durable).toHaveLength(2);
-    expect(textOf(durable[0]!)).toBe(
-      "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
-    );
-    expect(textOf(durable[1]!)).toContain("No outstanding asks.");
-    expect(textOf(durable[1]!)).not.toContain("<runtime-turn-context>");
-    expect(textOf(durable[1]!)).not.toContain("<current-instruction>");
+    expect(durable).toEqual(result.piMessages);
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.modelProfile).toBe("standard");
-    expect(projection.provenance[0]).toMatchObject({
+    expect(projection.provenance[0]).toEqual({ authority: "context" });
+    expect(projection.provenance[1]).toMatchObject({
       authority: "instruction",
       actor: { userId: "U_STEER" },
     });
-    expect(projection.provenance[1]).toEqual({ authority: "context" });
+    expect(projection.provenance[2]).toEqual({ authority: "context" });
     const compactionEvent = (
       await getConversationEventStore().loadHistory(conversationId)
     ).find((event) => event.data.type === "compaction");
@@ -241,7 +269,7 @@ describe("active-turn context compaction", () => {
         reason: "capacity",
         triggerTokens: 360_000,
         inputLimitTokens: 380_000,
-        inputMessageCount: 5,
+        inputMessageCount: 6,
         retainedMessageCount: 1,
         summaryChars: 20,
       },

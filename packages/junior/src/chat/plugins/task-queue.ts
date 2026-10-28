@@ -41,7 +41,9 @@ export const pluginTaskQueueMessageSchema = z
   })
   .strict();
 
-export type PluginTaskQueueMessage = z.output<typeof pluginTaskQueueMessageSchema>;
+export type PluginTaskQueueMessage = z.output<
+  typeof pluginTaskQueueMessageSchema
+>;
 
 const pluginTaskSign = {
   context: PLUGIN_TASK_SIGN_CONTEXT,
@@ -115,7 +117,9 @@ function pluginTaskCallback() {
 }
 
 /** Send one plugin task through the shared signed delivery path. */
-export async function sendVercelPluginTask(message: PluginTaskQueueMessage): Promise<void> {
+export async function sendVercelPluginTask(
+  message: PluginTaskQueueMessage,
+): Promise<void> {
   await createVercelQueueClient().send(
     PLUGIN_TASK_QUEUE_TOPIC,
     signPluginTaskQueueMessage(message),
@@ -134,6 +138,8 @@ export function createVercelPluginTaskCallback(): (
 }
 
 /** Register the local-dev consumer for plugin tasks. */
-export function registerVercelPluginTaskDevConsumer(): (() => void) | undefined {
+export function registerVercelPluginTaskDevConsumer():
+  | (() => void)
+  | undefined {
   return pluginTaskCallback().registerDev();
 }

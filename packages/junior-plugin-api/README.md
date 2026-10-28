@@ -42,12 +42,18 @@ reports, and other typed hook surfaces exported by this package.
 
 - Hook context carries the active source, actor, conversation, plugin metadata,
   database, logging, and only the host capabilities required by that hook.
-- Source uses `kind` to state what produced the input. Resource events,
-  scheduled tasks, event tasks, Plugin dispatches, and Agent invocations do not
+- Source uses `kind` to state what produced the input. Events,
+  scheduled automations, event automations, Plugin dispatches, and Agent invocations do not
   name a provider. Actor and Destination still use `platform` to name one.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
 - `formatMarkdown` is a pure text rewrite into ordinary Markdown before delivery.
+- `conversationTitleContext` returns short facts about objects that the first
+  human message refers to, such as an issue number and title. The hook gets the
+  plugin's config values, such as a default repository. It must read provider
+  data through `ctx.egress`, which uses Junior's system identity and never
+  starts authorization. Only the title model sees the facts. Junior bounds the
+  wait and ignores a failed hook.
 - User prompt hooks for durable turns may emit registered structured events
   through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
@@ -66,7 +72,8 @@ reports, and other typed hook surfaces exported by this package.
   one subject user on a person profile. Core owns viewer authorization,
   collection, sanitization, and browser rendering.
 - Tool hooks may resolve the active Actor's Identity and User through
-  `ctx.users.resolveActor()`.
+  `ctx.users.resolveActor()`, and the Actor's timezone through
+  `ctx.users.resolveTimezone()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
   User lookup. Routes that do not need User data do not query identity storage.
 - User page readers receive the signed-in `User`. Plugins return limited data.
@@ -81,9 +88,18 @@ validated search and cursor input and may return an opaque continuation cursor.
 Set `navigation: "primary"` for a top-level dashboard navigation item. The
 default `profile` placement keeps account-oriented pages in the signed-in user
 menu. Junior always renders core System navigation after plugin pages.
+Set `navigation: "admin"` for setup that only Junior admins may use. Core lists
+these pages on the dashboard Admin page and serves them only to admins. Core
+reads the admin role from the user record on every request.
 Records may expose bounded `DELETE` actions inside their own authenticated
-plugin API namespace. Core owns discovery, authentication, user resolution,
-routing, response validation, rendering, confirmation, and query state.
+plugin API namespace. Records may also expose `GET` actions. The dashboard opens
+them as normal browser links, for example to start an OAuth sign-in. Core owns
+discovery, authentication, user resolution, routing, response validation,
+rendering, confirmation, and query state.
+
+Authenticated plugin API routes receive `context.auth.user.isAdmin`. Core sets
+it from the stored user on every request. Admin-only routes must check it on
+the server, because a hidden link does not protect a route.
 
 ## Durable Work
 
@@ -147,3 +163,23 @@ Plugins and skills follow `../../policies/security.md`,
 `../../policies/data-redaction.md`, and
 `../../policies/provider-boundaries.md`. Skills explain capability use; they do
 not bootstrap runtimes or credentials.
+
+## Object annotations
+
+A tool can return `objectAnnotations` through `pluginToolOutputSchema` to save
+object facts and attach a card to the next visible reply. The host assigns the
+plugin owner. Use a stable `key` within the plugin, a compact `label`, a `title`,
+a verified HTTP(S) `url` (or null), and an `objectType`: `task`, `code_change`,
+`automation`, or `item`. Status and description are optional. Automations also
+use `trigger` and `warning`. Do not send Slack layout JSON or infer facts that
+the provider did not return.
+
+Show at most four fact attributes plus status. Hide code-change size counts
+and source update times without removing them from saved annotations.
+
+The `afterMcpTool` hook can return `{ objectAnnotations }` after a successful
+hosted tool call. Use `ctx.annotations.upsert` instead when facts must change
+without selecting a reply card, such as a background webhook update. Only return
+facts that can be shared with the current Conversation. Message cards reference
+the latest saved annotation. Tool results remain immutable for agent history.
+Neither cards nor annotations grant access to the provider.

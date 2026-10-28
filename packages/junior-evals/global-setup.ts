@@ -1,5 +1,3 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   readEvalOAuthRefreshTokens,
   resetEvalOAuthMockState,
@@ -13,42 +11,72 @@ import {
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
+import { installEvalClock } from "./src/eval-clock";
+import { useGlobalDispatcherForFetch } from "./src/proxy-dispatcher";
+import { startRecordingRun } from "./src/recording-run";
 import type { EvalInvocationContext } from "./src/eval-context";
-import { loadEvalPluginFixtures } from "./src/eval-plugin-fixtures";
+import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
+import {
+  defineJuniorPlugins,
+  pluginCatalogConfigFromPluginSet,
+} from "@/plugins";
 import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
+import { authSuitePlugins } from "./src/suites/auth-agent-options";
 
-type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
-  provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
-};
-
-const workspaceRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
+type EvalGlobalProject = Parameters<typeof setupPostgres>[0] &
+  Parameters<typeof startRecordingRun>[0] & {
+    provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
+  };
 
 /** Set up shared Postgres and public sandbox egress for one eval invocation. */
 export default async function setup(
   project: EvalGlobalProject,
 ): Promise<() => Promise<void>> {
+  // Global setup runs before case timeouts and result reporting can help.
+  process.stdout.write("[evals] Preparing Postgres template\n");
   const teardownPostgres = await setupPostgres(project);
+  process.stdout.write("[evals] Postgres template ready\n");
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
+  let stopRecordings: (() => Promise<void>) | undefined;
   let mswListening = false;
+  let previousPlugins: ReturnType<typeof setPlugins> | undefined;
+  const fixtureEnv = {
+    ...evalGitHubEnv(),
+    SENTRY_CLIENT_ID: "eval-sentry-client-id",
+    SENTRY_CLIENT_SECRET: "eval-sentry-client-secret",
+    EVAL_OAUTH_CLIENT_ID: "eval-oauth-client-id",
+    EVAL_OAUTH_CLIENT_SECRET: "eval-oauth-client-secret",
+  };
+  const previousEnv = new Map(
+    [...Object.keys(fixtureEnv), "JUNIOR_BASE_URL"].map((key) => [
+      key,
+      process.env[key],
+    ]),
+  );
 
   /** Release every invocation-wide resource while preserving all cleanup errors. */
   const cleanup = async () => {
     const errors: unknown[] = [];
     for (const task of [
       async () => await egress?.close(),
+      async () => await stopRecordings?.(),
       async () => {
         if (mswListening) mswServer.close();
       },
       async () => await disconnectStateAdapter(),
       async () => {
         pluginCatalogRuntime.setConfig(previousCatalogConfig);
+        if (previousPlugins) setPlugins(previousPlugins);
+        for (const [key, value] of previousEnv) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
       },
       teardownPostgres,
       restoreAiGatewayDispatcher,
@@ -72,29 +100,60 @@ export default async function setup(
         "Eval global setup requires REDIS_URL and JUNIOR_STATE_KEY_PREFIX",
       );
     }
-    const pluginFixtures = loadEvalPluginFixtures([
-      path.resolve(workspaceRoot, "packages/junior-evals/fixtures/plugins"),
-    ]);
-    previousCatalogConfig = pluginCatalogRuntime.setConfig({
-      inlineManifests: pluginFixtures.inlineManifests,
-      packages: ["@sentry/junior-sentry"],
-    });
-    process.env.EVAL_OAUTH_CLIENT_ID = "eval-oauth-client-id";
-    process.env.EVAL_OAUTH_CLIENT_SECRET = "eval-oauth-client-secret";
+    const packages = ["@sentry/junior-github", "@sentry/junior-sentry"];
+    const runtimePlugins = evalRuntimePlugins(packages);
+    // The egress process adds plugin credentials to sandbox requests, so it
+    // needs the plugins of every suite that uses credentials.
+    const pluginConfig = pluginCatalogConfigFromPluginSet(
+      defineJuniorPlugins([
+        ...packages,
+        ...runtimePlugins,
+        ...authSuitePlugins,
+      ]),
+    );
+    previousPlugins = setPlugins(runtimePlugins);
+    Object.assign(process.env, fixtureEnv);
+    previousCatalogConfig = pluginCatalogRuntime.setConfig(pluginConfig);
+    stopRecordings = await startRecordingRun(project);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
+    // The Vercel Sandbox client gives `fetch` its own agent.
+    useGlobalDispatcherForFetch();
+    process.stdout.write("[evals] Starting public egress\n");
+    // The worker makes egress tokens, leases, and fixture credentials with
+    // the eval clock, and this process checks them. Until the first test
+    // sets it, the clock is real, so snapshot warmup below uses real time.
+    const evalClock = installEvalClock();
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({
         evalOAuthIdentityRequests: readTestEvalOAuthIdentityRequests(),
         evalOAuthRefreshTokens: readEvalOAuthRefreshTokens(),
       }),
-      resetFixtures: () => {
+      resetFixtures: ({ nowMs }) => {
+        evalClock.set(nowMs);
         resetEvalOAuthMockState();
         resetTestEvalOAuthHttpFixtures();
         resetTestGitHubHttpFixtures();
       },
+      // Vercel signs real OIDC tokens with real times.
+      verifyOidc: async (token) => {
+        const { verifyVercelSandboxOidcToken } =
+          await import("@/chat/sandbox/egress/oidc");
+        return await verifyVercelSandboxOidcToken(token, {
+          currentDate: new Date(evalClock.realNow()),
+        });
+      },
     });
+    process.stdout.write("[evals] Public egress healthy; warming snapshots\n");
+    process.env.JUNIOR_BASE_URL = egress.baseUrl;
+    for (const packages of [
+      [],
+      ["@sentry/junior-github"],
+      ["@sentry/junior-sentry"],
+    ]) {
+      await warmSandboxSnapshot(packages);
+    }
     project.provide("juniorEvalContext", {
       baseUrl: egress.baseUrl,
       controlToken: egress.controlToken,
@@ -106,6 +165,8 @@ export default async function setup(
     process.stdout.write(`[evals] Public egress ready at ${egress.baseUrl}\n`);
     return cleanup;
   } catch (error) {
+    // Cleanup can also stall; retain the original setup error first.
+    console.error("[evals] Global setup failed; releasing resources", error);
     try {
       await cleanup();
     } catch (cleanupError) {

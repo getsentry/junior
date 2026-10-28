@@ -1,24 +1,28 @@
 import { useCallback, useState } from "react";
-import { Archive, ArchiveRestore, LockKeyhole } from "lucide-react";
+import { Archive, ArchiveRestore } from "lucide-react";
 import { Link } from "react-router";
 
 import {
-  conversationActorLabel,
   conversationDisplayTitle,
   formatRelativeTime,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
-import { ActiveIndicator } from "../components/ActiveIndicator";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/Skeleton";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "../components/ParticipantAvatarStack";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { formatConversationActivityPreview } from "./conversationActivityPreview";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
+import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
+import { MentionText } from "./transcriptMentions";
 import {
   buildConversationSections,
   type ConversationSection,
@@ -28,6 +32,7 @@ import {
 export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string;
+  finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
   timeZone: string;
 }) {
@@ -85,6 +90,7 @@ export function ConversationHomeList(props: {
       <div aria-label="Your conversations" className="grid gap-5" role="list">
         {sections.map((section) => (
           <ConversationCardSection
+            finishedConversationIds={props.finishedConversationIds}
             key={section.key}
             onArchiveError={handleArchiveError}
             onArchived={handleArchived}
@@ -159,6 +165,7 @@ function ConversationCardLoading(props: { index: number }) {
 }
 
 function ConversationCardSection(props: {
+  finishedConversationIds: ReadonlySet<string>;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   section: ConversationSection;
@@ -166,7 +173,7 @@ function ConversationCardSection(props: {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
       <h3
-        className="mb-2 mt-0 px-1 font-display text-xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted"
+        className="mb-2 mt-0 px-1 font-sans text-xs font-medium text-dashboard-text-muted"
         id={`conversation-section-${props.section.key}`}
       >
         {props.section.label}
@@ -175,6 +182,9 @@ function ConversationCardSection(props: {
         {props.section.conversations.map((conversation) => (
           <ConversationCard
             conversation={conversation}
+            finishedSinceSeen={props.finishedConversationIds.has(
+              conversation.id,
+            )}
             key={conversation.id}
             onArchiveError={props.onArchiveError}
             onArchived={props.onArchived}
@@ -187,6 +197,7 @@ function ConversationCardSection(props: {
 
 function ConversationCard(props: {
   conversation: Conversation;
+  finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
 }) {
@@ -201,7 +212,7 @@ function ConversationCard(props: {
   const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
-  const actor = conversationActorLabel(conversation);
+  const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
   return (
     <article
@@ -216,24 +227,11 @@ function ConversationCard(props: {
       <div className="relative z-[1] grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 pointer-events-none">
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
-            {isPrivate ? (
-              <LockKeyhole
-                aria-label="Private conversation"
-                className="size-3 text-dashboard-text-muted"
-              />
-            ) : status === "active" ? (
-              <ActiveIndicator className="size-1.5" />
-            ) : (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "size-1.5 rounded-full",
-                  status === "failed"
-                    ? "bg-rose-300"
-                    : "bg-dashboard-text-muted/40",
-                )}
-              />
-            )}
+            <ConversationListStatusIcon
+              finishedSinceSeen={props.finishedSinceSeen}
+              isPrivate={isPrivate}
+              status={status}
+            />
           </span>
           <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
             {title}
@@ -241,7 +239,7 @@ function ConversationCard(props: {
         </div>
         <div className="flex items-start gap-3">
           <Link
-            className="pointer-events-auto whitespace-nowrap font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
+            className="pointer-events-auto whitespace-nowrap font-sans text-xs tabular-nums text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
             to={conversationPath(conversation.id)}
           >
             {formatRelativeTime(conversation.lastSeenAt)}
@@ -268,17 +266,26 @@ function ConversationCard(props: {
       </div>
       {conversation.activityPreview ? (
         <p className="relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle pointer-events-none">
-          {formatConversationActivityPreview(conversation.activityPreview.text)}
+          <MentionText
+            mentions={conversation.activityPreview.mentions ?? []}
+            text={formatConversationActivityPreview(
+              conversation.activityPreview.text,
+            )}
+          />
         </p>
       ) : (
         <p className="relative z-[1] m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted pointer-events-none">
           {status === "active" ? "Working…" : "No recent message"}
         </p>
       )}
-      <div className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-xs text-dashboard-text-muted pointer-events-none">
+      <div className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-sans text-xs text-dashboard-text-muted pointer-events-none">
         {location ? <span className="truncate">{location}</span> : null}
-        {location && actor ? <span aria-hidden="true">·</span> : null}
-        {actor ? <span className="truncate">{actor}</span> : null}
+        {location && participants.length > 0 ? (
+          <span aria-hidden="true">·</span>
+        ) : null}
+        {participants.length > 0 ? (
+          <ParticipantAvatarStack participants={participants} size="list" />
+        ) : null}
         <ConversationSidebarAnnotations
           annotations={conversation.sidebarAnnotations}
         />
