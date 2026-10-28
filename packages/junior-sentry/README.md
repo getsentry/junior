@@ -50,7 +50,7 @@ For metric alerts, also enable **Alert Rule Action** on the integration and add 
 Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes:
 
 - `issue.created` for `org/project#issueId` and `org/project`.
-- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId`.
+- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId` and for `org/project` of each project on the alert rule.
 
 Create watches/event automations before the webhook arrives; unmatched deliveries are not replayed.
 
