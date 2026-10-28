@@ -57,9 +57,10 @@ dismissal.
 
 `ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
 uses a 400px aside at 1280px and above. The chat and aside scroll separately.
-Smaller windows use `BottomSheet` with a plain accessible label. The sheet and
-side drawers share the Base UI `Sheet` focus rules and the app's document
-scroll lock. A resize changes the frame and keeps the selected tab. Tabs stay fixed above the scrolling content in both
-layouts. Only the swipe handle sits above the sheet tabs. Swipe down, tap the
-backdrop, or press Escape to dismiss it. Base UI owns the transition lifecycle.
+Smaller windows use `BottomSheet` with a visible title and close control. The sheet and
+side drawers use the shadcn Base UI `Sheet` and share the app's document
+scroll lock. A resize changes the frame and keeps the selected tab. Tabs stay
+fixed above the scrolling content in both layouts. The sheet title and close control sit above the tabs. Use the close
+control, tap the backdrop, or press Escape to dismiss it. Base UI owns the
+transition lifecycle.
 A pending exit cannot close a new panel or a different Conversation.

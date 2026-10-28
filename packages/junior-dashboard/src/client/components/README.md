@@ -28,9 +28,11 @@ gallery fixture before use.
 
 `ui/sheet.tsx` is the shadcn Base UI Dialog Sheet. It supports all four edges,
 uses the dashboard overlay and close button, and stops motion when reduced
-motion is set. Its fixture is in `/dev/foundations`. The copied source license
-is in `ui/sheet.LICENSE`. Existing `Drawer` and `BottomSheet` consumers keep the
-swipe-enabled `Sheet.tsx` described below.
+motion is set. The copied source license is in `ui/sheet.LICENSE`.
+`Drawer` and `BottomSheet` compose this component for app details.
+`ui/useSheet.ts` owns their close lifecycle, shared document scroll lock, and
+focus rules when a resize puts one modal below another. Conversation browser
+scenarios cover dismissal, nested focus, and layout changes.
 
 ## Foundations
 
@@ -108,15 +110,13 @@ token so each theme can redefine it.
   sentence-case text, with no border or fill. It is not a control.
 - **Messages.** Use `Notice` for compact transient messages and `FormNotice`
   for wrapping form recovery text.
-- **Overlays.** `Sheet` is a local adaptation of shadcn/ui's Base UI Sheet.
-  It uses Base UI Drawer for focus, dismissal, and native swipe support. The
-  app's shared scroll lock keeps it in sync with the mobile conversation shell.
-  `SheetContent` owns side placement, backdrop fade, and slide transitions.
-  `Drawer` adds a visible header and close control. `BottomSheet` adds a swipe
-  handle and keeps content scrolling separate from gestures. Both skip motion
-  when reduced motion is set. Docked conversation details use a non-modal aside
-  so the chat stays usable. The copied component's license is in `Sheet.LICENSE`.
-  `Tooltip` and `IconButtonTooltip` own hover text.
+- **Overlays.** `ui/sheet.tsx` is the shadcn/ui Base UI Sheet. It uses Base UI
+  Dialog for focus and dismissal. `Drawer` adds a visible header and close
+  control. `BottomSheet` puts details below a title and close control. Both use
+  the app's shared scroll lock, skip motion when reduced motion is set, and
+  close with the close button, backdrop, or Escape. Docked conversation details
+  use a non-modal aside so the chat stays usable. `Tooltip` and
+  `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original
