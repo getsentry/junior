@@ -103,6 +103,19 @@ export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
 
+/**
+ * Sentry trace propagation headers captured when an inbound message arrives.
+ *
+ * Workers accept this field before any writer sets it, so old workers do not
+ * reject mailbox records during a deploy.
+ */
+const inboundMessageTraceContextSchema = z
+  .object({
+    baggage: z.string().optional(),
+    sentryTrace: z.string().min(1),
+  })
+  .strict();
+
 /** Canonical durable mailbox entry owned by task execution. */
 export const inboundMessageSchema = z
   .object({
@@ -116,6 +129,7 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
+    traceContext: inboundMessageTraceContextSchema.optional(),
   })
   .strict();
 
