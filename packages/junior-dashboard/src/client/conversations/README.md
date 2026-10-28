@@ -47,3 +47,14 @@ Review these components together in `/dev/transcripts`. Use the conversation
 fixture for messages, events, activity, context, and typing. Use the attachment
 fixture for file wrapping. Keep visual checks out of automated assertions;
 browser tests cover opening, closing, and keyboard interaction.
+
+## Conversation details
+
+`ConversationPage` owns whether details are open. The page is keyed by the
+Conversation, so switching Conversations closes details. `ConversationHeader`
+only toggles details and restores focus to the control after dismissal.
+
+`ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
+uses a 400px aside at 1280px and above. The chat and aside scroll separately.
+Smaller windows use the shared `Drawer` as a bottom sheet. The sheet keeps modal
+focus and scroll rules. A resize changes the frame and keeps the selected tab.

@@ -81,7 +81,8 @@ token so each theme can redefine it.
 - **Messages.** Use `Notice` for compact transient messages and `FormNotice`
   for wrapping form recovery text.
 - **Overlays.** `Drawer` owns dismissal, focus trapping, focus return, scroll
-  locking, and panel layout. Context panels use it, not a separate modal.
+  locking, and modal layout. Use `placement="bottom"` for bottom sheets.
+  Docked conversation details use a non-modal aside so the chat stays usable.
   `Tooltip` and `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and

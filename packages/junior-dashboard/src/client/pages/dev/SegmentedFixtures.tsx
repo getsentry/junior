@@ -5,14 +5,14 @@ import { SegmentedTabs } from "../../components/SegmentedTabs";
 
 /** Show panel tabs switching the panel below them. */
 export function SegmentedTabsFixture() {
-  const [tab, setTab] = useState<"details" | "memories" | "usage">("details");
+  const [tab, setTab] = useState<"details" | "memories" | "agents">("details");
   return (
-    <div className="max-w-md">
+    <div className="max-w-xs">
       <SegmentedTabs
         items={[
           { label: "Details", value: "details" },
           { count: 3, label: "Memories", value: "memories" },
-          { label: "Usage", value: "usage" },
+          { count: 2, label: "Subagents", value: "agents" },
         ]}
         label="Conversation panels"
         onChange={setTab}
@@ -23,7 +23,7 @@ export function SegmentedTabsFixture() {
             ? "Conversation summary and linked work."
             : tab === "memories"
               ? "What Junior learned from this conversation."
-              : "Time, tokens, and cost for this conversation."}
+              : "Child conversations and their current work."}
         </p>
       </SegmentedTabs>
     </div>

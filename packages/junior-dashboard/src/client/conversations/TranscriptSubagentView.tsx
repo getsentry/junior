@@ -9,7 +9,7 @@ import { HighlightText } from "./transcriptSearch";
 
 /**
  * Render a child agent as a compact card in the transcript stream. The card
- * matches the child agent rows in the details drawer: name, status, and run
+ * matches the child agent rows in conversation details: name, status, and run
  * time first, then the task title. It opens the child transcript.
  */
 export function TranscriptSubagentView(props: {

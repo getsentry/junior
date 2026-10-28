@@ -12,7 +12,7 @@ const segmentedTabsInsetClass = "gap-1 p-1";
 /** Style one tab or link in the segmented pill track. */
 export function segmentedTabClass(selected: boolean): string {
   return cn(
-    "min-h-9 cursor-pointer rounded-md border-0 px-3 py-2 font-sans text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+    "min-h-9 cursor-pointer rounded-md border-0 px-2 py-2 font-sans text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
     selected
       ? "bg-dashboard-fill-strong text-dashboard-text"
       : "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-faint hover:text-dashboard-text",
@@ -34,7 +34,11 @@ export function SegmentedTabs<const Value extends string>(props: {
     <div className="grid min-w-0 gap-4">
       <div
         aria-label={props.label}
-        className={cn("flex", segmentedTabsFrameClass, segmentedTabsInsetClass)}
+        className={cn(
+          "flex min-w-0",
+          segmentedTabsFrameClass,
+          segmentedTabsInsetClass,
+        )}
         role="tablist"
       >
         {props.items.map((item, index) => (

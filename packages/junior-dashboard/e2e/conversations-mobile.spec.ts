@@ -254,7 +254,33 @@ test("opens and closes a conversation on mobile", async ({
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
   await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Close conversation menu" }).click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("dialog", { name: "Conversation details" });
+  await expect(details).toHaveAttribute("aria-modal", "true");
+  const closeDetails = details.getByRole("button", {
+    name: "Close conversation details",
+  });
+  await expect(closeDetails).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(details.locator(":focus")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const handle = details.locator("[data-drawer-handle]");
+  // The swipe ends below the handle. Pointer capture owns its release.
+  await handle.dragTo(handle, {
+    force: true,
+    sourcePosition: { x: 100, y: 10 },
+    targetPosition: { x: 100, y: 110 },
+  });
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();

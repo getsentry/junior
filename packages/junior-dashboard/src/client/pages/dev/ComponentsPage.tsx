@@ -193,6 +193,7 @@ function FoundationsGalleryPage() {
   const [pressed, setPressed] = useState(true);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("deploy failure");
 
@@ -302,6 +303,31 @@ function FoundationsGalleryPage() {
                   document.body,
                 )
               : null}
+          </Drawer>
+        ) : null}
+      </Fixture>
+      <Fixture title="Bottom sheet">
+        <Button onClick={() => setSheetOpen(true)}>Open bottom sheet</Button>
+        {sheetOpen ? (
+          <Drawer
+            closeLabel="Close gallery sheet"
+            dismissLabel="Dismiss gallery sheet"
+            header={
+              <h2
+                id="gallery-sheet-title"
+                className="m-0 text-base font-semibold"
+              >
+                Details
+              </h2>
+            }
+            onClose={() => setSheetOpen(false)}
+            openKey="gallery-sheet"
+            placement="bottom"
+            titleId="gallery-sheet-title"
+          >
+            <p className="m-0 text-sm text-dashboard-text-muted">
+              Swipe the handle down or close the sheet to return to the page.
+            </p>
           </Drawer>
         ) : null}
       </Fixture>

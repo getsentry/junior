@@ -352,7 +352,6 @@ describe("dashboard canonical-event components", () => {
   it("exposes pressed state for transcript view controls", () => {
     const html = renderToStaticMarkup(
       <ConversationHeader
-        annotations={null}
         archive={{
           archived: false,
           disabled: false,
@@ -361,14 +360,13 @@ describe("dashboard canonical-event components", () => {
           pending: false,
         }}
         conversationId="conversation-1"
-        identity={null}
+        detailsOpen={false}
+        onDetailsClick={() => {}}
         live={false}
-        onOpenSubagent={() => {}}
         onSearchChange={() => {}}
         onViewChange={() => {}}
         privacy={null}
         search=""
-        stats={null}
         title="Header QA"
         view="raw"
       />,

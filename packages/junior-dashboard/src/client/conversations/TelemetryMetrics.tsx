@@ -354,7 +354,7 @@ export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
   childAgentTotals?: ConversationChildAgentTotals;
-  /** Point to the Details drawer, which has the full breakdown. */
+  /** Point to conversation details, which has the full breakdown. */
   detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;
@@ -398,7 +398,7 @@ export function TokenMetric(props: {
   align?: "left" | "right";
   childAgentTotals?: ConversationChildAgentTotals;
   compactionCount?: number;
-  /** Point to the Details drawer, which has the full breakdown. */
+  /** Point to conversation details, which has the full breakdown. */
   detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;

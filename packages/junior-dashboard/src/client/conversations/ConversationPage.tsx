@@ -26,6 +26,8 @@ import {
 } from "./conversationRoutes";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationDetails } from "./ConversationDetails";
+import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
@@ -76,6 +78,7 @@ export function ConversationPage(props: {
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -196,7 +199,12 @@ export function ConversationPage(props: {
   );
 
   return (
-    <>
+    <div
+      className={cn(
+        "grid h-full min-h-0 min-w-0",
+        detailsOpen && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+      )}
+    >
       <ChatLayout
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
@@ -208,6 +216,8 @@ export function ConversationPage(props: {
                 agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
               }
               conversationId={conversationId}
+              detailsOpen={detailsOpen}
+              onDetailsClick={() => setDetailsOpen((open) => !open)}
               forks={
                 detail.data?.forkedFromConversationId ||
                 detail.data?.forks?.length ? (
@@ -220,8 +230,6 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              lastActivityAt={conversation?.lastSeenAt}
-              sentryConversationUrl={detail.data?.sentryConversationUrl}
               copyAction={
                 <CopyMarkdownButton
                   key={conversationDetail?.conversationId ?? "loading"}
@@ -235,11 +243,6 @@ export function ConversationPage(props: {
                       : undefined
                   }
                 />
-              }
-              annotations={
-                hasConversationAnnotations(detail.data?.annotations) ? (
-                  <ConversationAnnotations detail={detail.data} />
-                ) : null
               }
               linkedWork={
                 hasConversationAnnotations(detail.data?.annotations) ? (
@@ -260,15 +263,6 @@ export function ConversationPage(props: {
                   }),
                 pending: archive.isPending,
               }}
-              brief={
-                detail.data?.brief ? (
-                  <ConversationBrief
-                    brief={detail.data.brief}
-                    variant="summary"
-                  />
-                ) : null
-              }
-              identity={identity}
               live={live}
               meta={
                 <ConversationHeaderMeta
@@ -288,7 +282,6 @@ export function ConversationPage(props: {
                   }
                 />
               }
-              onOpenSubagent={setSubagentTarget}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
               privacy={
@@ -297,23 +290,6 @@ export function ConversationPage(props: {
                 />
               }
               search={search}
-              stats={
-                hasConversationStats({
-                  conversation,
-                  detail: detail.data,
-                }) ? (
-                  <div className="grid min-w-0 gap-5">
-                    <ConversationStats
-                      conversation={conversation}
-                      detail={detail.data}
-                    />
-                    <ConversationUsageBreakdown
-                      conversation={conversation}
-                      detail={detail.data}
-                    />
-                  </div>
-                ) : null
-              }
               title={title}
               view={view}
             />
@@ -382,11 +358,48 @@ export function ConversationPage(props: {
           ) : undefined
         }
       />
+      {detailsOpen ? (
+        <ConversationDetails
+          conversationId={conversationId}
+          identity={identity}
+          lastActivityAt={conversation?.lastSeenAt}
+          sentryConversationUrl={detail.data?.sentryConversationUrl}
+          onClose={() => setDetailsOpen(false)}
+          onOpenSubagent={setSubagentTarget}
+          annotations={
+            hasConversationAnnotations(detail.data?.annotations) ? (
+              <ConversationAnnotations detail={detail.data} />
+            ) : null
+          }
+          brief={
+            detail.data?.brief ? (
+              <ConversationBrief brief={detail.data.brief} variant="summary" />
+            ) : null
+          }
+          stats={
+            hasConversationStats({
+              conversation,
+              detail: detail.data,
+            }) ? (
+              <div className="grid min-w-0 gap-5">
+                <ConversationStats
+                  conversation={conversation}
+                  detail={detail.data}
+                />
+                <ConversationUsageBreakdown
+                  conversation={conversation}
+                  detail={detail.data}
+                />
+              </div>
+            ) : null
+          }
+        />
+      ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-    </>
+    </div>
   );
 }
 

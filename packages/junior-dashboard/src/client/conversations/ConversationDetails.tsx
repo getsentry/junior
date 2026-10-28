@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 
 import { formatRelativeTime, formatTime } from "../format";
 import { ButtonLink } from "../components/Button";
-import { Drawer } from "../components/Drawer";
+import { ConversationDetailsFrame } from "./ConversationDetailsFrame";
 import { SegmentedTabs } from "../components/SegmentedTabs";
 import {
   ConversationChildAgents,
@@ -19,22 +19,20 @@ import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 type DetailsTab = "agents" | "details" | "memories";
 
 /** Put conversation context before usage and diagnostic links. */
-export function ConversationDetailsDrawer(props: {
+export function ConversationDetails(props: {
   annotations: ReactNode;
   brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
   lastActivityAt?: string;
   onClose(): void;
-  /** Open one child agent transcript. The details drawer closes first. */
+  /** Open one child agent transcript. Details closes first. */
   onOpenSubagent(target: SubagentTranscriptTarget): void;
   sentryConversationUrl?: string;
-  privacy: ReactNode;
   stats: ReactNode;
-  title: string;
 }) {
   const [tab, setTab] = useState<DetailsTab>("details");
-  // Load both lists with the drawer so each tab can show its count.
+  // Load both lists with details so each tab can show its count.
   const memories = useConversationMemories(props.conversationId);
   const agents = useConversationChildAgents(props.conversationId);
   const tabs = [
@@ -46,7 +44,7 @@ export function ConversationDetailsDrawer(props: {
     },
     { count: agents.data?.agents.length, label: "Subagents", value: "agents" },
   ] as const;
-  const titleId = "conversation-details-drawer-title";
+
   const sections = [
     { content: props.brief, title: "Summary" },
     { content: props.annotations, title: "Linked work" },
@@ -55,26 +53,9 @@ export function ConversationDetailsDrawer(props: {
   ].filter((section) => section.content != null);
 
   return (
-    <Drawer
-      closeLabel="Close conversation details"
-      dismissLabel="Dismiss conversation details"
-      header={
-        <>
-          <h2
-            className="m-0 min-w-0 break-words text-lg font-bold leading-tight text-dashboard-text"
-            id={titleId}
-          >
-            {props.title}
-          </h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {props.privacy}
-          </div>
-        </>
-      }
+    <ConversationDetailsFrame
+      conversationId={props.conversationId}
       onClose={props.onClose}
-      openKey={props.conversationId}
-      titleId={titleId}
-      width="narrow"
     >
       <SegmentedTabs
         items={tabs}
@@ -152,6 +133,6 @@ export function ConversationDetailsDrawer(props: {
           </footer>
         ) : null}
       </SegmentedTabs>
-    </Drawer>
+    </ConversationDetailsFrame>
   );
 }
