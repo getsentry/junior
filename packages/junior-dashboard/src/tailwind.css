@@ -1,5 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap");
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /*
  * Dashboard design tokens. components/README.md explains each role.
@@ -213,6 +215,81 @@
   --color-violet-300: oklch(49.1% 0.27 292.581);
   --color-violet-400: oklch(54.1% 0.281 293.009);
 }
+
+/* shadcn components use the dashboard tokens in both themes. */
+@layer base {
+  :root {
+    --radius: 0.5rem;
+    --background: var(--color-dashboard-bg);
+    --foreground: var(--color-dashboard-text);
+    --card: var(--color-dashboard-surface-panel);
+    --card-foreground: var(--color-dashboard-text);
+    --popover: var(--color-dashboard-bg-elevated);
+    --popover-foreground: var(--color-dashboard-text);
+    --primary: var(--color-dashboard-accent);
+    --primary-foreground: var(--color-dashboard-text-inverse);
+    --secondary: var(--color-dashboard-surface-raised);
+    --secondary-foreground: var(--color-dashboard-text);
+    --muted: var(--color-dashboard-surface-raised);
+    --muted-foreground: var(--color-dashboard-text-muted);
+    --accent: var(--color-dashboard-surface-hover);
+    --accent-foreground: var(--color-dashboard-text);
+    --destructive: var(--color-red-500);
+    --border: var(--color-dashboard-border);
+    --input: var(--color-dashboard-border-emphasis);
+    --ring: var(--color-dashboard-focus);
+    --chart-1: var(--color-violet-400);
+    --chart-2: var(--color-sky-400);
+    --chart-3: var(--color-emerald-400);
+    --chart-4: var(--color-amber-400);
+    --chart-5: var(--color-rose-400);
+    --sidebar: var(--color-dashboard-surface-panel);
+    --sidebar-foreground: var(--color-dashboard-text);
+    --sidebar-primary: var(--color-dashboard-accent);
+    --sidebar-primary-foreground: var(--color-dashboard-text-inverse);
+    --sidebar-accent: var(--color-dashboard-surface-hover);
+    --sidebar-accent-foreground: var(--color-dashboard-text);
+    --sidebar-border: var(--color-dashboard-border);
+    --sidebar-ring: var(--color-dashboard-focus);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* The dashboard defaults to dark and selects light with data-theme. */
+@custom-variant dark (&:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *));
 
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));

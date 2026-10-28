@@ -4,6 +4,27 @@ Shared dashboard components live here. Feature pages compose these surfaces
 instead of copying Tailwind blocks. See `policies/frontend-components.md` for
 the policy. `pnpm dashboard-style:check` enforces the token rules below.
 
+## shadcn/ui
+
+`packages/junior-dashboard/components.json` configures shadcn/ui for this package.
+It uses Base UI (`base-nova`), Tailwind 4, and Lucide. Add components from the
+repository root:
+
+```sh
+pnpm --filter @sentry/junior-dashboard exec shadcn add <component>
+```
+
+The CLI writes components to `src/client/components/ui/`. Its `@dashboard/*`
+alias points to `src/client/*`. The existing `@/*` alias still points to core.
+`src/client/lib/utils.ts` provides the shadcn `cn` helper. Existing components
+keep the class join helper in `src/client/styles.ts` until they are migrated.
+
+The shadcn color tokens in `src/tailwind.css` use the dashboard tokens in both
+themes. The `dark:` variant follows `data-theme`. Keep the existing Tailwind
+radius scale. Do not apply the CLI's global border or body resets to existing
+components. Check each added component against the rules below and add its
+gallery fixture before use.
+
 ## Foundations
 
 Tokens live in the `@theme` block of `src/tailwind.css`. Keep every color in a
