@@ -46,7 +46,8 @@ export function ConversationHeader(props: {
   view: TranscriptViewMode;
 }) {
   const detailsOpen = props.detailsOpen;
-  const headerRef = useRef<HTMLElement>(null);
+  const detailsButtonRef = useRef<HTMLButtonElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -58,11 +59,9 @@ export function ConversationHeader(props: {
   useEffect(() => {
     if (wasDetailsOpen.current && !detailsOpen) {
       const trigger = window.matchMedia("(max-width: 767px)").matches
-        ? mobileMenuRef.current?.querySelector<HTMLButtonElement>("button")
-        : headerRef.current?.querySelector<HTMLButtonElement>(
-            '[aria-label="Conversation details"]',
-          );
-      trigger?.focus();
+        ? menuButtonRef.current
+        : detailsButtonRef.current;
+      trigger?.focus({ preventScroll: true });
     }
     wasDetailsOpen.current = detailsOpen;
   }, [detailsOpen]);
@@ -114,6 +113,7 @@ export function ConversationHeader(props: {
   const mobileOverflow = (
     <div className="relative" ref={mobileMenuRef}>
       <HeaderIconButton
+        ref={menuButtonRef}
         label={mobileMenuOpen ? "Close conversation menu" : "Conversation menu"}
         onClick={() => setMobileMenuOpen((open) => !open)}
         pressed={mobileMenuOpen}
@@ -181,7 +181,6 @@ export function ConversationHeader(props: {
       <MobileHeaderActionsPortal>{mobileOverflow}</MobileHeaderActionsPortal>
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
-        ref={headerRef}
         className={cn(
           "sticky top-0 z-10 -mx-4 border-b border-dashboard-border bg-dashboard-bg md:-mx-7",
           !showMobileHeader && "hidden md:block",
@@ -213,6 +212,7 @@ export function ConversationHeader(props: {
             conversationId={props.conversationId}
             copyAction={props.copyAction}
             detailsOpen={detailsOpen}
+            detailsButtonRef={detailsButtonRef}
             onDetailsClick={props.onDetailsClick}
             onSearchClick={toggleSearch}
             onViewChange={props.onViewChange}

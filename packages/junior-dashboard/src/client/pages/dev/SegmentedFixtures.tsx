@@ -7,8 +7,9 @@ import { SegmentedTabs } from "../../components/SegmentedTabs";
 export function SegmentedTabsFixture() {
   const [tab, setTab] = useState<"summary" | "memories" | "agents">("summary");
   return (
-    <div className="max-w-xs">
+    <div className="h-64 max-w-xs">
       <SegmentedTabs
+        scroll
         items={[
           { label: "Summary", value: "summary" },
           { count: 3, label: "Memories", value: "memories" },
@@ -20,7 +21,7 @@ export function SegmentedTabsFixture() {
       >
         <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
           {tab === "summary"
-            ? "Conversation summary and linked work."
+            ? "Checkout latency increased after the latest release. Compare traces from before and after the deployment, then inspect the slow serialization span. The public brief links the affected repository, the release, and the open code change. Keep the rollout paused until the comparison confirms the cause. The next check is to run the same request against the previous release and compare its timings. Use the linked work to record the result and any rollback decision. The participants can continue this investigation in the conversation while keeping these details open. Model usage and related child conversations remain available in their own sections."
             : tab === "memories"
               ? "What Junior learned from this conversation."
               : "Child conversations and their current work."}

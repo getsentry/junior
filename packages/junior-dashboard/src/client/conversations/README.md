@@ -52,11 +52,14 @@ browser tests cover opening, closing, and keyboard interaction.
 
 `ConversationPage` owns whether details are open. The page is keyed by the
 Conversation, so switching Conversations closes details. `ConversationHeader`
-only toggles details and restores focus to the control after dismissal.
+only toggles details and restores focus through explicit control refs after
+dismissal.
 
 `ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
 uses a 400px aside at 1280px and above. The chat and aside scroll separately.
-Smaller windows use the shared `Drawer` as a bottom sheet. The sheet keeps modal
-focus and scroll rules. A resize changes the frame and keeps the selected tab.
-The sheet keeps its title as a screen-reader label. Only the swipe handle sits
-above the tabs. Swipe down, tap the backdrop, or press Escape to dismiss it.
+Smaller windows use `BottomSheet` with a plain accessible label. The sheet and
+side drawers share the `Modal` focus and scroll rules. A resize changes the frame
+and keeps the selected tab. Tabs stay fixed above the scrolling content in both
+layouts. Only the swipe handle sits above the sheet tabs. Swipe down, tap the
+backdrop, or press Escape to dismiss it. Sheet animations stop on unmount so a
+pending exit cannot close the new panel or a different Conversation.

@@ -23,6 +23,8 @@ export function segmentedTabClass(selected: boolean): string {
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
+  /** Keep tabs fixed while their panel content scrolls. */
+  scroll?: boolean;
   /** `count` is the number of entries in the panel. Zero and unknown counts are hidden. */
   items: readonly { count?: number; label: string; value: Value }[];
   onChange(value: NoInfer<Value>): void;
@@ -31,7 +33,12 @@ export function SegmentedTabs<const Value extends string>(props: {
   const id = useId();
 
   return (
-    <div className="grid min-w-0 gap-4">
+    <div
+      className={cn(
+        "grid min-w-0 gap-4",
+        props.scroll && "h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]",
+      )}
+    >
       <div
         aria-label={props.label}
         className={cn(
@@ -92,7 +99,10 @@ export function SegmentedTabs<const Value extends string>(props: {
       </div>
       <div
         aria-labelledby={`${id}-${props.value}`}
-        className="min-w-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        className={cn(
+          "min-w-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+          props.scroll && "min-h-0 overflow-y-auto overscroll-contain pr-2",
+        )}
         id={`${id}-panel`}
         role="tabpanel"
         tabIndex={0}

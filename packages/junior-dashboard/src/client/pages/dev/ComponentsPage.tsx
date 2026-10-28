@@ -37,6 +37,7 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Drawer } from "../../components/Drawer";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
 import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
@@ -309,24 +310,15 @@ function FoundationsGalleryPage() {
       <Fixture title="Bottom sheet">
         <Button onClick={() => setSheetOpen(true)}>Open bottom sheet</Button>
         {sheetOpen ? (
-          <Drawer
-            closeLabel="Close gallery sheet"
-            dismissLabel="Dismiss gallery sheet"
-            header={
-              <h2 id="gallery-sheet-title" className="sr-only">
-                Details
-              </h2>
-            }
+          <BottomSheet
+            label="Gallery details"
             onClose={() => setSheetOpen(false)}
-            openKey="gallery-sheet"
-            placement="bottom"
-            titleId="gallery-sheet-title"
           >
             <p className="m-0 text-sm text-dashboard-text-muted">
               Swipe the handle down, tap outside, or press Escape to return to
               the page.
             </p>
-          </Drawer>
+          </BottomSheet>
         ) : null}
       </Fixture>
       <Fixture title="Theme">

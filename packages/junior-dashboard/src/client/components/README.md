@@ -80,8 +80,10 @@ token so each theme can redefine it.
   sentence-case text, with no border or fill. It is not a control.
 - **Messages.** Use `Notice` for compact transient messages and `FormNotice`
   for wrapping form recovery text.
-- **Overlays.** `Drawer` owns dismissal, focus trapping, focus return, scroll
-  locking, and modal layout. Use `placement="bottom"` for bottom sheets.
+- **Overlays.** `Modal` owns backdrop dismissal, keyboard focus, focus return,
+  and scroll locking. `Drawer` adds a side panel with a visible header.
+  `BottomSheet` takes a label and content. It owns swipe, settling, and exit
+  motion, and skips those animations for reduced motion. Both use `Modal`.
   Docked conversation details use a non-modal aside so the chat stays usable.
   `Tooltip` and `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
@@ -104,7 +106,8 @@ levels stay distinct.
   the row width while their labels fit. Rows that do not fit scroll sideways.
 - **Panel switches** use `SegmentedTabs`, which draws a pill track. Pass the
   selected value, items, change handler, and panel content. It owns tab and
-  panel labels and keyboard focus.
+  panel labels and keyboard focus. Pass `scroll` to keep the tabs fixed while
+  the panel content scrolls.
 
 Keep collection filters in `FilterTabList`.
 

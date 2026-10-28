@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import { Button } from "../components/Button";
-import { Drawer } from "../components/Drawer";
+import { BottomSheet } from "../components/BottomSheet";
 
 const panelMediaQuery = "(min-width: 1280px)";
 
@@ -25,7 +25,6 @@ function hasPanelSpace() {
 /** Keep details beside the chat when space permits, or in a modal bottom sheet. */
 export function ConversationDetailsFrame(props: {
   children: ReactNode;
-  conversationId: string;
   onClose(): void;
 }) {
   const titleId = useId();
@@ -34,56 +33,35 @@ export function ConversationDetailsFrame(props: {
     hasPanelSpace,
     () => false,
   );
-  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const wasPanel = useRef(panel);
   useEffect(() => {
     if (
       panel &&
       !wasPanel.current &&
-      !document.querySelector("[data-dashboard-drawer]")
+      !document.querySelector("[data-dashboard-modal]")
     ) {
-      panelRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      closeRef.current?.focus({ preventScroll: true });
     }
     wasPanel.current = panel;
   }, [panel]);
-  const heading = (
-    <h2
-      aria-label="Conversation details"
-      className={
-        panel ? "m-0 text-base font-semibold text-dashboard-text" : "sr-only"
-      }
-      id={titleId}
-    >
-      Details
-    </h2>
-  );
-
   if (!panel) {
     return (
-      <Drawer
-        closeLabel="Close conversation details"
-        dismissLabel="Dismiss conversation details"
-        header={heading}
-        onClose={props.onClose}
-        openKey={props.conversationId}
-        placement="bottom"
-        titleId={titleId}
-      >
+      <BottomSheet label="Conversation details" onClose={props.onClose}>
         {props.children}
-      </Drawer>
+      </BottomSheet>
     );
   }
 
   return (
     <aside
-      ref={panelRef}
       aria-labelledby={titleId}
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
       onKeyDown={(event) => {
         if (
           event.key === "Escape" &&
           !event.defaultPrevented &&
-          !document.querySelector("[data-dashboard-drawer]")
+          !document.querySelector("[data-dashboard-modal]")
         ) {
           event.preventDefault();
           props.onClose();
@@ -91,8 +69,15 @@ export function ConversationDetailsFrame(props: {
       }}
     >
       <header className="flex items-center justify-between gap-3 border-b border-dashboard-border px-5 py-3">
-        {heading}
+        <h2
+          aria-label="Conversation details"
+          className="m-0 text-base font-semibold text-dashboard-text"
+          id={titleId}
+        >
+          Details
+        </h2>
         <Button
+          ref={closeRef}
           aria-label="Close conversation details"
           onClick={props.onClose}
           size="icon"
@@ -100,9 +85,7 @@ export function ConversationDetailsFrame(props: {
           <X aria-hidden="true" size={15} />
         </Button>
       </header>
-      <div className="min-h-0 overflow-y-auto overscroll-contain p-4">
-        {props.children}
-      </div>
+      <div className="min-h-0 p-4">{props.children}</div>
     </aside>
   );
 }

@@ -53,11 +53,9 @@ export function ConversationDetails(props: {
   ].filter((section) => section.content != null);
 
   return (
-    <ConversationDetailsFrame
-      conversationId={props.conversationId}
-      onClose={props.onClose}
-    >
+    <ConversationDetailsFrame onClose={props.onClose}>
       <SegmentedTabs
+        scroll
         items={tabs}
         label="Conversation details"
         onChange={setTab}
