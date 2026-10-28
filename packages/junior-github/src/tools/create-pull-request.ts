@@ -27,9 +27,10 @@ import {
 import {
   appendGitHubRequesterAttribution,
   linkedGitHubLogin,
+  resolveGitHubRequester,
+  type GitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
-import { resolveGitHubPullRequestRequester } from "../pull-request-requesters/actor.js";
 import {
   attachGitHubPullRequestRequester,
   recordPendingGitHubPullRequestRequester,
@@ -274,19 +275,20 @@ function isDefinitiveGitHubPullRequestCreateRejection(
 }
 
 /** Build the GitHub REST create-PR request after the runtime owns body/footer shaping. */
-async function createGitHubPullRequestRequest(
+function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
   ctx: ToolRegistrationHookContext,
+  requester: GitHubRequester | undefined,
   dashboardUrl?: string,
-): Promise<Request> {
+): Request {
   const repo = parseRepo(input.repo);
   const payload = {
     title: nonEmptyString(input.title, "title"),
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      await appendGitHubRequesterAttribution(input.body ?? "", ctx),
+      appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
       conversationId,
       dashboardUrl,
     ),
@@ -370,17 +372,16 @@ function requesterBranch(input: CreateGitHubPullRequestInput): {
   return { headBranch: head.slice(separator + 1), repositoryFullName };
 }
 
-/** Assignment is optional: lookup or provider failures must not fail PR creation. */
+/** Assignment is optional: provider failures must not fail PR creation. */
 async function assignPullRequestRequester(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
+  requester: GitHubRequester | undefined,
 ): Promise<void> {
-  if (!ctx.actor || ctx.actor.platform === "system") return;
+  const assignee = linkedGitHubLogin(requester?.user);
+  if (!assignee) return;
   try {
-    const requester = await ctx.users.resolveActor();
-    const assignee = linkedGitHubLogin(requester?.user);
-    if (!assignee) return;
     const repo = parseRepo(input.repo);
     const response = await ctx.egress.fetch({
       provider: "github",
@@ -558,15 +559,17 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          const request = await createGitHubPullRequestRequest(
+          const requester = await resolveGitHubRequester(ctx);
+          const identityId = requester?.identity?.id;
+          const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
             ctx,
+            requester,
             ctx.slack?.conversationLink?.url,
           );
           // GitHub can deliver `opened` before the create call returns, so
           // the requester must be saved first.
-          const identityId = await resolveGitHubPullRequestRequester(ctx);
           const { headBranch, repositoryFullName } =
             requesterBranch(parsedInput);
           if (identityId && headBranch) {
@@ -636,7 +639,7 @@ export function createGitHubPullRequestTool(
             number: result.number,
             repositoryFullName,
           });
-          await assignPullRequestRequester(ctx, parsedInput, result);
+          await assignPullRequestRequester(ctx, parsedInput, result, requester);
           return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,

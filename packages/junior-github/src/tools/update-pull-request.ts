@@ -16,9 +16,11 @@ import {
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import {
+  appendGitHubRequesterAttribution,
+  resolveGitHubRequester,
+} from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
-import { resolveGitHubPullRequestRequester } from "../pull-request-requesters/actor.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 
@@ -218,12 +220,13 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       }
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
+      const requester = await resolveGitHubRequester(ctx);
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                await appendGitHubRequesterAttribution(update.body, ctx),
+                appendGitHubRequesterAttribution(update.body, ctx, requester),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),
@@ -283,12 +286,11 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       }
       // Like attribution, each person who asks Junior to change the pull
       // request becomes one of its requesters.
-      const identityId = await resolveGitHubPullRequestRequester(ctx);
-      if (identityId) {
+      if (requester?.identity) {
         await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+          identityId: requester.identity.id,
           number: providerResult.number,
           repositoryFullName: repo.ref,
-          identityId,
         });
       }
       const subscribable = ctx.events.canSubscribe
