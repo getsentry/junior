@@ -19,7 +19,6 @@ import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
-import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
@@ -91,12 +90,7 @@ export function ConversationWorkspace() {
 
   if (home) {
     return (
-      <main
-        className={cn(
-          dashboardContainerClass,
-          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
-        )}
-      >
+      <main className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6">
         <div className="mx-auto grid w-full max-w-6xl gap-8">
           {createView}
           <section aria-label="Conversations" className="grid gap-3">
