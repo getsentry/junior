@@ -103,12 +103,7 @@ export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
 
-/**
- * Sentry trace propagation headers captured when an inbound message arrives.
- *
- * Telemetry must not block mailbox work. Parsing drops a malformed value and
- * strips unknown keys, so new keys do not need a reader-first deploy.
- */
+/** Sentry trace propagation headers captured when an inbound message arrives. */
 const inboundMessageTraceContextSchema = z
   .object({
     baggage: z.string().optional(),

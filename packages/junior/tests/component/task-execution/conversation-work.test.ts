@@ -764,7 +764,6 @@ describe("conversation work execution", () => {
       state,
     });
 
-    // Old strict readers reject an unknown key, even when its value is undefined.
     const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
       execution: { pendingMessages: Array<Record<string, unknown>> };
     };
