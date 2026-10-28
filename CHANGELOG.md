@@ -1,4 +1,35 @@
 # Changelog
+## 0.262.0
+
+### New Features ✨
+
+#### Github
+
+- Add authorRole match field for pull request events by @dcramer with @sentry-junior in [#2294](https://github.com/getsentry/junior/pull/2294)
+- Filter deployment events by environment and workflow by @dcramer with @sentry-junior in [#2293](https://github.com/getsentry/junior/pull/2293)
+- Watch deployments by environment by @dcramer with @sentry-junior in [#2292](https://github.com/getsentry/junior/pull/2292)
+- Deny GitHub clones typed into bash by @dcramer with @sentry-junior in [#2291](https://github.com/getsentry/junior/pull/2291)
+- Keep the current Workspace when cloning another repository by @dcramer with @sentry-junior in [#2290](https://github.com/getsentry/junior/pull/2290)
+
+#### Other
+
+- (agents) Claude Code-style child agents with implicit delegation and agent types by @dcramer with @sentry-junior in [#2265](https://github.com/getsentry/junior/pull/2265)
+- (dashboard) Keep conversation details beside the chat by @MathurAditya724 in [#2276](https://github.com/getsentry/junior/pull/2276)
+- (plugins) Add a short-lived cache to plugin contexts by @dcramer with @sentry-junior in [#2297](https://github.com/getsentry/junior/pull/2297)
+- (sentry) Publish metric alerts to their projects by @dcramer with @sentry-junior in [#2289](https://github.com/getsentry/junior/pull/2289)
+
+### Bug Fixes 🐛
+
+- (sandbox) Put plugin runtime binaries last on PATH by @dcramer with @sentry-junior in [#2296](https://github.com/getsentry/junior/pull/2296)
+
+### Documentation 📚
+
+- Fix stale source paths, a removed plugin link, and a missing script by @joshuarli and @MathurAditya724 with @sentry-junior in [#2182](https://github.com/getsentry/junior/pull/2182)
+
+### Internal Changes 🔧
+
+- (db) Index plugin event cost reports by @MathurAditya724 in [#2275](https://github.com/getsentry/junior/pull/2275)
+
 ## 0.261.0
 
 ### New Features ✨
