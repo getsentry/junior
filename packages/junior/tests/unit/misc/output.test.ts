@@ -154,37 +154,49 @@ describe("normalizeSlackReplyMarkdown", () => {
     ).toBe("opened getsentry/junior#1509 for review");
   });
 
-  it("moves a list item's follow-up paragraph after a nested list out of the list", () => {
+  it("turns follow-up paragraphs in list items into bullets at every level", () => {
     const input = [
       "1. I checked the side effects:",
       "   - **Tag:** both change.",
-      "   - **CalVer:** still works.",
       "   ",
       "   So you can have one or the other.",
+      "2. First paragraph.",
       "",
-      "2. It describes:",
-      "   - **Requirements:**",
-      "     - A PR shows up only where it lands.",
+      "   Second paragraph.",
+      "3. Outer item:",
+      "   - Inner intro:",
+      "     - deep a",
       "",
-      "   It also links craft PR #924.",
-      "3. Last item.",
+      "     Inner follow-up.",
+      "   - Inner sibling.",
+      "",
+      "Plain paragraph.",
+      "",
+      "    Indented text outside a list.",
     ].join("\n");
 
     expect(normalizeSlackReplyMarkdown(input)).toBe(
       [
         "1. I checked the side effects:",
         "   - **Tag:** both change.",
-        "   - **CalVer:** still works.",
         "",
-        "So you can have one or the other.",
+        "   - So you can have one or the other.",
         "",
-        "2. It describes:",
-        "   - **Requirements:**",
-        "     - A PR shows up only where it lands.",
+        "2. First paragraph.",
         "",
-        "It also links craft PR #924.",
+        "   - Second paragraph.",
         "",
-        "3. Last item.",
+        "3. Outer item:",
+        "   - Inner intro:",
+        "     - deep a",
+        "",
+        "     - Inner follow-up.",
+        "",
+        "   - Inner sibling.",
+        "",
+        "Plain paragraph.",
+        "",
+        "    Indented text outside a list.",
       ].join("\n"),
     );
   });

@@ -259,67 +259,43 @@ function wrapBareReferences(text: string): string {
   return out.join("\n");
 }
 
-const LIST_ITEM_PREFIX_RE = /^[ \t]*(?:[-*•]|\d+\.)[ \t]+/;
-
-function removeIndent(line: string, maxIndent: number): string {
-  let i = 0;
-  while (i < maxIndent && (line[i] === " " || line[i] === "\t")) {
-    i++;
-  }
-  return line.slice(i);
-}
+const LIST_ITEM_RE = /^[ \t]*(?:[-*•]|\d+\.)[ \t]/;
 
 /**
- * Move a top-level list item's follow-up paragraph out of the list when it
- * comes after a nested list.
+ * Turn a follow-up paragraph inside a list item into a bullet at the same
+ * indent.
  *
- * Slack's `markdown` block joins all paragraphs of a list item with no space
- * and renders the nested list after them, so the follow-up text moves above
- * the nested list. Slack keeps the start number of the next ordered list, so
- * the list numbers stay correct after the paragraph moves out.
+ * Slack's `markdown` block keeps only one paragraph per list item. It joins
+ * the other paragraphs to the top-level item's text with no space and renders
+ * nested lists after them. As a bullet, the paragraph keeps its place and
+ * nesting.
  */
-function liftListFollowUpParagraphs(text: string): string {
+function bulletListFollowUpParagraphs(text: string): string {
   const lines = text.split("\n");
-  const out: string[] = [];
   let inCodeBlock = false;
-  let inTopLevelItem = false;
-  let nestedContentIndent: number | undefined;
-  let liftIndent: number | undefined;
-  let prevBlank = false;
+  let inList = false;
 
-  for (const line of lines) {
-    const isBlank = line.trim() === "";
-    const indent = line.length - line.trimStart().length;
-
-    if (!inCodeBlock && !isBlank) {
-      if (indent === 0) {
-        inTopLevelItem = LIST_ITEM_PREFIX_RE.test(line);
-        nestedContentIndent = undefined;
-        liftIndent = undefined;
-      } else if (inTopLevelItem && liftIndent === undefined) {
-        const listItemPrefix = LIST_ITEM_PREFIX_RE.exec(line);
-        if (listItemPrefix) {
-          nestedContentIndent ??= listItemPrefix[0].length;
-        } else if (
-          // Less indent than the nested item text: the paragraph belongs to
-          // the top-level item. Lift it and the rest of that item.
-          prevBlank &&
-          nestedContentIndent !== undefined &&
-          indent < nestedContentIndent
-        ) {
-          liftIndent = indent;
-        }
-      }
+  for (const [i, line] of lines.entries()) {
+    const trimmed = line.trimStart();
+    const isFence = trimmed.startsWith("```");
+    if (!inCodeBlock && trimmed && trimmed.length === line.length) {
+      inList = LIST_ITEM_RE.test(line);
+    } else if (
+      !inCodeBlock &&
+      inList &&
+      trimmed &&
+      !isFence &&
+      lines[i - 1]?.trim() === "" &&
+      !LIST_ITEM_RE.test(line)
+    ) {
+      lines[i] = `${line.slice(0, line.length - trimmed.length)}- ${trimmed}`;
     }
-
-    if (line.trimStart().startsWith("```")) {
+    if (isFence) {
       inCodeBlock = !inCodeBlock;
     }
-    out.push(liftIndent === undefined ? line : removeIndent(line, liftIndent));
-    prevBlank = isBlank;
   }
 
-  return out.join("\n");
+  return lines.join("\n");
 }
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
@@ -375,7 +351,7 @@ export function ensureBlockSpacing(text: string): string {
  *
  * Plugins may first rewrite ordinary Markdown. Core then applies Slack-only
  * delivery shaping: bare URL wrapping, block spacing, and list follow-up
- * paragraph lifting. Slack reply delivery owns chunking and continuation
+ * paragraph bullets. Slack reply delivery owns chunking and continuation
  * markers separately.
  */
 export function normalizeSlackReplyMarkdown(text: string): string {
@@ -384,7 +360,7 @@ export function normalizeSlackReplyMarkdown(text: string): string {
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareReferences(normalized);
   normalized = ensureBlockSpacing(normalized);
-  normalized = liftListFollowUpParagraphs(normalized);
+  normalized = bulletListFollowUpParagraphs(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
 }
 
