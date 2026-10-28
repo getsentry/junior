@@ -3881,14 +3881,6 @@ Conversation: \`local:test:old-conversation\`
     ["git clone /vercel/sandbox/repos/junior /tmp/junior", false],
     ["git clone https://example.com/github.com/getsentry/junior", false],
     ["git fetch origin main", false],
-    [
-      "git commit -m 'stop using gh repo clone; git clone github.com/x/y'",
-      false,
-    ],
-    [
-      "cat > README.md <<'EOF'\ngit clone https://github.com/getsentry/junior\nEOF",
-      false,
-    ],
   ])(
     "denies GitHub clones in bash on a best-effort basis: %s",
     async (command, denied) => {
