@@ -47,6 +47,8 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   getDashboardConversationLink,
   getDashboardTaskLink,
@@ -72,14 +74,6 @@ import {
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
-
-/** Signal that a plugin intentionally denied a tool execution. */
-export class PluginHookDeniedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PluginHookDeniedError";
-  }
-}
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -1694,7 +1688,7 @@ export function createPluginHookRunner(
           continue;
         }
         let replacement: Record<string, unknown> | undefined;
-        let denied: string | undefined;
+        let blocked: PluginToolDeniedError | ToolInputError | undefined;
         await hook({
           ...basePluginContext(plugin),
           actor: input.actor,
@@ -1716,8 +1710,11 @@ export function createPluginHookRunner(
             },
           },
           decision: {
-            deny(message) {
-              denied = message;
+            deny(reason) {
+              blocked = new PluginToolDeniedError(reason);
+            },
+            redirect(message) {
+              blocked = new ToolInputError(message);
             },
             replaceInput(input) {
               replacement = input;
@@ -1725,8 +1722,8 @@ export function createPluginHookRunner(
           },
         });
 
-        if (denied) {
-          throw new PluginHookDeniedError(denied);
+        if (blocked) {
+          throw blocked;
         }
         if (replacement !== undefined) {
           if (!isRecord(replacement)) {
