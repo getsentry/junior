@@ -17,8 +17,7 @@ import {
   deleteDashboardResource,
   fetchDashboardJson,
 } from "../../http";
-import { BaselineSnapshotCard } from "./BaselineSnapshotCard";
-import { formatSandboxSize, SandboxSizeSummary } from "./SandboxSizeSummary";
+import { BaseSandboxCard } from "./BaseSandboxCard";
 import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
 import { WorkspaceList } from "./WorkspaceList";
 
@@ -114,15 +113,10 @@ export function WorkspacesPage() {
       ) : null}
 
       {!workspacesQuery.error ? (
-        <>
-          <BaselineSnapshotCard snapshot={baselineSnapshot} />
-          <SandboxSizeSummary
-            description="Sandboxes use this size when a Workspace does not set its own vCPUs."
-            headingId="default-sandbox-size-heading"
-            title="Default Sandbox size"
-            value={formatSandboxSize(defaultVcpus)}
-          />
-        </>
+        <BaseSandboxCard
+          defaultVcpus={defaultVcpus}
+          snapshot={baselineSnapshot}
+        />
       ) : null}
 
       <WorkspaceList

@@ -124,15 +124,18 @@ test("lists Workspaces with the baseline snapshot", async ({
     page.getByRole("heading", { name: "Workspaces", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Baseline snapshot", exact: true }),
+    page.getByRole("heading", { name: "Base Sandbox", exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Size" })).toContainText(
+    "Shared with Workspaces",
+  );
+  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Baseline snapshot" }),
+  ).toContainText("Base only");
   await expect(
     page.getByRole("button", { name: "Manage sentry" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Default Sandbox size", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Manage sentry" }),
   ).toContainText("Default · 4 vCPUs · 8 GB");
