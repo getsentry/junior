@@ -14,11 +14,7 @@ import {
   MobileSecondaryNavigationSlot,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
-import {
-  cn,
-  dashboardContainerClass,
-  dashboardInteractiveTextClass,
-} from "../../styles";
+import { cn, dashboardInteractiveTextClass } from "../../styles";
 
 export type DashboardHeaderNavItem = {
   key: string;
@@ -151,8 +147,7 @@ export function DashboardHeader(props: {
     <header className="relative bg-dashboard-bg">
       <div
         className={cn(
-          props.compact ? "w-full min-w-0" : dashboardContainerClass,
-          "grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
+          "grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
           props.profile
             ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
             : "md:grid-cols-[auto_minmax(0,1fr)]",
