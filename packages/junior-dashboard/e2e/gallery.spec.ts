@@ -21,6 +21,30 @@ test("shows gallery foundations", async ({ page, dashboard }) => {
     lightTheme: true,
     view: "desktop",
   });
+  const trigger = page.getByRole("button", { name: "Open shadcn sheet" });
+  await trigger.click();
+  const sheet = page.getByRole("dialog", {
+    name: "Sheet details",
+    exact: true,
+  });
+  await expect(sheet).toBeVisible();
+  const close = sheet.getByRole("button", { name: "Close", exact: true });
+  await close.focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    sheet.getByRole("button", { name: "Primary action" }),
+  ).toBeFocused();
+  await screenshot(page, "gallery-shadcn-sheet", {
+    lightTheme: true,
+    target: sheet,
+  });
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await sheet.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(sheet).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 test("shows gallery charts", async ({ page, dashboard }) => {

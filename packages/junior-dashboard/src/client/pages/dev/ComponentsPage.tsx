@@ -2,6 +2,7 @@ import { FormNotice } from "../../components/FormNotice";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
 import { SelectFixtures } from "./SelectFixtures";
+import { SheetFixture } from "./SheetFixture";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
@@ -304,6 +305,9 @@ function FoundationsGalleryPage() {
               : null}
           </Drawer>
         ) : null}
+      </Fixture>
+      <Fixture title="shadcn sheet">
+        <SheetFixture />
       </Fixture>
       <Fixture title="Bottom sheet">
         <Button onClick={() => setSheetOpen(true)}>Open bottom sheet</Button>

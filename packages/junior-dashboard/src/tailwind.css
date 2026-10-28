@@ -226,7 +226,7 @@
     --card-foreground: var(--color-dashboard-text);
     --popover: var(--color-dashboard-bg-elevated);
     --popover-foreground: var(--color-dashboard-text);
-    --primary: var(--color-dashboard-accent);
+    --primary: var(--color-dashboard-text-solid);
     --primary-foreground: var(--color-dashboard-text-inverse);
     --secondary: var(--color-dashboard-surface-raised);
     --secondary-foreground: var(--color-dashboard-text);
@@ -234,7 +234,7 @@
     --muted-foreground: var(--color-dashboard-text-muted);
     --accent: var(--color-dashboard-surface-hover);
     --accent-foreground: var(--color-dashboard-text);
-    --destructive: var(--color-red-500);
+    --destructive: var(--color-rose-300);
     --border: var(--color-dashboard-border);
     --input: var(--color-dashboard-border-emphasis);
     --ring: var(--color-dashboard-focus);
@@ -245,7 +245,7 @@
     --chart-5: var(--color-rose-400);
     --sidebar: var(--color-dashboard-surface-panel);
     --sidebar-foreground: var(--color-dashboard-text);
-    --sidebar-primary: var(--color-dashboard-accent);
+    --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--color-dashboard-text-inverse);
     --sidebar-accent: var(--color-dashboard-surface-hover);
     --sidebar-accent-foreground: var(--color-dashboard-text);

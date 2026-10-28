@@ -20,10 +20,17 @@ alias points to `src/client/*`. The existing `@/*` alias still points to core.
 keep the class join helper in `src/client/styles.ts` until they are migrated.
 
 The shadcn color tokens in `src/tailwind.css` use the dashboard tokens in both
-themes. The `dark:` variant follows `data-theme`. Keep the existing Tailwind
-radius scale. Do not apply the CLI's global border or body resets to existing
+themes. Primary actions use `text-solid` with inverse text. Danger uses the
+same theme-aware rose shade as existing danger controls. The `dark:` variant
+follows `data-theme`. Keep the existing Tailwind radius scale. Do not apply the CLI's global border or body resets to existing
 components. Check each added component against the rules below and add its
 gallery fixture before use.
+
+`ui/sheet.tsx` is the shadcn Base UI Dialog Sheet. It supports all four edges,
+uses the dashboard overlay and close button, and stops motion when reduced
+motion is set. Its fixture is in `/dev/foundations`. The copied source license
+is in `ui/sheet.LICENSE`. Existing `Drawer` and `BottomSheet` consumers keep the
+swipe-enabled `Sheet.tsx` described below.
 
 ## Foundations
 
