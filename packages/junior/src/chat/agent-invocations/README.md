@@ -312,8 +312,7 @@ question and then tells the child to try again.
 ## Current Boundary
 
 `spawnAgent` exposes durable creation to every parent agent whose app wires
-the child-agent worker. It is not an experimental feature; an app config that
-still sets `experimental.subagents` is accepted and the key is ignored.
+the child-agent worker. It is not an experimental feature.
 The tool receives the delegated task, optional child name, optional model
 profile, and optional per-task reasoning level. The parent should normally
 choose a profile that fits the task, using the configured profile descriptions.

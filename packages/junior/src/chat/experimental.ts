@@ -8,22 +8,12 @@ export const EXPERIMENTAL_FEATURES = [
   "passive-routing",
 ] as const;
 
-/**
- * Features that graduated to stable defaults. Existing app configs may still
- * name them, so they are accepted and ignored instead of rejected.
- * TODO(dcramer): Remove `subagents` after deployed app configs stop setting it.
- */
-const GRADUATED_FEATURES = new Set<string>(["subagents"]);
-
 /** One known experimental feature name. */
 export type ExperimentalFeature = (typeof EXPERIMENTAL_FEATURES)[number];
 
 /** App-level opt-ins for unstable product features. */
 export type ExperimentalFeaturesConfig = Readonly<
-  Partial<Record<ExperimentalFeature, boolean>> & {
-    /** @deprecated Child agents are always on; this key is ignored. */
-    subagents?: boolean;
-  }
+  Partial<Record<ExperimentalFeature, boolean>>
 >;
 
 const EXPERIMENTAL_FEATURE_SET = new Set<string>(EXPERIMENTAL_FEATURES);
@@ -46,7 +36,7 @@ export function setExperimentalFeatures(
 
   const next: Partial<Record<ExperimentalFeature, boolean>> = {};
   for (const [rawName, enabled] of Object.entries(config)) {
-    if (enabled === undefined || GRADUATED_FEATURES.has(rawName)) {
+    if (enabled === undefined) {
       continue;
     }
     if (typeof enabled !== "boolean") {

@@ -24,11 +24,6 @@ describe("experimental features", () => {
     expect(isExperimentalFeatureEnabled("passive-routing")).toBe(false);
   });
 
-  it("accepts and ignores a graduated feature key", () => {
-    setExperimentalFeatures({ "passive-routing": true, subagents: true });
-    expect(isExperimentalFeatureEnabled("passive-routing")).toBe(true);
-  });
-
   it("rejects unknown experimental feature keys from app config", () => {
     expect(() =>
       setExperimentalFeatures({

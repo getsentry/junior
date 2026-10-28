@@ -167,8 +167,9 @@ const app = await createApp({
 ```
 
 Child agents are always on: every app gives the model `spawnAgent`,
-`messageAgent`, `listAgents`, and `stopAgent`. An older config that still sets
-`experimental.subagents` keeps working; Junior ignores the key.
+`messageAgent`, `listAgents`, and `stopAgent`. `experimental.subagents` was
+removed; remove it from your config, because Junior rejects unknown
+experimental keys.
 
 By default, only the root Conversation can start child agents. Set
 `limits.maxAgentDepth` to let child agents start their own child agents. For
