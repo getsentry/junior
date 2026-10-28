@@ -36,6 +36,14 @@ describe("GitHub deployment events", () => {
         trustedSummary:
           "GitHub deployment for getsentry/junior-prod at c610b5d6a88c was created (deployment 5634510476).",
       },
+      {
+        eventKey: "github:delivery-deployment:deployment.created",
+        eventType: "deployment.created",
+        occurredAtMs: Date.parse("2026-07-28T05:15:00.000Z"),
+        identifier: "deployment-source:getsentry/junior-prod:production",
+        trustedSummary:
+          "GitHub deployment for getsentry/junior-prod at c610b5d6a88c was created (deployment 5634510476).",
+      },
     ]);
 
     expect(
@@ -75,6 +83,15 @@ describe("GitHub deployment events", () => {
           "GitHub deployment for getsentry/junior-prod at c610b5d6a88c failed (deployment 5634510476).",
         untrustedText: "Deployment has failed",
       },
+      {
+        eventKey: "github:delivery-status:deployment.failed",
+        eventType: "deployment.failed",
+        occurredAtMs: Date.parse("2026-07-28T05:17:14.000Z"),
+        identifier: "deployment-source:getsentry/junior-prod:production",
+        trustedSummary:
+          "GitHub deployment for getsentry/junior-prod at c610b5d6a88c failed (deployment 5634510476).",
+        untrustedText: "Deployment has failed",
+      },
     ]);
 
     const successEvents = normalizeGitHubEvents({
@@ -103,8 +120,13 @@ describe("GitHub deployment events", () => {
         trustedSummary:
           "GitHub deployment for getsentry/junior-prod at c610b5d6a88c succeeded (deployment 5634510476).",
       }),
+      expect.objectContaining({
+        eventType: "deployment.succeeded",
+        identifier: "deployment-source:getsentry/junior-prod:production",
+      }),
     ]);
     expect(successEvents[1]).not.toHaveProperty("terminal");
+    expect(successEvents[2]).not.toHaveProperty("terminal");
   });
 
   it("keeps provider-controlled environment names out of trusted summaries", () => {
