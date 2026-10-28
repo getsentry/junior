@@ -108,6 +108,115 @@
   --color-dashboard-scrollbar-thumb-hover: rgb(255 255 255 / 0.2);
 }
 
+/*
+ * Light theme. src/theme.ts sets data-theme on <html> before first paint from
+ * the saved choice or the system color scheme. Each dashboard token above gets
+ * a light value here.
+ */
+:root[data-theme="light"] {
+  --dashboard-color-scheme: light;
+
+  --color-dashboard-bg: #ffffff;
+  --color-dashboard-bg-elevated: #ffffff;
+  --color-dashboard-surface-panel: #f9f9fa;
+  --color-dashboard-surface-active: #e9e9ec;
+  --color-dashboard-surface-raised: #ffffff;
+  --color-dashboard-surface-hover: #f1f1f3;
+  --color-dashboard-control: #ffffff;
+  --color-dashboard-ink: #ffffff;
+
+  --color-dashboard-text: #18181b;
+  --color-dashboard-text-muted: #52525b;
+  --color-dashboard-text-subtle: #3f3f46;
+  --color-dashboard-text-faint: #71717a;
+  --color-dashboard-text-solid: #09090b;
+  --color-dashboard-text-inverse: #ffffff;
+
+  --color-dashboard-accent: #7553ff;
+  --color-dashboard-accent-text: #5b3bd9;
+  --color-dashboard-focus: #7553ff;
+
+  --color-dashboard-border-subtle: rgb(0 0 0 / 0.06);
+  --color-dashboard-border: rgb(0 0 0 / 0.09);
+  --color-dashboard-border-strong: rgb(0 0 0 / 0.11);
+  --color-dashboard-border-emphasis: rgb(0 0 0 / 0.16);
+  --color-dashboard-border-interactive: rgb(0 0 0 / 0.26);
+  --color-dashboard-border-heavy: rgb(0 0 0 / 0.32);
+
+  --color-dashboard-fill-faint: rgb(0 0 0 / 0.02);
+  --color-dashboard-fill-soft: rgb(0 0 0 / 0.035);
+  --color-dashboard-fill-hover: rgb(0 0 0 / 0.05);
+  --color-dashboard-fill-strong: rgb(0 0 0 / 0.08);
+
+  --color-dashboard-overlay-soft: rgb(0 0 0 / 0.06);
+  --color-dashboard-overlay: rgb(0 0 0 / 0.35);
+
+  --color-dashboard-scrollbar-track: rgb(0 0 0 / 0.02);
+  --color-dashboard-scrollbar-thumb: rgb(0 0 0 / 0.14);
+  --color-dashboard-scrollbar-thumb-hover: rgb(0 0 0 / 0.26);
+
+  /*
+   * Status and chart hues are tuned for the dark canvas: the UI uses their
+   * light shades (50-400). Mirror those shades (50 to 950, 100 to 900, and so
+   * on) so the same classes keep their contrast on the light canvas. Shades
+   * 500 and darker keep their values. Add a hue here when the UI starts to
+   * use it.
+   */
+  --color-amber-50: oklch(27.9% 0.077 45.635);
+  --color-amber-100: oklch(41.4% 0.112 45.904);
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-amber-400: oklch(66.6% 0.179 58.318);
+  --color-cyan-50: oklch(30.2% 0.056 229.695);
+  --color-cyan-100: oklch(39.8% 0.07 227.392);
+  --color-cyan-200: oklch(45% 0.085 224.283);
+  --color-cyan-300: oklch(52% 0.105 223.128);
+  --color-cyan-400: oklch(60.9% 0.126 221.723);
+  --color-emerald-50: oklch(26.2% 0.051 172.552);
+  --color-emerald-100: oklch(37.8% 0.077 168.94);
+  --color-emerald-200: oklch(43.2% 0.095 166.913);
+  --color-emerald-300: oklch(50.8% 0.118 165.612);
+  --color-emerald-400: oklch(59.6% 0.145 163.225);
+  --color-fuchsia-50: oklch(29.3% 0.136 325.661);
+  --color-fuchsia-100: oklch(40.1% 0.17 325.612);
+  --color-fuchsia-200: oklch(45.2% 0.211 324.591);
+  --color-fuchsia-300: oklch(51.8% 0.253 323.949);
+  --color-fuchsia-400: oklch(59.1% 0.293 322.896);
+  --color-orange-50: oklch(26.6% 0.079 36.259);
+  --color-orange-100: oklch(40.8% 0.123 38.172);
+  --color-orange-200: oklch(47% 0.157 37.304);
+  --color-orange-300: oklch(55.3% 0.195 38.402);
+  --color-orange-400: oklch(64.6% 0.222 41.116);
+  --color-red-50: oklch(25.8% 0.092 26.042);
+  --color-red-100: oklch(39.6% 0.141 25.723);
+  --color-red-200: oklch(44.4% 0.177 26.899);
+  --color-red-300: oklch(50.5% 0.213 27.518);
+  --color-red-400: oklch(57.7% 0.245 27.325);
+  --color-rose-50: oklch(27.1% 0.105 12.094);
+  --color-rose-100: oklch(41% 0.159 10.272);
+  --color-rose-200: oklch(45.5% 0.188 13.697);
+  --color-rose-300: oklch(51.4% 0.222 16.935);
+  --color-rose-400: oklch(58.6% 0.253 17.585);
+  --color-sky-50: oklch(29.3% 0.066 243.157);
+  --color-sky-100: oklch(39.1% 0.09 240.876);
+  --color-sky-200: oklch(44.3% 0.11 240.79);
+  --color-sky-300: oklch(50% 0.134 242.749);
+  --color-sky-400: oklch(58.8% 0.158 241.966);
+  --color-slate-50: oklch(12.9% 0.042 264.695);
+  --color-slate-100: oklch(20.8% 0.042 265.755);
+  --color-slate-200: oklch(27.9% 0.041 260.031);
+  --color-slate-300: oklch(37.2% 0.044 257.287);
+  --color-slate-400: oklch(44.6% 0.043 257.281);
+  --color-violet-50: oklch(28.3% 0.141 291.089);
+  --color-violet-100: oklch(38% 0.189 293.745);
+  --color-violet-200: oklch(43.2% 0.232 292.759);
+  --color-violet-300: oklch(49.1% 0.27 292.581);
+  --color-violet-400: oklch(54.1% 0.281 293.009);
+}
+
+/* Style one-off values that the token and palette mirror cannot cover. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 @layer base {
   :root {
     color-scheme: var(--dashboard-color-scheme, dark);

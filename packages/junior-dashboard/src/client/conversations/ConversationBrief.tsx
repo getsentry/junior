@@ -5,6 +5,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { Detail, DetailList } from "../components/DetailList";
 import { StatusChip, type StatusChipTone } from "../components/StatusChip";
 import { formatTime } from "../format";
+import { MentionPeopleProvider, renderMentionText } from "./transcriptMentions";
 
 type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -25,12 +26,23 @@ export function ConversationBrief(props: {
   brief: ConversationBriefReport;
   variant?: "summary" | "full";
 }) {
+  return (
+    <MentionPeopleProvider mentions={props.brief.mentions ?? []}>
+      <BriefContentView brief={props.brief} variant={props.variant} />
+    </MentionPeopleProvider>
+  );
+}
+
+function BriefContentView(props: {
+  brief: ConversationBriefReport;
+  variant?: "summary" | "full";
+}) {
   const { content } = props.brief;
   if (props.variant === "summary") {
     return (
       <div className="grid min-w-0 gap-4">
         <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-          {content.summary}
+          <BriefText text={content.summary} />
         </p>
         {content.openDecisions.length > 0 ? (
           <div className="grid gap-2">
@@ -58,12 +70,16 @@ export function ConversationBrief(props: {
         </span>
       </div>
       <p className="m-0 text-sm leading-relaxed text-dashboard-text">
-        {content.summary}
+        <BriefText text={content.summary} />
       </p>
       <BriefSection title="Intent & outcome">
         <DetailList>
-          <Detail label="Intent">{content.intent}</Detail>
-          <Detail label="Outcome">{content.outcome.text}</Detail>
+          <Detail label="Intent">
+            <BriefText text={content.intent} />
+          </Detail>
+          <Detail label="Outcome">
+            <BriefText text={content.outcome.text} />
+          </Detail>
         </DetailList>
       </BriefSection>
       {content.decisions.length || content.openDecisions.length ? (
@@ -169,11 +185,13 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
             >
               {decision.kind}
             </StatusChip>
-            <span className="min-w-0">{decision.text}</span>
+            <span className="min-w-0">
+              <BriefText text={decision.text} />
+            </span>
           </div>
           {decision.by ? (
             <div className="mt-0.5 text-xs text-dashboard-text-muted">
-              by · {decision.by}
+              by · <BriefText text={decision.by} />
             </div>
           ) : null}
         </li>
@@ -189,10 +207,12 @@ function BriefOpenDecisions(props: {
     <ul className="m-0 grid list-none gap-2 p-0">
       {props.decisions.map((decision, index) => (
         <li key={`${decision.text}:${index}`}>
-          <div>{decision.text}</div>
+          <div>
+            <BriefText text={decision.text} />
+          </div>
           {decision.owner ? (
             <div className="mt-1 text-xs text-dashboard-text-muted">
-              Owner: {decision.owner}
+              Owner: <BriefText text={decision.owner} />
             </div>
           ) : null}
         </li>
@@ -205,10 +225,16 @@ function BriefList(props: { items: string[] }) {
   return (
     <ul className="my-0 grid gap-1.5 pl-4">
       {props.items.map((item, index) => (
-        <li key={`${item}:${index}`}>{item}</li>
+        <li key={`${item}:${index}`}>
+          <BriefText text={item} />
+        </li>
       ))}
     </ul>
   );
+}
+
+function BriefText(props: { text: string }) {
+  return <>{renderMentionText(props.text, "brief")}</>;
 }
 
 function displayLabel(value: string): string {

@@ -50,7 +50,7 @@ async function setup(kind: "scheduled" | "event") {
     ["U123", "creator@example.com", "T123"],
     ["U456", "reader@example.com", "T123"],
     ["U123", "foreign@example.com", "TFOREIGN"],
-  ]) {
+  ] as const) {
     await getConversationStore().recordActivity({
       conversationId: `slack:${teamId}:${slackUserId}:edit`,
       actor: { platform: "slack", slackUserId, email, teamId },
@@ -114,6 +114,9 @@ async function setup(kind: "scheduled" | "event") {
   } else {
     await createEventAutomation(getDb(), {
       ...common,
+      creatorIdentityId: user.identities.find(
+        (identity) => identity.provider === "slack",
+      )!.id,
       destinationVisibility: "public",
       trigger: {
         namespace: "unavailable",
@@ -125,7 +128,7 @@ async function setup(kind: "scheduled" | "event") {
       },
     });
   }
-  const url = `/api/automations/${kind}/${id}`;
+  const url = `/api/automations/${id}`;
   const read = async () => {
     const response = await app.request(`${url}/edit`);
     expect(response.status).toBe(200);
@@ -174,7 +177,7 @@ describe("Automation edit API", () => {
             nextRunAtMs: Date.now() - 1000,
           });
         }
-        await recordAutomationExecution(kind, id, {
+        await recordAutomationExecution(id, {
           executionId: "past-failure",
           status: "failed",
           nowMs: Date.now() - 5000,
@@ -390,7 +393,7 @@ describe("Automation edit API", () => {
       const { app, fixture, id, url, read, patch, user } = await setup(kind);
       try {
         const initial = await read();
-        await recordAutomationExecution(kind, id, {
+        await recordAutomationExecution(id, {
           executionId: "retained-run",
           nowMs: Date.now(),
           status: "completed",

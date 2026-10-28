@@ -70,11 +70,13 @@ export function createConnectionRoutes(): Hono<JuniorApiEnv> {
       if (!isConnectableProvider(provider)) {
         throwApiError(404, "Connection not found.");
       }
-      const actor = webActorFromEmail(context.get("viewer").email);
+      const viewer = context.get("viewer");
+      const actor = webActorFromEmail(viewer.email);
       await disconnectConnection(
         actor.userId,
         provider,
         createUserTokenStore(),
+        viewer.id,
       );
       logInfo("dashboard.credential.unlinked", {
         "app.credential.provider": provider,

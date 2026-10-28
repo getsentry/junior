@@ -1,5 +1,7 @@
 import { FormNotice } from "../../components/FormNotice";
+import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
+import { SelectFixtures } from "./SelectFixtures";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
@@ -49,6 +51,7 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
 import { TextArea, TextInput } from "../../components/TextInput";
+import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
 import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShell";
@@ -191,6 +194,7 @@ function FoundationsGalleryPage() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("deploy failure");
 
   return (
     <GalleryShell
@@ -226,10 +230,12 @@ function FoundationsGalleryPage() {
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
       </Fixture>
+      <Fixture title="Select controls">
+        <SelectFixtures />
+      </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
           <DashboardHeader
-            compact
             mobileNavigationOpen={navigationOpen}
             navItems={[
               { key: "code", label: "Code", to: "/code" },
@@ -298,6 +304,9 @@ function FoundationsGalleryPage() {
               : null}
           </Drawer>
         ) : null}
+      </Fixture>
+      <Fixture title="Theme">
+        <ThemeSwitcher className="max-w-64" />
       </Fixture>
       <Fixture title="Color tokens">
         <div className="grid gap-4">
@@ -470,6 +479,12 @@ function FoundationsGalleryPage() {
             aria-label="Disabled text input"
             disabled
             value="read only"
+          />
+          <SearchInput
+            label="Search conversations"
+            onChange={setSearchQuery}
+            placeholder="Search conversations…"
+            value={searchQuery}
           />
         </div>
       </Fixture>
@@ -725,6 +740,7 @@ function TranscriptsGalleryPage() {
               Junior
             </span>
             <TranscriptText
+              mentions={[]}
               role="assistant"
               text={
                 "Your reminder is set.\n\nI'll remind you to drink water every 30 minutes until you ask me to stop."
@@ -785,10 +801,10 @@ function TranscriptsGalleryPage() {
         <TranscriptMarkdown text={GFM_SAMPLE} />
       </Fixture>
       <Fixture title="TranscriptText assistant">
-        <TranscriptText role="assistant" text={MIXED_ASSISTANT} />
+        <TranscriptText mentions={[]} role="assistant" text={MIXED_ASSISTANT} />
       </Fixture>
       <Fixture title="TranscriptText user">
-        <TranscriptText role="user" text={EVENT_NOTIFICATION} />
+        <TranscriptText mentions={[]} role="user" text={EVENT_NOTIFICATION} />
       </Fixture>
       <Fixture title="Tool calls">
         <ToolCallGallery />

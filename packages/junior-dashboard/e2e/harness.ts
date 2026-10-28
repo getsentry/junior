@@ -1,4 +1,4 @@
-import { mockAutomationApis } from "./automation-fixture";
+import { automationReport, mockAutomationApis } from "./automation-fixture";
 import {
   createServer,
   type IncomingMessage,
@@ -69,7 +69,7 @@ export async function startDashboardE2eServer(
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
-    allowedEmails: ["dev@example.com"],
+    allowedDomains: ["example.com"],
     auth: {
       async getSession() {
         return {
@@ -299,12 +299,15 @@ export async function mockDashboardApis(
     });
   });
   await mockAutomationApis(page);
-  await page.route("**/api/automations/*/*/executions", async (route) => {
+  await page.route("**/api/automations/*/executions", async (route) => {
     const url = new URL(route.request().url());
-    const parts = url.pathname.split("/").filter(Boolean);
-    const kind = parts.at(-3);
-    const id = parts.at(-2);
-    if ((kind !== "scheduled" && kind !== "event") || !id) {
+    const id = decodeURIComponent(
+      url.pathname.split("/").filter(Boolean).at(-2) ?? "",
+    );
+    const kind = automationReport.automations.find(
+      (automation) => automation.id === id,
+    )?.kind;
+    if (!kind) {
       await route.fulfill({
         status: 404,
         json: { error: "Automation not found." },
@@ -498,6 +501,7 @@ export async function mockDashboardApis(
         },
       ],
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: {
         buildDurationMs: 45_000,
         generatedAt: "2026-08-15T05:40:21.000Z",
@@ -518,6 +522,7 @@ export async function mockDashboardApis(
           generatedAt: "2026-08-15T05:30:21.000Z",
           id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
         },
+        defaultVcpus: 4,
         workspaces: [{ ...workspace, snapshot: null }],
       },
     });

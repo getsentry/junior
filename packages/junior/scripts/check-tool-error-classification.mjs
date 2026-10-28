@@ -1,10 +1,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 const BASELINE_RELATIVE_PATH =
   "packages/junior/scripts/tool-error-classification-baseline.txt";
+
+// Agents read this text as the fix instruction. Lead with the decision so the
+// baseline stays a list of reviewed system failures, not a way to pass.
+const NEW_THROW_GUIDANCE =
+  "If the model can fix the cause by changing its call (invalid input, a missing or wrong target, denied access, an unsupported value), " +
+  "throw ToolInputError in core or PluginToolInputError in a plugin, with a message that tells the model what to change. " +
+  "Keep a plain Error only for a system, config, or integrity failure that the model cannot fix, and add only that line to " +
+  `${BASELINE_RELATIVE_PATH} by hand. Do not hide the throw behind a helper or another error construction to pass. ` +
+  "See policies/tool-design.md.";
 
 function isUnderToolsPath(relativePath) {
   const normalized = relativePath.split(path.sep).join("/");
@@ -151,7 +160,7 @@ export async function checkRepoToolErrorClassification(repoRoot) {
   const errors = [];
   for (const entry of unexpected) {
     errors.push(
-      `${entry.split("\t")[0]}: new plain Error throw in tool code; use ToolInputError/PluginToolInputError for model-repairable failures, or update ${BASELINE_RELATIVE_PATH} only for true system failures: ${entry.split("\t")[1]}`,
+      `${entry.split("\t")[0]}: new plain Error throw in tool code: ${entry.split("\t")[1]} ${NEW_THROW_GUIDANCE}`,
     );
   }
   for (const entry of stale) {
@@ -165,23 +174,9 @@ export async function checkRepoToolErrorClassification(repoRoot) {
 const scriptPath = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const repoRoot = path.resolve(path.dirname(scriptPath), "../../..");
-  if (process.argv.includes("--write-baseline")) {
-    const current = await collectRepoToolErrorThrows(repoRoot);
-    const body = [
-      "# Approved plain `throw new Error(...)` sites under tool source paths.",
-      "# Model-repairable failures must use ToolInputError or PluginToolInputError.",
-      "# Only keep true system/config/integrity failures here.",
-      "# Format: relativePath<TAB>normalized throw statement",
-      ...current,
-      "",
-    ].join("\n");
-    await fs.writeFile(path.join(repoRoot, BASELINE_RELATIVE_PATH), body);
-    console.log(`Wrote ${current.length} baseline entries.`);
-  } else {
-    const errors = await checkRepoToolErrorClassification(repoRoot);
-    if (errors.length > 0) {
-      console.error(errors.join("\n"));
-      process.exitCode = 1;
-    }
+  const errors = await checkRepoToolErrorClassification(repoRoot);
+  if (errors.length > 0) {
+    console.error(errors.join("\n"));
+    process.exitCode = 1;
   }
 }

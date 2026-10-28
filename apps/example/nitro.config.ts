@@ -13,7 +13,6 @@ const config = defineConfig({
     juniorNitro({
       dashboard: {
         authRequired: exampleDashboardAuthRequired(),
-        allowedGoogleDomains: ["sentry.io"],
         componentGallery: exampleDashboardComponentGallery(),
         mockConversations: exampleDashboardMockConversations(),
       },

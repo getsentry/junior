@@ -9,6 +9,8 @@ export type RepoDraft = {
 export type WorkspaceDraft = {
   name: string;
   setupScript: string;
+  /** Text input value. Empty means the app default. */
+  vcpus: string;
   repos: RepoDraft[];
 };
 
@@ -24,6 +26,7 @@ export function createWorkspaceDraft(): WorkspaceDraft {
   return {
     name: "",
     setupScript: "",
+    vcpus: "",
     repos: [createRepoDraft()],
   };
 }
@@ -32,6 +35,7 @@ export function editWorkspaceDraft(workspace: WorkspaceReport): WorkspaceDraft {
   return {
     name: workspace.name,
     setupScript: workspace.setupScript,
+    vcpus: workspace.vcpus === null ? "" : String(workspace.vcpus),
     repos:
       workspace.repos.length > 0
         ? workspace.repos.map((repo) => ({
@@ -48,6 +52,7 @@ export function workspaceDraftBody(draft: WorkspaceDraft) {
   return {
     name: draft.name.trim(),
     setupScript: draft.setupScript,
+    vcpus: draft.vcpus.trim() ? Number(draft.vcpus.trim()) : null,
     repos: draft.repos.map((repo) => ({
       provider: repo.provider.trim(),
       repo: repo.repo.trim(),
@@ -60,6 +65,9 @@ export function canSaveWorkspaceDraft(
   busy: boolean,
 ): boolean {
   if (busy || !draft.name.trim()) return false;
+  if (draft.vcpus.trim() && !/^[1-9]\d*$/.test(draft.vcpus.trim())) {
+    return false;
+  }
   if (draft.repos.some((repo) => !repo.provider.trim() || !repo.repo.trim())) {
     return false;
   }

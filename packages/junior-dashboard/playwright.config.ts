@@ -15,6 +15,8 @@ export default defineConfig({
   maxFailures: process.env.CI ? 10 : undefined,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {
+    // Dark is the default dashboard theme. Light theme journeys opt in.
+    colorScheme: "dark",
     launchOptions: {
       // Partial raster repaints only the changed part of a tile, so pixels
       // depend on paint history. Full tile raster keeps screenshots stable.

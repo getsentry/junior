@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
+  GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
   type IdentityUpsert,
   type StoredIdentity,
@@ -113,18 +114,10 @@ async function upsertIdentityRecord(
   ) {
     throw new Error("Identity verified email conflicts with linked user");
   }
-  if (
-    linkedUserId &&
-    verifiedUserId &&
-    linkedUserId !== verifiedUserId
-  ) {
+  if (linkedUserId && verifiedUserId && linkedUserId !== verifiedUserId) {
     throw new Error("Linked identity conflicts with verified email user");
   }
-  if (
-    existing?.userId &&
-    linkedUserId &&
-    existing.userId !== linkedUserId
-  ) {
+  if (existing?.userId && linkedUserId && existing.userId !== linkedUserId) {
     throw new Error("Identity conflicts with linked user");
   }
   const userId = existing?.userId ?? linkedUserId ?? verifiedUserId;
@@ -247,6 +240,31 @@ export async function upsertLinkedIdentity(
   return await upsertIdentityRecord(executor, identity, userId, nowMs);
 }
 
+/**
+ * Find the one user whose primary email is in a provider-verified email list.
+ * Return undefined when no user or more than one user matches.
+ */
+export async function findUserByVerifiedEmails(
+  executor: JuniorSqlDatabase,
+  emails: readonly string[],
+): Promise<{ email: string; userId: string } | undefined> {
+  const normalized = new Set(
+    emails.map((email) => normalizeIdentityEmail(email) ?? ""),
+  );
+  normalized.delete("");
+  if (normalized.size === 0) return undefined;
+  const rows = await executor
+    .db()
+    .select({
+      email: juniorUsers.primaryEmail,
+      userId: juniorUsers.id,
+    })
+    .from(juniorUsers)
+    .where(inArray(juniorUsers.primaryEmailNormalized, Array.from(normalized)))
+    .limit(2);
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
 /** Remove one exact provider identity owned by a workspace Slack user. */
 export async function deleteProviderIdentityForSlackUser(
   executor: JuniorSqlDatabase,
@@ -270,7 +288,21 @@ export async function deleteProviderIdentityForSlackUser(
     .limit(1);
   const userId = slackRows[0]?.userId;
   if (!userId) return;
+  await deleteProviderIdentityForUser(
+    executor,
+    userId,
+    provider,
+    providerSubjectId,
+  );
+}
 
+/** Remove one exact provider identity owned by a user. */
+export async function deleteProviderIdentityForUser(
+  executor: JuniorSqlDatabase,
+  userId: string,
+  provider: string,
+  providerSubjectId: string,
+): Promise<void> {
   await executor
     .db()
     .delete(juniorIdentities)
@@ -282,4 +314,33 @@ export async function deleteProviderIdentityForSlackUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
+}
+
+/**
+ * Save one Google sign-in. Link the Google identity to the user of its
+ * verified email, and set its sign-in time.
+ */
+export async function recordGoogleSignIn(
+  executor: JuniorSqlDatabase,
+  account: { displayName?: string; email: string; subject: string },
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  const stored = await upsertIdentity(
+    executor,
+    {
+      kind: "user",
+      provider: GOOGLE_IDENTITY_PROVIDER,
+      providerSubjectId: account.subject,
+      email: account.email,
+      emailVerified: true,
+      displayName: account.displayName,
+    },
+    nowMs,
+  );
+  await executor
+    .db()
+    .update(juniorIdentities)
+    .set({ signedInAt: dateFromMs(nowMs) })
+    .where(eq(juniorIdentities.id, stored.id));
+  return stored;
 }

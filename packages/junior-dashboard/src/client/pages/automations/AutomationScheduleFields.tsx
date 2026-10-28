@@ -43,7 +43,7 @@ export function AutomationScheduleFields(props: {
     queryFn: () =>
       post(
         automationSchedulePreviewSchema,
-        `/api/automations/scheduled/${encodeURIComponent(props.automation.id)}/preview`,
+        `/api/automations/${encodeURIComponent(props.automation.id)}/preview`,
         previewValue,
       ),
   });

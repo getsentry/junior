@@ -37,6 +37,14 @@ Canonical words used across Junior's code and documentation.
 - **Admin**: a user with the Junior-wide admin role. Only the `junior admin`
   CLI grants or revokes it. Plugins use it for setup that other users must not
   reach. Do not add plugin-specific admin lists.
+- **Service account**: an optional provider account, often a bot, that Junior
+  itself uses for one plugin. An Admin connects it on the dashboard Admin
+  page, or with `junior service-account connect`. The plugin's
+  `accounts.service-account` block allows it and lists what it may use. By
+  default, per-Actor OAuth stays on. Junior uses the service account only for
+  an Actor who has not connected their own account, and only for what it
+  lists. With `accounts.user-oauth: false`, Junior uses only
+  the service account and never asks an Actor to connect.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are
@@ -59,6 +67,8 @@ Canonical words used across Junior's code and documentation.
 - **Watch**: a temporary association between an Event and a Conversation. It
   delivers matching Events to that Conversation and expires. It is not an
   Automation.
+- **Automation run**: one dispatch of an Automation, from claim or dispatch to
+  its outcome. It is not a Run.
 - **Scheduled automation**: an Automation that has a Schedule trigger.
 - **Event automation**: an Automation that has an Event trigger.
 - **Inbound message**: one normalized source event made available to the agent.

@@ -7,6 +7,7 @@ import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
 import { readConversationEventPage } from "./event-page";
+import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
 import {
   conversationEventHistory,
@@ -170,6 +171,15 @@ async function readConversationDetailFromSql(
           limit: options.limit,
         })
       : { events: [] };
+  // The Brief is shown only to viewers who can see private content.
+  const brief = access?.canViewPrivateContent
+    ? briefVersion?.content
+    : undefined;
+  const { briefMentions, events } = await attachConversationMentions(
+    executor,
+    conversationId,
+    { ...(brief ? { brief } : undefined), events: page.events },
+  );
   const metrics = metricsByConversation.get(conversationId);
   const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
   const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
@@ -186,13 +196,16 @@ async function readConversationDetailFromSql(
       ? {
           brief: {
             content: briefVersion.content,
+            ...(briefMentions.length > 0
+              ? { mentions: briefMentions }
+              : undefined),
             updatedAt: briefVersion.createdAt.toISOString(),
             version: briefVersion.version,
           },
         }
       : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
-    events: page.events,
+    events,
     modelUsage,
     participants: participantsByConversation.get(conversationId) ?? [],
     ...(sourceTask ? { sourceTask } : undefined),

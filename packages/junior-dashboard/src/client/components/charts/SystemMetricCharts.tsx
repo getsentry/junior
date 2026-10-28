@@ -49,7 +49,7 @@ function compactDuration(value: number): string {
 function tokenChart(): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
-    color: "#22d3ee",
+    color: "var(--color-cyan-400)",
     format: formatCompactNumber,
     metric: "tokens",
     title: "Token usage",
@@ -61,7 +61,7 @@ function supportingCharts(): ChartConfig[] {
   return [
     {
       axisFormat: compactCurrency,
-      color: "#fbbf24",
+      color: "var(--color-amber-400)",
       format: (value) => formatCostSummary({ total: value }),
       metric: "costUsd",
       title: "Model spend",
@@ -69,7 +69,7 @@ function supportingCharts(): ChartConfig[] {
     },
     {
       axisFormat: compactDuration,
-      color: "#a78bfa",
+      color: "var(--color-violet-400)",
       format: formatDuration,
       metric: "durationMs",
       title: "Runtime",

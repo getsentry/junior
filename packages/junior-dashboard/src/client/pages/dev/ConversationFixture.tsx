@@ -107,6 +107,35 @@ const EVENTS: ConversationReportEventData[] = [
     trustedSummary: "GitHub PR getsentry/junior#1200 received a review.",
     text: "The preview is ready for visual review.",
   },
+  {
+    type: "message",
+    messageId: "gallery-event-batch",
+    role: "user",
+    eventType: "pull_request.review.approved",
+    eventObjectType: "code_change",
+    trustedSummary: "GitHub PR getsentry/junior#1200 was approved by dcramer.",
+    events: [
+      {
+        eventType: "pull_request.review.approved",
+        label: "GitHub PR getsentry/junior#1200",
+        trustedSummary:
+          "GitHub PR getsentry/junior#1200 was approved by dcramer.",
+      },
+      {
+        eventType: "pull_request.review.commented",
+        label: "GitHub PR getsentry/junior#1200",
+        trustedSummary:
+          "GitHub PR getsentry/junior#1200 received a review comment from cursor[bot].",
+      },
+      {
+        eventType: "pull_request.review_comment.created",
+        label: "GitHub PR getsentry/junior#1200",
+        trustedSummary:
+          "GitHub PR getsentry/junior#1200 received an inline review comment from cursor[bot].",
+      },
+    ],
+    text: "[task]\n\nThis is a task, not a message from a person.\n\nYou received 3 events.",
+  },
 ];
 
 const CONVERSATION: ConversationDetailReport = {

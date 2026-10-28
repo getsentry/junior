@@ -158,7 +158,7 @@ export function AutomationsPage(props: {
   const deletion = useMutation({
     mutationFn: async (automation: AutomationSummary) => {
       await deleteDashboardResource(
-        `/api/automations/${automation.kind}/${encodeURIComponent(automation.id)}`,
+        `/api/automations/${encodeURIComponent(automation.id)}`,
       );
     },
     onSuccess: async () => {

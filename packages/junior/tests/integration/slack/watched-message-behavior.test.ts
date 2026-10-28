@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import type { SubscribedReplyRoute } from "@/chat/services/subscribed-reply-router-policy";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { AgentRun } from "@/chat/agent/types";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -52,6 +53,14 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
+function routeDecision(route: SubscribedReplyRoute, probability = 1) {
+  return {
+    answers: {
+      route: { choice: route, probabilities: { [route]: probability } },
+    },
+  };
+}
+
 function replyForRun(selectText: (run: AgentRun) => string) {
   return createModelAgentRunnerForRun((run) =>
     createModelStream([{ type: "text", text: selectText(run) }]),
@@ -65,16 +74,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async (params: { prompt?: unknown }) => {
-            classifierCalls.push(String(params.prompt));
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0,
-                reason: "side conversation",
-              },
-              text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
-            } as never;
+          completeDecision: async (params: { state: string }) => {
+            classifierCalls.push(params.state);
+            return routeDecision("stay_quiet");
           },
         },
         agentRunner: neverRunAgentRunner(),
@@ -108,7 +110,7 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             throw providerError;
           },
         },
@@ -142,17 +144,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async (params: { prompt?: unknown }) => {
-            classifierCalls.push(String(params.prompt));
-            return {
-              object: {
-                should_reply: true,
-                should_unsubscribe: false,
-                confidence: 1,
-                reason: "explicit ask",
-              },
-              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"explicit ask"}',
-            } as never;
+          completeDecision: async (params: { state: string }) => {
+            classifierCalls.push(params.state);
+            return routeDecision("reply");
           },
         },
         agentRunner: replyForRun((run) => {
@@ -190,16 +184,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "direct mention asking junior for status",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"direct mention asking junior for status"}',
-            } as never;
+            return routeDecision("reply");
           },
         },
         agentRunner: replyForRun((run) => {
@@ -237,7 +224,7 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
             throw new Error(
               "classifier should be bypassed for queued explicit mentions",
@@ -308,18 +295,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                should_unsubscribe: true,
-                confidence: 1,
-                reason:
-                  "user explicitly asked junior to stop participating in the thread",
-              },
-              text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"user explicitly asked junior to stop participating in the thread"}',
-            } as never;
+            return routeDecision("unsubscribe");
           },
         },
         agentRunner: replyForRun((run) => {
@@ -422,7 +400,7 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
             throw new Error(
               "classifier should be bypassed for acknowledgments",
@@ -458,16 +436,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "attachment acknowledgment",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment acknowledgment"}',
-            } as never;
+            return routeDecision("stay_quiet", 0.95);
           },
         },
         agentRunner: neverRunAgentRunner(),
@@ -505,16 +476,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "passive attachment",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"passive attachment"}',
-            } as never;
+            return routeDecision("stay_quiet", 0.95);
           },
         },
         agentRunner: neverRunAgentRunner(),
@@ -552,18 +516,11 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async (args) => {
+          completeDecision: async (args) => {
             classifierCalled = true;
-            expect(args.prompt).toContain("Deploy failed");
-            expect(args.prompt).toContain("Service: checkout");
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "passive legacy attachment",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"passive legacy attachment"}',
-            } as never;
+            expect(args.state).toContain("Deploy failed");
+            expect(args.state).toContain("Service: checkout");
+            return routeDecision("stay_quiet", 0.95);
           },
         },
         agentRunner: neverRunAgentRunner(),
@@ -607,16 +564,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "human side conversation",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"human side conversation"}',
-            } as never;
+            return routeDecision("stay_quiet", 0.95);
           },
         },
         agentRunner: replyForRun((run) => {
@@ -665,16 +615,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "attachment follow-up",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment follow-up"}',
-            } as never;
+            return routeDecision("stay_quiet", 0.95);
           },
         },
         agentRunner: replyForRun((run) => {
@@ -730,7 +673,7 @@ describe("Slack behavior: subscribed messages", () => {
       const { slackRuntime } = createRuntime({
         services: {
           subscribedReplyPolicy: {
-            completeObject: async () => {
+            completeDecision: async () => {
               classifierCalled = true;
               throw new Error(
                 "classifier should be bypassed for messages addressed to another bot",
@@ -790,16 +733,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: true,
-                confidence: 0.95,
-                reason: "follow-up directed at assistant's previous response",
-              },
-              text: '{"should_reply":true,"confidence":0.95,"reason":"follow-up directed at assistant\'s previous response"}',
-            } as never;
+            return routeDecision("reply", 0.95);
           },
         },
         agentRunner: replyForRun((run) => {
@@ -849,16 +785,9 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () => {
+          completeDecision: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: true,
-                confidence: 0.65,
-                reason: "brief clarification after assistant reply",
-              },
-              text: '{"should_reply":true,"confidence":0.65,"reason":"brief clarification after assistant reply"}',
-            } as never;
+            return routeDecision("reply", 0.65);
           },
         },
         agentRunner: replyForRun((run) => {
@@ -970,15 +899,7 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: false,
-                confidence: 0.9,
-                reason: "side conversation",
-              },
-              text: '{"should_reply":false,"confidence":0.9,"reason":"side conversation"}',
-            }) as never,
+          completeDecision: async () => routeDecision("stay_quiet", 0.9),
         },
       },
     });
@@ -1007,16 +928,7 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: false,
-                should_unsubscribe: true,
-                confidence: 1,
-                reason: "explicit stop",
-              },
-              text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"explicit stop"}',
-            }) as never,
+          completeDecision: async () => routeDecision("unsubscribe"),
         },
       },
     });

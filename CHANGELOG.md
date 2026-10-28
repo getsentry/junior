@@ -1,4 +1,160 @@
 # Changelog
+## 0.260.0
+
+### New Features ✨
+
+- (conversations) Name conversations after linked issues by @BYK with @sentry-junior in [#2218](https://github.com/getsentry/junior/pull/2218)
+- (dashboard) Add a light theme that follows the system by @BYK with @sentry-junior in [#2261](https://github.com/getsentry/junior/pull/2261)
+- (events) Merge an Event batch into one task message by @dcramer with @sentry-junior in [#2259](https://github.com/getsentry/junior/pull/2259)
+- (github) Add trusted sender and mention data to issue comments by @BYK with @sentry-junior in [#2209](https://github.com/getsentry/junior/pull/2209)
+- (guardian) Let thread context authorize PR delivery by @sentry-junior in [#2256](https://github.com/getsentry/junior/pull/2256)
+- (workspaces) Add per-Workspace sandbox vCPUs by @dcramer with @sentry-junior in [#2262](https://github.com/getsentry/junior/pull/2262)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Use the same header on every page by @cleptric with @sentry-junior in [#2264](https://github.com/getsentry/junior/pull/2264)
+- Resolve mentions the same way in all display text by @dcramer with @sentry-junior in [#2257](https://github.com/getsentry/junior/pull/2257)
+
+#### Other
+
+- (events) Link the Event doer to their Slack mention by @BYK with @sentry-junior in [#2250](https://github.com/getsentry/junior/pull/2250)
+- (lint) Make lint failures steer toward the intended fix by @dcramer with @sentry-junior in [#2228](https://github.com/getsentry/junior/pull/2228)
+
+### Internal Changes 🔧
+
+- (guardian) Group Guardian code and build eval tool specs from real tools by @dcramer with @sentry-junior in [#2263](https://github.com/getsentry/junior/pull/2263)
+- (node) Bump Node to 24.22.1 by @geoffg-sentry with @sentry-junior in [#2247](https://github.com/getsentry/junior/pull/2247)
+
+## 0.259.0
+
+### New Features ✨
+
+- (linear) Allow an optional read-only service account by @sentry-junior in [#2249](https://github.com/getsentry/junior/pull/2249)
+- (plugins) Add optional service accounts for plugins by @sentry-junior in [#2245](https://github.com/getsentry/junior/pull/2245)
+- (slack) Route passive replies with a decision model by @sentry-junior in [#2238](https://github.com/getsentry/junior/pull/2238)
+
+### Internal Changes 🔧
+
+- (lint) Require GitHub plugin requests to use host egress by @sentry-junior in [#2222](https://github.com/getsentry/junior/pull/2222)
+
+## 0.258.0
+
+### New Features ✨
+
+- (auth) Replace Slack sign-in with an allowed domain list by @sentry-junior in [#2229](https://github.com/getsentry/junior/pull/2229)
+- (automations) Default event automation runs to 10 per minute with a configurable window by @sentry-junior in [#2237](https://github.com/getsentry/junior/pull/2237)
+- (pagerduty) Add read-only PagerDuty plugin by @sentry-junior in [#2236](https://github.com/getsentry/junior/pull/2236)
+
+### Bug Fixes 🐛
+
+- (egress) Skip body reading for OPTIONS requests by @sentry in [#2199](https://github.com/getsentry/junior/pull/2199)
+- (github) Attribute automation writes to the Automation run by @sentry-junior in [#2235](https://github.com/getsentry/junior/pull/2235)
+- (lint) Steer file-length failures toward module splits by @sentry-junior in [#2227](https://github.com/getsentry/junior/pull/2227)
+
+### Internal Changes 🔧
+
+- (evals) Bump cloudflared to 2026.10.4 by @sentry-junior in [#2239](https://github.com/getsentry/junior/pull/2239)
+- (ts) Upgrade to TypeScript 7 with strict compiler checks by @sentry-junior in [#2171](https://github.com/getsentry/junior/pull/2171)
+
+## 0.257.0
+
+### New Features ✨
+
+#### Automations
+
+- Run Slack channel automations on named bot posts by @sentry-junior in [#2197](https://github.com/getsentry/junior/pull/2197)
+- Record the Automation version on each run by @sentry-junior[bot] in [#2212](https://github.com/getsentry/junior/pull/2212)
+
+#### Dashboard
+
+- Render Slack mentions as names and profile links by @sentry-junior in [#2226](https://github.com/getsentry/junior/pull/2226)
+- Improve transcript prose typography by @sentry-junior in [#2224](https://github.com/getsentry/junior/pull/2224)
+- Add clear button to search inputs by @sentry-junior in [#2216](https://github.com/getsentry/junior/pull/2216)
+- List a person's code changes on their profile by @sentry-junior in [#2208](https://github.com/getsentry/junior/pull/2208)
+
+#### Slack
+
+- Require Google sign-in before first Slack use by @sentry-junior in [#2220](https://github.com/getsentry/junior/pull/2220)
+- Return avatar URL from user lookup by @sentry-junior in [#2221](https://github.com/getsentry/junior/pull/2221)
+
+#### Other
+
+- (identities) Link OAuth accounts from web connections and verified emails by @sentry-junior in [#2201](https://github.com/getsentry/junior/pull/2201)
+- (logging) Audit credentialed egress writes with one identity model by @sentry-junior in [#2214](https://github.com/getsentry/junior/pull/2214)
+
+### Bug Fixes 🐛
+
+- (automations) Say that send_message is how an automation run posts by @sentry-junior in [#2213](https://github.com/getsentry/junior/pull/2213)
+- (evals) Use a valid PNG for generated images by @sentry-junior in [#2223](https://github.com/getsentry/junior/pull/2223)
+
+## 0.256.0
+
+### New Features ✨
+
+- (google) Read Meet transcripts of meetings Junior is invited to by @sentry-junior in [#2107](https://github.com/getsentry/junior/pull/2107)
+
+### Internal Changes 🔧
+
+- (node) Bump Node to 24.22.1 by @sentry-junior in [#2202](https://github.com/getsentry/junior/pull/2202)
+
+## 0.255.0
+
+### New Features ✨
+
+- (automations) Bind Automation ownership to creator identity by @sentry-junior in [#2188](https://github.com/getsentry/junior/pull/2188)
+- (dashboard) Grow the composer with its text on desktop by @sentry-junior in [#2192](https://github.com/getsentry/junior/pull/2192)
+
+### Bug Fixes 🐛
+
+- (automations) Settle runs of deleted Scheduled automations by @sentry-junior in [#2185](https://github.com/getsentry/junior/pull/2185)
+- (prompt) Allow Slack reads from other public channels by @sentry-junior in [#2193](https://github.com/getsentry/junior/pull/2193)
+
+### Internal Changes 🔧
+
+- (automations) Address Automations by ID alone in URLs by @sentry-junior in [#2186](https://github.com/getsentry/junior/pull/2186)
+- (frameshift) Delete unused screenshot reports nightly by @sentry-junior in [#2194](https://github.com/getsentry/junior/pull/2194)
+
+## 0.254.0
+
+### New Features ✨
+
+- (automations) Drop the legacy Automation tables by @sentry-junior in [#2184](https://github.com/getsentry/junior/pull/2184)
+
+## 0.253.0
+
+### New Features ✨
+
+- (automations) Store all Automation runs in one table by @sentry-junior in [#2183](https://github.com/getsentry/junior/pull/2183)
+
+## 0.252.0
+
+### New Features ✨
+
+- (automations) Keep both Automation kinds in one table by @sentry-junior in [#2179](https://github.com/getsentry/junior/pull/2179)
+
+## 0.251.0
+
+### New Features ✨
+
+- (conversations) Deliver Conversation notes on a Conversation's next Turn by @sentry-junior in [#2177](https://github.com/getsentry/junior/pull/2177)
+- (dashboard) Show an automation card at the top of automation runs by @sentry-junior in [#2170](https://github.com/getsentry/junior/pull/2170)
+- (guardian) Allow by default and block only on a named rule by @sentry-junior in [#2180](https://github.com/getsentry/junior/pull/2180)
+- (watches) Let a parent list and stop its child agents' watches by @sentry-junior in [#2172](https://github.com/getsentry/junior/pull/2172)
+
+### Bug Fixes 🐛
+
+#### Automations
+
+- Title automation runs instead of "Internal" by @sentry-junior in [#2169](https://github.com/getsentry/junior/pull/2169)
+- Name the Automation in its reply footer by @sentry-junior in [#2167](https://github.com/getsentry/junior/pull/2167)
+
+#### Other
+
+- (dashboard) Show model token types as table rows by @sentry-junior in [#2168](https://github.com/getsentry/junior/pull/2168)
+- (guardian) Let a child's root request cover its conventional steps by @sentry-junior in [#2173](https://github.com/getsentry/junior/pull/2173)
+
 ## 0.250.0
 
 ### New Features ✨

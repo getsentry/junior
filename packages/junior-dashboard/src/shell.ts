@@ -9,6 +9,7 @@ import {
   dashboardTailwindAsset,
 } from "./assets";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
+import { DASHBOARD_THEME_COLORS, DASHBOARD_THEME_SCRIPT } from "./theme";
 
 const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
 export const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
@@ -16,7 +17,7 @@ export const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 export const DASHBOARD_INSTALL_ICON_PATH = "/_junior/dashboard/icon-512.png";
 export const DASHBOARD_MANIFEST_PATH =
   "/_junior/dashboard/manifest.webmanifest";
-const DASHBOARD_THEME_COLOR = "#000000";
+const DASHBOARD_THEME_COLOR = DASHBOARD_THEME_COLORS.dark;
 const DASHBOARD_BACKGROUND_COLOR = "#000000";
 
 function escapeHtml(value: string): string {
@@ -224,6 +225,7 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="${DASHBOARD_THEME_COLOR}" />
+  <script>${DASHBOARD_THEME_SCRIPT}</script>
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -334,6 +336,7 @@ export function renderForbiddenPage(agentName: string): Response {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>${escapeHtml(agentName)} access denied</title>
+  <script>${DASHBOARD_THEME_SCRIPT}</script>
   <style>
     ${readDashboardTailwind()}
   </style>

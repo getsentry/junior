@@ -18,6 +18,7 @@ const [
 ]);
 
 const app = await createApp({
+  allowedDomains: ["example.com"],
   briefs: { enabled: true },
   plugins,
 });
@@ -185,14 +186,14 @@ export async function runInit(
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
       "@sentry/nitro": "10.65.0",
-      hono: "^4.12.27",
+      hono: "^4.13.11",
     },
     devDependencies: {
       "@types/node": "^25.9.1",
       "cross-env": "^10.1.0",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
-      typescript: "^6.0.3",
+      typescript: "^7.0.2",
     },
   };
   fs.writeFileSync(

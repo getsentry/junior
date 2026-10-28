@@ -29,7 +29,7 @@ export function createFinishAutomationRunTool(options: {
       readOnlyHint: false,
     },
     description: options.sendsMessage
-      ? `End this automation run. Use \`send_message\` with the finished reminder, digest, alert, or answer; the runtime posts it to the stored destinations. ${RESULT_GUIDANCE}`
+      ? `End this automation run. Use \`send_message\` with the finished reminder, digest, alert, or answer; the runtime posts it to the stored destinations. This is the only way that the run posts, so a missing Slack posting tool does not make the run \`misconfigured\`. ${RESULT_GUIDANCE}`
       : `End this automation run. This automation posts nothing. ${RESULT_GUIDANCE}`,
     inputSchema: z.object({
       result: z.enum(results),

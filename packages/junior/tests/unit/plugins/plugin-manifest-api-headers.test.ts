@@ -568,6 +568,89 @@ describe("plugin manifest API headers", () => {
     ).toThrow(message);
   });
 
+  it("parses accounts with a service account", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example MCP access",
+        "mcp:",
+        "  url: https://mcp.example.com/mcp",
+        "  allowed-tools:",
+        "    - search",
+        "    - create",
+        "accounts:",
+        "  user-oauth: false",
+        "  service-account:",
+        "    tools:",
+        "      - search",
+      ].join("\n"),
+      "/tmp/example",
+    );
+    expect(manifest.accounts).toEqual({
+      userOAuth: false,
+      serviceAccount: { tools: ["search"] },
+    });
+  });
+
+  it.each([
+    [
+      "a tool outside mcp.allowed-tools",
+      ["  allowed-tools:", "    - search"],
+      ["accounts:", "  service-account:", "    tools:", "      - create"],
+      "Plugin example accounts.service-account.tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: create",
+    ],
+    [
+      "bot auth",
+      [
+        "  allowed-tools:",
+        "    - search",
+        "  auth:",
+        "    issuer: https://junior.example.com",
+        "    key-id: junior-1",
+        "    private-key-env: EXAMPLE_KEY",
+      ],
+      ["accounts:", "  service-account:", "    tools:", "      - search"],
+      "Plugin example accounts.service-account requires mcp without auth or oauth-client",
+    ],
+    [
+      "a key that no surface enforces",
+      ["  allowed-tools:", "    - search"],
+      [
+        "accounts:",
+        "  service-account:",
+        "    tools:",
+        "      - search",
+        "    grants:",
+        "      - default",
+      ],
+      "Plugin example accounts",
+    ],
+    [
+      "user OAuth off and no service account",
+      ["  allowed-tools:", "    - search"],
+      ["accounts:", "  user-oauth: false"],
+      "Plugin example accounts.user-oauth false requires accounts.service-account",
+    ],
+  ])("rejects accounts with %s", (_name, mcpLines, accountsLines, message) => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "env-vars:",
+          "  EXAMPLE_KEY:",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          ...mcpLines,
+          ...accountsLines,
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(message);
+  });
+
   it("rejects command env references that reuse MCP header env vars", () => {
     expect(() =>
       parsePluginManifest(

@@ -1,5 +1,7 @@
 import { describe, expect } from "vitest";
+import { mockGeneratedImage } from "@junior-evals/fixture/gateway";
 import {
+  editedTicketScreenshotPng,
   TICKET_NUMBER,
   ticketScreenshotPng,
 } from "@junior-evals/fixture/images";
@@ -39,6 +41,8 @@ describe("Conversation Attachments", () => {
   test("when a mention asks to change an attached image, the edit uses that image", async ({
     run,
   }) => {
+    // The agent can view the result to check the edit.
+    mockGeneratedImage(editedTicketScreenshotPng());
     const conversation = await run(
       slackMention("Change the ticket number in this screenshot to 1234.", {
         files: [SCREENSHOT],

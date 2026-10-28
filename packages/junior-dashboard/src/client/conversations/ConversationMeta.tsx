@@ -167,7 +167,7 @@ export function ConversationSidebarAnnotations(props: {
         {useMobileFacepile ? (
           <SidebarAnnotationIconFacepile
             annotations={mobileFacepileAnnotations}
-            // Discs sit on the sidebar panel / row surface (#09090b).
+            // Discs sit on the sidebar panel / row surface.
             cutoutColor="var(--color-dashboard-surface-panel)"
           />
         ) : (
@@ -343,21 +343,33 @@ type SidebarAnnotationIconName = NonNullable<
 >;
 
 const SIDEBAR_ICON_PRESENTATION = {
-  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
+  "circle-dot": {
+    className: "text-[#3fb950] light:text-[#1a7f37]",
+    Icon: CircleDot,
+    label: "Open",
+  },
   "circle-dashed": {
-    className: "text-[#8c959f]",
+    className: "text-[#8c959f] light:text-[#59636e]",
     Icon: CircleDashed,
     label: "Draft",
   },
-  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
-  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "circle-x": {
+    className: "text-[#f85149] light:text-[#cf222e]",
+    Icon: CircleX,
+    label: "Closed",
+  },
+  "git-merge": {
+    className: "text-[#a371f7] light:text-[#8250df]",
+    Icon: GitMerge,
+    label: "Merged",
+  },
   "git-pull-request": {
-    className: "text-[#3fb950]",
+    className: "text-[#3fb950] light:text-[#1a7f37]",
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922]",
+    className: "text-[#d29922] light:text-[#9a6700]",
     Icon: TriangleAlert,
     label: "Needs attention",
   },

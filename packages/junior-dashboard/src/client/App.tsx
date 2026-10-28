@@ -152,7 +152,6 @@ export function DashboardShell() {
           }
           header={
             <DashboardHeader
-              compact={workspace}
               mobileBackTo={conversationId ? "/" : undefined}
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
@@ -228,7 +227,7 @@ export function DashboardShell() {
                 <Navigate replace to="/" />
               )
             }
-            path="/automations/:kind/:automationId/executions"
+            path="/automations/:automationId/executions"
           />
           <Route
             element={
@@ -249,7 +248,7 @@ export function DashboardShell() {
                 <Navigate replace to="/" />
               )
             }
-            path="/automations/:kind/:automationId/versions"
+            path="/automations/:automationId/versions"
           />
           <Route
             element={
@@ -294,7 +293,7 @@ export function DashboardShell() {
             path="/automations/list"
           />
           <Route
-            path="/automations/:kind/:automationId/edit"
+            path="/automations/:automationId/edit"
             element={
               loading || loggedIn ? (
                 <AutomationEditPage enabled={loggedIn} />

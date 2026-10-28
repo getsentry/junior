@@ -26,6 +26,12 @@ export const pluginProviderAccountSchema = z
     id: nonBlankStringSchema,
     label: nonBlankStringSchema.optional(),
     url: nonBlankStringSchema.optional(),
+    /**
+     * Email addresses that the provider verified for this account. Junior
+     * uses them only to link the account to a person and does not store them
+     * with the tokens.
+     */
+    verifiedEmails: z.array(nonBlankStringSchema).optional(),
   })
   .strict();
 
@@ -211,6 +217,11 @@ export interface PluginTokenStore {
 
 export interface ResolveOAuthAccountHookContext extends PluginContext {
   tokens: PluginStoredTokens;
+  /**
+   * Parsed JSON body of the provider token response. Some providers return
+   * the authorized account in this body.
+   */
+  tokenResponse: Record<string, unknown>;
 }
 
 export interface IssueCredentialHookContext extends PluginContext {

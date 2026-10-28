@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-github",
-  "version": "0.250.0",
+  "version": "0.260.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -40,6 +40,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sinclair/typebox": "^0.34.49",
     "drizzle-orm": "catalog:",
+    "marked": "^18.1.2",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -50,7 +51,7 @@
     "msw": "^2.14.6",
     "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
   }
 }

@@ -37,6 +37,7 @@ function eventMessage(
     role,
     sourceSeq: event.seq,
     timestamp: eventTimestamp(event),
+    ...(event.mentions ? { mentions: event.mentions } : undefined),
   };
 }
 
@@ -218,6 +219,7 @@ export function transcriptMessagesFromEvents(
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),
+        ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
@@ -387,6 +389,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "structured_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             namespace: data.namespace,
             name: data.name,
             version: data.version,
@@ -414,6 +417,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "context_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             event:
               data.type === "handoff"
                 ? {

@@ -74,6 +74,7 @@ const workspaceSchema = z.object({
   id: z.string(),
   name: z.string(),
   setup_script: z.string(),
+  vcpus: z.number().nullable(),
   repos: z.array(repoSchema),
 });
 
@@ -82,6 +83,7 @@ function view(workspace: Workspace) {
     id: workspace.id,
     name: workspace.name,
     setup_script: workspace.setupScript,
+    vcpus: workspace.vcpus,
     repos: workspace.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -150,6 +152,15 @@ function workspaceWriteSchemas(providers: [string, ...string[]]) {
           "Optional shell script to run after repository checkout whenever this Workspace starts. Omit or use null for no setup script.",
         )
         .optional(),
+      vcpus: z
+        .number()
+        .int()
+        .positive()
+        .nullable()
+        .describe(
+          "Optional Sandbox vCPUs for this Workspace. Each vCPU adds 2 GB of memory. Omit or use null to use the app default.",
+        )
+        .optional(),
       repos: z
         .array(repoInputSchema)
         .max(32)
@@ -169,6 +180,7 @@ function writeInput(input: WorkspaceWriteInput) {
     ...(input.setup_script == null
       ? undefined
       : { setupScript: input.setup_script }),
+    vcpus: input.vcpus ?? null,
     repos: input.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -181,6 +193,9 @@ function prepareWorkspaceWriteArguments(args: unknown): WorkspaceWriteInput {
   const prepared = { ...input };
   if (prepared.setup_script == null) {
     delete prepared.setup_script;
+  }
+  if (prepared.vcpus == null) {
+    delete prepared.vcpus;
   }
   return prepared;
 }
@@ -202,7 +217,8 @@ function describeWorkspaceWrite(
 ): string {
   const repositories = `${input.repos.length} ${input.repos.length === 1 ? "repository" : "repositories"}`;
   const setupText = input.setup_script ? "; includes a setup script" : "";
-  return `${action} Workspace ${input.name} (${repositories}${setupText}).`;
+  const vcpuText = input.vcpus ? `; ${input.vcpus} vCPUs` : "";
+  return `${action} Workspace ${input.name} (${repositories}${setupText}${vcpuText}).`;
 }
 
 /** Build create/update/delete tools for the currently preparable repository providers. */

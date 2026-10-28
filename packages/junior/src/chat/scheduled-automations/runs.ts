@@ -1,13 +1,22 @@
-import { and, asc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
-import { z } from "zod";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getNextRunAtMs } from "./cadence";
+import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
+import { existingConversationId } from "@/chat/automations/execution-stats";
+import { automationVersionOf } from "@/chat/automations/versions";
 import type { JuniorDatabase } from "@/db/db";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
+import { juniorAutomations } from "@/db/schema/automations";
 import {
-  juniorSchedulerRuns,
-  juniorSchedulerTasks,
-} from "@/db/schema/scheduled-automations";
-import {
-  listScheduledAutomations,
   listScheduledAutomationsForTeam,
   readScheduledAutomation,
   saveScheduledAutomationInLock,
@@ -25,30 +34,31 @@ import {
 const PENDING_CLAIM_STALE_MS = 60_000;
 const MISSED_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const INCOMPLETE_RUN_STATUSES = ["pending", "running"] as const;
-const retainedScheduledRunSchema = scheduledRunSchema
-  .extend({
-    idempotencyKey: z.string().optional(),
-    taskVersion: z.number().optional(),
-  })
-  .strict();
 
-type ScheduledRunRow = Pick<typeof juniorSchedulerRuns.$inferSelect, "record">;
 type SkippedRunTelemetry = {
   errorMessage: string;
   run: ScheduledRun;
   task: ScheduledAutomation;
 };
 
-/** Decode a scheduler run row and remove retained legacy fields. */
-function parseScheduledRunRow(row: ScheduledRunRow): ScheduledRun | undefined {
-  const parsed = retainedScheduledRunSchema.safeParse(row.record);
-  if (!parsed.success) return undefined;
-  const {
-    idempotencyKey: _idempotencyKey,
-    taskVersion: _taskVersion,
-    ...run
-  } = parsed.data;
-  return run;
+/** Decode a Scheduled automation run row. Returns undefined for an invalid row. */
+function parseScheduledRunRow(
+  row: typeof juniorAutomationRuns.$inferSelect,
+): ScheduledRun | undefined {
+  const parsed = scheduledRunSchema.safeParse({
+    id: row.id,
+    attempt: row.attempt,
+    claimedAtMs: row.claimedAtMs,
+    completedAtMs: row.completedAtMs ?? undefined,
+    dispatchId: row.dispatchId ?? undefined,
+    errorMessage: row.errorMessage ?? undefined,
+    resultMessageTs: row.resultMessageTs ?? undefined,
+    scheduledForMs: row.scheduledForMs,
+    startedAtMs: row.startedAtMs ?? undefined,
+    status: row.status,
+    taskId: row.automationId,
+  });
+  return parsed.success ? parsed.data : undefined;
 }
 
 function present<T>(value: T | undefined): value is T {
@@ -60,65 +70,77 @@ async function readRun(
   runId: string,
 ): Promise<ScheduledRun | undefined> {
   const rows = await db
-    .select({ record: juniorSchedulerRuns.record })
-    .from(juniorSchedulerRuns)
-    .where(eq(juniorSchedulerRuns.id, runId))
+    .select()
+    .from(juniorAutomationRuns)
+    .where(eq(juniorAutomationRuns.id, runId))
     .limit(1);
   return rows[0] ? parseScheduledRunRow(rows[0]) : undefined;
 }
 
-async function writeRun(db: JuniorDatabase, run: ScheduledRun): Promise<void> {
+/**
+ * Save a Scheduled automation run. Pass `automationVersion` only when the run
+ * is dispatched. Later writes keep the stored version.
+ */
+async function writeRun(
+  db: JuniorDatabase,
+  run: ScheduledRun,
+  automationVersion?: SQL,
+): Promise<void> {
   const stored = scheduledRunSchema.parse(run);
+  const columns = {
+    ...(automationVersion ? { automationVersion } : undefined),
+    attempt: stored.attempt,
+    automationId: stored.taskId,
+    claimedAtMs: stored.claimedAtMs,
+    completedAtMs: stored.completedAtMs ?? null,
+    conversationId: stored.dispatchId
+      ? existingConversationId(
+          getDispatchConversationId({ id: stored.dispatchId }),
+        )
+      : null,
+    dispatchId: stored.dispatchId ?? null,
+    errorMessage: stored.errorMessage ?? null,
+    resultMessageTs: stored.resultMessageTs ?? null,
+    scheduledForMs: stored.scheduledForMs,
+    startedAtMs: stored.startedAtMs ?? null,
+    status: stored.status,
+  };
   await db
-    .insert(juniorSchedulerRuns)
-    .values({
-      id: stored.id,
-      record: stored,
-      scheduledForMs: stored.scheduledForMs,
-      status: stored.status,
-      taskId: stored.taskId,
-    })
-    .onConflictDoUpdate({
-      target: juniorSchedulerRuns.id,
-      set: {
-        record: sql`excluded.record`,
-        scheduledForMs: sql`excluded.scheduled_for_ms`,
-        status: sql`excluded.status`,
-        taskId: sql`excluded.task_id`,
-      },
-    });
+    .insert(juniorAutomationRuns)
+    .values({ id: stored.id, ...columns })
+    .onConflictDoUpdate({ target: juniorAutomationRuns.id, set: columns });
 }
 
-async function listIncompleteRunsForTaskIds(
+/**
+ * List incomplete Scheduled automation runs, optionally for one automation.
+ * Deleted automations are included: a run that was already dispatched when
+ * its automation was deleted must still settle.
+ */
+export async function listIncompleteScheduledRuns(
   db: JuniorDatabase,
-  taskIds: string[],
+  automationId?: string,
 ): Promise<ScheduledRun[]> {
-  if (taskIds.length === 0) return [];
   const rows = await db
-    .select({ record: juniorSchedulerRuns.record })
-    .from(juniorSchedulerRuns)
+    .select({ run: juniorAutomationRuns })
+    .from(juniorAutomationRuns)
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationRuns.automationId),
+    )
     .where(
       and(
-        inArray(juniorSchedulerRuns.taskId, taskIds),
-        inArray(juniorSchedulerRuns.status, [...INCOMPLETE_RUN_STATUSES]),
+        eq(juniorAutomations.kind, "scheduled"),
+        automationId === undefined
+          ? undefined
+          : eq(juniorAutomationRuns.automationId, automationId),
+        inArray(juniorAutomationRuns.status, [...INCOMPLETE_RUN_STATUSES]),
       ),
     )
     .orderBy(
-      asc(juniorSchedulerRuns.scheduledForMs),
-      asc(juniorSchedulerRuns.id),
+      asc(juniorAutomationRuns.scheduledForMs),
+      asc(juniorAutomationRuns.id),
     );
-  return rows.map(parseScheduledRunRow).filter(present);
-}
-
-/** List incomplete runs for retained scheduled automations. */
-export async function listIncompleteScheduledRuns(
-  db: JuniorDatabase,
-): Promise<ScheduledRun[]> {
-  const tasks = await listScheduledAutomations(db);
-  return await listIncompleteRunsForTaskIds(
-    db,
-    tasks.map((task) => task.id),
-  );
+  return rows.map(({ run }) => parseScheduledRunRow(run)).filter(present);
 }
 
 function getDueRunAtMs(
@@ -278,27 +300,25 @@ export async function claimDueScheduledRun(
       sql`SELECT pg_advisory_xact_lock(hashtext('junior:scheduler:claim'))`,
     );
     const rows = await tx
-      .select({ id: juniorSchedulerTasks.id })
-      .from(juniorSchedulerTasks)
+      .select({ id: juniorAutomations.id })
+      .from(juniorAutomations)
       .where(
         and(
-          eq(juniorSchedulerTasks.status, "active"),
+          eq(juniorAutomations.kind, "scheduled"),
+          eq(juniorAutomations.status, "active"),
           or(
             and(
-              isNotNull(juniorSchedulerTasks.runNowAtMs),
-              lte(juniorSchedulerTasks.runNowAtMs, args.nowMs),
+              isNotNull(juniorAutomations.runNowAtMs),
+              lte(juniorAutomations.runNowAtMs, args.nowMs),
             ),
             and(
-              isNotNull(juniorSchedulerTasks.nextRunAtMs),
-              lte(juniorSchedulerTasks.nextRunAtMs, args.nowMs),
+              isNotNull(juniorAutomations.nextRunAtMs),
+              lte(juniorAutomations.nextRunAtMs, args.nowMs),
             ),
           ),
         ),
       )
-      .orderBy(
-        asc(juniorSchedulerTasks.createdAtMs),
-        asc(juniorSchedulerTasks.id),
-      );
+      .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
 
     for (const row of rows) {
       const run = await withScheduledAutomationLock(
@@ -310,9 +330,10 @@ export async function claimDueScheduledRun(
           const scheduledForMs = getDueRunAtMs(task, args.nowMs);
           if (scheduledForMs === undefined) return undefined;
           const runId = scheduledRunId(task.id, scheduledForMs);
-          const incompleteRuns = await listIncompleteRunsForTaskIds(taskTx, [
+          const incompleteRuns = await listIncompleteScheduledRuns(
+            taskTx,
             task.id,
-          ]);
+          );
           const incompleteRun = incompleteRuns.find(
             (item) => item.id === runId,
           );
@@ -330,7 +351,24 @@ export async function claimDueScheduledRun(
             await writeRun(taskTx, reclaimed);
             return reclaimed;
           }
-          if (await readRun(taskTx, runId)) return undefined;
+          const finishedRun = await readRun(taskTx, runId);
+          if (finishedRun) {
+            // The run finished, but the advance after it was not saved. A
+            // crash or an old worker during the #2176 deploy can cause this.
+            if (
+              finishedRun.status === "blocked" ||
+              finishedRun.status === "completed" ||
+              finishedRun.status === "failed"
+            ) {
+              await advanceScheduledAutomationAfterRun(taskTx, {
+                errorMessage: finishedRun.errorMessage,
+                nowMs: args.nowMs,
+                run: finishedRun,
+                status: finishedRun.status,
+              });
+            }
+            return undefined;
+          }
           if (scheduledForMs + MISSED_RUN_MAX_AGE_MS < args.nowMs) {
             const skipped = await skipMissedRun(taskTx, {
               nowMs: args.nowMs,
@@ -368,6 +406,7 @@ async function updateRun(
   db: JuniorDatabase,
   runId: string,
   update: (run: ScheduledRun) => ScheduledRun | undefined,
+  automationVersion?: SQL,
 ): Promise<ScheduledRun | undefined> {
   return await db.transaction(async (tx) => {
     await tx.execute(
@@ -377,7 +416,7 @@ async function updateRun(
     if (!current) return undefined;
     const next = update(current);
     if (!next) return undefined;
-    await writeRun(tx, next);
+    await writeRun(tx, next, automationVersion);
     return next;
   });
 }
@@ -390,7 +429,10 @@ function canFinishRun(
   return run.status === "running" && run.startedAtMs === startedAtMs;
 }
 
-/** Mark a pending run dispatched only for the active claim. */
+/**
+ * Mark a pending run dispatched only for the active claim, and store the
+ * version of `task` that the dispatch ran.
+ */
 export async function markScheduledRunDispatched(
   db: JuniorDatabase,
   args: {
@@ -398,17 +440,22 @@ export async function markScheduledRunDispatched(
     dispatchId: string;
     nowMs: number;
     runId: string;
+    task: ScheduledAutomation;
   },
 ): Promise<ScheduledRun | undefined> {
-  return await updateRun(db, args.runId, (run) =>
-    run.status === "pending" && run.claimedAtMs === args.claimedAtMs
-      ? {
-          ...run,
-          dispatchId: args.dispatchId,
-          startedAtMs: args.nowMs,
-          status: "running",
-        }
-      : undefined,
+  return await updateRun(
+    db,
+    args.runId,
+    (run) =>
+      run.status === "pending" && run.claimedAtMs === args.claimedAtMs
+        ? {
+            ...run,
+            dispatchId: args.dispatchId,
+            startedAtMs: args.nowMs,
+            status: "running",
+          }
+        : undefined,
+    automationVersionOf(args.task),
   );
 }
 

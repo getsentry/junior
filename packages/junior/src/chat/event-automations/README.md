@@ -7,8 +7,10 @@ an event. Plugins do not know which conversations or automations consume it.
 
 Slack ingress also publishes core `slack` / `channel` / `message.posted` events
 (`slack/channel-message-events.ts`) for new top-level messages that no other
-route handles. Bot posts and thread replies do not publish. A Watch cannot select
-these events. An automation can watch only the channel where it posts, so
+route handles. Thread replies and Slackbot posts do not publish. Other bot posts
+publish with `postedByBot`, but they run only automations whose `match` names
+the bot in `userId`. Bots can post often and would use up the run limit of
+every other automation in the channel. A Watch cannot select these events. An automation can watch only the channel where it posts, so
 private channel text stays in that channel. Runs always use system credentials,
 because anyone in the channel writes the Event text. Each run replies in the
 thread of the source message.
@@ -56,22 +58,20 @@ Paused rows do not match new events. Resume does not replay events received duri
 the pause. Provider retries still use the event key to prevent duplicate runs.
 Deletion keeps the row and execution history.
 
-Deploy all workers before using pause. Older workers still match paused rows.
-
-Each Event automation can start at most
-`botConfig.maxEventAutomationRunsPerHour` runs in a rolling hour
-(`run-limit.ts`). The default is 10. A host sets it with
-`createApp({ limits: { maxEventAutomationRunsPerHour } })`. The one-hour
-window is fixed. The limit applies to one Automation, not to its trigger or
+Each Event automation can start at most `botConfig.maxEventAutomationRuns`
+runs in a rolling `botConfig.eventAutomationRunWindowMs` window
+(`run-limit.ts`). The defaults are 10 runs and one minute. A host sets them with
+`createApp({ limits: { eventAutomationRunLimit: { maxRuns, windowMs } } })`.
+The limit applies to one Automation, not to its trigger or
 namespace. Another Automation on the same trigger keeps its own count. Event
 automations do not use the consecutive automated-turn limit, so this limit is
 what stops a noisy trigger from starting a full agent Turn for every Event.
 Ingest counts a run before dispatch. Each run appends one entry with its
 dispatch idempotency key to a short list in the state adapter. Then it counts
-the keys from the last hour up to the first entry with its own key. The append
+the keys from the last window up to the first entry with its own key. The append
 is atomic, so the list order decides which runs fit when Events arrive at the
 same moment. No lock is needed. A provider retry has the same key, so it gets
-the same answer and does not count again. When the hour is full, ingest skips the dispatch and blocks
+the same answer and does not count again. When the window is full, ingest skips the dispatch and blocks
 the Automation with a reason, and its creator gets the blocked notice. Each
 block also captures one Sentry issue event with the fingerprint
 `event_automation.run_limit.blocked` and the `app.task.id` of the Automation.

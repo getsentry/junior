@@ -122,6 +122,10 @@ describe("user approval for child agents", () => {
         ],
         truncated: false,
       });
+      // A root Run reads its own Conversation with the same labels.
+      await expect(read(slackParentConversationId, user)).resolves.toEqual(
+        await read(child.childConversationId, user),
+      );
       // Without the child's Actor, nothing is the user.
       await expect(read(child.childConversationId)).resolves.toEqual({
         messages: [],
@@ -167,7 +171,7 @@ describe("user approval for child agents", () => {
     }
   });
 
-  it("keeps a later revocation last when an old root message is edited", async () => {
+  it("keeps the opening request first and a later revocation in place when older context is cut", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
@@ -180,8 +184,9 @@ describe("user approval for child agents", () => {
         role: "user",
         text: "Unpublish abc.png.",
       });
-      // More than one read page of events comes after the approval.
-      for (let step = 1; step <= 70; step += 1) {
+      // More than one read page of events comes after the approval. The
+      // revocation is in the page, but older than the newest 16 messages.
+      for (let step = 1; step <= 40; step += 1) {
         await recordRootMessage(slackParentConversationId, {
           role: "assistant",
           text: `Step ${step}.`,
@@ -192,6 +197,12 @@ describe("user approval for child agents", () => {
         role: "user",
         text: "Stop. Don't unpublish anything.",
       });
+      for (let step = 41; step <= 70; step += 1) {
+        await recordRootMessage(slackParentConversationId, {
+          role: "assistant",
+          text: `Step ${step}.`,
+        });
+      }
       // The user edits the old approval after the revocation.
       await getConversationEventStore().append(slackParentConversationId, [
         {
@@ -220,15 +231,24 @@ describe("user approval for child agents", () => {
         actor: user,
         conversationId: child.childConversationId,
       });
-      expect(read.messages).toHaveLength(16);
-      expect(read.messages.at(-1)).toEqual({
-        author: "user",
-        text: "Stop. Don't unpublish anything.",
-      });
-      // The edit does not bring the old approval in after the revocation.
-      expect(read.messages.map((message) => message.text)).not.toContain(
-        "Unpublish abc.png and def.png.",
-      );
+      // The opening request stays first, with its newest text, after more
+      // than a page of later events. The edit never moves it after the
+      // revocation. The revocation stays, though newer context pushes it
+      // out of the newest 16, and a note marks each cut.
+      const gap = {
+        author: "system",
+        text: expect.stringMatching(/^\[\d+ messages are not shown here\./),
+      };
+      expect(read.messages).toEqual([
+        { author: "user", text: "Unpublish abc.png and def.png." },
+        gap,
+        { author: "user", text: "Stop. Don't unpublish anything." },
+        gap,
+        ...Array.from({ length: 16 }, (_, index) => ({
+          author: "assistant",
+          text: `Step ${55 + index}.`,
+        })),
+      ]);
       expect(read.truncated).toBe(true);
     } finally {
       await fixture.close();
@@ -305,13 +325,17 @@ describe("user approval for child agents", () => {
         author: "automation",
         text: instruction,
       });
-      expect(long.messages.slice(1)).toEqual(
-        Array.from({ length: 16 }, (_, index) => ({
+      // Steps 1 to 54 are not shown. The steps in the read page get a note.
+      expect(long.messages.slice(1)).toEqual([
+        {
+          author: "system",
+          text: expect.stringMatching(/^\[48 messages are not shown here\./),
+        },
+        ...Array.from({ length: 16 }, (_, index) => ({
           author: "assistant",
           text: `Step ${55 + index}.`,
         })),
-      );
-      // Steps 1 to 54 are not shown.
+      ]);
       expect(long.truncated).toBe(true);
     } finally {
       await fixture.close();

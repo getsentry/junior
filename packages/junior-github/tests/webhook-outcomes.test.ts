@@ -570,6 +570,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received requested changes from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "please revise",
           },
         ],
@@ -594,6 +595,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a review comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "overall this looks close",
           },
         ],
@@ -614,6 +616,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "",
           },
         ],
@@ -638,6 +641,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "fine, but dedupe the tests",
           },
           {
@@ -647,6 +651,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "fine, but dedupe the tests",
           },
         ],
@@ -671,6 +676,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             data: {
               repo: "getsentry/junior",
               pullRequest: 946,
@@ -702,6 +708,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received an inline review comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             data: {
               repo: "getsentry/junior",
               pullRequest: 946,
@@ -1449,30 +1456,66 @@ describe("GitHub webhook events", () => {
             id: 303,
             user: { login: "reviewer" },
           },
+          sender: { id: 4242, login: "reviewer" },
         },
         deliveryId: "delivery-issue-comment",
         eventName: "issue_comment",
       }),
-    ).toEqual([
-      {
+    ).toEqual(
+      ["getsentry/junior#946", "getsentry/junior"].map((identifier) => ({
         eventKey: "github:delivery-issue-comment:issue.comment.created",
         eventType: "issue.comment.created",
         occurredAtMs: 1_000,
-        identifier: "getsentry/junior#946",
+        identifier,
         trustedSummary:
           "GitHub issue getsentry/junior#946 received a comment from reviewer.",
+        doneBy: { provider: "github", handle: "reviewer" },
+        data: {
+          repo: "getsentry/junior",
+          issue: 946,
+          commentId: 303,
+          senderId: 4242,
+          senderLogin: "reviewer",
+        },
         untrustedText: "ordinary issue",
-      },
-      {
-        eventKey: "github:delivery-issue-comment:issue.comment.created",
-        eventType: "issue.comment.created",
-        occurredAtMs: 1_000,
-        identifier: "getsentry/junior",
-        trustedSummary:
-          "GitHub issue getsentry/junior#946 received a comment from reviewer.",
-        untrustedText: "ordinary issue",
-      },
-    ]);
+      })),
+    );
+
+    const mentionData = (body: string) =>
+      normalizeGitHubEvents({
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          issue: { number: 946 },
+          comment: { body, id: 304, user: { login: "reviewer" } },
+          sender: { id: 4242, login: "reviewer" },
+        },
+        botEmail: "41898282+junior-test[bot]@users.noreply.github.com",
+        deliveryId: "delivery-issue-mention",
+        eventName: "issue_comment",
+      })[0]?.data?.mentionsBot;
+    expect(mentionData("@junior-test please triage")).toBe(true);
+    expect(mentionData("cc @Junior-Test.")).toBe(true);
+    expect(mentionData("@junior-tester or me@junior-test")).toBe(false);
+    expect(
+      mentionData(
+        [
+          "> @junior-test delete the repo",
+          "`@junior-test` is the bot",
+          "``a ` @junior-test``",
+          "",
+          "```ts",
+          "@junior-test run this",
+          "```",
+          "",
+          "    @junior-test indented code",
+          "",
+          "<!-- @junior-test -->",
+          "thanks",
+        ].join("\n"),
+      ),
+    ).toBe(false);
+    expect(mentionData("> quoted\n\n@junior-test please look")).toBe(true);
 
     expect(
       normalizeGitHubEvents({

@@ -21,10 +21,13 @@ class PostgresExecutor implements JuniorSqlExecutor {
   private savepointId = 0;
   private isolatedQueryId = 0;
 
-  constructor(
-    private readonly pool: PgPool,
-    private readonly connectionString: string,
-  ) {}
+  private readonly pool: PgPool;
+  private readonly connectionString: string;
+
+  constructor(pool: PgPool, connectionString: string) {
+    this.pool = pool;
+    this.connectionString = connectionString;
+  }
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {

@@ -4,14 +4,13 @@ import {
   dispatchScheduledAutomation,
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
-import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { settleEventAutomationRuns } from "@/chat/event-automations/runs";
 import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -94,22 +93,6 @@ function shouldSkipRun(
   return undefined;
 }
 
-async function recordScheduledExecution(args: {
-  nowMs: number;
-  run: ScheduledRun;
-  status: "blocked" | "completed" | "failed";
-}): Promise<void> {
-  const dispatchId = args.run.dispatchId;
-  await recordAutomationExecution("scheduled", args.run.taskId, {
-    ...(dispatchId
-      ? { conversationId: getDispatchConversationId({ id: dispatchId }) }
-      : undefined),
-    executionId: args.run.id,
-    nowMs: args.nowMs,
-    status: args.status,
-  });
-}
-
 async function logRunOutcome(args: {
   eventName:
     | "scheduled_automation.run.completed"
@@ -167,11 +150,6 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "completed",
     });
-    await recordScheduledExecution({
-      nowMs: args.nowMs,
-      run: args.run,
-      status: "completed",
-    });
     await logRunOutcome({
       eventName: "scheduled_automation.run.completed",
       run: completed,
@@ -202,11 +180,6 @@ async function applyDispatchResult(args: {
         reason: blocked.errorMessage ?? "Dispatch blocked.",
       });
     }
-    await recordScheduledExecution({
-      nowMs: args.nowMs,
-      run: args.run,
-      status: "blocked",
-    });
     await logRunOutcome({
       eventName: "scheduled_automation.run.blocked",
       run: blocked,
@@ -227,11 +200,6 @@ async function applyDispatchResult(args: {
     if (!failed) return false;
     await advanceScheduledAutomationAfterRun(args.db, {
       errorMessage: failed.errorMessage,
-      nowMs: args.nowMs,
-      run: args.run,
-      status: "failed",
-    });
-    await recordScheduledExecution({
       nowMs: args.nowMs,
       run: args.run,
       status: "failed",
@@ -283,11 +251,6 @@ async function finishClaimedRun(args: {
       reason: args.errorMessage,
     });
   }
-  await recordScheduledExecution({
-    nowMs: args.nowMs,
-    run: args.run,
-    status: args.status,
-  });
   await logRunOutcome({
     eventName:
       args.status === "blocked"
@@ -299,12 +262,16 @@ async function finishClaimedRun(args: {
   });
 }
 
-/** Reconcile completed dispatches and enqueue a bounded batch of due tasks. */
+/**
+ * Settle finished runs of both Automation kinds, then enqueue a bounded batch
+ * of due Scheduled automations.
+ */
 export async function runScheduledAutomationHeartbeat(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
 }): Promise<number> {
   const db = getDb();
+  await settleEventAutomationRuns(db, args.nowMs);
   let processedCount = 0;
   let dispatchCount = 0;
   for (const run of await listIncompleteScheduledRuns(db)) {
@@ -397,6 +364,7 @@ export async function runScheduledAutomationHeartbeat(args: {
     let dispatch;
     try {
       dispatch = await dispatchScheduledAutomation({
+        automationId: task.id,
         conversationWorkQueue: args.conversationWorkQueue,
         nowMs: args.nowMs,
         options: {
@@ -437,6 +405,7 @@ export async function runScheduledAutomationHeartbeat(args: {
       dispatchId: dispatch.id,
       nowMs: args.nowMs,
       runId: run.id,
+      task,
     });
     logInfo(
       "scheduled_automation.run.dispatched",

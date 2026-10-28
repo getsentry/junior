@@ -89,12 +89,42 @@ export interface PluginMcpConfig {
   wrappedTools?: string[];
 }
 
+/**
+ * Which provider accounts Junior may use for one plugin.
+ *
+ * By default, each Actor connects their own account with per-actor OAuth.
+ * A plugin can also allow an optional install-wide service account, often a
+ * bot. An Admin connects it one time on the dashboard Admin page.
+ *
+ * An Actor's own connection always wins. An Actor without their own
+ * connection uses the service account for what it lists. Other requests ask
+ * the Actor to connect their own account.
+ *
+ * With `userOAuth: false`, Junior uses only the service account. It never
+ * asks an Actor to connect, ignores their own connections, and hides tools
+ * that the service account does not list. Until an Admin connects the
+ * account, the plugin is not available.
+ */
+export interface PluginAccountsConfig {
+  /** Set false to turn off per-actor OAuth for the plugin. Defaults to true. */
+  userOAuth?: boolean;
+  /** Optional service account and what it may use. Omit for none. */
+  serviceAccount?: PluginServiceAccountConfig;
+}
+
+/** What one plugin's service account may use. */
+export interface PluginServiceAccountConfig {
+  /** MCP tools that the account may call. Each must be loaded by `mcp`. */
+  tools: string[];
+}
+
 export interface PluginEnvVarDeclaration {
   default?: string;
   exposeToCommandEnv?: boolean;
 }
 
 export interface PluginManifest {
+  accounts?: PluginAccountsConfig;
   apiHeaders?: Record<string, string>;
   commandEnv?: Record<string, string>;
   configKeys?: string[];

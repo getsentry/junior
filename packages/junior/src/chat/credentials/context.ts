@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { parseActorUserId, type Actor } from "@/chat/actor";
+import { isUserActor, parseActorUserId, type Actor } from "@/chat/actor";
+import type { LogContext } from "@/chat/log-context";
 
 const exactActorIdSchema = z
   .string()
@@ -157,6 +158,59 @@ export function credentialContextForActor(
     throw new TypeError("Delegated credential subjects require a system actor");
   }
   return { actor: { type: "user", userId: actor.userId } };
+}
+
+/**
+ * Name the person accountable for credential authority in logs.
+ *
+ * `userId` is the user actor, or the owner of delegated credentials when the
+ * system acts for an Automation or Watch. `actorType` says who acted.
+ */
+export function credentialLogContext(context: CredentialContext): LogContext {
+  if ("type" in context.actor) {
+    return {
+      userId: context.actor.userId,
+      actorType: "user",
+      actorId: context.actor.userId,
+    };
+  }
+  const subject = "subject" in context ? context.subject : undefined;
+  return {
+    actorType: "system",
+    actorId: context.actor.name,
+    ...(subject
+      ? {
+          userId: subject.userId,
+          credentialAllowedWhen: subject.allowedWhen,
+          ...("taskId" in subject ? { taskId: subject.taskId } : undefined),
+        }
+      : undefined),
+  };
+}
+
+/**
+ * Name the run's people in logs: the accountable person and who acted.
+ *
+ * A user actor is the accountable person. A system actor names the owner of
+ * delegated credentials, when the run has them.
+ */
+export function actorLogContext(
+  actor: Actor | undefined,
+  credentialContext: CredentialContext | undefined,
+): LogContext {
+  const credential = credentialContext
+    ? credentialLogContext(credentialContext)
+    : {};
+  if (!isUserActor(actor)) {
+    return credential;
+  }
+  return {
+    ...credential,
+    userId: actor.userId,
+    userName: actor.userName,
+    userEmail: actor.email,
+    userFullName: actor.fullName,
+  };
 }
 
 /** Return the user whose OAuth token may satisfy this credential request. */

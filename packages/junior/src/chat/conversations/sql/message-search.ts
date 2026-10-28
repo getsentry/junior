@@ -1,14 +1,4 @@
-import {
-  and,
-  desc,
-  eq,
-  gte,
-  isNull,
-  lt,
-  ne,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationAnnotations,
@@ -26,7 +16,11 @@ import type {
 const EXCERPT_WITHOUT_QUERY_CHARS = 240;
 
 class SqlConversationMessageSearchStore implements ConversationMessageSearchStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async search(args: {
     currentConversationId: string;

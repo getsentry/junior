@@ -30,9 +30,6 @@ export const juniorConversations = pgTable(
     // TODO(dcramer): Remove source_json after resume reads the saved Turn Source
     // and all provider context readers use Conversation Location.
     sessionSource: jsonb("source_json").$type<SessionSource>(),
-    originType: text("origin_type"),
-    originId: text("origin_id"),
-    originRunId: text("origin_run_id"),
     /** Complete Location associated with this Conversation. */
     location: jsonb("location_json").$type<Location>(),
     // TODO(dcramer): Rename destination_id to location_id after all deployed
@@ -110,11 +107,6 @@ export const juniorConversations = pgTable(
     ),
     index("junior_conversations_actor_activity_idx").on(
       table.actorIdentityId,
-      table.lastActivityAt.desc(),
-    ),
-    index("junior_conversations_origin_idx").on(
-      table.originType,
-      table.originId,
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_parent_idx").on(table.parentConversationId),

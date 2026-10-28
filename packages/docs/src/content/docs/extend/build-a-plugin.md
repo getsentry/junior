@@ -109,6 +109,68 @@ Set the client redirect URI to
 plugin read-only. `authorize-params` adds provider-specific parameters to the
 authorization URL. Do not declare both `mcp.auth` and `mcp.oauth-client`.
 
+### Service accounts
+
+Per-user OAuth is the default. A plugin can also let Junior use one shared
+provider account, often a bot, for people who have not connected their own
+account. This account usually has fewer permissions than a person.
+
+Use the `accounts` block to say which accounts Junior may use. The service
+account lists exactly the tools that it may call:
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  allowed-tools:
+    - search
+    - fetch
+    - create-page
+
+accounts:
+  service-account:
+    tools:
+      - search
+      - fetch
+```
+
+- `accounts.service-account.tools` lists the MCP tools that the shared
+  account may call. Each tool must be in `mcp.allowed-tools` or
+  `mcp.wrapped-tools`. Junior calls MCP servers from the host, so it checks
+  each tool call against this list. Leave out `service-account` when the
+  plugin has no service account.
+- `accounts.user-oauth` is `true` by default. Set it to `false` when people
+  must not use their own accounts. Then Junior uses only the service account,
+  never asks a person to connect, and ignores connections that people already
+  made. Junior hides the tools that the service account does not list. Until
+  an admin connects the account, the plugin is not available.
+  `user-oauth: false` requires `service-account`.
+- You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
+  Plugins with only a top-level `oauth` block do not support a service
+  account yet.
+- Junior rejects unknown keys in `accounts`, so a typo cannot change which
+  accounts Junior uses.
+
+The declaration has no effect until a Junior admin connects the account. In
+the dashboard, open **Admin**, find the plugin under **Service accounts**, and
+click **Connect**. Sign in as the account that Junior uses, not as yourself.
+The same card shows who connected the account and lets an admin disconnect it.
+
+If the dashboard is not available, an operator can use the CLI on a machine
+with a browser and the deployment `REDIS_URL`:
+
+```bash
+junior service-account connect my-provider
+junior service-account status my-provider
+junior service-account disconnect my-provider
+```
+
+When the account is connected, Junior uses it only for an actor who has not
+connected their own account, and only for the tools that it lists.
+Other requests ask the actor to connect their own account, as before. An
+actor's own connection always wins. Everyone who can talk to Junior can read what the
+service account can read, so give that account only the access that all of
+them may have.
+
 ## Runtime dependencies
 
 If a skill needs a CLI or system package inside the sandbox, declare that in `plugin.yaml`:

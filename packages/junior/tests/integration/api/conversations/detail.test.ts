@@ -12,6 +12,8 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { usersInfoOk } from "../../../fixtures/slack/factories/api";
+import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -186,6 +188,96 @@ describe("conversation detail API", () => {
     });
   });
 
+  it("resolves mentioned Slack users with current names", async () => {
+    const conversationId = "slack:C123:mentions-detail";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        platform: "slack",
+        slackUserId: "UOWNER1",
+        teamId: "T123",
+      },
+      conversationId,
+      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+      nowMs: 1,
+      source: "slack",
+      title: "Mentions",
+      visibility: "public",
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({
+        userId: "UNEW1234",
+        userName: "new.person",
+        realName: "New Person",
+      }),
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        // Gives UNEW1234 a Junior identity with no name.
+        createdAtMs: 2,
+        data: {
+          messageId: "user-1",
+          meta: { author: { userId: "UNEW1234" } },
+          role: "user",
+          text: "ship it",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          messageId: "reply-1",
+          role: "assistant",
+          text: "<@UOWNER1> merged. cc <@UNEW1234>",
+          type: "message",
+        },
+      },
+    ]);
+    await appendConversationBrief(getDb(), {
+      conversationId,
+      turnId: "mentions-brief-turn",
+      throughSeq: 1,
+      content: conversationBriefFixture({
+        summary: "<@UOWNER1> merged the fix.",
+      }),
+      searchText: "owner merged the fix",
+      modelId: "test-model",
+    });
+
+    const detail = await readConversationDetail(conversationId, {
+      viewer: testViewer("owner@example.com"),
+    });
+    const message = detail?.events.find(
+      (event) =>
+        event.data.type === "message" && event.data.messageId === "reply-1",
+    );
+    expect(message).toMatchObject({
+      mentions: [
+        // Known Junior users link to their People profile.
+        {
+          email: "owner@example.com",
+          fullName: "Owner Person",
+          slackUserId: "UOWNER1",
+        },
+        // A user with no name in Junior gets one from Slack, but no link.
+        {
+          fullName: "New Person",
+          slackUserId: "UNEW1234",
+          slackUserName: "new.person",
+        },
+      ],
+    });
+    // The Brief uses the same lookup as transcript events.
+    expect(detail?.brief?.mentions).toEqual([
+      {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        slackUserId: "UOWNER1",
+      },
+    ]);
+  });
+
   it("links a viewer-visible source task from a terminal execution", async () => {
     const { createConfiguredJuniorSqlFixture } =
       await import("../../../fixtures/sql");
@@ -286,7 +378,7 @@ describe("conversation detail API", () => {
       await expect(
         readConversationDetail(conversationId, { viewer: user! }),
       ).resolves.toMatchObject({ displayTitle: "Automation run" });
-      await recordAutomationExecution("scheduled", "sched_source_task", {
+      await recordAutomationExecution("sched_source_task", {
         conversationId,
         executionId: "run_source_task",
         nowMs: nowMs + 1,

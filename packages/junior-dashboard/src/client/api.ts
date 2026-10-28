@@ -208,16 +208,15 @@ export function useAutomationRunsData(enabled: boolean) {
 /** Fetch terminal executions for one viewer-visible task. */
 export function useAutomationExecutionsData(
   enabled: boolean,
-  kind: "scheduled" | "event" | undefined,
   automationId: string | undefined,
 ) {
   return useQuery({
-    enabled: enabled && Boolean(kind && automationId),
-    queryKey: ["dashboard", "automations", kind, automationId, "executions"],
+    enabled: enabled && Boolean(automationId),
+    queryKey: ["dashboard", "automations", automationId, "executions"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationExecutionListSchema,
-        `/api/automations/${kind}/${encodeURIComponent(automationId!)}/executions`,
+        `/api/automations/${encodeURIComponent(automationId!)}/executions`,
         signal,
       ),
     retry: false,
@@ -227,16 +226,15 @@ export function useAutomationExecutionsData(
 /** Fetch saved definitions for one viewer-visible Automation, newest first. */
 export function useAutomationVersionsData(
   enabled: boolean,
-  kind: "scheduled" | "event" | undefined,
   automationId: string | undefined,
 ) {
   return useQuery({
-    enabled: enabled && Boolean(kind && automationId),
-    queryKey: ["dashboard", "automations", kind, automationId, "versions"],
+    enabled: enabled && Boolean(automationId),
+    queryKey: ["dashboard", "automations", automationId, "versions"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationVersionListSchema,
-        `/api/automations/${kind}/${encodeURIComponent(automationId!)}/versions`,
+        `/api/automations/${encodeURIComponent(automationId!)}/versions`,
         signal,
       ),
     retry: false,

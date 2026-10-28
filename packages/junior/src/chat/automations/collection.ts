@@ -1,26 +1,13 @@
 import { automationEventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import type { User } from "@sentry/junior-plugin-api";
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  inArray,
-  ne,
-  or,
-  sql,
-  type SQLWrapper,
-} from "drizzle-orm";
-import { unionAll } from "drizzle-orm/pg-core";
+import { and, asc, count, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import {
-  juniorAutomationExecutions,
+  juniorAutomationRuns,
+  juniorAutomations,
   juniorDestinations,
-  juniorEventAutomations,
-  juniorSchedulerTasks,
 } from "@/db/schema";
 
 /**
@@ -36,135 +23,87 @@ export function viewerAutomationCollection(user: User) {
   const teamIds = identities.flatMap((identity) =>
     identity.providerTenantId ? [identity.providerTenantId] : [],
   );
-  const scheduled = juniorSchedulerTasks;
-  const event = juniorEventAutomations;
+  const automation = juniorAutomations;
   const destination = juniorDestinations;
-  const scheduledOwned = inArray(
-    scheduled.creatorIdentityId,
+  const isScheduled = eq(automation.kind, "scheduled");
+  // Both kinds belong to the Junior identity that created them.
+  const owned = inArray(
+    automation.creatorIdentityId,
     user.identities.map((identity) => identity.id),
   );
-  const eventOwned =
-    or(
-      ...identities.map((identity) =>
-        and(
-          eq(event.teamId, identity.providerTenantId ?? ""),
-          sql`${event.task}->'createdBy'->>'slackUserId' = ${identity.providerSubjectId}`,
-        ),
-      ),
-    ) ?? sql`false`;
   const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
-  const scheduledPublic = and(
-    inArray(scheduled.teamId, teamIds),
+  const publicToViewer = and(
+    inArray(automation.teamId, teamIds),
     publicDestination,
-    ne(scheduled.status, "completed"),
+    ne(automation.status, "completed"),
   )!;
-  const eventPublic = and(inArray(event.teamId, teamIds), publicDestination)!;
-  function fields(record: SQLWrapper, teamId: SQLWrapper) {
-    return {
-      creator:
-        sql<string>`${teamId} || ':' || (${record}->'createdBy'->>'slackUserId')`.as(
-          "creator",
-        ),
-      creatorLabel:
-        sql<string>`coalesce(nullif(trim(${record}->'createdBy'->>'fullName'), ''), nullif(trim(${record}->'createdBy'->>'userName'), ''), ${record}->'createdBy'->>'slackUserId')`.as(
-          "creator_label",
-        ),
-      destination:
-        sql<string>`${teamId} || ':' || (${record}->'destination'->>'channelId')`.as(
-          "destination",
-        ),
-      destinationLabel:
-        sql<string>`coalesce(nullif(${destination.displayName}, ''), ${record}->'destination'->>'channelId')`.as(
-          "destination_label",
-        ),
-      isPublic: publicDestination.as("is_public"),
-      instruction: sql<string>`${record}->'task'->>'text'`.as("instruction"),
-    };
-  }
-  function destinationJoin(record: SQLWrapper, teamId: SQLWrapper) {
-    return and(
-      eq(destination.provider, "slack"),
-      sql`${destination.providerTenantId} = ${teamId}`,
-      sql`${destination.providerDestinationId} = ${record}->'destination'->>'channelId'`,
-    );
-  }
   // Use the same namespace/event availability rule as the direct reader.
   const available =
     or(
+      isScheduled,
       ...Object.entries(automationEventCatalog(getEventCatalog())).map(
         ([namespace, registration]) => {
           const events = registration.resourceTypes.flatMap(
             (resource) => resource.supportedEvents,
           );
           return and(
-            eq(event.namespace, namespace),
-            sql`${event.task}->'trigger'->'events' <@ ${JSON.stringify(events)}::jsonb`,
+            eq(automation.namespace, namespace),
+            sql`${automation.record}->'trigger'->'events' <@ ${JSON.stringify(events)}::jsonb`,
           );
         },
       ),
     ) ?? sql`false`;
-  const executions = juniorAutomationExecutions;
-  function lastRunNeedsAttention(kind: "scheduled" | "event", id: SQLWrapper) {
-    return sql<boolean>`coalesce((select ${executions.status} in ('failed', 'blocked') from ${executions}
-      where ${executions.kind} = ${kind} and ${executions.namespace} = 'junior' and ${executions.automationId} = ${id}
-      order by ${executions.executedAtMs} desc, ${executions.executionId} desc limit 1), false)`;
-  }
-  return unionAll(
-    db
-      .select({
-        kind: sql<"scheduled" | "event">`'scheduled'`.as("kind"),
-        id: scheduled.id,
-        title: sql<string | null>`${scheduled.title}`.as("title"),
-        createdAtMs: scheduled.createdAtMs,
-        state: sql<string>`${scheduled.status}`.as("state"),
-        unavailable: sql<boolean>`false`.as("unavailable"),
-        attention:
-          sql<boolean>`${scheduled.status} not in ('paused', 'completed') and (${scheduled.status} = 'blocked' or ${lastRunNeedsAttention("scheduled", scheduled.id)})`.as(
-            "attention",
-          ),
-        owned: sql<boolean>`${scheduledOwned}`.as("owned"),
-        resource: sql<string>`''`.as("resource"),
-        ...fields(scheduled.record, scheduled.teamId),
-      })
-      .from(scheduled)
-      .leftJoin(
-        destination,
-        destinationJoin(scheduled.record, scheduled.teamId),
-      )
-      .where(
-        and(
-          inArray(scheduled.status, [
-            "active",
-            "blocked",
-            "paused",
-            "completed",
-          ]),
-          or(scheduledOwned, scheduledPublic),
+  const runs = juniorAutomationRuns;
+  const lastRunNeedsAttention = sql<boolean>`coalesce((select ${runs.status} in ('failed', 'blocked') from ${runs}
+      where ${runs.automationId} = ${automation.id} and ${runs.status} in ('blocked', 'completed', 'failed') and ${runs.completedAtMs} is not null
+      order by ${runs.completedAtMs} desc, ${runs.id} desc limit 1), false)`;
+  return db
+    .select({
+      kind: automation.kind,
+      id: automation.id,
+      title: automation.title,
+      createdAtMs: automation.createdAtMs,
+      state: sql<string>`${automation.status}`.as("state"),
+      unavailable: sql<boolean>`not (${available})`.as("unavailable"),
+      attention:
+        sql<boolean>`${automation.status} not in ('paused', 'completed') and (${automation.status} = 'blocked' or not (${available}) or ${lastRunNeedsAttention})`.as(
+          "attention",
         ),
+      owned: sql<boolean>`${owned}`.as("owned"),
+      resource:
+        sql<string>`case when ${isScheduled} then '' else concat_ws(' ', ${automation.identifier}, ${automation.record}->'trigger'->>'label', ${automation.namespace}) end`.as(
+          "resource",
+        ),
+      creator:
+        sql<string>`${automation.teamId} || ':' || ${automation.creatorSlackUserId}`.as(
+          "creator",
+        ),
+      creatorLabel:
+        sql<string>`coalesce(nullif(trim(${automation.record}->'createdBy'->>'fullName'), ''), nullif(trim(${automation.record}->'createdBy'->>'userName'), ''), ${automation.creatorSlackUserId})`.as(
+          "creator_label",
+        ),
+      destination:
+        sql<string>`${automation.teamId} || ':' || ${automation.channelId}`.as(
+          "destination",
+        ),
+      destinationLabel:
+        sql<string>`coalesce(nullif(${destination.displayName}, ''), ${automation.channelId})`.as(
+          "destination_label",
+        ),
+      isPublic: publicDestination.as("is_public"),
+      instruction: automation.instruction,
+    })
+    .from(automation)
+    .leftJoin(
+      destination,
+      and(
+        eq(destination.provider, "slack"),
+        eq(destination.providerTenantId, automation.teamId),
+        eq(destination.providerDestinationId, automation.channelId),
       ),
-    db
-      .select({
-        kind: sql<"scheduled" | "event">`'event'`.as("kind"),
-        id: event.id,
-        title: sql<string | null>`${event.title}`.as("title"),
-        createdAtMs: event.createdAtMs,
-        state: sql<string>`${event.status}`.as("state"),
-        unavailable: sql<boolean>`not (${available})`.as("unavailable"),
-        attention:
-          sql<boolean>`${event.status} <> 'paused' and (${event.status} = 'blocked' or not (${available}) or ${lastRunNeedsAttention("event", event.id)})`.as(
-            "attention",
-          ),
-        owned: sql<boolean>`${eventOwned}`.as("owned"),
-        resource:
-          sql<string>`concat_ws(' ', ${event.identifier}, ${event.task}->'trigger'->>'label', ${event.namespace})`.as(
-            "resource",
-          ),
-        ...fields(event.task, event.teamId),
-      })
-      .from(event)
-      .leftJoin(destination, destinationJoin(event.task, event.teamId))
-      .where(and(ne(event.status, "deleted"), or(eventOwned, eventPublic))),
-  ).as("accessible_automations");
+    )
+    .where(and(ne(automation.status, "deleted"), or(owned, publicToViewer)))
+    .as("accessible_automations");
 }
 
 /** Read an SQL page and complete, access-scoped counts and filter options. */
@@ -243,7 +182,7 @@ export async function readAutomationCollection(
     .select({ id: collection.id, kind: collection.kind })
     .from(collection)
     .where(where)
-    .orderBy(order, desc(collection.id), asc(collection.kind))
+    .orderBy(order, desc(collection.id))
     .limit(input.pageSize)
     .offset((page - 1) * input.pageSize);
   return {

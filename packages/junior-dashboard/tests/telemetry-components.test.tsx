@@ -51,8 +51,9 @@ function event(
   seq: number,
   data: ConversationReportEventData,
   createdAt = `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
+  mentions?: ConversationReportEvent["mentions"],
 ): ConversationReportEvent {
-  return { seq, createdAt, data };
+  return { seq, createdAt, data, ...(mentions ? { mentions } : undefined) };
 }
 
 function conversation(
@@ -79,9 +80,11 @@ function conversation(
 function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} />
-      </TranscriptSearchProvider>
+      <MemoryRouter>
+        <TranscriptSearchProvider query="">
+          <ConversationTranscriptView conversation={detail} />
+        </TranscriptSearchProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -89,8 +92,7 @@ function renderTranscript(detail: ConversationTranscript): string {
 function systemData(): SystemData {
   return {
     config: {
-      allowedEmailCount: 0,
-      allowedGoogleDomainCount: 0,
+      allowedDomainCount: 0,
       authPath: "/api/auth",
       authRequired: false,
       basePath: "/",
@@ -161,7 +163,9 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
     configKeys: [],
     description: `${name} plugin description`,
     displayName:
-      name === "github" ? "GitHub" : `${name[0].toUpperCase()}${name.slice(1)}`,
+      name === "github"
+        ? "GitHub"
+        : `${name.charAt(0).toUpperCase()}${name.slice(1)}`,
     name,
     ...overrides,
   };
@@ -230,6 +234,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <TranscriptText
+          mentions={[]}
           role="user"
           text="The function reads a const value and returns it."
         />
@@ -244,7 +249,11 @@ describe("dashboard canonical-event components", () => {
   it("renders fenced XML as highlighted code", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText role="user" text={"```xml\n<root />\n```"} />
+        <TranscriptText
+          mentions={[]}
+          role="user"
+          text={"```xml\n<root />\n```"}
+        />
       </QueryClientProvider>,
     );
 
@@ -264,6 +273,19 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Handling:");
     expect(html).toContain("<ul");
     expect(html.match(/<li/g)).toHaveLength(2);
+
+    const slackHtml = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown
+          text={"Checking:\n• first item\n• second item\n2) next step"}
+        />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(slackHtml.match(/<li/g)).toHaveLength(3);
+    expect(slackHtml).not.toContain("•");
+    expect(slackHtml).toContain('<ol class="');
+    expect(slackHtml).toContain('start="2"');
   });
 
   it("renders typed tool states in the component gallery", () => {
@@ -456,6 +478,55 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain("Taylor Chen");
     expect(html).not.toContain("Morgan Lee");
+  });
+
+  it("renders Slack mention tokens as names and profile links", () => {
+    const html = renderTranscript(
+      conversation([
+        event(
+          0,
+          {
+            type: "message",
+            messageId: "assistant-1",
+            role: "assistant",
+            text: "<@U123> merged. cc <@U456> <@U999> in <#C42|proj-junior>",
+          },
+          undefined,
+          [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
+        ),
+        event(
+          1,
+          {
+            type: "message",
+            messageId: "event-1",
+            role: "user",
+            eventType: "pull_request.merged",
+            trustedSummary: "<@U456> merged PR #42.",
+            text: "PR merged.",
+          },
+          undefined,
+          [{ fullName: "Riley Park", slackUserId: "U456" }],
+        ),
+      ]),
+    );
+
+    expect(html).toContain("@Riley Park</span> merged PR #42.");
+    expect(html).not.toContain("&lt;@");
+    expect(html).not.toContain("&lt;#");
+    expect(html).toMatch(
+      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>@Taylor Chen<\/a>/,
+    );
+    expect(html).not.toMatch(/<a [^>]*>@Riley Park/);
+    expect(html).toContain("@Riley Park");
+    expect(html).toContain("@U999");
+    expect(html).toContain("#proj-junior");
   });
 
   it("shows a Slack icon for Slack-origin messages only", () => {

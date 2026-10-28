@@ -64,7 +64,7 @@ describe("Slack inbound telemetry", () => {
           name: "slack.message.ingress",
           op: "slack.message.ingress",
           attributes: expect.objectContaining({
-            "enduser.id": "U123",
+            "user.id": "U123",
             "app.slack.user_id": "U123",
             "app.slack.team_id": "T123",
             "app.slack.user_team": "TEXTERNAL",

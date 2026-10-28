@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-dashboard",
-  "version": "0.250.0",
+  "version": "0.260.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -25,7 +25,7 @@
     "build": "pnpm --filter @sentry/junior-plugin-api build && pnpm --filter @sentry/junior build && pnpm run build:client && pnpm run build:css && pnpm run build:server",
     "build:client": "tsup --config tsup.client.config.ts",
     "build:css": "tailwindcss -i src/tailwind.css -o dist/tailwind.css --minify",
-    "build:server": "tsup --config tsup.config.ts",
+    "build:server": "tsup --config tsup.config.ts && tsdown --config tsdown.dts.config.ts",
     "lint": "oxlint --config .oxlintrc.json --deny-warnings src",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
@@ -38,8 +38,7 @@
     "@sentry/junior": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",
     "@tanstack/react-query": "^5.100.14",
-    "better-auth": "^1.6.22",
-    "hono": "^4.12.27",
+    "hono": "^4.13.11",
     "lucide-react": "^1.17.0",
     "nitro": "3.0.260522-beta",
     "react": "^19.2.6",
@@ -56,12 +55,13 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "@vitest/coverage-v8": "4.1.7",
+    "@vitest/coverage-v8": "4.1.12",
     "eslint": "^10.8.0",
     "oxlint": "^1.79.0",
     "tailwindcss": "^4.3.0",
+    "tsdown": "0.23.1",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
   }
 }

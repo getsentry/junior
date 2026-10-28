@@ -88,12 +88,15 @@ export function AutomationDetailsDrawer(props: {
           <h3 className="mt-0 mb-2 text-sm font-medium text-dashboard-text-muted">
             What to do
           </h3>
-          <TranscriptText text={automation.instruction} />
+          <TranscriptText
+            mentions={automation.mentions ?? []}
+            text={automation.instruction}
+          />
         </div>
         <AutomationLifecycle
           key={`${automation.kind}:${automation.id}`}
           automation={automation}
-          editPath={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/edit${location.search}`}
+          editPath={`/automations/${encodeURIComponent(automation.id)}/edit${location.search}`}
         />
         <DetailList>
           {details.map((detail) => (
@@ -121,14 +124,14 @@ export function AutomationDetailsDrawer(props: {
           automation.lastRunStatus !== "blocked" ? (
             <Link
               className="w-fit py-2 text-sm text-dashboard-text underline underline-offset-2"
-              to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+              to={`/automations/${encodeURIComponent(automation.id)}/executions`}
             >
               View all runs
             </Link>
           ) : null}
           <Link
             className="w-fit py-2 text-sm text-dashboard-text underline underline-offset-2"
-            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/versions${location.search}`}
+            to={`/automations/${encodeURIComponent(automation.id)}/versions${location.search}`}
           >
             Version history
           </Link>
@@ -172,7 +175,7 @@ function AutomationExecutionSummary(props: {
   const { range, automation } = props;
   const runCount = automation.runs[range];
   const rangeLabel = timeRangeLabel(range);
-  const executionsPath = `/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`;
+  const executionsPath = `/automations/${encodeURIComponent(automation.id)}/executions`;
   return (
     <div className="text-sm text-dashboard-text-muted">
       {automation.totalRuns > 0 ? (

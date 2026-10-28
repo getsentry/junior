@@ -89,8 +89,8 @@ describe("executeAgentRun error path", () => {
     expect(failure?.attributes).toMatchObject({
       "app.platform": "local",
       "app.run.id": "run-context-failure",
-      "enduser.id": "local-user",
-      "enduser.pseudo.id": "alice",
+      "user.id": "local-user",
+      "user.name": "alice",
       "gen_ai.conversation.id": LOCAL_DESTINATION.conversationId,
       "messaging.destination.name": LOCAL_DESTINATION.conversationId,
       "messaging.message.conversation_id": LOCAL_DESTINATION.conversationId,

@@ -39,7 +39,7 @@ export default defineConfig({
     juniorNitro({
       dashboard: {
         authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
+        allowedDomains: ["sentry.io"],
       },
     }),
   ],
@@ -56,7 +56,7 @@ export default defineConfig({
 export default await createApp({
   dashboard: {
     authRequired: false,
-    allowedGoogleDomains: ["sentry.io"],
+    allowedDomains: ["sentry.io"],
   },
   plugins: defineJuniorPlugins([]),
 });

@@ -168,7 +168,7 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
-  metadata?: Pick<ConversationReportEvent, "model" | "modelCall">,
+  metadata?: Pick<ConversationReportEvent, "mentions" | "model" | "modelCall">,
 ): ConversationReportEvent {
   return { seq, createdAt, data, ...metadata };
 }
@@ -1397,6 +1397,13 @@ function simpleConversation(
   });
 }
 
+const MOCK_MENTION_MORGAN: ActorIdentity = {
+  email: "dev@example.com",
+  fullName: "Morgan Lee",
+  slackUserId: "U123",
+  slackUserName: "morgan",
+};
+
 function eventAutomationRunConversation(
   nowMs: number,
 ): ConversationDetailReport {
@@ -1421,42 +1428,58 @@ function eventAutomationRunConversation(
       credentialUser: "Alex Rivera",
     },
     events: [
-      reportEvent(0, startedAt, {
-        type: "message",
-        messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
-        role: "user",
-        // Dispatch input is authored by the dispatch owner, not a person.
-        actorIdentity: {
-          fullName: "junior",
-          slackUserId: "junior",
-          slackUserName: "junior",
+      reportEvent(
+        0,
+        startedAt,
+        {
+          type: "message",
+          messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+          role: "user",
+          // Dispatch input is authored by the dispatch owner, not a person.
+          actorIdentity: {
+            fullName: "junior",
+            slackUserId: "junior",
+            slackUserName: "junior",
+          },
+          text: [
+            "[task]",
+            "",
+            "This is a task, not a message from a person.",
+            "",
+            "About: Issue · ACME-42",
+            'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
+            "Instructions: Summarize the closed issue",
+            "",
+            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
+            "",
+            "End with `finishAutomationRun`.",
+          ].join("\n"),
         },
-        text: [
-          "[task]",
-          "",
-          "This is a task, not a message from a person.",
-          "",
-          "About: Issue · ACME-42",
-          'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
-          "Instructions: Summarize the closed issue",
-          "",
-          "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
-          "",
-          "End with `finishAutomationRun`.",
-        ].join("\n"),
-      }),
+        { mentions: [MOCK_MENTION_MORGAN] },
+      ),
       reportEvent(1, at(1_000), {
         type: "turn_lifecycle",
         turnId: "dispatch:event-1",
         state: "started",
         inputMessageIds: [EVENT_AUTOMATION_RUN_CONVERSATION_ID],
       }),
-      reportEvent(2, at(13_000), {
-        type: "message",
-        messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
-        role: "assistant",
-        text: "ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production.",
-      }),
+      reportEvent(
+        2,
+        at(13_000),
+        {
+          type: "message",
+          messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
+          role: "assistant",
+          text: "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>.",
+        },
+        // U456 has no People profile, and U999 is not resolved.
+        {
+          mentions: [
+            MOCK_MENTION_MORGAN,
+            { fullName: "Casey Nguyen", slackUserId: "U456" },
+          ],
+        },
+      ),
       reportEvent(3, at(14_000), {
         type: "turn_lifecycle",
         turnId: "dispatch:event-1",
@@ -1588,6 +1611,9 @@ function summaryFromConversation(
     activityEvent?.data.type === "message" && activityEvent.data.text
       ? {
           createdAt: activityEvent.createdAt,
+          ...(activityEvent.mentions
+            ? { mentions: activityEvent.mentions }
+            : undefined),
           role: activityEvent.data.role as "assistant" | "user",
           text: activityEvent.data.text,
         }
@@ -2682,6 +2708,7 @@ export function readMockPeopleCode(
   const overview = readMockCodeOverview();
   return {
     activityDays: overview.activityDays,
+    changes: overview.changes,
     generatedAt: overview.generatedAt,
     summary: overview.summary,
     windowEnd: overview.windowEnd,
@@ -3031,13 +3058,10 @@ function mockStatusDays(
 
 /** Build mock terminal executions for one viewer-visible task. */
 export function readMockAutomationExecutions(
-  kind: "scheduled" | "event",
   id: string,
   nowMs = NOW_MS,
 ): AutomationExecutionList | undefined {
-  const task = mockTasks().find(
-    (candidate) => candidate.kind === kind && candidate.id === id,
-  );
+  const task = mockTasks().find((candidate) => candidate.id === id);
   if (!task) return undefined;
   if (task.totalRuns === 0) {
     return {

@@ -6,7 +6,10 @@ test("shows the component gallery index", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Component gallery", exact: true }),
   ).toBeVisible();
-  await screenshot(page, "gallery-index", { view: "desktop" });
+  await screenshot(page, "gallery-index", {
+    lightTheme: true,
+    view: "desktop",
+  });
 });
 
 test("shows gallery foundations", async ({ page, dashboard }) => {
@@ -14,10 +17,16 @@ test("shows gallery foundations", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Foundations", exact: true }),
   ).toBeVisible();
-  await screenshot(page, "gallery-foundations", { view: "desktop" });
+  await screenshot(page, "gallery-foundations", {
+    lightTheme: true,
+    view: "desktop",
+  });
 });
 
 test("shows gallery charts", async ({ page, dashboard }) => {
+  // Each chart gets a dark and a light image, which takes longer than the
+  // default timeout in CI.
+  test.slow();
   await page.goto(`${dashboard.baseURL}/dev/charts`);
   await expect(
     page.getByRole("heading", { name: "Charts", exact: true }),
@@ -30,6 +39,7 @@ test("shows gallery charts", async ({ page, dashboard }) => {
   );
   for (const id of ids) {
     await screenshot(page, `gallery-chart-${id}`, {
+      lightTheme: true,
       target: page.locator(`[data-gallery-chart="${id}"]`),
     });
   }
@@ -61,5 +71,8 @@ test("shows gallery transcripts", async ({ page, dashboard }) => {
   await heading.press("Space");
   await expect(rawEvent).toBeVisible();
   await heading.click();
-  await screenshot(page, "gallery-transcripts", { view: "desktop" });
+  await screenshot(page, "gallery-transcripts", {
+    lightTheme: true,
+    view: "desktop",
+  });
 });

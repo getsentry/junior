@@ -11,6 +11,7 @@ const MAX_REPOS = 32;
 export interface WorkspaceRecipeInput {
   name: string;
   setupScript: string;
+  vcpus: number | null;
   repos: WorkspaceRepo[];
 }
 
@@ -26,6 +27,7 @@ export class WorkspaceValidationError extends Error {
 export function normalizeWorkspaceRecipe(input: {
   name: string;
   setupScript?: string;
+  vcpus?: number | null;
   repos: Array<{
     provider: string;
     repo: string;
@@ -46,6 +48,11 @@ export function normalizeWorkspaceRecipe(input: {
     throw new WorkspaceValidationError(
       `Setup script must be at most ${MAX_SETUP_SCRIPT_BYTES} bytes.`,
     );
+  }
+
+  const vcpus = input.vcpus ?? null;
+  if (vcpus !== null && (!Number.isSafeInteger(vcpus) || vcpus <= 0)) {
+    throw new WorkspaceValidationError("vCPUs must be a positive integer.");
   }
 
   if (!Array.isArray(input.repos)) {
@@ -104,5 +111,5 @@ export function normalizeWorkspaceRecipe(input: {
     checkoutPaths.add(key);
   }
 
-  return { name, setupScript, repos };
+  return { name, setupScript, vcpus, repos };
 }

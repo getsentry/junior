@@ -82,7 +82,23 @@ describe("people code API", () => {
         updatedAt: new Date("2026-08-21T12:00:00.000Z"),
         url: "https://github.com/getsentry/junior/pull/12",
       } satisfies CodeChangeInput;
+      const aliceStaleChange = {
+        conversationIds: ["slack:C1:alice"],
+        number: 10,
+        openedAt: new Date("2026-05-01T12:00:00.000Z"),
+        providerId: "change-alice-stale",
+        repository: {
+          name: "getsentry/junior",
+          providerId: "repository-1",
+          url: "https://github.com/getsentry/junior",
+        },
+        state: "open",
+        title: "Alice stale change",
+        updatedAt: new Date("2026-05-01T12:00:00.000Z"),
+        url: "https://github.com/getsentry/junior/pull/10",
+      } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", aliceChange);
+      await recordCodeChange(fixture.sql.db(), "github", aliceStaleChange);
       await recordCodeChange(fixture.sql.db(), "github", bobChange);
 
       const response = await createJuniorApi().request(
@@ -97,8 +113,18 @@ describe("people code API", () => {
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
-        open: 0,
+        open: 1,
       });
+      expect(report.changes).toEqual([
+        expect.objectContaining({ number: 10, state: "open" }),
+        expect.objectContaining({
+          number: 11,
+          repository: "getsentry/junior",
+          state: "merged",
+          title: "Alice change",
+          url: "https://github.com/getsentry/junior/pull/11",
+        }),
+      ]);
       expect(report.activityDays).toHaveLength(90);
       expect(report.activityDays.at(-3)).toEqual({
         closed: 0,

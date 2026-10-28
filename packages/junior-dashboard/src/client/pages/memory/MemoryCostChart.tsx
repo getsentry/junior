@@ -74,13 +74,13 @@ export function MemoryCostChart(props: {
           ariaLabel="Memory cost legend"
           items={[
             {
-              color: "#67e8f9",
+              color: "var(--color-cyan-300)",
               key: "extraction",
               label: "Extraction",
               value: formatCostSummary({ total: extractionTotal }),
             },
             {
-              color: "#e879f9",
+              color: "var(--color-fuchsia-400)",
               key: "recall",
               label: "Recall",
               value: formatCostSummary({ total: recallTotal }),
@@ -130,7 +130,7 @@ export function MemoryCostChart(props: {
               >
                 <g tabIndex={0}>
                   <rect
-                    fill="#67e8f9"
+                    fill="var(--color-cyan-300)"
                     height={extractionHeight}
                     opacity={day.extraction.costUsd > 0 ? 0.82 : 0.1}
                     rx="1"
@@ -139,7 +139,7 @@ export function MemoryCostChart(props: {
                     y={layout.top + layout.plotHeight - extractionHeight}
                   />
                   <rect
-                    fill="#e879f9"
+                    fill="var(--color-fuchsia-400)"
                     height={recallHeight}
                     opacity={day.recall.costUsd > 0 ? 0.82 : 0.1}
                     rx="1"
@@ -169,7 +169,7 @@ export function MemoryCostChart(props: {
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-slate-200)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

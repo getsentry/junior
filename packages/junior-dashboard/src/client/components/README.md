@@ -6,8 +6,18 @@ the policy. `pnpm dashboard-style:check` enforces the token rules below.
 
 ## Foundations
 
-Tokens live in the `@theme` block of `src/tailwind.css`. Light mode does not
-exist yet. Keep every color in a token so a second theme can redefine them.
+Tokens live in the `@theme` block of `src/tailwind.css`. Keep every color in a
+token so each theme can redefine it.
+
+- **Themes.** Dark is the default. The light theme redefines every token under
+  `:root[data-theme="light"]`. It also mirrors the light status and chart
+  shades (50-400) to their dark pair, so `text-rose-300` stays readable on the
+  light canvas. The head script in `src/theme.ts` sets `data-theme` before first
+  paint from the saved choice or the system color scheme. `ThemeSwitcher` saves
+  the choice for this browser. Use the `light:` variant only for one-off values
+  that no token covers, such as provider brand colors.
+- **Charts.** Use `var(--color-*)` for series colors in SVG attributes, not hex
+  values, so they follow the theme.
 
 - **Surfaces.** Use the surface ladder, darkest to lightest: `bg`,
   `bg-elevated` (drawers), `surface-panel` (sidebar, cards, bubbles),
@@ -63,7 +73,8 @@ exist yet. Keep every color in a token so a second theme can redefine them.
   and `SearchInput`. Use `TextInput size="comfortable"` for larger mobile
   controls. Use `TextArea prose` for instructions, not code. `Field error`
   renders an error at `<htmlFor>-error`. The owning control must set
-  `aria-invalid` and `aria-describedby`. `Select` matches native text controls.
+  `aria-invalid` and `aria-describedby`. `Select` owns the native control and its
+  inset arrow. Use its `filter` and `sort` variants for compact controls.
 - **Status.** Use `StatusDot` for dense table or list markers. Use `StatusChip`
   when the label must stay visible. `StatusChip` is a small dot and
   sentence-case text, with no border or fill. It is not a control.

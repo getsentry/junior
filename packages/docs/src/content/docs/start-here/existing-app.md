@@ -27,11 +27,16 @@ import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins.ts";
 
 const app = await createApp({
+  allowedDomains: ["example.com"],
   plugins,
 });
 
 export default app;
 ```
+
+Replace `example.com` with your company's email domain. Only Slack users and
+dashboard sign-ins on [allowed domains](/reference/config-and-env/#allowed-domains)
+can use Junior.
 
 `createApp()` mounts the supported Junior routes listed in [Route & Handler Surface](/reference/handler-surface/).
 

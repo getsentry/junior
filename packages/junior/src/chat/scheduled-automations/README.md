@@ -4,12 +4,9 @@ This module owns Junior's one-time and recurring task domain. Scheduled-task too
 
 ## Persistence
 
-The SQL tables retain their deployed `junior_scheduler_*` names so moving the feature into core does not copy or rename task data. Core migration `0016` supports both cases:
-
-- fresh databases create the tables and indexes;
-- databases upgraded from `@sentry/junior-scheduler` adopt the existing tables, normalize older records, and backfill canonical creator identities.
-
-The legacy creator trigger remains during rolling deployment so an old worker can insert a task that a new worker can read. Remove it only in a later migration after old Scheduler workers can no longer overlap an upgrade.
+Scheduled automations are `scheduled` rows in `junior_automations`. Their runs
+are rows in `junior_automation_runs`. Migrations 0055 and 0056 copied them from
+the older `junior_scheduler_*` tables, and migration 0057 dropped those tables.
 
 ## Dispatch
 
@@ -55,7 +52,3 @@ Pause stops future claims. Already-claimed work may finish but cannot remove a
 pause. Resume selects the next future Schedule time and skips missed runs.
 A missed one-off needs a new Schedule. Pausing blocked work keeps its reason;
 removing the pause restores the block until the user resolves it and resumes.
-
-Deploy all workers before using pause. Older workers read paused rows as deleted.
-Pause uses the existing text status column. Migration 0017 removes only legacy
-paused rows on installations that have not yet applied it.

@@ -11,3 +11,17 @@ export const requireViewer = createMiddleware<AuthenticatedApiEnv>(
     await next();
   },
 );
+
+/** Require a Junior admin viewer. */
+export const requireAdmin = createMiddleware<AuthenticatedApiEnv>(
+  async (context, next) => {
+    const viewer = context.get("viewer");
+    if (!viewer) {
+      throwApiError(401, "Authentication required.");
+    }
+    if (viewer.isAdmin !== true) {
+      throwApiError(403, "Only Junior admins can do this.");
+    }
+    await next();
+  },
+);

@@ -14,14 +14,14 @@ test("edits an Automation from its drawer, preserves list state, and protects th
     .getByRole("link", { name: "Edit automation", exact: true })
     .click();
   await expect(page).toHaveURL(
-    /scheduled\/scheduled-1\/edit\?scope=mine&q=weekly/,
+    /\/automations\/scheduled-1\/edit\?scope=mine&q=weekly/,
   );
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Weekly project summary",
   );
   await screenshot(page, "automation-editor");
   const previewRequest = page.waitForRequest((request) =>
-    request.url().endsWith("/scheduled/scheduled-1/preview"),
+    request.url().endsWith("/api/automations/scheduled-1/preview"),
   );
   await page.getByLabel("Time", { exact: true }).fill("10:00");
   expect((await previewRequest).postDataJSON()).toMatchObject({
@@ -81,7 +81,7 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
 }) => {
   const state = await mockAutomationEditor(page, "event");
   let attempt = 0;
-  await page.route("**/api/automations/event/event-1", async (route) => {
+  await page.route("**/api/automations/event-1", async (route) => {
     if (route.request().method() !== "PATCH") return route.fallback();
     attempt++;
     if (attempt === 1)
@@ -102,7 +102,7 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     }
     return route.fallback();
   });
-  await page.goto(`${dashboard.baseURL}/automations/event/event-1/edit`);
+  await page.goto(`${dashboard.baseURL}/automations/event-1/edit`);
   await expect(page.getByLabel("Resource identifier")).toHaveValue(
     "getsentry/junior#42",
   );
@@ -162,7 +162,7 @@ test("public non-creators edit settings without creator-only controls", async ({
   dashboard,
 }) => {
   const state = await mockAutomationEditor(page, "event", "event-2");
-  await page.goto(`${dashboard.baseURL}/automations/event/event-2/edit`);
+  await page.goto(`${dashboard.baseURL}/automations/event-2/edit`);
   await expect(
     page.getByText(/You can edit it because it is in a public channel/),
   ).toBeVisible();
@@ -222,15 +222,13 @@ test("makes an earlier version active from version history", async ({
   ];
   let activeVersion = 2;
   const activations: unknown[] = [];
-  await page.route(
-    "**/api/automations/scheduled/scheduled-1/versions",
-    (route) =>
-      route.fulfill({
-        json: { versions, activeVersion, truncated: false },
-      }),
+  await page.route("**/api/automations/scheduled-1/versions", (route) =>
+    route.fulfill({
+      json: { versions, activeVersion, truncated: false },
+    }),
   );
   await page.route(
-    "**/api/automations/scheduled/scheduled-1/versions/1/activate",
+    "**/api/automations/scheduled-1/versions/1/activate",
     (route) => {
       activations.push(route.request().postDataJSON());
       versions.unshift({
@@ -244,7 +242,7 @@ test("makes an earlier version active from version history", async ({
   );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
   await page.getByRole("link", { name: "Version history" }).click();
-  await expect(page).toHaveURL(/scheduled\/scheduled-1\/versions/);
+  await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);
   await expect(page.getByText("Changed instruction")).toBeVisible();
   await screenshot(page, "automation-versions");
   page.once("dialog", (dialog) => {

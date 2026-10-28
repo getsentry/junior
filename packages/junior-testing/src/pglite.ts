@@ -27,11 +27,13 @@ export interface LocalPgliteFixture<TDatabase> {
 
 class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
   private activeTransaction: Transaction | undefined;
+  readonly client: PGlite;
+  private readonly schema: Record<string, unknown>;
 
-  constructor(
-    readonly client: PGlite,
-    private readonly schema: Record<string, unknown>,
-  ) {}
+  constructor(client: PGlite, schema: Record<string, unknown>) {
+    this.client = client;
+    this.schema = schema;
+  }
 
   db(): TDatabase {
     return drizzle(this.queryClient() as PGlite, {
