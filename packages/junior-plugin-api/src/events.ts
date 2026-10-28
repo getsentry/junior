@@ -149,13 +149,24 @@ export function eventMatches(
   return true;
 }
 
-/** The identifier shape of one resource type. */
+function isRegExpSource(value: string): boolean {
+  try {
+    new RegExp(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The identifier shape of one resource type. Plain JSON, so API responses can carry it. */
 export const eventIdentifierSchema = z
   .object({
     /** Shown to the agent, such as "owner/repo#number". */
     format: z.string().trim().min(1).max(200),
-    /** Matches a normalized identifier of this resource type. */
-    pattern: z.instanceof(RegExp),
+    /** RegExp source that matches a normalized identifier of this resource type. */
+    pattern: z.string().min(1).refine(isRegExpSource, {
+      message: "Identifier pattern must be a valid regular expression.",
+    }),
   })
   .strict();
 

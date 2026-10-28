@@ -652,7 +652,9 @@ describe("github plugin", () => {
         type,
         githubPlugin()
           .events!.resourceTypes.filter((resourceType) =>
-            resourceType.identifier!.pattern.test(resource.identifier),
+            new RegExp(resourceType.identifier!.pattern).test(
+              resource.identifier,
+            ),
           )
           .map((resourceType) => resourceType.type),
       ]),

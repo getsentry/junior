@@ -120,7 +120,7 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
 /** The identifier shape that `gitHubPullRequestResource` builds. */
 export const GITHUB_PULL_REQUEST_IDENTIFIER = {
   format: "owner/repo#number",
-  pattern: /^[^\s/:#]+\/[^\s/:#]+#\d+$/,
+  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+#\d+$`,
 };
 
 /** Build the stable pull request identity shared by tools and webhooks. */
