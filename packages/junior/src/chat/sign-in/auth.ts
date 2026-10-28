@@ -8,6 +8,7 @@
  */
 import { createAuthMiddleware } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
+import type { GoogleProfile } from "better-auth/social-providers";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
@@ -22,6 +23,7 @@ const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 // Claims Junior reads from the Google ID token. Google sets `hd` only for
 // Google Workspace accounts, so it proves the account belongs to the domain.
 // The email domain does not: a personal Google account can use any email.
+// Keep the full profile for Better Auth to read the native account subject.
 const googleClaimsSchema = z.object({
   sub: z.string().min(1),
   email: z.string().optional(),
@@ -35,17 +37,15 @@ const googleClaimsSchema = z.object({
  * Read Google ID token claims. Returns undefined for a malformed token, so
  * Better Auth redirects with `unable_to_get_user_info` instead of a 500.
  */
-function readGoogleClaims(
-  idToken: string,
-): z.infer<typeof googleClaimsSchema> | undefined {
-  let payload: unknown;
+function readGoogleClaims(idToken: string): GoogleProfile | undefined {
+  let payload: GoogleProfile;
   try {
-    payload = decodeJwt(idToken);
+    payload = decodeJwt<GoogleProfile>(idToken);
   } catch {
     return undefined;
   }
   const parsed = googleClaimsSchema.safeParse(payload);
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? payload : undefined;
 }
 
 /** Verified Google account of one browser session. */
@@ -171,7 +171,7 @@ function createBetterAuth(config: SignInAuthConfig) {
         prompt: "select_account",
         // Replaces Better Auth's default, which can check only one `hd`.
         // The ID token comes from Google's token endpoint over TLS, or was
-        // verified by `verifyIdToken` first.
+        // verified before direct ID-token sign-in.
         async getUserInfo(token) {
           if (!token.idToken) return null;
           const claims = readGoogleClaims(token.idToken);
@@ -179,7 +179,6 @@ function createBetterAuth(config: SignInAuthConfig) {
           if (!isAllowedDomain(claims.hd, allowedDomains)) return null;
           return {
             user: {
-              id: claims.sub,
               email: claims.email,
               emailVerified: claims.email_verified === true,
               image: claims.picture,
