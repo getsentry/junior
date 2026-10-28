@@ -296,15 +296,22 @@ describe("Slack webhook auth boundary", () => {
       }),
     );
     let sequence = 1;
-    const mention = async (user: string) => {
+    const mention = async (
+      user: string,
+      attachments?: Record<string, unknown>[],
+    ) => {
       const envelope = slackEventsApiEnvelope({
         eventType: "app_mention",
         channel: "C123",
         user,
         ts: `1712345.${String(sequence++).padStart(6, "0")}`,
-        text: `<@${authTestOk().user_id}> hello`,
+        text: attachments
+          ? "Critical: Failing tests"
+          : `<@${authTestOk().user_id}> hello`,
       });
-      expect((await app.fetch(slack.event(envelope))).status).toBe(200);
+      const event = { ...envelope.event, attachments };
+      const request = slack.event({ ...envelope, event });
+      expect((await app.fetch(request)).status).toBe(200);
       await waitUntil.flush();
     };
 
@@ -323,6 +330,17 @@ describe("Slack webhook auth boundary", () => {
     expect(queue.queuedMessages()).toHaveLength(1);
     await mention("UBOT");
     expect(queue.queuedMessages()).toHaveLength(2);
+
+    // Alert bots can put the mention only in their own attachment.
+    const notes = `notes: <@${authTestOk().user_id}> fix the failing test`;
+    await mention("UBOT", [{ text: notes }]);
+    expect(queue.queuedMessages()).toHaveLength(3);
+
+    // A mention in a preview of another message does not start a Turn.
+    await mention("UBOT", [
+      { from_url: "https://example.slack.com/archives/C1/p1", text: notes },
+    ]);
+    expect(queue.queuedMessages()).toHaveLength(3);
   });
 
   it.each(["message", "factory"] as const)(

@@ -49,6 +49,7 @@ import {
   SubscribedReplyReason,
 } from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { renderAttachmentText } from "@/chat/slack/message/attachments";
 import { parseContent } from "@/chat/slack/message/content";
 import {
   isSlackMessageStopped,
@@ -177,6 +178,31 @@ function installationFromEnvelope(
 
 function isDmEvent(event: SlackInboundEvent): boolean {
   return event.channel_type === "im" || event.channel?.startsWith("D") === true;
+}
+
+/**
+ * Return whether a Slack message mentions Junior outside code. Bots can put the
+ * mention in a section block or in their own attachment, such as alert notes.
+ * A link preview or a shared message is also an attachment, but its mention
+ * belongs to another message, so it does not count.
+ */
+function eventMentionsBot(
+  event: SlackInboundEvent,
+  botUserId: string,
+): boolean {
+  if (textMentionsBot(event.text ?? "", botUserId)) return true;
+  const blockMention = event.blocks?.some(
+    (block) =>
+      block.type === "section" &&
+      typeof block.text === "object" &&
+      block.text.type === "mrkdwn" &&
+      textMentionsBot(block.text.text, botUserId),
+  );
+  if (blockMention) return true;
+  const ownAttachments = (event.attachments ?? []).filter(
+    (attachment) => !attachment.from_url && !attachment.is_share,
+  );
+  return textMentionsBot(renderAttachmentText(ownAttachments), botUserId);
 }
 
 function shouldIgnoreMessageSubtype(event: SlackInboundEvent): boolean {
@@ -465,15 +491,7 @@ async function routeParsedMessage(args: {
   // count mentions that sit outside code as activations.
   const botUserId = args.adapter.botUserId;
   const isMention = Boolean(
-    botUserId &&
-    (textMentionsBot(args.event.text ?? "", botUserId) ||
-      args.event.blocks?.some(
-        (block) =>
-          block.type === "section" &&
-          typeof block.text === "object" &&
-          block.text.type === "mrkdwn" &&
-          textMentionsBot(block.text.text, botUserId),
-      )),
+    botUserId && eventMentionsBot(args.event, botUserId),
   );
   if (isMention) {
     message.isMention = true;
