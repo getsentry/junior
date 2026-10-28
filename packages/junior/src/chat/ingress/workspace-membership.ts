@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackTeamId, parseSlackUserId } from "@/chat/slack/ids";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
-import { withLock } from "@/chat/state/locks";
+import { createCache } from "@/chat/state/cache";
 export { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 // Slack Connect admits external authors, but user_team is not guaranteed.
@@ -38,8 +38,8 @@ export async function isSlackWorkspaceMember(
   const event = parsed.data;
   const userId = parseSlackUserId(event.user);
   if (!userId) return false;
+  const cache = createCache(state, "core");
   const key = `slack:membership:${workspaceTeamId}:${userId}`;
-
   const authorTeam = parseSlackTeamId(event.user_team);
   if (authorTeam === workspaceTeamId) return true;
   if (
@@ -49,42 +49,29 @@ export async function isSlackWorkspaceMember(
   ) {
     return false;
   }
-  const explicitlyExternal = authorTeam !== undefined;
 
   // event.team and envelope teams can describe the receiving workspace;
   // source_team describes message origin. Neither proves author membership.
   // https://docs.slack.dev/enterprise/developing-for-enterprise-orgs#events_api
   // Explicit external authors must override even a recent positive lookup.
-  if (!explicitlyExternal) {
-    const cached = await state.get<boolean>(key);
-    if (typeof cached === "boolean") return cached;
+  if (authorTeam !== undefined) {
+    return await cache.getOrLoad(
+      key,
+      async () => ({ value: false, ttlMs: NON_MEMBER_TTL_MS }),
+      { refresh: true },
+    );
   }
-
-  // Share one lookup across concurrent deliveries, including separate workers.
-  const result = await withLock(
-    state,
-    `${key}:lookup`,
-    async () => {
-      if (explicitlyExternal) {
-        await state.set(key, false, NON_MEMBER_TTL_MS);
-        return false;
-      }
-      const cached = await state.get<boolean>(key);
-      if (typeof cached === "boolean") return cached;
-      // External users in shared channels can have is_stranger: false.
-      // https://docs.slack.dev/apis/slack-connect/#members
-      const user = await lookupSlackUserProfile(userId);
-      const authorTeam = parseSlackTeamId(user.team_id);
-      // Do not cache failures or incomplete/mismatched user responses.
-      if (user.id !== userId || !authorTeam) return false;
-      const member = authorTeam === workspaceTeamId && !user.is_deleted;
-      await state.set(key, member, member ? MEMBER_TTL_MS : NON_MEMBER_TTL_MS);
-      return member;
-    },
-    { keepAlive: true, waitMs: 10_000 },
-  );
-  if (!result.acquired) {
-    throw new Error("Could not acquire Slack membership lookup lock");
-  }
-  return result.value;
+  return await cache.getOrLoad(key, async () => {
+    // External users in shared channels can have is_stranger: false.
+    // https://docs.slack.dev/apis/slack-connect/#members
+    const user = await lookupSlackUserProfile(userId);
+    const authorTeam = parseSlackTeamId(user.team_id);
+    // Do not cache failures or incomplete/mismatched user responses.
+    if (user.id !== userId || !authorTeam) return { value: false };
+    const member = authorTeam === workspaceTeamId && !user.is_deleted;
+    return {
+      value: member,
+      ttlMs: member ? MEMBER_TTL_MS : NON_MEMBER_TTL_MS,
+    };
+  });
 }

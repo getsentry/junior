@@ -1,6 +1,7 @@
 /** Limit Slack use of Junior to authors on the allowed domains. */
 import type { StateAdapter } from "chat";
 import { logWarn } from "@/chat/logging";
+import { createCache } from "@/chat/state/cache";
 import { isAllowedDomain } from "@/chat/sign-in/allowlist";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
@@ -27,26 +28,25 @@ export async function isSlackAuthorDomainAllowed(args: {
   const userId = parseSlackUserId(args.user);
   if (!args.teamId || !userId) return false;
   if (args.allowedBotUserIds.includes(userId)) return true;
-  const key = `slack:allowed-domain:${args.teamId}:${userId}`;
-  const cached = await args.state.get<boolean>(key);
-  if (typeof cached === "boolean") return cached;
-
-  const profile = await lookupSlackUserProfile(userId);
-  const email = profile.email?.toLowerCase();
-  const separator = email?.lastIndexOf("@") ?? -1;
-  const domain = separator > 0 ? email?.slice(separator + 1) : undefined;
-  const allowed =
-    profile.id === userId && isAllowedDomain(domain, args.allowedDomains);
-  if (!allowed) {
-    // A Slack app without `users:read.email` sees no email and blocks all.
-    logWarn("slack.allowed_domain.rejected", {
-      "app.reason": email ? "domain_not_allowed" : "missing_email",
-    });
-  }
-  await args.state.set(
-    key,
-    allowed,
-    allowed ? ALLOWED_TTL_MS : NOT_ALLOWED_TTL_MS,
+  return await createCache(args.state, "core").getOrLoad(
+    `slack:allowed-domain:${args.teamId}:${userId}`,
+    async () => {
+      const profile = await lookupSlackUserProfile(userId);
+      const email = profile.email?.toLowerCase();
+      const separator = email?.lastIndexOf("@") ?? -1;
+      const domain = separator > 0 ? email?.slice(separator + 1) : undefined;
+      const allowed =
+        profile.id === userId && isAllowedDomain(domain, args.allowedDomains);
+      if (!allowed) {
+        // A Slack app without `users:read.email` sees no email and blocks all.
+        logWarn("slack.allowed_domain.rejected", {
+          "app.reason": email ? "domain_not_allowed" : "missing_email",
+        });
+      }
+      return {
+        value: allowed,
+        ttlMs: allowed ? ALLOWED_TTL_MS : NOT_ALLOWED_TTL_MS,
+      };
+    },
   );
-  return allowed;
 }

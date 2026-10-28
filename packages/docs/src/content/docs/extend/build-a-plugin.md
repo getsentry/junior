@@ -360,6 +360,20 @@ Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata
 instead of the raw structured result.
 
+Every hook context has `ctx.cache`. Use it to keep short-lived copies of
+provider reads, such as a user's role. It is not durable. Junior can drop an
+entry at any time, so keep data that must survive in `ctx.state`. Return a
+`ttlMs` to cache the value. Omit `ttlMs` to skip the cache for a result, such
+as an incomplete response. A load that throws is not cached, and concurrent
+callers for one key share one load.
+
+```ts
+const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
+  value: await loadRole(repo, login),
+  ttlMs: 10 * 60 * 1000,
+}));
+```
+
 `heartbeat(ctx)` is for plugins that need server-side background work.
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous

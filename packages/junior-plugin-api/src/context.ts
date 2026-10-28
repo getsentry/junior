@@ -15,6 +15,7 @@ import {
   slackLocationSchema,
   userSchema,
 } from "./schemas";
+import type { PluginCache } from "./cache";
 
 /** Runtime platform name without source or destination coordinates. */
 export type Platform = z.output<typeof platformSchema>;
@@ -92,6 +93,8 @@ export interface PluginEmbedder {
 }
 
 export interface PluginContext {
+  /** Short-lived cache scoped to this plugin. */
+  cache: PluginCache;
   /** Shared Drizzle database connection for plugin runtime code. */
   db: unknown;
   log: PluginLogger;

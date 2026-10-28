@@ -4,6 +4,7 @@
  * This module joins registered readers with the authenticated viewer and
  * validates every plugin response before it reaches the dashboard.
  */
+import { createPluginCache } from "@/chat/plugins/cache";
 import {
   pluginUserPageContentSchema,
   pluginUserPageLinksSchema,
@@ -83,6 +84,7 @@ export async function readPluginUserPage(input: {
         db: getDb(),
         log: createPluginLogger(plugin.manifest.name),
         plugin: { name: plugin.manifest.name },
+        cache: createPluginCache(plugin.manifest.name),
         viewer,
       },
       input.query,

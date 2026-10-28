@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import {
   conversationSidebarAnnotationSchema,
   type ConversationAnnotation,
@@ -61,6 +62,7 @@ export async function listConversationSidebarAnnotations(
         db: getDb(),
         log: createPluginLogger(plugin.manifest.name),
         plugin: { name: plugin.manifest.name },
+        cache: createPluginCache(plugin.manifest.name),
       });
       for (const [conversationId, annotations] of Object.entries(
         result.annotationsByConversationId,

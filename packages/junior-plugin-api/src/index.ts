@@ -6,6 +6,7 @@ export * from "./annotations";
 export * from "./code";
 export * from "./conversation-events";
 export * from "./schemas";
+export * from "./cache";
 export * from "./context";
 export * from "./state";
 export {

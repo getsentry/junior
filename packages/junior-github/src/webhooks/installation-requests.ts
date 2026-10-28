@@ -4,6 +4,7 @@
  * A webhook delivery has no Turn and no egress context, so these requests
  * call GitHub directly. Other plugin code must use host egress.
  */
+import type { PluginCache } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   githubRequest,
@@ -86,30 +87,43 @@ const repositoryPermissionSchema = z.object({
   role_name: z.string().optional(),
 });
 
+// Roles change rarely. A removed maintainer can keep their role this long.
+const REPOSITORY_ROLE_TTL_MS = 10 * 60 * 1000;
+
 /**
  * Read one user's role on a repository, with a metadata-only token. GitHub
- * returns "none" for accounts without access, such as most bots.
+ * returns "none" for accounts without access, such as most bots. Roles are
+ * cached for ten minutes.
  */
 export async function loadRepositoryRole(
   env: GitHubInstallationEnv,
+  cache: PluginCache,
   target: { login: string; repositoryFullName: string },
 ): Promise<string> {
   const { owner, name } = splitRepository(
     target.repositoryFullName,
     "repository role",
   );
-  const token = await issueInstallationToken({
-    ...env,
-    permissions: { metadata: "read" },
-    repositories: [name],
-  });
-  const response = repositoryPermissionSchema.parse(
-    await githubRequest(
-      "https://api.github.com",
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/collaborators/${encodeURIComponent(target.login)}/permission`,
-      { token: token.token },
-    ),
+  return await cache.getOrLoad(
+    `repository-role:${owner}/${name}:${target.login}`.toLowerCase(),
+    async () => {
+      const token = await issueInstallationToken({
+        ...env,
+        permissions: { metadata: "read" },
+        repositories: [name],
+      });
+      const response = repositoryPermissionSchema.parse(
+        await githubRequest(
+          "https://api.github.com",
+          `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/collaborators/${encodeURIComponent(target.login)}/permission`,
+          { token: token.token },
+        ),
+      );
+      // role_name includes maintain, triage, and custom roles; permission does not.
+      return {
+        value: response.role_name?.trim() || response.permission,
+        ttlMs: REPOSITORY_ROLE_TTL_MS,
+      };
+    },
   );
-  // role_name includes maintain, triage, and custom roles; permission does not.
-  return response.role_name?.trim() || response.permission;
 }

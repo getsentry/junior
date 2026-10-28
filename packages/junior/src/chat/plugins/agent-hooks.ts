@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
@@ -159,6 +160,7 @@ function basePluginContext(plugin: PluginRegistration) {
   const name = plugin.manifest.name;
   return {
     plugin: { name },
+    cache: createPluginCache(name),
     log: createPluginLogger(name),
     db: getDb(),
   };
