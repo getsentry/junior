@@ -58,3 +58,5 @@ only toggles details and restores focus to the control after dismissal.
 uses a 400px aside at 1280px and above. The chat and aside scroll separately.
 Smaller windows use the shared `Drawer` as a bottom sheet. The sheet keeps modal
 focus and scroll rules. A resize changes the frame and keeps the selected tab.
+The sheet keeps its title as a screen-reader label. Its handle and close button
+share one row so the tabs and content start higher.

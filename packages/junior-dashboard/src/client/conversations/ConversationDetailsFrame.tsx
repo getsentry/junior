@@ -49,7 +49,9 @@ export function ConversationDetailsFrame(props: {
   const heading = (
     <h2
       aria-label="Conversation details"
-      className="m-0 text-base font-semibold text-dashboard-text"
+      className={
+        panel ? "m-0 text-base font-semibold text-dashboard-text" : "sr-only"
+      }
       id={titleId}
     >
       Details

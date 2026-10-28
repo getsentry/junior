@@ -185,7 +185,12 @@ export function Drawer(props: {
             </div>
           ) : null}
           <div className="min-w-0">{props.header}</div>
-          <div className="flex items-start gap-1.5">
+          <div
+            className={cn(
+              "flex items-start gap-1.5",
+              bottom && "absolute right-3 top-1 md:right-4",
+            )}
+          >
             {props.actions}
             <Button
               aria-label={props.closeLabel}

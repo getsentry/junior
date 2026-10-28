@@ -313,10 +313,7 @@ function FoundationsGalleryPage() {
             closeLabel="Close gallery sheet"
             dismissLabel="Dismiss gallery sheet"
             header={
-              <h2
-                id="gallery-sheet-title"
-                className="m-0 text-base font-semibold"
-              >
+              <h2 id="gallery-sheet-title" className="sr-only">
                 Details
               </h2>
             }
