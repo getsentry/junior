@@ -118,6 +118,8 @@ export type TranscriptViewTurnContext = {
 export type TranscriptViewMessage = {
   cards?: MessageCard[];
   actorIdentity?: ActorIdentity;
+  /** Agent invocation whose input this is. An agent wrote it, not a person. */
+  agentInvocationId?: string;
   contexts?: TranscriptViewTurnContext[];
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";

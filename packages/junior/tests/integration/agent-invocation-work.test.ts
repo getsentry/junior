@@ -251,6 +251,7 @@ describe("agent invocation conversation work", () => {
           messageId: getAgentInvocationMessageId(created.invocationId),
           role: "user",
           text: slackInvocationInput.input,
+          meta: { agentInvocationId: created.invocationId },
         },
         {
           type: "message",

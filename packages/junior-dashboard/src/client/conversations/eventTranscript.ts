@@ -214,6 +214,9 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),
+        ...(data.agentInvocationId
+          ? { agentInvocationId: data.agentInvocationId }
+          : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
