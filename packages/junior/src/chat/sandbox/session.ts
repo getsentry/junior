@@ -42,10 +42,12 @@ import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { Workspace } from "@/chat/workspaces/types";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_COMMAND_PATH,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
-const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
 const SANDBOX_NAME_PREFIX = "junior-";
@@ -825,7 +827,7 @@ export function createSandboxRuntime(
           }
           const script = buildNonInteractiveShellScript(input.command, {
             env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
-            pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
+            path: SANDBOX_COMMAND_PATH,
           });
           const controller = new AbortController();
           const timeoutMs =

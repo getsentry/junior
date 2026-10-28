@@ -1589,7 +1589,7 @@ describe("createTestSandbox", () => {
     });
     expect(invocation.args?.[0]).toBe("-c");
     expect(invocation.args?.[1]).toContain(
-      'export PATH="/vercel/sandbox/.junior/bin:$PATH"',
+      'export PATH="$PATH:/vercel/sandbox/.junior/bin"',
     );
     expect(invocation.args?.[1]).toContain("export CI='1'");
     expect(invocation.args?.[1]).toContain("export TERM='dumb'");
