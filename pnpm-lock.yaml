@@ -128,7 +128,7 @@ importers:
         version: link:../../packages/junior-hex
       '@sentry/junior-linear':
         specifier: workspace:*
-        version: link:../../packages/junior-linear
+        version: file:packages/junior-linear
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory(@opentelemetry/api@1.9.1)
@@ -137,10 +137,10 @@ importers:
         version: link:../../packages/junior-notion
       '@sentry/junior-sentry':
         specifier: workspace:*
-        version: link:../../packages/junior-sentry
+        version: file:packages/junior-sentry
       '@sentry/junior-vercel':
         specifier: workspace:*
-        version: link:../../packages/junior-vercel
+        version: file:packages/junior-vercel
       '@sentry/nitro':
         specifier: 10.65.0
         version: 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta(jiti@2.7.0))
@@ -225,7 +225,7 @@ importers:
         version: 2.9.0(@opentelemetry/api@1.9.1)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       '@sentry/node':
         specifier: 'catalog:'
         version: 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
@@ -376,7 +376,7 @@ importers:
         version: file:packages/junior(@types/node@25.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.7)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       '@tanstack/react-query':
         specifier: ^5.100.14
         version: 5.100.14(react@19.2.6)
@@ -475,16 +475,16 @@ importers:
         version: file:packages/junior-memory
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       '@sentry/junior-sentry':
         specifier: workspace:*
-        version: link:../junior-sentry
+        version: file:packages/junior-sentry
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing
       '@sentry/junior-vercel':
         specifier: workspace:*
-        version: link:../junior-vercel
+        version: file:packages/junior-vercel
       ai:
         specifier: 7.0.153
         version: 7.0.153(zod@4.5.4)
@@ -504,8 +504,8 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
       undici:
-        specifier: 7.30.1
-        version: 7.30.1
+        specifier: 8.12.2
+        version: 8.12.2
       vitest:
         specifier: ^4.1.7
         version: 4.1.7(msw@2.14.6(typescript@7.0.2))(tsx@4.22.3)
@@ -520,7 +520,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
@@ -566,7 +566,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -608,7 +608,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -638,7 +638,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
@@ -709,7 +709,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -764,7 +764,7 @@ importers:
     dependencies:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
-        version: link:../junior-plugin-api
+        version: file:packages/junior-plugin-api
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -3895,14 +3895,23 @@ packages:
   '@sentry/junior-google@file:packages/junior-google':
     resolution: {directory: packages/junior-google, type: directory}
 
+  '@sentry/junior-linear@file:packages/junior-linear':
+    resolution: {directory: packages/junior-linear, type: directory}
+
   '@sentry/junior-memory@file:packages/junior-memory':
     resolution: {directory: packages/junior-memory, type: directory}
 
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     resolution: {directory: packages/junior-plugin-api, type: directory}
 
+  '@sentry/junior-sentry@file:packages/junior-sentry':
+    resolution: {directory: packages/junior-sentry, type: directory}
+
   '@sentry/junior-testing@file:packages/junior-testing':
     resolution: {directory: packages/junior-testing, type: directory}
+
+  '@sentry/junior-vercel@file:packages/junior-vercel':
+    resolution: {directory: packages/junior-vercel, type: directory}
 
   '@sentry/junior@file:packages/junior':
     resolution: {directory: packages/junior, type: directory}
@@ -8548,9 +8557,17 @@ packages:
     resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
     engines: {node: '>=18.17'}
 
+  undici@6.29.1:
+    resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
+    engines: {node: '>=18.17'}
+
   undici@7.30.1:
     resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
     engines: {node: '>=20.18.1'}
+
+  undici@8.12.2:
+    resolution: {integrity: sha512-XtuDWVdqTLr3NAxm2ly9/hU6kUsJOgGh1RASzMBbsw6aWCOaQzHdW+QQDfdERjfJ2V5vL5pRPa4RetO9UfivDg==}
+    engines: {node: '>=22.19.0'}
 
   unenv@2.0.0-rc.24:
     resolution: {integrity: sha512-i7qRCmY42zmCwnYlh9H2SvLEypEFGye5iRmEMKjcGi7zk9UquigRjFtTLz0TYqr0ZGLZhaMHl/foy1bZR+Cwlw==}
@@ -9159,6 +9176,9 @@ packages:
   zod@4.5.4:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -9455,7 +9475,7 @@ snapshots:
     dependencies:
       sitemap: 9.0.1
       stream-replace-string: 2.0.0
-      zod: 4.5.4
+      zod: 4.6.7
 
   '@astrojs/starlight@0.41.5(astro@7.1.1(tsx@4.22.3))(typescript@6.0.3)':
     dependencies:
@@ -9852,7 +9872,7 @@ snapshots:
       jose: 6.2.4
       kysely: 0.29.4
       nanostores: 1.4.1
-      zod: 4.5.4
+      zod: 4.6.7
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
@@ -10931,8 +10951,8 @@ snapshots:
     dependencies:
       '@opentelemetry/semantic-conventions': 1.43.0
       ws: 8.20.1
-      zod: 4.5.4
-      zod-to-json-schema: 3.25.2(zod@4.5.4)
+      zod: 4.6.7
+      zod-to-json-schema: 3.25.2(zod@4.6.7)
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
     transitivePeerDependencies:
@@ -12000,6 +12020,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2
+      marked: 18.1.2
       zod: 4.5.4
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -12037,6 +12058,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)
+      marked: 18.1.2
       zod: 4.5.4
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -12074,6 +12096,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2(@opentelemetry/api@1.9.1)
+      marked: 18.1.2
       zod: 4.5.4
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -12142,6 +12165,11 @@ snapshots:
       - prisma
       - sql.js
       - sqlite3
+
+  '@sentry/junior-linear@file:packages/junior-linear':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      zod: 4.6.7
 
   '@sentry/junior-memory@file:packages/junior-memory':
     dependencies:
@@ -12260,7 +12288,12 @@ snapshots:
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     dependencies:
       commander: 14.0.3
-      zod: 4.5.4
+      zod: 4.6.7
+
+  '@sentry/junior-sentry@file:packages/junior-sentry':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      zod: 4.6.7
 
   '@sentry/junior-testing@file:packages/junior-testing':
     dependencies:
@@ -12333,6 +12366,11 @@ snapshots:
       - prisma
       - sql.js
       - sqlite3
+
+  '@sentry/junior-vercel@file:packages/junior-vercel':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      zod: 4.6.7
 
   '@sentry/junior@file:packages/junior(@types/node@25.9.1)':
     dependencies:
@@ -13272,7 +13310,7 @@ snapshots:
       is-buffer: 2.0.5
       is-node-process: 1.2.0
       throttleit: 2.1.0
-      undici: 6.28.0
+      undici: 6.29.1
 
   '@vercel/blob@2.8.0':
     dependencies:
@@ -13607,7 +13645,7 @@ snapshots:
 
   '@vitest-evals/core@0.16.1':
     dependencies:
-      zod: 4.5.4
+      zod: 4.6.7
 
   '@vitest-evals/report-ui@0.16.1':
     dependencies:
@@ -17841,7 +17879,7 @@ snapshots:
     dependencies:
       '@vercel/sandbox': 1.9.0
       debug: 4.4.3
-      zod: 4.5.4
+      zod: 4.6.7
     transitivePeerDependencies:
       - bare-abort-controller
       - react-native-b4a
@@ -18548,7 +18586,11 @@ snapshots:
 
   undici@6.28.0: {}
 
+  undici@6.29.1: {}
+
   undici@7.30.1: {}
+
+  undici@8.12.2: {}
 
   unenv@2.0.0-rc.24:
     dependencies:
@@ -19245,6 +19287,10 @@ snapshots:
     dependencies:
       zod: 4.5.4
 
+  zod-to-json-schema@3.25.2(zod@4.6.7):
+    dependencies:
+      zod: 4.6.7
+
   zod@3.22.4: {}
 
   zod@3.24.4: {}
@@ -19254,5 +19300,7 @@ snapshots:
   zod@4.4.3: {}
 
   zod@4.5.4: {}
+
+  zod@4.6.7: {}
 
   zwitch@2.0.4: {}
