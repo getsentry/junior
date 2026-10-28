@@ -2,6 +2,7 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   type Api,
   type AssistantMessage,
+  type AssistantMessageEventStream,
   type Context,
   type Model,
   streamSimple,
@@ -139,6 +140,36 @@ function buildChatEndAttributes(
   return attributes;
 }
 
+// Observes the first chunk without a second stream consumer. The stream is
+// single-consumer, so this wraps the provider's `push` calls instead of reading
+// the stream. The agent loop gets the same object, events, and `result()`
+// promise. A terminal `error` event is not a response chunk, so a call that
+// fails or aborts before any chunk records `streaming: false` and no timing.
+function observeFirstChunk(
+  stream: AssistantMessageEventStream,
+  requestStartedAtMs: number,
+): () => Record<string, TraceAttributeValue> {
+  let firstChunk: { type: string; receivedAtMs: number } | undefined;
+  const push = stream.push.bind(stream);
+  stream.push = (event) => {
+    if (!firstChunk && event.type !== "error") {
+      firstChunk = { type: event.type, receivedAtMs: Date.now() };
+    }
+    push(event);
+  };
+  return (): Record<string, TraceAttributeValue> => {
+    if (!firstChunk) {
+      return { "gen_ai.response.streaming": false };
+    }
+    return {
+      "gen_ai.response.time_to_first_chunk":
+        (firstChunk.receivedAtMs - requestStartedAtMs) / 1000,
+      "gen_ai.response.streaming": true,
+      "app.ai.first_chunk_type": firstChunk.type,
+    };
+  };
+}
+
 /**
  * Wraps pi-ai's `streamSimple` so each LLM call inside a pi-agent-core agent
  * loop produces its own `gen_ai.chat` Sentry span. The returned function is
@@ -185,8 +216,13 @@ export function createTracedStreamFn(
     });
 
     try {
+      const requestStartedAtMs = Date.now();
       const stream = await Sentry.withActiveSpan(span, () =>
         Promise.resolve(base(model, context, options)),
+      );
+      const firstChunkAttributes = observeFirstChunk(
+        stream,
+        requestStartedAtMs,
       );
 
       stream
@@ -194,7 +230,10 @@ export function createTracedStreamFn(
         .then(
           (finalMessage: AssistantMessage) => {
             try {
-              const endAttributes = buildChatEndAttributes(finalMessage, mode);
+              const endAttributes = {
+                ...buildChatEndAttributes(finalMessage, mode),
+                ...firstChunkAttributes(),
+              };
               for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);
               }
@@ -211,6 +250,7 @@ export function createTracedStreamFn(
             }
           },
           (error: unknown) => {
+            span.setAttributes(firstChunkAttributes());
             span.setAttribute(
               "error.type",
               error instanceof Error ? error.name : typeof error,
