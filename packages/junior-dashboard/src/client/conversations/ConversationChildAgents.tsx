@@ -1,14 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, CircleAlert, LockKeyhole } from "lucide-react";
+import {
+  Bot,
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CircleDot,
+  CirclePause,
+  CircleX,
+  LoaderCircle,
+  LockKeyhole,
+  type LucideIcon,
+} from "lucide-react";
 import {
   conversationChildAgentsReportSchema,
   type ConversationChildAgent,
 } from "@sentry/junior/api/schema";
 
-import { StatusChip, type StatusChipTone } from "../components/StatusChip";
+import type { StatusChipTone } from "../components/StatusChip";
 import {
   formatConversationCostTotal,
-  formatRelativeTime,
   formatRuntime,
   formatTime,
   formatUsageTotal,
@@ -85,9 +95,12 @@ export function ConversationChildAgents(props: {
   }
 
   return (
-    <ol aria-label="Subagents" className="m-0 grid list-none gap-2 p-0">
+    <ol
+      aria-label="Subagents"
+      className="m-0 grid list-none gap-px overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-border-subtle p-0"
+    >
       {query.data.agents.map((agent) => (
-        <li key={agent.conversationId}>
+        <li className="bg-dashboard-surface-panel" key={agent.conversationId}>
           <ChildAgentRow agent={agent} onOpen={props.onOpenAgent} />
         </li>
       ))}
@@ -95,9 +108,48 @@ export function ConversationChildAgents(props: {
   );
 }
 
+const statusIcons: Partial<Record<string, LucideIcon>> = {
+  active: CircleDot,
+  blocked: CircleAlert,
+  completed: CircleCheck,
+  error: CircleX,
+  failed: CircleX,
+  paused: CirclePause,
+  running: LoaderCircle,
+};
+
+const statusIconToneClass: Record<StatusChipTone, string> = {
+  accent: "text-violet-300",
+  danger: "text-rose-300",
+  info: "text-cyan-300",
+  neutral: "text-dashboard-text-faint",
+  success: "text-emerald-300",
+  warning: "text-amber-300",
+};
+
+/** Mark a child agent status with one icon and an audible label. */
+function ChildAgentStatusIcon(props: { status: string }) {
+  const Icon = statusIcons[props.status] ?? Circle;
+  return (
+    <span className="mt-px grid size-4 shrink-0 place-items-center">
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          "size-3.5",
+          statusIconToneClass[subagentStatusTone(props.status)],
+          props.status === "running" &&
+            "animate-spin motion-reduce:animate-none",
+        )}
+      />
+      <span className="sr-only">{props.status}</span>
+    </span>
+  );
+}
+
 /**
- * Show who ran, what it was asked to do, and what it cost. The row text is the
- * accessible name, so status, title, task, and error stay audible.
+ * Show one child agent as a dense row: status, task title, and run time first,
+ * then agent name and cost. The row text is the accessible name, so status,
+ * title, and error stay audible.
  */
 function ChildAgentRow(props: {
   agent: ConversationChildAgent;
@@ -107,24 +159,20 @@ function ChildAgentRow(props: {
   const tone = subagentStatusTone(agent.status);
   const task = agent.task?.trim();
   const headline = agent.title ?? task;
-  // A title is often a short form of the task. Skip the task when it adds nothing.
-  const detail = agent.title && task && task !== agent.title ? task : undefined;
   const runtime = formatRuntime(agent.cumulativeDurationMs);
+  const name = agent.redacted ? "Private subagent" : (agent.name ?? "subagent");
   // Totals include this subagent's own subagents. Say so, so the row does not
   // read as the work of this subagent alone.
   const nested = agent.childAgentTotals?.count;
-  const stats = [
+  const meta = [
     formatUsageTotal(agent.cumulativeUsage),
     formatConversationCostTotal(agent.cumulativeUsage, agent.auxiliaryCosts),
-    runtime ? `${runtime} runtime` : "",
-    nested
-      ? `incl. ${nested} nested ${nested === 1 ? "subagent" : "subagents"}`
-      : "",
+    nested ? `+${nested} nested` : "",
   ].filter(Boolean);
 
   return (
     <button
-      className="grid w-full min-w-0 cursor-pointer gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 text-left text-inherit transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      className="grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-inherit transition-colors hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
       onClick={() =>
         props.onOpen({
           conversationId: agent.conversationId,
@@ -137,59 +185,40 @@ function ChildAgentRow(props: {
           status: agent.status,
         })
       }
+      title={[
+        task && task !== headline ? task : "",
+        `Updated ${formatTime(agent.updatedAt, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })}`,
+      ]
+        .filter(Boolean)
+        .join("\n")}
       type="button"
     >
-      <span className="flex min-w-0 items-center gap-2 text-xs">
-        {agent.redacted ? (
-          <span className="flex min-w-0 items-center gap-1.5 text-dashboard-text-muted">
-            <LockKeyhole aria-hidden="true" className="size-3 shrink-0" />
-            Private subagent
-          </span>
-        ) : (
-          <span className="min-w-0 truncate font-medium text-dashboard-text-muted">
-            {agent.name ?? "subagent"}
-          </span>
-        )}
-        <StatusChip className="ml-auto shrink-0" size="compact" tone={tone}>
-          {agent.status}
-        </StatusChip>
-        <time
-          className="shrink-0 text-dashboard-text-faint"
-          dateTime={agent.updatedAt}
-          title={`Updated ${formatTime(agent.updatedAt, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}`}
-        >
-          {formatRelativeTime(agent.updatedAt)}
-        </time>
+      <ChildAgentStatusIcon status={agent.status} />
+      <span className="min-w-0 truncate text-sm font-medium leading-5 text-dashboard-text">
+        {headline ?? name}
       </span>
-      {headline ? (
-        <span className="line-clamp-2 break-words text-sm font-semibold leading-snug text-dashboard-text">
-          {headline}
+      <span className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted">
+        {runtime}
+      </span>
+      <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-dashboard-text-muted">
+        {agent.redacted ? (
+          <LockKeyhole aria-hidden="true" className="size-3 shrink-0" />
+        ) : null}
+        <span className="min-w-0 truncate">
+          {[headline ? name : "", ...meta].filter(Boolean).join(" · ")}
         </span>
-      ) : null}
-      {detail ? (
-        <span className="line-clamp-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-muted">
-          {detail}
-        </span>
-      ) : null}
+      </span>
       {agent.error ? (
         <span
           className={cn(
-            "flex min-w-0 items-start gap-1.5 text-xs leading-relaxed",
+            "col-start-2 col-end-4 line-clamp-2 min-w-0 whitespace-pre-wrap break-words pt-0.5 text-xs leading-4",
             errorToneClass[tone] ?? "text-dashboard-text-muted",
           )}
         >
-          <CircleAlert aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
-          <span className="line-clamp-3 min-w-0 whitespace-pre-wrap break-words">
-            {agent.error}
-          </span>
-        </span>
-      ) : null}
-      {stats.length > 0 ? (
-        <span className="block text-xs tabular-nums text-dashboard-text-muted">
-          {stats.join(" · ")}
+          {agent.error}
         </span>
       ) : null}
     </button>

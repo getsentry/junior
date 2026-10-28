@@ -38,6 +38,19 @@ test("opens conversation details beside the chat", async ({
   await expect(page.getByRole("note")).toContainText("Public conversation");
   await expect(page.getByRole("note")).toContainText("Public");
 
+  const detailsButton = page.getByRole("button", {
+    name: "Conversation details",
+    exact: true,
+  });
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  // Wide viewports open details beside the chat by default.
+  await expect(details).toBeVisible();
+  await detailsButton.click();
+  await expect(details).toBeHidden();
+
   const costMetric = page
     .getByRole("main")
     .locator('span[tabindex="0"]')
@@ -61,15 +74,7 @@ test("opens conversation details beside the chat", async ({
   });
   const conversationUrl = page.url();
 
-  const detailsButton = page.getByRole("button", {
-    name: "Conversation details",
-    exact: true,
-  });
   await detailsButton.click();
-  const details = page.getByRole("complementary", {
-    name: "Conversation details",
-    exact: true,
-  });
   await expect(details).toBeVisible();
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
@@ -133,6 +138,12 @@ test("opens conversation details beside the chat", async ({
   await page.keyboard.press("Home");
   await expect(summaryTab).toBeFocused();
   await expect(summaryTab).toHaveAttribute("aria-selected", "true");
+  // The pointer still rests on the header Share icon. Move it off so Escape
+  // closes the panel, not the icon tooltip.
+  await page.mouse.move(800, 600);
+  await expect(
+    page.getByRole("tooltip").filter({ hasText: /Share|Link copied/ }),
+  ).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
@@ -165,7 +176,8 @@ test("opens conversation details beside the chat", async ({
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Direct Message/ })
     .click();
-  await expect(details).toBeHidden();
+  // Each conversation opens with details beside the chat.
+  await expect(details).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Private conversation");
   await expect(page.getByRole("note")).toContainText("Private");
 });

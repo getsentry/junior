@@ -471,8 +471,11 @@ test("inspects and copies a child agent transcript", async ({
   );
   await screenshot(page, "conversation-subagents-tab");
   // A row opens the same child transcript drawer as the transcript row.
-  await subagents.getByRole("button", { name: /^reviewer blocked/ }).click();
-  await expect(details).toBeHidden();
+  await subagents
+    .getByRole("button", {
+      name: /^blocked Review the open dashboard pull requests/,
+    })
+    .click();
   const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
   await expect(
     reviewerDrawer.getByText("blocked", { exact: true }),
@@ -485,6 +488,8 @@ test("inspects and copies a child agent transcript", async ({
   );
   await page.keyboard.press("Escape");
   await expect(reviewerDrawer).toBeHidden();
+  // The docked panel stays open beside the drawer.
+  await expect(details).toBeVisible();
 
   await planner.click();
 

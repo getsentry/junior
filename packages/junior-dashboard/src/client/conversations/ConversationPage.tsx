@@ -27,6 +27,7 @@ import {
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationDetails } from "./ConversationDetails";
+import { useConversationDetailsDefaultOpen } from "./ConversationDetailsFrame";
 import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
@@ -39,7 +40,10 @@ import {
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
-import { ConversationUsageBreakdown } from "./ConversationUsageBreakdown";
+import {
+  ConversationUsageBreakdown,
+  hasConversationUsageBreakdown,
+} from "./ConversationUsageBreakdown";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
@@ -78,7 +82,11 @@ export function ConversationPage(props: {
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Large viewports show details beside the chat until the reader closes
+  // them. Smaller viewports open details only on request.
+  const detailsDefaultOpen = useConversationDetailsDefaultOpen();
+  const [detailsChoice, setDetailsChoice] = useState<boolean>();
+  const detailsOpen = detailsChoice ?? detailsDefaultOpen;
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -217,7 +225,7 @@ export function ConversationPage(props: {
               }
               conversationId={conversationId}
               detailsOpen={detailsOpen}
-              onDetailsClick={() => setDetailsOpen((open) => !open)}
+              onDetailsClick={() => setDetailsChoice(!detailsOpen)}
               forks={
                 detail.data?.forkedFromConversationId ||
                 detail.data?.forks?.length ? (
@@ -362,9 +370,8 @@ export function ConversationPage(props: {
         <ConversationDetails
           conversationId={conversationId}
           identity={identity}
-          lastActivityAt={conversation?.lastSeenAt}
           sentryConversationUrl={detail.data?.sentryConversationUrl}
-          onClose={() => setDetailsOpen(false)}
+          onClose={() => setDetailsChoice(false)}
           onOpenSubagent={setSubagentTarget}
           annotations={
             hasConversationAnnotations(detail.data?.annotations) ? (
@@ -376,21 +383,26 @@ export function ConversationPage(props: {
               <ConversationBrief brief={detail.data.brief} variant="summary" />
             ) : null
           }
-          stats={
+          overview={
             hasConversationStats({
               conversation,
               detail: detail.data,
             }) ? (
-              <div className="grid min-w-0 gap-5">
-                <ConversationStats
-                  conversation={conversation}
-                  detail={detail.data}
-                />
-                <ConversationUsageBreakdown
-                  conversation={conversation}
-                  detail={detail.data}
-                />
-              </div>
+              <ConversationStats
+                conversation={conversation}
+                detail={detail.data}
+              />
+            ) : null
+          }
+          usage={
+            hasConversationUsageBreakdown({
+              conversation,
+              detail: detail.data,
+            }) ? (
+              <ConversationUsageBreakdown
+                conversation={conversation}
+                detail={detail.data}
+              />
             ) : null
           }
         />

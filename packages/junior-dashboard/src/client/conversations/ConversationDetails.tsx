@@ -1,9 +1,11 @@
 import { ExternalLink } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { formatRelativeTime, formatTime } from "../format";
-import { ButtonLink } from "../components/Button";
-import { ConversationDetailsFrame } from "./ConversationDetailsFrame";
+import { IconButtonTooltip } from "../components/Tooltip";
+import {
+  ConversationDetailsFrame,
+  useConversationDetailsPanel,
+} from "./ConversationDetailsFrame";
 import { SegmentedTabs } from "../components/SegmentedTabs";
 import {
   ConversationChildAgents,
@@ -18,20 +20,25 @@ import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
 type DetailsTab = "agents" | "summary" | "memories";
 
-/** Put conversation context before usage and diagnostic links. */
+/**
+ * Show conversation details: the brief and facts first, then linked work,
+ * participants, and the usage breakdown. Share and Sentry links stay in the
+ * header so every tab can reach them.
+ */
 export function ConversationDetails(props: {
   annotations: ReactNode;
   brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
-  lastActivityAt?: string;
   onClose(): void;
-  /** Open one child agent transcript. Details closes first. */
+  /** Open one child agent transcript. A details sheet closes first. */
   onOpenSubagent(target: SubagentTranscriptTarget): void;
+  overview: ReactNode;
   sentryConversationUrl?: string;
-  stats: ReactNode;
+  usage: ReactNode;
 }) {
   const [tab, setTab] = useState<DetailsTab>("summary");
+  const panel = useConversationDetailsPanel();
   // Load both lists with details so each tab can show its count.
   const memories = useConversationMemories(props.conversationId);
   const agents = useConversationChildAgents(props.conversationId);
@@ -46,14 +53,38 @@ export function ConversationDetails(props: {
   ] as const;
 
   const sections = [
-    { content: props.brief, title: undefined },
-    { content: props.annotations, title: "Linked work" },
-    { content: props.identity, title: "Participants" },
-    { content: props.stats, title: "Usage" },
+    { content: props.overview, key: "overview", title: undefined },
+    { content: props.identity, key: "participants", title: "Participants" },
+    { content: props.annotations, key: "linked-work", title: "Linked work" },
+    { content: props.usage, key: "usage", title: "Usage" },
   ].filter((section) => section.content != null);
 
   return (
-    <ConversationDetailsFrame onClose={props.onClose}>
+    <ConversationDetailsFrame
+      actions={
+        <>
+          <ShareConversationButton
+            key={props.conversationId}
+            conversationId={props.conversationId}
+            layout="icon"
+          />
+          {props.sentryConversationUrl ? (
+            <IconButtonTooltip label="Open in Sentry" placement="below">
+              <a
+                aria-label="Open in Sentry"
+                className="grid size-9 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                href={props.sentryConversationUrl}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <ExternalLink aria-hidden="true" size={15} />
+              </a>
+            </IconButtonTooltip>
+          ) : null}
+        </>
+      }
+      onClose={props.onClose}
+    >
       <SegmentedTabs
         scroll
         items={tabs}
@@ -67,26 +98,22 @@ export function ConversationDetails(props: {
           <ConversationChildAgents
             conversationId={props.conversationId}
             onOpenAgent={(target) => {
-              props.onClose();
+              // The panel stays beside the drawer. A modal sheet cannot.
+              if (!panel) props.onClose();
               props.onOpenSubagent(target);
             }}
           />
-        ) : sections.length > 0 ? (
-          <div className="grid min-w-0 gap-5">
+        ) : props.brief != null || sections.length > 0 ? (
+          <div className="grid min-w-0 gap-3">
+            {props.brief != null ? (
+              <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+                {props.brief}
+              </div>
+            ) : null}
             {sections.map((section) => (
-              <section
-                className="grid min-w-0 gap-3 border-b border-dashboard-border pb-5 last:border-0 last:pb-0"
-                key={section.title ?? "summary"}
-              >
-                {section.title ? (
-                  <h3 className="m-0 text-sm font-semibold text-dashboard-text">
-                    {section.title}
-                  </h3>
-                ) : null}
-                <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-                  {section.content}
-                </div>
-              </section>
+              <DetailsSection key={section.key} title={section.title}>
+                {section.content}
+              </DetailsSection>
             ))}
           </div>
         ) : (
@@ -94,45 +121,23 @@ export function ConversationDetails(props: {
             No additional conversation details.
           </p>
         )}
-        {tab === "summary" ? (
-          <footer className="mt-5 grid gap-6 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
-            {props.lastActivityAt ? (
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span>Last activity</span>
-                <time
-                  dateTime={props.lastActivityAt}
-                  title={formatTime(props.lastActivityAt, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                >
-                  {formatRelativeTime(props.lastActivityAt)}
-                </time>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <ShareConversationButton
-                key={props.conversationId}
-                conversationId={props.conversationId}
-              />
-              {props.sentryConversationUrl ? (
-                <ButtonLink
-                  className="w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-                  to={props.sentryConversationUrl}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  Open in Sentry
-                  <ExternalLink
-                    aria-hidden="true"
-                    className="size-3.5 shrink-0"
-                  />
-                </ButtonLink>
-              ) : null}
-            </div>
-          </footer>
-        ) : null}
       </SegmentedTabs>
     </ConversationDetailsFrame>
+  );
+}
+
+/** Group one kind of conversation detail in a compact card. */
+function DetailsSection(props: { children: ReactNode; title?: string }) {
+  return (
+    <section className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3">
+      {props.title ? (
+        <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
+          {props.title}
+        </h3>
+      ) : null}
+      <div className="min-w-0 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">
+        {props.children}
+      </div>
+    </section>
   );
 }
