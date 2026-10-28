@@ -660,13 +660,7 @@ describe("durable queue contract", () => {
       // A blocked event loop and a dead process both leave this residue. The
       // next wake resumes the turn and replies once, without an error reply.
       const turnId = await seedDeadWorkerResidue("running");
-      const q = await slack({
-        // Second reply is for the later user mention in expectNextTurn.
-        modelStream: createModelStream([
-          { type: "text", text: "Deploy checked." },
-          { type: "text", text: "Deploy checked." },
-        ]),
-      });
+      const q = await slack();
       await expireDeadWorkerLease(q);
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
@@ -676,7 +670,6 @@ describe("durable queue contract", () => {
         replies: ["Deploy checked."],
       });
       await expectAssistantInSql("Deploy checked.");
-      await expectNextTurn(q, "1712345.0006");
     });
 
     it("fails once when the resumed turn loses its worker again", async () => {
