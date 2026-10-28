@@ -10,6 +10,10 @@ import type {
   ToolActionProposal,
 } from "@/chat/guardian/proposal";
 import type { ToolActionPriorRejection } from "@/chat/guardian/history";
+import toolSpecs from "./tool-specs.json";
+
+/** A tool that has a spec in `tool-specs.json`. */
+type ToolSpecName = keyof typeof toolSpecs;
 
 const LOCAL_CONVERSATION_ID = "local:guardian-eval";
 
@@ -77,6 +81,25 @@ export function slackContext(
     source: SLACK_SOURCE,
     userIntent,
     ...overrides,
+  };
+}
+
+/**
+ * The `tool` field that production sends for a real tool. The spec comes from
+ * `tool-specs.json`, which a harness test keeps equal to the real definition.
+ * Pass the `proposalDescription` that the tool writes for this input.
+ */
+export function toolSpec(
+  name: ToolSpecName,
+  proposalDescription?: string,
+): ToolActionProposal["tool"] {
+  const { catalogSource, ...spec }: ToolActionProposal["tool"] =
+    toolSpecs[name];
+  // Production key order, so the eval prompt is the production prompt.
+  return {
+    ...spec,
+    ...(proposalDescription ? { proposalDescription } : undefined),
+    ...(catalogSource ? { catalogSource } : undefined),
   };
 }
 

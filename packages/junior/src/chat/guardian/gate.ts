@@ -306,8 +306,6 @@ function buildProposal(
   priorRejections: ToolActionPriorRejection[],
   rootConversation: RootConversation | undefined,
 ): ToolActionProposal {
-  const name = resolved?.name ?? toolName;
-  const proposalDescription = tool.describeProposal?.(input);
   const credential = actionCredential(context.credentialContext);
   return {
     context: {
@@ -328,19 +326,38 @@ function buildProposal(
         }
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
-    tool: {
-      ...((resolved?.annotations ?? tool.annotations)
-        ? { annotations: resolved?.annotations ?? tool.annotations }
-        : undefined),
-      description: resolved?.description ?? tool.description,
-      ...(name !== toolName ? { dispatcherName: toolName } : undefined),
-      ...(tool.identity ? { identity: tool.identity } : undefined),
-      name,
-      ...(proposalDescription ? { proposalDescription } : undefined),
-      ...((resolved?.source ?? tool.source)
-        ? { catalogSource: resolved?.source ?? tool.source }
-        : undefined),
-    },
+    tool: proposalTool(
+      toolName,
+      tool,
+      resolved,
+      tool.describeProposal?.(input),
+    ),
+  };
+}
+
+/**
+ * Build the `tool` field of a proposal: the tool as Guardian sees it. The
+ * resolved metadata of a dispatcher, such as `callMcpTool`, names the real
+ * tool. The Guardian evals build their tool specs with this function, so
+ * they send the same shape as production.
+ */
+export function proposalTool(
+  toolName: string,
+  tool: AnyToolDefinition,
+  resolved: ToolApprovalResolution | undefined,
+  proposalDescription?: string,
+): ToolActionProposal["tool"] {
+  const name = resolved?.name ?? toolName;
+  const annotations = resolved?.annotations ?? tool.annotations;
+  const catalogSource = resolved?.source ?? tool.source;
+  return {
+    ...(annotations ? { annotations } : undefined),
+    description: resolved?.description ?? tool.description,
+    ...(name !== toolName ? { dispatcherName: toolName } : undefined),
+    ...(tool.identity ? { identity: tool.identity } : undefined),
+    name,
+    ...(proposalDescription ? { proposalDescription } : undefined),
+    ...(catalogSource ? { catalogSource } : undefined),
   };
 }
 

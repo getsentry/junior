@@ -8,30 +8,7 @@
  */
 import { describeEval } from "vitest-evals";
 import { guardianEvals } from "../../src/guardian-harness";
-import { evidence, proposal, slackContext } from "./helpers";
-
-const findMeetingTimesTool = {
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-    readOnlyHint: true,
-  },
-  catalogSource: {
-    id: "google",
-    description:
-      "Google Calendar scheduling as Junior's own Google Workspace account",
-  },
-  description:
-    "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
-  dispatcherName: "executeTool",
-  identity: {
-    id: "google.findMeetingTimes",
-    name: "findMeetingTimes",
-    plugin: "google",
-  },
-  name: "google_findMeetingTimes",
-} as const;
+import { evidence, proposal, slackContext, toolSpec } from "./helpers";
 
 /** A group direct message with the requester, the other attendee, and Junior. */
 const groupDirectMessage = {
@@ -70,7 +47,7 @@ describeEval("Guardian Calendar Scheduling Snapshots", guardianEvals, (it) => {
           workdayEnd: "17:00",
           workdayStart: "12:00",
         },
-        tool: findMeetingTimesTool,
+        tool: toolSpec("google_findMeetingTimes"),
       }),
     });
   });
@@ -102,7 +79,7 @@ describeEval("Guardian Calendar Scheduling Snapshots", guardianEvals, (it) => {
           workdayEnd: "17:00",
           workdayStart: "12:00",
         },
-        tool: findMeetingTimesTool,
+        tool: toolSpec("google_findMeetingTimes"),
       }),
     });
   });
@@ -137,7 +114,7 @@ describeEval("Guardian Calendar Scheduling Snapshots", guardianEvals, (it) => {
           workdayEnd: "17:00",
           workdayStart: "13:00",
         },
-        tool: findMeetingTimesTool,
+        tool: toolSpec("google_findMeetingTimes"),
       }),
     });
   });

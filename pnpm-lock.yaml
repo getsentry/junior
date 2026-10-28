@@ -482,6 +482,9 @@ importers:
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing
+      '@sentry/junior-vercel':
+        specifier: workspace:*
+        version: link:../junior-vercel
       ai:
         specifier: 7.0.153
         version: 7.0.153(zod@4.5.4)

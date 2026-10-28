@@ -525,6 +525,7 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep a rubric only when the case still needs light quality scoring.
 - Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`. Put a case that needs the plugins or skills of a suite in the directory of that suite.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
+- Get the `tool` field of a Guardian case from `toolSpec(name)` in `evals/guardian/helpers.ts`. Do not write a spec by hand for a real tool. The specs are in `evals/guardian/tool-specs.json`. `tests/component/guardian-tool-specs.test.ts` builds them from the real tool definitions with the production builder, and fails when they differ. After a change to one of these tools, run `pnpm --filter @sentry/junior-evals test -u` and review the diff. To use a new tool in a case, add its name to that test. A fictional tool for one case stays in the case.
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Keep each case focused on one primary behavior.
 - Put semantic, model-dependent expectations in a rubric for `RubricJudge`.
