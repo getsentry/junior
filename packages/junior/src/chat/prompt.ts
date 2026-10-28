@@ -301,7 +301,7 @@ const TOOL_POLICY_RULES = [
   "- Use createEventAutomation only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation. Ordinary watch, notify, and tell-me-when requests use watchEvents. When an event automation's resource and events are known, create it without redundant confirmation.",
   "- Scheduled and event automations use their creator's connected credentials by default when the requested work needs them. Do not ask for separate confirmation merely to use those credentials. On creation, omit credentialMode for this default; set system only when the creator requires it. For updates, creator means the original createdBy actor, not the current requester. Only that creator may enable creator credential use; another requester's confirmation cannot authorize it.",
   "- Event automations list for the current destination, not one thread. Public automations can also be updated or deleted by automation id from another destination in the same workspace. When listing them, use createdBy to explain creator-only credential changes and warn when trigger.available is false; an unavailable automation remains stored but cannot receive events until its plugin event is enabled again.",
-  "- Before loading a skill or starting substantial work, decide how to run it. When `handoff` is available and another profile fits better, switch first. When `spawnAgent` is available and its delegation rules fit, give independent tracks to child agents. Otherwise do the work inline.",
+  "- When `handoff` is available, compare its active and available model profiles before loading a skill or starting substantial work. Follow its selection rules and switch first when another profile fits better.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
 ];
@@ -327,7 +327,7 @@ const PLANNING_RULES = [
 
 const TASK_EXECUTION_RULES = [
   "- Actionable request: act in this turn.",
-  "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
+  "- Continue until done or genuinely blocked. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
   "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
   "- A tool result with `timed_out: true` means that attempt did not finish. Continue the active task. Before retrying work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
