@@ -2388,7 +2388,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("adds the author role for authorRole filters through production plugin wiring", async () => {
+  it("adds author and requester roles for role filters through production plugin wiring", async () => {
     const fixture = await createGitHubFixture();
     const roleRequests: Request[] = [];
     const published: EventInput[] = [];
@@ -2418,6 +2418,16 @@ describe("GitHub-owned pull request outcomes", () => {
         ({ request }) => {
           roleRequests.push(request);
           return HttpResponse.json({ permission: "write", role_name: "write" });
+        },
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/collaborators/maintainer/permission",
+        ({ request }) => {
+          roleRequests.push(request);
+          return HttpResponse.json({
+            permission: "maintain",
+            role_name: "maintain",
+          });
         },
       ),
     );
@@ -2488,6 +2498,29 @@ describe("GitHub-owned pull request outcomes", () => {
       await route!.handler(signedRequest(opened));
       expect(roleRequests).toHaveLength(1);
       expect(published[0]?.data?.authorRole).toBe("write");
+
+      // Junior's own pull request uses its attributed requester.
+      const attribution =
+        "<!-- junior-request-attribution:start -->\nvia @maintainer, **Someone**.\n<!-- junior-request-attribution:end -->";
+      const juniorOpened = pullRequestPayload();
+      juniorOpened.pull_request.body = `Done.\n\n${attribution}`;
+      matchKeys = ["requesterRole"];
+      published.length = 0;
+      await route!.handler(signedRequest(juniorOpened));
+      expect(published[0]?.data).toMatchObject({
+        authorUsername: "sentry-junior[bot]",
+        requesterRole: "maintain",
+        requesterUsername: "maintainer",
+      });
+
+      // A person cannot claim someone else's attribution.
+      opened.pull_request.body = attribution;
+      published.length = 0;
+      await route!.handler(signedRequest(opened));
+      expect(published[0]?.data).toMatchObject({
+        requesterRole: "write",
+        requesterUsername: "octocat",
+      });
     } finally {
       await fixture.close();
     }

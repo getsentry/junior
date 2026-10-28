@@ -10,6 +10,9 @@ export const GITHUB_REQUEST_ATTRIBUTION_START =
   "<!-- junior-request-attribution:start -->";
 export const GITHUB_REQUEST_ATTRIBUTION_END =
   "<!-- junior-request-attribution:end -->";
+const GITHUB_REQUEST_ATTRIBUTION_BLOCK = new RegExp(
+  `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
+);
 
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 // Only a safe login character set; exact GitHub rules vary. Enterprise Managed
@@ -136,6 +139,22 @@ function parseExistingLabels(blockContents: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Return the GitHub login of the first requester in an attribution block.
+ *
+ * The block names a login only when that requester linked a GitHub account.
+ * Anyone can write the block, so trust the result only for bodies that the
+ * Junior bot wrote.
+ */
+export function attributedRequesterLogin(
+  body: string | null | undefined,
+): string | undefined {
+  const contents = body?.match(GITHUB_REQUEST_ATTRIBUTION_BLOCK)?.[1];
+  const first = contents ? parseExistingLabels(contents)[0] : undefined;
+  const login = first?.startsWith("@") ? first.slice(1) : undefined;
+  return login && GITHUB_LOGIN_PATTERN.test(login) ? login : undefined;
+}
+
 /** Render the attribution block wire format parsed by `parseExistingLabels`. */
 function formatAttributionBlock(labels: string[]): string {
   return `${GITHUB_REQUEST_ATTRIBUTION_START}\nvia ${labels.join(", ")}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
@@ -143,10 +162,7 @@ function formatAttributionBlock(labels: string[]): string {
 
 function applyAttribution(body: string, label: string | undefined): string {
   const normalizedBody = body.trimEnd();
-  const existing = new RegExp(
-    `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
-  );
-  const existingMatch = normalizedBody.match(existing);
+  const existingMatch = normalizedBody.match(GITHUB_REQUEST_ATTRIBUTION_BLOCK);
   const existingLabels =
     existingMatch?.[1] !== undefined
       ? parseExistingLabels(existingMatch[1])
@@ -160,8 +176,8 @@ function applyAttribution(body: string, label: string | undefined): string {
     : undefined;
   if (existingMatch) {
     return attribution
-      ? normalizedBody.replace(existing, attribution)
-      : normalizedBody.replace(existing, "").trimEnd();
+      ? normalizedBody.replace(GITHUB_REQUEST_ATTRIBUTION_BLOCK, attribution)
+      : normalizedBody.replace(GITHUB_REQUEST_ATTRIBUTION_BLOCK, "").trimEnd();
   }
   if (!attribution) {
     return normalizedBody;
