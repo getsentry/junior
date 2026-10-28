@@ -327,14 +327,19 @@ export function ensureBlockSpacing(text: string): string {
     }
 
     const prev = result.length > 0 ? result[result.length - 1] : undefined;
+    const isListItem = listItemPattern.test(line.trimStart());
+    // An indented line under a list item continues that item's text.
+    const isListContinuation =
+      prev !== undefined &&
+      !isListItem &&
+      /^\s/.test(line) &&
+      (/^\s/.test(prev) || listItemPattern.test(prev));
     if (
       prev !== undefined &&
       prev.trim() !== "" &&
       line.trim() !== "" &&
-      !(
-        listItemPattern.test(prev.trimStart()) &&
-        listItemPattern.test(line.trimStart())
-      )
+      !isListContinuation &&
+      !(listItemPattern.test(prev.trimStart()) && isListItem)
     ) {
       result.push("");
     }
