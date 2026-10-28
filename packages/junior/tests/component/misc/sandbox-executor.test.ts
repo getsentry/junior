@@ -2011,7 +2011,6 @@ describe("createTestSandbox", () => {
           status: 403,
           upstreamHost: "github.com",
           upstreamPath: "/getsentry/junior.git/info/refs",
-          acceptedPermissions: "contents=write",
         },
       );
       return {
@@ -2048,7 +2047,6 @@ describe("createTestSandbox", () => {
       status: 403,
       upstreamHost: "github.com",
       upstreamPath: "/getsentry/junior.git/info/refs",
-      acceptedPermissions: "contents=write",
     });
   });
 

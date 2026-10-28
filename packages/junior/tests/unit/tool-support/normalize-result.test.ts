@@ -115,7 +115,6 @@ describe("normalizeToolResult", () => {
           id: "12345",
           label: "actor",
         },
-        acceptedPermissions: "contents=write",
         grant: {
           access: "write",
           name: "user-write",
@@ -149,6 +148,11 @@ describe("normalizeToolResult", () => {
     });
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(
+        "Read the provider's error in the command output before you choose a cause.",
+      ),
+    });
+    expect(result.content[0]).toMatchObject({
+      text: expect.stringContaining(
         "Upstream: github.com/getsentry/sentry-mcp.git/info/refs?service=git-receive-pack",
       ),
     });
@@ -169,7 +173,6 @@ describe("normalizeToolResult", () => {
       stdout: "",
       stderr: "remote: Permission denied",
       permission_denied: {
-        acceptedPermissions: "contents=write",
         grant: {
           access: "write",
           name: "user-write",
@@ -197,7 +200,7 @@ describe("normalizeToolResult", () => {
     expect(result.details).toEqual(details);
     expect(result.content[0]).toMatchObject({
       type: "text",
-      text: expect.stringContaining("Upstream permission denied."),
+      text: expect.stringContaining("Upstream provider rejected the request."),
     });
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(

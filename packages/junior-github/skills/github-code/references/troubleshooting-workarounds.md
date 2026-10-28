@@ -7,7 +7,7 @@
 | GraphQL cannot find the repository                         | Check `owner/repo` and the GitHub App installation.                                       |
 | `junior-auth-required` with `user-write`                   | Follow the private OAuth prompt. Never ask for a pasted token.                            |
 | `git push` returns 401 or 403                              | Check the remote and repository. Retry once, then report the installation access failure. |
-| `permission_denied` has `source: "upstream"`               | GitHub rejected the request. Report the grant, account, or SSO details.                   |
+| `permission_denied` has `source: "upstream"`               | Read GitHub's error. Report an access problem only if it says access denied or SSO.       |
 | Other 403 response                                         | Read the error and use the tool it names.                                                 |
 | `gh auth status` shows no token scopes                     | This is normal for GitHub App user tokens. Check App permissions instead.                 |
 | `github_createPullRequest` returns 401 or 403              | Report the installation access failure. Do not use user OAuth.                            |
@@ -27,5 +27,5 @@
 - Retry a transport failure once after you check the repository.
 - Do not repeat 401, 403, 404, or validation failures.
 - A `user-read` or `user-write` failure needs private App OAuth.
-- An `installation-*` failure needs an App permission or installation fix.
+- An `installation-*` access denial needs an App permission or installation fix.
 - Use structured `permission_denied` details when present.

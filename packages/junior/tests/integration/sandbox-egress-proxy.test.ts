@@ -1255,6 +1255,73 @@ describe("sandbox egress proxy integration", () => {
     });
   });
 
+  it.each([
+    {
+      name: "keeps GitHub refusals that are not access denials generic",
+      body: { message: "This workflow run cannot be retried" },
+      message:
+        "github returned HTTP 403 after the runtime injected the installation-write grant. The request was forwarded; this is not a local runtime block.",
+    },
+    {
+      name: "classifies GitHub access denials with the accepted permissions",
+      body: { message: "Resource not accessible by integration" },
+      message:
+        "GitHub denied access: Resource not accessible by integration. This endpoint accepts these GitHub permissions: actions=write.",
+    },
+  ])("$name", async ({ body, message }) => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin({
+      appPermissions: {
+        contents: "read",
+        issues: "write",
+      },
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamPath =
+      "/repos/getsentry/junior/actions/runs/123/rerun-failed-jobs";
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath,
+      }),
+      {
+        fetch: vi.fn(async () =>
+          HttpResponse.json(body, {
+            status: 403,
+            headers: { "x-accepted-github-permissions": "actions=write" },
+          }),
+        ) as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual(body);
+    await expect(
+      modules.session.consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "github",
+      grant: { name: "installation-write", access: "write" },
+      message,
+      source: "upstream",
+      status: 403,
+      upstreamHost: GITHUB_API_HOST,
+      upstreamPath,
+    });
+  });
+
   it("passes through successful GitHub GraphQL responses without permission signals", async () => {
     configureGitHubAppEnv();
     mockGitHubInstallationToken();
