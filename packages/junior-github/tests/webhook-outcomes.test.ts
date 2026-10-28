@@ -2388,6 +2388,93 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("adds the author role for authorRole filters through production plugin wiring", async () => {
+    const fixture = await createGitHubFixture();
+    const roleRequests: Request[] = [];
+    const published: EventInput[] = [];
+    let matchKeys: string[] = [];
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
+    vi.stubEnv(
+      "GITHUB_APP_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/collaborators/octocat/permission",
+        ({ request }) => {
+          roleRequests.push(request);
+          return HttpResponse.json({ permission: "write", role_name: "write" });
+        },
+      ),
+    );
+    const opened = pullRequestPayload();
+    opened.pull_request.user = { login: "octocat" };
+
+    try {
+      const [route] = githubPlugin().hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
+        codeChanges: {
+          async associateConversations() {},
+          async record() {},
+        },
+        db: fixture.db(),
+        log: { error() {}, info() {}, warn() {} },
+        plugin: { name: "github" },
+        events: {
+          hasMatch: async () => true,
+          neededMatchKeys: async () => matchKeys,
+          async publish(event) {
+            published.push(event);
+          },
+        },
+      });
+      // Without an authorRole filter, no role loads.
+      await route!.handler(signedRequest(opened));
+      expect(roleRequests).toHaveLength(0);
+      expect(published.every((event) => !event.data?.authorRole)).toBe(true);
+
+      matchKeys = ["authorRole"];
+      published.length = 0;
+      await route!.handler(signedRequest(opened));
+
+      expect(roleRequests).toHaveLength(1);
+      expect(
+        published.map((event) => [event.eventType, event.data?.authorRole]),
+      ).toEqual([
+        ["pull_request.opened", "write"],
+        ["pull_request.opened", "write"],
+        ["pull_request.ready_for_review", "write"],
+        ["pull_request.ready_for_review", "write"],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("tracks one idempotent projection and ignores stale lifecycle events", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];

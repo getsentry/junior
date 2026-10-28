@@ -612,6 +612,11 @@ describe("github plugin", () => {
         kind: "string",
         description: "pull request author email when GitHub sends it",
       },
+      authorRole: {
+        kind: "string",
+        description:
+          "pull request author's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+      },
       authorUsername: {
         kind: "string",
         description: "pull request author login",
