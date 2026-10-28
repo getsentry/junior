@@ -1,4 +1,26 @@
 # Changelog
+## 0.263.0
+
+### New Features ✨
+
+- (agent-browser) Attach safe visual QA screenshots to PRs by @dcramer with @sentry-junior in [#2312](https://github.com/getsentry/junior/pull/2312)
+- (figma) Add read-only Figma plugin by @dcramer with @sentry-junior in [#2309](https://github.com/getsentry/junior/pull/2309)
+- (github) Check PR mergeability after each push by @BYK with @sentry-junior in [#2302](https://github.com/getsentry/junior/pull/2302)
+- (plugins) Split plugin tool blocks into redirect and deny by @dcramer with @sentry-junior in [#2300](https://github.com/getsentry/junior/pull/2300)
+
+### Bug Fixes 🐛
+
+- (annotations) Show child agent annotations and cards on the parent by @sentry-junior in [#2311](https://github.com/getsentry/junior/pull/2311)
+- (chat) Keep earlier Turn request context out of compaction by @dcramer with @sentry-junior in [#2301](https://github.com/getsentry/junior/pull/2301)
+- (conversations) Show failed turns to the agent by @dcramer with @sentry-junior in [#2305](https://github.com/getsentry/junior/pull/2305)
+- (dashboard) Stop attributing child agent input to the conversation actor by @sentry-junior in [#2310](https://github.com/getsentry/junior/pull/2310)
+- (egress) Let the provider plugin classify upstream 403s by @dcramer with @sentry-junior in [#2314](https://github.com/getsentry/junior/pull/2314)
+- (task-execution) Resume a turn once after its worker stops checking in by @dcramer with @sentry-junior in [#2298](https://github.com/getsentry/junior/pull/2298)
+
+### Documentation 📚
+
+- (contributing) Require an issue before larger changes by @dcramer with @sentry-junior in [#2299](https://github.com/getsentry/junior/pull/2299)
+
 ## 0.262.0
 
 ### New Features ✨
