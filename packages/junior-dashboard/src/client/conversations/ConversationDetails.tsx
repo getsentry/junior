@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 
 import { formatRelativeTime, formatTime } from "../format";
 import { ButtonLink } from "../components/Button";
-import { ConversationDetailsFrame } from "./ConversationDetailsFrame";
+import { DetailsPanel } from "../components/DetailsPanel";
 import { SegmentedTabs } from "../components/SegmentedTabs";
 import {
   ConversationChildAgents,
@@ -53,7 +53,15 @@ export function ConversationDetails(props: {
   ].filter((section) => section.content != null);
 
   return (
-    <ConversationDetailsFrame onClose={props.onClose}>
+    <DetailsPanel
+      label="Conversation details"
+      onClose={props.onClose}
+      title={
+        <h2 className="m-0 text-base font-semibold text-dashboard-text">
+          Details
+        </h2>
+      }
+    >
       <SegmentedTabs
         scroll
         items={tabs}
@@ -133,6 +141,6 @@ export function ConversationDetails(props: {
           </footer>
         ) : null}
       </SegmentedTabs>
-    </ConversationDetailsFrame>
+    </DetailsPanel>
   );
 }

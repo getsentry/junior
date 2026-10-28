@@ -27,6 +27,7 @@ import {
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationDetails } from "./ConversationDetails";
+import { ConversationEventDetails } from "./ConversationEventDetails";
 import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
@@ -79,6 +80,7 @@ export function ConversationPage(props: {
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const pageRef = useRef<HTMLDivElement>(null);
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -86,6 +88,7 @@ export function ConversationPage(props: {
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
   );
+  const showDetails = detailsOpen && selectedEventSeq === undefined;
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     selectedEventSeq === undefined ? "rich" : "raw",
   );
@@ -121,6 +124,10 @@ export function ConversationPage(props: {
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
   const transcript = detail.data;
+  const selectedEvent =
+    transcript?.eventHistory.status === "expired"
+      ? undefined
+      : transcript?.events.find((event) => event.seq === selectedEventSeq);
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
@@ -140,6 +147,7 @@ export function ConversationPage(props: {
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
       setView("raw");
+      if (seq !== undefined) setDetailsOpen(false);
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -198,11 +206,31 @@ export function ConversationPage(props: {
     [],
   );
 
+  const closeEventDetails = () => {
+    const trigger = pageRef.current?.querySelector<HTMLButtonElement>(
+      `[data-event-seq="${selectedEventSeq}"] button`,
+    );
+    setSelectedEventSeq(undefined);
+    trigger?.focus({ preventScroll: true });
+  };
+
   return (
     <div
+      ref={pageRef}
+      onKeyDown={(event) => {
+        if (
+          selectedEvent &&
+          event.key === "Escape" &&
+          !event.defaultPrevented &&
+          !document.querySelector("[data-dashboard-modal]")
+        ) {
+          event.preventDefault();
+          closeEventDetails();
+        }
+      }}
       className={cn(
         "grid h-full min-h-0 min-w-0",
-        detailsOpen && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+        (showDetails || selectedEvent) && "xl:grid-cols-[minmax(0,1fr)_25rem]",
       )}
     >
       <ChatLayout
@@ -216,8 +244,12 @@ export function ConversationPage(props: {
                 agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
               }
               conversationId={conversationId}
-              detailsOpen={detailsOpen}
-              onDetailsClick={() => setDetailsOpen((open) => !open)}
+              detailsOpen={showDetails}
+              onDetailsClick={() => {
+                if (selectedEventSeq !== undefined)
+                  setSelectedEventSeq(undefined);
+                setDetailsOpen((open) => !open);
+              }}
               forks={
                 detail.data?.forkedFromConversationId ||
                 detail.data?.forks?.length ? (
@@ -358,7 +390,7 @@ export function ConversationPage(props: {
           ) : undefined
         }
       />
-      {detailsOpen ? (
+      {showDetails ? (
         <ConversationDetails
           conversationId={conversationId}
           identity={identity}
@@ -393,6 +425,13 @@ export function ConversationPage(props: {
               </div>
             ) : null
           }
+        />
+      ) : null}
+      {selectedEvent && transcript ? (
+        <ConversationEventDetails
+          conversation={transcript}
+          event={selectedEvent}
+          onClose={closeEventDetails}
         />
       ) : null}
       <SubagentTranscriptDrawer

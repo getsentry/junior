@@ -55,7 +55,7 @@ Conversation, so switching Conversations closes details. `ConversationHeader`
 only toggles details and restores focus through explicit control refs after
 dismissal.
 
-`ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
+`ConversationDetails` owns one set of tabs and content. `DetailsPanel`
 uses a 400px aside at 1280px and above. The chat and aside scroll separately.
 Smaller windows use `BottomSheet` with a visible title and close control. The sheet and
 side drawers use the shadcn Base UI `Sheet` and share the app's document
@@ -64,3 +64,16 @@ fixed above the scrolling content in both layouts. The sheet title and close con
 control, tap the backdrop, or press Escape to dismiss it. Base UI owns the
 transition lifecycle.
 A pending exit cannot close a new panel or a different Conversation.
+
+## Event details
+
+The URL owns the selected event in the main Conversation. `ConversationPage`
+places `ConversationEventDetails` beside the log. It uses the same `DetailsPanel`
+as Conversation details, and only one panel shows at a time. Selecting another
+row changes the event and resets its scroll position and disclosures. Closing
+returns focus to that row. Switching Conversations removes the panel.
+
+Standalone transcripts, such as a subagent drawer, keep selection in
+`ConversationEventLog`. Their event details use a nested drawer on desktop and
+`BottomSheet` on smaller screens. This keeps the main log free of modal behavior
+while a nested transcript retains its parent drawer's focus rules.

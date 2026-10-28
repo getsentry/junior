@@ -7,8 +7,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { Button } from "../components/Button";
-import { BottomSheet } from "../components/BottomSheet";
+import { Button } from "./Button";
+import { BottomSheet } from "./BottomSheet";
+import { Drawer } from "./Drawer";
 
 const panelMediaQuery = "(min-width: 1280px)";
 
@@ -22,12 +23,17 @@ function hasPanelSpace() {
   return window.matchMedia(panelMediaQuery).matches;
 }
 
-/** Keep details beside the chat when space permits, or in a modal bottom sheet. */
-export function ConversationDetailsFrame(props: {
+/** Show details beside their source, or in a bottom sheet when space is limited. */
+export function DetailsPanel(props: {
   children: ReactNode;
   onClose(): void;
+  label: string;
+  title: ReactNode;
+  /** Nested details stay modal inside an existing drawer. */
+  overlay?: boolean;
 }) {
   const titleId = useId();
+  const closeLabel = `Close ${props.label.toLowerCase()}`;
   const panel = useSyncExternalStore(
     subscribeToPanelLayout,
     hasPanelSpace,
@@ -47,15 +53,37 @@ export function ConversationDetailsFrame(props: {
   }, [panel]);
   if (!panel) {
     return (
-      <BottomSheet label="Conversation details" onClose={props.onClose}>
+      <BottomSheet label={props.label} onClose={props.onClose}>
         {props.children}
       </BottomSheet>
     );
   }
 
+  if (props.overlay) {
+    return (
+      <Drawer
+        closeLabel={closeLabel}
+        header={
+          <>
+            <span className="sr-only" id={titleId}>
+              {props.label}
+            </span>
+            {props.title}
+          </>
+        }
+        onClose={props.onClose}
+        openKey={props.label}
+        titleId={titleId}
+        width="wide"
+      >
+        {props.children}
+      </Drawer>
+    );
+  }
+
   return (
     <aside
-      aria-labelledby={titleId}
+      aria-label={props.label}
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
       onKeyDown={(event) => {
         if (
@@ -69,16 +97,10 @@ export function ConversationDetailsFrame(props: {
       }}
     >
       <header className="flex items-center justify-between gap-3 border-b border-dashboard-border px-5 py-3">
-        <h2
-          aria-label="Conversation details"
-          className="m-0 text-base font-semibold text-dashboard-text"
-          id={titleId}
-        >
-          Details
-        </h2>
+        <div className="min-w-0">{props.title}</div>
         <Button
           ref={closeRef}
-          aria-label="Close conversation details"
+          aria-label={closeLabel}
           onClick={props.onClose}
           size="icon"
         >

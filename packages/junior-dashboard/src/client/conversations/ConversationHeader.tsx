@@ -57,7 +57,11 @@ export function ConversationHeader(props: {
   const openMobileNavigation = useOpenMobileNavigation();
 
   useEffect(() => {
-    if (wasDetailsOpen.current && !detailsOpen) {
+    if (
+      wasDetailsOpen.current &&
+      !detailsOpen &&
+      document.activeElement === document.body
+    ) {
       const trigger = window.matchMedia("(max-width: 767px)").matches
         ? menuButtonRef.current
         : detailsButtonRef.current;

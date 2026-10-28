@@ -67,20 +67,42 @@ test("inspects all reporting events and searches full event data", async ({
     name: "Event 3: turn_routed",
     exact: true,
   });
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const conversationDetails = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(conversationDetails).toBeVisible();
   await entry.focus();
   await page.keyboard.press("Enter");
-  const panel = page.getByRole("dialog", { name: "turn_routed", exact: true });
+  await expect(conversationDetails).toBeHidden();
+  await expect(entry).toBeFocused();
+  const panel = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
   await expect(panel.getByText("Model profile", { exact: true })).toBeVisible();
   // The open entry is in the URL, so a reader can share a link to it.
   await expect(page).toHaveURL(/[?&]event=3(&|$)/);
   await expect(panel.getByText("handoff", { exact: true })).toBeVisible();
   await expect(panel.locator("pre")).toBeHidden();
   const close = panel.getByRole("button", { name: "Close event details" });
-  await expect(close).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(panel.locator("summary")).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(close).toBeFocused();
+  // The log stays interactive while the selected event is open.
+  const otherEntry = log.getByRole("button", {
+    name: "Event 1: turn_lifecycle",
+    exact: true,
+  });
+  await otherEntry.click();
+  await expect(
+    panel.getByRole("heading", { name: "turn_lifecycle", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/[?&]event=1(&|$)/);
+  await entry.click();
+  await expect(
+    panel.getByRole("heading", { name: "turn_routed", exact: true }),
+  ).toBeVisible();
   await screenshot(page, "conversation-event-details");
   await panel.getByText("Raw JSON", { exact: true }).click();
   await expect(panel.locator("pre")).toHaveText(
@@ -90,9 +112,31 @@ test("inspects all reporting events and searches full event data", async ({
       2,
     ),
   );
-  await page.keyboard.press("Escape");
+  await otherEntry.click();
+  await entry.click();
+  await expect(panel.locator("pre")).toBeHidden();
+  await close.click();
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
+
+  // A resize keeps the selected event in a dismissable mobile sheet.
+  await entry.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sheet = page.getByRole("dialog", {
+    name: "Event details",
+    exact: true,
+  });
+  await expect(
+    sheet.getByRole("heading", { name: "turn_routed", exact: true }),
+  ).toBeVisible();
+  await expect(
+    sheet.getByRole("button", { name: "Close", exact: true }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-event-details-mobile");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(entry).toBeFocused();
+  await page.setViewportSize({ width: 1600, height: 900 });
   await expect(page).not.toHaveURL(/[?&]event=/);
 
   const search = page.getByPlaceholder("Search transcript…");
@@ -135,7 +179,7 @@ test("inspects all reporting events and searches full event data", async ({
     .getByRole("button", { name: `Event ${reply.seq}: message`, exact: true })
     .click();
   await page
-    .getByRole("dialog", { name: "message", exact: true })
+    .getByRole("complementary", { name: "Event details", exact: true })
     .getByRole("button", { name: "Fork after this message" })
     .click();
   const requests: Array<{ messageId: string; idempotencyKey: string }> = [];
@@ -266,15 +310,22 @@ test("loads earlier events without merging tool starts and results", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}?event=2`,
   );
-  const linked = page.getByRole("dialog", { name: "tool_calls", exact: true });
+  const linked = page.getByRole("complementary", {
+    name: "Event details",
+    exact: true,
+  });
   await expect(linked).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(linked).toBeHidden();
   await expect(
     page
       .getByRole("region", { name: "Conversation event log" })
       .getByRole("button", { name: "Event 2: tool_calls", exact: true }),
   ).toBeAttached();
+  await page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .click();
+  await expect(linked).toBeHidden();
+  await expect(page).not.toHaveURL(/[?&]event=/);
 });
 
 for (const width of [1440, 390]) {

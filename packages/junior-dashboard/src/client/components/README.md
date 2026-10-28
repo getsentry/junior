@@ -114,9 +114,10 @@ token so each theme can redefine it.
   Dialog for focus and dismissal. `Drawer` adds a visible header and close
   control. `BottomSheet` puts details below a title and close control. Both use
   the app's shared scroll lock, skip motion when reduced motion is set, and
-  close with the close button, backdrop, or Escape. Docked conversation details
-  use a non-modal aside so the chat stays usable. `Tooltip` and
-  `IconButtonTooltip` own hover text.
+  close with the close button, backdrop, or Escape. `DetailsPanel` uses a docked
+  aside at 1280px and above, and a `BottomSheet` below that width. Its owner
+  supplies the side column. Nested details use `overlay` to retain a desktop
+  drawer's modal focus rules. `Tooltip` and `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original

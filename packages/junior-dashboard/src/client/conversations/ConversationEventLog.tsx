@@ -1,8 +1,7 @@
 import { ChevronRight } from "lucide-react";
-import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { Drawer } from "../components/Drawer";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
 import {
@@ -11,8 +10,7 @@ import {
   eventLogTone,
   eventLogUsage,
 } from "./eventLog";
-import { EventDetails } from "./EventDetails";
-import { ForkConversationButton } from "./ForkConversationButton";
+import { ConversationEventDetails } from "./ConversationEventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 const rowClass =
@@ -20,7 +18,8 @@ const rowClass =
 
 /**
  * Show every reporting event in sequence order, outside the transcript reducer.
- * Pass `onSelectedSeqChange` to own the open entry, for example in the URL.
+ * Pass `onSelectedSeqChange` to own selection and render details beside the log.
+ * Standalone transcripts keep a local selection and show an overlay.
  */
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
@@ -37,7 +36,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   const listRef = useRef<HTMLOListElement>(null);
   // Rows opened by a click are already visible. Scroll only for a linked entry.
   const revealedSeqRef = useRef<number>(undefined);
-  const titleId = useId();
   const events = conversation.events;
   const rows = useMemo(
     () =>
@@ -114,7 +112,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
           {visibleRows.map(({ event, summary, model, usage }) => (
             <li data-event-seq={event.seq} key={event.seq}>
               <button
-                aria-haspopup="dialog"
+                aria-expanded={selectedSeq === event.seq}
                 aria-label={`Event ${event.seq}: ${event.data.type}`}
                 className={cn(
                   rowClass,
@@ -196,42 +194,14 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
           </p>
         ) : null}
       </div>
-      {selected
+      {selected && !props.onSelectedSeqChange
         ? createPortal(
-            <Drawer
-              closeLabel="Close event details"
-              header={
-                <>
-                  <h2
-                    className="m-0 break-words font-mono text-sm font-semibold text-dashboard-text"
-                    id={titleId}
-                  >
-                    {selected.data.type}
-                  </h2>
-                  <p className="mb-0 mt-1 font-mono text-xs text-dashboard-text-muted">
-                    {selected.createdAt}
-                  </p>
-                </>
-              }
+            <ConversationEventDetails
+              overlay
+              conversation={conversation}
+              event={selected}
               onClose={() => setSelectedSeq(undefined)}
-              openKey={`${conversation.conversationId}:${selected.seq}`}
-              titleId={titleId}
-              width="wide"
-            >
-              {conversation.canFork &&
-              selected.data.type === "message" &&
-              selected.data.role === "assistant" &&
-              !selected.data.redacted ? (
-                <div className="mb-3 flex items-center gap-2 text-sm">
-                  <ForkConversationButton
-                    conversationId={conversation.conversationId}
-                    messageId={selected.data.messageId}
-                  />
-                  <span>Fork after this reply</span>
-                </div>
-              ) : null}
-              <EventDetails key={selected.seq} event={selected} />
-            </Drawer>,
+            />,
             document.body,
           )
         : null}
