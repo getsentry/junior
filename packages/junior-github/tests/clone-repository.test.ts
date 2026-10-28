@@ -5,6 +5,7 @@ import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.j
 function context(
   run: ReturnType<typeof vi.fn>,
   findByRepository = vi.fn().mockResolvedValue([]),
+  active = vi.fn().mockResolvedValue(undefined),
 ) {
   return {
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
@@ -15,7 +16,7 @@ function context(
       readFile: vi.fn(),
       writeFile: vi.fn(),
     },
-    workspaces: { findByRepository },
+    workspaces: { active, findByRepository },
   };
 }
 
@@ -158,6 +159,56 @@ describe("cloneRepository", () => {
     expect(result).toMatchObject({
       path: "/vercel/sandbox/repos/junior",
       repo: "getsentry/junior",
+    });
+  });
+
+  it("clones inside another Workspace and notes the matching Workspaces", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const findByRepository = vi.fn().mockResolvedValue(["sentry", "monorepo"]);
+    const active = vi.fn().mockResolvedValue({ name: "monorepo" });
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository, active),
+    );
+
+    const result = await tool.execute!(
+      { repo: "getsentry/sentry" },
+      {} as never,
+    );
+
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({
+      target: "cloneRepository",
+      path: "/vercel/sandbox/repos/sentry",
+      repo: "getsentry/sentry",
+      note: 'Cloned getsentry/sentry ad hoc to keep the current Workspace "monorepo". Workspace "sentry" also includes getsentry/sentry. switchWorkspace replaces this Sandbox and drops its files.',
+    });
+  });
+
+  it("treats a Workspace Sandbox without a recipe as a Workspace", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const tool = createGitHubCloneRepositoryTool(
+      context(
+        run,
+        vi.fn().mockResolvedValue(["sentry"]),
+        vi.fn().mockResolvedValue({}),
+      ),
+    );
+
+    const result = await tool.execute!(
+      { repo: "getsentry/sentry" },
+      {} as never,
+    );
+
+    expect(result).toMatchObject({
+      note: 'Cloned getsentry/sentry ad hoc to keep the current Workspace. Workspace "sentry" also includes getsentry/sentry. switchWorkspace replaces this Sandbox and drops its files.',
     });
   });
 

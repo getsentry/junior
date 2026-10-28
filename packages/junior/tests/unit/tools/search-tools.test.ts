@@ -95,7 +95,7 @@ function mixedCatalog() {
   return {
     github_cloneRepository: tool({
       description:
-        "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. When matching Workspaces exist this is a tool input error: call switchWorkspace instead, or pass allowAdHoc=true for an intentional ad-hoc checkout.",
+        "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or pass allowAdHoc=true for an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
       source: githubSource,
       exposure: "deferred",
       inputSchema: Type.Object({

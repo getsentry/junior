@@ -555,6 +555,11 @@ export interface PluginEventToolContext {
 }
 
 export interface PluginWorkspaceToolContext {
+  /**
+   * Workspace that the current Sandbox started from. Returns undefined for
+   * the default Sandbox. `name` is missing when the recipe no longer exists.
+   */
+  active(): Promise<{ name?: string } | undefined>;
   /** Find named Workspaces that include one provider repository. */
   findByRepository(input: {
     provider: string;
