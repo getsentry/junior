@@ -417,8 +417,7 @@ jobs:
       needs.dashboard-e2e.outputs.frameshift-mode == 'report' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    # Use GitHub-hosted networking for this API-only publisher.
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       actions: read
       contents: write
