@@ -55,13 +55,13 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "@vitest/coverage-v8": "4.1.7",
+    "@vitest/coverage-v8": "4.1.12",
     "eslint": "^10.8.0",
     "oxlint": "^1.79.0",
     "tailwindcss": "^4.3.0",
     "tsdown": "0.23.1",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.12"
   }
 }
