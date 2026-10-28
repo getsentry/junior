@@ -172,6 +172,7 @@ describe("Workspace snapshot completion", () => {
     const workspace = await createWorkspace({
       name: `snapshot-rebuild-${randomUUID()}`,
       setupScript: "printf ready",
+      vcpus: 16,
       repos: [],
     });
     const value = profile.create(SANDBOX_RUNTIME, workspace);
@@ -210,6 +211,9 @@ describe("Workspace snapshot completion", () => {
       ready: null,
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ resources: { vcpus: 16 } }),
+    );
   });
 
   it("marks a build failed when its named builder is missing", async () => {

@@ -6,6 +6,7 @@ import { Field } from "../../components/Field";
 import { InlineError } from "../../components/InlineError";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
+import { formatSandboxSize } from "./SandboxSizeSummary";
 import {
   createRepoDraft,
   type RepoDraft,
@@ -15,6 +16,7 @@ import {
 type WorkspaceEditorProps = {
   busy: boolean;
   canSave: boolean;
+  defaultVcpus: number | null;
   draft: WorkspaceDraft;
   error?: string;
   editing: boolean;
@@ -197,6 +199,23 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               'pnpm install --dir "$JUNIOR_REPOS_ROOT/sentry"\n# cwd is $JUNIOR_WORKSPACE_ROOT'
             }
             value={props.draft.setupScript}
+          />
+        </Field>
+
+        <Field
+          help="Sandbox vCPUs for this Workspace. Each vCPU adds 2 GB of memory. Leave empty to use the app default."
+          htmlFor="workspace-vcpus"
+          label="vCPUs"
+        >
+          <TextInput
+            autoComplete="off"
+            id="workspace-vcpus"
+            inputMode="numeric"
+            onChange={(event) =>
+              props.onChange({ ...props.draft, vcpus: event.target.value })
+            }
+            placeholder={formatSandboxSize(props.defaultVcpus)}
+            value={props.draft.vcpus}
           />
         </Field>
 

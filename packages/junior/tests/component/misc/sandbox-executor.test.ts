@@ -1027,6 +1027,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1068,6 +1069,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1082,6 +1084,7 @@ describe("createTestSandbox", () => {
         id: "workspace-2",
         name: "junior",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1114,6 +1117,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1150,6 +1154,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1226,6 +1231,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry-docs",
         setupScript: "echo new",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1267,6 +1273,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1287,6 +1294,7 @@ describe("createTestSandbox", () => {
   });
 
   it("loads a ready Workspace snapshot without starting a build", async () => {
+    process.env.SANDBOX_VCPUS = "4";
     const controller = new AbortController();
     getReadyWorkspaceMock.mockResolvedValueOnce({
       snapshotId: "snap_workspace_setup",
@@ -1301,6 +1309,7 @@ describe("createTestSandbox", () => {
       id: "workspace-setup",
       name: "setup",
       setupScript: "echo ready",
+      vcpus: 8,
       snapshot: null,
       repos: [],
     };
@@ -1317,6 +1326,10 @@ describe("createTestSandbox", () => {
       runtime: "node22",
     });
     expect(resolveMock).not.toHaveBeenCalled();
+    // The Workspace size wins over the app setting.
+    expect(sandboxCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ resources: { vcpus: 8 } }),
+    );
   });
 
   it("forwards abort signal into Workspace provider preparation", async () => {
@@ -1350,6 +1363,7 @@ describe("createTestSandbox", () => {
         id: "workspace-provider",
         name: "provider",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1388,6 +1402,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1445,6 +1460,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -2984,6 +3000,7 @@ describe("createTestSandbox", () => {
       id: "workspace-snapshot-not-ready",
       name: "snapshot-not-ready",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -3011,6 +3028,7 @@ describe("createTestSandbox", () => {
       id: "workspace-sentry-docs",
       name: "sentry-docs",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -3048,6 +3066,7 @@ describe("createTestSandbox", () => {
       id: "workspace-sentry-docs-helpers",
       name: "sentry-docs",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -3097,6 +3116,7 @@ describe("createTestSandbox", () => {
         id: "workspace-missing-snapshot",
         name: "missing-snapshot",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },

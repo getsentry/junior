@@ -501,6 +501,7 @@ export async function mockDashboardApis(
         },
       ],
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: {
         buildDurationMs: 45_000,
         generatedAt: "2026-08-15T05:40:21.000Z",
@@ -521,6 +522,7 @@ export async function mockDashboardApis(
           generatedAt: "2026-08-15T05:30:21.000Z",
           id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
         },
+        defaultVcpus: 4,
         workspaces: [{ ...workspace, snapshot: null }],
       },
     });

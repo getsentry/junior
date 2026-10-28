@@ -305,7 +305,7 @@ async function startBuild(params: {
 }): Promise<void> {
   const { workspace, value, signal } = params;
   const credentials = getVercelSandboxCredentials();
-  const resources = getSandboxResources();
+  const resources = getSandboxResources(workspace);
   const name = builderName();
   const buildId = randomUUID();
   const startedAt = new Date();
