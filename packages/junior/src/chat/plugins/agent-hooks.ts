@@ -749,7 +749,8 @@ export function getPluginTools(
         async active() {
           const id = context.workspaces?.activeWorkspaceId();
           if (!id) return undefined;
-          return (await getWorkspace(getDb(), id))?.name;
+          const workspace = await getWorkspace(getDb(), id);
+          return workspace ? { name: workspace.name } : {};
         },
         async findByRepository(input: { provider: string; repo: string }) {
           return await listWorkspaceNamesByRepository(getDb(), input);

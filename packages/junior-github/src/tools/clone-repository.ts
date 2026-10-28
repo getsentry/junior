@@ -82,14 +82,17 @@ function workspaceRequiredError(
 /** Agent-facing note for an ad-hoc clone kept inside another Workspace. */
 function workspaceAvailableNote(
   repoId: string,
-  active: string,
+  active: { name?: string },
   workspaces: string[],
 ): string {
+  const current = active.name
+    ? `the current Workspace "${active.name}"`
+    : "the current Workspace";
   const matches =
     workspaces.length === 1
       ? `Workspace ${quotedNames(workspaces)} also includes`
       : `Workspaces ${quotedNames(workspaces)} also include`;
-  return `Cloned ${repoId} ad hoc to keep the current Workspace "${active}". ${matches} ${repoId}. switchWorkspace replaces this Sandbox and drops its files.`;
+  return `Cloned ${repoId} ad hoc to keep ${current}. ${matches} ${repoId}. switchWorkspace replaces this Sandbox and drops its files.`;
 }
 
 function defaultDirectory(repoName: string): string {
@@ -172,7 +175,7 @@ export function createGitHubCloneRepositoryTool(ctx: {
       // Look up matching recipes before any sandbox write so a later
       // switchWorkspace does not discard a just-created ad-hoc clone.
       let workspaces: string[] = [];
-      let active: string | undefined;
+      let active: { name?: string } | undefined;
       try {
         [workspaces, active] = await Promise.all([
           ctx.workspaces.findByRepository({
@@ -194,7 +197,9 @@ export function createGitHubCloneRepositoryTool(ctx: {
       if (workspaces.length > 0 && !active && input.allowAdHoc !== true) {
         throw workspaceRequiredError(repoId, workspaces);
       }
-      const otherWorkspaces = workspaces.filter((name) => name !== active);
+      const otherWorkspaces = workspaces.filter(
+        (name) => name !== active?.name,
+      );
       const note =
         active && otherWorkspaces.length > 0
           ? workspaceAvailableNote(repoId, active, otherWorkspaces)
