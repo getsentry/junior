@@ -47,6 +47,7 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   getDashboardConversationLink,
   getDashboardTaskLink,
@@ -72,14 +73,6 @@ import {
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
-
-/** Signal that a plugin intentionally denied a tool execution. */
-export class PluginHookDeniedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PluginHookDeniedError";
-  }
-}
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -1725,8 +1718,10 @@ export function createPluginHookRunner(
           },
         });
 
+        // A denial tells the model to take another path, so it is an
+        // expected tool input failure, not a runtime exception.
         if (denied) {
-          throw new PluginHookDeniedError(denied);
+          throw new ToolInputError(denied);
         }
         if (replacement !== undefined) {
           if (!isRecord(replacement)) {

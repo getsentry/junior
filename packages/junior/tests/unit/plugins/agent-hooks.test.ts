@@ -44,6 +44,7 @@ import {
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -1759,7 +1760,7 @@ describe("agent plugin hooks", () => {
           name: "bash",
           input: { command: "blocked" },
         }),
-      ).rejects.toThrow("blocked by plugin");
+      ).rejects.toEqual(new ToolInputError("blocked by plugin"));
 
       const before = await runner.beforeToolExecute({
         name: "bash",
