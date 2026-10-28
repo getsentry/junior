@@ -1,6 +1,7 @@
 import { FormNotice } from "../../components/FormNotice";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
+import { SelectFixtures } from "./SelectFixtures";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
@@ -228,6 +229,9 @@ function FoundationsGalleryPage() {
         <FormNotice title="This automation changed while you were editing.">
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
+      </Fixture>
+      <Fixture title="Select controls">
+        <SelectFixtures />
       </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
