@@ -259,7 +259,7 @@ function wrapBareReferences(text: string): string {
   return out.join("\n");
 }
 
-const LIST_ITEM_RE = /^[ \t]*(?:[-*•]|\d+\.)[ \t]/;
+const LIST_ITEM_PATTERN = /^[-*•]\s|^\d+\.\s/;
 
 /**
  * Turn a follow-up paragraph inside a list item into a bullet at the same
@@ -279,14 +279,14 @@ function bulletListFollowUpParagraphs(text: string): string {
     const trimmed = line.trimStart();
     const isFence = trimmed.startsWith("```");
     if (!inCodeBlock && trimmed && trimmed.length === line.length) {
-      inList = LIST_ITEM_RE.test(line);
+      inList = LIST_ITEM_PATTERN.test(line);
     } else if (
       !inCodeBlock &&
       inList &&
       trimmed &&
       !isFence &&
       lines[i - 1]?.trim() === "" &&
-      !LIST_ITEM_RE.test(line)
+      !LIST_ITEM_PATTERN.test(trimmed)
     ) {
       lines[i] = `${line.slice(0, line.length - trimmed.length)}- ${trimmed}`;
     }
@@ -301,7 +301,6 @@ function bulletListFollowUpParagraphs(text: string): string {
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
   const codeBlockPattern = /^```/;
-  const listItemPattern = /^[-*•]\s|^\d+\.\s/;
   const lines = text.split("\n");
   const result: string[] = [];
   let inCodeBlock = false;
@@ -327,19 +326,19 @@ export function ensureBlockSpacing(text: string): string {
     }
 
     const prev = result.length > 0 ? result[result.length - 1] : undefined;
-    const isListItem = listItemPattern.test(line.trimStart());
+    const isListItem = LIST_ITEM_PATTERN.test(line.trimStart());
     // An indented line under a list item continues that item's text.
     const isListContinuation =
       prev !== undefined &&
       !isListItem &&
       /^\s/.test(line) &&
-      (/^\s/.test(prev) || listItemPattern.test(prev));
+      (/^\s/.test(prev) || LIST_ITEM_PATTERN.test(prev));
     if (
       prev !== undefined &&
       prev.trim() !== "" &&
       line.trim() !== "" &&
       !isListContinuation &&
-      !(listItemPattern.test(prev.trimStart()) && isListItem)
+      !(LIST_ITEM_PATTERN.test(prev.trimStart()) && isListItem)
     ) {
       result.push("");
     }
