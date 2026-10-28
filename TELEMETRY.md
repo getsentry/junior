@@ -264,24 +264,32 @@ Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `app.guardian.review_attempt`,
 `app.ai.cost.input_usd`, `app.ai.cost.output_usd`,
 `app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
-`app.ai.cost.total_usd`, `gen_ai.response.time_to_first_chunk`,
-`gen_ai.response.streaming`, `app.ai.first_chunk_type`
+`app.ai.cost.total_usd`, `app.ai.time_to_first_byte_ms`,
+`gen_ai.response.time_to_first_chunk`, `app.ai.first_token_type`,
+`gen_ai.response.streaming`
 
-Each `gen_ai.chat` span records how long the model took to start its reply:
+Each `gen_ai.chat` span records how long the model took to start its reply.
+Both times start just before the model request:
 
-- `gen_ai.response.time_to_first_chunk`: seconds from the model request to the
-  first stream event of any type. This follows the OTel GenAI unit. Other
-  Junior durations use `_ms`.
-- `app.ai.first_chunk_type`: the type of that first event, such as `start`,
-  `text_delta`, or `toolcall_start`. Pi sends `start` when response headers
-  arrive, so the time can be shorter than the time to first visible text.
-- `gen_ai.response.streaming`: `true` when a first chunk arrived. `false` when
-  the call failed or was aborted before any chunk. A terminal `error` event is
-  not a chunk, so these calls have no time to first chunk.
+- `app.ai.time_to_first_byte_ms`: milliseconds to the first stream event of
+  any type. This is almost always Pi's `start` event, which Pi sends when the
+  HTTP response arrives.
+- `gen_ai.response.time_to_first_chunk`: seconds to the first event with model
+  content. This is the time to first token. The OTel GenAI and Sentry
+  conventions use this name and unit for the first content chunk.
+- `app.ai.first_token_type`: the type of that first content event. Content
+  events are the content block events: `text_*`, `thinking_*`, and
+  `toolcall_*`. Block `*_start` events count, because the model has started
+  the block and a tool call start already has the tool name. `start`, `done`,
+  and `error` do not count.
+- `gen_ai.response.streaming`: `true` when any event arrived. `false` when the
+  call failed or was aborted before any event. A terminal `error` event is not
+  a response event. A call that fails after `start` but before content has a
+  time to first byte and no time to first token.
 
 ```text
 dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,gen_ai.request.model,gen_ai.response.time_to_first_chunk,app.ai.first_chunk_type,gen_ai.response.streaming,span.duration
+fields=timestamp,trace,gen_ai.request.model,app.ai.time_to_first_byte_ms,gen_ai.response.time_to_first_chunk,app.ai.first_token_type,gen_ai.response.streaming,span.duration
 sort=timestamp
 ```
 

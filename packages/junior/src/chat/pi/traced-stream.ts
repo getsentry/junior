@@ -140,32 +140,47 @@ function buildChatEndAttributes(
   return attributes;
 }
 
-// Observes the first chunk without a second stream consumer. The stream is
+// Events that do not carry model content. Pi pushes `start` when the HTTP
+// response resolves. Content block events (`*_start`, `*_delta`, `*_end`) all
+// count as content: a block start arrives when the model starts that block,
+// and a tool call start already carries the tool name.
+const NON_CONTENT_EVENT_TYPES = new Set(["start", "done", "error"]);
+
+// Observes response timing without a second stream consumer. The stream is
 // single-consumer, so this wraps the provider's `push` calls instead of reading
 // the stream. The agent loop gets the same object, events, and `result()`
 // promise. A terminal `error` event is not a response chunk, so a call that
-// fails or aborts before any chunk records `streaming: false` and no timing.
-function observeFirstChunk(
+// fails or aborts before any event records `streaming: false` and no timing.
+function observeResponseStart(
   stream: AssistantMessageEventStream,
   requestStartedAtMs: number,
 ): () => Record<string, TraceAttributeValue> {
-  let firstChunk: { type: string; receivedAtMs: number } | undefined;
+  let firstByteAtMs: number | undefined;
+  let firstToken: { type: string; receivedAtMs: number } | undefined;
   const push = stream.push.bind(stream);
   stream.push = (event) => {
-    if (!firstChunk && event.type !== "error") {
-      firstChunk = { type: event.type, receivedAtMs: Date.now() };
+    if (firstByteAtMs === undefined && event.type !== "error") {
+      firstByteAtMs = Date.now();
+    }
+    if (!firstToken && !NON_CONTENT_EVENT_TYPES.has(event.type)) {
+      firstToken = { type: event.type, receivedAtMs: Date.now() };
     }
     push(event);
   };
   return (): Record<string, TraceAttributeValue> => {
-    if (!firstChunk) {
+    if (firstByteAtMs === undefined) {
       return { "gen_ai.response.streaming": false };
     }
     return {
-      "gen_ai.response.time_to_first_chunk":
-        (firstChunk.receivedAtMs - requestStartedAtMs) / 1000,
       "gen_ai.response.streaming": true,
-      "app.ai.first_chunk_type": firstChunk.type,
+      "app.ai.time_to_first_byte_ms": firstByteAtMs - requestStartedAtMs,
+      ...(firstToken
+        ? {
+            "gen_ai.response.time_to_first_chunk":
+              (firstToken.receivedAtMs - requestStartedAtMs) / 1000,
+            "app.ai.first_token_type": firstToken.type,
+          }
+        : undefined),
     };
   };
 }
@@ -220,7 +235,7 @@ export function createTracedStreamFn(
       const stream = await Sentry.withActiveSpan(span, () =>
         Promise.resolve(base(model, context, options)),
       );
-      const firstChunkAttributes = observeFirstChunk(
+      const responseStartAttributes = observeResponseStart(
         stream,
         requestStartedAtMs,
       );
@@ -232,7 +247,7 @@ export function createTracedStreamFn(
             try {
               const endAttributes = {
                 ...buildChatEndAttributes(finalMessage, mode),
-                ...firstChunkAttributes(),
+                ...responseStartAttributes(),
               };
               for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);
@@ -250,7 +265,7 @@ export function createTracedStreamFn(
             }
           },
           (error: unknown) => {
-            span.setAttributes(firstChunkAttributes());
+            span.setAttributes(responseStartAttributes());
             span.setAttribute(
               "error.type",
               error instanceof Error ? error.name : typeof error,

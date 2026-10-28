@@ -368,7 +368,7 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.conversation.compacted"]).toBe(true);
   });
 
-  it("records time to first chunk once without changing stream events", async () => {
+  it("records time to first byte and first token once without changing stream events", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(10_000);
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
@@ -397,7 +397,9 @@ describe("createTracedStreamFn", () => {
     vi.setSystemTime(10_250);
     stream.push(events[0]!);
     vi.setSystemTime(10_900);
-    for (const event of events.slice(1)) {
+    stream.push(events[1]!);
+    vi.setSystemTime(11_500);
+    for (const event of events.slice(2)) {
       stream.push(event);
     }
 
@@ -414,13 +416,50 @@ describe("createTracedStreamFn", () => {
     const endAttributes = Object.fromEntries(
       span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
     );
-    expect(endAttributes["gen_ai.response.time_to_first_chunk"]).toBe(0.25);
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBe(250);
+    expect(endAttributes["gen_ai.response.time_to_first_chunk"]).toBe(0.9);
+    expect(endAttributes["app.ai.first_token_type"]).toBe("text_start");
     expect(endAttributes["gen_ai.response.streaming"]).toBe(true);
-    expect(endAttributes["app.ai.first_chunk_type"]).toBe("start");
-    const timingWrites = span.setAttribute.mock.calls.filter(
-      (c) => c[0] === "gen_ai.response.time_to_first_chunk",
+    const timingWrites = span.setAttribute.mock.calls.filter((c) =>
+      [
+        "app.ai.time_to_first_byte_ms",
+        "gen_ai.response.time_to_first_chunk",
+      ].includes(c[0] as string),
     );
-    expect(timingWrites).toHaveLength(1);
+    expect(timingWrites).toHaveLength(2);
+  });
+
+  it("records time to first byte but not first token when the stream errors after start", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    const errorMessage = { ...fakeMessage(), stopReason: "aborted" as const };
+    vi.setSystemTime(10_300);
+    stream.push({ type: "start", partial: errorMessage });
+    vi.setSystemTime(10_800);
+    stream.push({ type: "error", reason: "aborted", error: errorMessage });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const endAttributes = Object.fromEntries(
+      getSpan().setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["gen_ai.response.streaming"]).toBe(true);
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBe(300);
+    expect(
+      endAttributes["gen_ai.response.time_to_first_chunk"],
+    ).toBeUndefined();
+    expect(endAttributes["app.ai.first_token_type"]).toBeUndefined();
   });
 
   it("ends the span when the stream errors", async () => {
@@ -454,12 +493,12 @@ describe("createTracedStreamFn", () => {
       span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
     );
     expect(endAttributes["error.type"]).toBeDefined();
-    // An error or abort before any chunk is not a first chunk.
+    // An error or abort before any event records no timing.
     expect(endAttributes["gen_ai.response.streaming"]).toBe(false);
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBeUndefined();
     expect(
       endAttributes["gen_ai.response.time_to_first_chunk"],
     ).toBeUndefined();
-    expect(endAttributes["app.ai.first_chunk_type"]).toBeUndefined();
   });
 
   it("sets error status and ends the span when base() throws", async () => {
