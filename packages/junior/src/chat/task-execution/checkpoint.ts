@@ -89,6 +89,8 @@ interface TurnCheckpointWrite {
   cumulativeToolCallCount?: number;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean;
+  /** Times recovery resumed this turn after a lost worker; survives later writes. */
+  lostWorkerResumeCount?: number;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];
   durationMs?: number;
@@ -203,6 +205,8 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
+      lostWorkerResumeCount:
+        args.lostWorkerResumeCount ?? latest?.lostWorkerResumeCount,
     }),
   };
 }

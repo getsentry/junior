@@ -125,6 +125,8 @@ export interface TurnRecord {
   cumulativeUsage?: AgentTurnUsage;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean;
+  /** Times recovery resumed this turn after its worker stopped checking in. */
+  lostWorkerResumeCount?: number;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   /** Provider-owned identifier returned after visible delivery is accepted. */
@@ -275,6 +277,7 @@ const storedTurnRecordSchema = z
     errorMessage: z.string().optional(),
     cumulativeToolCallCount: z.number().int().nonnegative().optional(),
     turnLimitWrappedUp: z.boolean().optional(),
+    lostWorkerResumeCount: z.number().int().nonnegative().optional(),
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
@@ -461,6 +464,7 @@ function materializeTurnRecord(
       credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
       turnLimitWrappedUp: stored.turnLimitWrappedUp,
+      lostWorkerResumeCount: stored.lostWorkerResumeCount,
       cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
       dispatchOutcome: stored.dispatchOutcome,
@@ -578,6 +582,7 @@ function buildStoredRecord(args: {
   traceId?: string;
   cumulativeToolCallCount?: number;
   turnLimitWrappedUp?: boolean;
+  lostWorkerResumeCount?: number;
   turnStartSeq?: number;
 }): StoredTurnRecord {
   const nowMs = Date.now();
@@ -597,6 +602,7 @@ function buildStoredRecord(args: {
       credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp,
+      lostWorkerResumeCount: args.lostWorkerResumeCount,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
       errorMessage: args.errorMessage,
@@ -727,6 +733,7 @@ async function updateTurnState(args: {
         credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         turnLimitWrappedUp: args.existing.turnLimitWrappedUp,
+        lostWorkerResumeCount: args.existing.lostWorkerResumeCount,
         dispatchId: args.existing.dispatchId,
         dispatchOutcome: args.existing.dispatchOutcome,
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
@@ -753,6 +760,7 @@ export async function upsertTurnRecord(args: {
   cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
   turnLimitWrappedUp?: boolean;
+  lostWorkerResumeCount?: number;
   destination?: Destination;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
@@ -905,6 +913,8 @@ async function upsertTurnRecordLocked(
           existingRecord?.cumulativeToolCallCount,
         turnLimitWrappedUp:
           args.turnLimitWrappedUp ?? existingRecord?.turnLimitWrappedUp,
+        lostWorkerResumeCount:
+          args.lostWorkerResumeCount ?? existingRecord?.lostWorkerResumeCount,
         dispatchId,
         dispatchOutcome:
           args.dispatchOutcome ?? existingRecord?.dispatchOutcome,

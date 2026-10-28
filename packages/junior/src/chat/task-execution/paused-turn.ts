@@ -30,7 +30,10 @@ import {
   type TurnRecord,
   type TurnSummary,
 } from "./turn-cursor";
-import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import {
+  loadTurnCheckpoint,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -739,6 +742,29 @@ async function failStrandedTurnWithFallback(args: {
   return true;
 }
 
+const MAX_LOST_WORKER_RESUMES = 1;
+
+/** Park a turn whose worker stopped checking in so the next run resumes it. */
+async function parkLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
+  const parked = await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "retry",
+    conversationId: turn.conversationId,
+    turnId: turn.turnId,
+    sliceId: turn.sliceId,
+    messages: turn.piMessages,
+    lostWorkerResumeCount: (turn.lostWorkerResumeCount ?? 0) + 1,
+    errorMessage: "Turn lost its worker; resuming from its last boundary",
+  });
+  if (!parked) return false;
+  logWarn("agent.turn.lost_worker.resumed", {
+    "app.ai.conversation_id": turn.conversationId,
+    "app.ai.session_id": turn.turnId,
+    "app.ai.resume_slice_id": parked.sliceId,
+  });
+  return true;
+}
+
 /** Resume the first valid paused Slack session for an idle conversation. */
 export async function runNextPausedTurn(
   conversationId: string,
@@ -789,6 +815,21 @@ async function runNextPausedTurnInContext(
       });
       await persistThreadStateById(conversationId, { conversation });
       return false;
+    }
+
+    // An expired lease means the worker stopped checking in. It does not
+    // mean the work is lost: a blocked event loop looks the same as a dead
+    // process. Resume once from the last committed boundary. A second loss
+    // fails, so one turn that stalls each worker cannot spread.
+    if (
+      (running.lostWorkerResumeCount ?? 0) < MAX_LOST_WORKER_RESUMES &&
+      (await parkLostWorkerTurn(running))
+    ) {
+      return await runNextPausedTurnInContext(
+        conversationId,
+        options,
+        runOptions,
+      );
     }
 
     await failStrandedTurnWithFallback({
