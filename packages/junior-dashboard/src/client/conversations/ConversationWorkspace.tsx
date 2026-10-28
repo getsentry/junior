@@ -193,25 +193,27 @@ function NewConversationView(props: {
         footerStart={
           <div
             aria-label="Conversation visibility"
-            className="inline-flex items-center gap-1"
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
             role="group"
           >
             <ToggleButton
+              className="min-w-20 gap-1.5"
               onClick={() => setVisibility("public")}
               pressed={isPublic}
               type="button"
               variant="segment"
             >
-              <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+              <Globe2 aria-hidden="true" className="size-3" />
               Public
             </ToggleButton>
             <ToggleButton
+              className="min-w-20 gap-1.5"
               onClick={() => setVisibility("private")}
               pressed={!isPublic}
               type="button"
               variant="segment"
             >
-              <LockKeyhole aria-hidden="true" className="mr-1 inline size-3" />
+              <LockKeyhole aria-hidden="true" className="size-3" />
               Private
             </ToggleButton>
           </div>
