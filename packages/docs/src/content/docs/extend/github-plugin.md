@@ -315,7 +315,16 @@ Set `GITHUB_WEBHOOK_SECRET` to enable events. See
 automations.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
-every item of that kind in a repository with `owner/repo`.
+every item of that kind in a repository with `owner/repo`. Deployment events can
+target one commit with `deployment_source`, or every deployment in a repository
+with `owner/repo`.
+
+Deployment events carry `environment` and, when GitHub Actions made the
+deployment for a job with `environment:`, `workflowId`, `workflowPath`, and
+`workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
+repository automation to one environment or one workflow. For example, an
+automation on `getsentry/toolkit` for `deployment.failed` can match
+`environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.
 
 To always watch selected events after Junior creates a pull request in this
 app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
@@ -325,13 +334,8 @@ automation instruction. It does not replace or expand that instruction.
 
 #### `deployment_source`
 
-An environment, a commit, or one commit in one environment. Identifier:
-`deployment-source:owner/repo[:environment][:<full-commit-sha>]`.
-
-Use an environment without a commit, such as
-`deployment-source:getsentry/junior:production`, for an event automation that
-follows every deployment to that environment. GitHub Actions makes a deployment
-for each job that sets `environment:`.
+One commit, optionally limited to an environment. Identifier:
+`deployment-source:owner/repo[:environment]:<full-commit-sha>`.
 
 <details class="event">
 <summary><code>deployment.created</code></summary>
@@ -509,8 +513,8 @@ A release was published.
 
 #### `repository`
 
-Every issue and pull request in `owner/repo`. Supports the same `issue` and
-`pull_request` events listed above. Check suites with no pull request also
+Every deployment, issue, and pull request in `owner/repo`. Supports the same
+`deployment`, `issue`, and `pull_request` events listed above. Check suites with no pull request also
 publish here, so you can match branch builds with `headBranch`.
 
 ## Verify

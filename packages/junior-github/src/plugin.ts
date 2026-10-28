@@ -20,6 +20,7 @@ import {
 } from "./webhooks/installation-requests.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
+  GITHUB_DEPLOYMENT_MATCH_FIELDS,
   GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
@@ -156,6 +157,7 @@ export function githubPlugin(
           identifier: GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
           suggestedEvents: [...GITHUB_DEPLOYMENT_SUGGESTED_EVENTS],
+          matchFields: GITHUB_DEPLOYMENT_MATCH_FIELDS,
         },
         {
           type: "issue",
@@ -184,6 +186,7 @@ export function githubPlugin(
           type: "repository",
           identifier: GITHUB_REPOSITORY_IDENTIFIER,
           supportedEvents: [
+            ...GITHUB_DEPLOYMENT_EVENTS,
             ...GITHUB_ISSUE_EVENTS,
             ...GITHUB_PULL_REQUEST_EVENTS,
           ],
@@ -194,6 +197,7 @@ export function githubPlugin(
             ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
           ],
           matchFields: {
+            ...GITHUB_DEPLOYMENT_MATCH_FIELDS,
             ...GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
             ...GITHUB_PULL_REQUEST_MATCH_FIELDS,
           },
