@@ -158,11 +158,6 @@ const app = await createApp({
     // Off by default. Without this, Junior only replies to explicit @mentions
     // and event notifications in those threads.
     "passive-routing": true,
-    // Model-facing spawnAgent, messageAgent, listAgents, and stopAgent for
-    // durable child agent work. Child agents get messageAgent, listAgents,
-    // and reportBlocked.
-    // Incomplete; keep off unless you are testing the #879 runtime.
-    subagents: true,
     // Operator tools such as runOperatorSql. They read and write the app
     // database directly and skip Conversation privacy checks. Enable them only
     // on isolated deployments, such as Previews behind deployment protection.
@@ -171,8 +166,10 @@ const app = await createApp({
 });
 ```
 
-`junior chat` enables experimental `subagents` automatically because it is the
-local createApp-equivalent entrypoint and already wires the child-worker path.
+Child agents are always on: every app gives the model `spawnAgent`,
+`messageAgent`, `listAgents`, and `stopAgent`. `experimental.subagents` was
+removed; remove it from your config, because Junior rejects unknown
+experimental keys.
 
 By default, only the root Conversation can start child agents. Set
 `limits.maxAgentDepth` to let child agents start their own child agents. For

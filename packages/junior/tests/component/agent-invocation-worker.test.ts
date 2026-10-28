@@ -17,6 +17,7 @@ import {
   createAgentInvocationWorker,
   agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
+import { commitMessages } from "@/chat/conversations/projection";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -387,6 +388,136 @@ describe("agent invocation worker", () => {
           },
         ],
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("starts a fork child with the parent history before the spawn call", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const usage = {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      };
+      const assistant = (content: unknown[], timestamp: number): PiMessage =>
+        ({
+          role: "assistant",
+          content,
+          api: "responses",
+          provider: "openai",
+          model: "gpt-5.3",
+          usage,
+          stopReason: content.some(
+            (part) => (part as { type: string }).type === "toolCall",
+          )
+            ? "toolUse"
+            : "stop",
+          timestamp,
+        }) as PiMessage;
+      const readRound: PiMessage[] = [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Compare the two retry paths." }],
+          timestamp: 1,
+        },
+        assistant(
+          [
+            {
+              type: "toolCall",
+              id: "call-read",
+              name: "readFile",
+              arguments: { path: "retry.ts" },
+            },
+          ],
+          2,
+        ),
+        {
+          role: "toolResult",
+          toolCallId: "call-read",
+          toolName: "readFile",
+          content: [{ type: "text", text: "export const RETRIES = 3;" }],
+          isError: false,
+          timestamp: 3,
+        },
+      ];
+      await commitMessages({
+        conversationId: PARENT_CONVERSATION_ID,
+        messages: [
+          ...readRound,
+          assistant(
+            [
+              {
+                type: "toolCall",
+                id: "call-fork",
+                name: "spawnAgent",
+                arguments: {
+                  agent_type: "fork",
+                  task: "Check the other path.",
+                },
+              },
+            ],
+            4,
+          ),
+        ],
+      });
+      const created = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        agentType: "fork",
+        idempotencyKey: "fork-task",
+        input: "Check the other path.",
+        parentToolCallId: "call-fork",
+      });
+      const histories: (readonly PiMessage[])[] = [];
+      const worker = createAgentInvocationWorker({
+        run: async (run) => {
+          histories.push(run.history ?? []);
+          return {
+            status: "completed" as const,
+            result: {
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+              text: "The other path retries twice.",
+            },
+          };
+        },
+      });
+      const message = buildAgentInvocationInboundMessage(created);
+
+      await expect(
+        worker(
+          {
+            attempt: {
+              ack: vi.fn(async () => {}),
+              conversationId: created.childConversationId,
+              drain: vi.fn(),
+              isFinalAttempt: false,
+              messages: [message],
+            },
+            checkIn: vi.fn(),
+            conversationId: created.childConversationId,
+            shouldYield: () => false,
+          } satisfies ConversationWorkerContext,
+          created.invocationId,
+        ),
+      ).resolves.toEqual({ status: "completed" });
+
+      // The fork reads what the parent read, but not the unanswered spawn
+      // call, which a model request would reject.
+      expect(histories).toEqual([
+        readRound.map((item) => expect.objectContaining(item)),
+      ]);
     } finally {
       await fixture.close();
     }

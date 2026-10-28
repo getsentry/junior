@@ -25,6 +25,14 @@ stores the terminal result for its parent to read later.
 - `parentConversationId` is immutable. Bindings and invocation content are
   purged with their root Conversation tree. A child cannot hand off its own
   active model profile or otherwise change its run policy.
+- An invocation may store an **agent type** (`agent-types.ts`). A child keeps
+  its type for later agent invocations, the same as its profile. A type is
+  data; runtime code reads its fields, never its name. A stored name with no
+  type, for example after a type is removed, is read as no type. A type with
+  `startsWithParentHistory` starts the child with the parent's history before
+  the spawn call (`fork-history.ts`), and the child commits that history as its
+  own in its first checkpoint. Types do not limit tools: Guardian reviews each
+  child action against the root user's messages.
 - `limits.maxAgentDepth` is the number of child levels that can start their
   own children. The default, 0, lets only the root start children. The worker
   hides `spawnAgent` from deeper children.
@@ -58,6 +66,10 @@ conversation tree.
    `parentMailboxStatus: "pending"`.
 7. The worker appends the result to the parent mailbox before it acknowledges
    the child work. Then it sets `parentMailboxStatus: "appended"`.
+   The result names the parent's other child agents whose results have not
+   reached it: those still running and those whose result is still
+   `parentMailboxStatus: "pending"`. A parent that started several children
+   can wait for all of them before it reports.
 8. The heartbeat repairs invocations left in `mailboxStatus: "pending"` or
    `parentMailboxStatus: "pending"`.
 
@@ -299,11 +311,8 @@ question and then tells the child to try again.
 
 ## Current Boundary
 
-`spawnAgent` exposes durable creation to a parent agent when the experimental
-`subagents` feature is enabled via
-`createApp({ experimental: { subagents: true } })` (or automatically in
-`junior chat`, the local createApp-equivalent entrypoint). It is off by default
-so deployments can ship the runtime without advertising the model-facing tool.
+`spawnAgent` exposes durable creation to every parent agent whose app wires
+the child-agent worker. It is not an experimental feature.
 The tool receives the delegated task, optional child name, optional model
 profile, and optional per-task reasoning level. The parent should normally
 choose a profile that fits the task, using the configured profile descriptions.

@@ -10,7 +10,7 @@ describe("Child Agents", () => {
   test("when a child agent finishes, report its result in a later turn", async ({
     agent,
   }) => {
-    const { run } = await agent({ experimental: { subagents: true } });
+    const { run } = await agent();
     const conversation = await run(
       slackMention(
         'Use spawnAgent to start one child agent with the task "Reply with only the code word MAPLE-7." When its result arrives, post the code word here.',
@@ -29,7 +29,7 @@ describe("Child Agents", () => {
   test("when the parent delegates, the task carries facts from earlier thread messages", async ({
     agent,
   }) => {
-    const { run } = await agent({ experimental: { subagents: true } });
+    const { run } = await agent();
     const conversation = await run(
       slackMention(
         "Hand that typo fix plan off to a child agent and post the plan here. No repo changes.",
@@ -58,7 +58,7 @@ describe("Child Agents", () => {
   test("when a child agent is missing input, it reports the block and the parent says what is missing", async ({
     agent,
   }) => {
-    const { run } = await agent({ experimental: { subagents: true } });
+    const { run } = await agent();
     const requestedTools: string[] = [];
     const conversation = await run(
       slackMention(
@@ -93,7 +93,7 @@ describe("Child Agents", () => {
   test("when a child agent is no longer needed, stop it without a result turn", async ({
     agent,
   }) => {
-    const { run } = await agent({ experimental: { subagents: true } });
+    const { run } = await agent();
     // The child agent and the parent run at the same time. A replayed model
     // response comes back at once, so without this order the child can make
     // more model requests before the stop reaches it than it made in the
@@ -148,7 +148,6 @@ describe("Child Agents", () => {
     // Three tool calls stand in for a spent budget. Past the limit, Junior
     // blocks the next tool call and asks the child to reply with its progress.
     const { run } = await agent({
-      experimental: { subagents: true },
       limits: { maxToolCallsPerTurn: 3 },
     });
     let systemTimeRequests = 0;
@@ -187,7 +186,6 @@ describe("Child Agents", () => {
     agent,
   }) => {
     const { run } = await agent({
-      experimental: { subagents: true },
       limits: { maxAgentDepth: 1 },
     });
     const conversation = await run(

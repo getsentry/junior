@@ -270,7 +270,7 @@ describe("Slack webhook persistence contract", () => {
         }),
       ]);
     } finally {
-      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+      setExperimentalFeatures({ "passive-routing": true });
     }
   });
 
@@ -344,7 +344,7 @@ describe("Slack webhook persistence contract", () => {
         historyFromSeq: expect.any(Number),
       });
     } finally {
-      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+      setExperimentalFeatures({ "passive-routing": true });
     }
   });
 
@@ -393,7 +393,7 @@ describe("Slack webhook persistence contract", () => {
       // thread by starting a new Turn.
       expect(queue.queuedMessages()).toEqual([]);
     } finally {
-      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+      setExperimentalFeatures({ "passive-routing": true });
     }
   });
 
