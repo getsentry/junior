@@ -106,15 +106,16 @@ export type InboundMessageDelivery = z.output<
 /**
  * Sentry trace propagation headers captured when an inbound message arrives.
  *
- * Workers accept this field before any writer sets it, so old workers do not
- * reject mailbox records during a deploy.
+ * Telemetry must not block mailbox work. Parsing drops a malformed value and
+ * strips unknown keys, so new keys do not need a reader-first deploy.
  */
 const inboundMessageTraceContextSchema = z
   .object({
     baggage: z.string().optional(),
     sentryTrace: z.string().min(1),
   })
-  .strict();
+  .optional()
+  .catch(undefined);
 
 /** Canonical durable mailbox entry owned by task execution. */
 export const inboundMessageSchema = z
@@ -129,7 +130,7 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
-    traceContext: inboundMessageTraceContextSchema.optional(),
+    traceContext: inboundMessageTraceContextSchema,
   })
   .strict();
 
@@ -387,8 +388,13 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
   if (!parsed.success) {
     return undefined;
   }
-  const { publishExternally: _publishExternally, ...message } = parsed.data;
-  return message;
+  const {
+    publishExternally: _publishExternally,
+    traceContext,
+    ...message
+  } = parsed.data;
+  // A dropped trace context must not leave a key that old strict readers reject.
+  return traceContext ? { ...message, traceContext } : message;
 }
 
 function storeMessage(

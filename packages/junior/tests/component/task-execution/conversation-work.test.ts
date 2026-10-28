@@ -668,7 +668,7 @@ describe("conversation work execution", () => {
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
   });
 
-  it("keeps stored trace context through mailbox reads and rewrites", async () => {
+  it("keeps stored trace context and strips unknown trace keys through rewrites", async () => {
     const state = getStateAdapter();
     await state.connect();
     const traceContext = {
@@ -681,14 +681,74 @@ describe("conversation work execution", () => {
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
       execution: {
-        inboundMessageIds: ["m1", "m2"],
-        pendingCount: 2,
+        inboundMessageIds: ["m1", "m2", "m3"],
+        pendingCount: 3,
         pendingMessages: [
           { ...inboundMessage("m1"), publishExternally: true },
           {
             ...inboundMessage("m2", { createdAtMs: 1_500 }),
             publishExternally: true,
             traceContext,
+          },
+          {
+            ...inboundMessage("m3", { createdAtMs: 1_600 }),
+            publishExternally: true,
+            traceContext: { ...traceContext, futureKey: "value" },
+          },
+        ],
+        status: "pending",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await appendInboundMessage({
+      message: inboundMessage("m4", { createdAtMs: 2_000 }),
+      nowMs: 2_000,
+      state,
+    });
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.messages.map((message) => message.traceContext)).toEqual([
+      undefined,
+      traceContext,
+      traceContext,
+      undefined,
+    ]);
+    const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+    };
+    expect(
+      stored.execution.pendingMessages.map((message) => message.traceContext),
+    ).toEqual([undefined, traceContext, traceContext, undefined]);
+  });
+
+  it("drops malformed trace context and still processes the message", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 2,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: ["m1", "m2"],
+        pendingCount: 2,
+        pendingMessages: [
+          {
+            ...inboundMessage("m1"),
+            publishExternally: true,
+            traceContext: { baggage: "sentry-trace_id=abc" },
+          },
+          {
+            ...inboundMessage("m2", { createdAtMs: 1_500 }),
+            publishExternally: true,
+            traceContext: "not-an-object",
           },
         ],
         status: "pending",
@@ -704,52 +764,30 @@ describe("conversation work execution", () => {
       state,
     });
 
-    const work = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-      state,
-    });
-    expect(work?.messages.map((message) => message.traceContext)).toEqual([
-      undefined,
-      traceContext,
-      undefined,
-    ]);
+    // Old strict readers reject an unknown key, even when its value is undefined.
     const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
       execution: { pendingMessages: Array<Record<string, unknown>> };
     };
-    expect(stored.execution.pendingMessages[1]).toMatchObject({
-      inboundMessageId: "m2",
-      traceContext,
-    });
-  });
+    for (const message of stored.execution.pendingMessages) {
+      expect(message).not.toHaveProperty("traceContext");
+    }
 
-  it("rejects pending messages with malformed trace context", async () => {
-    const state = getStateAdapter();
-    await state.connect();
-    await state.set(CONVERSATION_WORK_STATE_KEY, {
-      schemaVersion: 2,
-      conversationId: CONVERSATION_ID,
-      createdAtMs: 1_000,
-      destination: SLACK_DESTINATION,
-      execution: {
-        inboundMessageIds: ["m1"],
-        pendingCount: 1,
-        pendingMessages: [
-          {
-            ...inboundMessage("m1"),
-            publishExternally: true,
-            traceContext: { baggage: "sentry-trace_id=abc" },
-          },
-        ],
-        status: "pending",
-        updatedAtMs: 1_000,
-      },
-      lastActivityAtMs: 1_000,
-      updatedAtMs: 1_000,
-    });
-
+    const attempted: string[] = [];
     await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
-    ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          attempted.push(
+            ...context.attempt.messages.map(
+              (message) => message.inboundMessageId,
+            ),
+          );
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(attempted).toEqual(["m1", "m2", "m3"]);
   });
 
   it("appends destinationless work onto a provider conversation", async () => {
