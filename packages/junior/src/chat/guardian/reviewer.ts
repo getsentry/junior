@@ -147,6 +147,11 @@ function noPersonCanConfirm(proposal: ToolActionProposal): boolean {
 const NO_CONFIRMATION_REASON =
   "No person can confirm this action in this run, so do not ask for confirmation.";
 
+// The model chose no rule, so its rule text says the action is ordinary.
+// The backstop replaces that text with the real reason to ask.
+const HIGH_RISK_REASON =
+  "High-risk action without clear user authorization. Confirm the exact action, target, and side effects first.";
+
 /**
  * Derive allow, ask, or deny from the model's assessment. The named rule
  * sets the decision. Code also asks for high or critical risk with weak
@@ -161,6 +166,7 @@ export function guardianDecision(
     assessment.rule === "none"
       ? "allow"
       : GUARDIAN_BLOCK_RULES[assessment.rule].decision;
+  let reason = assessment.reason;
   if (
     decision === "allow" &&
     (assessment.riskLevel === "high" || assessment.riskLevel === "critical") &&
@@ -168,14 +174,15 @@ export function guardianDecision(
       assessment.userAuthorization === "unknown")
   ) {
     decision = "ask";
+    reason = `${HIGH_RISK_REASON} (risk=${assessment.riskLevel}, authorization=${assessment.userAuthorization})`;
   }
   if (decision === "ask" && noPersonCanConfirm(proposal)) {
     return {
       decision: "deny",
-      reason: `${assessment.reason} ${NO_CONFIRMATION_REASON}`,
+      reason: `${reason} ${NO_CONFIRMATION_REASON}`,
     };
   }
-  return { decision, reason: assessment.reason };
+  return { decision, reason };
 }
 
 /**

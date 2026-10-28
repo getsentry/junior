@@ -150,9 +150,12 @@ describe("Guardian action review", () => {
     expect(
       guardianDecision(assess("revoked_approval"), proposal).decision,
     ).toBe("deny");
-    expect(
-      guardianDecision(assess("none", "critical"), proposal).decision,
-    ).toBe("ask");
+    // The backstop gives its own reason, not the text of the `none` rule.
+    expect(guardianDecision(assess("none", "critical"), proposal)).toEqual({
+      decision: "ask",
+      reason:
+        "High-risk action without clear user authorization. Confirm the exact action, target, and side effects first. (risk=critical, authorization=low)",
+    });
     expect(
       guardianDecision(assess("none", "critical", "high"), proposal).decision,
     ).toBe("allow");
