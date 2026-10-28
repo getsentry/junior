@@ -3,14 +3,13 @@ import { useRef, type ReactNode } from "react";
 
 import { cn } from "../styles";
 import { Button } from "./Button";
-import { Modal } from "./Modal";
+import { Sheet, SheetBody, SheetClose, SheetContent } from "./Sheet";
 
 /** Render a side drawer with shared modal focus and dismissal behavior. */
 export function Drawer(props: {
   actions?: ReactNode;
   children: ReactNode;
   closeLabel: string;
-  dismissLabel: string;
   header: ReactNode;
   onClose(): void;
   openKey: string;
@@ -19,16 +18,12 @@ export function Drawer(props: {
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   return (
-    <Modal
-      dismissLabel={props.dismissLabel}
-      initialFocusRef={closeRef}
-      key={props.openKey}
-      onClose={props.onClose}
-      titleId={props.titleId}
-    >
-      <aside
+    <Sheet key={props.openKey} onClose={props.onClose} side="right">
+      <SheetContent
+        initialFocusRef={closeRef}
+        titleId={props.titleId}
+        side="right"
         className={cn(
-          "absolute right-0 top-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:border-l md:border-dashboard-border-strong",
           props.width === "wide"
             ? "md:w-[min(760px,94vw)]"
             : props.width === "narrow"
@@ -40,21 +35,24 @@ export function Drawer(props: {
           <div className="min-w-0">{props.header}</div>
           <div className="flex items-start gap-1.5">
             {props.actions}
-            <Button
-              ref={closeRef}
-              aria-label={props.closeLabel}
-              onClick={props.onClose}
-              size="icon"
-              title="Close"
+            <SheetClose
+              render={
+                <Button
+                  ref={closeRef}
+                  aria-label={props.closeLabel}
+                  size="icon"
+                  title="Close"
+                />
+              }
             >
               <X aria-hidden="true" size={15} strokeWidth={2.25} />
-            </Button>
+            </SheetClose>
           </div>
         </header>
-        <div className="min-h-0 overflow-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5">
+        <SheetBody className="min-h-0 overflow-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5">
           {props.children}
-        </div>
-      </aside>
-    </Modal>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }

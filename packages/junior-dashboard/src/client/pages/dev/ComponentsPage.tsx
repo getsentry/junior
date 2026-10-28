@@ -259,7 +259,6 @@ function FoundationsGalleryPage() {
         {drawerOpen ? (
           <Drawer
             closeLabel="Close gallery details"
-            dismissLabel="Dismiss gallery details"
             header={
               <h2
                 id="gallery-drawer-title"
@@ -283,7 +282,6 @@ function FoundationsGalleryPage() {
               ? createPortal(
                   <Drawer
                     closeLabel="Close nested details"
-                    dismissLabel="Dismiss nested details"
                     header={
                       <h2
                         id="gallery-nested-title"

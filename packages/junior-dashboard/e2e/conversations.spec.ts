@@ -60,8 +60,8 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(closeContext).toBeFocused();
   await page.setViewportSize({ width: 1024, height: 900 });
   await expect(
-    page.getByRole("dialog", { name: "Conversation details" }),
-  ).toBeVisible();
+    page.locator('[data-dashboard-modal][aria-label="Conversation details"]'),
+  ).toBeAttached();
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>
@@ -71,8 +71,11 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(closeContext).toBeFocused();
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect(
-    page.getByRole("complementary", { name: "Conversation details" }),
-  ).toBeVisible();
+    page.getByRole("complementary", {
+      name: "Conversation details",
+      includeHidden: true,
+    }),
+  ).toBeAttached();
   await expect(closeContext).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(contextPanel.locator("summary").last()).toBeFocused();

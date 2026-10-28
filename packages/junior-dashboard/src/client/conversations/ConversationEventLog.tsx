@@ -200,7 +200,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
         ? createPortal(
             <Drawer
               closeLabel="Close event details"
-              dismissLabel="Dismiss event details"
               header={
                 <>
                   <h2

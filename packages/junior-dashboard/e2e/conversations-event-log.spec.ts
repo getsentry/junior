@@ -268,6 +268,8 @@ test("loads earlier events without merging tool starts and results", async ({
   );
   const linked = page.getByRole("dialog", { name: "tool_calls", exact: true });
   await expect(linked).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(linked).toBeHidden();
   await expect(
     page
       .getByRole("region", { name: "Conversation event log" })

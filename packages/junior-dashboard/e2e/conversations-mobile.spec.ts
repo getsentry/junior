@@ -277,21 +277,21 @@ test("opens and closes a conversation on mobile", async ({
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
-  // The swipe ends below the handle. Pointer capture owns its release.
-  await handle.dragTo(handle, {
-    force: true,
-    sourcePosition: { x: 100, y: 10 },
-    targetPosition: { x: 100, y: 110 },
-  });
+  // A continuous swipe ends below the handle and uses Base UI's release threshold.
+  await handle.hover({ position: { x: 100, y: 10 } });
+  await page.mouse.down();
+  await page.mouse.move(100, 400, { steps: 10 });
+  await page.mouse.up();
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
   await menu.click();
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
-  await details
-    .getByRole("button", { name: "Dismiss conversation details" })
-    .click({ position: { x: 8, y: 8 } });
+  await expect(
+    details.getByRole("tab", { name: "Summary", exact: true }),
+  ).toBeFocused();
+  await page.mouse.click(8, 8);
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
   await page.emulateMedia({ reducedMotion: "no-preference" });

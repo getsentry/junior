@@ -65,7 +65,6 @@ export function AutomationDetailsDrawer(props: {
   return (
     <Drawer
       closeLabel="Close automation details"
-      dismissLabel="Dismiss automation details"
       header={
         <>
           <h2

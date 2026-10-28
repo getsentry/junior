@@ -80,11 +80,14 @@ token so each theme can redefine it.
   sentence-case text, with no border or fill. It is not a control.
 - **Messages.** Use `Notice` for compact transient messages and `FormNotice`
   for wrapping form recovery text.
-- **Overlays.** `Modal` owns backdrop dismissal, keyboard focus, focus return,
-  and scroll locking. `Drawer` adds a side panel with a visible header.
-  `BottomSheet` takes a label and content. It owns swipe, settling, and exit
-  motion, and skips those animations for reduced motion. Both use `Modal`.
-  Docked conversation details use a non-modal aside so the chat stays usable.
+- **Overlays.** `Sheet` is a local adaptation of shadcn/ui's Base UI Sheet.
+  It uses Base UI Drawer for focus, dismissal, and native swipe support. The
+  app's shared scroll lock keeps it in sync with the mobile conversation shell.
+  `SheetContent` owns side placement, backdrop fade, and slide transitions.
+  `Drawer` adds a visible header and close control. `BottomSheet` adds a swipe
+  handle and keeps content scrolling separate from gestures. Both skip motion
+  when reduced motion is set. Docked conversation details use a non-modal aside
+  so the chat stays usable. The copied component's license is in `Sheet.LICENSE`.
   `Tooltip` and `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and

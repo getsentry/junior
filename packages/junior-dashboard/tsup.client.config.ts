@@ -22,6 +22,7 @@ export default defineConfig({
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
   noExternal: [
+    "@base-ui/react",
     "@radix-ui/react-hover-card",
     "@sentry/junior/api/schema",
     "@sentry/junior/version",

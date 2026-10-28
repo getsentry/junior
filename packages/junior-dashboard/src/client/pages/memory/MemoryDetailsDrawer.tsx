@@ -67,7 +67,6 @@ export function MemoryDetailsDrawer(props: {
   return (
     <Drawer
       closeLabel="Close memory details"
-      dismissLabel="Dismiss memory details"
       header={
         <>
           <h2

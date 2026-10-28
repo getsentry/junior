@@ -94,11 +94,6 @@ test("opens memory details in a slide-out drawer", async ({
   });
   await memory.click();
   await expect(page).toHaveURL(/\/memories\/memory-1/);
-  await expect(
-    page
-      .getByRole("navigation", { name: "Memory navigation" })
-      .getByRole("link", { name: "Memories" }),
-  ).toHaveAttribute("aria-current", "page");
   const details = page.getByRole("dialog", { name: "What Junior remembers" });
   await expect(details).toBeVisible();
   await expect
@@ -124,6 +119,11 @@ test("opens memory details in a slide-out drawer", async ({
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");
   await expect(memory).toBeFocused();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Memory navigation" })
+      .getByRole("link", { name: "Memories" }),
+  ).toHaveAttribute("aria-current", "page");
 
   await page.setViewportSize({ height: 844, width: 390 });
   await memory.click();

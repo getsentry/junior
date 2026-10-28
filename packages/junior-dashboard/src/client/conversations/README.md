@@ -40,8 +40,8 @@ shared controls and overlays.
   Automation. Render this text with `TranscriptText` or `MentionText`. Both
   require `mentions`, so a caller cannot forget them. Do not resolve names in
   the dashboard, and do not rewrite tokens into links on the server.
-- `TranscriptTurnContextView` owns context content. The shared `Drawer` owns
-  dismissal, focus trapping, focus return, scroll locking, and panel layout.
+- `TranscriptTurnContextView` owns context content. The shared `Drawer` adds
+  its header and layout to the Base UI `Sheet` focus and dismissal boundary.
 
 Review these components together in `/dev/transcripts`. Use the conversation
 fixture for messages, events, activity, context, and typing. Use the attachment
@@ -58,8 +58,8 @@ dismissal.
 `ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
 uses a 400px aside at 1280px and above. The chat and aside scroll separately.
 Smaller windows use `BottomSheet` with a plain accessible label. The sheet and
-side drawers share the `Modal` focus and scroll rules. A resize changes the frame
-and keeps the selected tab. Tabs stay fixed above the scrolling content in both
+side drawers share the Base UI `Sheet` focus rules and the app's document
+scroll lock. A resize changes the frame and keeps the selected tab. Tabs stay fixed above the scrolling content in both
 layouts. Only the swipe handle sits above the sheet tabs. Swipe down, tap the
-backdrop, or press Escape to dismiss it. Sheet animations stop on unmount so a
-pending exit cannot close the new panel or a different Conversation.
+backdrop, or press Escape to dismiss it. Base UI owns the transition lifecycle.
+A pending exit cannot close a new panel or a different Conversation.
