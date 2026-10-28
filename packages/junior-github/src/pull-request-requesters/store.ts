@@ -37,7 +37,6 @@ export async function recordPendingGitHubPullRequestRequester(
   await removePendingGitHubPullRequestRequester(db, input);
   const now = new Date();
   await db.insert(table).values({
-    action: "create",
     createdAt: now,
     headBranch: input.headBranch,
     identityId: input.identityId,
@@ -58,7 +57,8 @@ export async function removePendingGitHubPullRequestRequester(
  * Save the person who asked Junior to open the pull request GitHub just
  * opened, and remove their pending row. With no identity, it saves no row.
  * GitHub just gave out this number, so any older row for it belongs to an
- * earlier repository with the same name, and is removed.
+ * earlier repository with the same name, and is removed. This also makes the
+ * opener the first row for the number.
  */
 export async function attachGitHubPullRequestRequester(
   db: GitHubDb,
@@ -88,9 +88,7 @@ export async function attachGitHubPullRequestRequester(
   }
   const now = new Date();
   await db.insert(table).values({
-    action: "create",
     createdAt: now,
-    headBranch: input.headBranch ?? null,
     identityId: input.identityId,
     number: input.number,
     repositoryFullName,
@@ -100,8 +98,7 @@ export async function attachGitHubPullRequestRequester(
 
 /**
  * Add a person who asked Junior to update a pull request. A person who is
- * already a requester keeps their row and action, so the opener does not
- * change.
+ * already a requester keeps their row, so the opener does not change.
  */
 export async function recordGitHubPullRequestRequester(
   db: GitHubDb,
@@ -115,7 +112,6 @@ export async function recordGitHubPullRequestRequester(
   await db
     .insert(table)
     .values({
-      action: "update",
       createdAt: now,
       identityId: input.identityId,
       number: input.number,
@@ -130,12 +126,14 @@ export async function recordGitHubPullRequestRequester(
 }
 
 /**
- * Load the Junior identity id of the person who asked Junior to open each
- * pull request: its `create` row. Pass `pendingHeadBranch` only for the `opened` webhook of a same-repo
- * pull request, which can arrive before the create tool saves the row. A
- * pending row is used only when the pull request has no `create` row and the
- * branch has exactly one recent pending row. Concurrent create calls on one
- * branch are ambiguous, so they give no opener.
+ * Load the Junior identity id of the first requester of each pull request.
+ * This is the person who asked Junior to open it, or, when the create had no
+ * identity, the first person who asked Junior to update it. Pass
+ * `pendingHeadBranch` only for the `opened` webhook of a same-repo pull
+ * request, which can arrive before the create tool saves its row. A pending
+ * row is used only when the pull request has no row and the branch has exactly
+ * one recent pending row. Concurrent create calls on one branch are
+ * ambiguous, so they give no opener.
  */
 export async function listGitHubPullRequestOpeners(
   db: GitHubDb,
@@ -159,7 +157,6 @@ export async function listGitHubPullRequestOpeners(
     .where(
       and(
         eq(table.repositoryFullName, input.repositoryFullName.toLowerCase()),
-        eq(table.action, "create"),
         or(
           inArray(table.number, numbers),
           headBranches.length > 0

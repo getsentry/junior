@@ -1,5 +1,5 @@
 {
-  "id": "b890ce8c-3445-4526-8d74-2d59b35547c6",
+  "id": "38b4a923-9d53-4a1a-b09b-de7d3f32f4a1",
   "prevId": "da9cceed-a211-4f1b-a5b8-ac4237b9caf5",
   "version": "7",
   "dialect": "postgresql",
@@ -203,12 +203,6 @@
         },
         "identity_id": {
           "name": "identity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action": {
-          "name": "action",
           "type": "text",
           "primaryKey": false,
           "notNull": true

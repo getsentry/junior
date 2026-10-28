@@ -3,7 +3,6 @@ CREATE TABLE "junior_github_pull_request_requesters" (
 	"number" integer,
 	"head_branch" text,
 	"identity_id" text NOT NULL,
-	"action" text NOT NULL,
 	"created_at" timestamp with time zone NOT NULL,
 	"updated_at" timestamp with time zone NOT NULL
 );

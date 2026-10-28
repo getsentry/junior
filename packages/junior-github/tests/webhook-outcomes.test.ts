@@ -2667,7 +2667,7 @@ describe("GitHub-owned pull request outcomes", () => {
           .select()
           .from(juniorGitHubPullRequestRequesters)
           .orderBy(juniorGitHubPullRequestRequesters.createdAt)
-      ).map((row) => [row.number, row.action, row.identityId]);
+      ).map((row) => [row.number, row.headBranch, row.identityId]);
 
     try {
       // GitHub can deliver `opened` before the create call returns.
@@ -2768,9 +2768,9 @@ describe("GitHub-owned pull request outcomes", () => {
         ["dcramer", "admin"],
       ]);
       expect(await savedRequesters()).toEqual([
-        [946, "create", "slack-identity-dcramer"],
-        [948, "create", "slack-identity-dcramer"],
-        [946, "update", "slack-identity-octocat"],
+        [946, null, "slack-identity-dcramer"],
+        [948, null, "slack-identity-dcramer"],
+        [946, null, "slack-identity-octocat"],
       ]);
 
       // An opener with no linked GitHub account falls back to the bot.

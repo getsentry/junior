@@ -131,13 +131,14 @@ export const juniorGitHubPullRequestIssues = pgTable(
  * People who asked Junior to open or update a pull request. Each row links
  * the pull request to the Junior identity that acted. The user and any linked
  * GitHub account come from that identity in core when a webhook needs them,
- * so they stay correct when the person links an account later. The `create`
- * row is the person who asked Junior to open it.
+ * so they stay correct when the person links an account later. The first row
+ * for a number is the person who asked Junior to open it.
  *
  * The create tool writes a pending row with no `number` before GitHub opens
- * the pull request, so the `opened` webhook can read it. After GitHub opens
- * the pull request, the tool saves its `create` row with the number. A failed
- * create removes the pending row.
+ * the pull request, so the `opened` webhook can read it. GitHub has not given
+ * a number yet, so the pending row names the head branch. After GitHub opens
+ * the pull request, the tool replaces it with a row that has the number and
+ * no head branch. A failed create removes the pending row.
  */
 export const juniorGitHubPullRequestRequesters = pgTable(
   "junior_github_pull_request_requesters",
@@ -146,15 +147,10 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     repositoryFullName: text("repository_full_name").notNull(),
     /** Null only while the create call waits for GitHub. */
     number: integer("number"),
-    /** Set by the create tool. Pending rows are found by it. */
+    /** Set only on pending rows, which are found by it. */
     headBranch: text("head_branch"),
     /** Core `junior_identities.id` of the person who acted. */
     identityId: text("identity_id").notNull(),
-    /**
-     * `create` for the person who asked Junior to open the pull request.
-     * `update` for a person who only asked Junior to change it.
-     */
-    action: text("action").$type<"create" | "update">().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },

@@ -40,14 +40,17 @@ identity id of that person. The plugin does not copy the user or GitHub login.
 When a webhook needs the GitHub login, it reads the identity through
 `ctx.users.readIdentity()` and uses the GitHub identity of the linked user. So a
 person who links GitHub later is found on their older pull requests too. The
-`create` row is the opener. `update` rows never replace it. The create tool
-writes a pending row with no number before it calls GitHub, because the `opened`
-webhook can arrive first. Each pending row belongs to one Junior identity. After
-GitHub opens the pull request, the tool saves its own `create` row with the
-number. A create that GitHub rejects removes only its own pending row. Only
-`opened` events for a head in the same repository read pending rows. They use
-one only when the pull request has no `create` row and the branch has exactly
-one pending row from the last 10 minutes. Concurrent creates on one branch give
+first row for a pull request is the opener. Later updates never replace it. When
+the create has no Junior identity, the first person who asks Junior to update
+the pull request is the opener. The create tool writes a pending row with no
+number before it calls GitHub, because the `opened` webhook can arrive first.
+GitHub has not given a number yet, so the pending row names the head branch.
+Each pending row belongs to one Junior identity. After GitHub opens the pull
+request, the tool replaces its own pending row with a row that has the number.
+A create that GitHub rejects removes only its own pending row. Only `opened`
+events for a head in the same repository read pending rows. They use one only
+when the pull request has no row and the branch has exactly one pending row
+from the last 10 minutes. Concurrent creates on one branch give
 no opener until the create tool saves the row. Fork heads (`owner:branch` in
 another repository) get no pending row. Webhooks use the opener's GitHub login
 for `requesterUsername` and `requesterRole`. If the identity lookup fails, the
