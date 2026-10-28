@@ -5,12 +5,12 @@ import { SegmentedTabs } from "../../components/SegmentedTabs";
 
 /** Show panel tabs switching the panel below them. */
 export function SegmentedTabsFixture() {
-  const [tab, setTab] = useState<"details" | "memories" | "agents">("details");
+  const [tab, setTab] = useState<"summary" | "memories" | "agents">("summary");
   return (
     <div className="max-w-xs">
       <SegmentedTabs
         items={[
-          { label: "Details", value: "details" },
+          { label: "Summary", value: "summary" },
           { count: 3, label: "Memories", value: "memories" },
           { count: 2, label: "Subagents", value: "agents" },
         ]}
@@ -19,7 +19,7 @@ export function SegmentedTabsFixture() {
         value={tab}
       >
         <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-          {tab === "details"
+          {tab === "summary"
             ? "Conversation summary and linked work."
             : tab === "memories"
               ? "What Junior learned from this conversation."

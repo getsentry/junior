@@ -78,7 +78,7 @@ test("opens conversation details beside the chat", async ({
   await expect(details).toBeHidden();
   await detailsButton.click();
   await expect(
-    details.getByRole("heading", { name: "Summary", exact: true }),
+    details.getByRole("tabpanel", { name: "Summary", exact: true }),
   ).toBeVisible();
   await expect(
     details.getByRole("link", { name: /getsentry\/payments#77/ }),
@@ -107,9 +107,9 @@ test("opens conversation details beside the chat", async ({
     conversationUrl,
   );
 
-  const detailsTab = details.getByRole("tab", { name: "Details", exact: true });
+  const summaryTab = details.getByRole("tab", { name: "Summary", exact: true });
   const memoriesTab = details.getByRole("tab", { name: "Memories" });
-  await detailsTab.focus();
+  await summaryTab.focus();
   await page.keyboard.press("ArrowRight");
   await expect(memoriesTab).toBeFocused();
   await expect(memoriesTab).toHaveAttribute("aria-selected", "true");
@@ -131,8 +131,8 @@ test("opens conversation details beside the chat", async ({
   ).toBeFocused();
   await details.getByRole("tab", { name: "Memories" }).focus();
   await page.keyboard.press("Home");
-  await expect(detailsTab).toBeFocused();
-  await expect(detailsTab).toHaveAttribute("aria-selected", "true");
+  await expect(summaryTab).toBeFocused();
+  await expect(summaryTab).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
