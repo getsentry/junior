@@ -96,11 +96,6 @@ normalize older history shapes before the runtime reads them.
 stores and replays it unchanged. Reporting projections can omit it from the UI.
 Compaction and handoff can replace it with the current context.
 
-Two host events also appear in agent history as short user-role notes:
-`authorization_completed` and `turn_failed`. The note for a failed turn tells
-the model that the turn did not finish. It has the error reference, not the raw
-error.
-
 Message summarization is separate from agent-history compaction. A
 `messages_summarized` event stores the latest bounded summaries used to render
 older source-thread context; it does not replace Pi history.
@@ -141,11 +136,22 @@ events through its pagination contract.
 ## Conversation Notes
 
 A Conversation note is a short fact that core attaches to a Conversation
-without starting a Turn. `notes.ts` owns it. Today, the only writer is a parent
-agent stop of a child agent's watch.
+without starting a Turn. `notes.ts` owns it. Use a note when the model must
+learn about something that happened outside a Turn, such as a stopped watch or
+a failed Turn.
 
-- **Storage.** A note is a `conversation_note` `structured_event` in the
-  reserved `junior` namespace. The append preserves Conversation activity. A
+There are two sources of notes:
+
+- A parent agent stops a child agent's watch. Core saves a `conversation_note`
+  event.
+- A Turn fails. Core already saves a `turn_failed` event. The next Turn reads
+  that event as a note that says the Turn did not finish. The note has the error
+  reference (`event_id`), never the raw error. Pi drops a failed assistant
+  message before it calls the model, so without this note the model cannot see
+  the failure.
+
+- **Storage.** A written note is a `conversation_note` `structured_event` in
+  the reserved `junior` namespace. A failed-Turn note has no extra storage. The append preserves Conversation activity. A
   note adds no mailbox work and does not count toward the automated-turn limit.
 - **Authors.** Only core adds notes. No tool lets the model write one.
 - **Delivery.** A Turn shows the notes added after the previous

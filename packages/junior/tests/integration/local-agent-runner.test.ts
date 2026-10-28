@@ -32,6 +32,8 @@ import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
@@ -411,27 +413,23 @@ describe("local agent runner", () => {
     expect(JSON.stringify(lifecycle)).not.toContain("raw-error-sentinel");
     expect(JSON.stringify(lifecycle)).not.toContain("provider.invalid");
 
-    // The next turn sees that this one failed, without the raw error.
-    const history = await loadProjection({ conversationId: conversationId! });
-    expect(history.at(-1)).toMatchObject({
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: expect.stringContaining(
-            "Your previous turn failed before it finished.",
-          ),
-        },
-      ],
+    // The next turn gets a note that this one failed, without the raw error.
+    await getTurnLifecycle().start({
+      conversationId: conversationId!,
+      createdAtMs: Date.now(),
+      inputMessageIds: ["next-message"],
+      surface: "internal",
+      turnId: "next-turn",
     });
-    expect(JSON.stringify(history.at(-1))).not.toContain("raw-error-sentinel");
-    // The next turn can save its history after that notice.
-    await expect(
-      commitMessages({
-        conversationId: conversationId!,
-        messages: [...history, userPiMessage("try again", Date.now())],
-      }),
-    ).resolves.toMatchObject({ messages: expect.any(Array) });
+    const notes = await loadTurnConversationNotes({
+      conversationId: conversationId!,
+      turnId: "next-turn",
+    });
+    expect(notes).toEqual([
+      expect.stringContaining("Your previous turn failed before it finished."),
+    ]);
+    expect(notes[0]).toMatch(/event_id=[a-f0-9]{32}/);
+    expect(notes[0]).not.toContain("raw-error-sentinel");
   });
 
   it("classifies a thrown agent run without persisting exception details", async () => {
