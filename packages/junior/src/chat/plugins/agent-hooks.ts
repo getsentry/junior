@@ -65,7 +65,10 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
-import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
+import {
+  getWorkspace,
+  listWorkspaceNamesByRepository,
+} from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
 
@@ -743,6 +746,11 @@ export function getPluginTools(
         },
       },
       workspaces: {
+        async active() {
+          const id = context.workspaces?.activeWorkspaceId();
+          if (!id) return undefined;
+          return (await getWorkspace(getDb(), id))?.name;
+        },
         async findByRepository(input: { provider: string; repo: string }) {
           return await listWorkspaceNamesByRepository(getDb(), input);
         },

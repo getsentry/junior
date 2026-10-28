@@ -32,13 +32,14 @@ const inputSchema = z
       .boolean()
       .optional()
       .describe(
-        "Set true to keep an intentional ad-hoc checkout when matching Workspaces exist. Prefer switchWorkspace; the checkout is already present after a successful switch.",
+        "Set true in the default Sandbox to keep an intentional ad-hoc checkout when matching Workspaces exist. Prefer switchWorkspace; the checkout is already present after a successful switch.",
       ),
   })
   .strict();
 const cloneSchema = z.object({
   path: z.string(),
   repo: z.string(),
+  note: z.string().optional(),
 });
 type Clone = z.output<typeof cloneSchema>;
 interface Result extends PluginToolOutput, Clone {
@@ -58,12 +59,16 @@ function parseRepo(value: string): { name: string; owner: string } {
   return { owner: parts[0], name: parts[1] };
 }
 
+function quotedNames(workspaces: string[]): string {
+  return workspaces.map((name) => `"${name}"`).join(", ");
+}
+
 /** Agent-facing input rejection when a matching Workspace should be used instead. */
 function workspaceRequiredError(
   repoId: string,
   workspaces: string[],
 ): PluginToolInputError {
-  const names = workspaces.map((name) => `"${name}"`).join(", ");
+  const names = quotedNames(workspaces);
   if (workspaces.length === 1) {
     return new PluginToolInputError(
       `Repository ${repoId} is part of Workspace ${names}. Call switchWorkspace with that name; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.`,
@@ -72,6 +77,19 @@ function workspaceRequiredError(
   return new PluginToolInputError(
     `Repository ${repoId} is part of Workspaces ${names}. Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.`,
   );
+}
+
+/** Agent-facing note for an ad-hoc clone kept inside another Workspace. */
+function workspaceAvailableNote(
+  repoId: string,
+  active: string,
+  workspaces: string[],
+): string {
+  const matches =
+    workspaces.length === 1
+      ? `Workspace ${quotedNames(workspaces)} also includes`
+      : `Workspaces ${quotedNames(workspaces)} also include`;
+  return `Cloned ${repoId} ad hoc to keep the current Workspace "${active}". ${matches} ${repoId}. switchWorkspace replaces this Sandbox and drops its files.`;
 }
 
 function defaultDirectory(repoName: string): string {
@@ -133,7 +151,7 @@ export function createGitHubCloneRepositoryTool(ctx: {
       readOnlyHint: true,
     },
     description:
-      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. When matching Workspaces exist this is a tool input error: call switchWorkspace instead, or pass allowAdHoc=true for an intentional ad-hoc checkout.",
+      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or pass allowAdHoc=true for an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
     describeProposal(input) {
       const directory =
         typeof input.directory === "string" && input.directory.length > 0
@@ -154,11 +172,15 @@ export function createGitHubCloneRepositoryTool(ctx: {
       // Look up matching recipes before any sandbox write so a later
       // switchWorkspace does not discard a just-created ad-hoc clone.
       let workspaces: string[] = [];
+      let active: string | undefined;
       try {
-        workspaces = await ctx.workspaces.findByRepository({
-          provider: "github",
-          repo: repoId,
-        });
+        [workspaces, active] = await Promise.all([
+          ctx.workspaces.findByRepository({
+            provider: "github",
+            repo: repoId,
+          }),
+          ctx.workspaces.active(),
+        ]);
       } catch (error) {
         // Fail open: a lookup outage must not block inspection clones.
         ctx.log.error("github.clone.workspaces_lookup.failed", {
@@ -166,9 +188,17 @@ export function createGitHubCloneRepositoryTool(ctx: {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-      if (workspaces.length > 0 && input.allowAdHoc !== true) {
+      // In the default Sandbox a switch loses nothing, so steer to the
+      // Workspace. Inside another Workspace a switch would drop its files,
+      // so keep the ad-hoc clone and report the matching Workspaces.
+      if (workspaces.length > 0 && !active && input.allowAdHoc !== true) {
         throw workspaceRequiredError(repoId, workspaces);
       }
+      const otherWorkspaces = workspaces.filter((name) => name !== active);
+      const note =
+        active && otherWorkspaces.length > 0
+          ? workspaceAvailableNote(repoId, active, otherWorkspaces)
+          : undefined;
       const directory = input.directory ?? defaultDirectory(repo.name);
       const rootSegment = directory.split("/")[0] ?? directory;
       if (isReservedSandboxDirectory(rootSegment)) {
@@ -231,7 +261,12 @@ export function createGitHubCloneRepositoryTool(ctx: {
           `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}`,
         );
       }
-      return { target: "cloneRepository", repo: repoId, path };
+      return {
+        target: "cloneRepository",
+        repo: repoId,
+        path,
+        ...(note ? { note } : undefined),
+      };
     },
   });
 }

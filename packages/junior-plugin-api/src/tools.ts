@@ -555,6 +555,11 @@ export interface PluginEventToolContext {
 }
 
 export interface PluginWorkspaceToolContext {
+  /**
+   * Name of the Workspace that the current Sandbox started from. Returns
+   * undefined for the default Sandbox.
+   */
+  active(): Promise<string | undefined>;
   /** Find named Workspaces that include one provider repository. */
   findByRepository(input: {
     provider: string;
