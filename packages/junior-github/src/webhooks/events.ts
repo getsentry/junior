@@ -154,12 +154,13 @@ function normalizeDeploymentEvent(
   const parsed = parseDeploymentEvent(body);
   if (!parsed || parsed.action !== "created") return [];
   const eventType = "deployment.created";
+  const { label } = gitHubDeploymentSourceResource(parsed);
   return deploymentSourceTargets(parsed).map(({ resource }) => ({
     eventKey: gitHubEventKey(deliveryId, eventType),
     eventType,
     occurredAtMs: providerTime(parsed.createdAt) ?? Date.now(),
     identifier: resource.identifier,
-    trustedSummary: `${resource.label} was created (deployment ${parsed.deploymentId}).`,
+    trustedSummary: `${label} was created (deployment ${parsed.deploymentId}).`,
   }));
 }
 
@@ -243,6 +244,7 @@ function normalizeDeploymentStatusEvent(
     eventType === "deployment.succeeded" ||
     eventType === "deployment.failed" ||
     eventType === "deployment.error";
+  const { label } = gitHubDeploymentSourceResource(parsed);
   return deploymentSourceTargets(parsed).map(
     ({ completeOnTerminalEvent, resource }) => ({
       eventKey: gitHubEventKey(deliveryId, eventType),
@@ -250,13 +252,13 @@ function normalizeDeploymentStatusEvent(
       occurredAtMs: providerTime(parsed.statusCreatedAt) ?? Date.now(),
       identifier: resource.identifier,
       ...(terminal && completeOnTerminalEvent ? { terminal: true } : undefined),
-      trustedSummary: `${resource.label} ${outcome} (deployment ${parsed.deploymentId}).`,
+      trustedSummary: `${label} ${outcome} (deployment ${parsed.deploymentId}).`,
       untrustedText: parsed.description ?? undefined,
     }),
   );
 }
 
-/** Address one deployment through both its exact environment and its commit. */
+/** Address one deployment through its environment, its commit, and both. */
 function deploymentSourceTargets(input: {
   commitSha: string;
   environment: string;
@@ -271,6 +273,14 @@ function deploymentSourceTargets(input: {
       completeOnTerminalEvent: false,
       resource: gitHubDeploymentSourceResource({
         commitSha: input.commitSha,
+        repo: input.repo,
+      }),
+    },
+    // The environment target outlives each deployment for durable automations.
+    {
+      completeOnTerminalEvent: false,
+      resource: gitHubDeploymentSourceResource({
+        environment: input.environment,
         repo: input.repo,
       }),
     },

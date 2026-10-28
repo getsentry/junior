@@ -325,8 +325,13 @@ automation instruction. It does not replace or expand that instruction.
 
 #### `deployment_source`
 
-One commit, optionally limited to an environment. Identifier:
-`deployment-source:owner/repo[:environment]:<full-commit-sha>`.
+An environment, a commit, or one commit in one environment. Identifier:
+`deployment-source:owner/repo[:environment][:<full-commit-sha>]`.
+
+Use an environment without a commit, such as
+`deployment-source:getsentry/junior:production`, for an event automation that
+follows every deployment to that environment. GitHub Actions makes a deployment
+for each job that sets `environment:`.
 
 <details class="event">
 <summary><code>deployment.created</code></summary>
