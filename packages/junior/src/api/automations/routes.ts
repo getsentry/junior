@@ -1,0 +1,333 @@
+import {
+  readAutomationEventCatalog,
+  previewAutomationSchedule,
+} from "@/chat/automations/editor";
+import { AutomationConflictError } from "@/chat/automations/revision";
+import { zValidator } from "@hono/zod-validator";
+import {
+  activateViewerAutomationVersion,
+  changeViewerAutomationLifecycle,
+  readViewerAutomationEdit,
+  updateViewerAutomation,
+} from "@/chat/automations/edit";
+import { AutomationEditError } from "@/chat/automations/edit-rules";
+import { Hono } from "hono";
+import { emptyResponse, jsonResponse } from "@/api/http";
+import type { JuniorApiEnv } from "@/api/route";
+import { apiErrorSchema } from "@/api/schema/common";
+import {
+  automationLifecycleSchema,
+  automationEventCatalogSchema,
+  automationScheduleIntentSchema,
+  automationSchedulePreviewSchema,
+  automationEditSchema,
+  automationEditErrorSchema,
+  automationUpdateSchema,
+  automationExecutionListSchema,
+  automationListQuerySchema,
+  automationListSchema,
+  automationParamsSchema,
+  automationRunListSchema,
+  automationSummarySchema,
+  automationVersionActivateSchema,
+  automationVersionListSchema,
+  automationVersionParamsSchema,
+} from "@/api/schema/automation";
+import { validateRequest } from "@/api/validation";
+import { requireViewer } from "@/api/viewer";
+import { getSqlExecutor } from "@/chat/db";
+import { attachAutomationMentions } from "./mentions";
+import {
+  deleteViewerTask,
+  readViewerAutomationExecutions,
+  readViewerAutomationRuns,
+  readViewerAutomations,
+  readViewerAutomationSummary,
+  readViewerAutomationVersions,
+  ViewerTaskNotFoundError,
+} from "@/chat/automations/read";
+
+/** Translate expected edit failures; unexpected failures stay at the API boundary. */
+function editErrorResponse(error: unknown): Response {
+  if (error instanceof ViewerTaskNotFoundError) {
+    return jsonResponse(
+      automationEditErrorSchema,
+      { error: "Automation was not found.", code: "not_found" },
+      { status: 404 },
+    );
+  }
+  if (error instanceof AutomationConflictError) {
+    return jsonResponse(
+      automationEditErrorSchema,
+      { error: error.message, code: "conflict" },
+      { status: 409 },
+    );
+  }
+  if (error instanceof AutomationEditError) {
+    return jsonResponse(
+      automationEditErrorSchema,
+      {
+        error: error.message,
+        code: "invalid_edit",
+        ...(error.field
+          ? { fields: { [error.field]: [error.message] } }
+          : undefined),
+      },
+      { status: 400 },
+    );
+  }
+  throw error;
+}
+
+/** Create authenticated native task list and action routes. */
+export function createAutomationRoutes(): Hono<JuniorApiEnv> {
+  const app = new Hono<JuniorApiEnv>();
+  app.get(
+    "/",
+    requireViewer,
+    validateRequest(
+      "query",
+      automationListQuerySchema,
+      "Invalid task list query.",
+    ),
+    async (context) => {
+      const user = context.get("viewer");
+      const query = context.req.valid("query");
+      const list = await readViewerAutomations(user, query);
+      return jsonResponse(automationListSchema, {
+        ...list,
+        automations: await attachAutomationMentions(
+          getSqlExecutor(),
+          list.automations,
+        ),
+      });
+    },
+  );
+  app.get("/event-catalog", requireViewer, () => {
+    return jsonResponse(
+      automationEventCatalogSchema,
+      readAutomationEventCatalog(),
+    );
+  });
+  app.post(
+    "/:id/preview",
+    requireViewer,
+    validateRequest(
+      "json",
+      automationScheduleIntentSchema,
+      "Invalid schedule.",
+    ),
+    async (context) => {
+      try {
+        return jsonResponse(
+          automationSchedulePreviewSchema,
+          await previewAutomationSchedule(
+            context.get("viewer"),
+            context.req.param("id"),
+            context.req.valid("json"),
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.get("/runs", requireViewer, async (context) => {
+    const user = context.get("viewer");
+    return jsonResponse(
+      automationRunListSchema,
+      await readViewerAutomationRuns(user),
+    );
+  });
+  app.get(
+    "/:id/executions",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid task."),
+    async (context) => {
+      const user = context.get("viewer");
+      const params = context.req.valid("param");
+      try {
+        const list = await readViewerAutomationExecutions(user, params.id);
+        const [automation] = await attachAutomationMentions(getSqlExecutor(), [
+          list.automation,
+        ]);
+        return jsonResponse(automationExecutionListSchema, {
+          ...list,
+          automation: automation!,
+        });
+      } catch (error) {
+        if (error instanceof ViewerTaskNotFoundError) {
+          return jsonResponse(
+            apiErrorSchema,
+            { error: error.message },
+            { status: 404 },
+          );
+        }
+        throw error;
+      }
+    },
+  );
+  app.get(
+    "/:id/versions",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    async (context) => {
+      const { id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationVersionListSchema,
+          await readViewerAutomationVersions(context.get("viewer"), id),
+        );
+      } catch (error) {
+        if (error instanceof ViewerTaskNotFoundError) {
+          return jsonResponse(
+            apiErrorSchema,
+            { error: error.message },
+            { status: 404 },
+          );
+        }
+        throw error;
+      }
+    },
+  );
+  app.post(
+    "/:id/versions/:version/activate",
+    requireViewer,
+    validateRequest(
+      "param",
+      automationVersionParamsSchema,
+      "Invalid Automation version.",
+    ),
+    validateRequest(
+      "json",
+      automationVersionActivateSchema,
+      "Invalid version activation.",
+    ),
+    async (context) => {
+      const { id, version } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await activateViewerAutomationVersion(context.get("viewer"), id, {
+            version,
+            revision: context.req.valid("json").revision,
+          }),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.get(
+    "/:id/edit",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    async (context) => {
+      const { id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await readViewerAutomationEdit(context.get("viewer"), id),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.post(
+    "/:id/lifecycle",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    validateRequest(
+      "json",
+      automationLifecycleSchema,
+      "Invalid lifecycle action.",
+    ),
+    async (context) => {
+      const { id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await changeViewerAutomationLifecycle(
+            context.get("viewer"),
+            id,
+            context.req.valid("json"),
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.patch(
+    "/:id",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    zValidator("json", automationUpdateSchema, (result) => {
+      if (!result.success) {
+        const fields: Record<string, string[]> = {};
+        for (const issue of result.error.issues) {
+          const field = issue.path.join(".") || "save";
+          (fields[field] ??= []).push(issue.message);
+        }
+        return jsonResponse(
+          automationEditErrorSchema,
+          { error: "Invalid Automation edit.", code: "invalid_edit", fields },
+          { status: 400 },
+        );
+      }
+      return undefined;
+    }),
+    async (context) => {
+      const { id } = context.req.valid("param");
+      const input = context.req.valid("json");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await updateViewerAutomation(context.get("viewer"), id, input),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.get("/:id", requireViewer, async (context) => {
+    const automation = await readViewerAutomationSummary(
+      context.get("viewer"),
+      context.req.param("id"),
+    );
+    return automation
+      ? jsonResponse(
+          automationSummarySchema,
+          (await attachAutomationMentions(getSqlExecutor(), [automation]))[0]!,
+        )
+      : jsonResponse(
+          apiErrorSchema,
+          { error: "Automation was not found." },
+          { status: 404 },
+        );
+  });
+  app.delete(
+    "/:id",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid task."),
+    async (context) => {
+      const user = context.get("viewer");
+      const params = context.req.valid("param");
+      try {
+        await deleteViewerTask(user, params.id);
+        return emptyResponse();
+      } catch (error) {
+        if (error instanceof ViewerTaskNotFoundError) {
+          return jsonResponse(
+            apiErrorSchema,
+            { error: error.message },
+            { status: 404 },
+          );
+        }
+        throw error;
+      }
+    },
+  );
+  return app;
+}

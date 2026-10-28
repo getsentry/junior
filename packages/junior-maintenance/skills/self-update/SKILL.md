@@ -32,7 +32,11 @@ Verify the target exists for every inventoried package before mutating files:
 pnpm view <package>@<target> version
 ```
 
-Stop if any package lacks the target on npm.
+Allow for npm security scanning and propagation delays after publication:
+
+- If a version or tarball is missing, retry affected packages after 30, 60, and 120 seconds. Keep the same target; do not retry auth failures as publication delays.
+- Confirm missing versions with cache-busted npm metadata and the direct version endpoint. Continue only when every package's exact target version and tarball are available.
+- If still unavailable, leave app files unchanged and do not open an update PR. Report "not yet available on npm" with the target, affected packages, and checks. Missing packages alone do not prove a failed publish or a scanning delay; do not republish or cut another release.
 
 ### 3. Build release context
 
@@ -77,16 +81,16 @@ If a new standalone `@sentry/junior-*` plugin package was added, add it to the a
 node scripts/check-plugin-packages.mjs
 ```
 
-Compare the consumer config with `apps/example` at `target_ref` to catch shape drift. Choose `target_ref` from the version bump commit, then the publish timestamp, then `origin/main` as approximate:
+Compare the consumer config with `apps/example` at `target_ref` to catch shape drift. Call `github_cloneRepository` with `repo: "getsentry/junior"`, `directory: "repos/junior-upstream"`, and `allowAdHoc: true`. Do not switch to a `junior` Workspace: the switch replaces the sandbox and removes this app checkout. Use the returned `path` as `<upstream>`. Choose `target_ref` from the version bump commit, then the publish timestamp, then `origin/main` as approximate:
 
 ```bash
-git clone --filter=blob:none --depth=200 https://github.com/getsentry/junior.git /tmp/junior-upstream
-git -C /tmp/junior-upstream log --oneline -S'"version": "<target_version>"' -- packages/junior/package.json
-git -C /tmp/junior-upstream rev-list -n 1 --before="<target_published_at>" origin/main
-git -C /tmp/junior-upstream checkout <target_ref>
-git diff --no-index -- /tmp/junior-upstream/apps/example/nitro.config.ts nitro.config.ts
-git diff --no-index -- /tmp/junior-upstream/apps/example/plugins.ts plugins.ts
-git diff --no-index -- /tmp/junior-upstream/apps/example/server.ts server.ts
+git -C <upstream> fetch --deepen=200 origin main
+git -C <upstream> log --oneline -S'"version": "<target_version>"' -- packages/junior/package.json
+git -C <upstream> rev-list -n 1 --before="<target_published_at>" origin/main
+git -C <upstream> checkout <target_ref>
+git diff --no-index -- <upstream>/apps/example/nitro.config.ts nitro.config.ts
+git diff --no-index -- <upstream>/apps/example/plugins.ts plugins.ts
+git diff --no-index -- <upstream>/apps/example/server.ts server.ts
 ```
 
 Ignore app-local values. Apply only obvious low-risk fixes; put ambiguous drift in the PR body. For `package.json`, compare only build tooling (`nitro`, `jiti`, `typescript`), not plugin dependency lists or pins.
@@ -94,7 +98,7 @@ Ignore app-local values. Apply only obvious low-risk fixes; put ambiguous drift 
 For `vercel.json`, do not normalize the whole file against the example. Use upstream diff-backed changes when possible:
 
 ```bash
-git -C /tmp/junior-upstream diff <old_ref>..<target_ref> -- apps/example/vercel.json
+git -C <upstream> diff <old_ref>..<target_ref> -- apps/example/vercel.json
 ```
 
 Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.
@@ -129,11 +133,11 @@ When PR creation returns a subscribable resource hint, watch the PR for suggeste
 
 ## Automatic updates from GitHub releases
 
-When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event task on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event task for ongoing automation; use a temporary watch only when following one manually initiated update.
+When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event automation on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event automation for ongoing automation; use a temporary watch only when following one manually initiated update.
 
 ## Stop conditions
 
-- Any Junior package lacks the target version on npm.
+- Any Junior package still lacks the target version or tarball after the bounded availability checks in step 2.
 - Any npm version in `(old_version, target_version]` lacks a matching GitHub release.
 - `pnpm install --frozen-lockfile` fails after repair.
 - Checks fail for non-pre-existing, non-environment reasons and no safe config fix is available from step 7.

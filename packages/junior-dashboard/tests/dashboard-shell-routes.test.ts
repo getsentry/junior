@@ -17,8 +17,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
-    allowedGoogleDomains: ["sentry.io"],
-    allowedEmails: ["admin@example.com"],
+    allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
 }
@@ -97,6 +96,7 @@ describe("dashboard shell routes", () => {
 
     for (const path of [
       "/code",
+      "/code/00000000-0000-4000-8000-000000000003/changes",
       "/conversations",
       "/conversations/slack%3AC1%3A123",
       "/locations",
@@ -105,9 +105,9 @@ describe("dashboard shell routes", () => {
       "/people/person%40sentry.io",
       "/system",
       "/system/plugins/github",
-      "/tasks",
-      "/tasks/task-1",
-      "/tasks/scheduled/task-1/executions",
+      "/automations",
+      "/automations/task-1",
+      "/automations/task-1/executions",
       "/memories",
       "/memories/memory-1",
       "/settings",
@@ -187,6 +187,29 @@ describe("dashboard shell routes", () => {
     expect(avatarBytes).toEqual(installBytes);
   });
 
+  it("serves fixed object images without auth and rejects unknown assets", async () => {
+    const app = dashboard(null);
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/_junior/dashboard/object-icons/v1/git-pull-request-closed.png",
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect([
+      ...new Uint8Array(await response.arrayBuffer()).slice(0, 8),
+    ]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    const missing = await app.fetch(
+      new Request(
+        "http://localhost/_junior/dashboard/object-icons/v1/not-an-icon.png",
+      ),
+    );
+    expect(missing.status).toBe(404);
+  });
+
   it("serves the dashboard favicon without auth noise", async () => {
     const app = dashboard(null);
 
@@ -195,13 +218,13 @@ describe("dashboard shell routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("image/svg+xml");
+    expect(response.headers.get("content-type")).toBe("image/png");
   });
 
   it("serves the installable shell manifest without auth", async () => {
     const app = createDashboardApp({
       agentName: "Marky",
-      allowedEmails: ["admin@example.com"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null),
       basePath: "/ops",
     });
@@ -288,5 +311,4 @@ describe("dashboard shell routes", () => {
     expect(html).toContain("<style>");
     expect(html).toContain("Access denied");
   });
-
 });

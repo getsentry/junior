@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
@@ -11,14 +10,14 @@ import {
 } from "@/chat/db";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
-import { createSendFilesTool } from "@/chat/slack/tools/send-files";
+import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { ToolState } from "@/chat/tools/types";
 import { juniorAttachments } from "@/db/schema";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createJuniorSqlFixture } from "../fixtures/sql";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 function createToolState(): ToolState {
@@ -36,13 +35,13 @@ type ContextOverrides = Omit<
   Partial<SlackToolContext>,
   | "destinationChannelId"
   | "messageTs"
-  | "sourceChannelId"
+  | "locationChannelId"
   | "teamId"
   | "threadTs"
 > & {
   destinationChannelId?: string;
   messageTs?: string;
-  sourceChannelId?: string;
+  locationChannelId?: string;
   teamId?: string;
   threadTs?: string;
 };
@@ -69,16 +68,16 @@ function createContext(
   _userText: string,
   overrides: ContextOverrides = {},
 ): SlackToolContext {
-  const sourceChannelId = requireSlackChannelId(
-    overrides.sourceChannelId ?? "C123",
+  const locationChannelId = requireSlackChannelId(
+    overrides.locationChannelId ?? "C123",
   );
   const destinationChannelId =
     overrides.destinationChannelId !== undefined
       ? requireSlackChannelId(overrides.destinationChannelId)
-      : sourceChannelId;
+      : locationChannelId;
   const teamId = requireSlackTeamId(overrides.teamId ?? "T123");
   const {
-    sourceChannelId: _sourceChannelId,
+    locationChannelId: _locationChannelId,
     destinationChannelId: _destinationChannelId,
     messageTs: overrideMessageTs,
     teamId: _teamId,
@@ -92,20 +91,9 @@ function createContext(
     ? requireSlackMessageTs(overrideThreadTs)
     : undefined;
   return {
-    destination: {
-      platform: "slack",
-      teamId,
-      channelId: destinationChannelId,
-    },
-    source: createSlackSource({
-      teamId,
-      channelId: sourceChannelId,
-      messageTs,
-      visibility: "private",
-    }),
     destinationChannelId,
     messageTs,
-    sourceChannelId,
+    locationChannelId,
     teamId,
     ...(threadTs ? { threadTs } : undefined),
     ...rest,
@@ -130,9 +118,11 @@ function createMaterializeFile(files: Record<string, Buffer> = {}) {
     readSandboxFileUpload(sandbox, input);
 }
 
-async function executeTool<
-  TInput,
->(tool: any, input: TInput, options: { toolCallId?: string } = {}) {
+async function executeTool<TInput>(
+  tool: any,
+  input: TInput,
+  options: { toolCallId?: string } = {},
+) {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
@@ -145,7 +135,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("sends file-only messages without posting empty text", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile({
@@ -180,7 +170,7 @@ describe("Slack sendFiles", () => {
       mimeType: "image/png",
       path: "/tmp/junior/artifacts/generated.png",
     };
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share the generated image"),
       createToolState(),
       createMaterializeFile({ [generatedArtifact.path]: imageBytes }),
@@ -199,13 +189,13 @@ describe("Slack sendFiles", () => {
     });
   });
 
-  it("uses source thread coordinates for thread delivery in assistant-context turns", async () => {
+  it("uses the Conversation Location thread when Destination differs", async () => {
     const context = createContext("attach this here", {
-      sourceChannelId: "D123",
+      locationChannelId: "D123",
       destinationChannelId: "CSHARED",
       threadTs: "1700000000.321",
     });
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       context,
       createToolState(),
       createMaterializeFile({
@@ -228,8 +218,29 @@ describe("Slack sendFiles", () => {
     });
   });
 
+  it("uploads files to a channel-level Conversation Location", async () => {
+    const context = createContext("attach the report");
+    delete context.messageTs;
+    const tool = createSlackSendFilesTool(
+      context,
+      createToolState(),
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+    );
+
+    await executeTool(tool, {
+      files: [{ path: "/tmp/report.txt" }],
+    });
+
+    const params = getCapturedSlackApiCalls("files.completeUploadExternal")[0]
+      ?.params;
+    expect(params).toMatchObject({ channel_id: "C123" });
+    expect(params).not.toHaveProperty("thread_ts");
+  });
+
   it("uploads files into the current Slack thread", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report", {
         threadTs: "1700000000.321",
       }),
@@ -256,7 +267,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("treats nullable optional file metadata as omitted", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report", {
         threadTs: "1700000000.321",
       }),
@@ -311,7 +322,7 @@ describe("Slack sendFiles", () => {
       },
       delete: async () => undefined,
     };
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report"),
       createToolState(),
       createMaterializeFile({
@@ -332,7 +343,7 @@ describe("Slack sendFiles", () => {
       { toolCallId: "call-send-1" },
     );
     // Clear in-process tool dedupe so a later call exercises durable reuse.
-    const retryTool = createSendFilesTool(
+    const retryTool = createSlackSendFilesTool(
       createContext("attach the report again"),
       createToolState(),
       createMaterializeFile({
@@ -363,7 +374,7 @@ describe("Slack sendFiles", () => {
     expect(rows[0]).toMatchObject({
       conversationId,
       filename: "report.txt",
-      provider: "test",
+      storageProvider: "test",
     });
     expect(puts).toEqual([rows[0]?.storageKey]);
     expect(
@@ -416,7 +427,7 @@ describe("Slack sendFiles", () => {
       delete: async () => undefined,
     };
     const state = createToolState();
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report"),
       state,
       createMaterializeFile({
@@ -497,7 +508,7 @@ describe("Slack sendFiles", () => {
       },
       delete: async () => undefined,
     };
-    const firstTool = createSendFilesTool(
+    const firstTool = createSlackSendFilesTool(
       createContext("attach the report"),
       createToolState(),
       createMaterializeFile({
@@ -523,7 +534,7 @@ describe("Slack sendFiles", () => {
       .set({ deleteRequestedAt: now })
       .where(eq(juniorAttachments.id, attachmentId!));
 
-    const retryTool = createSendFilesTool(
+    const retryTool = createSlackSendFilesTool(
       createContext("attach the report again"),
       createToolState(),
       createMaterializeFile({
@@ -554,7 +565,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("deletes the blob when SQL insert fails after put", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
       // No conversation row: FK on junior_attachments.conversation_id fails.
@@ -570,7 +581,7 @@ describe("Slack sendFiles", () => {
           deleted.push(...keys);
         },
       };
-      const tool = createSendFilesTool(
+      const tool = createSlackSendFilesTool(
         createContext("attach the report"),
         createToolState(),
         createMaterializeFile({
@@ -603,7 +614,7 @@ describe("Slack sendFiles", () => {
     const files = {
       "/tmp/report.txt": Buffer.from("first report"),
     };
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(files),
@@ -623,7 +634,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("deduplicates repeated uploads of the same file contents", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile({
@@ -647,7 +658,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("reports a missing sendFiles path as repairable tool input", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(),
@@ -664,7 +675,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("requires at least one file", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(),

@@ -17,17 +17,50 @@ import {
   parseRequiredSlackTimestampParam,
   slackTimestampParam,
 } from "@/chat/slack/timestamp-param";
-import type { SlackChannelId } from "@/chat/slack/ids";
+import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
-import type { SlackThreadReply } from "@/chat/slack/channel";
-import { renderAttachmentText } from "@/chat/slack/message/attachments";
+import type { SlackFileRef, SlackThreadReply } from "@/chat/slack/channel";
+import {
+  extractAttachmentFiles,
+  renderAttachmentText,
+} from "@/chat/slack/message/attachments";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { matchSlackAttachments } from "@/chat/slack/attachments";
+import { getConversationStore } from "@/chat/db";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
+interface ThreadReadAttachmentDeps {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+}
+
+/**
+ * Combine top-level `files` with files nested inside `attachments`
+ * (forwarded/shared messages carry their files there), deduped by id.
+ */
+function collectMessageFiles(msg: SlackThreadReply): SlackFileRef[] {
+  const seen = new Set<string>();
+  const files: SlackFileRef[] = [];
+  for (const file of [
+    ...(msg.files ?? []),
+    ...extractAttachmentFiles(msg.attachments),
+  ]) {
+    if (!file.id || seen.has(file.id)) continue;
+    seen.add(file.id);
+    files.push(file);
+  }
+  return files;
+}
+
 /** Project a thread reply to safe output fields (strips url_private etc). */
-function sanitizeMessage(msg: SlackThreadReply) {
+function sanitizeMessage(
+  msg: SlackThreadReply,
+  attachmentIdsBySlackFileId: ReadonlyMap<string, string>,
+) {
   const attachmentText = renderAttachmentText(msg.attachments);
+  const files = collectMessageFiles(msg);
 
   return {
     ts: msg.ts,
@@ -37,14 +70,26 @@ function sanitizeMessage(msg: SlackThreadReply) {
     subtype: msg.subtype,
     bot_id: msg.bot_id,
     type: msg.type,
-    ...(attachmentText ? { attachment_text: attachmentText } : undefined),
-    ...(msg.files?.length
+    ...(msg.reactions?.length
       ? {
-          files: msg.files.map((f) => ({
+          reactions: msg.reactions.map((reaction) => ({
+            name: reaction.name,
+            count: reaction.count,
+            users: reaction.users,
+          })),
+        }
+      : undefined),
+    ...(attachmentText ? { attachment_text: attachmentText } : undefined),
+    ...(files.length
+      ? {
+          files: files.map((f) => ({
             id: f.id,
             name: f.name,
             mimetype: f.mimetype,
             size: f.size,
+            ...(f.id && attachmentIdsBySlackFileId.get(f.id)
+              ? { attachment_id: attachmentIdsBySlackFileId.get(f.id) }
+              : undefined),
           })),
         }
       : undefined),
@@ -77,11 +122,40 @@ function truncateMessages(
   return { messages: kept, omitted: messages.length - kept.length };
 }
 
+/**
+ * Find stored Conversations for a Slack thread.
+ *
+ * A thread that an automation run started is bound to the run's Conversation.
+ * Other threads use `slack:<channel>:<threadTs>`. Return both when both exist.
+ */
+async function findThreadConversationIds(args: {
+  channelId: SlackChannelId;
+  teamId: SlackTeamId;
+  threadTs: string;
+}): Promise<string[]> {
+  const store = getConversationStore();
+  const boundId = await store.getConversationIdByProviderConversation({
+    provider: "slack",
+    providerDestinationId: args.channelId,
+    providerTenantId: args.teamId,
+    providerConversationId: args.threadTs,
+  });
+  const threadId = `slack:${args.channelId}:${args.threadTs}`;
+  const ids = boundId ? [boundId] : [];
+  if (threadId !== boundId && (await store.get({ conversationId: threadId }))) {
+    ids.push(threadId);
+  }
+  return ids;
+}
+
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
-export function createSlackThreadReadTool(context: SlackToolContext) {
+export function createSlackThreadReadTool(
+  context: SlackToolContext,
+  attachmentDeps?: ThreadReadAttachmentDeps,
+) {
   return zodTool({
     description:
-      "Read a Slack thread from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels.",
+      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `conversation_ids` when you took part in the thread; pass one to `searchConversationEvents`.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -93,17 +167,21 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
         .string()
         .min(1)
         .describe("Slack message archive URL.")
+        .nullable()
         .optional(),
-      channel_id: slackChannelRefParam.optional(),
+      channel_id: slackChannelRefParam.nullable().optional(),
       ts: slackTimestampParam(
         "Slack message timestamp. May be the thread root or any message in the thread.",
-      ).optional(),
+      )
+        .nullable()
+        .optional(),
       limit: z.coerce
         .number()
         .int()
         .min(1)
         .max(1000)
         .describe("Maximum number of thread messages to fetch.")
+        .nullable()
         .optional(),
       max_pages: z.coerce
         .number()
@@ -111,6 +189,7 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
         .min(1)
         .max(10)
         .describe("Maximum number of Slack API pages to traverse.")
+        .nullable()
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
@@ -148,7 +227,7 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
       const access = await checkSlackChannelReadAccess({
         currentChannelIds: [
           context.destinationChannelId,
-          context.sourceChannelId,
+          context.locationChannelId,
         ],
         targetChannelId: channelId,
         teamId: context.teamId,
@@ -163,7 +242,7 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
           channelId,
           threadTs: lookupTs,
           limit: limit ?? 1000,
-          maxPages: max_pages,
+          maxPages: max_pages ?? undefined,
         });
 
       let replies: SlackThreadReply[] | undefined;
@@ -227,11 +306,37 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
       const resolvedThreadTs =
         threadTs ?? root?.thread_ts ?? root?.ts ?? lookupTs;
 
-      const sanitized = replies.map(sanitizeMessage);
+      const slackFileIds = replies.flatMap((reply) =>
+        collectMessageFiles(reply)
+          .map((file) => file.id)
+          .filter((fileId): fileId is string => Boolean(fileId)),
+      );
+      const storedAttachments = attachmentDeps
+        ? await matchSlackAttachments({
+            conversationId: attachmentDeps.conversationId,
+            db: attachmentDeps.db,
+            providerIds: slackFileIds,
+          })
+        : [];
+      const attachmentIdsBySlackFileId = new Map(
+        storedAttachments.flatMap((attachment) =>
+          attachment.providerId
+            ? [[attachment.providerId, attachment.id] as const]
+            : [],
+        ),
+      );
+      const sanitized = replies.map((reply) =>
+        sanitizeMessage(reply, attachmentIdsBySlackFileId),
+      );
       const { messages, omitted } = truncateMessages(
         sanitized,
         MAX_THREAD_READ_CHARS,
       );
+      const conversationIds = await findThreadConversationIds({
+        channelId,
+        teamId: context.teamId,
+        threadTs: resolvedThreadTs,
+      });
 
       return {
         channel_id: channelId,
@@ -239,6 +344,9 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
         ...(joined ? { joined_channel: true } : undefined),
         target_message_ts: messageTs,
         thread_ts: resolvedThreadTs,
+        ...(conversationIds.length > 0
+          ? { conversation_ids: conversationIds }
+          : undefined),
         count: messages.length,
         fetched_count: replies.length,
         truncated: omitted > 0,

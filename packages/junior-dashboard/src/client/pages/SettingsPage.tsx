@@ -10,6 +10,7 @@ import { Field } from "../components/Field";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 import { TextInput } from "../components/TextInput";
+import { useDocumentTitle } from "../documentTitle";
 import { patch } from "../http";
 import { dashboardContainerClass } from "../styles";
 import type { DashboardCoreData } from "../types";
@@ -22,6 +23,7 @@ type SettingsPageProps = {
 
 /** Let the signed-in user manage their dashboard profile. */
 export function SettingsPage({ identity }: SettingsPageProps) {
+  useDocumentTitle("Settings");
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState(identity.user.name ?? "");
   useEffect(() => {

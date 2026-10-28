@@ -26,21 +26,22 @@ related:
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                           |
 | `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
-| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `xai/grok-4.5`.                                                    |
-| `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                   |
-| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `anthropic/claude-haiku-4.5`.                                 |
-| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-5.6-luna`.                                                                                                        |
-| `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `openai/gpt-5.6-sol`.                                                                                            |
+| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
+| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
+| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
+| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
+| `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
+| `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
 | `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                            |
-| `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                                        |
-| `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-5.4`; does not fall through to `AI_MODEL`.                                                                 |
+| `AI_VISION_MODEL`                           | No          | Image-understanding model. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables vision.                                                         |
+| `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.        |
 | `JUNIOR_BASE_URL`                           | No          | Main base URL for callback and authorization URLs.                                                                                                                          |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments.                       |
 | `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.                          |
-| `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                      |
+| `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone when Junior does not know a person's timezone, such as for schedules and Calendar tools. Defaults to `America/Los_Angeles`.                           |
 | `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                    |
 | `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments and published public artifacts. Vercel sets this when an OIDC-enabled Blob store is connected to the project.        |
 | `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static Vercel Blob credential when OIDC is unavailable. Vercel sets this for a token-connected store.                                                                       |
@@ -69,7 +70,7 @@ hook-adjusted semantic input (starting from validated tool arguments and
 excluding hook-injected environment values), current actor and destination
 context, and bounded user, assistant, tool-call, and tool-result evidence using
 the Codex Guardian transcript selection rules. Guardian defaults to
-`openai/gpt-5.6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
+`openai/gpt-6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
 payloads from this review are excluded from telemetry.
 
 Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:
@@ -90,12 +91,10 @@ If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 | `GOOGLE_CLIENT_SECRET` | Yes      | Google OAuth client secret.                                           |
 | `BETTER_AUTH_SECRET`   | No       | Optional override for dashboard cookies. Defaults to `JUNIOR_SECRET`. |
 
-Configure allowed Google Workspace domains in `createApp({ dashboard })` and `juniorNitro({ dashboard })` for normal deployments. Set these optional policy variables when you prefer environment-managed dashboard authorization:
+Dashboard auth requires at least one [allowed domain](#allowed-domains). Set these optional policy variables when you prefer environment-managed dashboard authorization:
 
 | Variable                              | Required | Purpose                                                                                 |
 | ------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`     | No       | Comma-separated or JSON array of allowed Google domains.                                |
-| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`     | No       | Comma-separated or JSON array of explicit email allowlist.                              |
 | `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                           |
 | `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures. |
 
@@ -127,6 +126,22 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 
 Provider credentials and other plugin-specific variables live on each plugin setup page under [Extend](/extend/). Keep this page limited to core runtime configuration.
 
+## Brief generation
+
+Brief generation is off by default. Enable it in app configuration when each
+Conversation needs a durable Brief:
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  briefs: { enabled: true },
+});
+```
+
+This option costs one default-model call per completed Turn. The example app and
+`junior chat` enable it.
+
 ## Experimental features
 
 Unstable product surfaces opt in through `createApp({ experimental })`, the same
@@ -141,17 +156,42 @@ const app = await createApp({
   experimental: {
     // Reply to non-mention messages in Slack threads Junior already joined.
     // Off by default. Without this, Junior only replies to explicit @mentions
-    // and resource-event notifications in those threads.
+    // and event notifications in those threads.
     "passive-routing": true,
-    // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
-    // unless you are testing the #879 runtime.
+    // Model-facing spawnAgent, messageAgent, listAgents, and stopAgent for
+    // durable child agent work. Child agents get messageAgent, listAgents,
+    // and reportBlocked.
+    // Incomplete; keep off unless you are testing the #879 runtime.
     subagents: true,
+    // Operator tools such as runOperatorSql. They read and write the app
+    // database directly and skip Conversation privacy checks. Enable them only
+    // on isolated deployments, such as Previews behind deployment protection.
+    "operator-tools": true,
   },
 });
 ```
 
 `junior chat` enables experimental `subagents` automatically because it is the
 local createApp-equivalent entrypoint and already wires the child-worker path.
+
+By default, only the root Conversation can start child agents. Set
+`limits.maxAgentDepth` to let child agents start their own child agents. For
+example, `1` lets a child agent start child agents, and those cannot start more.
+
+Each event automation can start at most 10 runs in a rolling minute. Set
+`limits.eventAutomationRunLimit.maxRuns` to change the count. Set
+`limits.eventAutomationRunLimit.windowMs` to change the window, in ms. For
+example, `eventAutomationRunLimit: { maxRuns: 100, windowMs: 3_600_000 }`
+allows 100 runs per hour. When an automation reaches the limit, Junior blocks it, sends
+its creator a direct message, and reports a warning issue to Sentry.
+
+Each turn can spend at most $100 of model cost and make at most 1,000 tool
+calls, including later execution slices of the turn. Set
+`limits.maxTurnCostUsd` (whole USD) or `limits.maxToolCallsPerTurn` to change
+these numbers. When a turn reaches a limit, Junior blocks its next tool call
+and tells the model to reply with what it finished and what is left. A child
+agent sends that reply to its parent as its result. If the model calls more
+tools after that, the turn fails with an execution-limit error.
 
 ## Remote ACP
 
@@ -172,21 +212,92 @@ pre-stable surface.
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
 
-## Profiles
+## Allowed domains
 
-Pass named profiles to `createApp()`. The `handoff` tool can switch to any configured profile except the active one:
+`createApp({ allowedDomains })` is one list of domains for Slack and the
+dashboard. When the option is unset, Junior reads `JUNIOR_ALLOWED_DOMAINS`, a
+comma-separated or JSON array of domains. It is optional, but we recommend it.
+Junior logs a warning at startup when it is empty.
+
+```ts title="server.ts"
+export default await createApp({
+  allowedDomains: ["example.com"],
+  plugins,
+});
+```
+
+- **Slack:** Junior starts work from a mention or DM only when the email of the
+  author's Slack profile is on an allowed domain. Slack verifies that email.
+  Junior drops other messages and does not reply. Passive thread replies, slash
+  commands, and Slack actions are not checked yet.
+- **Dashboard:** Google sign-in accepts only Google Workspace accounts on an
+  allowed domain. Junior checks the verified `hd` claim of the Google ID token,
+  not the email. With one domain, Junior also sends it to Google as the `hd`
+  hint. With more domains, it sends `hd=*`, so Google shows only Workspace
+  accounts. Dashboard auth requires at least one domain.
+
+When the list is empty, every member of the Slack workspace can use Junior.
+
+The old `dashboard.allowedGoogleDomains` option and
+`JUNIOR_DASHBOARD_GOOGLE_DOMAINS` variable were removed. Junior fails at
+startup when either is set, so a stale config cannot silently allow everyone.
+
+`operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
+runs one SQL statement against the app database and returns up to 200 rows.
+Each call uses its own database connection, which is closed afterwards, so
+session commands such as `BEGIN` or `SET` do not affect the app.
+It can write data and it skips every Conversation privacy check, so the Agent
+can read private Conversations with it. Never enable it in production. Use it
+on an isolated deployment whose database is a disposable copy, and choose that
+deployment in app code, for example:
 
 ```ts
 const app = await createApp({
-  defaultProfile: "gpt-5",
-  profiles: {
-    "gpt-5": "openai/gpt-5.6-sol",
-    "opus-5": "anthropic/claude-opus-5",
+  experimental: {
+    "operator-tools":
+      process.env.VERCEL_ENV === "preview" &&
+      process.env.JUNIOR_PREVIEW_OPERATOR === "true",
   },
 });
 ```
 
-Set `profiles` and `defaultProfile` together. App config replaces profiles from env settings. If app config omits both options, the deprecated env settings create `standard` and `handoff` profiles. `AI_MODEL_PROFILES` can add or replace those profiles.
+## Profiles
+
+Without overrides, Junior uses GPT-6 Luna High for `standard` and Claude Opus 5.5 High for `handoff`. Keep these shared defaults unless the app needs different behavior.
+
+To override them, pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
+
+```ts
+const app = await createApp({
+  defaultProfile: "standard",
+  profiles: {
+    standard: {
+      modelId: "xai/grok-4.5",
+      description:
+        "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.",
+    },
+    coding: {
+      modelId: "openai/gpt-5.6-sol",
+      description:
+        "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.",
+      reasoningLevel: "high",
+    },
+  },
+  decisionModelId: "typesafe-ai/jev",
+  fastModelId: "openai/gpt-6-luna",
+  guardianModelId: "openai/gpt-6-luna",
+  embeddingModelId: "openai/text-embedding-3-small",
+  webSearchModelId: "openai/gpt-6-luna",
+  imageGenerationModelId: "google/gemini-3-pro-image",
+  visionModelId: "openai/gpt-5.6-sol",
+});
+```
+
+Each profile value may be a model id string or an object with `modelId` and optional `description` and `reasoningLevel` fields. Name concrete tasks in each description. Include use and avoid cases when useful. Do not use model product names as the selection rule. The turn router and `handoff` tool use these descriptions so the agent can choose another profile when it fits the task better.
+
+Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
+
+The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
 
 ## Install-wide config defaults
 
@@ -220,7 +331,7 @@ const app = await createApp({
 });
 ```
 
-The app setting takes precedence over `SANDBOX_VCPUS`. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
+The app setting takes precedence over `SANDBOX_VCPUS`. A Workspace recipe vCPU count takes precedence over both for sandboxes of that Workspace. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
 
 Pass `sandbox.egressTracePropagationDomains` when sandboxed commands should keep Sentry trace context across sandbox network egress:
 

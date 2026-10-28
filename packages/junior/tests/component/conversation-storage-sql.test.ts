@@ -20,7 +20,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
-  createLocalJuniorSqlFixture,
+  createEmptyJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import {
@@ -384,7 +384,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("applies Drizzle migrations idempotently", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -400,7 +400,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("assigns sequential seq and fences conflicting appends loudly", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -430,7 +430,7 @@ describe("SQL conversation storage", () => {
 
       const history = await store.loadHistory(CONVERSATION_ID);
       expect(history.map((event) => event.seq)).toEqual([0, 1, 2]);
-      expect(history.map((event) => event.schemaVersion)).toEqual([1, 1, 1]);
+      expect(history.map((event) => event.schemaVersion)).toEqual([2, 2, 1]);
       expect(history.map((event) => event.data.type)).toEqual([
         "user_message",
         "user_message",
@@ -458,7 +458,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("loads the latest matching structured event directly", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -513,7 +513,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("loads the latest user instruction", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -556,7 +556,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("does not refresh a conversation for duplicate appends", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -623,12 +623,12 @@ describe("SQL conversation storage", () => {
   });
 
   it("deduplicates repeated keys within one append without leaving seq gaps", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const store = createSqlConversationEventStore(fixture.sql);
 
     try {
       await migrateSchema(fixture.sql);
-      await store.append(CONVERSATION_ID, [
+      const appended = await store.append(CONVERSATION_ID, [
         {
           idempotencyKey: "event:repeated",
           createdAtMs: 1_000,
@@ -658,6 +658,10 @@ describe("SQL conversation storage", () => {
         },
       ]);
 
+      expect(appended).toEqual([
+        { historyVersion: 0, seq: 0 },
+        { historyVersion: 0, seq: 1 },
+      ]);
       expect(
         (await store.loadHistory(CONVERSATION_ID)).map((event) => ({
           idempotencyKey: event.idempotencyKey,
@@ -677,7 +681,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("persists only the first conflicting terminal turn event", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -720,34 +724,8 @@ describe("SQL conversation storage", () => {
     }
   });
 
-  it("replaces NUL characters before persisting conversation events", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlConversationEventStore(fixture.sql);
-
-      await store.append(CONVERSATION_ID, [
-        {
-          data: userMessageEvent("before\u0000after and literal \\u0000"),
-          createdAtMs: 1_000,
-        },
-      ]);
-
-      expect((await store.loadHistory(CONVERSATION_ID))[0]?.data).toMatchObject(
-        {
-          type: "user_message",
-          content: [{ text: "before after and literal \\u0000", type: "text" }],
-        },
-      );
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("returns only the active history version", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -770,14 +748,22 @@ describe("SQL conversation storage", () => {
           type: "compaction",
           modelProfile: "standard",
           modelId: "test/model",
-          replacementHistory: [{ item: userMessageEvent("epoch1-summary") }],
+          replacementHistory: [
+            { item: userMessageEvent("epoch1\u0000summary") },
+          ],
         },
       });
 
+      await expect(
+        store.loadCurrentHistoryVersion(CONVERSATION_ID),
+      ).resolves.toBe(1);
       const current = await store.loadCurrentHistory(CONVERSATION_ID);
       expect(current.map((event) => event.historyVersion)).toEqual([1]);
       expect(current.map((event) => event.data.type)).toEqual(["compaction"]);
       expect(current.map((event) => event.seq)).toEqual([2]);
+      expect(current[0]?.data).toMatchObject({
+        replacementHistory: [{ item: userMessageEvent("epoch1\u0000summary") }],
+      });
 
       const history = await store.loadHistory(CONVERSATION_ID);
       expect(history.map((event) => event.historyVersion)).toEqual([0, 0, 1]);
@@ -787,7 +773,7 @@ describe("SQL conversation storage", () => {
   }, 15_000);
 
   it("loads exactly the history version containing an event cursor", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -860,7 +846,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("does not decode events after a fixed epoch boundary", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -904,7 +890,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("narrow reads do not decode unrelated or superseded events", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -955,7 +941,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("keeps a bounded visible suffix after compacting more than 864 messages", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1027,7 +1013,7 @@ WHERE conversation_id = $1 AND seq = 0
   }, 30_000);
 
   it("round trips provider-neutral isolated subagent history", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1049,7 +1035,7 @@ WHERE conversation_id = $1 AND seq = 0
   });
 
   it("rolls back a failed history replacement transaction", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1106,7 +1092,7 @@ WHERE conversation_id = $1 AND seq = 0
   ])(
     "preserves unsupported stored events as opaque facts %#",
     async ({ schemaVersion, type, payload }) => {
-      const fixture = await createLocalJuniorSqlFixture();
+      const fixture = await createEmptyJuniorSqlFixture();
 
       try {
         await migrateSchema(fixture.sql);
@@ -1150,7 +1136,7 @@ INSERT INTO junior_conversation_events (
   );
 
   it("rejects malformed payloads for supported stored events", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1183,7 +1169,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("uses physical event columns as authoritative when decoding rows", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1230,7 +1216,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("records message and handled facts idempotently", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1303,7 +1289,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("advances last_activity_at on content writes without regressing on backdated content", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     async function lastActivityMs(): Promise<number> {
       const rows = await fixture.sql
@@ -1381,7 +1367,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("purges conversation events for a conversation and its descendants", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);

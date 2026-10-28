@@ -1,5 +1,6 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { parseActorUserId } from "@/chat/actor";
+import { parseSessionSource } from "@/chat/source";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -32,21 +33,38 @@ function readAuthor(meta: unknown): {
     ...(typeof author.fullName === "string"
       ? { fullName: author.fullName }
       : undefined),
-    ...(typeof author.isBot === "boolean" ? { isBot: author.isBot } : undefined),
-    ...(typeof author.userId === "string" ? { userId: author.userId } : undefined),
+    ...(typeof author.isBot === "boolean"
+      ? { isBot: author.isBot }
+      : undefined),
+    ...(typeof author.userId === "string"
+      ? { userId: author.userId }
+      : undefined),
     ...(typeof author.userName === "string"
       ? { userName: author.userName }
       : undefined),
   };
 }
 
-async function loadConversationSlackTenantId(
+/** Read the Slack workspace that owns a conversation, when it has one. */
+export async function loadConversationSlackTenantId(
   executor: JuniorSqlDatabase,
   conversationId: string,
 ): Promise<string | undefined> {
-  const [row] = await executor
+  return (await loadConversationSlackTenantIds(executor, [conversationId])).get(
+    conversationId,
+  );
+}
+
+/** Read the Slack workspace that owns each conversation, with one query. */
+export async function loadConversationSlackTenantIds(
+  executor: JuniorSqlDatabase,
+  conversationIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (conversationIds.length === 0) return new Map();
+  const rows = await executor
     .db()
     .select({
+      conversationId: juniorConversations.conversationId,
       providerTenantId: juniorDestinations.providerTenantId,
       sessionSource: juniorConversations.sessionSource,
     })
@@ -55,22 +73,16 @@ async function loadConversationSlackTenantId(
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(eq(juniorConversations.conversationId, conversationId))
-    .limit(1);
-  const destinationTenant = row?.providerTenantId?.trim();
-  if (destinationTenant) {
-    return destinationTenant;
+    .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+  const tenants = new Map<string, string>();
+  for (const row of rows) {
+    const sessionSource = parseSessionSource(row.sessionSource);
+    const tenantId =
+      row.providerTenantId?.trim() ||
+      (sessionSource?.kind === "slack" ? sessionSource.teamId : undefined);
+    if (tenantId) tenants.set(row.conversationId, tenantId);
   }
-  const sessionSource = row?.sessionSource;
-  if (
-    isRecord(sessionSource) &&
-    sessionSource.platform === "slack" &&
-    typeof sessionSource.teamId === "string" &&
-    sessionSource.teamId.trim()
-  ) {
-    return sessionSource.teamId.trim();
-  }
-  return undefined;
+  return tenants;
 }
 
 async function findIdentityIdByProviderSubject(

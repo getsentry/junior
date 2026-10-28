@@ -4,11 +4,15 @@
  * Wake-only: mailbox/lease own liveness; this just nudges the worker.
  */
 import type { StateAdapter } from "chat";
+import {
+  recordTurnAuthorization,
+  getTurnAuthorization,
+} from "./authorized-turn";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import {
   failTurnRecord,
@@ -34,6 +38,15 @@ interface TurnWakeOptions {
   state?: StateAdapter;
 }
 
+/** Look up and wake paused Turns without exposing queue or storage details. */
+export interface PausedTurns {
+  get(args: {
+    conversationId: string;
+    turnId: string;
+  }): Promise<PausedTurnRequest | undefined>;
+  wake(request: PausedTurnRequest): Promise<void>;
+}
+
 /** Build the worker input for a paused turn. */
 export async function getPausedTurnRequest(args: {
   conversationId: string;
@@ -50,12 +63,13 @@ export async function getPausedTurnRequest(args: {
     turn.state !== "paused" ||
     (turn.resumeReason !== "timeout" &&
       turn.resumeReason !== "yield" &&
-      turn.resumeReason !== "retry") ||
+      turn.resumeReason !== "retry" &&
+      !(turn.resumeReason === "auth" && (await getTurnAuthorization(turn)))) ||
     (turn.resumeReason === "timeout" && turn.sliceId < 2)
   ) {
     return undefined;
   }
-  let routing: TurnSessionRouting;
+  let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
       conversationId: args.conversationId,
@@ -105,4 +119,27 @@ export async function wakePausedTurn(
     queue,
     state: options.state,
   });
+}
+
+/** Create paused Turn operations for one app. */
+export function createPausedTurns(
+  options: TurnWakeOptions & { conversationStore?: ConversationStore } = {},
+): PausedTurns {
+  return {
+    get: (args) =>
+      getPausedTurnRequest({
+        ...args,
+        conversationStore: options.conversationStore,
+      }),
+    wake: (request) => wakePausedTurn(request, options),
+  };
+}
+
+/** Record completed authorization and wake the sole execution owner. */
+export async function wakeAuthorizedTurn(
+  args: Parameters<typeof recordTurnAuthorization>[0],
+  queue?: ConversationWorkQueue,
+): Promise<void> {
+  const request = await recordTurnAuthorization(args);
+  if (request) await wakePausedTurn(request, { queue });
 }

@@ -9,6 +9,8 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
+import { traceQueries } from "./tracing";
+import { logException } from "@/chat/logging";
 
 const { Pool } = pg;
 
@@ -17,8 +19,15 @@ type QueryClient = PgPool | PoolClient;
 class PostgresExecutor implements JuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
   private savepointId = 0;
+  private isolatedQueryId = 0;
 
-  constructor(private readonly pool: PgPool) {}
+  private readonly pool: PgPool;
+  private readonly connectionString: string;
+
+  constructor(pool: PgPool, connectionString: string) {
+    this.pool = pool;
+    this.connectionString = connectionString;
+  }
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {
@@ -41,6 +50,27 @@ class PostgresExecutor implements JuniorSqlExecutor {
       ...params,
     ]);
     return result.rows as T[];
+  }
+
+  async queryIsolated<T = unknown>(
+    statement: string,
+    params: readonly unknown[] = [],
+  ): Promise<T[]> {
+    const client = traceQueries(await this.pool.connect(), {
+      connectionString: this.connectionString,
+      driver: "postgres",
+    });
+    try {
+      // A named statement uses the extended protocol, which accepts one statement only.
+      const result = await client.query<QueryResultRow>({
+        name: `junior_isolated_${++this.isolatedQueryId}`,
+        text: statement,
+        values: [...params],
+      });
+      return result.rows as T[];
+    } finally {
+      client.release(true);
+    }
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
@@ -133,7 +163,10 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return this.transactionClient.getStore() ?? this.pool;
+    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
+      connectionString: this.connectionString,
+      driver: "postgres",
+    });
   }
 }
 
@@ -143,12 +176,18 @@ export function createPostgresJuniorSqlExecutor(args: {
   connectionString: string;
   statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
-  return new PostgresExecutor(
-    new Pool({
-      application_name: args.applicationName,
-      connectionString: args.connectionString,
-      max: 3,
-      statement_timeout: args.statementTimeoutMs,
-    }),
-  );
+  const pool = new Pool({
+    application_name: args.applicationName,
+    connectionString: args.connectionString,
+    max: 3,
+    statement_timeout: args.statementTimeoutMs,
+  });
+  // An idle client can fail when the server closes it. The pool replaces the
+  // client, so report the error instead of crashing the process.
+  pool.on("error", (error) => {
+    logException(error, "db.pool.client.failed", {
+      "app.db.driver": "postgres",
+    });
+  });
+  return new PostgresExecutor(pool, args.connectionString);
 }

@@ -4,6 +4,7 @@ import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import {
   juniorConversationEvents,
+  juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
@@ -120,14 +121,20 @@ export async function selectExpiredRoots(
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
-        and exists (
-          select 1 from junior_conversations metadata
-          where metadata.conversation_id = tree.conversation_id
-            and (
-              metadata.title is not null
-              or metadata.channel_name is not null
-              or metadata.actor_json is not null
-            )
+        and (
+          exists (
+            select 1 from junior_conversation_briefs briefs
+            where briefs.conversation_id = tree.conversation_id
+          )
+          or exists (
+            select 1 from junior_conversations metadata
+            where metadata.conversation_id = tree.conversation_id
+              and (
+                metadata.title is not null
+                or metadata.channel_name is not null
+                or metadata.actor_json is not null
+              )
+          )
         )
       )
   )`;
@@ -291,12 +298,21 @@ export async function purgeConversationTree(
               ),
             );
           await requestAttachmentDeletion(executor, ids, args.nowMs);
+          const scrubMetadata = args.retention
+            ? !isPublic
+            : resolvedScrubMetadata;
+          if (scrubMetadata) {
+            await executor
+              .db()
+              .delete(juniorConversationBriefs)
+              .where(inArray(juniorConversationBriefs.conversationId, ids));
+          }
           await executor
             .db()
             .update(juniorConversations)
             .set({
               transcriptPurgedAt: new Date(args.nowMs),
-              ...((args.retention ? !isPublic : resolvedScrubMetadata)
+              ...(scrubMetadata
                 ? { title: null, channelName: null, actor: null }
                 : undefined),
             })

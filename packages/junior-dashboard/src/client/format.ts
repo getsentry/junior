@@ -1,7 +1,9 @@
-import { bundledLanguages, type BundledLanguage } from "shiki/bundle/web";
+import type { BundledLanguage } from "shiki/bundle/web";
+import { dashboardCodeLanguages } from "./code-languages";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
+  ConversationModelUsage,
   ConversationSummaryReport,
   ConversationUsage,
 } from "@sentry/junior/api/schema";
@@ -17,11 +19,25 @@ import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 
-let dashboardTimeZone = "America/Los_Angeles";
+/** Detect the viewer's own local timezone as the default display timezone. */
+function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "UTC";
+  }
+}
 
-/** Set the dashboard display timezone returned by the authenticated config API. */
-export function setDashboardTimeZone(timeZone: string): void {
-  dashboardTimeZone = timeZone;
+let dashboardTimeZone = browserTimeZone();
+
+/** Apply an operator-configured timezone override from the config API, if any. Otherwise the viewer's own browser timezone is used. */
+export function setDashboardTimeZone(timeZone: string | undefined): void {
+  dashboardTimeZone = timeZone || browserTimeZone();
+}
+
+/** Read the dashboard display timezone used for absolute timestamps and charts. */
+export function getDashboardTimeZone(): string {
+  return dashboardTimeZone;
 }
 
 function displayTimeZone(): string {
@@ -480,6 +496,30 @@ export function summarizeUsage(
   return summary.totalTokens > 0 ? summary : undefined;
 }
 
+/** Sum model token components for a conversation detail. */
+export function summarizeModelUsage(
+  modelUsage: ConversationModelUsage[] | undefined,
+): TokenUsageSummary | undefined {
+  if (!modelUsage?.length) return undefined;
+  const summary: TokenUsageSummary = { totalTokens: 0 };
+  for (const item of modelUsage) {
+    const model = summarizeUsage(item.usage);
+    if (!model) continue;
+    summary.totalTokens += model.totalTokens;
+    for (const field of [
+      "inputTokens",
+      "outputTokens",
+      "cachedInputTokens",
+      "cacheCreationTokens",
+      "reasoningTokens",
+    ] as const) {
+      const value = model[field];
+      if (value !== undefined) summary[field] = (summary[field] ?? 0) + value;
+    }
+  }
+  return summary.totalTokens > 0 ? summary : undefined;
+}
+
 /** Format total token usage for compact metadata. */
 export function formatTokenSummary(
   summary: TokenUsageSummary | undefined,
@@ -526,6 +566,18 @@ export function summarizeCost(
   summary.cacheRead = components.cacheRead;
   summary.cacheWrite = components.cacheWrite;
   return total !== undefined || componentTotal > 0 ? summary : undefined;
+}
+
+/** Sum the model costs shown in a Conversation's breakdown. */
+export function summarizeModelCost(
+  modelUsage: ConversationModelUsage[] | undefined,
+): CostUsageSummary | undefined {
+  let total: number | undefined;
+  for (const item of modelUsage ?? []) {
+    const summary = summarizeCost(item.usage);
+    if (summary) total = addCost(total ?? 0, summary.total);
+  }
+  return total === undefined ? undefined : { total };
 }
 
 /** Format estimated model cost in USD for consistent dashboard display. */
@@ -608,6 +660,21 @@ function compareTimeDesc(a: string | undefined, b: string | undefined): number {
   return (parseTime(b) ?? 0) - (parseTime(a) ?? 0);
 }
 
+/**
+ * Return the title of a loaded Conversation. A child agent Conversation uses
+ * its agent label from the agent tree, because it has no title of its own.
+ */
+export function conversationDetailTitle(
+  detail:
+    | Pick<ConversationTranscript, "agentTree" | "displayTitle">
+    | undefined,
+): string | undefined {
+  return (
+    detail?.agentTree?.at(-1)?.label ??
+    (detail?.displayTitle?.trim() || undefined)
+  );
+}
+
 /** Return the display title prepared by the reporting API. */
 export function conversationDisplayTitle(
   conversation: Conversation | undefined,
@@ -630,16 +697,6 @@ export function conversationActorLabel(
   conversation: Conversation | undefined,
 ): string | undefined {
   return actorLabel(conversation?.actorIdentity);
-}
-
-/** Return the stable actor key used by dashboard list filters. */
-export function conversationActorKey(
-  conversation: Conversation | undefined,
-): string | undefined {
-  return (
-    conversation?.actorIdentity?.email?.trim() ||
-    conversationActorLabel(conversation)
-  );
 }
 
 /** Format the owner and permalink id line shared by conversation rows and headers. */
@@ -731,9 +788,9 @@ export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
 }
 
-/** Build the canonical task detail route for a task id. */
-export function taskPath(taskId: string): string {
-  return `/tasks/${encodeURIComponent(taskId)}`;
+/** Build the canonical automation detail route for an automation id. */
+export function automationPath(automationId: string): string {
+  return `/automations/${encodeURIComponent(automationId)}`;
 }
 
 function normalizeLanguage(language: string | undefined): BundledLanguage {
@@ -753,47 +810,9 @@ function normalizeLanguage(language: string | undefined): BundledLanguage {
     yml: "yaml",
   };
   const candidate = aliases[normalized] ?? normalized;
-  return candidate in bundledLanguages
+  return Object.hasOwn(dashboardCodeLanguages, candidate)
     ? (candidate as BundledLanguage)
     : "markdown";
-}
-
-/** Detect the syntax highlighter language for raw transcript blocks. */
-export function detectLanguage(text: string): BundledLanguage {
-  const trimmed = text.trim();
-  if (!trimmed) return "markdown";
-  try {
-    JSON.parse(trimmed);
-    return "json";
-  } catch {
-    // continue with heuristics
-  }
-  if (prettyJsonl(trimmed)) return "json";
-  if (/^<[\s\S]+>$/.test(trimmed) && /<\/?[a-zA-Z][^>]*>/.test(trimmed)) {
-    return "xml";
-  }
-  // Mixed prose + block-level XML: detect when a complete open/close element pair
-  // appears on its own lines. Handles system prompts and runtime context blocks
-  // that start with plain text but contain structured XML sections.
-  const blockOpen = trimmed.match(
-    /(?:^|\n)[ \t]*<([A-Za-z_][\w:.-]*)(?:[ \t][^<>]*)?>[ \t]*(?=\n|$)/,
-  );
-  if (blockOpen?.[1]) {
-    const tag = blockOpen[1].replace(/[$()*+.?[\\^{|}]/g, "\\$&");
-    if (new RegExp(`(?:^|\\n)[ \\t]*</${tag}>[ \\t]*(?=\\n|$)`).test(trimmed)) {
-      return "xml";
-    }
-  }
-  if (/```|^#{1,6}\s|\n[-*]\s|\n\d+\.\s|\[[^\]]+\]\([^)]+\)/m.test(trimmed)) {
-    return "markdown";
-  }
-  if (/\b(import|export|const|let|function|interface|type)\b/.test(trimmed)) {
-    return "typescript";
-  }
-  if (/^\s*(\$|pnpm|npm|git|curl|cd|ls|node)\b/m.test(trimmed)) {
-    return "shellscript";
-  }
-  return "markdown";
 }
 
 function prettyJson(text: string): string | undefined {
@@ -892,6 +911,7 @@ export function buildConversations(
 ): Conversation[] {
   return summaries
     .map((summary) => ({
+      activityPreview: summary.activityPreview,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
@@ -899,6 +919,7 @@ export function buildConversations(
       channel: summary.channel,
       channelName: summary.channelName,
       channelNameRedacted: summary.channelNameRedacted,
+      childAgentTotals: summary.childAgentTotals,
       cumulativeDurationMs: summary.cumulativeDurationMs,
       cumulativeUsage: summary.cumulativeUsage,
       displayTitle: summary.displayTitle,
@@ -906,9 +927,10 @@ export function buildConversations(
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
+      locationUrl: summary.locationUrl,
       actorIdentity: summary.actorIdentity,
+      participants: summary.participants,
       sentryTraceUrl: summary.sentryTraceUrl,
-      sourceUrl: summary.sourceUrl,
       startedAt: summary.startedAt,
       status: summary.status,
       surface: summary.surface,
@@ -929,62 +951,6 @@ export function conversationFromDetail(
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;
-}
-
-export type ConversationListFilters = {
-  query?: string;
-  actor?: string;
-  location?: string;
-  source?: string;
-  status?: "active" | "archived";
-};
-
-function conversationSearchHaystack(conversation: Conversation): string {
-  const actor = conversation.actorIdentity;
-  return [
-    conversation.displayTitle,
-    conversation.id,
-    conversation.channel,
-    conversation.channelName,
-    conversation.status,
-    conversation.surface,
-    actor?.email,
-    actor?.fullName,
-    actor?.slackUserId,
-    actor?.slackUserName,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
-/** Apply lightweight client-side search and facet filters to conversations. */
-export function filterConversationList(
-  conversations: Conversation[],
-  filters: ConversationListFilters,
-): Conversation[] {
-  const query = filters.query?.trim().toLowerCase();
-  const source = filters.source?.trim();
-  const actor = filters.actor?.trim();
-  const location = filters.location?.trim();
-  const status = filters.status ?? "active";
-
-  return conversations.filter((conversation) => {
-    if (
-      status === "archived" ? !conversation.archivedAt : conversation.archivedAt
-    ) {
-      return false;
-    }
-    if (source && conversation.surface !== source) return false;
-    if (location && conversation.locationId !== location) return false;
-    if (actor && conversationActorKey(conversation) !== actor) {
-      return false;
-    }
-    if (query && !conversationSearchHaystack(conversation).includes(query)) {
-      return false;
-    }
-    return true;
-  });
 }
 
 /** Serialize transcript part payloads for raw view and syntax highlighting. */

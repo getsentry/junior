@@ -7,6 +7,8 @@ import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptActivityNesting } from "./TranscriptRailEvent";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -19,7 +21,9 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  if (entry.kind === "message") return Boolean(entry.message.eventType);
+  // Child agent rows stay in the main view, like their result events.
+  if (entry.kind === "subagent") return false;
+  if (entry.kind === "message") return false;
   return true;
 }
 
@@ -85,21 +89,25 @@ export function activityGroupSummary(
     (entry) =>
       entry.kind === "context" && entry.part.event.type === "compaction",
   ).length;
-  const handoffCount = entries.filter(
-    (entry) => entry.kind === "context" && entry.part.event.type === "handoff",
-  ).length;
-  const subagentCount = entries.filter(
-    (entry) => entry.kind === "subagent",
-  ).length;
+  const handoffs = entries.flatMap((entry) =>
+    entry.kind === "context" && entry.part.event.type === "handoff"
+      ? [entry.part.event]
+      : [],
+  );
   const structuredCount = entries.filter(
     (entry) => entry.kind === "structured_event",
   ).length;
   const attachmentsCount = entries.filter(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
-  const resourceEventCount = entries.filter(
-    (entry) => entry.kind === "message",
-  ).length;
+  const eventCount = entries.filter((entry) => entry.kind === "message").length;
+  const [onlyHandoff] = handoffs;
+  const handoffSummary =
+    handoffs.length === 1 && onlyHandoff
+      ? `model handoff to ${onlyHandoff.modelId} (${onlyHandoff.modelProfile})`
+      : handoffs.length > 1
+        ? countLabel(handoffs.length, "model handoff", "model handoffs")
+        : undefined;
 
   const parts = [
     toolCount > 0
@@ -108,35 +116,26 @@ export function activityGroupSummary(
     reasoningCount > 0
       ? countLabel(reasoningCount, "1 reasoning entry", "reasoning entries")
       : undefined,
-    subagentCount > 0
-      ? countLabel(subagentCount, "1 subagent", "subagents")
-      : undefined,
     compactionCount > 0
       ? countLabel(compactionCount, "context compacted", "context compacted")
       : undefined,
-    handoffCount > 0
-      ? countLabel(handoffCount, "model handoff", "model handoffs")
-      : undefined,
+    handoffSummary,
     structuredCount > 0
       ? countLabel(structuredCount, "1 structured event", "structured events")
       : undefined,
     attachmentsCount > 0
       ? countLabel(attachmentsCount, "1 file delivery", "file deliveries")
       : undefined,
-    resourceEventCount > 0
-      ? countLabel(resourceEventCount, "1 resource event", "resource events")
-      : undefined,
+    eventCount > 0 ? countLabel(eventCount, "1 event", "events") : undefined,
   ].filter((value): value is string => value !== undefined);
 
   return parts.length > 0 ? parts.join(" · ") : activityGroupLabel(entries);
 }
 
 function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
-  return entries.some((entry) => {
-    if (entry.kind === "tool") return entry.part.status === "running";
-    if (entry.kind === "subagent") return entry.part.status === "running";
-    return false;
-  });
+  return entries.some(
+    (entry) => entry.kind === "tool" && entry.part.status === "running",
+  );
 }
 
 /** Keep activity collapsed until the reader explicitly opens it. */
@@ -159,17 +158,22 @@ export function TranscriptActivityGroup(props: {
   const live = hasLiveActivity(props.entries);
 
   if (searchActive) {
-    return <div className="grid min-w-0 gap-1">{rows}</div>;
+    return (
+      <TranscriptActivityNesting.Provider value>
+        <div className="grid min-w-0 gap-1">{rows}</div>
+      </TranscriptActivityNesting.Provider>
+    );
   }
 
   const open = activityGroupOpen(userOpen);
 
   return (
-    <details className="group/activity-run min-w-0" open={open}>
-      <summary
+    <details className="group/activity-run min-w-0 py-0.5" open={open}>
+      <TranscriptSummary
+        flush
         className={cn(
-          "flex w-fit max-w-full cursor-pointer list-none items-center gap-1 py-0.5 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden",
-          live && "text-cyan-100/80",
+          "flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
+          live && "text-dashboard-accent-text/80",
         )}
         onClick={(event) => {
           event.preventDefault();
@@ -191,8 +195,10 @@ export function TranscriptActivityGroup(props: {
             />
           </span>
         </Tooltip>
-      </summary>
-      <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
+      </TranscriptSummary>
+      <TranscriptActivityNesting.Provider value>
+        <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
+      </TranscriptActivityNesting.Provider>
     </details>
   );
 }

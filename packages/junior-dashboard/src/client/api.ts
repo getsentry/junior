@@ -1,10 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
+  codePersonReportSchema,
+  codeRepositoryReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -13,9 +15,11 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  taskExecutionListSchema,
-  taskListSchema,
-  taskRunListSchema,
+  automationExecutionListSchema,
+  automationListSchema,
+  automationSummarySchema,
+  automationRunListSchema,
+  automationVersionListSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -89,15 +93,16 @@ export function usePluginUserPagesData() {
 }
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
-export function useConversationsData(status: "active" | "archived" = "active") {
+export function useConversationsData(search = "") {
   return useQuery({
-    queryKey: ["dashboard", "conversations", "viewer", status],
+    queryKey: ["dashboard", "conversations", "viewer", { search }],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${status === "archived" ? "?status=archived" : ""}`,
+        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
         signal,
       ),
+    placeholderData: keepPreviousData,
     retry: false,
   });
 }
@@ -112,41 +117,124 @@ export function useCodeOverviewData() {
   });
 }
 
-/** Fetch the signed-in viewer's scheduled and event tasks. */
-export function useTasksData(enabled: boolean) {
+/** Fetch code activity, recent changes, and Workspaces for one repository. */
+export function useCodeRepositoryData(repositoryId: string | undefined) {
   return useQuery({
-    enabled,
-    queryKey: ["dashboard", "tasks"],
+    enabled: Boolean(repositoryId),
+    queryKey: ["dashboard", "code", "repositories", repositoryId],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(taskListSchema, "/api/tasks", signal),
+      fetchDashboardJson(
+        codeRepositoryReportSchema,
+        `/api/code/repositories/${encodeURIComponent(repositoryId!)}`,
+        signal,
+      ),
     retry: false,
   });
 }
 
-/** Fetch newest runs across all viewer-visible tasks. */
-export function useTaskRunsData(enabled: boolean) {
+/** Fetch conversations linked to one repository through its code changes. */
+export function useCodeRepositoryConversationsData(
+  repositoryId: string | undefined,
+  search = "",
+) {
+  return useQuery({
+    enabled: Boolean(repositoryId),
+    queryKey: [
+      "dashboard",
+      "conversations",
+      "code-repository",
+      { repositoryId, search },
+    ],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ codeRepositoryId: repositoryId! });
+      if (search) params.set("q", search);
+      return fetchDashboardJson(
+        conversationFeedSchema,
+        `/api/conversations?${params.toString()}`,
+        signal,
+      );
+    },
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** Fetch the signed-in viewer's scheduled and event automations. */
+export function useAutomationsData(enabled: boolean, search: string) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "tasks", "runs"],
+    queryKey: ["dashboard", "automations", search],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(taskRunListSchema, "/api/tasks/runs", signal),
+      fetchDashboardJson(
+        automationListSchema,
+        `/api/automations${search ? `?${search}` : ""}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** Load details by ID, independent of list filters and pagination. */
+export function useAutomationData(enabled: boolean, id: string | undefined) {
+  return useQuery({
+    enabled: enabled && Boolean(id),
+    queryKey: ["dashboard", "automations", "detail", id],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        automationSummarySchema,
+        `/api/automations/${encodeURIComponent(id!)}`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch newest runs across all viewer-visible automations. */
+export function useAutomationRunsData(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["dashboard", "automations", "runs"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        automationRunListSchema,
+        "/api/automations/runs",
+        signal,
+      ),
     retry: false,
   });
 }
 
 /** Fetch terminal executions for one viewer-visible task. */
-export function useTaskExecutionsData(
+export function useAutomationExecutionsData(
   enabled: boolean,
-  kind: "scheduled" | "event" | undefined,
-  taskId: string | undefined,
+  automationId: string | undefined,
 ) {
   return useQuery({
-    enabled: enabled && Boolean(kind && taskId),
-    queryKey: ["dashboard", "tasks", kind, taskId, "executions"],
+    enabled: enabled && Boolean(automationId),
+    queryKey: ["dashboard", "automations", automationId, "executions"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
-        taskExecutionListSchema,
-        `/api/tasks/${kind}/${encodeURIComponent(taskId!)}/executions`,
+        automationExecutionListSchema,
+        `/api/automations/${encodeURIComponent(automationId!)}/executions`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch saved definitions for one viewer-visible Automation, newest first. */
+export function useAutomationVersionsData(
+  enabled: boolean,
+  automationId: string | undefined,
+) {
+  return useQuery({
+    enabled: enabled && Boolean(automationId),
+    queryKey: ["dashboard", "automations", automationId, "versions"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        automationVersionListSchema,
+        `/api/automations/${encodeURIComponent(automationId!)}/versions`,
         signal,
       ),
     retry: false,
@@ -187,6 +275,21 @@ export function useActorPluginReportsData(email: string | undefined) {
       fetchDashboardJson(
         pluginOperationalReportFeedSchema,
         `/api/people/${encodeURIComponent(email!)}/plugin-reports`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch person-scoped native code activity for one People profile. */
+export function useActorCodeData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code`,
         signal,
       ),
     retry: false,

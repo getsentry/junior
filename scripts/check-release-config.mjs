@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -110,6 +111,19 @@ function describeMismatch(expected, actual) {
 
   return { missing, extra };
 }
+
+// Craft must create the approved tag before npm. Only the tag workflow publishes assets.
+const craftConfig = readFile(".craft.yml");
+assert.match(
+  craftConfig,
+  /^targets:\n  - name: github\n    tagOnly: true\n  - name: npm/m,
+  "Craft must create the release tag before publishing npm packages.",
+);
+assert.equal(
+  [...craftConfig.matchAll(/^  - name: github$/gm)].length,
+  1,
+  "The tag workflow must be the only GitHub Release publisher.",
+);
 
 const sources = [
   {

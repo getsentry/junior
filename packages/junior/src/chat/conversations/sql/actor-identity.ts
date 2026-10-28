@@ -17,7 +17,9 @@ export function identityFromActor(
       providerSubjectId: actor.slackUserId,
       ...(actor.fullName ? { displayName: actor.fullName } : undefined),
       ...(actor.slackUserName ? { handle: actor.slackUserName } : undefined),
-      ...(actor.email ? { email: actor.email, emailVerified: true } : undefined),
+      ...(actor.email
+        ? { email: actor.email, emailVerified: true }
+        : undefined),
       metadata: { platform: "slack" },
     };
   }
@@ -57,12 +59,12 @@ export function systemIdentityFromSource(
       displayName: "Local CLI",
     };
   }
-  if (source === "resource_event") {
+  if (source === "event") {
     return {
       kind: "system",
       provider: "junior",
-      providerSubjectId: "resource-event",
-      displayName: "Resource Event",
+      providerSubjectId: "event",
+      displayName: "Event",
     };
   }
   return undefined;
@@ -100,7 +102,9 @@ export function actorFromIdentityRow(
       platform: "slack",
       slackUserId: identity.providerSubjectId,
       ...(identity.handle ? { slackUserName: identity.handle } : undefined),
-      ...(identity.providerTenantId ? { teamId: identity.providerTenantId } : undefined),
+      ...(identity.providerTenantId
+        ? { teamId: identity.providerTenantId }
+        : undefined),
     };
   }
   // Dashboard/web actors are junior identities keyed by verified email.

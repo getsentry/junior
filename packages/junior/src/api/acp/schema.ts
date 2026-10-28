@@ -117,10 +117,29 @@ const textContentBlockSchema = z
   })
   .strict();
 
+const resourceLinkContentBlockSchema = z
+  .object({
+    _meta: metaSchema.optional(),
+    annotations: annotationsSchema.nullable().optional(),
+    description: z.string().nullable().optional(),
+    mimeType: z.string().nullable().optional(),
+    name: z.string(),
+    size: z.number().finite().nullable().optional(),
+    title: z.string().nullable().optional(),
+    type: z.literal("resource_link"),
+    uri: z.string(),
+  })
+  .strict();
+
 export const promptParamsSchema = z
   .object({
     _meta: metaSchema.optional(),
-    prompt: z.array(textContentBlockSchema),
+    prompt: z.array(
+      z.discriminatedUnion("type", [
+        textContentBlockSchema,
+        resourceLinkContentBlockSchema,
+      ]),
+    ),
     sessionId: acpSessionIdSchema,
   })
   .strict();

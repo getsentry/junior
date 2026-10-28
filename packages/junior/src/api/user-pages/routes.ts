@@ -37,8 +37,11 @@ const userPageQuerySchema = z.object({
 export function createUserPageRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
-  app.get("/", () =>
-    jsonResponse(pluginUserPageLinksSchema, readPluginUserPageLinks()),
+  app.get("/", (context) =>
+    jsonResponse(
+      pluginUserPageLinksSchema,
+      readPluginUserPageLinks(context.get("viewer")),
+    ),
   );
   app.get(
     "/:pluginName/:pageId",

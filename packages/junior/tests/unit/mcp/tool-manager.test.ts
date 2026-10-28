@@ -29,10 +29,10 @@ vi.mock("@/chat/mcp/client", () => {
   }
 
   class MockPluginMcpClient {
-    constructor(
-      private readonly plugin: PluginDefinition,
-      options?: unknown,
-    ) {
+    private readonly plugin: PluginDefinition;
+
+    constructor(plugin: PluginDefinition, options?: unknown) {
+      this.plugin = plugin;
       if (clientSetupError.value) {
         throw clientSetupError.value;
       }
@@ -76,8 +76,12 @@ function buildPlugin(
       mcp: {
         transport: "http",
         url: "https://mcp.example.com",
-        ...(options.allowedTools ? { allowedTools: options.allowedTools } : undefined),
-        ...(options.wrappedTools ? { wrappedTools: options.wrappedTools } : undefined),
+        ...(options.allowedTools
+          ? { allowedTools: options.allowedTools }
+          : undefined),
+        ...(options.wrappedTools
+          ? { wrappedTools: options.wrappedTools }
+          : undefined),
       },
     },
   };
@@ -302,6 +306,7 @@ describe("McpToolManager", () => {
         provider: "demo",
         message: "Auth required",
       }),
+      { toolName: "ping" },
     );
   });
 
@@ -342,6 +347,7 @@ describe("McpToolManager", () => {
         provider: "demo",
         message: "Discovery auth required",
       }),
+      undefined,
     );
   });
 
@@ -392,7 +398,11 @@ describe("McpToolManager", () => {
 
     await expect(manager.activateProvider("demo")).resolves.toBe(false);
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
-    expect(onAuthorizationRequiredMock).toHaveBeenCalledWith("demo", authError);
+    expect(onAuthorizationRequiredMock).toHaveBeenCalledWith(
+      "demo",
+      authError,
+      undefined,
+    );
     expect(manager.getActiveProviders()).toEqual([]);
   });
 
@@ -553,6 +563,7 @@ describe("McpToolManager", () => {
 
     expect(onToolSuccess).toHaveBeenCalledWith({
       arguments: { title: "Created via MCP" },
+      content: [{ type: "text", text: "Created ENG-123" }],
       provider: "demo",
       structuredContent: { identifier: "ENG-123" },
       toolName: "save_issue",

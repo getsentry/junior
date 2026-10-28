@@ -24,6 +24,7 @@ import {
   drainConversationMailbox,
   ensureConversationWake,
   getConversationWorkState,
+  hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
@@ -44,7 +45,6 @@ export interface ConversationWorkerContext {
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination?: Destination;
-  publishExternally: boolean;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
@@ -55,8 +55,14 @@ export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
   destination?: Destination;
+  /**
+   * Give pending mailbox messages to the active Turn. By default only
+   * `interrupt` messages for this attempt are offered. With `deferred`, every
+   * pending message is offered, and the handler owns Actor and Source scoping.
+   */
   drain(
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+    options?: { deferred?: boolean },
   ): Promise<InboundMessage[]>;
   isFinalAttempt: boolean;
   messages: InboundMessage[];
@@ -65,6 +71,8 @@ export interface InboxAttempt {
 export interface ConversationWorkerResult {
   /** `paused` waits for an external wake but must resume if a stop raced it. */
   status: "completed" | "deferred" | "lost_lease" | "paused" | "yielded";
+  /** Wait before the next wake attempt. Only meaningful when `status` is `deferred`. */
+  delayMs?: number;
 }
 
 export interface ConversationWorkProcessResult {
@@ -102,7 +110,7 @@ function selectContiguousTurnBatch(
   const nextTurnIndex = messages.findIndex(
     (message) =>
       message.input.authorId !== first.input.authorId ||
-      message.publishExternally !== first.publishExternally,
+      message.source !== first.source,
   );
   return messages.slice(
     0,
@@ -110,7 +118,7 @@ function selectContiguousTurnBatch(
   );
 }
 
-/** Prioritize interrupts while keeping each attempt scoped to one actor. */
+/** Prioritize interrupts while keeping each attempt to one Actor and Source. */
 function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   const messages = work.messages;
   const interrupts = messages.filter(
@@ -119,9 +127,13 @@ function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   if (interrupts.length > 0) {
     return selectContiguousTurnBatch(interrupts);
   }
-  return work.execution.status === "paused"
-    ? []
-    : selectContiguousTurnBatch(messages);
+  if (work.execution.status === "paused") return [];
+  const nonEventMessages = messages.filter(
+    (message) => message.source !== "event",
+  );
+  return selectContiguousTurnBatch(
+    nonEventMessages.length > 0 ? nonEventMessages : messages,
+  );
 }
 
 function nudgeIdempotencyKey(
@@ -286,10 +298,10 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
-/** Poll shared state only when a worker adapter asks to observe remote stops. */
+/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
 function createConversationStopSignal(args: {
   conversationId: string;
-  initialStopRunId?: string;
+  initiallyStopped: boolean;
   options: ProcessConversationWorkOptions;
   runId: string;
 }) {
@@ -304,21 +316,18 @@ function createConversationStopSignal(args: {
       controller.abort(new Error("Conversation work stopped"));
     }
   };
-  if (args.initialStopRunId === args.runId) {
-    requestStop();
-  }
+  if (args.initiallyStopped) requestStop();
 
   const check = async (): Promise<void> => {
     if (checking || controller.signal.aborted) return;
     checking = true;
     try {
-      const current = await getConversationWorkState({
+      const stopped = await hasConversationStop({
         conversationId: args.conversationId,
+        runId: args.runId,
         state: args.options.state,
       });
-      if (current?.execution.stop?.runId === args.runId) {
-        requestStop();
-      }
+      if (stopped) requestStop();
     } catch (error) {
       if (!failureCaptured) {
         failureCaptured = true;
@@ -402,7 +411,16 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  const destination = initial.destination;
+  // Mailbox wakes may omit Destination. Read it from this root Conversation
+  // only. Conversations with a parent keep no Destination, so invocation and
+  // dispatch workers stay free of provider Destinations.
+  let destination = initial.destination;
+  if (!destination && options.conversationStore) {
+    const stored = await options.conversationStore.get({ conversationId });
+    if (stored && !stored.parentConversationId) {
+      destination = stored.destination;
+    }
+  }
 
   const lease = await startConversationWork({
     conversationId,
@@ -463,6 +481,7 @@ async function processConversationWorkInContext(
 
   const drain = (
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+    drainOptions?: { deferred?: boolean },
   ) =>
     drainConversationMailbox({
       conversationId,
@@ -471,13 +490,16 @@ async function processConversationWorkInContext(
       handle: async (messages) => {
         // Pending work that was not selected when the attempt started belongs
         // to a later actor-scoped attempt. Selected or newly arrived
-        // interrupts remain eligible for this attempt's drain.
-        const candidates = messages.filter(
-          (message) =>
-            message.delivery === "interrupt" &&
-            (attemptSelectedMessageIds.has(message.inboundMessageId) ||
-              !attemptStartMessageIds.has(message.inboundMessageId)),
-        );
+        // interrupts remain eligible for this attempt's drain. A `deferred`
+        // drain scopes the messages itself.
+        const candidates = drainOptions?.deferred
+          ? messages
+          : messages.filter(
+              (message) =>
+                message.delivery === "interrupt" &&
+                (attemptSelectedMessageIds.has(message.inboundMessageId) ||
+                  !attemptStartMessageIds.has(message.inboundMessageId)),
+            );
         if (candidates.length === 0) {
           return [];
         }
@@ -606,9 +628,6 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
-      // Empty batches are resume-only. Adapters read the checkpoint flag; do
-      // not invent publish from destination presence.
-      const publishExternally = attemptMessages[0]?.publishExternally ?? false;
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
@@ -628,7 +647,11 @@ async function processConversationWorkInContext(
       };
       const stop = createConversationStopSignal({
         conversationId,
-        initialStopRunId: leasedWork.execution.stop?.runId,
+        initiallyStopped: await hasConversationStop({
+          conversationId,
+          runId,
+          state: options.state,
+        }),
         options,
         runId,
       });
@@ -645,7 +668,6 @@ async function processConversationWorkInContext(
         },
         conversationId,
         destination,
-        publishExternally,
         shouldYield,
         stopSignal: stop.signal,
         checkIn,
@@ -730,6 +752,7 @@ async function processConversationWorkInContext(
         const wake = await ensureConversationWake({
           conversationId,
           conversationStore: options.conversationStore,
+          delayMs: result.delayMs,
           idempotencyKey: nudgeIdempotencyKey(
             "deferred",
             conversationId,

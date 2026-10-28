@@ -1,7 +1,5 @@
-import { eq } from "drizzle-orm";
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -13,20 +11,6 @@ import {
 } from "../../../fixtures/sql";
 
 describe("conversation stats API", () => {
-  test("serves the route through its response schema", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    try {
-      await migrateSchema(fixture.sql);
-      const response = await createJuniorApi().request(
-        "http://localhost/api/conversations/stats",
-      );
-      expect(response.status).toBe(200);
-      conversationStatsReportSchema.parse(await response.json());
-    } finally {
-      await fixture.close();
-    }
-  });
-
   test("aggregates normalized SQL conversation dimensions", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
@@ -66,6 +50,7 @@ describe("conversation stats API", () => {
           durationMs: 1_500,
           usage: {
             cachedInputTokens: 300,
+            cacheCreationTokens: 7,
             inputTokens: 100,
             outputTokens: 20,
             reasoningTokens: 5,
@@ -75,23 +60,9 @@ describe("conversation stats API", () => {
         source: "slack",
         updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
       });
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({
-          usage: {
-            cachedInputTokens: 300,
-            inputTokens: 100,
-            outputTokens: 20,
-            reasoningTokens: 5,
-            totalTokens: 999,
-            cost: { input: 0.001, output: 0.002, total: 0.003 },
-          },
-        })
-        .where(eq(juniorConversations.conversationId, "slack:C1:recent"));
       await store.recordExecution({
         conversationId: "slack:D1:failed",
-        createdAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
+        createdAtMs: Date.parse("2026-06-14T23:55:00.000Z"),
         destination: {
           platform: "slack",
           teamId: "T1",
@@ -119,12 +90,16 @@ describe("conversation stats API", () => {
         visibility: "private",
       });
       await store.recordActivity({
-        conversationId: "scheduler:daily",
+        conversationId: "local:test:scheduler-daily",
+        destination: {
+          platform: "local" as const,
+          conversationId: "local:test:scheduler-daily",
+        },
         source: "scheduler",
         nowMs: Date.parse("2026-06-15T10:00:00.000Z"),
       });
       await store.recordExecution({
-        conversationId: "scheduler:daily",
+        conversationId: "local:test:scheduler-daily",
         createdAtMs: Date.parse("2026-06-15T10:00:00.000Z"),
         execution: {
           runId: "turn-scheduler",
@@ -154,20 +129,28 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-02-01T10:00:00.000Z"),
       });
       const childAt = new Date("2026-06-15T11:55:00.000Z");
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values({
-          conversationId: "advisor:child",
-          parentConversationId: "slack:C1:recent",
-          rootConversationId: "slack:C1:recent",
-          durationMs: 4,
-          usage: { totalTokens: 7 },
-          createdAt: childAt,
-          lastActivityAt: childAt,
-          updatedAt: childAt,
-          executionStatus: "idle",
-        });
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "advisor:child",
+        parentConversationId: "slack:C1:recent",
+        rootConversationId: "slack:C1:recent",
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "idle",
+      });
+      await store.recordExecution({
+        conversationId: "advisor:child",
+        createdAtMs: childAt.getTime(),
+        execution: {
+          runId: "turn-child",
+          status: "idle",
+          updatedAtMs: childAt.getTime(),
+        },
+        lastActivityAtMs: childAt.getTime(),
+        metrics: { durationMs: 4, usage: { totalTokens: 7 } },
+        source: "internal",
+        updatedAtMs: childAt.getTime(),
+      });
       const eventStore = createSqlConversationEventStore(fixture.sql);
       await eventStore.append("slack:C1:recent", [
         {
@@ -213,11 +196,16 @@ describe("conversation stats API", () => {
         },
       ]);
 
-      const report = await readConversationStatsFromSql();
+      const response = await createJuniorApi().request(
+        "http://localhost/api/conversations/stats",
+      );
+      expect(response.status).toBe(200);
+      const report = conversationStatsReportSchema.parse(await response.json());
 
       expect(report).toMatchObject({
         active: 1,
         cachedInputTokens: 300,
+        cacheCreationTokens: 7,
         conversations: 3,
         costUsd: 0.0045,
         durationMs: 2_004,
@@ -230,7 +218,7 @@ describe("conversation stats API", () => {
           deny: 1,
           requests: 3,
         },
-        tokens: 457,
+        tokens: 464,
         source: "conversation_index",
       });
       expect(report.actors).toEqual(
@@ -240,7 +228,7 @@ describe("conversation stats API", () => {
             costUsd: 0.003,
             durationMs: 1_504,
             label: "alice@example.com",
-            tokens: 427,
+            tokens: 434,
           }),
           expect.objectContaining({
             conversations: 1,
@@ -271,17 +259,74 @@ describe("conversation stats API", () => {
         deny: 1,
         requests: 3,
       });
+      expect(report.guardian.metricHours).toHaveLength(7 * 24);
+      expect(report.guardian.metricSixHours).toHaveLength(7 * 4);
+      expect(
+        report.guardian.metricHours?.find(
+          (hour) => hour.date === "2026-06-15T11",
+        ),
+      ).toEqual({
+        allow: 1,
+        ask: 1,
+        costUsd: 0.006,
+        date: "2026-06-15T11",
+        deny: 1,
+        requests: 3,
+      });
+      expect(report.metricDays.at(-2)).toEqual(
+        expect.objectContaining({
+          conversations: 0,
+          costUsd: 0.0015,
+          date: "2026-06-14",
+          durationMs: 500,
+          tokens: 30,
+        }),
+      );
       expect(report.metricDays.at(-1)).toEqual(
         expect.objectContaining({
           cachedInputTokens: 300,
+          cacheCreationTokens: 7,
           conversations: 3,
-          costUsd: 0.0045,
+          costUsd: 0.003,
           date: "2026-06-15",
-          durationMs: 2_004,
+          durationMs: 1_504,
           inputTokens: 100,
-          tokens: 457,
+          tokens: 434,
         }),
       );
+      expect(report.metricHours).toHaveLength(7 * 24);
+      expect(report.metricSixHours).toHaveLength(7 * 4);
+      expect(report.metricHours?.at(-1)?.date).toBe("2026-06-15T12");
+      expect(
+        report.metricHours?.find((hour) => hour.date === "2026-06-14T23"),
+      ).toEqual(
+        expect.objectContaining({
+          conversations: 0,
+          costUsd: 0.0015,
+          date: "2026-06-14T23",
+          durationMs: 500,
+          tokens: 30,
+        }),
+      );
+      expect(
+        report.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
+      ).toEqual(
+        expect.objectContaining({
+          cachedInputTokens: 300,
+          cacheCreationTokens: 7,
+          conversations: 2,
+          costUsd: 0.003,
+          date: "2026-06-15T11",
+          durationMs: 1_504,
+          inputTokens: 100,
+          tokens: 434,
+        }),
+      );
+      expect(
+        report.metricHours
+          ?.filter((hour) => hour.conversations > 0)
+          .reduce((sum, hour) => sum + hour.conversations, 0),
+      ).toBe(3);
     } finally {
       vi.useRealTimers();
       await fixture.close();
@@ -315,7 +360,11 @@ describe("conversation stats API", () => {
           ),
         );
 
-      const report = await readConversationStatsFromSql();
+      const response = await createJuniorApi().request(
+        "http://localhost/api/conversations/stats",
+      );
+      expect(response.status).toBe(200);
+      const report = conversationStatsReportSchema.parse(await response.json());
 
       expect(report).toMatchObject({
         conversations: 5_001,

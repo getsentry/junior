@@ -14,7 +14,10 @@ export function createVercelAttachmentStorage(): AttachmentStorage {
       });
     },
     async get(key) {
-      const result = await get(key, { access: "private" });
+      // Bypass the CDN so a read shortly after a write for a fresh key cannot
+      // observe a not-yet-propagated (empty/stale) cached response. See
+      // https://vercel.com/changelog/vercel-blob-now-supports-consistent-reads-on-private-storage.
+      const result = await get(key, { access: "private", useCache: false });
       return result?.statusCode === 200 ? result.stream : null;
     },
     async delete(keys) {

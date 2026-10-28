@@ -11,6 +11,7 @@ function toolContext(response?: Response) {
           base: { ref: "release" },
           body: "Updated body",
           draft: false,
+          merged: false,
           html_url: "https://github.com/getsentry/junior/pull/691",
           number: 691,
           state: "open",
@@ -29,7 +30,7 @@ function toolContext(response?: Response) {
     conversationId: "slack:C123:123.456",
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-    resourceEvents: { canSubscribe: true },
+    events: { canSubscribe: true },
     slack: {
       conversationLink: { url: "https://example.com/session" },
     },
@@ -49,7 +50,7 @@ describe("updatePullRequest", () => {
     }
   });
 
-  it("updates mutable pull request fields and preserves Junior-owned body metadata", async () => {
+  it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const { fetch, tool } = toolContext();
 
@@ -69,6 +70,7 @@ describe("updatePullRequest", () => {
       base: "release",
       number: 691,
       state: "open",
+      objectAnnotations: [{ status: "open", description: "Updated body" }],
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {
@@ -93,10 +95,168 @@ describe("updatePullRequest", () => {
       body: expect.stringContaining("Updated body"),
     });
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("Requested by **David Cramer**.");
+    expect(body.body).toContain("via **David Cramer**.");
     expect(body.body).toContain(
       "[View Junior Session](https://example.com/session)",
     );
+  });
+
+  it("preserves merged status when updating a merged pull request", async () => {
+    const { tool } = toolContext(
+      new Response(
+        JSON.stringify({
+          base: { ref: "main" },
+          body: "Updated body",
+          draft: false,
+          merged: true,
+          html_url: "https://github.com/getsentry/junior/pull/691",
+          number: 691,
+          state: "closed",
+          title: "Updated title",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, title: "Updated title" },
+        { toolCallId: "update-merged-pr" },
+      ),
+    ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          key: "getsentry/junior#691",
+          status: "merged",
+          title: "Updated title",
+        },
+      ],
+    });
+  });
+
+  it("marks a draft pull request ready for review through GraphQL", async () => {
+    const { fetch, tool } = toolContext();
+    const draftPull = {
+      base: { ref: "main" },
+      body: "Body",
+      draft: true,
+      merged: false,
+      html_url: "https://github.com/getsentry/junior/pull/691",
+      node_id: "PR_kwDO691",
+      number: 691,
+      state: "open",
+      title: "Title",
+    };
+    fetch
+      .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              result: { pullRequest: { isDraft: false } },
+            },
+          }),
+        ),
+      );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/Junior", number: 691, draft: false },
+        { toolCallId: "ready-pr" },
+      ),
+    ).resolves.toMatchObject({
+      draft: false,
+      objectAnnotations: [{ status: "open" }],
+    });
+
+    const [read, mutation] = fetch.mock.calls.map((call) => call[0]);
+    expect(read).toMatchObject({ operation: "github.pull.get" });
+    expect(read?.request.method).toBe("GET");
+    expect(mutation).toMatchObject({
+      operation: "github.pull.draft.update:getsentry/junior",
+      provider: "github",
+    });
+    expect(mutation?.request.url).toBe("https://api.github.com/graphql");
+    await expect(mutation?.request.clone().json()).resolves.toMatchObject({
+      operationName: "MarkPullRequestReadyForReview",
+      variables: { id: "PR_kwDO691" },
+    });
+
+    // GraphQL reports failures in a 200 response body.
+    fetch
+      .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [{ message: "Resource not accessible by integration" }],
+          }),
+        ),
+      );
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, draft: false },
+        { toolCallId: "ready-pr-denied" },
+      ),
+    ).rejects.toThrow(
+      "GitHub pull request draft update failed with HTTP 200: Resource not accessible by integration",
+    );
+  });
+
+  it("converts to draft through GraphQL and skips no-op draft changes", async () => {
+    const { fetch, tool } = toolContext();
+    const readyPull = {
+      base: { ref: "main" },
+      body: "Body",
+      draft: false,
+      merged: false,
+      html_url: "https://github.com/getsentry/junior/pull/691",
+      node_id: "PR_kwDO691",
+      number: 691,
+      state: "open",
+      title: "New title",
+    };
+    fetch
+      .mockResolvedValueOnce(new Response(JSON.stringify(readyPull)))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              result: { pullRequest: { isDraft: true } },
+            },
+          }),
+        ),
+      );
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          number: 691,
+          title: "New title",
+          draft: true,
+        },
+        { toolCallId: "draft-pr" },
+      ),
+    ).resolves.toMatchObject({ draft: true, title: "New title" });
+    const [patch, mutation] = fetch.mock.calls.map((call) => call[0]);
+    expect(patch).toMatchObject({ operation: "github.pull.update" });
+    expect(patch?.request.method).toBe("PATCH");
+    await expect(patch?.request.clone().json()).resolves.toEqual({
+      title: "New title",
+    });
+    await expect(mutation?.request.clone().json()).resolves.toMatchObject({
+      operationName: "ConvertPullRequestToDraft",
+    });
+
+    fetch.mockClear();
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify(readyPull)));
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, draft: false },
+        { toolCallId: "already-ready" },
+      ),
+    ).resolves.toMatchObject({ draft: false });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it.each([

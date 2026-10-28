@@ -6,6 +6,7 @@ import {
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
   resolveSlackConversationContextFromThreadId,
+  slackChannelTypeFromConversationInfo,
 } from "@/chat/slack/conversation-context";
 
 describe("Slack conversation prompt context", () => {
@@ -98,6 +99,38 @@ describe("Slack conversation prompt context", () => {
         },
       }),
     ).toBe("mpim");
+  });
+
+  it("maps live conversation metadata to the event channel type", () => {
+    const info = {
+      isChannel: false,
+      isIm: false,
+      isMpim: false,
+      isPrivate: false,
+    };
+    expect(
+      slackChannelTypeFromConversationInfo({ ...info, isChannel: true }),
+    ).toBe("channel");
+    // Slack reports a private channel as a channel that is private.
+    expect(
+      slackChannelTypeFromConversationInfo({
+        ...info,
+        isChannel: true,
+        isPrivate: true,
+      }),
+    ).toBe("group");
+    // Slack reports a group direct message as private too.
+    expect(
+      slackChannelTypeFromConversationInfo({
+        ...info,
+        isMpim: true,
+        isPrivate: true,
+      }),
+    ).toBe("mpim");
+    expect(slackChannelTypeFromConversationInfo({ ...info, isIm: true })).toBe(
+      "im",
+    );
+    expect(slackChannelTypeFromConversationInfo(info)).toBeUndefined();
   });
 
   it("formats labels from the shared conversation type vocabulary", () => {

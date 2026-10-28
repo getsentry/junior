@@ -16,6 +16,9 @@ duplicate diagnostics.
   be expressed with `finally`.
 - If a catch block handles an error, it must either finish the recovery or
   rethrow with useful domain context. Avoid log-and-rethrow duplicates.
+- During a refactor, preserve which errors each `catch` handles. Moving async
+  work across a `try` boundary can change retries or fallback behavior even
+  when the successful path is unchanged.
 - Use `finally` for cleanup that must run without changing error ownership.
 - Keep best-effort observers explicit. If correctness depends on the operation,
   it is not best-effort.

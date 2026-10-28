@@ -1,22 +1,57 @@
-import type { ReactNode } from "react";
+import { ExternalLink } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
+import { formatRelativeTime, formatTime } from "../format";
+import { ButtonLink } from "../components/Button";
 import { Drawer } from "../components/Drawer";
+import { SegmentedTabs } from "../components/SegmentedTabs";
+import {
+  ConversationChildAgents,
+  useConversationChildAgents,
+} from "./ConversationChildAgents";
+import {
+  ConversationMemories,
+  useConversationMemories,
+} from "./ConversationMemories";
+import { ShareConversationButton } from "./ShareConversationButton";
+import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
-/** Show advanced identity, runtime, and resource details for a conversation. */
+type DetailsTab = "agents" | "details" | "memories";
+
+/** Put conversation context before usage and diagnostic links. */
 export function ConversationDetailsDrawer(props: {
   annotations: ReactNode;
+  brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
+  lastActivityAt?: string;
   onClose(): void;
+  /** Open one child agent transcript. The details drawer closes first. */
+  onOpenSubagent(target: SubagentTranscriptTarget): void;
+  sentryConversationUrl?: string;
   privacy: ReactNode;
   stats: ReactNode;
   title: string;
 }) {
+  const [tab, setTab] = useState<DetailsTab>("details");
+  // Load both lists with the drawer so each tab can show its count.
+  const memories = useConversationMemories(props.conversationId);
+  const agents = useConversationChildAgents(props.conversationId);
+  const tabs = [
+    { label: "Details", value: "details" },
+    {
+      count: memories.data?.memories.length,
+      label: "Memories",
+      value: "memories",
+    },
+    { count: agents.data?.agents.length, label: "Subagents", value: "agents" },
+  ] as const;
   const titleId = "conversation-details-drawer-title";
   const sections = [
-    { content: props.identity, title: "Identity" },
-    { content: props.stats, title: "Runtime" },
-    { content: props.annotations, title: "Links" },
+    { content: props.brief, title: "Summary" },
+    { content: props.annotations, title: "Linked work" },
+    { content: props.identity, title: "Participants" },
+    { content: props.stats, title: "Usage" },
   ].filter((section) => section.content != null);
 
   return (
@@ -39,25 +74,84 @@ export function ConversationDetailsDrawer(props: {
       onClose={props.onClose}
       openKey={props.conversationId}
       titleId={titleId}
+      width="narrow"
     >
-      {sections.length > 0 ? (
-        <div className="grid min-w-0 gap-5">
-          {sections.map((section) => (
-            <section className="grid min-w-0 gap-2" key={section.title}>
-              <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-                {section.title}
-              </h3>
-              <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-                {section.content}
+      <SegmentedTabs
+        items={tabs}
+        label="Conversation details"
+        onChange={setTab}
+        value={tab}
+      >
+        {tab === "memories" ? (
+          <ConversationMemories conversationId={props.conversationId} />
+        ) : tab === "agents" ? (
+          <ConversationChildAgents
+            conversationId={props.conversationId}
+            onOpenAgent={(target) => {
+              props.onClose();
+              props.onOpenSubagent(target);
+            }}
+          />
+        ) : sections.length > 0 ? (
+          <div className="grid min-w-0 gap-5">
+            {sections.map((section) => (
+              <section
+                className="grid min-w-0 gap-3 border-b border-dashboard-border pb-5 last:border-0 last:pb-0"
+                key={section.title}
+              >
+                <h3 className="m-0 text-sm font-semibold text-dashboard-text">
+                  {section.title}
+                </h3>
+                <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
+                  {section.content}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+            No additional conversation details.
+          </p>
+        )}
+        {tab === "details" ? (
+          <footer className="mt-5 grid gap-6 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
+            {props.lastActivityAt ? (
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span>Last activity</span>
+                <time
+                  dateTime={props.lastActivityAt}
+                  title={formatTime(props.lastActivityAt, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                >
+                  {formatRelativeTime(props.lastActivityAt)}
+                </time>
               </div>
-            </section>
-          ))}
-        </div>
-      ) : (
-        <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-          No additional conversation details.
-        </p>
-      )}
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <ShareConversationButton
+                key={props.conversationId}
+                conversationId={props.conversationId}
+              />
+              {props.sentryConversationUrl ? (
+                <ButtonLink
+                  className="w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+                  to={props.sentryConversationUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open in Sentry
+                  <ExternalLink
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0"
+                  />
+                </ButtonLink>
+              ) : null}
+            </div>
+          </footer>
+        ) : null}
+      </SegmentedTabs>
     </Drawer>
   );
 }

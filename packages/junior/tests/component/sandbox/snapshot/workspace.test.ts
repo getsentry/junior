@@ -108,10 +108,71 @@ describe("Workspace snapshot completion", () => {
     expect(builder.delete).not.toHaveBeenCalled();
   });
 
+  it("saves stdout and stderr when a setup command fails", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-setup-failure-${randomUUID()}`,
+      setupScript: "pnpm install --frozen-lockfile",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    const buildId = randomUUID();
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: buildId,
+        status: "building",
+        phase: "repositories_prepared",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "failed-setup-owner",
+        commandId: "failed-setup-command",
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+
+    const builder = {
+      delete: vi.fn(),
+      getCommand: vi.fn(async () => ({
+        wait: vi.fn(async () => ({
+          exitCode: 1,
+          stdout: vi.fn(async () => "ERR_WORKER_OUT_OF_MEMORY"),
+          stderr: vi.fn(async () => "Lifecycle script failed"),
+        })),
+      })),
+    };
+    sandboxGetMock.mockResolvedValue(builder);
+
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        shouldStop: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).rejects.toThrow(
+      "stdout:\nERR_WORKER_OUT_OF_MEMORY\n\nstderr:\nLifecycle script failed",
+    );
+
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: {
+        status: "failed",
+        error: expect.stringContaining("ERR_WORKER_OUT_OF_MEMORY"),
+      },
+      ready: null,
+    });
+  });
+
   it("starts a rebuild when failed-builder deletion fails", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-rebuild-${randomUUID()}`,
       setupScript: "printf ready",
+      vcpus: 16,
       repos: [],
     });
     const value = profile.create(SANDBOX_RUNTIME, workspace);
@@ -150,6 +211,9 @@ describe("Workspace snapshot completion", () => {
       ready: null,
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ resources: { vcpus: 16 } }),
+    );
   });
 
   it("marks a build failed when its named builder is missing", async () => {
@@ -196,6 +260,54 @@ describe("Workspace snapshot completion", () => {
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
     ).resolves.toMatchObject({
       build: { status: "failed", error: "status code 404" },
+      ready: null,
+    });
+  });
+
+  it("keeps a build open when the Turn stops it", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-cancelled-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: randomUUID(),
+        status: "building",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "cancelled-builder",
+        commandId: null,
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+    const stop = new AbortController();
+    sandboxGetMock.mockImplementation(async () => {
+      stop.abort(new DOMException("Turn cancelled", "AbortError"));
+      throw stop.signal.reason;
+    });
+
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        signal: stop.signal,
+        shouldStop: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError", message: "Turn cancelled" });
+
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: { status: "building", error: null },
       ready: null,
     });
   });

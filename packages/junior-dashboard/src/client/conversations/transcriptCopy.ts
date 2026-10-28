@@ -28,11 +28,10 @@ function selectionIntersectsNode(
 
 /** Decide when rich transcript copy should fall back to the raw message payload. */
 export function shouldCopyRawTranscript(
-  view: string,
   rawText: string,
   selection: TranscriptCopySelection | null,
   node: Node,
 ): boolean {
-  if (view !== "rich" || !rawText) return false;
+  if (!rawText) return false;
   return !selectionIntersectsNode(selection, node);
 }

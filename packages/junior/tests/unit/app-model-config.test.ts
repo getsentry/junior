@@ -1,16 +1,58 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { botConfig } from "@/chat/config";
+import { botConfig, getSlackReactionConfig } from "@/chat/config";
 
-const originalDefaultProfile = botConfig.defaultProfile;
-const originalProfiles = botConfig.profiles;
+const originalBotConfig = { ...botConfig };
 
 afterEach(() => {
-  botConfig.defaultProfile = originalDefaultProfile;
-  botConfig.profiles = originalProfiles;
+  Object.assign(botConfig, originalBotConfig);
 });
 
 describe("createApp profiles", () => {
+  it("configures all host model ids from createApp options", async () => {
+    await createApp({
+      defaultProfile: "standard",
+      embeddingModelId: "openai/text-embedding-3-large",
+      fastModelId: "anthropic/claude-haiku-4.5",
+      guardianModelId: "openai/gpt-6-luna",
+      imageGenerationModelId: "google/gemini-3-pro-image",
+      profiles: {
+        standard: "anthropic/claude-sonnet-5",
+        handoff: "openai/gpt-5.6-sol",
+      },
+      visionModelId: "openai/gpt-5.6-sol",
+      webSearchModelId: "openai/gpt-5.4",
+      plugins: defineJuniorPlugins([]),
+    });
+
+    expect(botConfig).toMatchObject({
+      defaultProfile: "standard",
+      embeddingModelId: "openai/text-embedding-3-large",
+      fastModelId: "anthropic/claude-haiku-4.5",
+      guardianModelId: "openai/gpt-6-luna",
+      imageGenerationModelId: "google/gemini-3-pro-image",
+      profiles: {
+        standard: { modelId: "anthropic/claude-sonnet-5" },
+        handoff: { modelId: "openai/gpt-5.6-sol" },
+      },
+      visionModelId: "openai/gpt-5.6-sol",
+      webSearchModelId: "openai/gpt-5.4",
+    });
+  });
+
+  it("restores model config when an override is invalid", async () => {
+    await expect(
+      createApp({
+        embeddingModelId: "openai/text-embedding-3-large",
+        fastModelId: " ",
+        plugins: defineJuniorPlugins([]),
+      }),
+    ).rejects.toThrow("fastModelId must not be empty");
+
+    expect(botConfig.embeddingModelId).toBe(originalBotConfig.embeddingModelId);
+    expect(botConfig.fastModelId).toBe(originalBotConfig.fastModelId);
+  });
+
   it("configures named profiles and declares the default", async () => {
     await createApp({
       defaultProfile: "gpt-5",
@@ -25,6 +67,79 @@ describe("createApp profiles", () => {
     expect(botConfig.profiles).toEqual({
       "gpt-5": { modelId: "openai/gpt-5.6-sol" },
       "opus-5": { modelId: "anthropic/claude-opus-5" },
+    });
+  });
+
+  it("starts each app from the defaults instead of an earlier app's options", async () => {
+    await createApp({
+      defaultProfile: "gpt-5",
+      profiles: { "gpt-5": "openai/gpt-5.6-sol" },
+      fastModelId: "anthropic/claude-haiku-4.5",
+      limits: {
+        contextWindowTokens: 2_000,
+        eventAutomationRunLimit: { maxRuns: 2, windowMs: 60 * 60 * 1000 },
+        maxToolCallsPerTurn: 3,
+      },
+      slack: {
+        completedReactionEmoji: "jr-done",
+        crossActorMidRunMode: "steer",
+      },
+      plugins: defineJuniorPlugins([]),
+    });
+    expect(botConfig).toMatchObject({
+      contextWindowTokens: 2_000,
+      crossActorMidRunMode: "steer",
+      defaultProfile: "gpt-5",
+      eventAutomationRunWindowMs: 60 * 60 * 1000,
+      maxEventAutomationRuns: 2,
+      maxToolCallsPerTurn: 3,
+    });
+
+    await createApp({ plugins: defineJuniorPlugins([]) });
+
+    expect(botConfig).toMatchObject({
+      contextWindowTokens: originalBotConfig.contextWindowTokens,
+      crossActorMidRunMode: originalBotConfig.crossActorMidRunMode,
+      defaultProfile: originalBotConfig.defaultProfile,
+      fastModelId: originalBotConfig.fastModelId,
+      eventAutomationRunWindowMs: originalBotConfig.eventAutomationRunWindowMs,
+      maxEventAutomationRuns: originalBotConfig.maxEventAutomationRuns,
+      maxToolCallsPerTurn: originalBotConfig.maxToolCallsPerTurn,
+      profiles: originalBotConfig.profiles,
+    });
+    expect(getSlackReactionConfig().completedReactionEmoji).toBe(
+      "white_check_mark",
+    );
+  });
+
+  it("accepts profile objects with description and reasoning settings", async () => {
+    await createApp({
+      defaultProfile: "standard",
+      profiles: {
+        standard: {
+          modelId: "xai/grok-4.5",
+          description: "Default general assistant work.",
+        },
+        coding: {
+          modelId: "openai/gpt-5.6-sol",
+          description: "Use for implementation and debugging.",
+          reasoningLevel: "high",
+        },
+      },
+      plugins: defineJuniorPlugins([]),
+    });
+
+    expect(botConfig.defaultProfile).toBe("standard");
+    expect(botConfig.profiles).toEqual({
+      standard: {
+        modelId: "xai/grok-4.5",
+        description: "Default general assistant work.",
+      },
+      coding: {
+        modelId: "openai/gpt-5.6-sol",
+        description: "Use for implementation and debugging.",
+        reasoningLevel: "high",
+      },
     });
   });
 

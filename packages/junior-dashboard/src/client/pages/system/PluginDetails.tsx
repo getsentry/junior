@@ -14,7 +14,7 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
         title="Details"
       />
       <Card>
-        <div className="grid grid-cols-1 gap-px bg-white/[0.055] sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px bg-dashboard-fill-hover sm:grid-cols-3">
           <Detail icon={Boxes} label="Identifier" value={props.plugin.name} />
           <Detail
             icon={Sparkles}
@@ -27,7 +27,7 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
             value={String(props.plugin.configKeys.length)}
           />
         </div>
-        <div className="grid gap-5 border-t border-white/[0.06] p-4 sm:p-5 lg:grid-cols-2">
+        <div className="grid gap-5 border-t border-dashboard-border-subtle p-4 sm:p-5 lg:grid-cols-2">
           <CapabilityList
             emptyText="No plugin-provided skills were discovered."
             items={props.plugin.skills.map((skill) => skill.name)}
@@ -52,12 +52,16 @@ function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
   const Icon = props.icon;
   return (
     <div className="flex items-center gap-3 bg-dashboard-surface-panel px-4 py-3.5">
-      <Icon aria-hidden="true" className="text-cyan-200/60" size={15} />
+      <Icon
+        aria-hidden="true"
+        className="text-dashboard-accent-text/60"
+        size={15}
+      />
       <div className="min-w-0">
         <div className="truncate font-display text-base font-medium text-dashboard-text">
           {props.value}
         </div>
-        <div className="mt-0.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+        <div className="mt-0.5 font-sans font-medium text-xs text-dashboard-text-muted">
           {props.label}
         </div>
       </div>
@@ -72,14 +76,14 @@ function CapabilityList(props: {
 }) {
   return (
     <div>
-      <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
         {props.title}
       </h3>
       {props.items.length ? (
         <div className="mt-2.5 flex flex-wrap gap-2">
           {props.items.map((item) => (
             <span
-              className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
+              className="rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
               key={item}
             >
               {item}
@@ -87,7 +91,7 @@ function CapabilityList(props: {
           ))}
         </div>
       ) : (
-        <p className="mt-2 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-2 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {props.emptyText}
         </p>
       )}

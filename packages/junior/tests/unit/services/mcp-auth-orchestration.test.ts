@@ -57,6 +57,27 @@ function plugin(name: string): PluginDefinition {
   };
 }
 
+function botAuthPlugin(name = "bot-mcp"): PluginDefinition {
+  return {
+    dir: `/plugins/${name}`,
+    manifest: {
+      name,
+      displayName: name,
+      description: `${name} plugin`,
+      configKeys: [],
+      mcp: {
+        transport: "http",
+        url: "https://mcp.example.com",
+        auth: {
+          issuer: "https://junior.example.com",
+          keyId: "junior-1",
+          privateKeyEnv: "BOT_MCP_PRIVATE_KEY",
+        },
+      },
+    },
+  };
+}
+
 const slackSource = createSlackSource({
   teamId: "T123",
   channelId: "C123",
@@ -89,7 +110,7 @@ describe("createMcpAuthOrchestration", () => {
       channelId: "C123",
       source: slackSource,
       threadTs: "1700000000.000000",
-      userMessage: "<scheduled-task-run />",
+      userMessage: "<scheduled-automation-run />",
       getConfiguration: () => ({}),
       interactiveAuthEnabled: false,
     });
@@ -110,6 +131,38 @@ describe("createMcpAuthOrchestration", () => {
     expect(getMcpAuthSession).not.toHaveBeenCalled();
     expect(deliverPrivateMessage).not.toHaveBeenCalled();
     expect(abortAgent).not.toHaveBeenCalled();
+  });
+
+  it("does not enter the user OAuth pause path for bot-authenticated providers", async () => {
+    const abortAgent = vi.fn();
+    const orchestration = createMcpAuthOrchestration({
+      abortAgent,
+      conversationId: "slack:C123:1700000000.000000",
+      sessionId: "run_bot",
+      actorId: "U123",
+      channelId: "C123",
+      source: slackSource,
+      threadTs: "1700000000.000000",
+      userMessage: "use MCP",
+      getConfiguration: () => ({}),
+      recordPendingAuth: vi.fn(),
+    });
+
+    await expect(
+      orchestration.authProviderFactory(botAuthPlugin()),
+    ).resolves.toBeDefined();
+
+    await expect(
+      orchestration.onAuthorizationRequired("bot-mcp"),
+    ).resolves.toBe(false);
+
+    expect(createMcpOAuthClientProvider).not.toHaveBeenCalled();
+    expect(deleteMcpAuthSession).not.toHaveBeenCalled();
+    expect(patchMcpAuthSession).not.toHaveBeenCalled();
+    expect(getMcpAuthSession).not.toHaveBeenCalled();
+    expect(deliverPrivateMessage).not.toHaveBeenCalled();
+    expect(abortAgent).not.toHaveBeenCalled();
+    expect(orchestration.getPendingPause()).toBeUndefined();
   });
 
   it("fails before preparing and delivering an auth link when pending auth cannot be recorded", async () => {

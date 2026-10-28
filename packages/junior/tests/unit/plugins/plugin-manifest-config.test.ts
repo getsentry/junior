@@ -45,6 +45,32 @@ describe("plugin manifest config", () => {
     expect(manifest.oauth?.scope).toBe("repo read:org workflow");
   });
 
+  it("turns off per-actor OAuth through manifest config", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: notion",
+        "display-name: Notion",
+        "description: Notion",
+        "mcp:",
+        "  url: https://mcp.notion.com/mcp",
+        "  allowed-tools:",
+        "    - notion-search",
+        "    - notion-create-pages",
+        "accounts:",
+        "  service-account:",
+        "    tools:",
+        "      - notion-search",
+      ].join("\n"),
+      "/plugins/notion",
+      { manifests: { notion: { accounts: { userOAuth: false } } } },
+    );
+
+    expect(manifest.accounts).toEqual({
+      userOAuth: false,
+      serviceAccount: { tools: ["notion-search"] },
+    });
+  });
+
   it("overrides empty OAuth scope reporting through manifest config", () => {
     const manifest = parsePluginManifest(
       [

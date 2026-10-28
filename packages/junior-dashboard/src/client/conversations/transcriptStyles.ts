@@ -5,6 +5,6 @@ export function transcriptEmptyClass(
   const colors =
     tone === "error"
       ? "border-rose-300/25 bg-rose-300/[0.07] text-rose-100"
-      : "border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted";
+      : "border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted";
   return `rounded-lg border p-5 text-sm leading-relaxed ${colors}`;
 }

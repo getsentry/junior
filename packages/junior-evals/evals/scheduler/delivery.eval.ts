@@ -1,18 +1,30 @@
-import { describeEval } from "vitest-evals";
-import { rubric, scheduledTaskDue, slackEvals } from "../../src/helpers";
+import { describe, expect } from "vitest";
+import { heartbeat } from "@junior-evals/fixture/inputs";
+import {
+  insertScheduledAutomation,
+  slackChannel,
+  slackDirectMessage,
+} from "@junior-evals/fixture/insert";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("Scheduled Delivery", slackEvals, (it) => {
-  it("when a one-off reminder becomes due, deliver the reminder outcome", async ({
+describe("Scheduled Delivery", () => {
+  test("when a one-off reminder becomes due, deliver the reminder outcome", async ({
     run,
   }) => {
-    await run({
-      initialEvents: [
-        scheduledTaskDue("Post this reminder: Standup moved to 10:30 today.", {
-          schedule: "Once at noon UTC",
-          schedule_kind: "one_off",
-        }),
-      ],
-      criteria: rubric({
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: "Post this reminder: Standup moved to 10:30 today.",
+    });
+
+    const delivery = await run(heartbeat());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "Junior posts a Slack message saying standup moved to 10:30 today.",
           "The delivered message is the reminder content itself, not a schedule creation confirmation.",
@@ -24,48 +36,27 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
           "Do not ask the user what to do with the reminder.",
         ],
       }),
-    });
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+    // The task names nobody, so the reminder mentions nobody.
+    expect(delivery.replies[0]!.text).not.toMatch(/<@[UW]/);
   });
 
-  it("when a reminder addresses its creator, use the known creator mention", async ({
+  test("when a recurring scheduled automation becomes due, deliver that occurrence", async ({
     run,
   }) => {
-    await run({
-      initialEvents: [
-        scheduledTaskDue("Remind me to do healthchecks.", {
-          schedule: "Once at noon UTC",
-          schedule_kind: "one_off",
-        }),
-      ],
-      criteria: rubric({
-        pass: [
-          "Junior reminds the scheduled task creator to do healthchecks.",
-          "The reminder addresses the creator with the known Slack mention for user U0TEST.",
-        ],
-        fail: [
-          "Do not address a different person.",
-          "Do not resolve the creator by name or ask which person the task means.",
-          "Do not omit the healthchecks reminder.",
-        ],
-      }),
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      task: "Post this reminder: Submit timesheets by 5pm today.",
     });
-  });
 
-  it("when a recurring scheduled task becomes due, deliver that occurrence", async ({
-    run,
-  }) => {
-    await run({
-      initialEvents: [
-        scheduledTaskDue(
-          "Post this reminder: Submit timesheets by 5pm today.",
-          {
-            recurrence: "weekly",
-            schedule: "Weekly on Monday at noon UTC",
-            schedule_kind: "recurring",
-          },
-        ),
-      ],
-      criteria: rubric({
+    const delivery = await run(heartbeat());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "Junior posts a Slack message reminding people to submit timesheets by 5pm today.",
           "The delivered message treats this as the current due occurrence.",
@@ -77,6 +68,79 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
           "Do not ask the user to confirm the recurring task before posting.",
         ],
       }),
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).not.toMatch(/<@[UW]/);
+  });
+
+  test("when a due reminder says to post in this channel, deliver it instead of looking for a posting tool", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      task: "Post a reminder in this channel asking everyone to reply in this message's thread with their weekly update. A couple of sentences is enough.",
     });
+
+    const delivery = await run(heartbeat());
+
+    expect(
+      completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
+    ).toEqual([expect.objectContaining({ result: "send_message" })]);
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).toMatch(/weekly update/i);
+  });
+
+  test("when a due reminder goes to its creator's DM, deliver the reminder itself", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      sendTo: [slackDirectMessage()],
+      task: "Remind me to revisit the launch checklist before Thursday's review.",
+    });
+
+    const delivery = await run(heartbeat());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "Junior posts one reminder to revisit the launch checklist before Thursday's review.",
+          "The reminder speaks to its recipient directly, by mention or as you, not about them in the third person.",
+        ],
+        fail: [
+          "Do not say that Junior could not send a direct message or can only reply in another conversation.",
+          "Do not ask someone else to pass the reminder on.",
+          "Do not ask the user a question or for confirmation.",
+        ],
+      }),
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when a due automation needs a provider that Junior does not have, end it as misconfigured without a post", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      task: "Post the number of open tickets in our Zendesk support queue.",
+    });
+
+    const blocked = await run(heartbeat());
+
+    // Nobody reads the channel for run problems. The reason goes to the
+    // creator through the blocked run, not into a post.
+    expect(blocked.replies).toEqual([]);
+    expect(
+      completedToolCalls("finishAutomationRun", blocked).map(toolOutput),
+    ).toEqual([expect.objectContaining({ result: "misconfigured" })]);
   });
 });

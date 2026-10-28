@@ -24,7 +24,7 @@ async function createRuntime(
   process.env = {
     ...ORIGINAL_ENV,
     AI_VISION_MODEL: "",
-    SLACK_BOT_TOKEN: "",
+    SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
     ...env,
   };
@@ -74,9 +74,7 @@ describe("bot image hydration", () => {
           visionContext: {
             listThreadReplies: listThreadRepliesMock,
           },
-          replyExecutor: {
-            agentRunner: createReplyAgentRunner(),
-          },
+          agentRunner: createReplyAgentRunner(),
         },
       },
       {
@@ -199,9 +197,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createReplyAgentRunner(),
-          },
+          agentRunner: createReplyAgentRunner(),
         },
       },
       { AI_VISION_MODEL: "openai/gpt-5.4" },
@@ -255,15 +251,13 @@ describe("bot image hydration", () => {
     );
   });
 
-  it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
+  it("does not hydrate thread images when AI_VISION_MODEL is explicitly empty", async () => {
     const { slackRuntime } = await createRuntime({
       services: {
         visionContext: {
           listThreadReplies: listThreadRepliesMock,
         },
-        replyExecutor: {
-          agentRunner: createReplyAgentRunner(),
-        },
+        agentRunner: createReplyAgentRunner(),
       },
     });
     const thread = await createTestThread({
@@ -340,9 +334,7 @@ describe("bot image hydration", () => {
         visionContext: {
           listThreadReplies: listThreadRepliesMock,
         },
-        replyExecutor: {
-          agentRunner: createReplyAgentRunner(),
-        },
+        agentRunner: createReplyAgentRunner(),
       },
     });
     const firstThread = await createTestThread({
@@ -415,9 +407,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createReplyAgentRunner(),
-          },
+          agentRunner: createReplyAgentRunner(),
         },
       },
       {
@@ -479,148 +469,6 @@ describe("bot image hydration", () => {
     expect(visionCache.backfillCompletedAtMs).toBeTypeOf("number");
   });
 
-  it("hydrates skipped passive screenshots when a later explicit mention needs them", async () => {
-    listThreadRepliesMock.mockResolvedValue([
-      {
-        ts: "1700000002.100",
-        files: [
-          {
-            id: "F_PASSIVE",
-            mimetype: "image/png",
-            url_private_download: "https://files.slack.com/private/passive.png",
-          },
-        ],
-      },
-    ]);
-    const downloadFileMock = vi.fn(async () => Buffer.from("downloaded-image"));
-    const completeTextMock = vi.fn(async () => ({
-      text: "Passive screenshot summary",
-      message: {} as never,
-    }));
-    const streamForRun = vi.fn((request) => {
-      expect(request.instruction.context).toContain(
-        "Passive screenshot summary",
-      );
-      return createModelStream([{ type: "text", text: "ok" }]);
-    });
-
-    const { slackRuntime } = await createRuntime(
-      {
-        services: {
-          subscribedReplyPolicy: {
-            completeObject: async () => {
-              throw new Error(
-                "classifier should not run for messages addressed to another bot",
-              );
-            },
-          },
-          visionContext: {
-            listThreadReplies: listThreadRepliesMock,
-            downloadFile: downloadFileMock,
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
-        },
-      },
-      {
-        AI_VISION_MODEL: "openai/gpt-5.4",
-      },
-    );
-    const thread = await createTestThread({
-      id: "slack:C0IMAGE:1700000006.000",
-      state: {
-        conversation: {
-          schemaVersion: 1,
-          messages: [],
-          compactions: [],
-          processing: {},
-          vision: {
-            byFileId: {},
-          },
-        },
-      },
-    });
-
-    await slackRuntime.handleSubscribedMessage(
-      thread,
-      createTestMessage({
-        id: "1700000002.100",
-        text: "@Cursor can you look at this?",
-        threadId: "slack:C0IMAGE:1700000006.000",
-        isMention: false,
-        author: {
-          userId: "U-user",
-          userName: "user",
-          fullName: "User Example",
-          isBot: false,
-          isMe: false,
-        },
-        attachments: [
-          {
-            type: "image",
-            mimeType: "image/png",
-            name: "passive.png",
-            url: "https://files.slack.com/private/passive.png",
-          },
-        ],
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(streamForRun).not.toHaveBeenCalled();
-    expect(listThreadRepliesMock).not.toHaveBeenCalled();
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "1700000002.200",
-        text: "<@U0APP> what is in the screenshot above?",
-        threadId: "slack:C0IMAGE:1700000006.000",
-        isMention: true,
-        author: {
-          userId: "U-user",
-          userName: "user",
-          fullName: "User Example",
-          isBot: false,
-          isMe: false,
-        },
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
-    expect(downloadFileMock).toHaveBeenCalledTimes(1);
-    expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(streamForRun).toHaveBeenCalledTimes(1);
-
-    const persistedState = (await thread.getState()) as {
-      conversation: Record<string, unknown>;
-    };
-    const conversation = coerceThreadConversationState(await thread.getState());
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: thread.id,
-    });
-    expect(
-      conversation.messages.find((message) => message.id === "1700000002.100")
-        ?.meta,
-    ).toEqual(
-      expect.objectContaining({
-        imagesHydrated: true,
-        imageFileIds: ["F_PASSIVE"],
-      }),
-    );
-    expect(persistedState.conversation).not.toHaveProperty("vision");
-    const { loadConversationVisionCache } =
-      await import("@/chat/slack/vision-cache");
-    const visionCache = await loadConversationVisionCache(thread.id);
-    expect(visionCache.byFileId.F_PASSIVE?.summary).toBe(
-      "Passive screenshot summary",
-    );
-  });
-
   it("reuses the thread image summary instead of re-analyzing the same upload", async () => {
     listThreadRepliesMock.mockResolvedValue([
       {
@@ -659,9 +507,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
       {
@@ -727,7 +573,7 @@ describe("bot image hydration", () => {
 
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(attachmentFetch).not.toHaveBeenCalled();
+    expect(attachmentFetch).toHaveBeenCalledTimes(1);
     expect(streamForRun).toHaveBeenCalledTimes(1);
   });
 
@@ -796,9 +642,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
       {
@@ -871,7 +715,7 @@ describe("bot image hydration", () => {
     expect(downloadFileMock).toHaveBeenCalledTimes(2);
     expect(completeTextMock).toHaveBeenCalledTimes(3);
     expect(firstAttachmentFetch).toHaveBeenCalledTimes(1);
-    expect(secondAttachmentFetch).not.toHaveBeenCalled();
+    expect(secondAttachmentFetch).toHaveBeenCalledTimes(1);
     expect(streamForRun).toHaveBeenCalledTimes(1);
   });
 
@@ -897,9 +741,7 @@ describe("bot image hydration", () => {
             listThreadReplies: listThreadRepliesMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
       {

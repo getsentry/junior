@@ -413,6 +413,8 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 11,
+        model: { modelId: "openai/gpt-5" },
+        modelCall: { api: "responses", provider: "openai", stopReason: "stop" },
         createdAt: "1970-01-01T00:00:10.000Z",
         data: {
           type: "tool_calls",
@@ -442,6 +444,7 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 12,
+        model: { modelId: "openai/gpt-5" },
         createdAt: "1970-01-01T00:00:05.000Z",
         data: {
           type: "tool_calls",
@@ -458,6 +461,7 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 13,
+        model: { modelId: "openai/gpt-5" },
         createdAt: "1970-01-01T00:00:01.000Z",
         data: {
           type: "message_handled",
@@ -545,8 +549,8 @@ describe("conversation report event projection", () => {
       projectConversationReportEventPage({
         canExposePayload: true,
         events: redactedOnly,
-      }),
-    ).toEqual([]);
+      })[0]?.data,
+    ).toEqual({ type: "assistant_message", parts: [] });
 
     const withTool = [
       event(
@@ -692,6 +696,7 @@ describe("conversation report event projection", () => {
           text: "event details",
           meta: {
             eventType: "pull_request.merged",
+            trustedSummary: "David merged PR #42.",
             provider: "private-provider",
             source: "web",
           },
@@ -705,6 +710,7 @@ describe("conversation report event projection", () => {
       role: "user",
       source: "web",
       eventType: "pull_request.merged",
+      trustedSummary: "David merged PR #42.",
       text: "event details",
     });
   });
@@ -813,6 +819,7 @@ describe("conversation report event projection", () => {
           meta: {
             arbitraryMeta: "private arbitrary metadata",
             authorizationId: "private-authorization-id",
+            trustedSummary: "private resource summary",
           },
         }),
         event(2, {
@@ -833,6 +840,7 @@ describe("conversation report event projection", () => {
           type: "turn_failed",
           turnId: "turn-1",
           failureCode: "model_execution_failed",
+          failureReason: "network",
           eventId,
         }),
         event(5, {
@@ -890,13 +898,15 @@ describe("conversation report event projection", () => {
       type: "turn_lifecycle",
       turnId: "turn-1",
       state: "failed",
-      failureKind: "agent",
+      failureCode: "model_execution_failed",
+      failureReason: "network",
+      eventId,
     });
     expect(projected[4]?.data).toEqual({
       type: "turn_lifecycle",
       turnId: "turn-delivery-1",
       state: "failed",
-      failureKind: "delivery",
+      failureCode: "delivery_failed",
     });
     const serialized = JSON.stringify(projected);
     for (const forbidden of [
@@ -906,16 +916,13 @@ describe("conversation report event projection", () => {
       "private visible text",
       "private-actor-id",
       "private arbitrary metadata",
+      "private resource summary",
       "private-authorization-id",
       "private tool result",
       "private provider error",
-      "model_execution_failed",
-      eventId,
       "private-provider",
       "actorId",
       "authorizationId",
-      "eventId",
-      "failureCode",
       "args",
       "content",
       "meta",
@@ -924,7 +931,7 @@ describe("conversation report event projection", () => {
     }
   });
 
-  it("exposes only generated continuation summaries to authorized viewers", () => {
+  it("exposes continuation summaries and child agent labels only to authorized viewers", () => {
     const events = [
       event(1, {
         type: "compaction",
@@ -971,6 +978,15 @@ describe("conversation report event projection", () => {
           },
         ],
       }),
+      event(3, {
+        type: "subagent_started",
+        subagentInvocationId: "subagent-invocation-1",
+        subagentKind: "agent",
+        agentName: "release-checker",
+        task: "Check the private release notes.",
+        title: "Private release notes",
+        childConversationId: "child-conversation-1",
+      }),
     ];
 
     expect(
@@ -991,6 +1007,17 @@ describe("conversation report event projection", () => {
         modelId: "openai/gpt-5.6-sol",
         summary: "Fix the remaining test.",
       },
+      {
+        type: "subagent",
+        startedSeq: 3,
+        startedAt: "1970-01-01T00:00:03.000Z",
+        childConversationId: "child-conversation-1",
+        subagentKind: "agent",
+        agentName: "release-checker",
+        task: "Check the private release notes.",
+        title: "Private release notes",
+        status: "running",
+      },
     ]);
 
     const redacted = JSON.stringify(
@@ -1002,6 +1029,9 @@ describe("conversation report event projection", () => {
     expect(redacted).not.toContain("Private retained user message.");
     expect(redacted).not.toContain("Continue monitoring CI.");
     expect(redacted).not.toContain("Fix the remaining test.");
+    expect(redacted).not.toContain("release-checker");
+    expect(redacted).not.toContain("Check the private release notes.");
+    expect(redacted).not.toContain("Private release notes");
   });
 
   it("emits only safe structural lifecycle, context, and child references", () => {
@@ -1065,6 +1095,8 @@ describe("conversation report event projection", () => {
           type: "subagent_started",
           subagentInvocationId: "subagent-invocation-1",
           subagentKind: "advisor",
+          agentName: "reviewer",
+          task: "Review the plan.",
           modelId: "private-child-model-id",
           parentToolCallId: "private-parent-tool-id",
           reasoningLevel: "private-reasoning-level",
@@ -1152,7 +1184,7 @@ describe("conversation report event projection", () => {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
-        failureKind: "delivery",
+        failureCode: "delivery_failed",
       },
       {
         type: "tool_calls",
@@ -1172,6 +1204,8 @@ describe("conversation report event projection", () => {
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
         subagentKind: "advisor",
+        agentName: "reviewer",
+        task: "Review the plan.",
         parentToolCallId: "private-parent-tool-id",
         status: "running",
       },
@@ -1181,6 +1215,8 @@ describe("conversation report event projection", () => {
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
         subagentKind: "advisor",
+        agentName: "reviewer",
+        task: "Review the plan.",
         parentToolCallId: "private-parent-tool-id",
         status: "error",
       },
@@ -1216,7 +1252,7 @@ describe("conversation report event projection", () => {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
-        failureKind: "agent",
+        failureCode: "model_execution_failed",
       },
     };
 
@@ -1234,7 +1270,7 @@ describe("conversation report event projection", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "succeeded",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
         },
       }).success,
     ).toBe(false);
@@ -1253,7 +1289,7 @@ describe("conversation report event projection", () => {
     expect(
       conversationReportEventSchema.safeParse({
         ...valid,
-        data: { ...valid.data, failureCode: "private-failure-code" },
+        data: { ...valid.data, failureCode: "not_a_real_code" },
       }).success,
     ).toBe(false);
     expect(

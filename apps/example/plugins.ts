@@ -1,5 +1,6 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
+import { googlePlugin } from "@sentry/junior-google";
 import { linearPlugin } from "@sentry/junior-linear";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
@@ -17,6 +18,7 @@ export const plugins = defineJuniorPlugins([
     botNameEnv: "GITHUB_APP_BOT_NAME",
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),
+  googlePlugin(),
   "@sentry/junior-hex",
   linearPlugin(),
   memoryPlugin(),

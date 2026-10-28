@@ -58,6 +58,10 @@ describe("canonical event transcript reduction", () => {
           role: "assistant",
           text: "second by sequence",
         }),
+        event(5, "2026-01-01T00:00:02.000Z", {
+          type: "assistant_message",
+          parts: [],
+        }),
       ]),
     );
 
@@ -69,27 +73,65 @@ describe("canonical event transcript reduction", () => {
     ).toEqual(["first by sequence", "second by sequence"]);
   });
 
-  it("projects visible and redacted messages", () => {
-    const messages = conversationTranscriptMessages(
-      conversation([
-        event(0, "2026-01-01T00:00:00.000Z", {
-          type: "message",
-          messageId: "visible",
-          role: "assistant",
-          text: "safe answer",
-        }),
-        event(2, "2026-01-01T00:00:02.000Z", {
-          type: "message",
-          messageId: "private",
-          role: "user",
-          redacted: true,
-        }),
-      ]),
-    );
-
+  it("resolves cards from current annotations without changing Message events", () => {
+    const ref = { kind: "object" as const, plugin: "github", key: "repo#1" };
+    const current = conversation([
+      event(0, "2026-01-01T00:00:00.000Z", {
+        type: "message",
+        messageId: "visible",
+        role: "assistant",
+        text: "safe answer",
+        cards: [ref],
+      }),
+      event(2, "2026-01-01T00:00:02.000Z", {
+        type: "message",
+        messageId: "private",
+        role: "user",
+        redacted: true,
+      }),
+    ]);
+    const annotation = {
+      ...ref,
+      objectType: "code_change" as const,
+      title: "Fix the parser",
+      label: "repo#1",
+      url: "https://example.com/pull/1",
+      status: "open",
+      createdAt: current.generatedAt,
+      updatedAt: current.generatedAt,
+    };
+    current.annotations = [annotation];
+    const messages = conversationTranscriptMessages(current);
     expect(messages).toHaveLength(2);
     expect(messages[0]?.parts).toEqual([{ type: "text", text: "safe answer" }]);
     expect(messages[1]?.parts).toEqual([{ type: "text", redacted: true }]);
+    expect(messages[1]?.cards).toBeUndefined();
+    expect(messageRawText(messages[0]!)).toContain("open");
+
+    const updated = conversationTranscriptMessages({
+      ...current,
+      annotations: [{ ...annotation, status: "merged" }],
+    });
+    expect(messageRawText(updated[0]!)).toContain("merged");
+    expect(
+      entryMatchesSearch(groupTranscriptMessages(updated)[0]!, "merged"),
+    ).toBe(true);
+    expect(current.events[0]?.data).toMatchObject({ cards: [ref] });
+
+    const missing = conversationTranscriptMessages({
+      ...current,
+      annotations: [],
+    });
+    expect(missing[0]?.cards).toEqual([
+      {
+        ...ref,
+        objectType: "item",
+        title: "repo#1",
+        label: "repo#1",
+        url: null,
+        warning: "Saved annotation is unavailable.",
+      },
+    ]);
   });
 
   it("preserves ordered reasoning and tool activity", () => {
@@ -245,7 +287,7 @@ describe("canonical event transcript reduction", () => {
     );
   });
 
-  it("preserves resource event type for special rendering", () => {
+  it("keeps Event fields for transcript display", () => {
     const [message] = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
@@ -253,6 +295,7 @@ describe("canonical event transcript reduction", () => {
           messageId: "event-1",
           role: "user",
           eventType: "pull_request.merged",
+          trustedSummary: "David merged PR #42.",
           text: "line one\nline two",
         }),
       ]),
@@ -260,12 +303,14 @@ describe("canonical event transcript reduction", () => {
 
     expect(message).toMatchObject({
       eventType: "pull_request.merged",
+      trustedSummary: "David merged PR #42.",
       parts: [{ type: "text", text: "line one\nline two" }],
     });
     const [entry] = groupTranscriptMessages(message ? [message] : []);
     expect(entry && entryMatchesSearch(entry, "pull_request.merged")).toBe(
       true,
     );
+    expect(entry && entryMatchesSearch(entry, "david merged")).toBe(true);
   });
 
   it("renders a tool start as one running invocation", () => {
@@ -626,7 +671,7 @@ describe("canonical event transcript reduction", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
         }),
       ]),
     );
@@ -860,13 +905,13 @@ describe("canonical event transcript reduction", () => {
             type: "turn_lifecycle",
             turnId: "turn-1",
             state: "failed",
-            failureKind: "agent",
+            failureCode: "model_execution_failed",
           }),
           event(7, "2026-01-01T00:00:07.000Z", {
             type: "turn_lifecycle",
             turnId: "turn-2",
             state: "failed",
-            failureKind: "delivery",
+            failureCode: "delivery_failed",
           }),
         ]),
       ),
@@ -894,107 +939,5 @@ describe("canonical event transcript reduction", () => {
     expect(entries.some((entry) => entryMatchesSearch(entry, "started"))).toBe(
       false,
     );
-  });
-});
-
-describe("transcript render grouping", () => {
-  it("keeps terminal failure outcomes as standalone entries", () => {
-    const messages: TranscriptViewMessage[] = [
-      {
-        role: "assistant",
-        outcome: "error",
-        sourceSeq: 42,
-        timestamp: 1_000,
-        parts: [],
-      },
-    ];
-    expect(groupTranscriptMessages(messages)).toEqual([
-      {
-        key: "42:failure",
-        kind: "failure",
-        outcome: "error",
-        timestamp: 1_000,
-      },
-    ]);
-  });
-
-  it("keeps row identities stable when earlier events are prepended", () => {
-    const current = conversationTranscriptMessages(
-      conversation([
-        event(10, "2026-01-01T00:00:10.000Z", {
-          type: "tool_calls",
-          calls: [
-            {
-              toolCallId: "search-10",
-              name: "search",
-              status: "completed",
-              startedSeq: 6,
-              startedAt: "2026-01-01T00:00:06.000Z",
-              output: { matches: 1 },
-            },
-          ],
-        }),
-        event(11, "2026-01-01T00:00:11.000Z", {
-          type: "message",
-          messageId: "answer-11",
-          role: "assistant",
-          text: "current answer",
-        }),
-      ]),
-    );
-    const prepended = conversationTranscriptMessages(
-      conversation([
-        event(5, "2026-01-01T00:00:05.000Z", {
-          type: "message",
-          messageId: "question-5",
-          role: "user",
-          text: "earlier question",
-        }),
-        event(6, "2026-01-01T00:00:06.000Z", {
-          type: "tool_calls",
-          calls: [
-            {
-              toolCallId: "search-10",
-              name: "search",
-              status: "running",
-            },
-          ],
-        }),
-        event(10, "2026-01-01T00:00:10.000Z", {
-          type: "tool_calls",
-          calls: [
-            {
-              toolCallId: "search-10",
-              name: "search",
-              status: "completed",
-              startedSeq: 6,
-              startedAt: "2026-01-01T00:00:06.000Z",
-              output: { matches: 1 },
-            },
-          ],
-        }),
-        event(11, "2026-01-01T00:00:11.000Z", {
-          type: "message",
-          messageId: "answer-11",
-          role: "assistant",
-          text: "current answer",
-        }),
-      ]),
-    );
-
-    const currentKeys = groupTranscriptMessages(current).map(
-      (entry) => entry.key,
-    );
-    const prependedKeys = groupTranscriptMessages(prepended).map(
-      (entry) => entry.key,
-    );
-
-    expect(current[0]).toMatchObject({
-      sourceSeq: 6,
-      timestamp: Date.parse("2026-01-01T00:00:06.000Z"),
-      parts: [{ id: "search-10", status: "completed" }],
-    });
-    expect(currentKeys).toEqual(["tool:search-10", "11:message:0"]);
-    expect(prependedKeys.slice(-currentKeys.length)).toEqual(currentKeys);
   });
 });

@@ -3,9 +3,12 @@ import type { PluginContext, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
-import type { ResourceEventPublisher } from "./resource-events";
+import type { EventPublisher } from "./events";
 import type { PluginConversationAnnotations } from "./annotations";
-import type { PluginConversationEventStats } from "./conversation-events";
+import type {
+  PluginConversationEventReader,
+  PluginConversationEventStats,
+} from "./conversation-events";
 import type { CodeChangePublisher } from "./code";
 
 export interface HeartbeatHookContext extends PluginContext {
@@ -91,7 +94,7 @@ export interface PluginOperationalBarChartWidget {
   emptyText?: string;
   id: string;
   series: PluginOperationalChartSeries[];
-  timeRangeDays?: Array<7 | 30 | 90>;
+  timeRangeDays?: Array<1 | 7 | 30 | 90>;
   title: string;
   type: "bar_chart";
 }
@@ -157,10 +160,11 @@ export interface RouteRegistrationHookContext extends PluginContext {
   /** Provider-neutral write boundary for Junior's native code index. */
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
-  resourceEvents: ResourceEventPublisher;
+  events: EventPublisher;
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
+  conversationEvents: PluginConversationEventReader;
   eventStats: PluginConversationEventStats;
   users: {
     /** Resolve or create the canonical user for one verified email. */
@@ -177,6 +181,8 @@ export const pluginApiRouteRequestContextSchema = z
           .object({
             email: z.string().nullable().optional(),
             emailVerified: z.boolean().optional(),
+            /** Junior-wide admin role, read from the user record on each request. */
+            isAdmin: z.boolean(),
             name: z.string().nullable().optional(),
           })
           .strict(),

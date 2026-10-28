@@ -1,11 +1,6 @@
-import { completeObject, completeText } from "@/chat/pi/client";
+import { completeDecision, completeText } from "@/chat/pi/client";
 import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
-import {
-  getPausedTurnRequest,
-  wakePausedTurn,
-} from "@/chat/task-execution/turn-wake";
-import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   createConversationMemoryService,
   type ConversationMemoryDeps,
@@ -18,36 +13,37 @@ import {
 } from "@/chat/services/context-compaction";
 import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import { listThreadReplies } from "@/chat/slack/channel";
-import { lookupSlackUser } from "@/chat/slack/user";
 import {
   createSubscribedReplyPolicy,
   type SubscribedReplyPolicy,
   type SubscribedReplyPolicyDeps,
 } from "@/chat/services/subscribed-reply-policy";
-import type { SlackTurnServices } from "@/chat/providers/slack/turn";
 import {
   createVisionContextService,
   type VisionContextDeps,
   type VisionContextService,
 } from "@/chat/slack/vision-context";
-import { createAgentRunner } from "@/chat/runtime/agent-runner";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore } from "@/chat/db";
+import {
+  createAgentRunner,
+  type AgentRunner,
+} from "@/chat/runtime/agent-runner";
+import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
+import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
   contextCompactor: ContextCompactor;
-  replyExecutor: SlackTurnServices;
+  executeTurn: ExecuteTurn;
   subscribedReplyPolicy: SubscribedReplyPolicy;
   visionContext: VisionContextService;
 }
 
 export interface JuniorRuntimeServiceOverrides {
+  agentRunner?: AgentRunner;
   conversationMemory?: Partial<ConversationMemoryDeps>;
   contextCompactor?: Partial<ContextCompactorDeps>;
-  replyExecutor?: Partial<SlackTurnServices>;
   subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
   sandbox?: {
     tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -67,6 +63,7 @@ export function createJuniorRuntimeServices(
       overrides.contextCompactor?.autoCompactionTriggerTokens,
   });
   const visionContext = createVisionContextService({
+    attachmentStorage: overrides.visionContext?.attachmentStorage,
     completeText: overrides.visionContext?.completeText ?? completeText,
     listThreadReplies:
       overrides.visionContext?.listThreadReplies ?? listThreadReplies,
@@ -74,8 +71,10 @@ export function createJuniorRuntimeServices(
       overrides.visionContext?.downloadFile ?? downloadPrivateSlackFile,
   });
   const agentRunner =
-    overrides.replyExecutor?.agentRunner ??
+    overrides.agentRunner ??
     createAgentRunner(executeAgentRunImpl, {
+      bindMessageAgent: (request) =>
+        bindMessageAgent(request, { queue: getVercelConversationWorkQueue }),
       bindSpawnAgent: (request) =>
         bindSpawnAgent(request, { queue: getVercelConversationWorkQueue }),
       tracePropagation: overrides.sandbox?.tracePropagation,
@@ -84,27 +83,11 @@ export function createJuniorRuntimeServices(
   return {
     conversationMemory,
     contextCompactor,
-    replyExecutor: {
-      contextCompactor:
-        overrides.replyExecutor?.contextCompactor ?? contextCompactor,
-      agentRunner,
-      getPausedTurnRequest:
-        overrides.replyExecutor?.getPausedTurnRequest ?? getPausedTurnRequest,
-      lookupSlackUser:
-        overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
-      wakePausedTurn: overrides.replyExecutor?.wakePausedTurn ?? wakePausedTurn,
-      scheduleSessionCompletedPluginTasks:
-        overrides.replyExecutor?.scheduleSessionCompletedPluginTasks ??
-        (async (params) => {
-          await scheduleSessionCompletedPluginTasks(params);
-        }),
-      turnLifecycle:
-        overrides.replyExecutor?.turnLifecycle ??
-        new ConversationTurnLifecycleService(getConversationEventStore()),
-    },
+    executeTurn: async (run, saveResult) =>
+      await executeTurn(agentRunner, run, saveResult),
     subscribedReplyPolicy: createSubscribedReplyPolicy({
-      completeObject:
-        overrides.subscribedReplyPolicy?.completeObject ?? completeObject,
+      completeDecision:
+        overrides.subscribedReplyPolicy?.completeDecision ?? completeDecision,
     }),
     visionContext,
   };

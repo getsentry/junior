@@ -1,9 +1,9 @@
 import { createHmac } from "node:crypto";
-import type { ResourceEventInput } from "@sentry/junior-plugin-api";
+import type { EventInput } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linearPlugin } from "../src";
 import { createLinearWebhookRoute } from "../src/webhooks/handler";
-import { normalizeLinearResourceEvents } from "../src/webhooks/resource-events";
+import { normalizeLinearEvents } from "../src/webhooks/events";
 
 const SECRET = "linear-webhook-secret";
 
@@ -65,11 +65,11 @@ function signedRequest(
 }
 
 function routeFixture() {
-  const events: ResourceEventInput[] = [];
+  const events: EventInput[] = [];
   return {
     events,
     route: createLinearWebhookRoute({
-      resourceEvents: {
+      events: {
         async publish(event) {
           events.push(event);
         },
@@ -83,10 +83,37 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("Linear webhook resource events", () => {
+describe("Linear webhook events", () => {
+  it("registers teamKey match fields on issue and team resources", () => {
+    const resourceTypes = linearPlugin().events?.resourceTypes ?? [];
+
+    expect(resourceTypes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "issue",
+          matchFields: {
+            teamKey: {
+              kind: "string",
+              description: "Linear team key for the issue, such as SRE",
+            },
+          },
+        }),
+        expect.objectContaining({
+          type: "team",
+          matchFields: {
+            teamKey: {
+              kind: "string",
+              description: "Linear team key for the issue, such as SRE",
+            },
+          },
+        }),
+      ]),
+    );
+  });
+
   it("normalizes a created issue for the issue and team", () => {
     expect(
-      normalizeLinearResourceEvents({
+      normalizeLinearEvents({
         body: issueBody(),
         linearEvent: "Issue",
       }),
@@ -154,14 +181,14 @@ describe("Linear webhook resource events", () => {
     const publish = vi.fn(async () => {});
     const [route] =
       linearPlugin().hooks?.routes?.({
-        resourceEvents: { publish },
+        events: { publish },
       } as never) ?? [];
 
     const response = await route?.handler(signedRequest(issueBody()));
 
     expect(response?.status).toBe(200);
     expect(publish).toHaveBeenCalledTimes(2);
-    expect(linearPlugin().resourceEvents?.isEnabled?.()).toBe(true);
+    expect(linearPlugin().events?.isEnabled?.()).toBe(true);
   });
 
   it("rejects a delivery whose signature does not match", async () => {
@@ -207,7 +234,7 @@ describe("Linear webhook resource events", () => {
 
   it("propagates publisher failures so Linear can retry", async () => {
     const route = createLinearWebhookRoute({
-      resourceEvents: {
+      events: {
         async publish() {
           throw new Error("queue unavailable");
         },

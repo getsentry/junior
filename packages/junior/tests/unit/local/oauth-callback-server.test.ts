@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request as httpRequest } from "node:http";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
 
 const { mcpCallback } = vi.hoisted(() => ({
   mcpCallback: vi.fn(async () => new Response("Connected")),
@@ -16,7 +15,7 @@ describe("local OAuth callback server", () => {
   let close: (() => Promise<void>) | undefined;
 
   async function startCallback() {
-    const callback = await startLocalOAuthCallbackServer({} as AgentRunner);
+    const callback = await startLocalOAuthCallbackServer();
     close = callback.close;
     return callback;
   }

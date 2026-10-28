@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import {
-  logInfo,
   setSpanAttributes,
   withSpan,
   type LogContext,
@@ -17,6 +16,7 @@ import {
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
+import type { WorkspaceFinalize } from "@sentry/junior-plugin-api";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
@@ -139,7 +139,7 @@ interface SandboxRuntimeOptions {
     sandbox: SandboxSession,
     workspace: Workspace,
     signal?: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<WorkspaceFinalize | void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
@@ -189,7 +189,10 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  let dependencyProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
+  // Prefer the hash stored on the current sandbox over a newly computed one.
+  let dependencyProfileHash =
+    options.sandboxRef?.profileHash ??
+    profileHash(SANDBOX_RUNTIME, activeWorkspace);
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -339,9 +342,10 @@ export function createSandboxRuntime(
     snapshotId: string,
     sandboxCredentials: SandboxCredentials | undefined,
     initialSandboxName: string,
+    workspace: Workspace | undefined,
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
-    const resources = getSandboxResources();
+    const resources = getSandboxResources(workspace);
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       signal?.throwIfAborted();
       const sandboxName =
@@ -405,7 +409,7 @@ export function createSandboxRuntime(
     signal?.throwIfAborted();
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
-      const resources = getSandboxResources();
+      const resources = getSandboxResources(params.workspace);
       const session = adaptSandbox(
         await Sandbox.create({
           timeout: timeoutMs,
@@ -426,6 +430,7 @@ export function createSandboxRuntime(
         snapshot.snapshotId,
         sandboxCredentials,
         sandboxName,
+        params.workspace,
         signal,
       );
       return { session, snapshot };
@@ -455,6 +460,7 @@ export function createSandboxRuntime(
         rebuilt.snapshotId,
         sandboxCredentials,
         sandboxName,
+        params.workspace,
         signal,
       );
       return { session, snapshot: rebuilt };
@@ -532,7 +538,16 @@ export function createSandboxRuntime(
     try {
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
       if (workspace) {
-        await options.onWorkspacePrepare?.(createdSandbox, workspace, signal);
+        const finalize = await options.onWorkspacePrepare?.(
+          createdSandbox,
+          workspace,
+          signal,
+        );
+        if (options.createNetworkPolicy) {
+          await createdSandbox.update({ networkPolicy: "allow-all" });
+          networkPolicyKey = undefined;
+        }
+        await finalize?.();
       }
       await prepareSandbox(createdSandbox);
     } catch (error) {
@@ -553,46 +568,20 @@ export function createSandboxRuntime(
   const createFreshSandbox = async (
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
+    const nextProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
     const candidate = await createSandboxCandidate(
       activeWorkspace,
-      dependencyProfileHash,
+      nextProfileHash,
       signal,
     );
     try {
       await persistSandboxRef(candidate.ref);
+      dependencyProfileHash = candidate.profileHash ?? nextProfileHash;
       return rememberSandbox(candidate.session, candidate.networkPolicyKey);
     } catch (error) {
       await stopSession(candidate.session);
       throw error;
     }
-  };
-
-  const discardHintIfProfileChanged = (): void => {
-    if (
-      activeSandbox ||
-      !sandboxRef ||
-      dependencyProfileHash === sandboxRef.profileHash
-    ) {
-      return;
-    }
-    const attrs = {
-      ...(sandboxRef.profileHash
-        ? { "app.sandbox.previous_profile_hash": sandboxRef.profileHash }
-        : undefined),
-      ...(dependencyProfileHash
-        ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-        : undefined),
-    };
-    setSpanAttributes({
-      "app.sandbox.reused": false,
-      "app.sandbox.recreate.reason": "dependency_profile_mismatch",
-      ...attrs,
-    });
-    logInfo("sandbox.hint.discarded", {
-      "app.decision.reason": "dependency_profile_mismatch",
-      ...attrs,
-    });
-    sandboxRef = undefined;
   };
 
   const tryReuseCachedSandbox = (): SandboxSession | null =>
@@ -642,6 +631,7 @@ export function createSandboxRuntime(
     try {
       networkPolicyKey = await applyNetworkPolicy(hintedSandbox);
       await prepareSandbox(hintedSandbox);
+      dependencyProfileHash = ref.profileHash ?? dependencyProfileHash;
       await persistSandboxRef({ ...ref, id: hintedSandbox.sandboxId });
       return rememberSandbox(hintedSandbox, networkPolicyKey);
     } catch (error) {
@@ -666,14 +656,13 @@ export function createSandboxRuntime(
         "app.sandbox.skills_count": availableSkills.length,
       },
       async () => {
-        discardHintIfProfileChanged();
-
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
           return cachedSandbox;
         }
 
         signal?.throwIfAborted();
+        // Reopen the current sandbox before starting a new one.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           return hintedSandbox;
@@ -932,12 +921,18 @@ export function createSandboxRuntime(
       }
 
       const previous = activeSandbox;
+      // The new sandbox outlives this call. Its requests follow the call
+      // signal only until the switch is done.
+      signal?.throwIfAborted();
+      const switching = new AbortController();
+      const stopSwitching = () => switching.abort(signal?.reason);
+      signal?.addEventListener("abort", stopSwitching, { once: true });
       let candidate: SandboxCandidate | undefined;
       try {
         candidate = await createSandboxCandidate(
           workspace,
           nextProfileHash,
-          signal,
+          switching.signal,
         );
         await probeSession(candidate.session);
         signal?.throwIfAborted();
@@ -947,6 +942,8 @@ export function createSandboxRuntime(
       } catch (error) {
         await stopSession(candidate?.session);
         throw error;
+      } finally {
+        signal?.removeEventListener("abort", stopSwitching);
       }
 
       if (keepAliveTimer) {

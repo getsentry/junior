@@ -6,13 +6,16 @@ import {
   isSlackDestination,
   replyAttributionSchema,
   sourceSchema,
+  taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
-import { getConversationStore } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
-import { recordTaskExecution } from "@/chat/tasks/execution-stats";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { blockEventAutomation } from "@/chat/event-automations/store";
+import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -65,6 +68,7 @@ const dispatchRecordSchema = z
     replyAttribution: replyAttributionSchema.optional(),
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
+    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     status: dispatchStatusSchema,
     updatedAtMs: z.number().finite(),
   })
@@ -103,6 +107,15 @@ const dispatchRecordSchema = z
           path: ["credentialSubject", "binding"],
         });
       }
+      return;
+    }
+    if (subject.allowedWhen === "timer-watch") {
+      // Timer subjects belong to one Watch, never to a dispatch.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Dispatch credentialSubject cannot use a timer Watch binding",
+        path: ["credentialSubject", "allowedWhen"],
+      });
       return;
     }
     if (
@@ -148,7 +161,13 @@ function normalizeMetadata(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-function buildDispatchId(plugin: string, idempotencyKey: string): string {
+const DISPATCH_ID_PREFIX = "agent-dispatch:";
+
+/** Return the stable dispatch id for one plugin idempotency key. */
+export function buildDispatchId(
+  plugin: string,
+  idempotencyKey: string,
+): string {
   const digest = createHash("sha256")
     .update(plugin)
     .update("\0")
@@ -170,12 +189,23 @@ export function parseDispatchRecord(
 export function getDispatchConversationId(
   dispatch: Pick<DispatchRecord, "id">,
 ): string {
-  return `agent-dispatch:${dispatch.id}`;
+  return `${DISPATCH_ID_PREFIX}${dispatch.id}`;
 }
 
 /** Return the stable synthetic input message id for one dispatch turn. */
 export function getDispatchInputMessageId(dispatchId: string): string {
-  return `agent-dispatch:${dispatchId}`;
+  return `${DISPATCH_ID_PREFIX}${dispatchId}`;
+}
+
+/**
+ * Return the dispatch id of a dispatch Conversation, such as an Automation
+ * run. Other Conversations have no dispatch.
+ */
+export function getDispatchIdForConversation(
+  conversationId: string,
+): string | undefined {
+  if (!conversationId.startsWith(DISPATCH_ID_PREFIX)) return undefined;
+  return conversationId.slice(DISPATCH_ID_PREFIX.length) || undefined;
 }
 
 /** Return the stable turn id used by every run of one dispatch. */
@@ -190,7 +220,9 @@ function toDispatchProjection(record: DispatchRecord): DispatchProjection {
     ...(record.resultMessageTs
       ? { resultMessageTs: record.resultMessageTs }
       : undefined),
-    ...(record.errorMessage ? { errorMessage: record.errorMessage } : undefined),
+    ...(record.errorMessage
+      ? { errorMessage: record.errorMessage }
+      : undefined),
   };
 }
 
@@ -318,6 +350,9 @@ export async function createOrGetDispatch(args: {
       ...(args.options.replyAttribution
         ? { replyAttribution: args.options.replyAttribution }
         : undefined),
+      ...(args.options.outcomes
+        ? { outcomes: args.options.outcomes }
+        : undefined),
       status: "pending",
       source: args.options.source,
       updatedAtMs: args.nowMs,
@@ -381,35 +416,50 @@ export async function markDispatchAwaitingResume(
   );
 }
 
-async function recordEventTaskExecution(
+async function recordEventAutomationExecution(
   previous: DispatchRecord | undefined,
   next: DispatchRecord | undefined,
   status: "blocked" | "completed" | "failed",
 ): Promise<void> {
   if (!next || next.status !== status || previous?.status === status) return;
   if (next.plugin !== "junior") return;
-  const eventTaskId = next.metadata?.eventTaskId;
-  if (!eventTaskId) return;
-  // Only link a conversation when enqueue already created the durable row.
-  // Early failed/blocked dispatches can terminate before that write, and the
-  // execution table still FKs conversation_id when present.
-  const conversationId = getDispatchConversationId(next);
-  const conversation = await getConversationStore().get({ conversationId });
-  await recordTaskExecution("event", eventTaskId, {
-    ...(conversation ? { conversationId } : undefined),
+  const eventAutomationId = next.metadata?.eventAutomationId;
+  if (!eventAutomationId) return;
+  await recordAutomationExecution(eventAutomationId, {
+    conversationId: getDispatchConversationId(next),
+    errorMessage: next.errorMessage,
     executionId: next.id,
     nowMs: next.updatedAtMs,
     status,
   });
 }
 
-/** Project a blocked turn to the plugin API. */
+/**
+ * Project a blocked turn to the plugin API. An Event automation is blocked
+ * first, so a retry after a failed write still blocks it. Its creator is told
+ * when the block is first stored. The heartbeat blocks a Scheduled automation
+ * and tells its creator.
+ */
 export async function markDispatchBlocked(
   id: string,
   errorMessage: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
   const previous = await getDispatchRecord(id);
+  const eventAutomationId = previous?.metadata?.eventAutomationId;
+  if (
+    previous?.plugin === "junior" &&
+    eventAutomationId &&
+    !isTerminalDispatchStatus(previous.status) &&
+    (await blockEventAutomation(getDb(), eventAutomationId, errorMessage))
+  ) {
+    await notifyAutomationBlocked({
+      automationId: eventAutomationId,
+      dispatchId: id,
+      kind: "event",
+      reason: errorMessage,
+    });
+  }
   const next = await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
       ? record
@@ -420,7 +470,7 @@ export async function markDispatchBlocked(
           status: "blocked",
         },
   );
-  await recordEventTaskExecution(previous, next, "blocked");
+  await recordEventAutomationExecution(previous, next, "blocked");
   return next;
 }
 
@@ -440,7 +490,7 @@ export async function markDispatchCompleted(
           status: "completed",
         },
   );
-  await recordEventTaskExecution(previous, next, "completed");
+  await recordEventAutomationExecution(previous, next, "completed");
   return next;
 }
 
@@ -461,7 +511,7 @@ export async function markDispatchFailed(
           status: "failed",
         },
   );
-  await recordEventTaskExecution(previous, next, "failed");
+  await recordEventAutomationExecution(previous, next, "failed");
   return next;
 }
 

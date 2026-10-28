@@ -13,7 +13,7 @@ function toolFixture(
     fetch,
     tool: createVercelDeploymentTool({
       egress: { fetch },
-      resourceEvents: { canSubscribe },
+      events: { canSubscribe },
     } as never),
   };
 }
@@ -239,7 +239,7 @@ describe("Vercel deployment", () => {
         VERCEL_WEBHOOK_SECRET: {},
       },
     });
-    expect(plugin.resourceEvents?.resourceTypes).toEqual([
+    expect(plugin.events?.resourceTypes).toEqual([
       expect.objectContaining({ type: "deployment" }),
     ]);
     expect(
@@ -249,7 +249,7 @@ describe("Vercel deployment", () => {
     ).toHaveProperty("deployment");
     expect(
       plugin.hooks?.routes?.({
-        resourceEvents: { async publish() {} },
+        events: { async publish() {} },
       } as never),
     ).toEqual([
       expect.objectContaining({

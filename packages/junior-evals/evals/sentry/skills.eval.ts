@@ -1,48 +1,49 @@
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
-import { beforeAll, expect } from "vitest";
+import { describe, expect } from "vitest";
+import { heartbeat, slackMention, reply } from "@junior-evals/fixture/inputs";
 import {
-  mention,
-  rubric,
-  scheduledTaskDue,
-  slackEvals,
-  threadMessage,
-} from "../../src/helpers";
-import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
+  insertCredential,
+  insertScheduledAutomation,
+  slackChannel,
+} from "@junior-evals/fixture/insert";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { completedToolCalls } from "@junior-evals/fixture/results";
+import { test, type Conversation } from "@junior-evals/fixture/test";
 
-const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
+/** The connected Sentry account of the default Slack person. */
+const sentryCredential = {
+  accessToken: "eval-sentry-access-token",
+  provider: "sentry",
+  refreshToken: "eval-sentry-refresh-token",
+  scope:
+    "alerts:write event:write member:read org:read project:releases project:write team:write",
+};
 
-describeEval("Sentry Skill Workflows", slackEvals, (it) => {
-  // Deployments warm plugin runtime dependencies before serving turns. Keep
-  // that one-time setup cost outside the behavioral response-time budget.
-  beforeAll(async () => {
-    await warmSandboxSnapshot(["@sentry/junior-sentry"]);
-  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
+/** Completed Sentry CLI commands that list the issues of getsentry. */
+function issueListCommands(conversation: Conversation) {
+  return completedToolCalls("bash", conversation).filter((call) =>
+    /\bsentry\s+(issue list|api organizations\/getsentry\/issues\/)/.test(
+      String((call.input as { command?: unknown } | undefined)?.command),
+    ),
+  );
+}
 
-  const followUpThread = {
-    id: "thread-sentry-follow-up",
-    channel_id: "CSENTRYFOLLOWUP",
-    thread_ts: "17000000.1501",
-  };
-
-  it("when a Sentry request follows a generic first turn, use the Sentry skill and CLI", async ({
+describe("Sentry Skill Workflows", () => {
+  test("when a Sentry request follows a generic first turn, use the Sentry skill and CLI", async ({
     run,
   }) => {
-    const result = await run({
-      overrides: {
-        credential_providers: ["sentry"],
-        plugin_packages: ["@sentry/junior-sentry"],
-        reply_texts: ["Yes—I'm working."],
+    await insertCredential(sentryCredential);
+
+    const conversation = await run(
+      slackMention("what's up with the latest Sentry issues in getsentry?"),
+      {
+        history: [slackMention("are you working"), reply("Yes—I'm working.")],
       },
-      initialEvents: [mention("are you working", { thread: followUpThread })],
-      events: [
-        threadMessage("what's up with the latest Sentry issues in getsentry?", {
-          thread: followUpThread,
-          is_mention: true,
-        }),
-      ],
-      criteria: rubric({
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
-          "The second reply reports latest Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
+          "The reply reports latest Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
         ],
         fail: [
           "Do not claim no skills, MCP tools, or Sentry tools are configured.",
@@ -50,55 +51,33 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
           "Do not ask the user to reconnect Sentry when the issue list is available.",
         ],
       }),
-    });
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "loadSkill",
-          arguments: expect.objectContaining({ skill_name: "sentry" }),
-        }),
-        expect.objectContaining({
-          name: "bash",
-          arguments: expect.objectContaining({
-            command: expect.stringMatching(
-              /\bsentry\s+(issue list|api organizations\/getsentry\/issues\/)/,
-            ),
-          }),
-        }),
-      ]),
     );
+
     expect(
-      assistantMessages(result.session)
-        .map((message) =>
-          typeof message.content === "string" ? message.content : "",
-        )
-        .join("\n"),
-    ).toMatch(/\b(JUNIOR-1|Eval issue|getsentry)\b/i);
+      completedToolCalls("loadSkill", conversation).map(
+        (call) => (call.input as { skill_name?: unknown }).skill_name,
+      ),
+    ).toContain("sentry");
+    expect(issueListCommands(conversation)).not.toHaveLength(0);
   });
 
-  it("when creator-bound scheduled Sentry work becomes due, use the creator's account", async ({
+  test("when creator-bound scheduled Sentry work becomes due, use the creator's account", async ({
     run,
   }) => {
-    const result = await run({
-      overrides: {
-        credential_providers: ["sentry"],
-        plugin_packages: ["@sentry/junior-sentry"],
-      },
-      initialEvents: [
-        scheduledTaskDue(
-          "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
-          {
-            credential_mode: "creator",
-            recurrence: "weekly",
-            schedule: "Weekly on Monday at 9am Pacific",
-            schedule_kind: "recurring",
-            timezone: "America/Los_Angeles",
-          },
-        ),
-      ],
-      criteria: rubric({
+    await insertCredential(sentryCredential);
+    await insertScheduledAutomation({
+      credentialMode: "creator",
+      destination: slackChannel(),
+      due: true,
+      task: "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
+    });
+
+    const digest = await run(heartbeat());
+    await expect(digest).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
-          "The delivered scheduled-task message reports Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
+          "The delivered scheduled-automation message reports Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
           "The scheduled run uses the available connected Sentry account without asking the user to authorize, reconnect, or provide a token.",
         ],
         fail: [
@@ -107,19 +86,26 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
           "Do not merely confirm that the recurring task exists.",
         ],
       }),
+    );
+
+    expect(issueListCommands(digest)).not.toHaveLength(0);
+  });
+
+  test("when creator-bound scheduled Sentry work becomes due without a connected account, do not ask the channel to connect it", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "creator",
+      destination: slackChannel(),
+      due: true,
+      task: "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
     });
 
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "bash",
-          arguments: expect.objectContaining({
-            command: expect.stringMatching(
-              /\bsentry\s+(issue list|api organizations\/getsentry\/issues\/)/,
-            ),
-          }),
-        }),
-      ]),
-    );
+    const digest = await run(heartbeat());
+
+    // Nobody can connect Sentry during the run. The run does not wait for
+    // authorization, and the channel gets no question, link, or apology.
+    expect(digest.replies).toEqual([]);
+    expect(digest.turns.map((turn) => turn.status)).not.toContain("started");
   });
 });

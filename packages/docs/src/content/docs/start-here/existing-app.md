@@ -27,11 +27,16 @@ import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins.ts";
 
 const app = await createApp({
+  allowedDomains: ["example.com"],
   plugins,
 });
 
 export default app;
 ```
+
+Replace `example.com` with your company's email domain. Only Slack users and
+dashboard sign-ins on [allowed domains](/reference/config-and-env/#allowed-domains)
+can use Junior.
 
 `createApp()` mounts the supported Junior routes listed in [Route & Handler Surface](/reference/handler-surface/).
 
@@ -67,7 +72,7 @@ If your existing app already owns routes, make sure the Junior Hono app still re
 
 Some packages export runtime hooks instead of `plugin.yaml`. Add those
 plugin factories to the same `plugins.ts` set. For example, see
-[Scheduler Plugin](/extend/scheduler-plugin/) for scheduled tasks and
+[Scheduler Plugin](/extend/scheduler-plugin/) for scheduled automations and
 [GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` setup.
 
 ## Add app files

@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { TriangleAlert } from "lucide-react";
+import { memo, useMemo } from "react";
+import { TriangleAlert, Wrench } from "lucide-react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -16,10 +16,9 @@ import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
-export function TranscriptToolView(props: {
+export const TranscriptToolView = memo(function TranscriptToolView(props: {
   part: TranscriptViewToolCallPart;
   timestamp?: number;
-  view?: "raw" | "rich";
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const duration = formatElapsedDuration(
@@ -28,7 +27,10 @@ export function TranscriptToolView(props: {
   );
   const hasDetails =
     props.part.input !== undefined || props.part.output !== undefined;
-  const responseSize = formatPayloadSize(props.part.output);
+  const responseSize = useMemo(
+    () => formatPayloadSize(props.part.output),
+    [props.part.output],
+  );
   const executionMeta = [duration, responseSize].filter(isString).join(" · ");
   const meta = [executionMeta, timestamp].filter(isString);
   const mobileSummary = executionMeta;
@@ -36,66 +38,34 @@ export function TranscriptToolView(props: {
   const signature = (
     <ToolSignature
       name={props.part.name}
-      preview={props.view === "raw" ? null : preview}
+      preview={preview}
       status={props.part.status}
     />
   );
-  const frame =
-    props.view === "raw" && hasDetails ? (
-      <ToolFrame
-        meta={meta}
-        mobileSummaryMeta={mobileSummary}
-        raw
-        signature={signature}
-      >
-        <ToolBody>
-          <HighlightedCode
-            code={stringifyPartValue({
-              call: {
-                id: props.part.id,
-                input: props.part.input,
-                name: props.part.name,
-              },
-              result:
-                props.part.status === "running"
-                  ? undefined
-                  : {
-                      outcome: props.part.status,
-                      output: props.part.output,
-                    },
-            })}
-            language="json"
-          />
-        </ToolBody>
-      </ToolFrame>
-    ) : (
-      <ToolFrame
-        expandable={hasDetails}
-        meta={meta}
-        mobileSummaryMeta={mobileSummary}
-        signature={signature}
-      >
-        {props.part.input !== undefined ? (
-          <ToolBody label="arguments">
-            <HighlightedCode
-              code={stringifyPartValue(props.part.input)}
-              language="json"
-            />
-          </ToolBody>
-        ) : null}
-        {props.part.output !== undefined ? (
-          <ToolBody label="result">
-            <HighlightedCode
-              code={stringifyPartValue(props.part.output)}
-              language="json"
-            />
-          </ToolBody>
-        ) : null}
-      </ToolFrame>
-    );
+  const frame = (
+    <ToolFrame
+      expandable={hasDetails}
+      icon={props.part.status === "error" ? TriangleAlert : Wrench}
+      iconClassName={
+        props.part.status === "error"
+          ? "text-rose-300"
+          : "text-dashboard-text-faint"
+      }
+      meta={meta}
+      mobileSummaryMeta={mobileSummary}
+      signature={signature}
+    >
+      {props.part.input !== undefined ? (
+        <ToolPayload label="arguments" value={props.part.input} />
+      ) : null}
+      {props.part.output !== undefined ? (
+        <ToolPayload label="result" value={props.part.output} />
+      ) : null}
+    </ToolFrame>
+  );
 
   return <div className="min-w-0">{frame}</div>;
-}
+});
 
 function ToolSignature(props: {
   name: string;
@@ -114,14 +84,6 @@ function ToolSignature(props: {
 
   return (
     <>
-      {failed ? (
-        <TriangleAlert
-          aria-hidden="true"
-          className="shrink-0 !text-rose-300"
-          size={12}
-          strokeWidth={2.2}
-        />
-      ) : null}
       <ShimmerText
         active={shimmering}
         aria-label={statusLabel}
@@ -142,15 +104,14 @@ function ToolSignature(props: {
   );
 }
 
-function ToolBody(props: { children: ReactNode; label?: string }) {
+function ToolPayload(props: { label: string; value: unknown }) {
+  const code = useMemo(() => stringifyPartValue(props.value), [props.value]);
   return (
-    <div className="min-w-0 max-w-full overflow-hidden bg-black/20 px-2.5 py-2">
-      {props.label ? (
-        <div className="pb-1.5 font-mono text-2xs font-bold uppercase leading-none tracking-[0.08em] text-dashboard-text-muted">
-          {props.label}
-        </div>
-      ) : null}
-      {props.children}
+    <div className="min-w-0 max-w-full overflow-hidden border-dashboard-border-subtle px-3 py-2.5 [&+&]:border-t">
+      <div className="pb-1.5 font-sans text-xs font-medium leading-none text-dashboard-text-muted">
+        {props.label}
+      </div>
+      <HighlightedCode code={code} language="json" />
     </div>
   );
 }

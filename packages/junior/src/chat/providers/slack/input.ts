@@ -1,0 +1,222 @@
+import type { Message, Thread } from "chat";
+import type { AgentSteeringMessage } from "@/chat/agent/types";
+import { createActor, parseActorUserId } from "@/chat/actor";
+import {
+  instructionProvenanceFor,
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
+import {
+  commitMessages,
+  loadConversationProjection,
+} from "@/chat/conversations/projection";
+import type { PiMessage } from "@/chat/pi/messages";
+import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
+import { getConversationInfo } from "@/chat/slack/channel";
+import { SlackActionError } from "@/chat/slack/client";
+import {
+  resolveSlackChannelTypeFromMessage,
+  slackChannelTypeFromConversationInfo,
+  type SlackEventChannelType,
+} from "@/chat/slack/conversation-context";
+import { parseSlackChannelId } from "@/chat/slack/ids";
+import { getMessageTimestamp } from "@/chat/slack/message/identity";
+import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
+import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
+import { escapeXml } from "@/chat/xml";
+import { withoutSavedSteeringMessages } from "@/chat/agent/prompt";
+
+function renderRecentThreadMessageLines(
+  conversationContext: string | undefined,
+  messages: QueuedTurnMessage[],
+): string[] {
+  const messagesForContext = messages.filter((queued) => {
+    if (queued.explicitMention) {
+      return false;
+    }
+    const slackTs = inboundMessageActor(queued)?.slackTs;
+    return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
+  });
+  if (messagesForContext.length === 0) {
+    return [];
+  }
+  const lines: string[] = [];
+  for (const queued of messagesForContext) {
+    const actor = inboundMessageActor(queued);
+    const author = escapeXml(actor?.authorName ?? "user");
+    const attrs = [
+      `role="user"`,
+      `author="${author}"`,
+      actor?.authorId ? `actor_id="${escapeXml(actor.authorId)}"` : undefined,
+      actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
+    ]
+      .filter((attr): attr is string => Boolean(attr))
+      .join(" ");
+    const text = escapeXml(queued.userText.replace(/\s+/g, " "));
+    lines.push(
+      `  <message ${attrs}>`,
+      `[user] ${author}: ${text}`,
+      "  </message>",
+    );
+  }
+  return lines;
+}
+
+/** Add recent Slack messages to the agent context. */
+export function appendRecentMessagesToContext(
+  conversationContext: string | undefined,
+  messages: QueuedTurnMessage[],
+): string | undefined {
+  return appendThreadContextMessages(
+    conversationContext,
+    renderRecentThreadMessageLines(conversationContext, messages),
+  );
+}
+
+/** Return the actor stored with one inbound Slack message. */
+export function inboundMessageActor(
+  queued: QueuedTurnMessage,
+): AgentSteeringMessage["actor"] {
+  const actor = getMessageActorIdentity(queued.message);
+  const authorId =
+    actor?.userId ?? parseActorUserId(queued.message.author.userId);
+  const authorName = actor?.fullName ?? actor?.userName;
+  const slackTs = getMessageTimestamp(queued.message);
+  return {
+    ...(authorId ? { authorId } : undefined),
+    ...(authorName ? { authorName } : undefined),
+    ...(slackTs ? { slackTs } : undefined),
+  };
+}
+
+/** Return the authority stored with one inbound Slack message. */
+export function inboundMessageProvenance(
+  queued: QueuedTurnMessage,
+  teamId: string,
+): ConversationMessageProvenance {
+  const identity = getMessageActorIdentity(queued.message);
+  const author =
+    identity && "platform" in identity
+      ? identity
+      : createActor(
+          { userId: parseActorUserId(queued.message.author.userId) },
+          {
+            platform: "slack",
+            teamId,
+            userId: parseActorUserId(queued.message.author.userId),
+          },
+        );
+  return instructionProvenanceFor(author);
+}
+
+/** Return the Slack channel name when it is available. */
+export async function resolveChannelName(
+  thread: Thread,
+): Promise<string | undefined> {
+  const existingName = thread.channel.name?.trim();
+  if (existingName) {
+    return existingName;
+  }
+
+  try {
+    const metadata = await thread.channel.fetchMetadata();
+    return metadata.name?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Return the Slack channel type of a message.
+ *
+ * Slack delivers a channel mention as two events with the same `ts`: `message`
+ * has `channel_type`, and `app_mention` does not. Junior stores the event that
+ * arrives first. When that event has no `channel_type`, ask Slack for the
+ * conversation, so the turn does not depend on the order of the two events.
+ */
+export async function resolveSlackChannelType(
+  message: Message,
+  channelId: string | undefined,
+): Promise<SlackEventChannelType | undefined> {
+  const eventChannelType = resolveSlackChannelTypeFromMessage(message);
+  if (eventChannelType) {
+    return eventChannelType;
+  }
+  const slackChannelId = parseSlackChannelId(channelId);
+  if (!slackChannelId) {
+    return undefined;
+  }
+  try {
+    return slackChannelTypeFromConversationInfo(
+      await getConversationInfo(slackChannelId),
+    );
+  } catch (error) {
+    // Slack can refuse the lookup, for example when an install has no read
+    // scope for this conversation. The turn then has no confirmed visibility.
+    if (error instanceof SlackActionError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+/** Collect attachments from the current Slack message and its batch. */
+export function collectAttachments(
+  message: Message,
+  batchedMessages?: QueuedTurnMessage[],
+): Message["attachments"] {
+  return [
+    ...(batchedMessages ?? []).flatMap((queued) => queued.message.attachments),
+    ...message.attachments,
+  ];
+}
+
+/**
+ * Save each steering message once. Return false when a resumed Run is active
+ * so the mailbox delivery stays pending.
+ */
+export async function saveSteeringMessages(args: {
+  conversationId: string;
+  messages: Array<{
+    message: PiMessage;
+    provenance: ConversationMessageProvenance;
+  }>;
+}): Promise<boolean> {
+  if (args.messages.length === 0) {
+    return true;
+  }
+  const state = getStateAdapter();
+  await state.connect();
+  const lock = await acquireActiveLock(state, args.conversationId);
+  if (!lock) {
+    return false;
+  }
+  try {
+    const projection = await loadConversationProjection({
+      conversationId: args.conversationId,
+    });
+    const missing = withoutSavedSteeringMessages(
+      projection.messages,
+      args.messages,
+      (entry) => entry.message,
+    );
+    if (missing.length === 0) {
+      return true;
+    }
+    await commitMessages({
+      conversationId: args.conversationId,
+      messages: [
+        ...projection.messages,
+        ...missing.map((entry) => entry.message),
+      ],
+      provenance: [
+        ...projection.provenance,
+        ...missing.map((entry) => entry.provenance),
+      ],
+    });
+    return true;
+  } finally {
+    await state.releaseLock(lock);
+  }
+}

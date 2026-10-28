@@ -77,6 +77,33 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
   withSpan: mocks.withSpan,
 }));
 
+describe("resolveGatewayModel", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it.each([
+    ["openai/gpt-6-astra", 1_050_000],
+    ["openai/gpt-6-luna", 1_050_000],
+    ["anthropic/claude-opus-5.5", 1_000_000],
+  ] as const)(
+    "loads %s before pi-ai publishes it",
+    async (modelId, contextWindow) => {
+      const { resolveGatewayModel } = await import("@/chat/pi/client");
+
+      expect(resolveGatewayModel(modelId)).toEqual(
+        expect.objectContaining({
+          id: modelId,
+          provider: "vercel-ai-gateway",
+          contextWindow,
+          maxTokens: 128_000,
+        }),
+      );
+    },
+  );
+});
+
 describe("completeText", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -106,6 +133,7 @@ describe("completeText", () => {
       system: "Be concise.",
       messages: [{ role: "user", content: "hi", timestamp: 1 }] as any,
       thinkingLevel: "low",
+      cacheRetention: "none",
       messageAttributeMode: "content",
     });
 
@@ -114,7 +142,7 @@ describe("completeText", () => {
     expect(mocks.completeSimple).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ apiKey: "oidc-token" }),
+      expect.objectContaining({ apiKey: "oidc-token", cacheRetention: "none" }),
     );
 
     const [name, op, context, _callback, attributes] = mocks.withSpan.mock

@@ -3,22 +3,18 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import type { TimeRangeDays } from "../controls/TimeRangeSelector";
 import { Card } from "../layout/Card";
-import { Tooltip } from "../Tooltip";
-import {
-  formatActivityChartAverage,
-  formatCompactNumber,
-} from "../../format";
+import { formatActivityChartAverage, formatCompactNumber } from "../../format";
 import type { WorkspaceUsageDay } from "./workspaceUsage";
 
-const USAGE_COLOR = "#a78bfa";
+const USAGE_COLOR = "var(--color-violet-400)";
 
 /** Plot successful Workspace switches for one recipe over a trailing window. */
 export function WorkspaceUsageChart(props: {
@@ -58,17 +54,13 @@ export function WorkspaceUsageChart(props: {
             const barHeight = (day.count / maximum) * layout.plotHeight;
             const renderedHeight = Math.max(day.count ? 2 : 0, barHeight);
             return (
-              <Tooltip
-                content={
-                  <ActivityTooltipRows rows={[["usage", day.count]]} />
-                }
+              <ActivityChartTooltip
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                content={<ActivityTooltipRows rows={[["usage", day.count]]} />}
+                date={day.date}
+                summary={`${day.count} switches`}
               >
-                <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.count} switches`}
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   <rect
                     fill={USAGE_COLOR}
                     height={renderedHeight}
@@ -86,7 +78,7 @@ export function WorkspaceUsageChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine
@@ -103,7 +95,7 @@ export function WorkspaceUsageChart(props: {
           />
         </ChartSvg>
         {!hasUsage ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No usage in this period.
           </div>
         ) : null}

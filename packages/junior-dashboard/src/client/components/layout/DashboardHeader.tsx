@@ -14,11 +14,7 @@ import {
   MobileSecondaryNavigationSlot,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
-import {
-  cn,
-  dashboardContainerClass,
-  dashboardInteractiveTextClass,
-} from "../../styles";
+import { cn, dashboardInteractiveTextClass } from "../../styles";
 
 export type DashboardHeaderNavItem = {
   key: string;
@@ -37,7 +33,6 @@ const focusableSelector = [
 
 /** Render the primary dashboard shell header and optional mobile nav sheet. */
 export function DashboardHeader(props: {
-  compact?: boolean;
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
   mobileNavigationOpen: boolean;
@@ -64,9 +59,7 @@ export function DashboardHeader(props: {
   // fallback; explicit empty string means no title (create compose).
   const conversationMode = Boolean(props.mobileBackTo);
   const mobileTitle =
-    props.mobileTitle === undefined
-      ? "Conversation"
-      : props.mobileTitle.trim();
+    props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
 
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);
@@ -74,16 +67,16 @@ export function DashboardHeader(props: {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium tracking-normal no-underline transition-colors",
+      "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal no-underline transition-colors",
       isActive
-        ? "bg-cyan-300/[0.1] text-cyan-50"
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
         : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
     );
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "rounded-lg px-3 py-3 font-mono text-sm font-medium tracking-normal no-underline transition-colors",
+      "rounded-lg px-3 py-3 font-sans text-sm font-medium no-underline transition-colors",
       isActive
-        ? "bg-cyan-300/[0.1] text-cyan-50"
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
         : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
     );
 
@@ -150,15 +143,13 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative border-b border-dashboard-border-subtle">
+    <header className="relative bg-dashboard-bg">
       <div
         className={cn(
-          dashboardContainerClass,
-          "grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
+          "grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-7 md:py-3",
           props.profile
             ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
             : "md:grid-cols-[auto_minmax(0,1fr)]",
-          props.compact ? "md:px-4" : "md:px-8",
         )}
       >
         {conversationMode && props.mobileBackTo ? (
@@ -202,7 +193,7 @@ export function DashboardHeader(props: {
           )}
           to="/"
         >
-          <span className="truncate font-mono text-sm font-semibold md:hidden">
+          <span className="truncate font-sans text-sm font-semibold md:hidden">
             {getDashboardAgentName()}
           </span>
           <span className="hidden md:block">
@@ -254,7 +245,7 @@ export function DashboardHeader(props: {
           <div className="flex items-center justify-between gap-3 border-b border-dashboard-border-subtle bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <Link
               aria-label={`${getDashboardAgentName()} home`}
-              className="min-w-0 truncate font-mono text-sm font-semibold text-inherit no-underline"
+              className="min-w-0 truncate font-sans text-sm font-semibold text-inherit no-underline"
               to="/"
             >
               {getDashboardAgentName()}
@@ -309,7 +300,7 @@ export function DashboardHeader(props: {
                   </div>
                 ) : null}
                 {props.version ? (
-                  <p className="m-0 font-mono text-xs text-dashboard-text-muted">
+                  <p className="m-0 font-sans text-xs text-dashboard-text-muted">
                     junior version {props.version}
                   </p>
                 ) : null}

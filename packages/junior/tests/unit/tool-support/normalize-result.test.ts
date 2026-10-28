@@ -123,7 +123,7 @@ describe("normalizeToolResult", () => {
           requirements: ["GitHub App Contents: write on the target repository"],
         },
         message:
-          "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
+          "github returned HTTP 403 after the runtime injected the user-write grant. The request was forwarded; this is not a local runtime block.",
         provider: "github",
         source: "upstream",
         status: 403,
@@ -177,7 +177,7 @@ describe("normalizeToolResult", () => {
           requirements: ["GitHub App Contents: write on the target repository"],
         },
         message:
-          "github returned HTTP 403 after Junior injected the user-write grant.",
+          "github returned HTTP 403 after the runtime injected the user-write grant.",
         provider: "github",
         source: "upstream",
         status: 403,

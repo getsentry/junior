@@ -25,9 +25,17 @@ export const plugins = defineJuniorPlugins([
 
 Full setup guide: https://junior.sentry.dev/extend/github-plugin/
 
-The plugin owns its signed webhook route, deployment, pull request, and release
-resource events, normalized pull request and issue outcome projections, and
-dashboard operational report. Core only owns delivery from plugin-published
-resource events into matching conversation subscriptions.
+The plugin tries to assign new pull requests to the current requester's linked
+GitHub account. Assignment is optional. Missing handles, system actors, identity
+lookup errors, and assignment failures do not stop creation or fail the tool.
+If assignment is not possible, the pull request can remain unassigned.
 
-Person profiles call `hooks.profileReport` for Junior-owned GitHub work attributed through conversation actors.
+The plugin saves the created pull request before it tries assignment. Retrying
+the same tool call returns the saved pull request without retrying assignment,
+creating another pull request, or replacing existing assignees.
+
+The plugin owns its signed webhook route, deployment, pull request, and release
+events, and normalized pull request and issue outcome projections.
+Those projections also feed native code-change records used by the dashboard
+Code page and person profiles. Core only owns delivery from plugin-published
+events into matching conversation subscriptions.

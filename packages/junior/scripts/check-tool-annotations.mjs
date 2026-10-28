@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 const TOOL_CONSTRUCTORS = new Set(["definePluginTool", "tool", "zodTool"]);
 const REQUIRED_HINTS = [

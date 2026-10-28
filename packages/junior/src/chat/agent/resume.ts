@@ -13,6 +13,7 @@ import {
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { Actor } from "@/chat/actor";
+import type { CredentialSubject } from "@/chat/credentials/context";
 import {
   continuableMessages,
   saveTurnCheckpoint,
@@ -33,18 +34,19 @@ import {
   RetryableDeliveryError,
   type AgentDurability,
 } from "@/chat/agent/types";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  TurnSliceLimitExceededError,
+  isTurnExecutionLimitExceededError,
+} from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 interface ResumeStateArgs {
   channelName?: string;
+  credentialSubject?: CredentialSubject;
   destination: Destination;
-  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   durability: AgentDurability;
   recordActiveMcpProviders: () => Promise<void>;
-  publishExternally: boolean;
   actor?: Actor;
   runSource: Source;
   conversationId: string;
@@ -97,8 +99,13 @@ export function createResumeState(args: ResumeStateArgs) {
   let latestSafeBoundaryMessages: PiMessage[] = [];
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
+  let pausedBeforePrompt = false;
   let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
+  // Durable across slices and history replacement; not derived from live messages.
+  let cumulativeToolCallCount =
+    args.checkpoint.record?.cumulativeToolCallCount ?? 0;
+  let turnLimitWrappedUp = args.checkpoint.record?.turnLimitWrappedUp ?? false;
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
@@ -118,10 +125,11 @@ export function createResumeState(args: ResumeStateArgs) {
     conversationId: args.conversationId,
     turnId: args.turnId,
     channelName: args.channelName,
+    credentialSubject: args.credentialSubject,
+    cumulativeToolCallCount,
+    ...(turnLimitWrappedUp ? { turnLimitWrappedUp } : undefined),
     destination: args.destination,
-    destinationVisibility: args.destinationVisibility,
     dispatchId: args.dispatchId,
-    publishExternally: args.publishExternally,
     source: args.runSource,
     actor: args.actor,
     surface: args.surface,
@@ -143,6 +151,23 @@ export function createResumeState(args: ResumeStateArgs) {
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
     },
+    /** Usage that earlier slices of this turn saved. */
+    get priorSliceUsage(): AgentTurnUsage | undefined {
+      return args.checkpoint.record?.cumulativeUsage;
+    },
+    /** True once a step of this turn hit a limit and wrapped up. */
+    get turnLimitWrappedUp(): boolean {
+      return turnLimitWrappedUp;
+    },
+    /** Save the wrap-up so later slices stop instead of wrapping up again. */
+    markTurnLimitWrappedUp(): void {
+      turnLimitWrappedUp = true;
+    },
+    /** Charge one tool call to the durable turn total and return the total. */
+    countToolCall(): number {
+      cumulativeToolCallCount += 1;
+      return cumulativeToolCallCount;
+    },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
     },
@@ -153,6 +178,14 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     captureResumeSnapshot(messages: PiMessage[]): void {
       resumeMessages = [...messages];
+    },
+    /**
+     * Pause at committed history, before the turn adds its prompt. The tail
+     * can be the reply of an earlier turn, so the pause keeps it.
+     */
+    captureHistoryBeforePrompt(messages: PiMessage[]): void {
+      resumeMessages = [...messages];
+      pausedBeforePrompt = true;
     },
     getResumeSnapshot(currentMessages: PiMessage[]): PiMessage[] {
       return latestSafeBoundaryMessages.length > currentMessages.length
@@ -245,6 +278,7 @@ export function createResumeState(args: ResumeStateArgs) {
           durationMs: durationMs(),
           usage,
           messages: resumeMessages,
+          beforePrompt: pausedBeforePrompt,
           errorMessage: pause.message,
         });
         if (!record) {
@@ -253,13 +287,15 @@ export function createResumeState(args: ResumeStateArgs) {
         return {
           status: "awaiting_auth",
           providerDisplayName: pause.providerDisplayName,
-          ...(pause.requestText ? { requestText: pause.requestText } : undefined),
+          ...(pause.requestText
+            ? { requestText: pause.requestText }
+            : undefined),
           ...(usage ? { usage } : undefined),
         };
       } catch (error) {
         if (
           error instanceof AuthPausePersistenceError ||
-          error instanceof TurnSliceLimitExceededError
+          isTurnExecutionLimitExceededError(error)
         ) {
           throw error;
         }

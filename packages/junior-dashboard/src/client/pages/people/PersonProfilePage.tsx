@@ -4,14 +4,23 @@ import { ArrowLeft, Clock3, Coins, MessageSquare } from "lucide-react";
 import { Link, useParams } from "react-router";
 import type {
   ActorProfileReport,
+  CodePersonReport,
   ConversationStatsItem,
   PluginOperationalReport,
 } from "@sentry/junior/api/schema";
 
-import { useActorPluginReportsData, useActorProfileData } from "../../api";
+import {
+  useActorCodeData,
+  useActorPluginReportsData,
+  useActorProfileData,
+} from "../../api";
 import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
@@ -22,6 +31,7 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import { ProfileCodeActivity } from "./ProfileCodeActivity";
 import { ProfilePluginReports } from "./ProfilePluginReports";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
@@ -35,6 +45,7 @@ export function PersonProfilePage() {
   const email = params.email ? decodeURIComponent(params.email) : undefined;
   const query = useActorProfileData(email);
   const pluginReportsQuery = useActorPluginReportsData(email);
+  const codeQuery = useActorCodeData(email);
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
@@ -42,6 +53,9 @@ export function PersonProfilePage() {
     <PageLayout>
       {query.data ? (
         <Profile
+          code={codeQuery.data}
+          codeError={Boolean(codeQuery.error)}
+          codeLoading={codeQuery.isPending}
           pluginReports={pluginReportsQuery.data?.reports ?? []}
           pluginReportsError={Boolean(pluginReportsQuery.error)}
           pluginReportsLoading={pluginReportsQuery.isPending}
@@ -58,6 +72,9 @@ export function PersonProfilePage() {
 
 /** Present one actor's activity and dimensions. */
 export function Profile(props: {
+  code?: CodePersonReport;
+  codeError?: boolean;
+  codeLoading?: boolean;
   pluginReports?: PluginOperationalReport[];
   pluginReportsError?: boolean;
   pluginReportsLoading?: boolean;
@@ -95,12 +112,35 @@ export function Profile(props: {
       />
 
       <section className="grid gap-4" aria-labelledby="profile-metrics-title">
-        <SectionIntro
-          id="profile-metrics-title"
-          title="Usage over time"
+        <SectionIntro id="profile-metrics-title" title="Usage over time" />
+        <SystemMetricCharts
+          bucketUnit={timeRangeBucketUnit(range)}
+          days={selectTimeSeries({
+            days: profile.activityDays,
+            hours: profile.activityHours,
+            sixHours: profile.activitySixHours,
+            range,
+            emptySixHour: (date) => ({
+              active: 0,
+              conversations: 0,
+              date,
+              durationMs: 0,
+              failed: 0,
+            }),
+          })}
         />
-        <SystemMetricCharts days={profile.activityDays.slice(-range)} />
       </section>
+
+      {props.codeError ? (
+        <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
+          <div className="font-display text-sm font-medium text-dashboard-text-muted">
+            Code activity failed to load.
+          </div>
+        </Card>
+      ) : null}
+      {!props.codeLoading && props.code ? (
+        <ProfileCodeActivity range={range} report={props.code} />
+      ) : null}
 
       {props.pluginReportsError ? (
         <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
@@ -141,7 +181,7 @@ export function Profile(props: {
           <Card as="section" className="mb-0" variant="section">
             <SectionHeader
               actions={
-                <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                   52 weeks
                 </div>
               }
@@ -170,7 +210,7 @@ function LeaderboardSection(props: {
       <ol className="m-0 list-none p-0">
         {props.items.slice(0, 6).map((item, index) => (
           <li
-            className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/[0.06] px-4 py-3 last:border-b-0"
+            className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-dashboard-border-subtle px-4 py-3 last:border-b-0"
             key={item.label}
           >
             <div className="font-mono text-xs leading-none text-dashboard-text-muted">

@@ -8,9 +8,11 @@ import {
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
+import { getConversationStore } from "@/chat/db";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { createModelStream } from "../fixtures/model-stream";
@@ -18,6 +20,10 @@ import {
   createModelAgentRunner,
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
+import {
+  mockTitleModel,
+  type TitleModelRequest,
+} from "../fixtures/title-model";
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
@@ -28,10 +34,21 @@ vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
+/** Model output that ends an Automation run with a declared message. */
+function sendMessage(message: string) {
+  return {
+    type: "toolCall" as const,
+    name: "finishAutomationRun",
+    arguments: { result: "send_message", message },
+  };
+}
+
 describe("agent dispatch conversation work", () => {
   beforeEach(async () => {
     await disconnectStateAdapter();
     resetSlackApiMockState();
+    // Every run generates a Conversation title.
+    mockTitleModel("Scheduled digest run");
   });
 
   afterEach(async () => {
@@ -48,25 +65,44 @@ describe("agent dispatch conversation work", () => {
       undefined,
       input,
     );
-    const modelStream = vi.fn(
-      createModelStream([{ type: "text", text: "Done" }]),
-    );
+    const modelStream = vi.fn(createModelStream([sendMessage("Done")]));
     const { queue, run, state } = await createAgentDispatchWorkHarness(
       createModelAgentRunner(modelStream),
     );
 
+    // The title model returns no title, so run title generation fails.
+    mockTitleModel("");
     await enqueueAgentDispatch(dispatch, { queue, state });
+    const titleWork: Promise<unknown>[] = [];
     await processConversationQueueMessage(queue.takeMessage(), {
       queue,
       run,
       state,
+      waitUntil: (work) => titleWork.push(work),
     });
+    await Promise.all(titleWork);
 
+    // A failed run title stays unset, so the dashboard keeps its fallback label.
+    const untitled = await getConversationStore().get({
+      conversationId: getDispatchConversationId(dispatch),
+    });
+    expect(untitled?.title).toBeUndefined();
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({ text: "Done" }),
       }),
     ]);
+    await expect(
+      state.get(
+        turnCursorKey(
+          getDispatchConversationId(dispatch),
+          getDispatchTurnId(dispatch.id),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      dispatchId: dispatch.id,
+      publishExternally: true,
+    });
     expect(modelStream).toHaveBeenCalledOnce();
     const instruction = modelStream.mock.calls[0]?.[1].messages.at(-1);
     if (!instruction) {
@@ -76,17 +112,17 @@ describe("agent dispatch conversation work", () => {
       "Post snake_case as written.
       - Keep this bullet."
     `);
-  });
+  }, 15_000);
 
   it("runs enqueued dispatch work through production routing with exact authority", async () => {
     const dispatch = await createDispatch(
       "shared-runtime",
       undefined,
       undefined,
-      { label: "Scheduled task", detail: "Weekly" },
+      { label: "Scheduled automation", detail: "Weekly" },
     );
     const agentRunner = createModelAgentRunner(
-      createModelStream([{ type: "text", text: "Scheduled digest" }]),
+      createModelStream([sendMessage("Scheduled digest")]),
     );
     const run = vi.spyOn(agentRunner, "run");
     const {
@@ -95,24 +131,42 @@ describe("agent dispatch conversation work", () => {
       state,
     } = await createAgentDispatchWorkHarness(agentRunner);
 
+    const titleRequests: TitleModelRequest[] = [];
+    mockTitleModel("Weekly digest for the platform team", {
+      onRequest: (request) => titleRequests.push(request),
+    });
+    const conversationId = getDispatchConversationId(dispatch);
+    const store = getConversationStore();
+    const titleWork: Promise<unknown>[] = [];
+    const waitUntil = (work: Promise<unknown>) => titleWork.push(work);
+
     await enqueueAgentDispatch(dispatch, { queue, state });
     const queueMessage = queue.takeMessage();
     await processConversationQueueMessage(queueMessage, {
       queue,
       run: runWork,
       state,
+      waitUntil,
     });
     await processConversationQueueMessage(queueMessage, {
       queue,
       run: runWork,
       state,
+      waitUntil,
     });
+    await Promise.all(titleWork);
 
+    // The run input is the title source because no human message exists.
+    const titled = await store.get({ conversationId });
+    expect(titled?.title).toBe("Weekly digest for the platform team");
+    expect(JSON.stringify(titleRequests[0]?.messages)).toContain(
+      "Task input: Post the scheduled digest.",
+    );
     expect(queue.hasQueuedMessages()).toBe(false);
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
       channel: destination.channelId,
-      text: "Scheduled digest\n\nScheduled task · Weekly",
+      text: "Scheduled digest\n\nScheduled automation · Weekly",
     });
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: expect.any(String),
@@ -127,18 +181,125 @@ describe("agent dispatch conversation work", () => {
         actor: { platform: "system", name: "scheduler" },
       },
       destination,
-      destinationVisibility: "private",
       dispatch: {
         id: dispatch.id,
         plugin: "scheduler",
         replyAttribution: {
-          label: "Scheduled task",
+          label: "Scheduled automation",
           detail: "Weekly",
         },
       },
+      source: { kind: "scheduled_automation" },
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });
+  }, 15_000);
+
+  it("binds the default same-channel outcome reply to the dispatch's origin thread", async () => {
+    const dispatch = await createDispatch(
+      "outcome-thread-binding",
+      undefined,
+      { kind: "scheduled_automation" },
+      undefined,
+      "Post the scheduled digest.",
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, threadTs: "1700000000.000200" },
+        },
+      ],
+      { ...destination, threadTs: "1700000000.000200" },
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(
+        createModelStream([sendMessage("Scheduled digest")]),
+      ),
+    );
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
+      channel: destination.channelId,
+      thread_ts: "1700000000.000200",
+    });
+  });
+
+  it("sends successful work to each outcome destination in order", async () => {
+    const dispatch = await createDispatch(
+      "multiple-message-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Send the result to both destinations.",
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, channelId: "D123" },
+        },
+        {
+          action: "send_message",
+          destination: { ...destination, channelId: "C456" },
+        },
+      ],
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(createModelStream([sendMessage("Work complete")])),
+    );
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(
+      slackApiOutbox.messages().map((message) => message.params.channel),
+    ).toEqual(["D123", "C456"]);
+  });
+
+  it("completes work with no outcomes without posting the model result", async () => {
+    const dispatch = await createDispatch(
+      "no-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Apply the requested maintenance.",
+      [],
+    );
+    const agentRunner = createModelAgentRunner(
+      createModelStream([
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: { result: "no_action", reason: "Maintenance complete" },
+        },
+      ]),
+    );
+    const runAgent = vi.spyOn(agentRunner, "run");
+    const { queue, run, state } =
+      await createAgentDispatchWorkHarness(agentRunner);
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(slackApiOutbox.messages()).toEqual([]);
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "completed",
+      outcomes: [],
+    });
+    expect(runAgent).toHaveBeenCalledOnce();
+    expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
   });
 
   it("projects a previously delivered reply without running the agent again", async () => {

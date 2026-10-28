@@ -1,6 +1,10 @@
 import { date, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 
-/** Daily named counters used by Junior and loaded plugins. */
+/**
+ * Daily named counters used by Junior and loaded plugins.
+ * TODO: store hour keys when dashboard 24h workspace usage needs hourly bars.
+ * `date` is a Postgres date column, so counters stay day-bucketed today.
+ */
 export const juniorStats = pgTable(
   "junior_stats",
   {

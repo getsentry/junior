@@ -5,9 +5,9 @@ import { createApp } from "@/app";
 import { getConversationEventStore } from "@/chat/db";
 import { createPersonalToken } from "@/personal-tokens/store";
 import {
-  closeApiTurnWorkFixture,
-  createConversationWorkWebHarness,
-} from "../fixtures/api-turn";
+  closeConversationFixture,
+  createConversationWebHarness,
+} from "../fixtures/conversation";
 import {
   ACP_TEST_URL as ACP_URL,
   appFetch,
@@ -27,11 +27,11 @@ mockAcpDashboardConfig();
 
 describe("remote ACP HTTP", () => {
   afterEach(async () => {
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
   });
 
   it("mounts the endpoint without extra app config", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -45,7 +45,7 @@ describe("remote ACP HTTP", () => {
   });
 
   it("stays mounted without dashboard authentication", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
       dashboard: { disabled: true },
@@ -60,7 +60,7 @@ describe("remote ACP HTTP", () => {
   });
 
   it("initializes with isolated cookies and rejects a valid personal token", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -109,7 +109,7 @@ describe("remote ACP HTTP", () => {
   });
 
   it("validates JSON-RPC envelopes and initialization", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -171,7 +171,7 @@ describe("remote ACP HTTP", () => {
   });
 
   it("requires ACP authentication before session methods", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -208,15 +208,17 @@ describe("remote ACP HTTP", () => {
   });
 
   it("runs, reloads, and protects a private Conversation across app instances", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: streamReplies("First ACP reply."),
-    });
+    const harness = await createConversationWebHarness(
+      streamReplies("First ACP reply."),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
     });
+    const expectedFirstPromptText =
+      "First\nACP prompt.\nResource link:\nName: client file\nURI: file:///client/workspace/file.ts\nTitle: Workspace file\nDescription: Relevant TypeScript source\nMIME type: text/typescript\nSize: 123 bytes";
     const fetch = appFetch(app, secondApp);
     const firstUpdates: acp.SessionUpdate[] = [];
     let resolveFirstSession!: (sessionId: string) => void;
@@ -258,6 +260,15 @@ describe("remote ACP HTTP", () => {
           prompt: [
             { type: "text", text: "First" },
             { type: "text", text: "ACP prompt." },
+            {
+              type: "resource_link",
+              name: "client file",
+              uri: "file:///client/workspace/file.ts",
+              title: "Workspace file",
+              description: "Relevant TypeScript source",
+              mimeType: "text/typescript",
+              size: 123,
+            },
           ],
         });
         return { result, sessionId: session.sessionId };
@@ -289,11 +300,10 @@ describe("remote ACP HTTP", () => {
     ]);
     expect(harness.agentRuns).toHaveLength(1);
     expect(harness.agentRuns[0]).toMatchObject({
-      publishExternally: false,
-      source: { platform: "web", visibility: "private" },
+      source: { kind: "web", visibility: "private" },
     });
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([
-      "First\nACP prompt.",
+      expectedFirstPromptText,
       "First ACP reply.",
     ]);
 
@@ -367,7 +377,7 @@ describe("remote ACP HTTP", () => {
     });
     expect(harness.queue.hasQueuedMessages()).toBe(false);
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([
-      "First\nACP prompt.",
+      expectedFirstPromptText,
       "First ACP reply.",
     ]);
 
@@ -407,7 +417,7 @@ describe("remote ACP HTTP", () => {
     expect(secondUpdates).toEqual([
       expect.objectContaining({
         sessionUpdate: "user_message_chunk",
-        content: { type: "text", text: "First\nACP prompt." },
+        content: { type: "text", text: expectedFirstPromptText },
       }),
       expect.objectContaining({
         sessionUpdate: "agent_message_chunk",
@@ -419,7 +429,7 @@ describe("remote ACP HTTP", () => {
       }),
     ]);
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([
-      "First\nACP prompt.",
+      expectedFirstPromptText,
       "First ACP reply.",
       "Follow up.",
       "Second ACP reply.",
@@ -427,9 +437,9 @@ describe("remote ACP HTTP", () => {
   }, 20_000);
 
   it("deduplicates exact retries without colliding payloads or id types", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: streamReplies("Typed id reply."),
-    });
+    const harness = await createConversationWebHarness(
+      streamReplies("Typed id reply."),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -519,7 +529,7 @@ describe("remote ACP HTTP", () => {
   }, 20_000);
 
   it("coordinates an SSE stream across handoff and request abort", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -566,7 +576,7 @@ describe("remote ACP HTTP", () => {
   });
 
   it("terminates an SSE stream after it loses its shared lease", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const state = new Proxy(harness.state, {
       get(target, property) {
         if (property === "extendLock") {
@@ -621,9 +631,9 @@ describe("remote ACP HTTP", () => {
   });
 
   it("finishes durable work after the ACP connection closes", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: streamReplies("Completed after disconnect."),
-    });
+    const harness = await createConversationWebHarness(
+      streamReplies("Completed after disconnect."),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -746,8 +756,8 @@ describe("remote ACP HTTP", () => {
   it("cancels the active Turn and accepts a later prompt", async () => {
     const modelStarted = deferred();
     const releaseModel = deferred();
-    const harness = await createConversationWorkWebHarness({
-      modelStream: createModelStream([
+    const harness = await createConversationWebHarness(
+      createModelStream([
         {
           type: "text",
           text: "This reply must not be stored.",
@@ -755,7 +765,7 @@ describe("remote ACP HTTP", () => {
           waitFor: releaseModel.promise,
         },
       ]),
-    });
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -859,11 +869,9 @@ describe("remote ACP HTTP", () => {
   }, 20_000);
 
   it("maps one durable failed Turn to a protocol error", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: createModelStream([
-        { type: "error", errorMessage: "model unavailable" },
-      ]),
-    });
+    const harness = await createConversationWebHarness(
+      createModelStream([{ type: "error", errorMessage: "model unavailable" }]),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -919,7 +927,7 @@ describe("remote ACP HTTP", () => {
   }, 20_000);
 
   it("rejects unsupported MCP and prompt content at the protocol boundary", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -945,13 +953,6 @@ describe("remote ACP HTTP", () => {
         });
         const promptErrors: unknown[] = [];
         for (const prompt of [
-          [
-            {
-              type: "resource_link" as const,
-              name: "client file",
-              uri: "file:///client/workspace/file.ts",
-            },
-          ],
           [
             {
               type: "image" as const,
@@ -984,9 +985,8 @@ describe("remote ACP HTTP", () => {
     });
 
     expect(errors.mcpError).toMatchObject({ code: -32602 });
-    expect(errors.promptErrors).toHaveLength(5);
+    expect(errors.promptErrors).toHaveLength(4);
     expect(errors.promptErrors).toEqual([
-      expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),

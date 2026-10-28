@@ -72,7 +72,7 @@ describe("transcript context events", () => {
 
     expect(html).toContain("Model handoff");
     expect(html).toContain(
-      "Execution continued with the coding profile (openai/gpt-5.4, high).",
+      "Handed off to openai/gpt-5.4 via the coding profile (high).",
     );
     expect(html).toContain("Continuation summary");
     expect(html).toContain(

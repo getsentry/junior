@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
+import { createJuniorSqlFixture } from "../../fixtures/sql";
 
 const DESTINATION = {
   platform: "slack" as const,
@@ -27,7 +27,7 @@ function legacyConfiguration(value: string) {
 
 describe("SQL location configuration", () => {
   it("persists configuration independently of the legacy cache", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
     await migrateSchema(fixture.sql);
 
     try {
@@ -61,7 +61,7 @@ describe("SQL location configuration", () => {
   });
 
   it("copies a live legacy record into SQL once", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
     await migrateSchema(fixture.sql);
 
     try {
@@ -96,7 +96,7 @@ describe("SQL location configuration", () => {
   });
 
   it("keeps a concurrent SQL write over a stale legacy cutover", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const destination = {
       platform: "slack" as const,

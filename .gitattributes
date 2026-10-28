@@ -1,0 +1,3 @@
+# CI records these eval fixtures. Collapse them in pull request diffs and
+# keep them out of AI review. See "Recordings" in packages/junior-evals/README.md.
+packages/junior-evals/recordings/** linguist-generated=true

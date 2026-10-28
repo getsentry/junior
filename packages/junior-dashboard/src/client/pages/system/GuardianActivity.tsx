@@ -1,17 +1,16 @@
+import {
+  timeRangeBucketAdjective,
+  type TimeRangeBucketUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 
-import { ChartAxisHtmlLabel } from "../../components/charts/ActivityChart";
-import { Tooltip } from "../../components/Tooltip";
+import {
+  ChartAxisHtmlLabel,
+  formatActivityDate,
+  ActivityChartTooltip,
+} from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
-
-function shortDate(date: string): string {
-  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
 
 function totals(days: GuardianMetricDay[]) {
   return days.reduce(
@@ -32,19 +31,23 @@ function Stat(props: {
   valueClassName?: string;
 }) {
   return (
-    <div className="rounded-md border border-white/[0.05] bg-black/10 px-3 py-3">
+    <div className="rounded-md border border-dashboard-border-subtle bg-dashboard-overlay-soft px-3 py-3">
       <div className="font-display text-xl font-light text-dashboard-text">
         <span className={props.valueClassName}>{props.value}</span>
       </div>
-      <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+      <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">
         {props.label}
       </div>
     </div>
   );
 }
 
-/** Show Guardian request volume, result mix, and estimated cost by day. */
-export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
+/** Show Guardian request volume, result mix, and estimated cost by bucket. */
+export function GuardianActivity(props: {
+  bucketUnit?: TimeRangeBucketUnit;
+  days: GuardianMetricDay[];
+}) {
+  const bucketUnit = props.bucketUnit ?? "day";
   const period = totals(props.days);
   const maximum = Math.max(1, ...props.days.map((day) => day.requests));
   const labels = [
@@ -58,17 +61,18 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
 
   return (
     <Card>
-      <div className="border-b border-white/[0.06] px-4 py-4">
+      <div className="border-b border-dashboard-border-subtle px-4 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+            <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
               Guardian reviews
             </h3>
-            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              Daily decisions before reviewed actions execute.
+            <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+              {timeRangeBucketAdjective(bucketUnit)} decisions before reviewed
+              actions execute.
             </p>
           </div>
-          <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+          <div className="font-sans font-medium text-xs text-dashboard-text-muted">
             <span className="mr-3 text-emerald-200/75">Allow</span>
             <span className="mr-3 text-amber-200/75">Ask</span>
             <span className="text-rose-200/75">Deny</span>
@@ -99,14 +103,15 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
       </div>
       <div className="px-4 pt-5 pb-3">
         <div
-          aria-label="Daily Guardian review results"
+          aria-label={`${timeRangeBucketAdjective(bucketUnit)} Guardian review results`}
           className="flex h-36 items-end gap-px"
           role="img"
         >
           {props.days.map((day) => {
             const height = Math.max(2, (day.requests / maximum) * 100);
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <div className="grid grid-cols-[auto_auto] gap-x-4">
                     <span>Allow</span>
@@ -121,13 +126,12 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
                     </span>
                   </div>
                 }
-                key={day.date}
-                label={shortDate(day.date)}
+                date={day.date}
+                summary={`${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
                 triggerClassName="h-full min-w-0 flex-1 items-end"
               >
                 <button
-                  aria-label={`${shortDate(day.date)}: ${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
-                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
+                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-dashboard-fill-soft focus-visible:outline-1 focus-visible:outline-dashboard-focus"
                   style={{ height: `${height}%` }}
                   type="button"
                 >
@@ -150,7 +154,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
                     />
                   ) : null}
                 </button>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
         </div>
@@ -166,7 +170,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
                   left: `${((index + 0.5) / props.days.length) * 100}%`,
                 }}
               >
-                {shortDate(day.date)}
+                {formatActivityDate(day.date)}
               </ChartAxisHtmlLabel>
             );
           })}

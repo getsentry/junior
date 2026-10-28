@@ -1,17 +1,19 @@
-import { describeEval } from "vitest-evals";
-import { expect } from "vitest";
-import { getDb } from "@/chat/db";
-import { listScheduledTasksForTeam } from "@/chat/scheduled-tasks/tasks";
-import { mention, rubric, slackEvals } from "../../../src/helpers";
-import { scheduledTaskCreateCalls } from "./helpers";
+import { describe, expect } from "vitest";
+import { slackMention } from "@junior-evals/fixture/inputs";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { completedToolCalls } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("Schedule Creation", slackEvals, (it) => {
-  it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
+describe("Schedule Creation", () => {
+  test("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [mention("@bot remind me in 1 minute to wash my hands")],
-      criteria: rubric({
+    const conversation = await run(
+      slackMention("send me a direct reminder in 1 minute to wash my hands"),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The reply confirms that a one-off reminder to wash hands was scheduled.",
           "The reply does not ask the user to confirm first.",
@@ -22,25 +24,32 @@ describeEval("Schedule Creation", slackEvals, (it) => {
           "Do not describe the reminder as a recurring schedule.",
         ],
       }),
-    });
-    const createCalls = scheduledTaskCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    const createCall = createCalls[0]!;
-    expect(createCall.arguments).toMatchObject({
+    );
+
+    const creates = completedToolCalls(
+      "slackScheduleCreateAutomation",
+      conversation,
+    );
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.input).toMatchObject({
+      outcomes: [{ action: "send_message", destination: "task_creator" }],
       schedule: {
         kind: "one_off",
         timing: { type: "after", value: 1, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
+    expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  it("when asked for a terse one-off reminder, create it without recurrence", async ({
+  test("when asked for a terse one-off reminder, create it without recurrence", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [mention("@bot remind me to drink water in 1m")],
-      criteria: rubric({
+    const conversation = await run(
+      slackMention("remind me to drink water in 1m"),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The reply confirms that a one-off reminder to drink water was scheduled.",
           "The reply does not ask the user to retry with a different one-time format.",
@@ -51,58 +60,107 @@ describeEval("Schedule Creation", slackEvals, (it) => {
           "Do not describe the reminder as a recurring schedule.",
         ],
       }),
-    });
-    const createCalls = scheduledTaskCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    const createCall = createCalls[0]!;
-    expect(createCall.arguments).toMatchObject({
+    );
+
+    const creates = completedToolCalls(
+      "slackScheduleCreateAutomation",
+      conversation,
+    );
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.input).toMatchObject({
       schedule: {
         kind: "one_off",
         timing: { type: "after", value: 1, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
+    expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  it("when asked to tell the channel something later, preserve the future work in the schedule", async ({
+  test("when a reminder for the requester posts to the channel, name the requester exactly", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [
-        mention("@bot in 2 minutes tell the channel standup moved"),
+    const conversation = await run(
+      slackMention(
+        "every Friday at 4pm Pacific, remind me in this channel to submit my timesheet",
+      ),
+    );
+
+    const creates = completedToolCalls(
+      "slackScheduleCreateAutomation",
+      conversation,
+    );
+    expect(creates).toHaveLength(1);
+    // The task runs later without this request, so "me" must become a mention.
+    const { instruction } = creates[0]!.input as { instruction?: string };
+    expect(instruction).toContain("<@U0TEST>");
+    expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
+  });
+
+  test("when asked to tell the channel something later, preserve the future work in the schedule", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention("in 2 minutes tell the channel standup moved"),
+    );
+
+    const creates = completedToolCalls(
+      "slackScheduleCreateAutomation",
+      conversation,
+    );
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.input).toMatchObject({
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
       ],
-    });
-    const createCalls = scheduledTaskCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    const createCall = createCalls[0]!;
-    expect(createCall.arguments).toMatchObject({
       schedule: {
         kind: "one_off",
         timing: { type: "after", value: 2, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
-    expect(createCall.arguments?.task).toMatch(/standup moved/i);
-    expect(createCall.arguments?.task).not.toMatch(/\bschedul(?:e|ing)\b/i);
+    const { instruction } = creates[0]!.input as { instruction?: string };
+    expect(instruction).toMatch(/\bstandup\b/i);
+    expect(instruction).toMatch(/\bmoved\b/i);
+    expect(instruction).not.toMatch(/\bschedul(?:e|ing)\b/i);
+    expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  it("when asked to schedule clear recurring work, create it in the active channel", async ({
+  test("when asked for nightly fix PRs, omit success notifications by default", async ({
     run,
   }) => {
-    const thread = {
-      channel_type: "channel" as const,
-      channel_id: "CSCHEDCREATE",
-      id: "thread-scheduler-create-here",
-      thread_ts: "1700000000.903000",
-    };
-    const result = await run({
-      initialEvents: [
-        mention(
-          "@bot schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
-          { thread },
-        ),
-      ],
-      criteria: rubric({
+    const conversation = await run(
+      slackMention(
+        "every night at 2am Pacific, open PRs to fix failing CI checks in getsentry/junior.",
+      ),
+    );
+
+    const creates = completedToolCalls(
+      "slackScheduleCreateAutomation",
+      conversation,
+    );
+    expect(creates).toHaveLength(1);
+    const { outcomes } = creates[0]!.input as { outcomes?: unknown[] };
+    expect(outcomes ?? []).toEqual([]);
+    expect(creates[0]!.input).toMatchObject({
+      schedule: {
+        kind: "recurring",
+        frequency: "daily",
+        time: "02:00",
+        timezone: "America/Los_Angeles",
+      },
+    });
+  });
+
+  test("when asked to schedule clear recurring work, create it in the active channel", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The created task describes checking scheduler-related GitHub issues, not creating a schedule.",
           "The reply confirms the recurring schedule was created for Monday at 9am Pacific.",
@@ -113,25 +171,22 @@ describeEval("Schedule Creation", slackEvals, (it) => {
           "Do not only give instructions for how the user can set up an external cron.",
         ],
       }),
-    });
-    const createCalls = scheduledTaskCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    expect(createCalls[0]!.arguments).toMatchObject({
+    );
+
+    const creates = completedToolCalls(
+      "slackScheduleCreateAutomation",
+      conversation,
+    );
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.input).toMatchObject({
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
+      ],
       schedule: {
         kind: "recurring",
         frequency: "weekly",
         time: "09:00",
         weekdays: ["monday"],
-      },
-    });
-    const stored = (await listScheduledTasksForTeam(getDb(), "TEVAL")).find(
-      (task) => task.task.text.toLowerCase().includes("scheduler"),
-    );
-    expect(stored).toMatchObject({
-      destination: {
-        platform: "slack",
-        teamId: "TEVAL",
-        channelId: thread.channel_id,
       },
     });
   });

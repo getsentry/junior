@@ -5,6 +5,8 @@ import {
   ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
+  formatActivityCategoryTooltipLabel,
+  isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -13,13 +15,25 @@ import { formatCostSummary } from "../../format";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
 
-const colors = ["#67e8f9", "#6ee7b7", "#fbbf24", "#fb7185", "#a78bfa"] as const;
+const colors = [
+  "var(--color-cyan-300)",
+  "var(--color-emerald-300)",
+  "var(--color-amber-400)",
+  "var(--color-rose-400)",
+  "var(--color-violet-400)",
+] as const;
 const toneColors = {
-  danger: "#fb7185",
-  good: "#6ee7b7",
-  neutral: "#67e8f9",
-  warning: "#fbbf24",
+  danger: "var(--color-rose-400)",
+  good: "var(--color-emerald-300)",
+  neutral: "var(--color-cyan-300)",
+  warning: "var(--color-amber-400)",
 } as const;
+
+function seriesColor(series: Widget["series"][number], index: number): string {
+  return series.tone
+    ? toneColors[series.tone]
+    : (colors[index % colors.length] ?? colors[0]);
+}
 
 /** Render a validated plugin-owned categorical bar chart. */
 export function PluginBarChart(props: {
@@ -28,7 +42,7 @@ export function PluginBarChart(props: {
 }) {
   const { widget } = props;
   const categories = widget.timeRangeDays
-    ? widget.categories.slice(-supportedRange(widget, props.range))
+    ? widget.categories.slice(-visibleCategoryCount(widget, props.range))
     : widget.categories;
   const seriesFormat = commonSeriesFormat(widget);
   const layout = createActivityChartLayout(250, {
@@ -51,10 +65,10 @@ export function PluginBarChart(props: {
   const zeroY = layout.top + (maximum / span) * layout.plotHeight;
 
   return (
-    <div className="overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel">
-      <div className="border-b border-white/[0.06] px-4 py-3">
+    <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel">
+      <div className="border-b border-dashboard-border-subtle px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h4 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+          <h4 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
             {widget.title}
           </h4>
         </div>
@@ -67,9 +81,7 @@ export function PluginBarChart(props: {
           <ChartLegend
             ariaLabel="Chart legend"
             items={widget.series.map((series, index) => ({
-              color: series.tone
-                ? toneColors[series.tone]
-                : colors[index % colors.length],
+              color: seriesColor(series, index),
               key: series.key,
               label: series.label,
             }))}
@@ -77,7 +89,7 @@ export function PluginBarChart(props: {
         ) : null}
       </div>
       {categories.length === 0 ? (
-        <p className="m-0 p-4 font-mono text-xs text-dashboard-text-muted">
+        <p className="m-0 p-4 font-sans text-xs text-dashboard-text-muted">
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (
@@ -91,7 +103,7 @@ export function PluginBarChart(props: {
             return (
               <g key={index}>
                 <line
-                  stroke="rgba(255,255,255,0.07)"
+                  stroke="var(--color-dashboard-border-subtle)"
                   strokeDasharray="3 5"
                   x1={layout.left}
                   x2={layout.width - layout.right}
@@ -116,15 +128,11 @@ export function PluginBarChart(props: {
                 <Tooltip
                   content={`${series.label}: ${formatted}`}
                   key={`${category.id}:${series.key}`}
-                  label={category.label}
+                  label={formatActivityCategoryTooltipLabel(category.label)}
                 >
                   <rect
-                    aria-label={`${category.label}, ${series.label}: ${formatted}`}
-                    fill={
-                      series.tone
-                        ? toneColors[series.tone]
-                        : colors[seriesIndex % colors.length]
-                    }
+                    aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
+                    fill={seriesColor(series, seriesIndex)}
                     height={renderedHeight}
                     opacity={value ? 0.82 : 0.1}
                     rx="1.5"
@@ -144,7 +152,6 @@ export function PluginBarChart(props: {
           )}
           <ChartCategoryLabels
             categories={categories}
-            formatLabel={formatCategoryLabel}
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
@@ -154,19 +161,33 @@ export function PluginBarChart(props: {
   );
 }
 
-function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
-  const availableRanges = widget.timeRangeDays ?? [];
+/** Trailing hour categories for a 24h plugin chart window. */
+const HOURLY_CATEGORY_COUNT = 24;
+
+/**
+ * How many trailing categories to show for the page range.
+ * `1` means last 24 hours: take 24 hour buckets when present, else the
+ * shortest multi-day window (daily widgets cannot plot true hourly bars).
+ */
+function visibleCategoryCount(
+  widget: Widget,
+  range: TimeRangeDays | undefined,
+): number {
+  const availableRanges = (widget.timeRangeDays ?? []) as TimeRangeDays[];
+  const firstCategory = widget.categories[0];
+  const firstKey = firstCategory?.id || firstCategory?.label || "";
+  const hasHourBuckets = isActivityHourBucket(firstKey);
+  if (range === 1) {
+    if (hasHourBuckets && availableRanges.includes(1)) {
+      return HOURLY_CATEGORY_COUNT;
+    }
+    // TODO: ship hour categories from daily-only plugin widgets so 24h can
+    // plot true hourly bars instead of falling back to 7d/30d day series.
+    if (availableRanges.includes(7)) return 7;
+    return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
+  }
   if (range && availableRanges.includes(range)) return range;
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
-}
-
-function formatCategoryLabel(label: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(label)) return label;
-  return new Date(`${label}T00:00:00.000Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
 }
 
 function formatChartNumber(value: number): string {

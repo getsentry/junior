@@ -8,6 +8,7 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
 import { toMcpProviderError } from "./errors";
+import { resolvePluginHeaderEnvRefs } from "@/chat/plugins/auth/api-headers-broker";
 
 export function getMcpOAuthCallbackPath(provider: string): string {
   return `/api/oauth/callback/mcp/${provider}`;
@@ -36,7 +37,7 @@ export async function createMcpOAuthClientProvider(input: {
   configuration?: Record<string, unknown>;
   createAuthorizationState?: () => Promise<string>;
 }): Promise<StateBackedMcpOAuthClientProvider> {
-  requirePluginWithMcp(input.provider);
+  const plugin = requirePluginWithMcp(input.provider);
 
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
@@ -62,9 +63,15 @@ export async function createMcpOAuthClientProvider(input: {
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
-      ...(input.configuration ? { configuration: input.configuration } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
+      ...(input.configuration
+        ? { configuration: input.configuration }
+        : undefined),
     },
+    undefined,
+    plugin.manifest.mcp?.oauthClient,
   );
 }
 
@@ -103,14 +110,14 @@ export async function finalizeMcpAuthorization(
     callbackUrl,
     undefined,
     runCredentialMutation,
+    mcp.oauthClient,
   );
-  const requestInit: RequestInit = {};
-  if (mcp.headers && Object.keys(mcp.headers).length > 0) {
-    requestInit.headers = new Headers(mcp.headers);
-  }
+  const headers = mcp.headers
+    ? resolvePluginHeaderEnvRefs(provider, mcp.headers, "MCP header")
+    : undefined;
   let providerStatus: number | undefined;
   const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
-    ...(Object.keys(requestInit).length > 0 ? { requestInit } : undefined),
+    ...(headers ? { requestInit: { headers } } : undefined),
     authProvider,
     fetch: fetchWithBoundedOAuthErrorBodies(undefined, (status) => {
       providerStatus = status;

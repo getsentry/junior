@@ -14,14 +14,12 @@ async function createRuntime(
   args: Parameters<
     typeof import("../../fixtures/chat-runtime").createTestChatRuntime
   >[0],
-  env: NodeJS.ProcessEnv = {},
 ) {
   process.env = {
     ...ORIGINAL_ENV,
     AI_VISION_MODEL: "",
-    SLACK_BOT_TOKEN: "",
+    SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
-    ...env,
   };
   vi.resetModules();
   const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
@@ -49,103 +47,7 @@ describe("Slack behavior: mixed attachment media", () => {
     vi.resetModules();
   });
 
-  it("keeps valid attachments while skipping oversized and failed fetch attachments", async () => {
-    const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
-    const oversizedFetch = vi.fn(async () => Buffer.alloc(5 * 1024 * 1024 + 1));
-    const failingFetch = vi.fn(async () => {
-      throw new Error("download failed");
-    });
-    const completeTextMock = vi.fn(async () => ({
-      text: "Chart screenshot with an upward trend.",
-      message: {} as never,
-    }));
-
-    const capturedAttachmentMediaTypes: string[][] = [];
-    const capturedAttachmentNames: string[][] = [];
-
-    const { slackRuntime } = await createRuntime(
-      {
-        services: {
-          visionContext: {
-            completeText: completeTextMock,
-          },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun((request) => {
-              const attachments = request.instruction.attachments ?? [];
-              capturedAttachmentMediaTypes.push(
-                attachments.map((attachment) => attachment.mediaType),
-              );
-              capturedAttachmentNames.push(
-                attachments.map((attachment) => attachment.filename ?? ""),
-              );
-              return createModelStream([
-                { type: "text", text: "Processed attachments." },
-              ]);
-            }),
-          },
-        },
-      },
-      {
-        AI_VISION_MODEL: "openai/gpt-5.4",
-      },
-    );
-
-    const thread = await createTestThread({
-      id: "slack:C0BEHAVIOR:1700004010.000",
-    });
-    const message = createTestMessage({
-      id: "m-attachment-mixed-1",
-      text: "<@U0APP> summarize these files",
-      isMention: true,
-      threadId: thread.id,
-      author: { userId: "U0TESTER" },
-      attachments: [
-        {
-          type: "image",
-          mimeType: "image/png",
-          name: "chart.png",
-          url: "https://files.slack.com/private/chart.png",
-          fetchData: imageFetch,
-        },
-        {
-          type: "file",
-          mimeType: "application/pdf",
-          name: "incident.pdf",
-          data: Buffer.from("pdf-bytes"),
-        },
-        {
-          type: "file",
-          mimeType: "application/zip",
-          name: "large.zip",
-          url: "https://files.slack.com/private/large.zip",
-          fetchData: oversizedFetch,
-        },
-        {
-          type: "file",
-          mimeType: "application/json",
-          name: "broken.json",
-          url: "https://files.slack.com/private/broken.json",
-          fetchData: failingFetch,
-        },
-      ] as Message["attachments"],
-    });
-
-    await slackRuntime.handleNewMention(thread, message, {
-      destination: createTestDestination(thread),
-    });
-
-    expect(imageFetch).toHaveBeenCalledTimes(1);
-    expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(oversizedFetch).toHaveBeenCalledTimes(1);
-    expect(failingFetch).toHaveBeenCalledTimes(1);
-
-    expect(capturedAttachmentMediaTypes).toEqual([
-      ["image/png", "application/pdf"],
-    ]);
-    expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
-  }, 20_000);
-
-  it("drops image attachments when AI_VISION_MODEL is unset", async () => {
+  it("keeps raw image attachments when AI_VISION_MODEL is explicitly empty", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
 
     const capturedAttachmentMediaTypes: string[][] = [];
@@ -154,23 +56,21 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const { slackRuntime } = await createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((request) => {
-            const attachments = request.instruction.attachments ?? [];
-            capturedAttachmentMediaTypes.push(
-              attachments.map((attachment) => attachment.mediaType),
-            );
-            capturedAttachmentNames.push(
-              attachments.map((attachment) => attachment.filename ?? ""),
-            );
-            capturedOmittedImageCounts.push(
-              request.instruction.omittedImageAttachmentCount ?? 0,
-            );
-            return createModelStream([
-              { type: "text", text: "Processed attachments." },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          const attachments = request.instruction.attachments ?? [];
+          capturedAttachmentMediaTypes.push(
+            attachments.map((attachment) => attachment.mediaType),
+          );
+          capturedAttachmentNames.push(
+            attachments.map((attachment) => attachment.filename ?? ""),
+          );
+          capturedOmittedImageCounts.push(
+            request.instruction.omittedImageAttachmentCount ?? 0,
+          );
+          return createModelStream([
+            { type: "text", text: "Processed attachments." },
+          ]);
+        }),
       },
     });
 
@@ -204,9 +104,11 @@ describe("Slack behavior: mixed attachment media", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(imageFetch).not.toHaveBeenCalled();
-    expect(capturedAttachmentMediaTypes).toEqual([["application/pdf"]]);
-    expect(capturedAttachmentNames).toEqual([["incident.pdf"]]);
+    expect(imageFetch).toHaveBeenCalledTimes(1);
+    expect(capturedAttachmentMediaTypes).toEqual([
+      ["image/png", "application/pdf"],
+    ]);
+    expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
     expect(capturedOmittedImageCounts).toEqual([1]);
   });
 
@@ -227,9 +129,7 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const { slackRuntime } = await createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(streamForRun),
-        },
+        agentRunner: createModelAgentRunnerForRun(streamForRun),
       },
     });
 
@@ -257,7 +157,7 @@ describe("Slack behavior: mixed attachment media", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(imageFetch).not.toHaveBeenCalled();
+    expect(imageFetch).toHaveBeenCalledTimes(1);
     expect(streamForRun).toHaveBeenCalledTimes(1);
     expect(capturedOmittedImageCounts).toEqual([1]);
     expect(thread.posts).toHaveLength(1);

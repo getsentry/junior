@@ -1,3 +1,7 @@
+export * from "./object-annotations";
+export * from "./object-presentation";
+export * from "./object-icons";
+export * from "./object-facts";
 export * from "./annotations";
 export * from "./code";
 export * from "./conversation-events";
@@ -16,7 +20,7 @@ export {
   type UserPromptContext,
 } from "./prompt";
 export * from "./dispatch";
-export * from "./resource-events";
+export * from "./events";
 export * from "./tasks";
 export * from "./tools";
 export * from "./operations";

@@ -1,29 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createSlackSource,
   defineJuniorPlugin,
   type Destination,
-  type Source,
 } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
-import {
-  readScheduledTask,
-  saveScheduledTask,
-} from "@/chat/scheduled-tasks/tasks";
-import {
-  scheduledRunSchema,
-  type ScheduledTask,
-} from "@/chat/scheduled-tasks/types";
-import type { JuniorDatabase } from "@/db/db";
-import { juniorSchedulerRuns } from "@/db/schema/scheduled-tasks";
-import { getDb } from "@/chat/db";
-import {
-  getDispatchRecord,
-  getDispatchStorageKey,
-  markDispatchCompleted,
-} from "@/chat/agent-dispatch/store";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -41,25 +23,11 @@ vi.hoisted(() => {
 });
 
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
-const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
 const SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
   channelId: "C123",
 } satisfies Destination;
-const SLACK_SOURCE = createSlackSource({
-  ...SLACK_DESTINATION,
-  visibility: "private",
-}) satisfies Source;
-
-function slackDmSource(channelId = "D123"): Source {
-  return createSlackSource({
-    teamId: "T123",
-    channelId,
-    visibility: "private",
-  });
-}
-
 let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 
 function createTestHeartbeatContext(
@@ -83,68 +51,6 @@ function testHeartbeat(
     ...options,
     conversationWorkQueue:
       options.conversationWorkQueue ?? conversationWorkQueue,
-  });
-}
-
-const scheduledTaskDb = (): JuniorDatabase => getDb();
-async function readScheduledRun(db: JuniorDatabase, id: string) {
-  const rows = await db
-    .select({ record: juniorSchedulerRuns.record })
-    .from(juniorSchedulerRuns)
-    .where(eq(juniorSchedulerRuns.id, id));
-  const parsed = scheduledRunSchema.safeParse(rows[0]?.record);
-  return parsed.success ? parsed.data : undefined;
-}
-
-function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
-  const nextRunAtMs = TEST_RUN_AT_MS;
-  return {
-    id: "sched_plugin_1",
-    conversationAccess: { audience: "channel", visibility: "public" },
-    createdAtMs: nextRunAtMs,
-    createdBy: { slackUserId: "U123" },
-    creatorIdentityId: "identity-scheduler-user-123",
-    credentialMode: "system",
-    destination: SLACK_DESTINATION,
-    nextRunAtMs,
-    schedule: {
-      description: "Once at noon",
-      kind: "one_off",
-      timezone: "UTC",
-    },
-    status: "active",
-    task: {
-      text: "Post a digest. Summarize the latest state.",
-    },
-    updatedAtMs: nextRunAtMs,
-    ...overrides,
-  };
-}
-
-function createDailyTask(
-  overrides: Partial<ScheduledTask> = {},
-): ScheduledTask {
-  const nextRunAtMs = Date.parse("2026-05-24T12:00:00.000Z");
-  return createTask({
-    id: "sched_plugin_daily",
-    createdAtMs: nextRunAtMs,
-    nextRunAtMs,
-    schedule: {
-      description: "Daily at noon UTC",
-      kind: "recurring",
-      timezone: "UTC",
-      recurrence: {
-        frequency: "daily",
-        interval: 1,
-        startDate: "2026-05-24",
-        time: {
-          hour: 12,
-          minute: 0,
-        },
-      },
-    },
-    updatedAtMs: nextRunAtMs,
-    ...overrides,
   });
 }
 
@@ -464,9 +370,8 @@ describe("plugin heartbeat", () => {
       idempotencyKey: "run-1",
       destination: SLACK_DESTINATION,
       destinationVisibility: "private",
-      input: "Run the scheduled task.",
+      input: "Run the scheduled automation.",
       metadata: { runId: "run-1" },
-      source: SLACK_SOURCE,
     });
 
     await expect(schedulerCtx.agent.get(result.id)).resolves.toEqual({
@@ -481,10 +386,10 @@ describe("plugin heartbeat", () => {
     ).resolves.toBeUndefined();
 
     await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
-      input: "Run the scheduled task.",
+      input: "Run the scheduled automation.",
       destination: { channelId: "C123" },
       metadata: { runId: "run-1" },
-      source: { channelId: "C123" },
+      source: { kind: "plugin_dispatch" },
     });
   });
 
@@ -521,8 +426,7 @@ describe("plugin heartbeat", () => {
         idempotencyKey: `run-${index}`,
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
+        input: "Run the scheduled automation.",
       });
     }
 
@@ -531,8 +435,7 @@ describe("plugin heartbeat", () => {
         idempotencyKey: "run-over-limit",
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
+        input: "Run the scheduled automation.",
       }),
     ).rejects.toThrow("Plugin heartbeat exceeded the dispatch limit");
   });
@@ -558,8 +461,7 @@ describe("plugin heartbeat", () => {
             channelId: "C123",
           },
           destinationVisibility: "private",
-          input: "Run the scheduled task.",
-          source: SLACK_SOURCE,
+          input: "Run the scheduled automation.",
         }),
       ).rejects.toThrow("Dispatch destination teamId must be a Slack team id");
     }
@@ -569,8 +471,7 @@ describe("plugin heartbeat", () => {
         idempotencyKey: "valid-after-invalid",
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
+        input: "Run the scheduled automation.",
       }),
     ).resolves.toMatchObject({ status: "created" });
   });
@@ -599,8 +500,7 @@ describe("plugin heartbeat", () => {
           channelId: "D123",
         },
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
-        source: slackDmSource(),
+        input: "Run the scheduled automation.",
       }),
     ).rejects.toThrow("Dispatch credentialSubject binding is runtime-owned");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
@@ -621,8 +521,7 @@ describe("plugin heartbeat", () => {
         channelId: "D123",
       },
       destinationVisibility: "private",
-      input: "Run the scheduled task.",
-      source: slackDmSource(),
+      input: "Run the scheduled automation.",
     });
 
     await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
@@ -640,361 +539,4 @@ describe("plugin heartbeat", () => {
     });
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
   });
-
-  it("dispatches and reconciles scheduled runs from the core heartbeat", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    await saveScheduledTask(
-      db,
-      createTask({
-        createdBy: {
-          slackUserId: "U039RR91S",
-          userName: "U039RR91S",
-          fullName: "W039RR91S",
-        },
-        schedule: {
-          description: "Once\nat noon",
-          kind: "one_off",
-          timezone: "UTC",
-        },
-      }),
-    );
-
-    const firstWaitUntil = createWaitUntilCollector();
-    const firstResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      firstWaitUntil.fn,
-    );
-    expect(firstResponse.status).toBe(202);
-    await firstWaitUntil.flush();
-
-    const running = await readScheduledRun(
-      db,
-      `sched_plugin_1:${TEST_RUN_AT_MS}`,
-    );
-    expect(running).toMatchObject({
-      status: "running",
-      dispatchId: expect.any(String),
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
-    const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toMatchInlineSnapshot(`
-      "[scheduled task]
-
-      This is a scheduled task, not a new message from a person.
-      Follow the instructions below.
-      When you reply, summarize what you were acting on and what you did or need next.
-
-      Instructions: Post a digest. Summarize the latest state."
-    `);
-    expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
-    expect(dispatchRecord?.destinationVisibility).toBe("public");
-    expect(dispatchRecord?.source).toEqual(
-      createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        visibility: "public",
-      }),
-    );
-    expect(dispatchRecord?.metadata).toMatchObject({
-      runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
-      schedule: "Once at noon",
-      scheduleKind: "one_off",
-      scheduledFor: "2026-05-26T12:00:00.000Z",
-      runningAt: "2026-05-26T12:05:00.000Z",
-      taskId: "sched_plugin_1",
-      timezone: "UTC",
-    });
-    expect(dispatchRecord?.metadata).not.toHaveProperty("creatorSlackUserId");
-    expect(dispatchRecord?.metadata).not.toHaveProperty("creatorUserName");
-    expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
-    expect(dispatchRecord?.replyAttribution).toEqual({
-      label: "Scheduled task",
-      detail: "One-time",
-    });
-
-    await markDispatchCompleted(running!.dispatchId!, "1700000000.000001");
-
-    const secondWaitUntil = createWaitUntilCollector();
-    const secondResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      secondWaitUntil.fn,
-    );
-    expect(secondResponse.status).toBe(202);
-    await secondWaitUntil.flush();
-
-    await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
-      status: "completed",
-      resultMessageTs: "1700000000.000001",
-    });
-    await expect(
-      readScheduledTask(db, "sched_plugin_1"),
-    ).resolves.toMatchObject({
-      lastRunAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      status: "completed",
-    });
-  }, 30_000);
-
-  it.each([
-    {
-      conversationAccess: {
-        audience: "channel",
-        visibility: "public",
-      } as const,
-      destination: SLACK_DESTINATION,
-      label: "channel",
-    },
-    {
-      conversationAccess: {
-        audience: "direct",
-        visibility: "private",
-      } as const,
-      destination: { ...SLACK_DESTINATION, channelId: "D123" },
-      label: "DM",
-    },
-  ])(
-    "binds creator credentials to the scheduled task dispatch in a $label",
-    async ({ conversationAccess, destination }) => {
-      const db = scheduledTaskDb();
-      await saveScheduledTask(
-        db,
-        createTask({
-          conversationAccess,
-          credentialMode: "creator",
-          destination,
-        }),
-      );
-
-      const waitUntil = createWaitUntilCollector();
-      const response = await testHeartbeat(
-        new Request("https://example.invalid/api/internal/heartbeat", {
-          headers: { authorization: "Bearer heartbeat-secret" },
-        }),
-        waitUntil.fn,
-      );
-      expect(response.status).toBe(202);
-      await waitUntil.flush();
-
-      const running = await readScheduledRun(
-        db,
-        `sched_plugin_1:${TEST_RUN_AT_MS}`,
-      );
-      expect(running?.dispatchId).toEqual(expect.any(String));
-      await expect(
-        getDispatchRecord(running!.dispatchId!),
-      ).resolves.toMatchObject({
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "scheduled-task",
-          taskId: "sched_plugin_1",
-          binding: {
-            type: "scheduled-task",
-            plugin: "scheduler",
-            taskId: "sched_plugin_1",
-            signature: expect.any(String),
-          },
-        },
-        destination,
-      });
-      expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
-    },
-    30_000,
-  );
-
-  it("fails scheduled runs when their dispatch record disappeared", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    await saveScheduledTask(db, createTask());
-
-    const firstWaitUntil = createWaitUntilCollector();
-    const firstResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      firstWaitUntil.fn,
-    );
-    expect(firstResponse.status).toBe(202);
-    await firstWaitUntil.flush();
-
-    const running = await readScheduledRun(
-      db,
-      `sched_plugin_1:${TEST_RUN_AT_MS}`,
-    );
-    expect(running).toMatchObject({
-      status: "running",
-      dispatchId: expect.any(String),
-    });
-    const state = getStateAdapter();
-    await state.connect();
-    await state.delete(getDispatchStorageKey(running!.dispatchId!));
-
-    const secondWaitUntil = createWaitUntilCollector();
-    const secondResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      secondWaitUntil.fn,
-    );
-    expect(secondResponse.status).toBe(202);
-    await secondWaitUntil.flush();
-
-    await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
-      status: "failed",
-      errorMessage: "Scheduled task dispatch record is missing.",
-    });
-    await expect(
-      readScheduledTask(db, "sched_plugin_1"),
-    ).resolves.toMatchObject({
-      status: "deleted",
-    });
-  }, 30_000);
-
-  it("blocks malformed scheduled tasks without stopping the core heartbeat", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    await saveScheduledTask(db, {
-      ...createTask(),
-      id: "sched_plugin_malformed",
-      task: { text: "" },
-    });
-    const waitUntil = createWaitUntilCollector();
-    const request = new Request(
-      "https://example.invalid/api/internal/heartbeat",
-      {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      },
-    );
-    const response = await testHeartbeat(request, waitUntil.fn);
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
-
-    await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
-    ).resolves.toMatchObject({
-      status: "blocked",
-      errorMessage: expect.stringContaining(
-        "Scheduled task dispatch metadata could not be built",
-      ),
-    });
-    const blockedTask = await readScheduledTask(db, "sched_plugin_malformed");
-    expect(blockedTask).toMatchObject({
-      status: "blocked",
-      statusReason: expect.stringContaining(
-        "Scheduled task dispatch metadata could not be built",
-      ),
-    });
-    await saveScheduledTask(db, {
-      ...blockedTask!,
-      nextRunAtMs: TEST_RUN_AT_MS,
-      status: "active",
-      statusReason: undefined,
-      task: { text: "Post the recovered digest." },
-      updatedAtMs: TEST_NOW_MS + 1,
-    });
-    const retryWaitUntil = createWaitUntilCollector();
-    await testHeartbeat(request, retryWaitUntil.fn);
-    await retryWaitUntil.flush();
-    await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
-    ).resolves.toMatchObject({
-      status: "running",
-      dispatchId: expect.any(String),
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  }, 30_000);
-
-  it("skips old recurring occurrences and advances to the next future run", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    const task = createDailyTask();
-    await saveScheduledTask(db, task);
-
-    const waitUntil = createWaitUntilCollector();
-    const response = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      waitUntil.fn,
-    );
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
-
-    await expect(
-      readScheduledRun(db, `${task.id}:${task.nextRunAtMs}`),
-    ).resolves.toMatchObject({
-      status: "skipped",
-      errorMessage: expect.stringContaining("more than 24 hours late"),
-    });
-    await expect(readScheduledTask(db, task.id)).resolves.toMatchObject({
-      status: "active",
-      nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  }, 30_000);
-
-  it("dedupes equivalent old recurring tasks during heartbeat recovery", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    const first = createDailyTask({
-      id: "sched_plugin_duplicate_a",
-      createdAtMs: Date.parse("2026-05-24T12:00:00.000Z"),
-    });
-    const duplicate = createDailyTask({
-      id: "sched_plugin_duplicate_b",
-      createdAtMs: Date.parse("2026-05-24T12:00:01.000Z"),
-    });
-    await saveScheduledTask(db, first);
-    await saveScheduledTask(db, duplicate);
-
-    const waitUntil = createWaitUntilCollector();
-    const response = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      waitUntil.fn,
-    );
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
-
-    await expect(
-      readScheduledRun(db, `${duplicate.id}:${duplicate.nextRunAtMs}`),
-    ).resolves.toMatchObject({
-      status: "skipped",
-      errorMessage: expect.stringContaining(
-        "Duplicate stale scheduled task was skipped",
-      ),
-    });
-    await expect(readScheduledTask(db, first.id)).resolves.toMatchObject({
-      status: "active",
-      nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
-    });
-    const duplicateTask = await readScheduledTask(db, duplicate.id);
-    expect(duplicateTask).toMatchObject({
-      status: "deleted",
-      statusReason: expect.stringContaining(first.id),
-    });
-    expect(duplicateTask).not.toHaveProperty("nextRunAtMs");
-    expect(fetchMock).not.toHaveBeenCalled();
-  }, 30_000);
 });

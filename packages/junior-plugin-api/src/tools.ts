@@ -1,21 +1,17 @@
 import type {
   Actor,
   Identity,
-  LocalInvocationContext,
+  InvocationContext,
   PluginContext,
   PluginEmbedder,
   PluginModel,
-  SlackInvocationContext,
   User,
-  WebInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
+import { objectAnnotationSchema } from "./object-annotations";
 import type { SlackConversationLink } from "./operations";
-import type {
-  ResourceEventSubscriptionResult,
-  SubscribableResource,
-} from "./resource-events";
+import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
 import { z, type ZodTypeAny } from "zod";
 
@@ -144,6 +140,9 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
+/** Complete Workspace repository preparation after credential egress is removed. */
+export type WorkspaceFinalize = () => Promise<void> | void;
+
 /**
  * Provider-owned, repeatable repository preparation for a Workspace Sandbox.
  * Implementations should refresh complete checkouts and replace missing or
@@ -172,6 +171,13 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
     input: Record<string, unknown>;
     name: string;
   };
+  /**
+   * Resolve the current actor's stored identity and linked user.
+   * Same contract as tool registration; used for commit attribution.
+   */
+  users: {
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
 }
 
 /**
@@ -189,6 +195,8 @@ export interface AfterMcpToolHookContext extends PluginContext {
   conversationId?: string;
   annotations?: PluginAnnotations;
   result: {
+    /** Provider content before model-facing truncation. */
+    content?: PluginMcpContent[];
     structuredContent?: unknown;
   };
   tool: {
@@ -220,6 +228,8 @@ export const pluginToolContinuationSchema = z
 /** Shared optional fields for canonical plugin tool outputs. */
 export const pluginToolOutputSchema = z
   .object({
+    /** Object results to save and show with the next reply. Omit for silent updates. */
+    objectAnnotations: z.array(objectAnnotationSchema).optional(),
     target: z.string().min(1).optional(),
     truncated: z.boolean().optional(),
     continuation: pluginToolContinuationSchema.optional(),
@@ -300,6 +310,9 @@ export interface ToolApprovalMetadata<TInput = unknown> {
   describeProposal?(input: TInput): string;
 }
 
+/** Control whether a tool is visible to the model and available in the tool catalog. */
+export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+
 export interface PluginToolDefinition<
   TInput = unknown,
   TOutput = unknown,
@@ -307,6 +320,8 @@ export interface PluginToolDefinition<
 > extends ToolApprovalMetadata<TInput> {
   description: string;
   executionMode?: unknown;
+  /** Override the host's default tool exposure. */
+  exposure?: ToolExposure;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**
@@ -507,8 +522,8 @@ export function definePluginTool<
 
 export interface SlackToolRegistrationHookContext {
   /**
-   * Capabilities of the source Slack conversation exposed to this plugin.
-   * Recomputed from `source.channelId`, not from `destination`.
+   * What Slack tools can do in the Conversation Location.
+   * Computed from Location, not from Source or Destination.
    */
   channelCapabilities: {
     canAddReactions: boolean;
@@ -523,15 +538,20 @@ export interface SlackToolRegistrationHookContext {
   >;
 }
 
-export interface PluginResourceEventToolContext {
-  /** Whether this invocation can create a working resource subscription. */
+export interface PluginEventToolContext {
+  /** Whether this invocation can create a working watch. */
   canSubscribe: boolean;
-  /** Create a temporary resource subscription for the current conversation. */
+  /** Create a temporary watch for the current conversation. */
   subscribe(input: {
     events: string[];
     intent: string;
     resource: SubscribableResource;
-  }): Promise<ResourceEventSubscriptionResult>;
+    /**
+     * Guidance for this Watch only, by event type. Core adds it after the
+     * resource type guidance when a matching Event arrives.
+     */
+    guidance?: Partial<Record<string, string>>;
+  }): Promise<WatchResult>;
 }
 
 export interface PluginWorkspaceToolContext {
@@ -551,38 +571,31 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    */
   conversationId?: string;
   annotations?: PluginAnnotations;
+  /** Host-owned dashboard link to the Automation that started this run. */
+  automationLink?: { url: string };
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;
   model: PluginModel;
-  resourceEvents: PluginResourceEventToolContext;
+  events: PluginEventToolContext;
   /** Sandbox filesystem and command capability for plugin-owned workspace tools. */
   sandbox: PluginSandbox;
   state: PluginState;
   users: {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+    /**
+     * Resolve the current actor's IANA timezone. Uses their profile when
+     * Junior knows it, else the install default. Always returns a timezone.
+     */
+    resolveTimezone(): Promise<string>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;
 }
 
-interface SlackToolRegistrationContext
-  extends BaseToolRegistrationHookContext, SlackInvocationContext {
-  slack: SlackToolRegistrationHookContext;
-}
-
-interface LocalToolRegistrationContext
-  extends BaseToolRegistrationHookContext, LocalInvocationContext {
-  slack?: never;
-}
-
-interface WebToolRegistrationContext
-  extends BaseToolRegistrationHookContext, WebInvocationContext {
-  slack?: never;
-}
-
-export type ToolRegistrationHookContext =
-  | LocalToolRegistrationContext
-  | SlackToolRegistrationContext
-  | WebToolRegistrationContext;
+export type ToolRegistrationHookContext = BaseToolRegistrationHookContext &
+  InvocationContext & {
+    /** Slack tool details when the Conversation has a Slack Location. */
+    slack?: SlackToolRegistrationHookContext;
+  };

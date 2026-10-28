@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { renderAttachmentText } from "@/chat/slack/message/attachments";
+import {
+  extractAttachmentFiles,
+  renderAttachmentText,
+} from "@/chat/slack/message/attachments";
 
 describe("renderAttachmentText", () => {
   it("returns empty string for invalid payloads", () => {
@@ -150,5 +153,55 @@ describe("renderAttachmentText", () => {
     expect(renderAttachmentText(rawMessage)).toBe(
       "[attachment] Alert: disk usage high",
     );
+  });
+});
+
+describe("extractAttachmentFiles", () => {
+  it("returns an empty list for invalid or fileless payloads", () => {
+    expect(extractAttachmentFiles(undefined)).toEqual([]);
+    expect(extractAttachmentFiles([{ fallback: "no files here" }])).toEqual(
+      [],
+    );
+  });
+
+  it("extracts files nested inside a shared/forwarded message attachment", () => {
+    const raw = [
+      {
+        is_share: true,
+        text: "Billing issue.",
+        files: [
+          {
+            id: "F1",
+            name: "screenshot.png",
+            mimetype: "image/png",
+            size: 100,
+            url_private: "https://files.slack.com/f1",
+          },
+        ],
+      },
+    ];
+
+    expect(extractAttachmentFiles(raw)).toEqual([
+      {
+        id: "F1",
+        name: "screenshot.png",
+        mimetype: "image/png",
+        size: 100,
+        url_private: "https://files.slack.com/f1",
+        url_private_download: undefined,
+      },
+    ]);
+  });
+
+  it("dedupes files with the same id across attachments", () => {
+    const raw = [
+      { files: [{ id: "F1", name: "a.png" }] },
+      { files: [{ id: "F1", name: "a.png" }, { id: "F2", name: "b.png" }] },
+    ];
+
+    expect(extractAttachmentFiles(raw).map((f) => f.id)).toEqual([
+      "F1",
+      "F2",
+    ]);
   });
 });

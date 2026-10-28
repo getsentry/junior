@@ -17,11 +17,17 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
+import {
+  buildPlanStatus,
+  buildReportedProgressStatus,
+} from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import {
+  disabledToolMessage,
+  type AnyToolDefinition,
+} from "@/chat/tools/definition";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
@@ -31,6 +37,7 @@ import {
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   createExecuteToolTool,
@@ -45,7 +52,47 @@ import {
   reviewToolAction,
   ToolActionRejectedError,
   type ToolActionReview,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
+
+/**
+ * How long a preempted tool may take to return its own aborted result. Keep it
+ * below the agent's abort settle grace, so the parked turn sees the result.
+ */
+const TOOL_ABORT_SETTLE_GRACE_MS = 2_000;
+
+/**
+ * Stop waiting for a tool shortly after the host preempts it. A tool that
+ * ignores the signal must not hold the turn past its deadline, or the parked
+ * turn loses the attempt. Work that keeps running is detached; its outcome is
+ * unknown.
+ */
+async function untilPreempted<T>(
+  work: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return await work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort = () => {};
+  const preempted = new Promise<never>((_, reject) => {
+    onAbort = () => {
+      timer = setTimeout(
+        () => reject(signal.reason),
+        TOOL_ABORT_SETTLE_GRACE_MS,
+      );
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([work, preempted]);
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", onAbort);
+    // The attempt is already reported; a late failure has no reader.
+    work.catch(() => undefined);
+  }
+}
 
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createPiAgentTools(
@@ -132,6 +179,13 @@ export function createPiAgentTools(
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
     }
+    // Disabled tools stay in the tool list. Reject them before hooks, action
+    // review, and the executor run.
+    if (toolDef.disabledReason) {
+      throw new ToolInputError(
+        disabledToolMessage(toolName, toolDef.disabledReason),
+      );
+    }
 
     const beforeTool = agentHooks
       ? await agentHooks.beforeToolExecute({
@@ -190,21 +244,26 @@ export function createPiAgentTools(
     }
     const sandboxInput = buildSandboxInput(toolName, executionInput);
     const isSandbox = Boolean(sandboxTools?.supports(toolName));
-    const result = isSandbox
-      ? await sandboxTools!.execute({
-          toolName,
-          input: sandboxInput,
-          ...(signal ? { signal } : undefined),
-          ...(toolName === "grep" || toolName === "findFiles"
-            ? { setToolCallSpanAttributes: setSpanAttributes }
-            : undefined),
-        })
-      : await toolDef.execute(executionInput, {
-          experimental_context: sandbox,
-          ...(signal ? { signal } : undefined),
-          conversationPrivacy: effectiveConversationPrivacy,
-          toolCallId,
-        });
+    const result = await untilPreempted(
+      isSandbox
+        ? sandboxTools!.execute({
+            toolName,
+            input: sandboxInput,
+            ...(signal ? { signal } : undefined),
+            ...(toolName === "grep" || toolName === "findFiles"
+              ? { setToolCallSpanAttributes: setSpanAttributes }
+              : undefined),
+          })
+        : Promise.resolve(
+            toolDef.execute(executionInput, {
+              experimental_context: sandbox,
+              ...(signal ? { signal } : undefined),
+              conversationPrivacy: effectiveConversationPrivacy,
+              toolCallId,
+            }),
+          ),
+      signal,
+    );
 
     const normalized = normalizeToolResult(result, {
       requireStructuredResult: Boolean(toolDef.outputSchema),
@@ -252,7 +311,9 @@ export function createPiAgentTools(
     if (toolResultAttribute) {
       setSpanAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
-        ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : undefined),
+        ...(hasProjectedPrivateResult
+          ? privateTraceResultAttributes()
+          : undefined),
         ...toGenAiPayloadTraceAttributes(
           "gen_ai.tool.call.result",
           resultAttributeValue,
@@ -275,10 +336,12 @@ export function createPiAgentTools(
     executionToolName: string,
     params: Record<string, unknown>,
   ) => {
-    if (executionToolName !== "reportProgress") {
-      return;
-    }
-    const status = buildReportedProgressStatus(params);
+    const status =
+      executionToolName === "updatePlan"
+        ? buildPlanStatus(params)
+        : executionToolName === "reportProgress"
+          ? buildReportedProgressStatus(params)
+          : undefined;
     if (status) {
       await onStatus?.(status);
     }
@@ -356,6 +419,30 @@ export function createPiAgentTools(
               toolName,
             });
           } catch (error) {
+            if (
+              signal?.aborted &&
+              !(
+                error instanceof AuthorizationPauseError ||
+                error instanceof AuthorizationFlowDisabledError ||
+                error instanceof ToolActionRejectedError
+              )
+            ) {
+              // The host preempted this attempt, so its outcome is unknown.
+              // Report the same fact bash reports for a command timeout
+              // instead of a failure the model would retry.
+              const preempted = makeStructuredToolOutput({
+                aborted: true as const,
+                target: executionToolName,
+              });
+              await notifyToolResult({
+                ok: true,
+                params: executionParams,
+                result: preempted.details,
+                toolCallId,
+                toolName: executionToolName,
+              });
+              return { ...preempted, isError: false };
+            }
             await notifyToolResult({
               error: error instanceof Error ? error.message : String(error),
               ok: false,

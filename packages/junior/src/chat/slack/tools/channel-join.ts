@@ -35,7 +35,7 @@ export function createSlackChannelJoinTool(context: SlackToolContext) {
       const access = await checkSlackChannelReadAccess({
         currentChannelIds: [
           context.destinationChannelId,
-          context.sourceChannelId,
+          context.locationChannelId,
         ],
         targetChannelId: target.channelId,
         teamId: context.teamId,

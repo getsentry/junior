@@ -28,17 +28,16 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
   bindProviderConversation,
-  type ProviderConversationBinding,
+  type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { startLocationThread } from "@/chat/conversations/sql/location";
 import {
   historyItemFromPiMessage,
   projectConversationEvents,
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
-import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -77,11 +76,9 @@ export class AgentHistoryBranchError extends Error {
   }
 }
 
-/** Match the exact JSONB shape used for prefix comparison and replay. */
+/** Snapshot Pi's JSON message without changing text or nested object order. */
 function normalizeDurableMessage(message: PiMessage): PiMessage {
-  return piMessageSchema.parse(
-    JSON.parse(JSON.stringify(sanitizePostgresJson(message))),
-  );
+  return piMessageSchema.parse(JSON.parse(JSON.stringify(message)));
 }
 
 /**
@@ -341,7 +338,7 @@ export async function commitMessages(args: {
   historyVersion: number;
   /** Event sequence for every projected agent history item. */
   messageSeqs: number[];
-  /** Normalized durable messages after volatile runtime context is removed. */
+  /** Normalized durable messages committed as exact model history. */
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
 }> {
@@ -368,9 +365,7 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBindings?: Array<
-    Omit<ProviderConversationBinding, "conversationId">
-  >;
+  providerConversationBindings?: ProviderConversationReference[];
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -399,11 +394,10 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
-      for (const binding of args.providerConversationBindings ?? []) {
-        await bindProviderConversation(executor, {
-          conversationId: args.conversationId,
-          ...binding,
-        });
+      for (const reference of args.providerConversationBindings ?? []) {
+        const binding = { conversationId: args.conversationId, ...reference };
+        await bindProviderConversation(executor, binding);
+        await startLocationThread(executor, binding);
       }
     }),
   );
@@ -420,12 +414,7 @@ async function commitMessagesLocked(
   const current = projectConversationEvents(currentEvents, {
     defaultProfile: botConfig.defaultProfile,
   });
-  // Runtime bootstrap is per-run input, not durable agent history. Session
-  // records may retain it while a turn is live, but event replay must not need
-  // a compensating history rewrite when that bootstrap changes.
-  const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
-    normalizeDurableMessage,
-  );
+  const nextLocalMessages = args.messages.map(normalizeDurableMessage);
   const matchingPrefix = countDurablePrefix(
     current.messages,
     nextLocalMessages,
@@ -460,7 +449,7 @@ async function commitMessagesLocked(
           content: context.content,
         },
       })) ?? [];
-    await eventStore.append(args.conversationId, [
+    const appendedEvents = await eventStore.append(args.conversationId, [
       ...newMessages.map((message, index) => ({
         data: historyItemFromPiMessage(
           message,
@@ -470,22 +459,21 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-  } else {
-    throw new AgentHistoryBranchError(args.conversationId);
+    const cursor = appendedEvents.at(-1) ?? currentEvents.at(-1);
+    return {
+      committedSeq: cursor?.seq ?? -1,
+      historyVersion: cursor?.historyVersion ?? 0,
+      messageSeqs: [
+        ...current.seqs,
+        ...appendedEvents
+          .slice(0, newMessages.length)
+          .map((event) => event.seq),
+      ],
+      messages: nextLocalMessages,
+      provenance: nextLocalProvenance,
+    };
   }
-  const committedEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const committed = projectConversationEvents(committedEvents, {
-    defaultProfile: botConfig.defaultProfile,
-  });
-  return {
-    committedSeq: committedEvents.at(-1)?.seq ?? -1,
-    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
-    messageSeqs: committed.seqs,
-    messages: nextLocalMessages,
-    provenance: nextLocalProvenance,
-  };
+  throw new AgentHistoryBranchError(args.conversationId);
 }
 
 /** Record a successful MCP provider connection for one credential subject without duplicating it. */
@@ -620,7 +608,9 @@ async function recordAuthenticationAccountChange(
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
-    ...(args.authorizationId ? { authorizationId: args.authorizationId } : undefined),
+    ...(args.authorizationId
+      ? { authorizationId: args.authorizationId }
+      : undefined),
     ...(args.providerLabel ? { providerLabel: args.providerLabel } : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
@@ -785,6 +775,24 @@ export async function recordSubscribedReplyRoute(args: {
       },
     },
   ]);
+}
+
+/**
+ * Load the profile of the newest Turn route or handoff.
+ *
+ * The projection profile is not enough: a Turn route does not replace history.
+ */
+export async function loadLastModelProfile(
+  args: ScopedConversation,
+): Promise<ModelProfile | undefined> {
+  const page = await getConversationEventStore().query(args.conversationId, {
+    limit: 1,
+    types: ["turn_routed", "handoff"],
+  });
+  const data = page.events[0]?.data;
+  return data?.type === "turn_routed" || data?.type === "handoff"
+    ? data.modelProfile
+    : undefined;
 }
 
 /** Load a previously selected model profile for a resumed turn. */

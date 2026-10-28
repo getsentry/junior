@@ -11,19 +11,21 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 ## Commands
 
-| Task                       | Command                                                                        |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
-| Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                 |
-| Behavioral eval file      | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts`    |
-| Behavioral eval case      | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts -t "case name"` |
-| Integration eval file        | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts`      |
-| Integration eval case        | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts -t "case name"` |
-| Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`       |
-| Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"` |
-| Generate package schema    | `pnpm --filter <package> db:generate`                                          |
-| Dashboard visual capture   | `pnpm visual:dashboard -- --scenarios gallery-foundations`                     |
-| Release package alignment  | `pnpm release:check`                                                           |
+| Task                       | Command                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------ |
+| Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                        |
+| Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                             |
+| Behavioral eval file       | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts`                 |
+| Behavioral eval case       | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts -t "case name"`  |
+| Integration eval file      | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts`                |
+| Integration eval case      | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts -t "case name"` |
+| Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`                   |
+| Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"`    |
+| Router eval file           | `pnpm --filter @sentry/junior-evals evals:router path/to/file.eval.ts`                     |
+| Router eval case           | `pnpm --filter @sentry/junior-evals evals:router path/to/file.eval.ts -t "case name"`      |
+| Generate package schema    | `pnpm --filter <package> db:generate`                                                      |
+| Dashboard e2e              | `pnpm test:e2e:dashboard`                                                                  |
+| Release package alignment  | `pnpm release:check`                                                                       |
 
 ## Workflow
 
@@ -48,6 +50,15 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.
 - Telemetry is diagnostic, not a product behavior assertion; follow `policies/observability.md` and `TELEMETRY.md`.
 
+## Eval Recordings
+
+- Evals replay model calls and web pages from Roach, the shared recording service at `https://roach-proxy.getsentry.net` ([`getsentry/roach`](https://github.com/getsentry/roach)). Recordings are in its GCS bucket, not in git. `packages/junior-evals/src/roach/` is a copy of its client.
+- `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more, reach a new site, or add a value pattern, edit only that file.
+- All eval HTTP traffic must go through the proxy. In CI, a firewall (`packages/junior-evals/scripts/network-jail.sh`) rejects other connections. If a request fails with a refused connection, send it through the proxy. Do not allow its host in the firewall.
+- `ROACH_TOKEN` is the write token. With it, a run uses `auto` mode and records new requests, which go live once. Without it, a run can only `replay`, and requests without a recording fail. CI passes the token to eval runs.
+- Each run prints `[evals] Recordings: ...` and the first miss of each test. Fix a value that changes on each run for all tests, in the fixture or in `values` of the rule, not in one test. For ids and times that only the product can make, add a pattern to `values` of the rule. The proxy keys the request without the value and gives a replayed response the value of the current run.
+- Details: "Recordings" in `packages/junior-evals/README.md`.
+
 ## Architecture
 
 - Core owns the runtime and provider-neutral plugin contracts. Plugins own their domain behavior.
@@ -56,7 +67,11 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Treat provider names, hosts, routes, and control flow in core as an architecture warning even when a static dependency rule cannot detect the problem. Follow `policies/provider-boundaries.md`.
 - Read `packages/junior/src/chat/README.md` before changing shared chat runtime behavior; it owns flow, module boundaries, vocabulary, and invariants.
 - Group files by feature and import feature files directly; do not add feature-directory barrels.
-- Code files may not exceed 1,000 lines unless `scripts/file-length-exceptions.mjs` names the file and explains why it should stay large.
+- Keep formatter output. Do not compress or undo formatting to keep a code file
+  below 1,000 lines. Split a formatted file that exceeds 1,000 lines at a clear
+  feature or ownership boundary. Existing exceptions must stay named and
+  explained in `scripts/file-length-exceptions.mjs`; follow
+  `policies/correctness-complexity.md`.
 - Do not add mutable runtime globals or test-only singleton mutation APIs.
 
 ## Where Rules Live

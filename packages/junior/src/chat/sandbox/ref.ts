@@ -1,4 +1,4 @@
-/** Durable opaque handle used to reopen a conversation's sandbox. */
+/** Sandbox this conversation is using. Reopen by `id`; only switchWorkspace replaces it. */
 export interface SandboxRef {
   id: string;
   profileHash?: string;

@@ -122,6 +122,7 @@ function utcDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+// The dashboard search highlight mirrors this split in `MemorySearchHighlight`.
 function searchTerms(query: string): string[] {
   return [
     ...new Set(
@@ -132,6 +133,19 @@ function searchTerms(query: string): string[] {
         .filter((term) => term.length >= 2),
     ),
   ];
+}
+
+/**
+ * Match memory content that contains any search term. A query with no usable
+ * term matches nothing, so a punctuation-only search does not list all memory.
+ */
+function searchPredicate(query: string | undefined) {
+  if (query === undefined) return undefined;
+  const terms = searchTerms(query);
+  if (terms.length === 0) return sql`false`;
+  return or(
+    ...terms.map((term) => ilike(juniorMemoryMemories.content, `%${term}%`)),
+  );
 }
 
 function memoryOrigin(idempotencyKey: string | null): MemoryView["origin"] {
@@ -194,7 +208,7 @@ function encodeCursor(
   ).toString("base64url");
 }
 
-/** Archive one active private memory owned by the authenticated User. */
+/** Archive one active memory visible to the authenticated User: public memory or private memory they own. */
 export async function archiveMemory(db: MemoryDb, userId: string, id: string) {
   const memoryId = nonEmptyStringSchema.parse(id);
   const nowMs = Date.now();
@@ -206,7 +220,7 @@ export async function archiveMemory(db: MemoryDb, userId: string, id: string) {
     })
     .where(
       and(
-        activeMemoryPredicate(userId, nowMs, "private"),
+        activeMemoryPredicate(userId, nowMs),
         eq(juniorMemoryMemories.id, memoryId),
       ),
     )
@@ -259,17 +273,7 @@ export async function listMemories(
         ),
       )
     : undefined;
-  const terms = input.query ? searchTerms(input.query) : [];
-  const search =
-    input.query === undefined
-      ? undefined
-      : terms.length === 0
-        ? sql`false`
-        : or(
-            ...terms.map((term) =>
-              ilike(juniorMemoryMemories.content, `%${term}%`),
-            ),
-          );
+  const search = searchPredicate(input.query);
   const kind = input.kind
     ? eq(juniorMemoryMemories.kind, input.kind)
     : undefined;
@@ -347,6 +351,35 @@ export async function getMemoryStats(db: MemoryDb, userId: string) {
   return counts;
 }
 
+/**
+ * Count active memory visible to the authenticated User, split by visibility.
+ * A query applies the same term match as `listMemories`.
+ */
+export async function countMemories(
+  db: MemoryDb,
+  userId: string,
+  query?: string,
+) {
+  const [counts] = await db
+    .select({
+      active: sql<number>`count(*)`.mapWith(Number),
+      private:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
+          Number,
+        ),
+      public:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
+          Number,
+        ),
+    })
+    .from(juniorMemoryMemories)
+    .where(
+      and(activeMemoryPredicate(userId, Date.now()), searchPredicate(query)),
+    );
+  if (!counts) throw new Error("Memory count query returned no row.");
+  return counts;
+}
+
 /** Read daily memory creation totals visible to the authenticated User in UTC. */
 export async function getMemoryTimeline(
   db: MemoryDb,
@@ -384,6 +417,53 @@ export async function getMemoryTimeline(
   return Array.from({ length: days }, (_, index) => {
     const date = utcDate(startMs + index * DAY_MS);
     const row = byDate.get(date);
+    return {
+      date,
+      private: row?.private ?? 0,
+      public: row?.public ?? 0,
+    };
+  });
+}
+
+/** Read hourly memory creation totals visible to the authenticated User in UTC. */
+export async function getMemoryTimelineHours(
+  db: MemoryDb,
+  userId: string,
+  hours = 24,
+) {
+  const end = new Date();
+  end.setUTCMinutes(0, 0, 0);
+  const startMs = end.getTime() - (hours - 1) * 60 * 60 * 1_000;
+  const rows = await db
+    .select({
+      date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24')`.as(
+        "date",
+      ),
+      private:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
+          Number,
+        ),
+      public:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
+          Number,
+        ),
+    })
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        visibleScopePredicate(userId),
+        gt(juniorMemoryMemories.createdAtMs, startMs - 1),
+      ),
+    )
+    .groupBy(
+      sql`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24')`,
+    );
+  const byHour = new Map(rows.map((row) => [row.date, row]));
+  return Array.from({ length: hours }, (_, index) => {
+    const date = new Date(startMs + index * 60 * 60 * 1_000)
+      .toISOString()
+      .slice(0, 13);
+    const row = byHour.get(date);
     return {
       date,
       private: row?.private ?? 0,

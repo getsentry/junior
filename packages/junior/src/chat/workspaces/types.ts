@@ -38,6 +38,8 @@ export interface Workspace {
   id: string;
   name: string;
   setupScript: string;
+  /** Sandbox vCPUs for this Workspace, or null to use the app setting. */
+  vcpus: number | null;
   repos: WorkspaceRepo[];
   snapshot: WorkspaceSnapshot | null;
 }

@@ -27,6 +27,7 @@ function workspaceFromRows(
     id: row.id,
     name: row.name,
     setupScript: row.setupScript,
+    vcpus: row.vcpus,
     repos: repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -156,10 +157,19 @@ export async function listWorkspaceNamesByRepository(
   db: JuniorDatabase,
   input: { provider: string; repo: string },
 ): Promise<string[]> {
+  const workspaces = await listWorkspacesByRepository(db, input);
+  return workspaces.map((workspace) => workspace.name);
+}
+
+/** Find the Workspaces, by id and name, that include one provider repository. */
+export async function listWorkspacesByRepository(
+  db: JuniorDatabase,
+  input: { provider: string; repo: string },
+): Promise<Array<{ id: string; name: string }>> {
   const provider = input.provider.trim().toLowerCase();
   const repo = input.repo.trim();
-  const rows = await db
-    .select({ name: juniorWorkspaces.name })
+  return await db
+    .select({ id: juniorWorkspaces.id, name: juniorWorkspaces.name })
     .from(juniorWorkspaceRepos)
     .innerJoin(
       juniorWorkspaces,
@@ -173,7 +183,6 @@ export async function listWorkspaceNamesByRepository(
       ),
     )
     .orderBy(asc(juniorWorkspaces.name));
-  return rows.map((row) => row.name);
 }
 
 /** Resolve one Workspace recipe by name. */
@@ -218,6 +227,7 @@ export async function getWorkspace(
 export async function createWorkspace(input: {
   name: string;
   setupScript?: string;
+  vcpus?: number | null;
   repos: Array<{
     provider: string;
     repo: string;
@@ -235,6 +245,7 @@ export async function createWorkspace(input: {
         id,
         name: recipe.name,
         setupScript: recipe.setupScript,
+        vcpus: recipe.vcpus,
         createdAt: now,
         updatedAt: now,
       });
@@ -258,6 +269,7 @@ export async function updateWorkspace(
   input: {
     name: string;
     setupScript?: string;
+    vcpus?: number | null;
     repos: Array<{
       provider: string;
       repo: string;
@@ -279,6 +291,7 @@ export async function updateWorkspace(
       const existing = existingRows[0];
       if (!existing) return undefined;
       const existingRepos = await loadWorkspaceRepos(db, id);
+      // Snapshot contents do not depend on vCPUs, so a size change keeps them.
       const snapshotChanged =
         existing.setupScript !== recipe.setupScript ||
         !sameWorkspaceRepos(existingRepos, recipe.repos);
@@ -287,6 +300,7 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
+          vcpus: recipe.vcpus,
           updatedAt: now,
         })
         .where(eq(juniorWorkspaces.id, id))

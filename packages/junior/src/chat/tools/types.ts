@@ -1,14 +1,20 @@
 import type { FileUpload } from "chat";
 import type {
+  AgentInvocationSource,
+  EventAutomationSource,
   WebSource,
+  EventSource,
   Destination,
   Identity,
+  Location,
   LocalDestination,
   LocalSource,
+  PluginDispatchSource,
   PluginEgress,
   SlackDestination,
   SlackSource,
   Source,
+  ScheduledAutomationSource,
   User,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -18,15 +24,31 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type { ModelProfile } from "@/chat/model-profile";
+import type {
+  ModelProfile,
+  ModelProfileConfig,
+} from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
-import type { SpawnAgent } from "@/chat/agent/types";
+import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { Workspace } from "@/chat/workspaces/types";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+
+interface HandoffProfile {
+  description?: string;
+  name: ModelProfile;
+}
+
+export interface SpawnAgentProfileControl {
+  activeProfile: () => ModelProfile;
+  defaultProfile: ModelProfile;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
+}
 
 interface HandoffControl {
-  /** Non-empty catalog of configured targets. */
-  profiles: readonly [ModelProfile, ...ModelProfile[]];
+  activeProfile: HandoffProfile;
+  /** Non-empty list of other configured profiles. */
+  profiles: readonly [HandoffProfile, ...HandoffProfile[]];
   execute: (
     profile: ModelProfile,
     options: { signal?: AbortSignal; toolCallId: string },
@@ -75,17 +97,32 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage;
+  /** Present only for Scheduled automation and Event automation runs. */
+  automation?: {
+    /** True when a successful run sends a message to stored Destinations. */
+    sendsMessage: boolean;
+  };
   handoff?: HandoffControl;
+  messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
+  spawnAgentProfiles?: SpawnAgentProfileControl;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
    * Scheduled/web turns use an internal id such as `agent-dispatch:{id}`.
    * Do not parse as Slack unless the value starts with `slack:`.
    */
-  conversationId?: string;
+  conversationId: string;
+  /** Parent of a child agent Conversation. Unset for a root Conversation. */
+  parentConversationId?: string;
   /** Location associated with this Conversation. */
+  location?: Location;
+  // TODO(dcramer): Remove locationId after memory and plugin contexts read
+  // Location directly.
+  /** Legacy Location identity used by memory and plugin contexts. */
   locationId?: string;
+  /** Stored Conversation visibility used by tools. */
+  conversationPrivacy?: ConversationPrivacy;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
@@ -122,7 +159,6 @@ interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
   actor?: LocalActor;
   source: LocalSource;
-  slack?: never;
   slackActionToken?: never;
 }
 
@@ -130,14 +166,24 @@ interface WebToolRuntimeContext extends BaseToolRuntimeContext {
   destination: Destination;
   actor?: WebActor;
   source: WebSource;
-  slack?: never;
   slackActionToken?: never;
 }
 
 export type ToolRuntimeContext =
   | LocalToolRuntimeContext
   | SlackToolRuntimeContext
-  | WebToolRuntimeContext;
+  | WebToolRuntimeContext
+  | (BaseToolRuntimeContext & {
+      destination: Destination;
+      actor?: Actor;
+      source:
+        | AgentInvocationSource
+        | EventAutomationSource
+        | PluginDispatchSource
+        | EventSource
+        | ScheduledAutomationSource;
+      slackActionToken?: never;
+    });
 
 export interface ToolState {
   getOperationResult: <T>(operationKey: string) => T | undefined;

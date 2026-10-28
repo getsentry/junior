@@ -41,6 +41,42 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
+  it("uses a blocked report as the result of a run without text", () => {
+    const missing = "Write access to getsentry/junior. Ask the user.";
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "reportBlocked",
+              arguments: { missing },
+            },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolName: "reportBlocked",
+          isError: false,
+          content: [{ type: "text", text: missing }],
+          details: { missing },
+        },
+      ],
+      userInput: "Push the fix to getsentry/junior",
+      toolCalls: ["reportBlocked"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.blocked).toEqual({ missing });
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
   it("requires completed output after a user-visible tool call", () => {
     const reply = buildTurnResult({
       newMessages: [
@@ -270,17 +306,24 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("treats a no-reply marker mixed with text as silent completion", () => {
+  it("does not treat a tool-call terminal tail as intentional no-reply", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
           role: "assistant",
-          content: [{ type: "text", text: `Done. ${NO_REPLY_MARKER}` }],
-          stopReason: "stop",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "bash",
+              arguments: {},
+            },
+          ],
+          stopReason: "toolUse",
         },
       ],
-      userInput: "Do whatever makes sense here",
-      toolCalls: [],
+      userInput: "run a command",
+      toolCalls: ["bash"],
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
@@ -288,7 +331,7 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
   it("keeps no-reply marker silent when side-effect tools also ran", () => {

@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import { buildSteeringPiMessage } from "@/chat/agent/prompt";
+import type { AgentSteeringMessage } from "@/chat/agent/types";
+import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
+  createAgentInvocationForMessage,
   getAgentInvocation,
+  getAgentInvocationMessageId,
   getAgentInvocationTurnId,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import {
   buildAgentInvocationInboundMessage,
   createAgentInvocationWorker,
+  agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -17,12 +24,12 @@ import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import type {
+  ConversationWorkerContext,
+  InboxAttempt,
+} from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
-import {
-  createLocalSource,
-} from "@sentry/junior-plugin-api";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
   conversationId: PARENT_CONVERSATION_ID,
@@ -31,11 +38,9 @@ const DESTINATION = {
 const INVOCATION_INPUT = {
   actor: { name: "parent-agent", platform: "system" } as const,
   destination: DESTINATION,
-  destinationVisibility: "private" as const,
   input: "Summarize the durable task.",
   parentConversationId: PARENT_CONVERSATION_ID,
   reasoningLevel: "medium" as const,
-  source: createLocalSource(PARENT_CONVERSATION_ID),
 };
 
 async function prepareParentConversation() {
@@ -76,7 +81,7 @@ describe("agent invocation worker", () => {
         actor: INVOCATION_INPUT.actor,
         conversationId: created.childConversationId,
         destination: DESTINATION,
-        piMessages: ([
+        piMessages: [
           {
             role: "assistant",
             content: [{ type: "text", text: "partial output" }],
@@ -100,10 +105,10 @@ describe("agent invocation worker", () => {
             stopReason: "stop",
             timestamp: 2,
           },
-        ] as PiMessage[]),
+        ] as PiMessage[],
         turnId,
         sliceId: 1,
-        source: INVOCATION_INPUT.source,
+        source: { kind: "agent_invocation" },
         state: "running",
         surface: "internal",
       });
@@ -118,7 +123,6 @@ describe("agent invocation worker", () => {
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
-        publishExternally: false,
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 
@@ -139,15 +143,249 @@ describe("agent invocation worker", () => {
         errorMessage: expect.stringContaining("lost its worker"),
         status: "failed",
       });
+      // A failed child takes new work from a parent message.
       await expect(
-        createAgentInvocation({
+        createAgentInvocationForMessage({
           ...INVOCATION_INPUT,
-          agentName: "researcher",
+          childConversationId: created.childConversationId,
           idempotencyKey: "running-no-boundary-2",
+          parentToolCallId: "call-running-no-boundary-2",
         }),
       ).resolves.toMatchObject({
-        childConversationId: created.childConversationId,
-        status: "pending",
+        invocation: {
+          childConversationId: created.childConversationId,
+          status: "pending",
+        },
+        queued: false,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("stops open child agents when a stop comes after the child saved its result", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "late-stop",
+      });
+      const helper = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "late-stop-helper",
+        parentConversationId: created.childConversationId,
+      });
+      const stopRequest = new AbortController();
+      const worker = createAgentInvocationWorker({
+        run: async () => {
+          // The stop request arrives after the run finished.
+          stopRequest.abort(new Error("Conversation work stopped"));
+          return {
+            status: "completed" as const,
+            result: {
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+              text: "Partial result",
+            },
+          };
+        },
+      });
+      const context = {
+        attempt: {
+          ack: vi.fn(async () => {}),
+          conversationId: created.childConversationId,
+          drain: vi.fn(),
+          isFinalAttempt: false,
+          messages: [buildAgentInvocationInboundMessage(created)],
+        },
+        checkIn: vi.fn(),
+        conversationId: created.childConversationId,
+        shouldYield: () => false,
+        stopSignal: () => stopRequest.signal,
+      } satisfies ConversationWorkerContext;
+
+      await expect(worker(context, created.invocationId)).resolves.toEqual({
+        status: "completed",
+      });
+
+      // The open helper would have reported for the child. The stop ends the
+      // helper, so the child's own result reports now.
+      await expect(
+        getAgentInvocation(created.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "pending",
+        result: "Partial result",
+        status: "completed",
+      });
+      await expect(
+        getAgentInvocation(helper.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "skipped",
+        status: "stopped",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("lets a running child read a parent message as a steering message", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        agentName: "researcher",
+        idempotencyKey: "steer-task",
+      });
+      await markAgentInvocationRunning(created.invocationId);
+      const { invocation: message, queued } =
+        await createAgentInvocationForMessage({
+          ...INVOCATION_INPUT,
+          childConversationId: created.childConversationId,
+          idempotencyKey: "steer-message",
+          input: "Also check the retry path.",
+          parentToolCallId: "call-steer-message",
+        });
+      expect(queued).toBe(true);
+      // An earlier drain saved this message in the Turn, then failed before
+      // it marked the agent invocation read.
+      const { invocation: savedMessage } =
+        await createAgentInvocationForMessage({
+          ...INVOCATION_INPUT,
+          childConversationId: created.childConversationId,
+          idempotencyKey: "steer-saved-message",
+          // The Turn saves escaped text, so use characters that change.
+          input: `Skip the "cache" path & <retry>.`,
+          parentToolCallId: "call-steer-saved-message",
+        });
+      await upsertTurnRecord({
+        actor: INVOCATION_INPUT.actor,
+        conversationId: created.childConversationId,
+        destination: DESTINATION,
+        piMessages: [
+          buildSteeringPiMessage({
+            provenance: agentInstructionProvenance,
+            text: agentInvocationInputText(savedMessage),
+            timestampMs: savedMessage.createdAtMs,
+          }),
+        ],
+        turnId: getAgentInvocationTurnId(created.invocationId),
+        sliceId: 1,
+        source: { kind: "agent_invocation" },
+        state: "paused",
+        surface: "internal",
+      });
+
+      // The runner drains steering messages, as the agent does before its
+      // next model call.
+      const steered: AgentSteeringMessage[][] = [];
+      const worker = createAgentInvocationWorker({
+        run: async (run) => {
+          await run.durability?.drainSteeringMessages?.(async (messages) => {
+            steered.push(messages);
+          });
+          return {
+            status: "completed" as const,
+            result: {
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+              text: "Checked both paths.",
+            },
+          };
+        },
+      });
+      const acknowledged: Array<readonly string[] | void> = [];
+      const ownMessage = buildAgentInvocationInboundMessage(created);
+      const context = {
+        attempt: {
+          ack: vi.fn(async () => {}),
+          conversationId: created.childConversationId,
+          drain: vi.fn(async (handle: Parameters<InboxAttempt["drain"]>[0]) => {
+            acknowledged.push(
+              await handle([
+                ownMessage,
+                buildAgentInvocationInboundMessage(message),
+                buildAgentInvocationInboundMessage(savedMessage),
+              ]),
+            );
+            return [];
+          }),
+          isFinalAttempt: false,
+          messages: [ownMessage],
+        },
+        checkIn: vi.fn(),
+        conversationId: created.childConversationId,
+        shouldYield: () => false,
+      } satisfies ConversationWorkerContext;
+
+      await expect(worker(context, created.invocationId)).resolves.toEqual({
+        status: "completed",
+      });
+
+      expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
+        deferred: true,
+      });
+      // The parent's text is labeled as agent-written and has no Actor.
+      expect(steered).toEqual([
+        [
+          expect.objectContaining({
+            provenance: agentInstructionProvenance,
+            text: expect.stringMatching(
+              /^\[parent agent task\][\s\S]*Also check the retry path\.$/,
+            ),
+          }),
+        ],
+      ]);
+      // The Turn reads the saved message only once. Both parent messages are
+      // acknowledged. The running agent invocation acknowledges its own input
+      // when the Turn commits it.
+      expect(acknowledged).toEqual([
+        [
+          getAgentInvocationMessageId(message.invocationId),
+          getAgentInvocationMessageId(savedMessage.invocationId),
+        ],
+      ]);
+      for (const steeredMessage of [message, savedMessage]) {
+        await expect(
+          getAgentInvocation(steeredMessage.invocationId),
+        ).resolves.toMatchObject({
+          parentMailboxStatus: "steered",
+          status: "completed",
+        });
+      }
+      // The running agent invocation reports for all of them.
+      await expect(
+        getAgentInvocation(created.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "pending",
+        result: "Checked both paths.",
+        status: "completed",
+      });
+      await expect(
+        createListAgentsTool({ conversationId: PARENT_CONVERSATION_ID })
+          .execute!({}, {}),
+      ).resolves.toMatchObject({
+        agents: [
+          {
+            last_result: "completed",
+            name: "researcher",
+            status: "idle",
+            task: `Skip the "cache" path & <retry>.`,
+          },
+        ],
       });
     } finally {
       await fixture.close();
@@ -177,7 +415,6 @@ describe("agent invocation worker", () => {
           },
           checkIn: vi.fn(),
           conversationId: created.childConversationId,
-          publishExternally: false,
           shouldYield: () => false,
         }) satisfies ConversationWorkerContext;
       const firstAck = vi.fn(async () => {});
@@ -230,7 +467,6 @@ describe("agent invocation worker", () => {
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
         destination: DESTINATION,
-        publishExternally: false,
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 
@@ -247,15 +483,20 @@ describe("agent invocation worker", () => {
         ),
         status: "failed",
       });
+      // A failed child takes new work from a parent message.
       await expect(
-        createAgentInvocation({
+        createAgentInvocationForMessage({
           ...INVOCATION_INPUT,
-          agentName: "researcher",
+          childConversationId: created.childConversationId,
           idempotencyKey: "invalid-child-2",
+          parentToolCallId: "call-invalid-child-2",
         }),
       ).resolves.toMatchObject({
-        childConversationId: created.childConversationId,
-        status: "pending",
+        invocation: {
+          childConversationId: created.childConversationId,
+          status: "pending",
+        },
+        queued: false,
       });
     } finally {
       await fixture.close();

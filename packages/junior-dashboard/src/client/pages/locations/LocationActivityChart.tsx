@@ -1,3 +1,7 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import {
@@ -5,21 +9,24 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
 export function LocationActivityChart(props: {
+  bucketUnit?: TimeRangeBucketUnit;
+
   days: DailyConversationActivity[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
+
   const layout = createActivityChartLayout(240);
   const values = props.days.map((day) => day.conversations);
   const maximum = Math.max(1, ...values);
@@ -36,7 +43,13 @@ export function LocationActivityChart(props: {
           <ChartLegend
             ariaLabel="Conversation activity period"
             inline
-            items={[{ color: "#22d3ee", key: "period", label: "90 days" }]}
+            items={[
+              {
+                color: "var(--color-cyan-400)",
+                key: "period",
+                label: "90 days",
+              },
+            ]}
           />
         }
       />
@@ -48,8 +61,12 @@ export function LocationActivityChart(props: {
         >
           <defs>
             <linearGradient id="location-bars" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#22d3ee" />
-              <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.65" />
+              <stop offset="0%" stopColor="var(--color-cyan-400)" />
+              <stop
+                offset="100%"
+                stopColor="var(--color-amber-500)"
+                stopOpacity="0.65"
+              />
             </linearGradient>
           </defs>
           <ActivityChartGrid layout={layout} maximum={maximum} />
@@ -58,7 +75,8 @@ export function LocationActivityChart(props: {
             const x = layout.left + index * step + (step - barWidth) / 2;
             const y = layout.top + layout.plotHeight - barHeight;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -68,11 +86,10 @@ export function LocationActivityChart(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
               >
                 <rect
-                  aria-label={`${formatActivityDate(day.date)}: ${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
                   fill="url(#location-bars)"
                   height={Math.max(day.conversations ? 2 : 0, barHeight)}
                   opacity={day.conversations ? 0.9 : 0.18}
@@ -82,15 +99,16 @@ export function LocationActivityChart(props: {
                   x={x}
                   y={y}
                 />
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke="#22d3ee"
+            stroke="var(--color-cyan-400)"
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

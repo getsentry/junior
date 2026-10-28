@@ -1,3 +1,5 @@
+import type { PluginContext } from "./context";
+import type { ObjectAnnotation } from "./object-annotations";
 import type {
   ConversationSidebarHookContext,
   ConversationSidebarResult,
@@ -29,10 +31,12 @@ import type {
 import type {
   AfterMcpToolHookContext,
   BeforeToolExecuteHookContext,
+  PluginEgress,
   PluginToolDefinition,
   SandboxPrepareHookContext,
   ToolRegistrationHookContext,
   WorkspacePrepareHookContext,
+  WorkspaceFinalize,
 } from "./tools";
 import type {
   PromptMessage,
@@ -46,7 +50,33 @@ export interface FormatMarkdownHookContext {
   text: string;
 }
 
+/** First human message of a new Conversation, given before title generation. */
+export interface ConversationTitleContextHookContext extends PluginContext {
+  /**
+   * String config values of this plugin for the Conversation's Location, by
+   * short key. For example, `repo` for the `github.repo` config key.
+   */
+  config: Record<string, string>;
+  /**
+   * Host-owned provider egress for title reads. It uses Junior's system
+   * identity, so it never uses a user's credentials or starts authorization.
+   */
+  egress: PluginEgress;
+  /** Ends the hook when the host stops waiting for title context. */
+  signal: AbortSignal;
+  text: string;
+}
+
 export interface PluginHooks {
+  /**
+   * Return short facts that help name a new Conversation, such as
+   * `owner/repo#123: Issue title` for a linked issue. Junior shows these facts
+   * only to the title model. Return nothing when the message has no known
+   * objects.
+   */
+  conversationTitleContext?(
+    ctx: ConversationTitleContextHookContext,
+  ): Promise<string[] | undefined> | string[] | undefined;
   conversationSidebar?(
     ctx: ConversationSidebarHookContext,
   ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
@@ -66,7 +96,18 @@ export interface PluginHooks {
    * Prefer this for junior-owned side effects such as conversation annotations.
    * Do not use it to invent a parallel tool contract for the provider tool.
    */
-  afterMcpTool?(ctx: AfterMcpToolHookContext): Promise<void> | void;
+  afterMcpTool?(
+    ctx: AfterMcpToolHookContext,
+  ):
+    | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
+    | { objectAnnotations: ObjectAnnotation[] }
+    | void;
+  /**
+   * Select the grant for one sandbox egress request.
+   *
+   * When the manifest also declares generic `credentials` or `apiHeaders`,
+   * return undefined to use those credentials for this request.
+   */
   grantForEgress?(
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;
@@ -106,7 +147,9 @@ export interface PluginHooks {
     | undefined;
   routes?(ctx: RouteRegistrationHookContext): PluginRoute[];
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
-  workspacePrepare?(ctx: WorkspacePrepareHookContext): Promise<void> | void;
+  workspacePrepare?(
+    ctx: WorkspacePrepareHookContext,
+  ): Promise<WorkspaceFinalize | void> | WorkspaceFinalize | void;
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;

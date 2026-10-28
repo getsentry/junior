@@ -1,3 +1,4 @@
+import { automationReport, mockAutomationApis } from "./automation-fixture";
 import {
   createServer,
   type IncomingMessage,
@@ -6,11 +7,27 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import type { Page } from "@playwright/test";
+import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 
 export type DashboardE2eServer = {
   baseURL: string;
   close(): Promise<void>;
 };
+
+/**
+ * Reset mock reporting state mutated by prior tests.
+ * The `dashboard` fixture shares one server process per worker, so mutations
+ * from archive/restore or profile-update tests would otherwise leak into
+ * unrelated specs and produce order-dependent screenshots. Import the built
+ * dashboard (`dist/app.js`), not `../src/app`: that is the module instance
+ * the running server actually reads, and importing it also defers to after
+ * `startDashboardE2eServer` sets `DATABASE_URL`.
+ */
+export async function resetDashboardMockState(): Promise<void> {
+  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
+  const { resetMockDashboardState } = await import("../dist/app.js");
+  resetMockDashboardState();
+}
 
 function requestFromNode(req: IncomingMessage, baseURL: string): Request {
   const url = new URL(req.url ?? "/", baseURL);
@@ -47,12 +64,12 @@ async function writeResponse(res: ServerResponse, response: Response) {
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
 export async function startDashboardE2eServer(
-  options: { componentGallery?: boolean } = {},
+  options: { basePath?: string; componentGallery?: boolean } = {},
 ): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
-    allowedEmails: ["dev@example.com"],
+    allowedDomains: ["example.com"],
     auth: {
       async getSession() {
         return {
@@ -70,6 +87,7 @@ export async function startDashboardE2eServer(
         return Response.redirect("https://accounts.google.com", 302);
       },
     },
+    basePath: options.basePath,
     componentGallery: options.componentGallery === true,
     mockConversations: true,
   });
@@ -102,8 +120,17 @@ export async function startDashboardE2eServer(
   };
 }
 
-/** Stubs APIs shared by dashboard page specs. */
-export async function mockDashboardApis(page: Page) {
+/** Stub shared APIs and pin browser current time for dashboard page specs. */
+export async function mockDashboardApis(
+  page: Page,
+  options: { controlTimers?: boolean } = {},
+) {
+  // Pin Date for relative labels. Keep real timers unless a test needs fast-forward.
+  if (options.controlTimers) {
+    await page.clock.install({ time: NOW_MS });
+  } else {
+    await page.clock.setFixedTime(NOW_MS);
+  }
   await page.route("**/api/user-pages", async (route) => {
     await route.fulfill({
       json: [
@@ -118,6 +145,31 @@ export async function mockDashboardApis(page: Page) {
       ],
     });
   });
+  await page.route(
+    "**/api/plugins/memory/conversations/*/memories",
+    async (route) => {
+      await route.fulfill({
+        json: {
+          memories: [
+            {
+              capturedAt: "2026-08-07T07:01:00.000Z",
+              content: "Use pnpm for repository commands.",
+              id: "captured-memory-1",
+              kind: "preference",
+              visibility: "private",
+            },
+            {
+              capturedAt: "2026-08-07T07:01:00.000Z",
+              content: "Dashboard transcript events should remain expandable.",
+              id: "captured-memory-2",
+              kind: "knowledge",
+              visibility: "public",
+            },
+          ],
+        },
+      });
+    },
+  );
   await page.route("**/api/plugins/memory/memories/*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -246,184 +298,23 @@ export async function mockDashboardApis(page: Page) {
       },
     });
   });
-  await page.route("**/api/tasks", async (route) => {
-    await route.fulfill({
-      json: {
-        executionDays: [
-          { date: "2026-05-07", event: 1, scheduled: 0 },
-          { date: "2026-05-08", event: 0, scheduled: 0 },
-          { date: "2026-05-09", event: 0, scheduled: 2 },
-          { date: "2026-05-10", event: 0, scheduled: 0 },
-          { date: "2026-05-11", event: 1, scheduled: 4 },
-          { date: "2026-05-12", event: 0, scheduled: 0 },
-          { date: "2026-05-13", event: 0, scheduled: 1 },
-          { date: "2026-05-14", event: 0, scheduled: 0 },
-          { date: "2026-05-15", event: 1, scheduled: 3 },
-          { date: "2026-05-16", event: 0, scheduled: 0 },
-          { date: "2026-05-17", event: 0, scheduled: 0 },
-          { date: "2026-05-18", event: 0, scheduled: 0 },
-          { date: "2026-05-19", event: 1, scheduled: 2 },
-          { date: "2026-05-20", event: 0, scheduled: 0 },
-          { date: "2026-05-21", event: 0, scheduled: 4 },
-          { date: "2026-05-22", event: 0, scheduled: 0 },
-          { date: "2026-05-23", event: 1, scheduled: 1 },
-          { date: "2026-05-24", event: 0, scheduled: 0 },
-          { date: "2026-05-25", event: 0, scheduled: 3 },
-          { date: "2026-05-26", event: 0, scheduled: 0 },
-          { date: "2026-05-27", event: 1, scheduled: 0 },
-          { date: "2026-05-28", event: 0, scheduled: 0 },
-          { date: "2026-05-29", event: 0, scheduled: 2 },
-          { date: "2026-05-30", event: 0, scheduled: 0 },
-          { date: "2026-05-31", event: 1, scheduled: 4 },
-          { date: "2026-06-01", event: 0, scheduled: 0 },
-          { date: "2026-06-02", event: 0, scheduled: 1 },
-          { date: "2026-06-03", event: 0, scheduled: 0 },
-          { date: "2026-06-04", event: 1, scheduled: 3 },
-          { date: "2026-06-05", event: 0, scheduled: 0 },
-          { date: "2026-06-06", event: 0, scheduled: 0 },
-          { date: "2026-06-07", event: 0, scheduled: 0 },
-          { date: "2026-06-08", event: 1, scheduled: 2 },
-          { date: "2026-06-09", event: 0, scheduled: 0 },
-          { date: "2026-06-10", event: 0, scheduled: 4 },
-          { date: "2026-06-11", event: 0, scheduled: 0 },
-          { date: "2026-06-12", event: 1, scheduled: 1 },
-          { date: "2026-06-13", event: 0, scheduled: 0 },
-          { date: "2026-06-14", event: 0, scheduled: 3 },
-          { date: "2026-06-15", event: 0, scheduled: 0 },
-          { date: "2026-06-16", event: 1, scheduled: 0 },
-          { date: "2026-06-17", event: 0, scheduled: 0 },
-          { date: "2026-06-18", event: 0, scheduled: 2 },
-          { date: "2026-06-19", event: 0, scheduled: 0 },
-          { date: "2026-06-20", event: 1, scheduled: 4 },
-          { date: "2026-06-21", event: 0, scheduled: 0 },
-          { date: "2026-06-22", event: 0, scheduled: 1 },
-          { date: "2026-06-23", event: 0, scheduled: 0 },
-          { date: "2026-06-24", event: 1, scheduled: 3 },
-          { date: "2026-06-25", event: 0, scheduled: 0 },
-          { date: "2026-06-26", event: 0, scheduled: 0 },
-          { date: "2026-06-27", event: 0, scheduled: 0 },
-          { date: "2026-06-28", event: 1, scheduled: 2 },
-          { date: "2026-06-29", event: 0, scheduled: 0 },
-          { date: "2026-06-30", event: 0, scheduled: 4 },
-          { date: "2026-07-01", event: 0, scheduled: 0 },
-          { date: "2026-07-02", event: 1, scheduled: 1 },
-          { date: "2026-07-03", event: 0, scheduled: 0 },
-          { date: "2026-07-04", event: 0, scheduled: 3 },
-          { date: "2026-07-05", event: 0, scheduled: 0 },
-          { date: "2026-07-06", event: 1, scheduled: 0 },
-          { date: "2026-07-07", event: 0, scheduled: 0 },
-          { date: "2026-07-08", event: 0, scheduled: 2 },
-          { date: "2026-07-09", event: 0, scheduled: 0 },
-          { date: "2026-07-10", event: 1, scheduled: 4 },
-          { date: "2026-07-11", event: 0, scheduled: 0 },
-          { date: "2026-07-12", event: 0, scheduled: 1 },
-          { date: "2026-07-13", event: 0, scheduled: 0 },
-          { date: "2026-07-14", event: 1, scheduled: 3 },
-          { date: "2026-07-15", event: 0, scheduled: 0 },
-          { date: "2026-07-16", event: 0, scheduled: 0 },
-          { date: "2026-07-17", event: 0, scheduled: 0 },
-          { date: "2026-07-18", event: 1, scheduled: 2 },
-          { date: "2026-07-19", event: 0, scheduled: 0 },
-          { date: "2026-07-20", event: 0, scheduled: 4 },
-          { date: "2026-07-21", event: 0, scheduled: 0 },
-          { date: "2026-07-22", event: 1, scheduled: 1 },
-          { date: "2026-07-23", event: 0, scheduled: 0 },
-          { date: "2026-07-24", event: 0, scheduled: 3 },
-          { date: "2026-07-25", event: 0, scheduled: 0 },
-          { date: "2026-07-26", event: 1, scheduled: 0 },
-          { date: "2026-07-27", event: 0, scheduled: 0 },
-          { date: "2026-07-28", event: 0, scheduled: 2 },
-          { date: "2026-07-29", event: 0, scheduled: 0 },
-          { date: "2026-07-30", event: 1, scheduled: 4 },
-          { date: "2026-07-31", event: 0, scheduled: 0 },
-          { date: "2026-08-01", event: 0, scheduled: 1 },
-          { date: "2026-08-02", event: 0, scheduled: 0 },
-          { date: "2026-08-03", event: 1, scheduled: 3 },
-          { date: "2026-08-04", event: 0, scheduled: 0 },
-        ],
-        tasks: [
-          {
-            createdAt: "2026-07-28T16:00:00.000Z",
-            createdBy: "Morgan",
-            createdByEmail: "dev@example.com",
-            destination: {
-              channelId: "C123",
-              label: "#project-updates",
-              teamId: "T123",
-              visibility: "public",
-            },
-            id: "scheduled-1",
-            instruction: "Send the weekly project summary",
-            kind: "scheduled",
-            lastConversationId: "scheduler:daily-ops-digest",
-            lastRunAt: "2026-08-06T16:00:00.000Z",
-            nextRunAt: "2026-08-10T16:00:00.000Z",
-            ownedByViewer: true,
-            runsLast7Days: 3,
-            schedule: "Every Monday at 9:00 AM",
-            status: "active",
-            title: "Weekly project summary",
-            totalRuns: 48,
-          },
-          {
-            createdAt: "2026-07-29T16:00:00.000Z",
-            createdBy: "Morgan",
-            createdByEmail: "dev@example.com",
-            destination: {
-              channelId: "C123",
-              label: "#project-updates",
-              teamId: "T123",
-              visibility: "public",
-            },
-            events: ["issue.closed"],
-            id: "event-1",
-            instruction: "Summarize the closed issue",
-            kind: "event",
-            ownedByViewer: true,
-            resource: "Issue · ACME-42",
-            runsLast7Days: 1,
-            source: "github",
-            title: "Closed issue summary",
-            totalRuns: 7,
-            triggerAvailable: true,
-          },
-          {
-            createdAt: "2026-07-30T16:00:00.000Z",
-            createdBy: "Avery Chen",
-            createdByEmail: "avery@sentry.io",
-            destination: {
-              channelId: "C456",
-              label: "#incident-response",
-              teamId: "T123",
-              visibility: "public",
-            },
-            events: ["incident.updated"],
-            id: "event-2",
-            instruction: "Notify responders when the incident changes",
-            kind: "event",
-            ownedByViewer: false,
-            resource: "Incident · INC-17",
-            runsLast7Days: 0,
-            source: "pagerduty",
-            title: "Incident change alerts",
-            totalRuns: 0,
-            triggerAvailable: false,
-          },
-        ],
-        truncated: false,
-      },
-    });
-  });
-  await page.route("**/api/tasks/*/*/executions", async (route) => {
+  await mockAutomationApis(page);
+  await page.route("**/api/automations/*/executions", async (route) => {
     const url = new URL(route.request().url());
-    const parts = url.pathname.split("/").filter(Boolean);
-    const kind = parts.at(-3);
-    const id = parts.at(-2);
-    if ((kind !== "scheduled" && kind !== "event") || !id) {
-      await route.fulfill({ status: 404, json: { error: "Task not found." } });
+    const id = decodeURIComponent(
+      url.pathname.split("/").filter(Boolean).at(-2) ?? "",
+    );
+    const kind = automationReport.automations.find(
+      (automation) => automation.id === id,
+    )?.kind;
+    if (!kind) {
+      await route.fulfill({
+        status: 404,
+        json: { error: "Automation not found." },
+      });
       return;
     }
-    const task = {
+    const automation = {
       createdAt: "2026-07-28T16:00:00.000Z",
       createdBy: "Morgan",
       createdByEmail: "dev@example.com",
@@ -439,8 +330,25 @@ export async function mockDashboardApis(page: Page) {
           ? "Send the weekly project summary"
           : "Summarize the closed issue",
       kind,
+      credentialMode: "creator",
       ownedByViewer: true,
-      runsLast7Days: kind === "scheduled" ? 3 : 1,
+      runs:
+        kind === "scheduled"
+          ? { 1: 1, 7: 3, 30: 12, 90: 48 }
+          : { 1: 0, 7: 1, 30: 4, 90: 7 },
+      outcomes:
+        kind === "scheduled"
+          ? [
+              {
+                action: "send_message" as const,
+                destination: {
+                  channelId: "C123",
+                  platform: "slack" as const,
+                  teamId: "T123",
+                },
+              },
+            ]
+          : [],
       title:
         kind === "scheduled"
           ? "Weekly project summary"
@@ -450,6 +358,7 @@ export async function mockDashboardApis(page: Page) {
         ? {
             nextRunAt: "2026-08-10T16:00:00.000Z",
             schedule: "Every Monday at 9:00 AM",
+            timezone: "America/Los_Angeles",
             status: "active" as const,
           }
         : {
@@ -457,11 +366,11 @@ export async function mockDashboardApis(page: Page) {
             resource: "Issue · ACME-42",
             source: "github",
             triggerAvailable: true,
+            status: "active",
           }),
     };
-    const nowMs = Date.parse("2026-08-07T12:00:00.000Z");
     const executionDays = Array.from({ length: 90 }, (_, index) => {
-      const date = new Date(nowMs - (89 - index) * 86_400_000)
+      const date = new Date(NOW_MS - (89 - index) * 86_400_000)
         .toISOString()
         .slice(0, 10);
       return {
@@ -477,17 +386,23 @@ export async function mockDashboardApis(page: Page) {
         executions: [
           {
             conversationId: "scheduler:daily-ops-digest",
+            costUsd: 0.42,
+            durationMs: 42_000,
             executedAt: "2026-08-06T16:00:00.000Z",
             executionId: `${id}-run-1`,
             status: "completed",
             title: "Weekly project summary",
+            totalTokens: 1_200,
           },
           {
             conversationId: "slack:CQA123:1770003600.000200",
+            costUsd: 0.18,
+            durationMs: 18_000,
             executedAt: "2026-08-05T16:00:00.000Z",
             executionId: `${id}-run-2`,
             status: "failed",
             title: "Ship notes for the release train",
+            totalTokens: 480,
           },
           {
             executedAt: "2026-08-04T16:00:00.000Z",
@@ -495,7 +410,7 @@ export async function mockDashboardApis(page: Page) {
             status: "blocked",
           },
         ],
-        task,
+        automation,
         truncated: false,
       },
     });
@@ -541,7 +456,7 @@ export async function mockDashboardApis(page: Page) {
     });
   });
   await page.route("**/api/stats", async (route) => {
-    const end = new Date();
+    const end = new Date(NOW_MS);
     end.setUTCHours(0, 0, 0, 0);
     const start = new Date(end);
     start.setUTCDate(end.getUTCDate() - 89);
@@ -562,7 +477,7 @@ export async function mockDashboardApis(page: Page) {
     }).filter((stat) => stat.count > 0);
     await route.fulfill({
       json: {
-        generatedAt: end.toISOString(),
+        generatedAt: NOW,
         stats,
         windowEnd: end.toISOString().slice(0, 10),
         windowStart: start.toISOString().slice(0, 10),
@@ -586,6 +501,7 @@ export async function mockDashboardApis(page: Page) {
         },
       ],
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: {
         buildDurationMs: 45_000,
         generatedAt: "2026-08-15T05:40:21.000Z",
@@ -606,7 +522,28 @@ export async function mockDashboardApis(page: Page) {
           generatedAt: "2026-08-15T05:30:21.000Z",
           id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
         },
+        defaultVcpus: 4,
         workspaces: [{ ...workspace, snapshot: null }],
+      },
+    });
+  });
+  await page.route("**/api/personal-tokens**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        tokens: [
+          {
+            createdAt: "2026-08-01T00:00:00.000Z",
+            expiresAt: "2026-10-30T00:00:00.000Z",
+            id: "00000000-0000-4000-8000-000000000001",
+            lastUsedAt: null,
+            name: "Local agent",
+            tokenSuffix: "abcd",
+          },
+        ],
       },
     });
   });
@@ -638,9 +575,19 @@ export async function mockDashboardApis(page: Page) {
         date: date.toISOString().slice(0, 10),
       };
     });
+    const activityHours = Array.from({ length: 7 * 24 }, (_, index) => {
+      const date = new Date("2026-06-12T00:00:00.000Z");
+      date.setUTCHours(date.getUTCHours() + index);
+      return {
+        activePeople: (index % 3) + 1,
+        conversations: (index % 5) + 1,
+        date: date.toISOString().slice(0, 13),
+      };
+    });
     await route.fulfill({
       json: {
         activityDays,
+        activityHours,
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
@@ -654,6 +601,32 @@ export async function mockDashboardApis(page: Page) {
             actor: {
               email: "avery@example.com",
               fullName: "Avery Example",
+            },
+            windows: {
+              1: {
+                conversations: 4,
+                costUsd: 1.25,
+                durationMs: 8_000,
+                priorCostUsd: 0.4,
+              },
+              7: {
+                conversations: 28,
+                costUsd: 8.5,
+                durationMs: 24_000,
+                priorCostUsd: 3.1,
+              },
+              30: {
+                conversations: 90,
+                costUsd: 22.4,
+                durationMs: 40_000,
+                priorCostUsd: 18.2,
+              },
+              90: {
+                conversations: 180,
+                costUsd: 48.75,
+                durationMs: 60_000,
+                priorCostUsd: 12.1,
+              },
             },
           },
         ],

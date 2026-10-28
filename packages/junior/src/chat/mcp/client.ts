@@ -16,6 +16,7 @@ import {
   type McpProviderErrorPhase,
   toMcpProviderError,
 } from "./errors";
+import { resolvePluginHeaderEnvRefs } from "@/chat/plugins/auth/api-headers-broker";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -88,10 +89,12 @@ export class PluginMcpClient {
   private listedTools?: ListedTool[];
   private readonly resourceHost?: string;
 
-  constructor(
-    private readonly plugin: PluginDefinition,
-    private readonly options: PluginMcpClientOptions = {},
-  ) {
+  private readonly plugin: PluginDefinition;
+  private readonly options: PluginMcpClientOptions;
+
+  constructor(plugin: PluginDefinition, options: PluginMcpClientOptions = {}) {
+    this.plugin = plugin;
+    this.options = options;
     const url = plugin.manifest.mcp?.url;
     this.resourceHost = url ? new URL(url).hostname : undefined;
   }
@@ -133,6 +136,7 @@ export class PluginMcpClient {
   async callTool(
     name: string,
     args: Record<string, unknown> | undefined,
+    signal?: AbortSignal,
   ): Promise<ToolCallResult> {
     return await this.withSessionRecovery(async () => {
       const client = await this.getClient();
@@ -153,10 +157,14 @@ export class PluginMcpClient {
       }
       const result = await this.wrapAuth(
         () =>
-          client.callTool({
-            name,
-            arguments: args ?? {},
-          }),
+          client.callTool(
+            {
+              name,
+              arguments: args ?? {},
+            },
+            undefined,
+            signal ? { signal } : undefined,
+          ),
         "call_tool",
       );
       await this.syncTransportSessionId();
@@ -212,15 +220,18 @@ export class PluginMcpClient {
       );
     }
 
-    const requestInit: RequestInit = {};
-    if (mcp.headers && Object.keys(mcp.headers).length > 0) {
-      requestInit.headers = new Headers(mcp.headers);
-    }
+    const headers = mcp.headers
+      ? resolvePluginHeaderEnvRefs(
+          this.plugin.manifest.name,
+          mcp.headers,
+          "MCP header",
+        )
+      : undefined;
 
     const sessionId = await this.getStoredTransportSessionId();
     this.lastAttemptedTransportSessionId = sessionId;
     const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
-      ...(Object.keys(requestInit).length > 0 ? { requestInit } : undefined),
+      ...(headers ? { requestInit: { headers } } : undefined),
       fetch: fetchWithBoundedOAuthErrorBodies(this.options.fetch, (status) => {
         const store = this.providerStatusStore.getStore();
         if (store) {

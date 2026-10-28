@@ -338,7 +338,7 @@ function explicitSearchError(error: SlackActionError): string | undefined {
 }
 
 function normalizeContentTypes(
-  contentTypes: Array<(typeof CONTENT_TYPES)[number]> | undefined,
+  contentTypes: Array<(typeof CONTENT_TYPES)[number]> | null | undefined,
 ): Array<(typeof CONTENT_TYPES)[number]> {
   const selected = contentTypes?.length
     ? contentTypes
@@ -368,27 +368,41 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
         .array(z.enum(CONTENT_TYPES))
         .min(1)
         .max(4)
-        .describe("Content types to include. Defaults to messages.")
+        .nullable()
+        .describe("Content types to include. Omit or use null for messages.")
         .optional(),
-      after: optionalUnixTimestampParam("Unix timestamp lower bound."),
-      before: optionalUnixTimestampParam("Unix timestamp upper bound."),
+      after: optionalUnixTimestampParam(
+        "Unix timestamp lower bound.",
+      ).nullable(),
+      before: optionalUnixTimestampParam(
+        "Unix timestamp upper bound.",
+      ).nullable(),
       cursor: z
         .string()
         .min(1)
-        .describe("Cursor for the next result page.")
+        .nullable()
+        .describe(
+          "Cursor for the next result page. Omit or use null for the first page.",
+        )
         .optional(),
       limit: z.coerce
         .number()
         .int()
         .min(1)
         .max(20)
+        .nullable()
         .describe("Maximum results to return; Slack allows at most 20.")
         .optional(),
       sort: z
         .enum(["score", "timestamp"])
+        .nullable()
         .describe("Rank by relevance or timestamp.")
         .optional(),
-      sort_dir: z.enum(["asc", "desc"]).describe("Sort direction.").optional(),
+      sort_dir: z
+        .enum(["asc", "desc"])
+        .nullable()
+        .describe("Sort direction.")
+        .optional(),
     }),
     outputSchema: publicSearchOutputSchema,
     execute: async ({

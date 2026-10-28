@@ -6,7 +6,8 @@
   "exports": {
     "./http": "./src/http/index.ts",
     "./pglite": "./src/pglite.ts",
-    "./postgres": "./src/postgres/index.ts"
+    "./postgres": "./src/postgres/index.ts",
+    "./structured-output": "./src/structured-output.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -20,6 +21,6 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }

@@ -1,10 +1,11 @@
 import type { FileUpload } from "chat";
+import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/pi/client", () => ({
   completeText: vi.fn(),
-  getGatewayApiKey: vi.fn(async () =>
-    process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
+  getGatewayApiKey: vi.fn(
+    async () => process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
   ),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
   MISSING_GATEWAY_CREDENTIALS_ERROR:
@@ -16,15 +17,27 @@ vi.mock("@/chat/prompt", () => ({
 }));
 
 import { completeText } from "@/chat/pi/client";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 
 const mockCompleteText = vi.mocked(completeText);
+const PNG_BYTES = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
+
+function sandbox(files: Record<string, Buffer> = {}): SandboxWorkspace {
+  return {
+    readFileToBuffer: vi.fn(async ({ path }) => files[path] ?? null),
+    runCommand: vi.fn(),
+    writeFiles: vi.fn(),
+  };
+}
+
 const defaultImageOptions = {
   modelId: "google/gemini-3-pro-image",
+  sandbox: sandbox(),
 };
 
 function getRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
-  const request = fetchMock.mock.calls[0];
+  const request = fetchMock.mock.calls[0]!;
   expect(request).toBeDefined();
   expect(request[1]).toBeDefined();
   return JSON.parse((request[1] as RequestInit).body as string);
@@ -98,7 +111,7 @@ describe("createImageGenerateTool", () => {
           return writeGeneratedArtifacts(files);
         },
       } as any,
-      { modelId: "openai/dall-e-3" },
+      { modelId: "openai/dall-e-3", sandbox: sandbox() },
     );
     if (typeof tool.execute !== "function") {
       throw new Error("imageGenerate execute function missing");
@@ -107,7 +120,7 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute({ prompt: "test prompt" }, {} as any);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const request = fetchMock.mock.calls[0];
+    const request = fetchMock.mock.calls[0]!;
     expect(request).toBeDefined();
     expect(request[0]).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
     expect(getRequestBody(fetchMock)).toMatchObject({
@@ -271,5 +284,139 @@ describe("createImageGenerateTool", () => {
       prompt: "draw a dog",
       enrichedPrompt: "draw a dog",
     });
+  });
+
+  it("sends input images with the unchanged prompt", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts },
+      {
+        ...defaultImageOptions,
+        sandbox: sandbox({ "/vercel/sandbox/photo.png": PNG_BYTES }),
+      },
+    );
+    const result = await tool.execute!(
+      { prompt: "change the sign text", images: ["photo.png"] },
+      {} as any,
+    );
+
+    expect(mockCompleteText).not.toHaveBeenCalled();
+    expect(getRequestBody(fetchMock).messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "change the sign text" },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+            },
+          },
+        ],
+      },
+    ]);
+    expect(result).toMatchObject({
+      enrichedPrompt: "change the sign text",
+      image_count: 1,
+    });
+  });
+
+  it("resizes input images over the request size limit", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+    // Random pixels do not compress, so this PNG is about 9 MB.
+    const largePng = await sharp({
+      create: {
+        width: 3000,
+        height: 1000,
+        channels: 3,
+        background: "#808080",
+        noise: { type: "gaussian", mean: 128, sigma: 60 },
+      },
+    })
+      .png()
+      .toBuffer();
+    expect(largePng.byteLength).toBeGreaterThan(3 * 1024 * 1024);
+
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts },
+      {
+        ...defaultImageOptions,
+        sandbox: sandbox({
+          "/vercel/sandbox/photo.png": largePng,
+          "/vercel/sandbox/logo.png": PNG_BYTES,
+          "/vercel/sandbox/icon.png": PNG_BYTES,
+          "/vercel/sandbox/badge.png": PNG_BYTES,
+        }),
+      },
+    );
+    const result = await tool.execute!(
+      {
+        prompt: "change the sign",
+        images: ["photo.png", "logo.png", "icon.png", "badge.png"],
+      },
+      {} as any,
+    );
+
+    const [, sentPhoto, sentLogo] =
+      getRequestBody(fetchMock).messages[0].content;
+    const photoBytes = Buffer.from(
+      sentPhoto.image_url.url.replace("data:image/jpeg;base64,", ""),
+      "base64",
+    );
+    // The small images leave their unused bytes to the photo, so it keeps
+    // the largest size. An equal share would shrink it further.
+    expect(await sharp(photoBytes).metadata()).toMatchObject({
+      format: "jpeg",
+      width: 2048,
+    });
+    expect(sentLogo.image_url.url).toBe(
+      `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+    );
+    expect(result).toMatchObject({
+      resized_images: [
+        {
+          path: "photo.png",
+          original_bytes: largePng.byteLength,
+          bytes: photoBytes.byteLength,
+        },
+      ],
+      resize_notice: expect.stringContaining("Tell the user"),
+    });
+  });
+
+  it("rejects input images too large to read before calling the gateway", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts },
+      {
+        ...defaultImageOptions,
+        sandbox: sandbox({
+          "/vercel/sandbox/photo.png": Buffer.concat([
+            PNG_BYTES,
+            Buffer.alloc(25 * 1024 * 1024),
+          ]),
+        }),
+      },
+    );
+
+    await expect(
+      tool.execute!(
+        { prompt: "change the sign", images: ["photo.png"] },
+        {} as any,
+      ),
+    ).rejects.toThrow("exceeds 26214400 bytes");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

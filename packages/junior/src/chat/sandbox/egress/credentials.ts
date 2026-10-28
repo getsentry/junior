@@ -94,6 +94,11 @@ function defaultGrantForProvider(input: {
   };
 }
 
+function hasGenericCredentials(provider: string): boolean {
+  const manifest = pluginCatalogRuntime.getDefinition(provider)?.manifest;
+  return Boolean(manifest?.credentials || manifest?.apiHeaders);
+}
+
 function oauthAuthorizationForProvider(
   provider: string,
 ): PluginAuthorization | undefined {
@@ -133,6 +138,8 @@ function assertLeaseTransformsOwnedByProvider(
  *
  * GitHub GraphQL and other plugin-owned APIs may need body-aware grant choices;
  * providers without hooks use a simple read/write default based on HTTP method.
+ * A hook plugin that also declares generic credentials can return no grant to
+ * use that default for one request.
  */
 export async function selectSandboxEgressGrant(input: {
   bodyText?: string;
@@ -146,13 +153,18 @@ export async function selectSandboxEgressGrant(input: {
   }
 
   const pluginGrant = await selectPluginGrant({
-    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
+    ...(input.bodyText !== undefined
+      ? { bodyText: input.bodyText }
+      : undefined),
     ...(input.operation ? { operation: input.operation } : undefined),
     provider: input.provider,
     method: input.method,
     upstreamUrl: input.upstreamUrl,
   });
   if (!pluginGrant) {
+    if (hasGenericCredentials(input.provider)) {
+      return defaultGrantForProvider(input);
+    }
     throw new Error(
       `Plugin "${input.provider}" grantForEgress must return a grant for sandbox egress`,
     );
@@ -176,11 +188,12 @@ export function authorizationForSandboxEgressGrant(
 }
 
 /**
- * Return cached or newly issued credential header transforms for a selected grant.
+ * Return credential header transforms for a selected grant.
  *
- * Leases are cached per actor/context/grant, validated against provider-owned
- * domains, and reused only while both the provider lease and sandbox context are
- * still valid.
+ * Only shared installation grants are remembered on the host. User and other
+ * grants always issue from the live credential source so a saved login change
+ * cannot leave stale auth headers in place. The sandbox context only authorizes
+ * the request.
  */
 export async function sandboxEgressCredentialLease(
   provider: string,
@@ -281,7 +294,7 @@ export async function sandboxEgressCredentialLease(
     selection.source === "broker"
       ? oauthAuthorizationForProvider(provider)
       : lease.authorization;
-  const cachedLease: SandboxEgressCredentialLease = {
+  const issuedLease: SandboxEgressCredentialLease = {
     provider,
     grant,
     ...(lease.account ? { account: lease.account } : undefined),
@@ -289,9 +302,9 @@ export async function sandboxEgressCredentialLease(
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  assertLeaseTransformsOwnedByProvider(provider, cachedLease);
-  await setSandboxEgressCredentialLease(context, cachedLease);
-  return cachedLease;
+  assertLeaseTransformsOwnedByProvider(provider, issuedLease);
+  await setSandboxEgressCredentialLease(context, issuedLease);
+  return issuedLease;
 }
 
 /** Return whether a credential lease can modify requests to the target host. */

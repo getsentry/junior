@@ -33,17 +33,14 @@ function tool(
   };
 }
 
-function subagent(
-  id: string,
-  status: "aborted" | "completed" | "error" | "running" = "completed",
-): RenderedTranscriptEntry {
+function subagent(id: string): RenderedTranscriptEntry {
   return {
     key: `subagent:${id}`,
     kind: "subagent",
     part: {
       childConversationId: `child:${id}`,
       id,
-      status,
+      status: "completed",
       subagentKind: "explore",
       type: "subagent",
     },
@@ -92,12 +89,13 @@ function handoff(): RenderedTranscriptEntry {
   };
 }
 
-function message(): RenderedTranscriptEntry {
+function message(eventType?: string): RenderedTranscriptEntry {
   return {
     key: "message:1",
     kind: "message",
     message: {
       parts: [{ text: "hello", type: "text" }],
+      ...(eventType ? { eventType } : undefined),
       role: "user",
       sourceSeq: 1,
     },
@@ -108,7 +106,7 @@ function failure(): RenderedTranscriptEntry {
   return {
     key: "failure:1",
     kind: "failure",
-    outcome: "error",
+    failureCode: "model_execution_failed",
     timestamp: 1,
   };
 }
@@ -120,16 +118,17 @@ describe("transcript activity group", () => {
     expect(activityGroupOpen(false)).toBe(false);
   });
 
-  it("collapses non-message activity including tool errors, and keeps failures and chat messages open", () => {
+  it("collapses non-message activity including tool errors, and keeps failures, subagents, and chat messages open", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
     expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(true);
-    expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(true);
-    expect(isCollapsibleActivityEntry(subagent("err", "error"))).toBe(true);
-    expect(isCollapsibleActivityEntry(subagent("stop", "aborted"))).toBe(true);
+    expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(false);
     expect(isCollapsibleActivityEntry(reasoning("r1"))).toBe(true);
     expect(isCollapsibleActivityEntry(compaction())).toBe(true);
     expect(isCollapsibleActivityEntry(handoff())).toBe(true);
     expect(isCollapsibleActivityEntry(message())).toBe(false);
+    expect(isCollapsibleActivityEntry(message("pull_request.opened"))).toBe(
+      false,
+    );
     expect(isCollapsibleActivityEntry(failure())).toBe(false);
   });
 
@@ -176,8 +175,12 @@ describe("transcript activity group", () => {
     );
     expect(
       activityGroupSummary([tool("1"), tool("2"), compaction(), handoff()]),
-    ).toBe("2 tool calls · context compacted · model handoff");
+    ).toBe(
+      "2 tool calls · context compacted · model handoff to openai/gpt-5-mini (fast)",
+    );
     expect(activityGroupSummary([compaction()])).toBe("context compacted");
-    expect(activityGroupSummary([handoff()])).toBe("model handoff");
+    expect(activityGroupSummary([handoff()])).toBe(
+      "model handoff to openai/gpt-5-mini (fast)",
+    );
   });
 });

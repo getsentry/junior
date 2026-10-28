@@ -206,17 +206,25 @@ function withoutModelUsage(
 }
 
 /**
- * Reuse an unchanged event array without holding back fresh detail metadata.
- * Reporting events are immutable by sequence, so sequence and timestamp form a
- * cheap poll version. This avoids a deep walk through every event payload.
+ * Reuse unchanged events and annotations without holding back fresh metadata.
+ * Sequence and timestamp cover immutable event facts. Attachment metadata can
+ * arrive after a Slack download, so compare it without walking other payloads.
+ * Annotations can change independently and drive Message card display.
  */
 export function reuseConversationEventReferences(
   previous: ConversationDetailReport | undefined,
   next: ConversationDetailReport,
 ): ConversationDetailReport {
-  if (!previous || previous.events === next.events) return next;
-  if (!sameConversationEventVersion(previous.events, next.events)) return next;
-  return { ...next, events: previous.events };
+  if (!previous) return next;
+  const events = sameConversationEventVersion(previous.events, next.events)
+    ? previous.events
+    : next.events;
+  const annotations =
+    JSON.stringify(previous.annotations) === JSON.stringify(next.annotations)
+      ? previous.annotations
+      : next.annotations;
+  if (events === next.events && annotations === next.annotations) return next;
+  return { ...next, events, annotations };
 }
 
 function sameConversationEventVersion(
@@ -227,7 +235,28 @@ function sameConversationEventVersion(
   for (let index = 0; index < previous.length; index += 1) {
     const left = previous[index]!;
     const right = next[index]!;
-    if (left.seq !== right.seq || left.createdAt !== right.createdAt) return false;
+    if (left.seq !== right.seq || left.createdAt !== right.createdAt)
+      return false;
+    if (
+      left.data.type === "message" &&
+      right.data.type === "message" &&
+      JSON.stringify(left.data.attachments) !==
+        JSON.stringify(right.data.attachments)
+    )
+      return false;
   }
   return true;
+}
+
+/** Show thinking only after a Turn starts, not when input merely enters the queue. */
+export function conversationIsResponding(
+  detail: ConversationDetailReport | undefined,
+): boolean {
+  if (detail?.status !== "active") return false;
+  for (let index = detail.events.length - 1; index >= 0; index -= 1) {
+    const data = detail.events[index]!.data;
+    if (data.type === "turn_lifecycle") return data.state === "started";
+  }
+  // An active Turn can start before the bounded history window.
+  return Boolean(detail.previousCursor);
 }

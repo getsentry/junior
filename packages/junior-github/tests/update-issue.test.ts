@@ -27,7 +27,7 @@ function toolContext(response?: Response) {
     conversationId: "slack:C123:123.456",
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-    resourceEvents: { canSubscribe: true },
+    events: { canSubscribe: true },
     slack: {
       conversationLink: { url: "https://example.com/session" },
     },
@@ -47,7 +47,7 @@ describe("updateIssue", () => {
     }
   });
 
-  it("updates issue metadata and preserves Junior-owned body metadata", async () => {
+  it("updates issue metadata and preserves runtime-owned body metadata", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const { fetch, tool } = toolContext();
 
@@ -67,6 +67,7 @@ describe("updateIssue", () => {
       state: "open",
       target: "updateIssue",
       title: "Updated title",
+      objectAnnotations: [{ description: "Updated body" }],
       subscribable: {
         identifier: "getsentry/junior#691",
       },
@@ -83,7 +84,7 @@ describe("updateIssue", () => {
       "https://api.github.com/repos/getsentry/junior/issues/691",
     );
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("Requested by **David Cramer**.");
+    expect(body.body).toContain("via **David Cramer**.");
     expect(body.body).toContain(
       "[View Junior Session](https://example.com/session)",
     );

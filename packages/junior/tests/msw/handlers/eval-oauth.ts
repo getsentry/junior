@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 export const EVAL_OAUTH_PROVIDER = "eval-oauth";
 export const EVAL_OAUTH_CODE = "eval-oauth-code";
 export const EVAL_OAUTH_ORIGIN = "https://example.com";
+const EVAL_OAUTH_AUTHORIZE_ENDPOINT = `${EVAL_OAUTH_ORIGIN}/junior-eval-oauth/oauth/authorize`;
 const EVAL_OAUTH_TOKEN_ENDPOINT = `${EVAL_OAUTH_ORIGIN}/junior-eval-oauth/oauth/token`;
 const EVAL_OAUTH_ACCESS_TOKEN = "eval-oauth-access-token";
 const EVAL_OAUTH_REFRESH_TOKEN = "eval-oauth-refresh-token";
@@ -19,6 +20,17 @@ export function readEvalOAuthRefreshTokens(): string[] {
 }
 
 export const evalOAuthHandlers = [
+  // The person approves at once, and the provider redirects with the code.
+  http.get(EVAL_OAUTH_AUTHORIZE_ENDPOINT, ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    const callback = new URL(params.get("redirect_uri") ?? "");
+    callback.searchParams.set("code", EVAL_OAUTH_CODE);
+    callback.searchParams.set("state", params.get("state") ?? "");
+    return new HttpResponse(null, {
+      status: 302,
+      headers: { Location: callback.toString() },
+    });
+  }),
   http.post(EVAL_OAUTH_TOKEN_ENDPOINT, async ({ request }) => {
     const bodyText = await request.text();
     const params = new URLSearchParams(bodyText);

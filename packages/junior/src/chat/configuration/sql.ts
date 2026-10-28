@@ -10,6 +10,7 @@ import {
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigEntry,
+  ConfigValue,
   LocationConfigurationService,
 } from "@/chat/configuration/types";
 
@@ -169,20 +170,39 @@ function createSqlLocationConfigurationStorage(
   };
 }
 
+/**
+ * Read SQL Location configuration values by key. This read does not create
+ * the Location or copy legacy entries, so callers must treat it as best effort.
+ */
+export async function readLocationConfigurationValues(args: {
+  db: JuniorDatabase;
+  destination: SlackDestination;
+}): Promise<Record<string, ConfigValue>> {
+  const entries = await createSqlLocationConfigurationStorage(
+    args.db,
+    args.destination,
+  ).list();
+  return Object.fromEntries(entries.map((entry) => [entry.key, entry.value]));
+}
+
 /** Resolve SQL-owned Location configuration and copy live legacy entries once. */
 export function createDurableLocationConfigurationService(args: {
   destination: SlackDestination;
   db: JuniorDatabase;
   loadLegacy: () => Promise<unknown>;
 }): LocationConfigurationService {
-  const storage = createSqlLocationConfigurationStorage(args.db, args.destination);
+  const storage = createSqlLocationConfigurationStorage(
+    args.db,
+    args.destination,
+  );
   let cutover: Promise<void> | undefined;
   const ensureCutover = () =>
     (cutover ??= (async () => {
       if ((await storage.list()).length > 0) {
         return;
       }
-      // TODO(v0.147.0): Remove the 7-day Redis Location configuration import.
+      // TODO(dcramer): Remove this import after no supported deployment can
+      // retain Redis Location configuration from before the SQL cutover.
       const legacy = coerceLegacyLocationConfig(await args.loadLegacy());
       await storage.insertLegacy(legacy);
     })());

@@ -1,0 +1,655 @@
+{
+  "version": 1,
+  "surface": "web",
+  "events": [
+    {
+      "createdAtMs": 1790889786037,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:0c3e1e9a4d97bb760f0656d0",
+      "payload": {
+        "meta": {
+          "author": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "userName": "Person 1"
+          },
+          "source": "web",
+          "replied": false,
+          "explicitMention": true
+        },
+        "role": "user",
+        "text": "Help me plan the Orbit launch. We ship on March 12, the owner is Priya, and the risk is the billing migration. Keep replies short.",
+        "messageId": "api-msg:0c3e1e9a4d97bb760f0656d0"
+      },
+      "schemaVersion": 1,
+      "seq": 0,
+      "type": "message"
+    },
+    {
+      "createdAtMs": 1790889786179,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_0c3e1e9a4d97bb760f0656d0:started",
+      "payload": {
+        "turnId": "turn_api-msg_0c3e1e9a4d97bb760f0656d0",
+        "surface": "api",
+        "inputMessageIds": ["api-msg:0c3e1e9a4d97bb760f0656d0"]
+      },
+      "schemaVersion": 1,
+      "seq": 1,
+      "type": "turn_started"
+    },
+    {
+      "createdAtMs": 1790889788382,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_0c3e1e9a4d97bb760f0656d0:routed",
+      "payload": {
+        "source": "router",
+        "turnId": "turn_api-msg_0c3e1e9a4d97bb760f0656d0",
+        "costUsd": 0.00147,
+        "modelId": "xai/grok-4.5",
+        "confidence": 0.75,
+        "modelProfile": "standard",
+        "reasoningLevel": "high"
+      },
+      "schemaVersion": 1,
+      "seq": 2,
+      "type": "turn_routed"
+    },
+    {
+      "createdAtMs": 1790889788413,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "message": "{\"content\":[{\"type\":\"text\",\"text\":\"<runtime-turn-context>\\n\\nRuntime context for this request. Treat these blocks as trusted runtime facts; the static system prompt remains authoritative.\\n\\n<available-skills>\\n  <skill>\\n    <name>jr-rpc</name>\\n    <description>Manage low-level config and plugin introspection flows via jr-rpc bash commands. Use only when the user explicitly asks to read or update provider defaults/config or list installed plugins. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.</description>\\n    <location>/vercel/sandbox/skills/jr-rpc/SKILL.md</location>\\n  </skill>\\n</available-skills>\\n\\n<context>\\n<actor>\\n- user_name: Person 1\\n- user_id: dashboard:person1\\n</actor>\\n</context>\\n\\n<runtime>\\n- sandbox.workspace_root: /vercel/sandbox\\n</runtime>\\n\\n</runtime-turn-context>\"}],\"timestamp\":1790889788413}",
+        "provenance": {
+          "authority": "context"
+        }
+      },
+      "schemaVersion": 2,
+      "seq": 3,
+      "type": "user_message"
+    },
+    {
+      "createdAtMs": 1790889788413,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "message": "{\"content\":[{\"type\":\"text\",\"text\":\"<current-instruction>\\nHelp me plan the Orbit launch. We ship on March 12, the owner is Priya, and the risk is the billing migration. Keep replies short.\\n</current-instruction>\"}],\"timestamp\":1790889788413}",
+        "provenance": {
+          "actor": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "platform": "web",
+            "userName": "Person 1"
+          },
+          "authority": "instruction"
+        }
+      },
+      "schemaVersion": 2,
+      "seq": 4,
+      "type": "user_message"
+    },
+    {
+      "createdAtMs": 1790889791871,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "toolName": "updatePlan",
+        "toolCallId": "call-67cd55b4-a60c-4fd6-bf47-76266c0b30d7-0"
+      },
+      "schemaVersion": 1,
+      "seq": 5,
+      "type": "tool_execution_started"
+    },
+    {
+      "createdAtMs": 1790889788484,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "model": "xai/grok-4.5",
+        "usage": {
+          "cost": {
+            "input": 0.000212,
+            "total": 0.0036547999999999997,
+            "output": 0.0012540000000000001,
+            "cacheRead": 0.0021888,
+            "cacheWrite": 0
+          },
+          "input": 106,
+          "output": 209,
+          "cacheRead": 7296,
+          "cacheWrite": 0,
+          "totalTokens": 7611,
+          "cacheWrite1h": 0
+        },
+        "message": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"Planning the Orbit launch for March 12. The owner is Priya. The billing migration is the main risk.\",\"thinkingSignature\":\"\"},{\"type\":\"text\",\"text\":\"Creating a short Orbit launch plan from the details you shared.\"},{\"type\":\"toolCall\",\"id\":\"call-67cd55b4-a60c-4fd6-bf47-76266c0b30d7-0\",\"name\":\"updatePlan\",\"arguments\":{\"plan\":[{\"step\":\"Confirm launch scope and success criteria with Priya (owner)\",\"status\":\"completed\"},{\"step\":\"Lock March 12 ship date and pre-launch checklist owners\",\"status\":\"in_progress\"},{\"step\":\"Mitigate billing migration risk (rollback, dual-run, monitoring)\",\"status\":\"pending\"},{\"step\":\"Run final go/no-go and ship on March 12\",\"status\":\"pending\"}],\"explanation\":\"Short Orbit launch plan from the provided date, owner, and main risk.\"}}],\"api\":\"anthropic-messages\",\"provider\":\"vercel-ai-gateway\",\"model\":\"xai/grok-4.5\",\"usage\":{\"input\":106,\"output\":209,\"cacheRead\":7296,\"cacheWrite\":0,\"totalTokens\":7611,\"cost\":{\"input\":0.000212,\"output\":0.0012540000000000001,\"cacheRead\":0.0021888,\"cacheWrite\":0,\"total\":0.0036547999999999997},\"cacheWrite1h\":0},\"stopReason\":\"toolUse\",\"timestamp\":1790889788484,\"responseId\":\"gen_01M3WNK125F1Y3TZYZPF9KQ5DP\",\"rawStopReason\":\"tool_use\"}",
+        "provider": "vercel-ai-gateway"
+      },
+      "schemaVersion": 2,
+      "seq": 6,
+      "type": "assistant_message"
+    },
+    {
+      "createdAtMs": 1790889791885,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "message": "{\"toolCallId\":\"call-67cd55b4-a60c-4fd6-bf47-76266c0b30d7-0\",\"toolName\":\"updatePlan\",\"content\":[{\"type\":\"text\",\"text\":\"Plan updated\"}],\"details\":{},\"isError\":false,\"timestamp\":1790889791885}",
+        "toolCallId": "call-67cd55b4-a60c-4fd6-bf47-76266c0b30d7-0"
+      },
+      "schemaVersion": 2,
+      "seq": 7,
+      "type": "tool_result"
+    },
+    {
+      "createdAtMs": 1790889791943,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_0c3e1e9a4d97bb760f0656d0:assistant:1:agent",
+      "payload": {
+        "model": "xai/grok-4.5",
+        "usage": {
+          "cost": {
+            "input": 0.000548,
+            "total": 0.0031868,
+            "output": 0.00045,
+            "cacheRead": 0.0021888,
+            "cacheWrite": 0
+          },
+          "input": 274,
+          "output": 75,
+          "cacheRead": 7296,
+          "cacheWrite": 0,
+          "totalTokens": 7645,
+          "cacheWrite1h": 0
+        },
+        "message": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"thinkingSignature\":\"\"},{\"type\":\"text\",\"text\":\"**Orbit launch plan**\\n\\n- **Ship date:** March 12  \\n- **Owner:** Priya  \\n- **Main risk:** Billing migration  \\n\\n**Next:** lock checklist owners, then cover billing with rollback, dual-run, and monitoring before go/no-go.\"}],\"api\":\"anthropic-messages\",\"provider\":\"vercel-ai-gateway\",\"model\":\"xai/grok-4.5\",\"usage\":{\"input\":274,\"output\":75,\"cacheRead\":7296,\"cacheWrite\":0,\"totalTokens\":7645,\"cost\":{\"input\":0.000548,\"output\":0.00045,\"cacheRead\":0.0021888,\"cacheWrite\":0,\"total\":0.0031868},\"cacheWrite1h\":0},\"stopReason\":\"stop\",\"timestamp\":1790889791943,\"responseId\":\"gen_01M3WNK4FHG3SZY81WQ73XJWD7\",\"rawStopReason\":\"end_turn\"}",
+        "provider": "vercel-ai-gateway"
+      },
+      "schemaVersion": 2,
+      "seq": 8,
+      "type": "assistant_message"
+    },
+    {
+      "createdAtMs": 1790889793932,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:0c3e1e9a4d97bb760f0656d0:update:27422aae3e2276c1301077e80140f931",
+      "payload": {
+        "meta": {
+          "author": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "userName": "Person 1"
+          },
+          "source": "web",
+          "explicitMention": true
+        },
+        "role": "user",
+        "text": "Help me plan the Orbit launch. We ship on March 12, the owner is Priya, and the risk is the billing migration. Keep replies short.",
+        "messageId": "api-msg:0c3e1e9a4d97bb760f0656d0"
+      },
+      "schemaVersion": 1,
+      "seq": 9,
+      "type": "message_updated"
+    },
+    {
+      "createdAtMs": 1790889793932,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:0c3e1e9a4d97bb760f0656d0:handled",
+      "payload": {
+        "messageId": "api-msg:0c3e1e9a4d97bb760f0656d0"
+      },
+      "schemaVersion": 1,
+      "seq": 10,
+      "type": "message_handled"
+    },
+    {
+      "createdAtMs": 1790889793924,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_0c3e1e9a4d97bb760f0656d0:assistant:1",
+      "payload": {
+        "meta": {
+          "author": {
+            "isBot": true,
+            "userName": "junior-example"
+          },
+          "source": "web"
+        },
+        "role": "assistant",
+        "text": "**Orbit launch plan**\n\n- **Ship date:** March 12  \n- **Owner:** Priya  \n- **Main risk:** Billing migration  \n\n**Next:** lock checklist owners, then cover billing with rollback, dual-run, and monitoring before go/no-go.",
+        "messageId": "turn_api-msg_0c3e1e9a4d97bb760f0656d0:assistant:1"
+      },
+      "schemaVersion": 1,
+      "seq": 11,
+      "type": "message"
+    },
+    {
+      "createdAtMs": 1790889793932,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_0c3e1e9a4d97bb760f0656d0:assistant:1:handled",
+      "payload": {
+        "messageId": "turn_api-msg_0c3e1e9a4d97bb760f0656d0:assistant:1"
+      },
+      "schemaVersion": 1,
+      "seq": 12,
+      "type": "message_handled"
+    },
+    {
+      "createdAtMs": 1790889794021,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_0c3e1e9a4d97bb760f0656d0:terminal",
+      "payload": {
+        "turnId": "turn_api-msg_0c3e1e9a4d97bb760f0656d0",
+        "outcome": "success"
+      },
+      "schemaVersion": 1,
+      "seq": 13,
+      "type": "turn_completed"
+    },
+    {
+      "createdAtMs": 1790889794096,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:d9e0b97e7ec457e879680bc9",
+      "payload": {
+        "meta": {
+          "author": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "userName": "Person 1"
+          },
+          "source": "web",
+          "replied": false,
+          "explicitMention": true
+        },
+        "role": "user",
+        "text": "Add a go/no-go check two days before. Keep it to one line.",
+        "messageId": "api-msg:d9e0b97e7ec457e879680bc9"
+      },
+      "schemaVersion": 1,
+      "seq": 14,
+      "type": "message"
+    },
+    {
+      "createdAtMs": 1790889794176,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_d9e0b97e7ec457e879680bc9:started",
+      "payload": {
+        "turnId": "turn_api-msg_d9e0b97e7ec457e879680bc9",
+        "surface": "api",
+        "inputMessageIds": ["api-msg:d9e0b97e7ec457e879680bc9"]
+      },
+      "schemaVersion": 1,
+      "seq": 15,
+      "type": "turn_started"
+    },
+    {
+      "createdAtMs": 1790889796200,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_d9e0b97e7ec457e879680bc9:routed",
+      "payload": {
+        "source": "router",
+        "turnId": "turn_api-msg_d9e0b97e7ec457e879680bc9",
+        "costUsd": 0.001558,
+        "modelId": "xai/grok-4.5",
+        "confidence": 0.95,
+        "modelProfile": "standard",
+        "reasoningLevel": "high"
+      },
+      "schemaVersion": 1,
+      "seq": 16,
+      "type": "turn_routed"
+    },
+    {
+      "createdAtMs": 1790889796216,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "message": "{\"content\":[{\"type\":\"text\",\"text\":\"<current-instruction>\\nAdd a go/no-go check two days before. Keep it to one line.\\n</current-instruction>\"}],\"timestamp\":1790889796216}",
+        "provenance": {
+          "actor": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "platform": "web",
+            "userName": "Person 1"
+          },
+          "authority": "instruction"
+        }
+      },
+      "schemaVersion": 2,
+      "seq": 17,
+      "type": "user_message"
+    },
+    {
+      "createdAtMs": 1790889799582,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "toolName": "updatePlan",
+        "toolCallId": "call-c74b76b3-8d22-497b-b8b5-5d4c3d0d2766-1"
+      },
+      "schemaVersion": 1,
+      "seq": 18,
+      "type": "tool_execution_started"
+    },
+    {
+      "createdAtMs": 1790889796276,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "model": "xai/grok-4.5",
+        "usage": {
+          "cost": {
+            "input": 0.00021999999999999998,
+            "total": 0.0038176,
+            "output": 0.001332,
+            "cacheRead": 0.0022656,
+            "cacheWrite": 0
+          },
+          "input": 110,
+          "output": 222,
+          "cacheRead": 7552,
+          "cacheWrite": 0,
+          "totalTokens": 7884,
+          "cacheWrite1h": 0
+        },
+        "message": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"thinkingSignature\":\"\"},{\"type\":\"text\",\"text\":\"Adding a March 10 go/no-go check to the plan.\"},{\"type\":\"toolCall\",\"id\":\"call-c74b76b3-8d22-497b-b8b5-5d4c3d0d2766-1\",\"name\":\"updatePlan\",\"arguments\":{\"plan\":[{\"step\":\"Confirm launch scope and success criteria with Priya (owner)\",\"status\":\"completed\"},{\"step\":\"Lock March 12 ship date and pre-launch checklist owners\",\"status\":\"in_progress\"},{\"step\":\"Mitigate billing migration risk (rollback, dual-run, monitoring)\",\"status\":\"pending\"},{\"step\":\"Go/no-go check on March 10 (two days before ship)\",\"status\":\"pending\"},{\"step\":\"Run final go/no-go and ship on March 12\",\"status\":\"pending\"}],\"explanation\":\"Add a go/no-go checkpoint two days before the March 12 launch.\"}}],\"api\":\"anthropic-messages\",\"provider\":\"vercel-ai-gateway\",\"model\":\"xai/grok-4.5\",\"usage\":{\"input\":110,\"output\":222,\"cacheRead\":7552,\"cacheWrite\":0,\"totalTokens\":7884,\"cost\":{\"input\":0.00021999999999999998,\"output\":0.001332,\"cacheRead\":0.0022656,\"cacheWrite\":0,\"total\":0.0038176},\"cacheWrite1h\":0},\"stopReason\":\"toolUse\",\"timestamp\":1790889796276,\"responseId\":\"gen_01M3WNK8S58ZVNVJFBN5JRE0XV\",\"rawStopReason\":\"tool_use\"}",
+        "provider": "vercel-ai-gateway"
+      },
+      "schemaVersion": 2,
+      "seq": 19,
+      "type": "assistant_message"
+    },
+    {
+      "createdAtMs": 1790889799591,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "message": "{\"toolCallId\":\"call-c74b76b3-8d22-497b-b8b5-5d4c3d0d2766-1\",\"toolName\":\"updatePlan\",\"content\":[{\"type\":\"text\",\"text\":\"Plan updated\"}],\"details\":{},\"isError\":false,\"timestamp\":1790889799591}",
+        "toolCallId": "call-c74b76b3-8d22-497b-b8b5-5d4c3d0d2766-1"
+      },
+      "schemaVersion": 2,
+      "seq": 20,
+      "type": "tool_result"
+    },
+    {
+      "createdAtMs": 1790889799641,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_d9e0b97e7ec457e879680bc9:assistant:1:agent",
+      "payload": {
+        "model": "xai/grok-4.5",
+        "usage": {
+          "cost": {
+            "input": 0.00057,
+            "total": 0.0030096,
+            "output": 0.000174,
+            "cacheRead": 0.0022656,
+            "cacheWrite": 0
+          },
+          "input": 285,
+          "output": 29,
+          "cacheRead": 7552,
+          "cacheWrite": 0,
+          "totalTokens": 7866,
+          "cacheWrite1h": 0
+        },
+        "message": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"thinkingSignature\":\"\"},{\"type\":\"text\",\"text\":\"**Go/no-go:** March 10 (two days before ship).\"}],\"api\":\"anthropic-messages\",\"provider\":\"vercel-ai-gateway\",\"model\":\"xai/grok-4.5\",\"usage\":{\"input\":285,\"output\":29,\"cacheRead\":7552,\"cacheWrite\":0,\"totalTokens\":7866,\"cost\":{\"input\":0.00057,\"output\":0.000174,\"cacheRead\":0.0022656,\"cacheWrite\":0,\"total\":0.0030096},\"cacheWrite1h\":0},\"stopReason\":\"stop\",\"timestamp\":1790889799641,\"responseId\":\"gen_01M3WNKBZECC3F3DRJBCMKJD1D\",\"rawStopReason\":\"end_turn\"}",
+        "provider": "vercel-ai-gateway"
+      },
+      "schemaVersion": 2,
+      "seq": 21,
+      "type": "assistant_message"
+    },
+    {
+      "createdAtMs": 1790889801434,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:d9e0b97e7ec457e879680bc9:update:af855d83836e66ff8362177ef043c846",
+      "payload": {
+        "meta": {
+          "author": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "userName": "Person 1"
+          },
+          "source": "web",
+          "explicitMention": true
+        },
+        "role": "user",
+        "text": "Add a go/no-go check two days before. Keep it to one line.",
+        "messageId": "api-msg:d9e0b97e7ec457e879680bc9"
+      },
+      "schemaVersion": 1,
+      "seq": 22,
+      "type": "message_updated"
+    },
+    {
+      "createdAtMs": 1790889801434,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:d9e0b97e7ec457e879680bc9:handled",
+      "payload": {
+        "messageId": "api-msg:d9e0b97e7ec457e879680bc9"
+      },
+      "schemaVersion": 1,
+      "seq": 23,
+      "type": "message_handled"
+    },
+    {
+      "createdAtMs": 1790889801425,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_d9e0b97e7ec457e879680bc9:assistant:1",
+      "payload": {
+        "meta": {
+          "author": {
+            "isBot": true,
+            "userName": "junior-example"
+          },
+          "source": "web"
+        },
+        "role": "assistant",
+        "text": "**Go/no-go:** March 10 (two days before ship).",
+        "messageId": "turn_api-msg_d9e0b97e7ec457e879680bc9:assistant:1"
+      },
+      "schemaVersion": 1,
+      "seq": 24,
+      "type": "message"
+    },
+    {
+      "createdAtMs": 1790889801434,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_d9e0b97e7ec457e879680bc9:assistant:1:handled",
+      "payload": {
+        "messageId": "turn_api-msg_d9e0b97e7ec457e879680bc9:assistant:1"
+      },
+      "schemaVersion": 1,
+      "seq": 25,
+      "type": "message_handled"
+    },
+    {
+      "createdAtMs": 1790889801514,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_d9e0b97e7ec457e879680bc9:terminal",
+      "payload": {
+        "turnId": "turn_api-msg_d9e0b97e7ec457e879680bc9",
+        "outcome": "success"
+      },
+      "schemaVersion": 1,
+      "seq": 26,
+      "type": "turn_completed"
+    },
+    {
+      "createdAtMs": 1790889801566,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:8dd7ea11819bfdfdd41fac3e",
+      "payload": {
+        "meta": {
+          "author": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "userName": "Person 1"
+          },
+          "source": "web",
+          "replied": false,
+          "explicitMention": true
+        },
+        "role": "user",
+        "text": "What are the three most important things to remember?",
+        "messageId": "api-msg:8dd7ea11819bfdfdd41fac3e"
+      },
+      "schemaVersion": 1,
+      "seq": 27,
+      "type": "message"
+    },
+    {
+      "createdAtMs": 1790889801639,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_8dd7ea11819bfdfdd41fac3e:started",
+      "payload": {
+        "turnId": "turn_api-msg_8dd7ea11819bfdfdd41fac3e",
+        "surface": "api",
+        "inputMessageIds": ["api-msg:8dd7ea11819bfdfdd41fac3e"]
+      },
+      "schemaVersion": 1,
+      "seq": 28,
+      "type": "turn_started"
+    },
+    {
+      "createdAtMs": 1790889803325,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_8dd7ea11819bfdfdd41fac3e:routed",
+      "payload": {
+        "source": "router",
+        "turnId": "turn_api-msg_8dd7ea11819bfdfdd41fac3e",
+        "costUsd": 0.001755,
+        "modelId": "xai/grok-4.5",
+        "confidence": 0.92,
+        "modelProfile": "standard",
+        "reasoningLevel": "high"
+      },
+      "schemaVersion": 1,
+      "seq": 29,
+      "type": "turn_routed"
+    },
+    {
+      "createdAtMs": 1790889803341,
+      "historyVersion": 0,
+      "idempotencyKey": null,
+      "payload": {
+        "message": "{\"content\":[{\"type\":\"text\",\"text\":\"<current-instruction>\\nWhat are the three most important things to remember?\\n</current-instruction>\"}],\"timestamp\":1790889803341}",
+        "provenance": {
+          "actor": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "platform": "web",
+            "userName": "Person 1"
+          },
+          "authority": "instruction"
+        }
+      },
+      "schemaVersion": 2,
+      "seq": 30,
+      "type": "user_message"
+    },
+    {
+      "createdAtMs": 1790889803402,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_8dd7ea11819bfdfdd41fac3e:assistant:1:agent",
+      "payload": {
+        "model": "xai/grok-4.5",
+        "usage": {
+          "cost": {
+            "input": 0.000146,
+            "total": 0.0032503999999999996,
+            "output": 0.000762,
+            "cacheRead": 0.0023423999999999997,
+            "cacheWrite": 0
+          },
+          "input": 73,
+          "output": 127,
+          "cacheRead": 7808,
+          "cacheWrite": 0,
+          "totalTokens": 8008,
+          "cacheWrite1h": 0
+        },
+        "message": "{\"content\":[{\"type\":\"thinking\",\"thinking\":\"Identifying the three most important things to remember from the Orbit launch plan.\",\"thinkingSignature\":\"\"},{\"type\":\"text\",\"text\":\"1. **Ship date:** March 12  \\n2. **Owner:** Priya  \\n3. **Main risk:** Billing migration\"}],\"api\":\"anthropic-messages\",\"provider\":\"vercel-ai-gateway\",\"model\":\"xai/grok-4.5\",\"usage\":{\"input\":73,\"output\":127,\"cacheRead\":7808,\"cacheWrite\":0,\"totalTokens\":8008,\"cost\":{\"input\":0.000146,\"output\":0.000762,\"cacheRead\":0.0023423999999999997,\"cacheWrite\":0,\"total\":0.0032503999999999996},\"cacheWrite1h\":0},\"stopReason\":\"stop\",\"timestamp\":1790889803402,\"responseId\":\"gen_01M3WNKFVPXF9BSQ1M38W0AE8X\",\"rawStopReason\":\"end_turn\"}",
+        "provider": "vercel-ai-gateway"
+      },
+      "schemaVersion": 2,
+      "seq": 31,
+      "type": "assistant_message"
+    },
+    {
+      "createdAtMs": 1790889805894,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:8dd7ea11819bfdfdd41fac3e:update:4ed7d12cce701356d6deb3e51c86a9b0",
+      "payload": {
+        "meta": {
+          "author": {
+            "email": "person1@example.com",
+            "userId": "dashboard:person1",
+            "userName": "Person 1"
+          },
+          "source": "web",
+          "explicitMention": true
+        },
+        "role": "user",
+        "text": "What are the three most important things to remember?",
+        "messageId": "api-msg:8dd7ea11819bfdfdd41fac3e"
+      },
+      "schemaVersion": 1,
+      "seq": 32,
+      "type": "message_updated"
+    },
+    {
+      "createdAtMs": 1790889805894,
+      "historyVersion": 0,
+      "idempotencyKey": "message:api-msg:8dd7ea11819bfdfdd41fac3e:handled",
+      "payload": {
+        "messageId": "api-msg:8dd7ea11819bfdfdd41fac3e"
+      },
+      "schemaVersion": 1,
+      "seq": 33,
+      "type": "message_handled"
+    },
+    {
+      "createdAtMs": 1790889805887,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_8dd7ea11819bfdfdd41fac3e:assistant:1",
+      "payload": {
+        "meta": {
+          "author": {
+            "isBot": true,
+            "userName": "junior-example"
+          },
+          "source": "web"
+        },
+        "role": "assistant",
+        "text": "1. **Ship date:** March 12  \n2. **Owner:** Priya  \n3. **Main risk:** Billing migration",
+        "messageId": "turn_api-msg_8dd7ea11819bfdfdd41fac3e:assistant:1"
+      },
+      "schemaVersion": 1,
+      "seq": 34,
+      "type": "message"
+    },
+    {
+      "createdAtMs": 1790889805894,
+      "historyVersion": 0,
+      "idempotencyKey": "message:turn_api-msg_8dd7ea11819bfdfdd41fac3e:assistant:1:handled",
+      "payload": {
+        "messageId": "turn_api-msg_8dd7ea11819bfdfdd41fac3e:assistant:1"
+      },
+      "schemaVersion": 1,
+      "seq": 35,
+      "type": "message_handled"
+    },
+    {
+      "createdAtMs": 1790889805958,
+      "historyVersion": 0,
+      "idempotencyKey": "turn:turn_api-msg_8dd7ea11819bfdfdd41fac3e:terminal",
+      "payload": {
+        "turnId": "turn_api-msg_8dd7ea11819bfdfdd41fac3e",
+        "outcome": "success"
+      },
+      "schemaVersion": 1,
+      "seq": 36,
+      "type": "turn_completed"
+    }
+  ]
+}

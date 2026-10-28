@@ -11,9 +11,9 @@ import { createApp } from "@/app";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getSqlExecutor } from "@/chat/db";
 import {
-  closeApiTurnWorkFixture,
-  createConversationWorkWebHarness,
-} from "../tests/fixtures/api-turn";
+  closeConversationFixture,
+  createConversationWebHarness,
+} from "../tests/fixtures/conversation";
 import { streamScript } from "../tests/fixtures/conversation-work";
 
 const DEFAULT_PORT = 3099;
@@ -31,11 +31,9 @@ function localPort(): number {
 }
 
 await migrateSchema(getSqlExecutor());
-const harness = await createConversationWorkWebHarness({
-  modelStream: streamScript(
-    process.env.JUNIOR_ACP_LOCAL_REPLY?.trim() || DEFAULT_REPLY,
-  ),
-});
+const harness = await createConversationWebHarness(
+  streamScript(process.env.JUNIOR_ACP_LOCAL_REPLY?.trim() || DEFAULT_REPLY),
+);
 // Use the loopback request origin, not deployed callback origins from env files.
 delete process.env.JUNIOR_BASE_URL;
 delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
@@ -46,7 +44,7 @@ const app = await createApp({
 });
 let drainActive = false;
 
-/** Drain queued API Turn work while the smoke client waits for its response. */
+/** Drain queued Conversation work while the smoke client waits. */
 async function drainQueuedWork(): Promise<void> {
   if (drainActive || !harness.queue.hasQueuedMessages()) return;
   drainActive = true;
@@ -86,7 +84,7 @@ function shutdown(): Promise<void> {
     }
     server.close();
     await once(server, "close");
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
   })();
   return shutdownPromise;
 }

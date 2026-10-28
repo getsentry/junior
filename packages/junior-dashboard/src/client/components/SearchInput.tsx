@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 
 import { cn } from "../styles";
 
@@ -30,7 +30,7 @@ export function SearchInput(props: {
       <input
         aria-label={props.label}
         className={cn(
-          "w-full rounded-lg border border-dashboard-border font-mono text-xs text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted hover:border-dashboard-border-emphasis focus:border-dashboard-focus",
+          "w-full rounded-md border border-dashboard-border font-sans text-sm text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted/70 hover:border-dashboard-border-emphasis focus:border-dashboard-focus [&::-webkit-search-cancel-button]:appearance-none",
           searchInputClass[size],
         )}
         onChange={(event) => props.onChange(event.currentTarget.value)}
@@ -39,6 +39,23 @@ export function SearchInput(props: {
         type="search"
         value={props.value}
       />
+      {props.value ? (
+        <button
+          aria-label="Clear search"
+          className={cn(
+            "absolute top-1/2 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
+            clearButtonClass[size],
+          )}
+          onClick={(event) => {
+            props.onChange("");
+            // The button unmounts once the value is empty, so keep focus in the search box.
+            event.currentTarget.parentElement?.querySelector("input")?.focus();
+          }}
+          type="button"
+        >
+          <X aria-hidden="true" size={14} strokeWidth={2.5} />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -48,8 +65,14 @@ const searchIconClass: Record<SearchInputSize, string> = {
   default: "left-3",
 };
 
+const clearButtonClass: Record<SearchInputSize, string> = {
+  compact: "right-1.5",
+  default: "right-2",
+};
+
 const searchInputClass: Record<SearchInputSize, string> = {
-  compact: "h-9 bg-dashboard-overlay-soft pr-3 pl-8 focus:ring-1 focus:ring-dashboard-focus/25",
+  compact:
+    "h-9 bg-dashboard-overlay-soft pr-8 pl-8 focus:ring-1 focus:ring-dashboard-focus/25",
   default:
-    "h-10 bg-dashboard-overlay-soft pr-3 pl-9 focus:ring-2 focus:ring-dashboard-focus/20",
+    "h-10 bg-dashboard-overlay-soft pr-9 pl-9 focus:ring-1 focus:ring-dashboard-focus/25",
 };

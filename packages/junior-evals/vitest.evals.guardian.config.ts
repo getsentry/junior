@@ -9,6 +9,12 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
+const packagesRoot = path.resolve(__dirname, "..");
+
+// Read plugins from source, so cases see the agent's current tools.
+function pluginSource(name: string): string {
+  return path.resolve(packagesRoot, name, "src/index.ts");
+}
 // Leave room for provider retry inside the separate 60-second review budget.
 const GUARDIAN_EVAL_TEST_TIMEOUT_MS = 90_000;
 const evalReportPath = path.resolve(
@@ -29,17 +35,20 @@ process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-guardian:${randomUUID()}`;
 process.env.REDIS_URL =
   process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
-process.env.AI_GUARDIAN_MODEL ??= "openai/gpt-5.6-luna";
+process.env.AI_GUARDIAN_MODEL ??= "openai/gpt-6-luna";
 
 export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(juniorPackageRoot, "src"),
+      "@sentry/junior-github": pluginSource("junior-github"),
+      "@sentry/junior-google": pluginSource("junior-google"),
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",
       ),
+      "@sentry/junior-vercel": pluginSource("junior-vercel"),
     },
     // Vite 8 resolves tsconfig `paths` natively here:
     // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
@@ -51,7 +60,11 @@ export default defineConfig({
     globalSetup: [path.resolve(__dirname, "guardian-global-setup.ts")],
     include: ["evals/guardian/**/*.eval.ts"],
     maxWorkers: 1,
-    setupFiles: [path.resolve(__dirname, "src/guardian-setup.ts")],
+    setupFiles: [
+      path.resolve(__dirname, "src/stable-setup.ts"),
+      path.resolve(__dirname, "src/guardian-setup.ts"),
+      path.resolve(__dirname, "src/recording-setup.ts"),
+    ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
     testTimeout: GUARDIAN_EVAL_TEST_TIMEOUT_MS,

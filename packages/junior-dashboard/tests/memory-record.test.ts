@@ -52,4 +52,28 @@ describe("memory permalink record", () => {
       title: "Prefers short dashboard answers.",
     });
   });
+
+  it("allows forgetting public memories with a shared-scope confirmation", () => {
+    expect(
+      memoryPageRecord({
+        content: "Deploys happen on Tuesdays.",
+        createdAt: "2026-08-06T00:00:00.000Z",
+        id: "memory/public-1",
+        kind: "knowledge",
+        observedAt: "2026-08-05T00:00:00.000Z",
+        origin: "automatic",
+        sourcePlatform: "slack",
+        visibility: "public",
+      }),
+    ).toMatchObject({
+      actions: [
+        {
+          confirmation: "Forget this memory for everyone?",
+          href: "/api/plugins/memory/memories/memory%2Fpublic-1",
+          tone: "danger",
+        },
+      ],
+      id: "memory/public-1",
+    });
+  });
 });

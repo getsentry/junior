@@ -1,6 +1,18 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status-render";
 
+function isActivePlanItem(value: unknown): value is { step: string } {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const item = value as { status?: unknown; step?: unknown };
+  return (
+    item.status === "in_progress" &&
+    typeof item.step === "string" &&
+    item.step.trim().length > 0
+  );
+}
+
 /** Convert a `reportProgress` tool payload into assistant status text. */
 export function buildReportedProgressStatus(
   input: unknown,
@@ -22,8 +34,25 @@ export function buildReportedProgressStatus(
   return { text };
 }
 
-/** Recover the latest explicit progress update from a resumable Pi transcript. */
-export function latestReportedProgress(
+/** Convert an `updatePlan` payload into the active assistant status. */
+export function buildPlanStatus(
+  input: unknown,
+): AssistantStatusSpec | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+
+  const plan = (input as { plan?: unknown }).plan;
+  if (!Array.isArray(plan)) {
+    return undefined;
+  }
+
+  const active = plan.find(isActivePlanItem);
+  return active ? { text: active.step.trim() } : undefined;
+}
+
+/** Recover the latest progress status from a resumable Pi transcript. */
+export function latestProgressStatus(
   messages: readonly PiMessage[],
 ): AssistantStatusSpec | undefined {
   for (
@@ -52,12 +81,17 @@ export function latestReportedProgress(
         name?: unknown;
         arguments?: unknown;
       };
-      if (toolCall.type !== "toolCall" || toolCall.name !== "reportProgress") {
+      if (toolCall.type !== "toolCall") {
         continue;
       }
-      const status = buildReportedProgressStatus(toolCall.arguments);
-      if (status) {
-        return status;
+      if (toolCall.name === "updatePlan") {
+        return buildPlanStatus(toolCall.arguments);
+      }
+      if (toolCall.name === "reportProgress") {
+        const status = buildReportedProgressStatus(toolCall.arguments);
+        if (status) {
+          return status;
+        }
       }
     }
   }

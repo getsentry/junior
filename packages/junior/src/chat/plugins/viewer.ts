@@ -20,7 +20,9 @@ function identityFromRow(row: IdentityRow): Identity {
     id: row.id,
     provider: row.provider,
     providerSubjectId: row.providerSubjectId,
-    ...(row.providerTenantId ? { providerTenantId: row.providerTenantId } : undefined),
+    ...(row.providerTenantId
+      ? { providerTenantId: row.providerTenantId }
+      : undefined),
     ...(row.displayName ? { displayName: row.displayName } : undefined),
     ...(row.handle ? { handle: row.handle } : undefined),
   });
@@ -49,6 +51,7 @@ async function readUserById(
     id: userRow.id,
     identities: identityRows.map(identityFromRow),
     ...(userRow.displayName ? { displayName: userRow.displayName } : undefined),
+    ...(userRow.isAdmin ? { isAdmin: true } : undefined),
   });
 }
 
@@ -136,6 +139,42 @@ export async function updateViewerDisplayName(
   displayName: string,
 ): Promise<User | undefined> {
   return await updateViewerDisplayNameFromSql(getDb(), userId, displayName);
+}
+
+/**
+ * Grant or revoke the Junior-wide admin role for one email.
+ *
+ * Granting creates the canonical user when needed, so an operator can grant
+ * admin before that person first signs in. Revoking never creates a user.
+ */
+export async function setUserAdminFromSql(
+  db: JuniorDatabase,
+  email: string,
+  isAdmin: boolean,
+): Promise<User | undefined> {
+  const user = isAdmin
+    ? await resolveViewerUserFromSql(db, email)
+    : await findUserByEmailFromSql(db, email);
+  if (!user) return undefined;
+  const rows = await db
+    .update(juniorUsers)
+    .set({ isAdmin, updatedAt: new Date() })
+    .where(eq(juniorUsers.id, user.id))
+    .returning();
+  const userRow = rows[0];
+  return userRow ? await readUserById(db, userRow) : undefined;
+}
+
+/** List every Junior admin by primary email. */
+export async function listAdminUsersFromSql(
+  db: JuniorDatabase,
+): Promise<User[]> {
+  const rows = await db
+    .select()
+    .from(juniorUsers)
+    .where(eq(juniorUsers.isAdmin, true))
+    .orderBy(asc(juniorUsers.primaryEmailNormalized));
+  return await Promise.all(rows.map((row) => readUserById(db, row)));
 }
 
 /** Resolve the stored identity and linked user for one runtime actor. */

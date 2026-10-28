@@ -1,3 +1,4 @@
+import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import type { User } from "@sentry/junior-plugin-api";
 import type { Conversation } from "@/chat/conversations/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
@@ -6,6 +7,7 @@ import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
 import { readConversationEventPage } from "./event-page";
+import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
 import {
   conversationEventHistory,
@@ -15,25 +17,38 @@ import {
   readConversationAccessFromSql,
   type ConversationAccess,
 } from "./access";
-import { readRootConversationMetricsFromSql } from "./usage";
+import {
+  childAgentTotalsReport,
+  readConversationTreeMetricsFromSql,
+} from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
-import { readConversationSourceTask } from "@/chat/tasks/read";
+import { readLatestConversationBrief } from "@/chat/briefs/store";
+import { readConversationSourceTask } from "@/chat/automations/read";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationArchivedAt } from "./archive";
+import { readConversationParticipants } from "./participants";
+import { readConversationForks } from "./fork";
+import { readConversationAgentTree } from "./agent-tree";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
   archivedAtMs?: number;
+  automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
+  brief?: ConversationDetailReport["brief"];
+  childAgentTotals?: ConversationDetailReport["childAgentTotals"];
   conversation: Conversation;
   durationMs: number;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
+  sidebarAnnotations?: ConversationDetailReport["sidebarAnnotations"];
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
+  participants: NonNullable<ConversationDetailReport["participants"]>;
   previousSeq?: number;
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -52,7 +67,11 @@ function projectConversationDetail(args: {
       ...(args.archivedAtMs === undefined
         ? undefined
         : { archivedAtMs: args.archivedAtMs }),
+      automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
+      ...(args.childAgentTotals
+        ? { childAgentTotals: args.childAgentTotals }
+        : undefined),
       conversation,
       durationMs: args.durationMs,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
@@ -62,7 +81,12 @@ function projectConversationDetail(args: {
       usage: args.usage,
     }),
     annotations: canExposePayload ? args.annotations : [],
+    sidebarAnnotations: canExposePayload ? args.sidebarAnnotations : undefined,
+    ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
     events: args.events,
+    ...(canExposePayload && args.participants.length > 0
+      ? { participants: args.participants }
+      : undefined),
     ...(args.previousSeq !== undefined
       ? {
           previousCursor: encodeConversationCursor({
@@ -74,7 +98,9 @@ function projectConversationDetail(args: {
     ...(modelUsage.length > 0 ? { modelUsage } : undefined),
     eventHistory: conversationEventHistory({
       canExposePayload,
-      ...(transcriptPurgedAtMs === undefined ? undefined : { transcriptPurgedAtMs }),
+      ...(transcriptPurgedAtMs === undefined
+        ? undefined
+        : { transcriptPurgedAtMs }),
     }),
     generatedAt: new Date().toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
@@ -96,42 +122,47 @@ async function readConversationDetailFromSql(
     : undefined;
 
   const executor = getSqlExecutor();
-  const includeDescendantMetrics = record.rootConversationId === conversationId;
   const [
     accessByConversation,
     annotations,
+    automationTitleByConversation,
     auxiliaryCostsByConversation,
+    briefVersion,
     modelUsage,
-    metricsByRoot,
+    metricsByConversation,
+    participantsByConversation,
     sourceTask,
     teamDomainByTeamId,
   ] = await Promise.all([
     readConversationAccessFromSql(getDb(), [conversationId], options.viewer),
     listConversationAnnotations(getDb(), conversationId),
-    readConversationAuxiliaryCostsFromSql(getDb(), [conversationId], {
-      includeDescendants: includeDescendantMetrics,
-    }),
+    readAutomationTitlesByConversationId([record.conversation]),
+    readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
+    readLatestConversationBrief(getDb(), conversationId),
     record.conversation.transcriptPurgedAtMs === undefined
-      ? readConversationModelUsageFromSql(executor, {
-          conversationId,
-          includeDescendants: includeDescendantMetrics,
-        })
+      ? readConversationModelUsageFromSql(executor, { conversationId })
       : Promise.resolve([]),
-    readRootConversationMetricsFromSql(
-      getDb(),
-      includeDescendantMetrics ? [conversationId] : [],
-    ),
+    readConversationTreeMetricsFromSql(getDb(), [conversationId]),
+    readConversationParticipants(getDb(), [conversationId]),
     readConversationSourceTask({
       conversationId,
       ...(options.viewer ? { viewer: options.viewer } : undefined),
     }),
     resolveSlackTeamDomains(
-      record.conversation.sessionSource?.platform === "slack"
-        ? [record.conversation.sessionSource.teamId]
+      record.conversation.location?.provider === "slack"
+        ? [record.conversation.location.teamId]
         : [],
     ),
   ]);
   const access = accessByConversation.get(conversationId);
+  const sidebarAnnotations = access?.canViewPrivateContent
+    ? (
+        await listConversationSidebarAnnotations(
+          [conversationId],
+          new Map([[conversationId, annotations]]),
+        )
+      )[conversationId]
+    : undefined;
   const page =
     record.conversation.transcriptPurgedAtMs === undefined
       ? await readConversationEventPage(executor, {
@@ -140,16 +171,43 @@ async function readConversationDetailFromSql(
           limit: options.limit,
         })
       : { events: [] };
-  const metrics = metricsByRoot.get(conversationId);
+  // The Brief is shown only to viewers who can see private content.
+  const brief = access?.canViewPrivateContent
+    ? briefVersion?.content
+    : undefined;
+  const { briefMentions, events } = await attachConversationMentions(
+    executor,
+    conversationId,
+    { ...(brief ? { brief } : undefined), events: page.events },
+  );
+  const metrics = metricsByConversation.get(conversationId);
+  const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
+  const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
   return projectConversationDetail({
     ...record,
     access,
     ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
+    automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
-    auxiliaryCosts: auxiliaryCostsByConversation.get(conversationId),
+    sidebarAnnotations,
+    auxiliaryCosts: auxiliaryCosts?.total,
+    ...(childAgentTotals ? { childAgentTotals } : undefined),
+    ...(briefVersion
+      ? {
+          brief: {
+            content: briefVersion.content,
+            ...(briefMentions.length > 0
+              ? { mentions: briefMentions }
+              : undefined),
+            updatedAt: briefVersion.createdAt.toISOString(),
+            version: briefVersion.version,
+          },
+        }
+      : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
-    events: page.events,
+    events,
     modelUsage,
+    participants: participantsByConversation.get(conversationId) ?? [],
     ...(sourceTask ? { sourceTask } : undefined),
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
@@ -171,5 +229,14 @@ export async function readConversationDetail(
     ...options,
     limit: options.limit ?? 500,
   });
-  return report ? conversationDetailReportSchema.parse(report) : undefined;
+  if (!report) return undefined;
+  const [forks, agentTree] = await Promise.all([
+    readConversationForks(conversationId, options.viewer),
+    readConversationAgentTree(conversationId, options.viewer),
+  ]);
+  return conversationDetailReportSchema.parse({
+    ...report,
+    ...forks,
+    ...(agentTree ? { agentTree } : undefined),
+  });
 }

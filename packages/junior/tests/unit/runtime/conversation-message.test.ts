@@ -105,18 +105,6 @@ describe("conversation message actor identity", () => {
     });
   });
 
-  it("preserves resource event type metadata", () => {
-    const message = createMessage();
-    message.raw = {
-      event_type: "resource_event",
-      resource_event_type: "pull_request.merged",
-    };
-
-    expect(
-      toConversationMessage({ entry: message, text: message.text }).meta,
-    ).toMatchObject({ eventType: "pull_request.merged" });
-  });
-
   it("tags Slack conversation messages with known source slack", () => {
     expect(
       toConversationMessage({

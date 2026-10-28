@@ -1,44 +1,61 @@
+import { FormNotice } from "../../components/FormNotice";
+import { SearchInput } from "../../components/SearchInput";
+import { Select } from "../../components/Select";
+import { SelectFixtures } from "./SelectFixtures";
+import { ObjectFixtures } from "./ObjectFixtures";
+import { ChartFixtures } from "./ChartFixtures";
+import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
+import {
+  ConversationFixture,
+  MessageAttachmentsFixture,
+} from "./ConversationFixture";
+import {
+  SubagentCardFixture,
+  ToolCallGallery,
+} from "./TranscriptActivityFixtures";
+import { ObjectCard } from "../../conversations/ObjectCard";
+import { AutomationCard } from "../../components/AutomationCard";
 import {
   Activity,
+  ArchiveRestore,
   Bot,
   ChevronRight,
+  CircleAlert,
   Copy,
   MessageSquare,
   Timer,
   Trash2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
-import type {
-  ConversationMetricDay,
-  LocationActivityDayReport,
-  PeopleActivityDayReport,
-} from "@sentry/junior/api/schema";
 
 import { Button, ToggleButton } from "../../components/Button";
-import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import { Drawer } from "../../components/Drawer";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
-import { CardHeader } from "../../components/layout/CardHeader";
+import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
+import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
+import { Notice, NoticeAction } from "../../components/Notice";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { ActorAvatar } from "../../components/ActorAvatar";
+import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack";
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
+import { StatusDot } from "../../components/StatusDot";
 import { TextArea, TextInput } from "../../components/TextInput";
+import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
-import { TranscriptToolView } from "../../conversations/TranscriptToolView";
+import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShell";
 import { cn, dashboardContainerClass } from "../../styles";
-import type { TranscriptViewToolCallPart } from "../../types";
-import { LocationDirectoryActivityChart } from "../locations/LocationDirectoryActivityChart";
-import { ContributionGrid } from "../people/ContributionGrid";
-import { PeopleActivityChart } from "../people/PeopleActivityChart";
-import { ConversationActivityChart } from "../system/ConversationActivityChart";
 
 export type GallerySectionId = "foundations" | "charts" | "transcripts";
 
@@ -125,155 +142,6 @@ Findings:
 
 See https://docs.sentry.io for product docs.`;
 
-const METRIC_DAYS: ConversationMetricDay[] = fixtureDates(14).map(
-  (date, index) => ({
-    conversations: 4 + ((index * 5) % 17),
-    costUsd: 0.7 + ((index * 7) % 11) * 0.18,
-    date,
-    durationMs: 90_000 + ((index * 41) % 13) * 24_000,
-    tokens: 18_000 + ((index * 17) % 19) * 2_300,
-  }),
-);
-
-const PEOPLE_DAYS: PeopleActivityDayReport[] = fixtureDates(30).map(
-  (date, index) => ({
-    activePeople: 4 + ((index * 7) % 13),
-    conversations: 18 + ((index * 11) % 31),
-    date,
-  }),
-);
-
-const LOCATION_DAYS: LocationActivityDayReport[] = fixtureDates(30).map(
-  (date, index) => ({
-    date,
-    privateConversations: 3 + ((index * 5) % 12),
-    publicConversations: 12 + ((index * 9) % 28),
-  }),
-);
-
-const CONTRIBUTION_DAYS = fixtureDates(70).map((date, index) => ({
-  conversations: index % 9 === 0 ? 0 : 1 + ((index * 7) % 18),
-  date,
-  durationMs: index % 9 === 0 ? 0 : 45_000 + ((index * 13) % 20) * 18_000,
-}));
-
-type ToolCallFixture = {
-  description: string;
-  part: TranscriptViewToolCallPart;
-  timestamp: number;
-};
-
-const TOOL_CALL_TIMESTAMP = Date.UTC(2026, 4, 1, 16);
-
-const TOOL_CALL_FIXTURES = [
-  {
-    description: "Default completed tool with normalized arguments",
-    part: {
-      id: "gallery-search",
-      input: {
-        query: "release regression",
-        limit: 25,
-        options: { includeArchived: false },
-      },
-      name: "searchIssues",
-      output: { matches: 3 },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 1_842,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP,
-  },
-  {
-    description: "Running webSearch with name-only shimmer",
-    part: {
-      id: "gallery-running",
-      input: {
-        query: "service:checkout status:error",
-        max_results: 50,
-      },
-      name: "webSearch",
-      status: "running",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 3_000,
-  },
-  {
-    description: "Failed tool",
-    part: {
-      id: "gallery-error",
-      input: {
-        command: "jr-rpc config get github.repo",
-        timeout_ms: 10_000,
-      },
-      name: "bash",
-      output: { error: "configuration unavailable" },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 6_416,
-      status: "error",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 6_000,
-  },
-  {
-    description: "Known loadSkill signature",
-    part: {
-      id: "gallery-load-skill",
-      input: { skill_name: "junior-qa" },
-      name: "loadSkill",
-      output: { skill_name: "junior-qa" },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 8_105,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 8_000,
-  },
-  {
-    description: "Known executeTool signature with nested arguments",
-    part: {
-      id: "gallery-execute-tool",
-      input: {
-        tool_name: "github_search",
-        arguments: { query: "is:pr is:open", limit: 25 },
-      },
-      name: "executeTool",
-      output: { matches: 3 },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 10_723,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 10_000,
-  },
-  {
-    description: "Long generic arguments exercise both truncation limits",
-    part: {
-      id: "gallery-long",
-      input: {
-        project: "payments-checkout-platform",
-        query:
-          "Find every regression associated with the most recent production deployment and include the complete evidence trail",
-        environment: "production",
-        includeResolved: false,
-        ignoredAfterFourEntries: "not shown in the collapsed preview",
-      },
-      name: "investigateDeploy",
-      output: { channel_id: "C123" },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 13_250,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 12_000,
-  },
-  {
-    description: "Completed tool without argument or result payloads",
-    part: {
-      id: "gallery-empty",
-      name: "systemTime",
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 15_000,
-  },
-] as const satisfies readonly ToolCallFixture[];
-
 /** Config-gated component gallery with one page per category. */
 export function ComponentsPage() {
   return (
@@ -323,6 +191,10 @@ function GalleryIndexPage() {
 function FoundationsGalleryPage() {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const [pressed, setPressed] = useState(true);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("deploy failure");
 
   return (
     <GalleryShell
@@ -330,6 +202,112 @@ function FoundationsGalleryPage() {
       sectionId="foundations"
       title="Foundations"
     >
+      <Fixture title="Editor controls">
+        <Field
+          label="Instruction"
+          htmlFor="gallery-instruction"
+          error="Enter an instruction."
+        >
+          <TextArea
+            prose
+            id="gallery-instruction"
+            aria-invalid
+            aria-describedby="gallery-instruction-error"
+          />
+        </Field>
+        <Field label="Repeat" htmlFor="gallery-repeat">
+          <TextInput
+            size="comfortable"
+            aria-label="Resource identifier"
+            defaultValue="getsentry/junior#42"
+          />
+          <Select id="gallery-repeat">
+            <option>Every week</option>
+          </Select>
+        </Field>
+        <Button tone="primary">Save changes</Button>
+        <FormNotice title="This automation changed while you were editing.">
+          Your edits are still here. Review the latest version before saving.
+        </FormNotice>
+      </Fixture>
+      <Fixture title="Select controls">
+        <SelectFixtures />
+      </Fixture>
+      <Fixture title="Conversation navigation">
+        <DashboardChromeProvider>
+          <DashboardHeader
+            mobileNavigationOpen={navigationOpen}
+            navItems={[
+              { key: "code", label: "Code", to: "/code" },
+              { key: "system", label: "System", to: "/system" },
+            ]}
+            onMobileNavigationOpenChange={setNavigationOpen}
+            workspaceActive
+          />
+        </DashboardChromeProvider>
+      </Fixture>
+      <Fixture title="Segmented tabs">
+        <SegmentedTabsFixture />
+      </Fixture>
+      <Fixture title="Segmented page links">
+        <SegmentedNavFixture />
+      </Fixture>
+      <Fixture title="Narrow details drawer">
+        <Button onClick={() => setDrawerOpen(true)}>Open details</Button>
+        {drawerOpen ? (
+          <Drawer
+            closeLabel="Close gallery details"
+            dismissLabel="Dismiss gallery details"
+            header={
+              <h2
+                id="gallery-drawer-title"
+                className="m-0 text-lg font-semibold"
+              >
+                Conversation details
+              </h2>
+            }
+            onClose={() => setDrawerOpen(false)}
+            openKey="gallery-details"
+            titleId="gallery-drawer-title"
+            width="narrow"
+          >
+            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
+              Linked work, the Brief, participants, and usage.
+            </p>
+            <Button onClick={() => setNestedDrawerOpen(true)}>
+              Open nested details
+            </Button>
+            {nestedDrawerOpen
+              ? createPortal(
+                  <Drawer
+                    closeLabel="Close nested details"
+                    dismissLabel="Dismiss nested details"
+                    header={
+                      <h2
+                        id="gallery-nested-title"
+                        className="m-0 text-lg font-semibold"
+                      >
+                        Event details
+                      </h2>
+                    }
+                    onClose={() => setNestedDrawerOpen(false)}
+                    openKey="gallery-nested"
+                    titleId="gallery-nested-title"
+                  >
+                    <p className="m-0 text-sm text-dashboard-text-muted">
+                      Escape closes this drawer and returns focus to the parent
+                      drawer.
+                    </p>
+                  </Drawer>,
+                  document.body,
+                )
+              : null}
+          </Drawer>
+        ) : null}
+      </Fixture>
+      <Fixture title="Theme">
+        <ThemeSwitcher className="max-w-64" />
+      </Fixture>
       <Fixture title="Color tokens">
         <div className="grid gap-4">
           <TokenSwatchRow
@@ -338,6 +316,7 @@ function FoundationsGalleryPage() {
               { className: "bg-dashboard-bg", label: "bg" },
               { className: "bg-dashboard-bg-elevated", label: "elevated" },
               { className: "bg-dashboard-surface-panel", label: "panel" },
+              { className: "bg-dashboard-surface-active", label: "active" },
               { className: "bg-dashboard-surface-raised", label: "raised" },
               { className: "bg-dashboard-surface-hover", label: "hover" },
               { className: "bg-dashboard-control", label: "control" },
@@ -351,6 +330,14 @@ function FoundationsGalleryPage() {
               { className: "bg-dashboard-text-muted", label: "muted" },
               { className: "bg-dashboard-text-subtle", label: "subtle" },
               { className: "bg-dashboard-text-faint", label: "faint" },
+            ]}
+          />
+          <TokenSwatchRow
+            label="Accent"
+            swatches={[
+              { className: "bg-dashboard-accent", label: "accent" },
+              { className: "bg-dashboard-accent-text", label: "accent text" },
+              { className: "bg-dashboard-accent/10", label: "accent / 10" },
               { className: "bg-dashboard-focus", label: "focus" },
             ]}
           />
@@ -358,7 +345,8 @@ function FoundationsGalleryPage() {
             label="Border"
             swatches={[
               {
-                className: "bg-transparent border-2 border-dashboard-border-subtle",
+                className:
+                  "bg-transparent border-2 border-dashboard-border-subtle",
                 label: "subtle",
               },
               {
@@ -366,7 +354,8 @@ function FoundationsGalleryPage() {
                 label: "border",
               },
               {
-                className: "bg-transparent border-2 border-dashboard-border-strong",
+                className:
+                  "bg-transparent border-2 border-dashboard-border-strong",
                 label: "strong",
               },
               {
@@ -457,11 +446,7 @@ function FoundationsGalleryPage() {
             </Field>
           </Card>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)]">
-            <Field
-              htmlFor="gallery-provider"
-              label="Provider"
-              size="compact"
-            >
+            <Field htmlFor="gallery-provider" label="Provider" size="compact">
               <TextInput
                 defaultValue="github"
                 id="gallery-provider"
@@ -495,19 +480,89 @@ function FoundationsGalleryPage() {
             disabled
             value="read only"
           />
+          <SearchInput
+            label="Search conversations"
+            onChange={setSearchQuery}
+            placeholder="Search conversations…"
+            value={searchQuery}
+          />
         </div>
       </Fixture>
-      <Fixture title="Status chips">
-        <div className="flex flex-wrap items-center gap-2">
+      <Fixture title="Status labels">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <StatusChip tone="neutral">private</StatusChip>
           <StatusChip tone="success">completed</StatusChip>
           <StatusChip tone="danger">failed</StatusChip>
           <StatusChip tone="warning">blocked</StatusChip>
           <StatusChip tone="info">preference</StatusChip>
           <StatusChip tone="accent">knowledge</StatusChip>
-          <StatusChip size="compact" tone="success">
-            public
+          <StatusChip size="compact" tone="warning">
+            Trigger unavailable
           </StatusChip>
+        </div>
+      </Fixture>
+      <Fixture title="Notices">
+        <div className="grid max-w-md gap-2">
+          <Notice
+            action={<NoticeAction>Undo</NoticeAction>}
+            detail="Investigate checkout latency"
+            icon={ArchiveRestore}
+            title="Conversation archived"
+          />
+          <Notice
+            action={<NoticeAction tone="error">Dismiss</NoticeAction>}
+            detail="Investigate checkout latency"
+            icon={CircleAlert}
+            title="Could not archive"
+            tone="error"
+          />
+        </div>
+      </Fixture>
+      <Fixture title="Actor avatars">
+        <div className="flex items-center gap-4">
+          <ActorAvatar
+            name="Ada Lovelace"
+            imageUrl="/_junior/dashboard/avatar.png"
+            size="detail"
+          />
+          <ActorAvatar name="Grace Hopper" size="detail" />
+          <ActorAvatar
+            name="Alan Turing"
+            imageUrl="/missing-avatar.png"
+            size="list"
+          />
+        </div>
+      </Fixture>
+      <Fixture title="Participant avatars">
+        <div className="flex flex-wrap items-center gap-8">
+          <ParticipantAvatarStack
+            participants={[
+              { email: "ada@example.com", fullName: "Ada Lovelace" },
+              { email: "grace@example.com", fullName: "Grace Hopper" },
+              { email: "alan@example.com", fullName: "Alan Turing" },
+              { email: "katherine@example.com", fullName: "Katherine Johnson" },
+            ]}
+            size="list"
+          />
+          <ParticipantAvatarStack
+            participants={[
+              { email: "ada@example.com", fullName: "Ada Lovelace" },
+              { email: "grace@example.com", fullName: "Grace Hopper" },
+              { email: "alan@example.com", fullName: "Alan Turing" },
+              { email: "katherine@example.com", fullName: "Katherine Johnson" },
+            ]}
+            size="detail"
+          />
+        </div>
+      </Fixture>
+      <Fixture title="Status dots">
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusDot label="completed" tone="success" />
+          <StatusDot label="failed" tone="danger" />
+          <StatusDot label="blocked" tone="warning" />
+          <StatusDot label="idle" tone="neutral" />
+          <StatusDot label="info" tone="info" />
+          <StatusDot label="accent" tone="accent" />
         </div>
       </Fixture>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -536,6 +591,9 @@ function FoundationsGalleryPage() {
           value="7"
         />
       </div>
+      <Fixture title="Page loading">
+        <PageContentSkeleton label="Loading example" variant="stats" />
+      </Fixture>
       <Fixture title="Metadata and empty state">
         <div className="grid gap-4">
           <MetricList
@@ -573,17 +631,7 @@ function ChartsGalleryPage() {
       sectionId="charts"
       title="Charts"
     >
-      <ConversationActivityChart days={METRIC_DAYS} />
-      <SystemMetricCharts days={METRIC_DAYS} />
-      <PeopleActivityChart days={PEOPLE_DAYS} />
-      <LocationDirectoryActivityChart days={LOCATION_DAYS} />
-      <Card>
-        <CardHeader
-          description="Daily conversation intensity over ten weeks."
-          title="Contribution activity"
-        />
-        <ContributionGrid days={CONTRIBUTION_DAYS} />
-      </Card>
+      <ChartFixtures />
     </GalleryShell>
   );
 }
@@ -595,6 +643,157 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
+      <Fixture title="Conversation spacing">
+        <ConversationFixture />
+      </Fixture>
+      <Fixture title="Message attachments (mock reporting)">
+        <MessageAttachmentsFixture />
+      </Fixture>
+      <Fixture title="Object visual language">
+        <ObjectFixtures />
+      </Fixture>
+      <Fixture title="Object annotations">
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "code_change",
+            plugin: "github",
+            key: "getsentry/junior#1200",
+            label: "getsentry/junior#1200",
+            title: "Use object annotations for reply cards",
+            status: "open",
+            displayType: "Pull request",
+            sourceUpdatedAt: "2026-09-25T13:45:00Z",
+            facts: {
+              type: "code_change",
+              author: "alex",
+              review: "changes_requested",
+              checks: { passed: 12, failed: 1, pending: 0 },
+              reviewers: ["sam"],
+              mergeable: false,
+              sourceBranch: "feature/object-cards",
+              targetBranch: "main",
+              changedFiles: 8,
+              additions: 120,
+              deletions: 30,
+            },
+            url: "https://github.com/getsentry/junior/pull/1200",
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "task",
+            plugin: "linear",
+            key: "ENG-123",
+            label: "ENG-123",
+            title: "Keep background annotation updates out of the next reply",
+            status: "In Progress",
+            facts: {
+              type: "task",
+              assignees: ["Sam"],
+              priority: "High",
+              project: "Conversation quality",
+              cycle: "September",
+              dueDate: "2026-09-30",
+              labels: ["UX", "Reliability"],
+            },
+            url: "https://linear.app/example/issue/ENG-123",
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "deployment",
+            displayType: "Deployment",
+            plugin: "vercel",
+            key: "dpl_example",
+            label: "dpl_example",
+            title: "junior-docs.vercel.app",
+            status: "READY",
+            url: "https://junior-docs.vercel.app",
+            facts: {
+              type: "deployment",
+              environment: "production",
+              project: "junior-docs",
+              revision: "ca37e26a9",
+              branch: "main",
+            },
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "item",
+            plugin: "example",
+            key: "note",
+            label: "note",
+            title: "A saved item without a source link",
+            url: null,
+          }}
+        />
+      </Fixture>
+      <Fixture title="Automation in a reply">
+        <div className="max-w-[52.5rem]">
+          <TranscriptMessageShell actor="Junior" role="assistant">
+            <span className="text-sm font-semibold text-dashboard-accent-text">
+              Junior
+            </span>
+            <TranscriptText
+              mentions={[]}
+              role="assistant"
+              text={
+                "Your reminder is set.\n\nI'll remind you to drink water every 30 minutes until you ask me to stop."
+              }
+            />
+            <AutomationCard
+              card={{
+                id: "sched_0123456789abcdef0123456789abcdef",
+                title: "Drink water",
+                instruction:
+                  "Remind the user to drink water with a short friendly message in this conversation. Then create another one-off reminder after 30 minutes.",
+                trigger: "In 30 minutes",
+                warning: null,
+              }}
+            />
+          </TranscriptMessageShell>
+        </div>
+      </Fixture>
+      <Fixture title="Automation card states">
+        <AutomationCard
+          card={{
+            id: "sched_0123456789abcdef0123456789abcdef",
+            title: "Drink water reminder",
+            status: "active",
+            instruction: "Remind the user to drink water in this conversation.",
+            trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
+            warning: null,
+          }}
+        />
+        <AutomationCard
+          card={{
+            id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
+            title:
+              "Review automated fixes across the JavaScript SDK repositories",
+            instruction:
+              "Review Sentry PRs. Close invalid fixes and correct valid ones. Post in #proj-junior only when ready for human merge.",
+            trigger:
+              'getsentry/junior · pull_request.opened · author = "sentry[bot]"',
+            warning: null,
+          }}
+        />
+        <AutomationCard
+          card={{
+            id: "scheduled-1",
+            title: "Weekly release digest",
+            status: "blocked",
+            instruction:
+              "Summarize the week's releases and send me the digest.",
+            trigger: "Every Friday at 09:00 · America/Los_Angeles",
+            warning: "Connect your GitHub account to resume this automation.",
+          }}
+        />
+      </Fixture>
       <Fixture title="Event notification">
         <TranscriptMarkdown compact text={EVENT_NOTIFICATION} />
       </Fixture>
@@ -602,39 +801,18 @@ function TranscriptsGalleryPage() {
         <TranscriptMarkdown text={GFM_SAMPLE} />
       </Fixture>
       <Fixture title="TranscriptText assistant">
-        <TranscriptText role="assistant" text={MIXED_ASSISTANT} />
+        <TranscriptText mentions={[]} role="assistant" text={MIXED_ASSISTANT} />
       </Fixture>
       <Fixture title="TranscriptText user">
-        <TranscriptText role="user" text={EVENT_NOTIFICATION} />
+        <TranscriptText mentions={[]} role="user" text={EVENT_NOTIFICATION} />
       </Fixture>
       <Fixture title="Tool calls">
         <ToolCallGallery />
       </Fixture>
+      <Fixture title="Subagent cards">
+        <SubagentCardFixture />
+      </Fixture>
     </GalleryShell>
-  );
-}
-
-/** Render typed transcript tool states for visual regression and interaction checks. */
-export function ToolCallGallery() {
-  return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-dashboard-border bg-dashboard-fill-faint">
-      <div className="border-b border-dashboard-border-subtle px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted">
-        Activity lane · click a row for arguments and result
-      </div>
-      <div className="grid min-w-0 gap-1 px-2 py-1.5">
-        {TOOL_CALL_FIXTURES.map((fixture) => (
-          <div className="grid min-w-0 gap-1" key={fixture.part.id}>
-            <div className="font-mono text-2xs uppercase tracking-[0.08em] text-dashboard-text-muted">
-              {fixture.description}
-            </div>
-            <TranscriptToolView
-              part={fixture.part}
-              timestamp={fixture.timestamp}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -670,7 +848,7 @@ function GalleryShell(props: {
 function Fixture(props: { children: ReactNode; title: string }) {
   return (
     <Card className="grid min-w-0 gap-3 p-4 sm:p-5" padding="none">
-      <div className="border-b border-dashboard-border-subtle pb-3 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+      <div className="border-b border-dashboard-border-subtle pb-3 font-sans text-xs font-medium text-dashboard-text-muted">
         {props.title}
       </div>
       <div className="min-w-0">{props.children}</div>
@@ -684,7 +862,7 @@ function TokenSwatchRow(props: {
 }) {
   return (
     <div className="grid gap-2">
-      <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <div className="font-sans font-medium text-xs text-dashboard-text-muted">
         {props.label}
       </div>
       <div className="flex flex-wrap gap-3">
@@ -703,12 +881,5 @@ function TokenSwatchRow(props: {
         ))}
       </div>
     </div>
-  );
-}
-
-function fixtureDates(count: number): string[] {
-  const start = Date.UTC(2026, 4, 1);
-  return Array.from({ length: count }, (_, index) =>
-    new Date(start + index * 86_400_000).toISOString().slice(0, 10),
   );
 }

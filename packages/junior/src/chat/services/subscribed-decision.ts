@@ -1,21 +1,28 @@
-import { z } from "zod";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { estimateTextTokens } from "@/chat/services/context-budget";
 import { isProviderRetryError } from "@/chat/services/provider-error";
-import { buildSubscribedReplyRouterPolicy } from "@/chat/services/subscribed-reply-router-policy";
+import {
+  buildSubscribedReplyRouterQuestions,
+  type SubscribedReplyRoute,
+  type SubscribedReplyRouterQuestions,
+} from "@/chat/services/subscribed-reply-router-policy";
 
-export enum SubscribedReplyReason {
-  ThreadOptOut = "thread_opt_out",
-  ExplicitMention = "explicit_mention",
-  DirectedFollowUp = "directed_follow_up",
-  DirectedToOtherParty = "directed_to_other_party",
-  EmptyMessage = "empty_message",
-  Classifier = "llm_classifier",
-  SideConversation = "side_conversation",
-  LowConfidence = "low_confidence",
-  ClassifierError = "classifier_error",
-  PassiveDisabled = "passive_disabled",
-}
+/** Why the subscribed-thread router chose to reply or stay silent. */
+export const SubscribedReplyReason = {
+  ThreadOptOut: "thread_opt_out",
+  ExplicitMention: "explicit_mention",
+  DirectedFollowUp: "directed_follow_up",
+  DirectedToOtherParty: "directed_to_other_party",
+  EmptyMessage: "empty_message",
+  Classifier: "llm_classifier",
+  SideConversation: "side_conversation",
+  LowConfidence: "low_confidence",
+  ClassifierError: "classifier_error",
+  PassiveDisabled: "passive_disabled",
+} as const;
+
+export type SubscribedReplyReason =
+  (typeof SubscribedReplyReason)[keyof typeof SubscribedReplyReason];
 
 export interface SubscribedDecisionInput {
   rawText: string;
@@ -57,29 +64,7 @@ interface RouterEvidence {
   omittedEntries: number;
 }
 
-const replyDecisionSchema = z
-  .object({
-    should_reply: z
-      .boolean()
-      .describe("Whether Junior should respond to this thread message."),
-    should_unsubscribe: z
-      .boolean()
-      .describe(
-        "Whether Junior should unsubscribe from this thread because the user clearly asked it to stop participating.",
-      ),
-    confidence: z
-      .number()
-      .min(0)
-      .max(1)
-      .describe("Classifier confidence from 0 to 1."),
-    reason: z
-      .string()
-      .describe("Short reason for the decision; use an empty string if none."),
-  })
-  .strict();
-
 const ROUTER_CONFIDENCE_THRESHOLD = 0.7;
-const ROUTER_CLASSIFIER_MAX_TOKENS = 400;
 const MAX_MESSAGE_TRANSCRIPT_TOKENS = 10_000;
 const MAX_MESSAGE_ENTRY_TOKENS = 2_000;
 const RECENT_ASSISTANT_ENTRY_LIMIT = 40;
@@ -87,14 +72,12 @@ const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
   /^\[(assistant|user)\]\s+([^:]+):\s+([\s\S]+)$/i;
-const FORCED_THREAD_OPTOUT_RE = /^!stop(?:\s|$)/i;
-const THREAD_OPTOUT_PATTERNS = [
-  /\bstop (?:watching|replying|participating)\b/i,
-  /\bstay out\b/i,
-  /\bdon['’]t (?:reply|participate|watch)\b/i,
-  /\bunsubscribe\b/i,
-  /\bleave (?:this )?thread\b/i,
-];
+/** `!stop` may appear anywhere in the message. */
+const BANG_STOP_RE = /(?:^|\s)!stop(?=\s|$|[.!?,;:])/i;
+/** Drop a leading `@jr` / mention before matching bare `stop`. */
+const LEADING_ADDRESS_RE = /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
+/** Whole message is only `stop` after any leading address. */
+const BARE_STOP_RE = /^stop(?:\s*[.!…]+)?$/i;
 const ACKNOWLEDGMENT_ONLY_RE =
   /^(?:thanks(?: you)?|thank you|thx|ty|got it|sounds good|sgtm|lgtm|ok(?:ay)?|cool|nice|perfect|awesome|great|makes sense|understood|roger|yep|yup|kk|on it|will do)(?:[.!]+)?$/i;
 const DIRECTED_FOLLOW_UP_CUE_RE =
@@ -154,17 +137,49 @@ function detectLeadingOtherPartyAddress(
   return `named_mention:${directedName}`;
 }
 
-function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
-  return (
-    FORCED_THREAD_OPTOUT_RE.test(rawText.trim()) ||
-    FORCED_THREAD_OPTOUT_RE.test(text.trim())
-  );
+function hasBangStop(rawText: string, text: string): boolean {
+  return BANG_STOP_RE.test(rawText.trim()) || BANG_STOP_RE.test(text.trim());
 }
 
-function isThreadOptOutInstruction(rawText: string, text: string): boolean {
-  return THREAD_OPTOUT_PATTERNS.some(
-    (pattern) => pattern.test(rawText) || pattern.test(text),
-  );
+function isBareStop(rawText: string, text: string): boolean {
+  return [rawText, text].some((value) => {
+    const candidate = value.trim().replace(LEADING_ADDRESS_RE, "").trim();
+    return candidate.length > 0 && BARE_STOP_RE.test(candidate);
+  });
+}
+
+/**
+ * Return a stop decision only when the message is not addressed to another party.
+ * Deferred batches must call this on each body, not on joined text.
+ */
+export function getThreadStopDecision(args: {
+  botUserName: string;
+  rawText: string;
+  text: string;
+  isExplicitMention?: boolean;
+}): SubscribedDecisionResult | undefined {
+  if (getSubscribedReplyPreflightDecision(args)) {
+    return undefined;
+  }
+  const text = args.text.trim();
+  const rawText = args.rawText.trim();
+  if (hasBangStop(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "!stop",
+    };
+  }
+  if (isBareStop(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "stop",
+    };
+  }
+  return undefined;
 }
 
 function isAcknowledgmentOnly(text: string): boolean {
@@ -211,7 +226,7 @@ function parseTranscriptMessages(
 
   for (const line of lines) {
     const match = line.match(TRANSCRIPT_MESSAGE_LINE_RE);
-    if (!match) {
+    if (!match?.[1]) {
       continue;
     }
 
@@ -403,21 +418,23 @@ export function getSubscribedReplyPreflightDecision(args: {
   };
 }
 
-/** Decide whether to reply to a message in a subscribed thread using an LLM classifier. */
+/** Decide whether to reply to a message in a subscribed thread using a decision model. */
 export async function decideSubscribedThreadReply(args: {
   botUserName: string;
   modelId: string;
   input: SubscribedDecisionInput;
-  completeObject: (args: {
+  completeDecision: (args: {
     modelId: string;
-    schema: typeof replyDecisionSchema;
-    maxTokens: number;
-    temperature: number;
-    system: string;
-    prompt: string;
+    state: string;
+    questions: SubscribedReplyRouterQuestions;
     metadata: Record<string, string>;
-    promptName?: string;
-  }) => Promise<{ costUsd?: number; object: unknown }>;
+    promptName: string;
+  }) => Promise<{
+    answers: {
+      route: { choice: string; probabilities?: Record<string, number> };
+    };
+    costUsd?: number;
+  }>;
   logClassifierFailure: (
     error: unknown,
     input: SubscribedDecisionInput,
@@ -425,13 +442,14 @@ export async function decideSubscribedThreadReply(args: {
 }): Promise<SubscribedDecisionResult> {
   const text = args.input.text.trim();
   const rawText = args.input.rawText.trim();
-  if (isForcedThreadOptOutCommand(rawText, text)) {
-    return {
-      shouldReply: false,
-      shouldUnsubscribe: true,
-      reason: SubscribedReplyReason.ThreadOptOut,
-      reasonDetail: "forced !stop command",
-    };
+  const stopDecision = getThreadStopDecision({
+    botUserName: args.botUserName,
+    rawText,
+    text,
+    isExplicitMention: args.input.isExplicitMention,
+  });
+  if (stopDecision) {
+    return stopDecision;
   }
   const preflightDecision = getSubscribedReplyPreflightDecision({
     botUserName: args.botUserName,
@@ -447,22 +465,13 @@ export async function decideSubscribedThreadReply(args: {
   }
 
   if (args.input.isExplicitMention) {
-    if (isThreadOptOutInstruction(rawText, text)) {
-      return {
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: "explicit stop instruction",
-      };
-    }
     return {
       shouldReply: true,
       reason: SubscribedReplyReason.ExplicitMention,
     };
   }
 
-  // Non-mention replies in subscribed threads stay experimental and off by
-  // default. Forced opt-out and explicit mentions are handled above.
+  // Non-mention replies stay off unless passive-routing is enabled.
   if (!isExperimentalFeatureEnabled("passive-routing")) {
     return {
       shouldReply: false,
@@ -497,13 +506,10 @@ export async function decideSubscribedThreadReply(args: {
   }
 
   try {
-    const result = await args.completeObject({
+    const result = await args.completeDecision({
       modelId: args.modelId,
-      schema: replyDecisionSchema,
-      maxTokens: ROUTER_CLASSIFIER_MAX_TOKENS,
-      temperature: 0,
-      system: buildSubscribedReplyRouterPolicy(args.botUserName),
-      prompt: buildRouterPrompt(rawText, evidence),
+      state: buildRouterPrompt(rawText, evidence),
+      questions: buildSubscribedReplyRouterQuestions(args.botUserName),
       metadata: {
         modelId: args.modelId,
         threadId: args.input.context.threadId ?? "",
@@ -513,51 +519,11 @@ export async function decideSubscribedThreadReply(args: {
       },
       promptName: "junior.passive_reply_route",
     });
-
-    const parsed = replyDecisionSchema.parse(result.object);
-    const reason = parsed.reason?.trim() || "classifier";
-    if (parsed.should_unsubscribe) {
-      if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
-        return {
-          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-          shouldReply: false,
-          reason: SubscribedReplyReason.LowConfidence,
-          reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
-        };
-      }
-
-      return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: reason,
-      };
-    }
-
-    if (!parsed.should_reply) {
-      return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-        shouldReply: false,
-        reason: SubscribedReplyReason.SideConversation,
-        reasonDetail: reason,
-      };
-    }
-
-    if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
-      return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-        shouldReply: false,
-        reason: SubscribedReplyReason.LowConfidence,
-        reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
-      };
-    }
-
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-      shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: reason,
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
+      ...routeDecisionResult(result.answers.route),
     };
   } catch (error) {
     if (isProviderRetryError(error)) {
@@ -569,4 +535,48 @@ export async function decideSubscribedThreadReply(args: {
       reason: SubscribedReplyReason.ClassifierError,
     };
   }
+}
+
+function isSubscribedReplyRoute(value: string): value is SubscribedReplyRoute {
+  return value === "reply" || value === "stay_quiet" || value === "unsubscribe";
+}
+
+function routeDecisionResult(answer: {
+  choice: string;
+  probabilities?: Record<string, number>;
+}): SubscribedDecisionResult {
+  const route = answer.choice;
+  if (!isSubscribedReplyRoute(route)) {
+    throw new Error(`Decision model returned unknown route: ${route}`);
+  }
+  // A provider without probabilities still returns its most likely choice.
+  const probability = answer.probabilities?.[route] ?? 1;
+  const detail = `${route} p=${probability.toFixed(2)}`;
+  if (route === "stay_quiet") {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.SideConversation,
+      reasonDetail: detail,
+    };
+  }
+  if (probability < ROUTER_CONFIDENCE_THRESHOLD) {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.LowConfidence,
+      reasonDetail: detail,
+    };
+  }
+  if (route === "unsubscribe") {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: detail,
+    };
+  }
+  return {
+    shouldReply: true,
+    reason: SubscribedReplyReason.Classifier,
+    reasonDetail: detail,
+  };
 }

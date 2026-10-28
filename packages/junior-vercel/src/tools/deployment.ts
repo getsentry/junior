@@ -8,7 +8,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { vercelProjectIdSchema } from "../project.js";
-import { vercelDeploymentSubscribable } from "../resource-events/deployment.js";
+import { vercelDeploymentSubscribable } from "../events/deployment.js";
 import { vercelWebhookSecret } from "../webhooks/secret.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
@@ -109,7 +109,7 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       // production-scoped unless the caller names another target.
       const deploymentTarget =
         input.target ?? (commitSha ? ("production" as const) : undefined);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? vercelDeploymentSubscribable({
             commitSha,
             projectId,

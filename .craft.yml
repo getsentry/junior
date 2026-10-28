@@ -3,7 +3,13 @@ changelog:
   filePath: CHANGELOG.md
   policy: auto
 preReleaseCommand: bash scripts/craft-pre-release.sh
+# Craft owns approval and tag creation. The tag workflow owns GitHub assets.
+# Keep this first so npm publication cannot block GitHub release verification.
+requireNames:
+  - /^junior-release\.json$/
 targets:
+  - name: github
+    tagOnly: true
   - name: npm
     id: "@sentry/junior"
     includeNames: /^sentry-junior-\d.*\.tgz$/
@@ -26,8 +32,14 @@ targets:
     id: "@sentry/junior-datadog"
     includeNames: /^sentry-junior-datadog-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-tts"
+    includeNames: /^sentry-junior-tts-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-github"
     includeNames: /^sentry-junior-github-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-google"
+    includeNames: /^sentry-junior-google-\d.*\.tgz$/
   - name: npm
     id: "@sentry/junior-hex"
     includeNames: /^sentry-junior-hex-\d.*\.tgz$/
@@ -44,6 +56,9 @@ targets:
     id: "@sentry/junior-octolens"
     includeNames: /^sentry-junior-octolens-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-pagerduty"
+    includeNames: /^sentry-junior-pagerduty-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-sentry"
     includeNames: /^sentry-junior-sentry-\d.*\.tgz$/
   - name: npm
@@ -52,4 +67,3 @@ targets:
   - name: npm
     id: "@sentry/junior-vercel"
     includeNames: /^sentry-junior-vercel-\d.*\.tgz$/
-  - name: github

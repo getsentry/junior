@@ -1,28 +1,62 @@
 import { z } from "zod";
 import {
-  AgentInvocationBusyError,
   AgentInvocationLimitError,
+  AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
-import { agentNameSchema } from "@/chat/agent-invocations/types";
+import {
+  agentNameSchema,
+  PARENT_AGENT_TARGET,
+} from "@/chat/agent-invocations/types";
+import { completeText } from "@/chat/pi/client";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
+import { formatModelProfiles, type ModelProfile } from "@/chat/model-profile";
+import {
+  resolveTaskTitle,
+  SHORT_TITLE_MAX_LENGTH,
+} from "@/chat/services/short-title";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type {
+  SpawnAgentProfileControl,
+  ToolRuntimeContext,
+} from "@/chat/tools/types";
 
 export const SPAWN_AGENT_TOOL_NAME = "spawnAgent";
 
 const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
-  invocation_id: z.string().min(1),
+  conversation_id: z
+    .string()
+    .min(1)
+    .describe(
+      "Child conversation ID. Pass it to searchConversationEvents to read the child's history.",
+    ),
 });
 
 /** Create the asynchronous child-agent tool for one parent run. */
 export function createSpawnAgentTool(
   spawnAgent: NonNullable<ToolRuntimeContext["spawnAgent"]>,
+  profileControl: SpawnAgentProfileControl,
 ) {
+  const profileNames = [
+    profileControl.defaultProfile,
+    ...Object.keys(profileControl.profiles)
+      .filter((profile) => profile !== profileControl.defaultProfile)
+      .sort(),
+  ] as [ModelProfile, ...ModelProfile[]];
+  const profileSchema = z.enum(profileNames);
+  const profileList = formatModelProfiles(
+    profileControl.profiles,
+    profileNames,
+  );
   return zodTool({
-    description:
-      "Start an asynchronous child agent on a delegated task. Give it a name to reuse the same child agent and its history on later calls; omit the name for a one-off agent. This call confirms durable scheduling, not task completion.",
+    description: [
+      "Start a new asynchronous child agent on a delegated task. Give it a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
+      "The parent should normally choose the child's profile to fit the delegated task. Use the profile descriptions below to choose; do not choose by profile name alone. When omitted, the child uses the profile active for this turn. A child keeps its original profile when it receives more work through messageAgent.",
+      "This call confirms durable scheduling, not task completion. The result arrives later as a new task in this conversation; do not wait or poll for it.",
+      "Your task text is not user approval. A child's action review reads the user's own messages in the root conversation.",
+      `Configured profiles:\n${profileList}`,
+    ].join(" "),
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -31,18 +65,43 @@ export function createSpawnAgentTool(
     },
     inputSchema: z
       .object({
-        task: z.string().trim().min(1).describe("Task for the child agent"),
-        name: agentNameSchema
+        task: z
+          .string()
+          .trim()
+          .min(1)
+          .describe(
+            "Self-contained task. The child gets no thread history and has its own sandbox, so this is its only context from you. Include: the goal and concrete output; target repos, refs, paths, and URLs; facts you already verified; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and what evidence to return. State rules the child must follow. Do not paste thread history or claim user approval.",
+          ),
+        title: z
+          .string()
+          .trim()
+          .min(1)
+          .max(SHORT_TITLE_MAX_LENGTH)
           .nullable()
           .optional()
-          .describe("Stable child-agent name, or omit for a one-off agent"),
+          .describe(
+            "Optional short display title for the task. Omit to generate one from the task.",
+          ),
+        name: agentNameSchema
+          .refine((name) => name !== PARENT_AGENT_TARGET, {
+            message: `"${PARENT_AGENT_TARGET}" is reserved`,
+          })
+          .nullable()
+          .optional()
+          .describe(
+            "New child-agent name that messageAgent can address, or omit for a one-off agent",
+          ),
+        profile: profileSchema
+          .nullable()
+          .optional()
+          .describe(
+            "Exact configured profile whose task-fit description matches the delegated task. The parent should normally set this; omit or pass null to use the active profile for this turn.",
+          ),
         reasoning_level: z
           .enum(TURN_REASONING_LEVELS)
           .nullable()
           .optional()
-          .describe(
-            "Optional reasoning level for this delegated task only",
-          ),
+          .describe("Optional reasoning level for this delegated task only"),
       })
       .strict(),
     outputSchema: spawnAgentOutputSchema,
@@ -50,11 +109,19 @@ export function createSpawnAgentTool(
       if (!options.toolCallId) {
         throw new ToolInputError("spawnAgent requires an active tool call ID");
       }
+      const title = await resolveTaskTitle({
+        completeText,
+        instruction: input.task,
+        signal: options.signal,
+        title: input.title,
+      });
       let result;
       try {
         result = await spawnAgent(
           {
             task: input.task,
+            profile: input.profile ?? profileControl.activeProfile(),
+            ...(title ? { title } : undefined),
             ...(input.name ? { name: input.name } : undefined),
             ...(input.reasoning_level
               ? { reasoningLevel: input.reasoning_level }
@@ -66,9 +133,9 @@ export function createSpawnAgentTool(
           },
         );
       } catch (error) {
-        if (error instanceof AgentInvocationBusyError) {
+        if (error instanceof AgentNameInUseError) {
           throw new ToolInputError(
-            `${error.message}. Wait for it to finish or use a different name.`,
+            `${error.message}. Use messageAgent to give it more work, or choose a different name.`,
             { cause: error },
           );
         }
@@ -81,7 +148,7 @@ export function createSpawnAgentTool(
         throw error;
       }
       return {
-        invocation_id: result.invocationId,
+        conversation_id: result.childConversationId,
       };
     },
   });

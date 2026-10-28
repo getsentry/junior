@@ -1,3 +1,4 @@
+import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 /**
  * Turn-local MCP tool manager.
  *
@@ -11,6 +12,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import {
   missingToolAnnotationKeys,
   type PluginMcpToolResult,
+  type PluginMcpContent,
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import {
@@ -21,6 +23,10 @@ import {
 } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { toGenAiPayloadMetadata } from "@/chat/conversation-privacy";
+import {
+  serviceAccountAllows,
+  serviceAccountOnly,
+} from "@/chat/credentials/service-account";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   McpAuthorizationRequiredError,
@@ -32,6 +38,7 @@ import {
   getMcpAwareTelemetryMessage,
   getMcpAwareErrorType,
   getMcpProviderErrorAttributes,
+  McpServiceAccountRequiredError,
   McpToolError,
 } from "./errors";
 
@@ -259,9 +266,19 @@ function extractMcpErrorMessage(result: PluginMcpToolCallResult): string {
 
 export interface McpToolSuccessHookInput {
   arguments: Record<string, unknown>;
+  content?: PluginMcpContent[];
   provider: string;
   structuredContent?: unknown;
   toolName: string;
+}
+
+/**
+ * Why a call needs MCP authorization. The agent writes `intent`, so treat it
+ * as untrusted text.
+ */
+export interface McpAuthorizationContext {
+  intent?: string;
+  toolName?: string;
 }
 
 export interface McpToolManagerOptions {
@@ -271,19 +288,33 @@ export interface McpToolManagerOptions {
     | OAuthClientProvider
     | undefined
     | Promise<OAuthClientProvider | undefined>;
+  /**
+   * Return the plugin's service account auth, or undefined to use the actor's
+   * own auth. A service account client calls only the tools that its
+   * `accounts.service-account.tools` lists. Other tools use the actor's own
+   * client. A plugin with `accounts.user-oauth: false` never uses the
+   * actor's own auth.
+   */
+  serviceAccountProviderFactory?: (
+    plugin: PluginDefinition,
+  ) => Promise<OAuthClientProvider | undefined>;
   fetch?: typeof fetch;
   onAuthorizationRequired?: (
     provider: string,
     error: McpAuthorizationRequiredError,
+    context?: McpAuthorizationContext,
   ) => Promise<boolean | void> | boolean | void;
   /**
    * Optional post-success processor for model-facing MCP tool calls.
    * Failures are logged by the host caller and must not fail the tool result.
    */
-  onToolSuccess?: (input: McpToolSuccessHookInput) => Promise<void> | void;
+  onToolSuccess?: (
+    input: McpToolSuccessHookInput,
+  ) => Promise<OwnedObjectAnnotation[] | void> | OwnedObjectAnnotation[] | void;
 }
 
 export interface ManagedMcpToolResult {
+  cards?: OwnedObjectAnnotation[];
   /**
    * Internal bridge for direct model calls, which need placeholder content
    * while the wrapper boundary receives a content-free discriminated result.
@@ -310,7 +341,11 @@ export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
   execute: (
     args: Record<string, unknown>,
     options?: {
+      /** Agent-written purpose shown if this call needs user authorization. */
+      authorizationIntent?: string;
       conversationPrivacy?: ConversationPrivacy;
+      /** Cancels the provider request when the host preempts the call. */
+      signal?: AbortSignal;
       toolCallId?: string;
     },
   ) => Promise<ManagedMcpToolResult>;
@@ -321,16 +356,22 @@ export class McpToolManager {
   private readonly activeProviders = new Set<string>();
   private readonly authorizationPendingProviders = new Set<string>();
   private readonly clientsByProvider = new Map<string, PluginMcpClient>();
+  /** Actor clients for tools that a provider's service account may not call. */
+  private readonly actorClientsByProvider = new Map<string, PluginMcpClient>();
+  private readonly serviceAccountProviders = new Set<string>();
   private readonly clientPromisesByProvider = new Map<
     string,
     Promise<PluginMcpClient>
   >();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
 
+  private readonly options: McpToolManagerOptions;
+
   constructor(
     plugins: PluginDefinition[],
-    private readonly options: McpToolManagerOptions = {},
+    options: McpToolManagerOptions = {},
   ) {
+    this.options = options;
     for (const plugin of plugins) {
       if (plugin.manifest.mcp) {
         this.pluginsByProvider.set(plugin.manifest.name, plugin);
@@ -359,7 +400,10 @@ export class McpToolManager {
       }));
   }
 
-  async activateProvider(provider: string): Promise<boolean> {
+  async activateProvider(
+    provider: string,
+    authorizationContext?: McpAuthorizationContext,
+  ): Promise<boolean> {
     if (this.activeProviders.has(provider)) {
       return false;
     }
@@ -374,8 +418,12 @@ export class McpToolManager {
 
     try {
       const client = await this.getClient(plugin);
-      const tools = this.filterListedTools(plugin, await client.listTools());
-      this.assertWrappedToolsAvailable(plugin, tools);
+      const listedTools = this.filterListedTools(
+        plugin,
+        await client.listTools(),
+      );
+      this.assertWrappedToolsAvailable(plugin, listedTools);
+      const tools = this.filterServiceAccountOnlyTools(plugin, listedTools);
       this.toolsByProvider.set(
         provider,
         tools.map((tool) => this.toManagedTool(plugin, client, tool)),
@@ -385,7 +433,11 @@ export class McpToolManager {
     } catch (error) {
       if (
         error instanceof McpAuthorizationRequiredError &&
-        (await this.handleAuthorizationRequired(plugin.manifest.name, error))
+        (await this.handleAuthorizationRequired(
+          plugin.manifest.name,
+          error,
+          authorizationContext,
+        ))
       ) {
         return false;
       }
@@ -396,7 +448,10 @@ export class McpToolManager {
   async close(): Promise<void> {
     let firstError: unknown;
 
-    for (const client of this.clientsByProvider.values()) {
+    for (const client of [
+      ...this.clientsByProvider.values(),
+      ...this.actorClientsByProvider.values(),
+    ]) {
       try {
         await client.close();
       } catch (error) {
@@ -405,6 +460,8 @@ export class McpToolManager {
     }
 
     this.clientsByProvider.clear();
+    this.actorClientsByProvider.clear();
+    this.serviceAccountProviders.clear();
     this.toolsByProvider.clear();
     this.activeProviders.clear();
     this.authorizationPendingProviders.clear();
@@ -468,6 +525,22 @@ export class McpToolManager {
     }
   }
 
+  /**
+   * Hide tools that the service account does not list when no Actor
+   * connection exists to call them.
+   */
+  private filterServiceAccountOnlyTools(
+    plugin: PluginDefinition,
+    tools: PluginMcpListedTool[],
+  ): PluginMcpListedTool[] {
+    if (!serviceAccountOnly(plugin.manifest)) {
+      return tools;
+    }
+    return tools.filter((tool) =>
+      serviceAccountAllows(plugin.manifest, { tool: tool.name }),
+    );
+  }
+
   private async getClient(plugin: PluginDefinition): Promise<PluginMcpClient> {
     const existing = this.clientsByProvider.get(plugin.manifest.name);
     if (existing) {
@@ -496,15 +569,59 @@ export class McpToolManager {
   private async createClient(
     plugin: PluginDefinition,
   ): Promise<PluginMcpClient> {
-    const authProvider = this.options.authProviderFactory
-      ? await this.options.authProviderFactory(plugin)
-      : undefined;
-    const client = new PluginMcpClient(plugin, {
+    const serviceAccount =
+      await this.options.serviceAccountProviderFactory?.(plugin);
+    if (serviceAccount) {
+      this.serviceAccountProviders.add(plugin.manifest.name);
+    }
+    const client = await this.newClient(plugin, serviceAccount);
+    this.clientsByProvider.set(plugin.manifest.name, client);
+    return client;
+  }
+
+  private async newClient(
+    plugin: PluginDefinition,
+    serviceAccount?: OAuthClientProvider,
+  ): Promise<PluginMcpClient> {
+    if (!serviceAccount && serviceAccountOnly(plugin.manifest)) {
+      throw new McpServiceAccountRequiredError(
+        plugin.manifest.name,
+        plugin.manifest.displayName,
+      );
+    }
+    const authProvider =
+      serviceAccount ?? (await this.options.authProviderFactory?.(plugin));
+    return new PluginMcpClient(plugin, {
       ...(authProvider ? { authProvider } : undefined),
       ...(this.options.fetch ? { fetch: this.options.fetch } : undefined),
     });
-    this.clientsByProvider.set(plugin.manifest.name, client);
-    return client;
+  }
+
+  /** Pick the client for one call: the service account for its tools, else the actor. */
+  private async clientForTool(
+    plugin: PluginDefinition,
+    client: PluginMcpClient,
+    toolName: string,
+  ): Promise<PluginMcpClient> {
+    const provider = plugin.manifest.name;
+    if (
+      !this.serviceAccountProviders.has(provider) ||
+      serviceAccountAllows(plugin.manifest, { tool: toolName })
+    ) {
+      return client;
+    }
+    if (serviceAccountOnly(plugin.manifest)) {
+      throw new McpToolError(
+        `${plugin.manifest.displayName} tool ${toolName} is not available: Junior's shared ${plugin.manifest.displayName} account cannot use it`,
+      );
+    }
+    const existing = this.actorClientsByProvider.get(provider);
+    if (existing) {
+      return existing;
+    }
+    const actorClient = await this.newClient(plugin);
+    this.actorClientsByProvider.set(provider, actorClient);
+    return actorClient;
   }
 
   private toManagedTool(
@@ -567,7 +684,16 @@ export class McpToolManager {
           {},
           async () => {
             try {
-              const result = await client.callTool(tool.name, resolvedArgs);
+              const callClient = await this.clientForTool(
+                plugin,
+                client,
+                tool.name,
+              );
+              const result = await callClient.callTool(
+                tool.name,
+                resolvedArgs,
+                options?.signal,
+              );
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
               }
@@ -593,21 +719,30 @@ export class McpToolManager {
                   ? { structuredContent: result.structuredContent }
                   : undefined),
               };
-              await this.options.onToolSuccess?.({
+              const cards = await this.options.onToolSuccess?.({
                 arguments: resolvedArgs,
+                content: toAgentToolContent(result),
                 provider: plugin.manifest.name,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }
                   : undefined),
                 toolName: tool.name,
               });
-              return successResult;
+              return cards?.length
+                ? { ...successResult, cards }
+                : successResult;
             } catch (error) {
               if (
                 error instanceof McpAuthorizationRequiredError &&
                 (await this.handleAuthorizationRequired(
                   plugin.manifest.name,
                   error,
+                  {
+                    toolName: tool.name,
+                    ...(options?.authorizationIntent
+                      ? { intent: options.authorizationIntent }
+                      : undefined),
+                  },
                 ))
               ) {
                 const parkedContent = [
@@ -653,22 +788,39 @@ export class McpToolManager {
   private async handleAuthorizationRequired(
     provider: string,
     error: McpAuthorizationRequiredError,
+    context?: McpAuthorizationContext,
   ): Promise<boolean> {
+    const plugin = this.pluginsByProvider.get(provider);
+    if (plugin && serviceAccountOnly(plugin.manifest)) {
+      // The shared account lost its grant. Never ask the actor to connect.
+      this.forgetProvider(provider);
+      throw new McpServiceAccountRequiredError(
+        provider,
+        plugin.manifest.displayName,
+      );
+    }
     if (!this.options.onAuthorizationRequired) {
       return false;
     }
 
     const handled =
-      (await this.options.onAuthorizationRequired(provider, error)) === true;
+      (await this.options.onAuthorizationRequired(provider, error, context)) ===
+      true;
     if (!handled) {
       return false;
     }
 
     this.authorizationPendingProviders.add(provider);
+    this.forgetProvider(provider);
+    return true;
+  }
+
+  private forgetProvider(provider: string): void {
     this.clientsByProvider.delete(provider);
+    this.actorClientsByProvider.delete(provider);
+    this.serviceAccountProviders.delete(provider);
     this.toolsByProvider.delete(provider);
     this.activeProviders.delete(provider);
-    return true;
   }
 
   /** Return all active ManagedMcpTool objects, optionally filtered by provider. */
@@ -725,7 +877,9 @@ export class McpToolManager {
     try {
       result = await tool.execute(args, {
         conversationPrivacy: "private",
-        ...(options?.toolCallId ? { toolCallId: options.toolCallId } : undefined),
+        ...(options?.toolCallId
+          ? { toolCallId: options.toolCallId }
+          : undefined),
       });
     } catch (error) {
       if (error instanceof McpToolError) {

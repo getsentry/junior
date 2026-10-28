@@ -1,6 +1,8 @@
 import {
+  cloneElement,
   createContext,
   type CSSProperties,
+  type ReactElement,
   type ReactNode,
   type SVGProps,
   useContext,
@@ -9,6 +11,8 @@ import {
   useState,
 } from "react";
 
+import { Tooltip } from "../Tooltip";
+import { getDashboardTimeZone } from "../../format";
 import { cn } from "../../styles";
 
 /** Shared SVG dimensions and derived plot bounds for activity charts. */
@@ -53,13 +57,67 @@ export function createActivityChartLayout(
   };
 }
 
-/** Format an activity date without applying the browser's local time zone. */
+/** True when the bucket key is a UTC hour (`YYYY-MM-DDTHH`). */
+export function isActivityHourBucket(date: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(date);
+}
+
+/** UTC start of a day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) bucket key. */
+export function activityBucketStartMs(date: string): number {
+  return Date.parse(
+    isActivityHourBucket(date) ? `${date}:00:00.000Z` : `${date}T00:00:00.000Z`,
+  );
+}
+
+/**
+ * Format an activity day or hour bucket for chart axes.
+ * Hour buckets use the dashboard display timezone. Day buckets keep the UTC
+ * calendar key so a day series does not shift across local midnight.
+ */
 export function formatActivityDate(date: string): string {
+  if (isActivityHourBucket(date)) {
+    return new Date(`${date}:00:00.000Z`).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      timeZone: getDashboardTimeZone(),
+    });
+  }
   return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     timeZone: "UTC",
   });
+}
+
+/**
+ * Format an activity day or hour bucket for chart tooltips and aria labels.
+ * Hour buckets always include the local calendar date so 24h views are unambiguous.
+ */
+export function formatActivityTooltipDate(date: string): string {
+  if (isActivityHourBucket(date)) {
+    return new Date(`${date}:00:00.000Z`).toLocaleString(undefined, {
+      day: "numeric",
+      hour: "numeric",
+      month: "short",
+      timeZone: getDashboardTimeZone(),
+    });
+  }
+  return formatActivityDate(date);
+}
+
+/** Axis label for a day/hour bucket key, or the raw label for other categories. */
+export function formatActivityCategoryLabel(label: string): string {
+  if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+    return formatActivityDate(label);
+  }
+  return label;
+}
+
+/** Tooltip/aria label for a day/hour bucket key, or the raw label otherwise. */
+export function formatActivityCategoryTooltipLabel(label: string): string {
+  if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+    return formatActivityTooltipDate(label);
+  }
+  return label;
 }
 
 /** Choose the first, middle, and last available chart labels. */
@@ -74,7 +132,7 @@ const ChartSvgScaleContext = createContext(1);
 
 /** Shared visual style for SVG chart axis labels. */
 export const chartAxisLabelClassName =
-  "fill-white/50 font-mono leading-none text-dashboard-text-muted";
+  "fill-dashboard-text-muted font-sans tabular-nums leading-none text-dashboard-text-muted";
 
 type ChartAxisLabelProps = Omit<
   SVGProps<SVGTextElement>,
@@ -107,7 +165,7 @@ export function ChartAxisHtmlLabel(props: {
   return (
     <span
       className={cn(
-        "font-mono text-2xs leading-none text-dashboard-text-muted",
+        "font-sans tabular-nums text-2xs leading-none text-dashboard-text-muted",
         props.className,
       )}
       style={props.style}
@@ -117,9 +175,22 @@ export function ChartAxisHtmlLabel(props: {
   );
 }
 
+type ChartBox = { height: number; width: number };
+
+/**
+ * Screen pixels per SVG user unit. The default `preserveAspectRatio` fits the
+ * whole viewBox inside the element box, so the smaller ratio wins.
+ */
+function chartSvgScale(box: ChartBox | undefined, layout: ActivityChartLayout) {
+  if (!box || box.width <= 0 || box.height <= 0) return 1;
+  return Math.min(box.width / layout.width, box.height / layout.height);
+}
+
 /**
  * Render the shared SVG chart shell and provide its live screen scale to labels.
  * SVG text uses user units, so labels invert this scale to remain 12px on screen.
+ * The scale comes from the current element size and viewBox, so a measurement
+ * from an earlier layout is never reused.
  */
 export function ChartSvg(props: {
   "aria-label": string;
@@ -128,21 +199,27 @@ export function ChartSvg(props: {
   layout: ActivityChartLayout;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [scale, setScale] = useState(1);
+  const [box, setBox] = useState<ChartBox>();
 
   useLayoutEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-    const updateScale = () => {
-      const matrix = svg.getScreenCTM();
-      const nextScale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
-      setScale(nextScale > 0 ? nextScale : 1);
-    };
-    updateScale();
-    const observer = new ResizeObserver(updateScale);
+    const updateBox = (next: ChartBox) =>
+      setBox((previous) =>
+        previous?.width === next.width && previous.height === next.height
+          ? previous
+          : next,
+      );
+    // Measure before the first paint; the observer reports later changes.
+    updateBox({ height: svg.clientHeight, width: svg.clientWidth });
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateBox(entry.contentRect);
+    });
     observer.observe(svg);
     return () => observer.disconnect();
   }, []);
+
+  const scale = chartSvgScale(box, props.layout);
 
   return (
     <ChartSvgScaleContext value={scale}>
@@ -171,7 +248,7 @@ export function ActivityChartGrid(props: {
     return (
       <g key={ratio}>
         <line
-          stroke="rgba(255,255,255,0.07)"
+          stroke="var(--color-dashboard-border-subtle)"
           strokeDasharray="3 5"
           x1={props.layout.left}
           x2={props.layout.width - props.layout.right}
@@ -227,7 +304,8 @@ export function ChartCategoryLabels(props: {
   layout: ActivityChartLayout;
   xPosition(index: number): number;
 }) {
-  const formatLabel = props.formatLabel ?? ((label: string) => label);
+  // Default formats day/hour bucket keys; leave other category labels alone.
+  const formatLabel = props.formatLabel ?? formatActivityCategoryLabel;
   return activityLabelIndexes(props.categories.length).map((index) => {
     const category = props.categories[index];
     if (!category) return null;
@@ -251,10 +329,8 @@ export function activityChartAverage(values: readonly number[]): number {
 }
 
 /** Shared visual style for average-line labels. */
-export const chartAverageLabelClassName = "fill-white font-mono leading-none";
-
-/** Solid chip behind average labels so series colors never wash out the text. */
-const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";
+export const chartAverageLabelClassName =
+  "fill-dashboard-text-solid font-sans tabular-nums leading-none";
 
 /**
  * Opt-in horizontal average across the plotted buckets.
@@ -301,7 +377,7 @@ export function ActivityChartAverageLine(props: {
   return (
     <g aria-label={`average ${label}`} pointerEvents="none">
       <line
-        stroke={props.stroke ?? "rgba(255,255,255,0.55)"}
+        stroke={props.stroke ?? "var(--color-dashboard-text-faint)"}
         strokeDasharray="4 4"
         strokeOpacity={0.85}
         strokeWidth={1.25}
@@ -310,8 +386,10 @@ export function ActivityChartAverageLine(props: {
         y1={y}
         y2={y}
       />
+      {/* Solid chip so series colors never wash out the label text. */}
       <rect
-        fill={chartAverageLabelChip}
+        fill="var(--color-dashboard-bg-elevated)"
+        fillOpacity={0.92}
         height={chipHeight}
         rx={3}
         width={chipWidth}
@@ -320,7 +398,7 @@ export function ActivityChartAverageLine(props: {
       />
       <text
         className={chartAverageLabelClassName}
-        fill="#ffffff"
+        fill="var(--color-dashboard-text-solid)"
         fontSize={fontSize}
         textAnchor="middle"
         x={chipX + chipWidth / 2}
@@ -347,5 +425,36 @@ export function ActivityTooltipRows(props: {
         </span>,
       ])}
     </div>
+  );
+}
+
+/**
+ * Activity-chart tooltip that owns bucket date formatting.
+ * Pass the UTC day/hour key as `date` so axes stay compact and tooltips always
+ * include the local date for hour buckets. Optional `summary` prefixes the
+ * trigger aria-label as `"{date}: {summary}"`.
+ */
+export function ActivityChartTooltip(props: {
+  children: ReactElement;
+  content: ReactNode;
+  date: string;
+  summary?: string;
+  triggerClassName?: string;
+}) {
+  const dateLabel = formatActivityTooltipDate(props.date);
+  const child = props.summary
+    ? cloneElement(props.children, {
+        "aria-label": `${dateLabel}: ${props.summary}`,
+      } as never)
+    : props.children;
+
+  return (
+    <Tooltip
+      content={props.content}
+      label={dateLabel}
+      triggerClassName={props.triggerClassName}
+    >
+      {child}
+    </Tooltip>
   );
 }

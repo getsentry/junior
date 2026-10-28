@@ -1,7 +1,9 @@
 import type {
   ConversationEventStore,
   ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
 } from "./history";
+import { getConversationEventStore } from "@/chat/db";
 
 /** Product-owned inputs for opening one correlated conversation turn. */
 export interface StartConversationTurnInput {
@@ -20,12 +22,13 @@ export interface CompleteConversationTurnInput {
   turnId: string;
 }
 
-/** Privacy-safe inputs for failing one correlated conversation turn. */
+/** Inputs for failing one correlated conversation turn. */
 export interface FailConversationTurnInput {
   conversationId: string;
   createdAtMs: number;
   eventId?: string;
   failureCode: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
   turnId: string;
 }
 
@@ -38,7 +41,11 @@ export interface ConversationTurnLifecycle {
 
 /** Persist correlated turn lifecycle facts with retry-safe terminal exclusion. */
 export class ConversationTurnLifecycleService implements ConversationTurnLifecycle {
-  constructor(private readonly events: ConversationEventStore) {}
+  private readonly events: ConversationEventStore;
+
+  constructor(events: ConversationEventStore) {
+    this.events = events;
+  }
 
   /** Record the turn start once after every input message is durable. */
   async start(input: StartConversationTurnInput): Promise<void> {
@@ -71,7 +78,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     ]);
   }
 
-  /** Record a classified failure once without accepting raw error details. */
+  /** Record a classified failure once. Do not store raw error text. */
   async fail(input: FailConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [
       {
@@ -81,9 +88,17 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           type: "turn_failed",
           turnId: input.turnId,
           failureCode: input.failureCode,
+          ...(input.failureReason
+            ? { failureReason: input.failureReason }
+            : undefined),
           ...(input.eventId ? { eventId: input.eventId } : undefined),
         },
       },
     ]);
   }
+}
+
+/** Return the Turn lifecycle that records Conversation events. */
+export function getTurnLifecycle(): ConversationTurnLifecycle {
+  return new ConversationTurnLifecycleService(getConversationEventStore());
 }

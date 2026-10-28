@@ -3,7 +3,11 @@
  * Add new keys here as features graduate from private experiments; remove them
  * once they become stable defaults.
  */
-export const EXPERIMENTAL_FEATURES = ["passive-routing", "subagents"] as const;
+export const EXPERIMENTAL_FEATURES = [
+  "operator-tools",
+  "passive-routing",
+  "subagents",
+] as const;
 
 /** One known experimental feature name. */
 export type ExperimentalFeature = (typeof EXPERIMENTAL_FEATURES)[number];

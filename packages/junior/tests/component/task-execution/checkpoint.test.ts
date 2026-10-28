@@ -21,6 +21,11 @@ const SLACK_SOURCE = createSlackSource({
   threadTs: "1700000000.001",
   visibility: "private",
 }) satisfies Source;
+const SLACK_ACTOR = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
+} as const;
 
 function userMessage(text: string): PiMessage {
   return {
@@ -104,13 +109,15 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       conversationId: "local:ttl-split:turn",
       piMessages: [runtimeContext],
+      source: SLACK_SOURCE,
       turnId: "turn-ttl-split",
       sliceId: 1,
       state: "running",
     });
     expect(set.mock.calls.at(-1)?.[1]).toMatchObject({
-      runtimeContext: [runtimeContext],
+      source: SLACK_SOURCE,
     });
+    expect(set.mock.calls.at(-1)?.[1]).not.toHaveProperty("runtimeContext");
     expect(set.mock.calls.at(-1)?.[1]).not.toHaveProperty("modelId");
     expect(set.mock.calls.at(-1)?.[2]).toBe(24 * 60 * 60 * 1000);
     expect(appendToList).toHaveBeenCalledTimes(1);
@@ -120,6 +127,10 @@ describe("turn checkpoint", () => {
     // Recovery index stays on the resume window so terminal writes cannot
     // expire unfinished sibling summaries.
     expect(appendToList.mock.calls[0]?.[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    await expect(
+      getTurnRecord("local:ttl-split:turn", "turn-ttl-split"),
+    ).resolves.toMatchObject({ source: SLACK_SOURCE });
 
     set.mockClear();
     appendToList.mockClear();
@@ -254,7 +265,6 @@ describe("turn checkpoint", () => {
       source: SLACK_SOURCE,
       piMessages: priorMessages,
       resumeReason: "auth",
-      publishExternally: false,
       errorMessage: "initial auth pause",
     });
 
@@ -276,12 +286,12 @@ describe("turn checkpoint", () => {
       sliceId: 2,
       resumedFromSliceId: 1,
       resumeReason: "auth",
-      publishExternally: false,
+      source: SLACK_SOURCE,
       errorMessage: "plugin auth pause",
       piMessages: [priorMessages[0]],
     });
-    // Nested routing stays off redis; SQL dual-write is the authority.
-    expect(sessionRecord).not.toHaveProperty("source");
+    // TODO(dcramer): Remove this legacy fixture after no deployed Turn cursor
+    // can omit Actor.
     expect(sessionRecord).not.toHaveProperty("destination");
     expect(sessionRecord).not.toHaveProperty("actor");
   });
@@ -293,15 +303,10 @@ describe("turn checkpoint", () => {
     const { getConversationStore } = await import("@/chat/db");
     const stateAdapter = getStateAdapter();
     const set = vi.spyOn(stateAdapter, "set");
-    const actor = {
-      platform: "slack",
-      teamId: "T123",
-      userId: "U123",
-    } as const;
     const usage = { inputTokens: 7, outputTokens: 3 };
 
     await upsertTurnRecord({
-      actor,
+      actor: SLACK_ACTOR,
       channelName: "runtime-team",
       conversationId: "slack:C123:ops-bag",
       cumulativeDurationMs: 1_500,
@@ -326,11 +331,41 @@ describe("turn checkpoint", () => {
     ]) {
       expect(redisRecord).not.toHaveProperty(field);
     }
+    expect(redisRecord).toMatchObject({ actor: SLACK_ACTOR });
     await expect(
       getConversationStore().get({ conversationId: "slack:C123:ops-bag" }),
     ).resolves.toMatchObject({
       channelName: "runtime-team",
       executionMetrics: { durationMs: 1_500, usage },
+    });
+  });
+
+  it("keeps the durable tool-call total on the Redis resume cursor", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const stateAdapter = getStateAdapter();
+    const set = vi.spyOn(stateAdapter, "set");
+
+    await upsertTurnRecord({
+      conversationId: "local:tool-call-total",
+      cumulativeToolCallCount: 42,
+      piMessages: [userMessage("keep counting")],
+      turnId: "turn-tool-call-total",
+      sliceId: 1,
+      state: "running",
+      turnStartMessageIndex: 0,
+    });
+
+    const redisRecord = set.mock.calls.at(-1)?.[1];
+    expect(redisRecord).toMatchObject({ cumulativeToolCallCount: 42 });
+    expect(redisRecord).not.toHaveProperty("cumulativeDurationMs");
+
+    await expect(
+      getTurnRecord("local:tool-call-total", "turn-tool-call-total"),
+    ).resolves.toMatchObject({
+      cumulativeToolCallCount: 42,
+      turnStartMessageIndex: 0,
     });
   });
 
@@ -450,7 +485,6 @@ describe("turn checkpoint", () => {
           destination: SLACK_DESTINATION,
           inboundMessageId: "turn-activity-message",
           receivedAtMs: 9_000,
-          publishExternally: true,
           delivery: "defer",
           source: "slack",
         },
@@ -489,7 +523,7 @@ describe("turn checkpoint", () => {
     }
   });
 
-  it("keeps nested destination/source out of redis while dual-writing sql", async () => {
+  it("stores Source and Actor on the Turn while keeping Destination out of Redis", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getTurnRecord, listTurnSummaries, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
@@ -510,6 +544,7 @@ describe("turn checkpoint", () => {
     };
 
     await upsertTurnRecord({
+      actor: SLACK_ACTOR,
       conversationId,
       conversationStore,
       destination: SLACK_DESTINATION,
@@ -534,8 +569,11 @@ describe("turn checkpoint", () => {
       }),
     );
     expect(stored).not.toHaveProperty("destination");
-    expect(stored).not.toHaveProperty("source");
-    expect(stored).not.toHaveProperty("actor");
+    expect(stored).toMatchObject({
+      actor: SLACK_ACTOR,
+      publishExternally: true,
+      source: SLACK_SOURCE,
+    });
 
     const summaries = await listTurnSummaries(conversationId);
     expect(summaries).toHaveLength(1);
@@ -543,7 +581,7 @@ describe("turn checkpoint", () => {
     expect(summaries[0]).not.toHaveProperty("source");
     expect(summaries[0]).not.toHaveProperty("actor");
 
-    // Materialized reads no longer surface nested routing/identity from redis.
+    // Materialized reads restore Source and Actor without restoring Destination.
     const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({
       conversationId,
@@ -551,8 +589,10 @@ describe("turn checkpoint", () => {
       state: "running",
     });
     expect(record).not.toHaveProperty("destination");
-    expect(record).not.toHaveProperty("source");
-    expect(record).not.toHaveProperty("actor");
+    expect(record).toMatchObject({
+      actor: SLACK_ACTOR,
+      source: SLACK_SOURCE,
+    });
 
     expect(conversationStore.recordActivity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -627,8 +667,10 @@ describe("turn checkpoint", () => {
     const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({ schemaVersion: 2, state: "paused" });
     expect(record).not.toHaveProperty("destination");
-    expect(record).not.toHaveProperty("source");
-    expect(record).not.toHaveProperty("actor");
+    expect(record).toMatchObject({
+      actor: SLACK_ACTOR,
+      source: SLACK_SOURCE,
+    });
     expect(record).not.toHaveProperty("deprecatedFlag");
   });
 
@@ -777,7 +819,7 @@ describe("turn checkpoint", () => {
           content: [
             {
               type: "text",
-              text: 'Authorization completed for provider "sentry". Continue the blocked request and retry the provider operation if needed.',
+              text: 'Authorization completed for provider "sentry". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that sentry is connected.',
             },
           ],
         },
@@ -824,17 +866,17 @@ describe("turn checkpoint", () => {
 
     const record = await getTurnRecord(conversationId, sessionId);
     expect(record).toMatchObject({
+      actor,
       piMessages: [userMessage],
       state: "paused",
     });
-    expect(record).not.toHaveProperty("actor");
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const stored = await stateAdapter.get(
       turnCursorKey(conversationId, sessionId),
     );
-    expect(stored).not.toHaveProperty("actor");
+    expect(stored).toMatchObject({ actor });
 
     await expect(
       getConversationStore().get({ conversationId }),
@@ -894,7 +936,7 @@ describe("turn checkpoint", () => {
       turnStartMessageIndex: 1,
       piMessages: [previousQuestion, currentQuestion],
     });
-    expect(scoped).not.toHaveProperty("actor");
+    expect(scoped).toMatchObject({ actor: SLACK_ACTOR });
     const projection = await loadConversationProjection({
       conversationId: "conversation-turn-scope",
     });
@@ -1019,7 +1061,7 @@ describe("turn checkpoint", () => {
       "conversation-multi-actor",
       "turn-multi-actor",
     );
-    expect(record).not.toHaveProperty("actor");
+    expect(record).toMatchObject({ actor: alice });
     expect(record?.piMessageProvenance).toEqual([
       { authority: "instruction", actor: alice },
       { authority: "instruction", actor: bob },
@@ -1238,7 +1280,8 @@ describe("turn checkpoint", () => {
   it("creates auth-pause records before a prompt checkpoint", async () => {
     const { loadTurnCheckpoint, saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
 
     const authRecord = await saveTurnCheckpoint({
       mode: "paused",
@@ -1265,6 +1308,36 @@ describe("turn checkpoint", () => {
     ).resolves.toMatchObject({
       resumed: true,
       sliceId: 2,
+    });
+
+    // An earlier turn left its reply at the tail of committed history. The
+    // pause keeps that history whole, so it commits without a branch.
+    const committedHistory = [
+      userMessage("earlier question"),
+      assistantMessage("earlier reply", 2),
+    ];
+    await upsertTurnRecord({
+      conversationId: "conversation-auth-history",
+      turnId: "turn-earlier",
+      sliceId: 1,
+      state: "completed",
+      piMessages: committedHistory,
+    });
+    await expect(
+      saveTurnCheckpoint({
+        mode: "paused",
+        reason: "auth",
+        conversationId: "conversation-auth-history",
+        turnId: "turn-auth-history",
+        sliceId: 1,
+        messages: committedHistory,
+        beforePrompt: true,
+        errorMessage: "auth pause",
+      }),
+    ).resolves.toMatchObject({
+      state: "paused",
+      piMessages: committedHistory,
+      resumeReason: "auth",
     });
 
     await expect(
@@ -1355,7 +1428,7 @@ describe("turn checkpoint", () => {
     }
   });
 
-  it("keeps runtime bootstrap out of durable completed history", async () => {
+  it("keeps runtime context in completed model history", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
     const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
@@ -1388,7 +1461,13 @@ describe("turn checkpoint", () => {
       piMessages: [
         {
           role: "user",
-          content: [{ type: "text", text: "actual request" }],
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>\nstale\n</runtime-turn-context>",
+            },
+            { type: "text", text: "actual request" },
+          ],
         },
         {
           role: "assistant",
@@ -1834,52 +1913,74 @@ describe("turn checkpoint", () => {
     });
   });
 
-  it("restores unmatched runtime context before an active-turn replacement", async () => {
+  it("ignores model context left in an old turn cursor", async () => {
     const { loadTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { turnCursorKey } =
+      await import("@/chat/task-execution/turn-cursor-keys");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    const runtimeContext: PiMessage = {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "<runtime-turn-context>trusted runtime context</runtime-turn-context>",
-        },
-      ],
-      timestamp: 1,
-    };
+    const conversationId = "conversation-old-context-resume";
+    const turnId = "turn-old-context-resume";
     const instruction: PiMessage = {
       role: "user",
       content: [{ type: "text", text: "finish the current request" }],
       timestamp: 2,
     };
-    const summary: PiMessage = {
+    const followup: PiMessage = {
       role: "user",
-      content: [{ type: "text", text: "active-turn summary" }],
+      content: [{ type: "text", text: "continue" }],
       timestamp: 3,
     };
 
     await upsertTurnRecord({
-      conversationId: "conversation-active-compaction-resume",
-      turnId: "turn-active-compaction-resume",
+      conversationId,
+      turnId,
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
-      piMessages: [runtimeContext, instruction, summary],
+      piMessages: [instruction],
     });
+    const state = getStateAdapter();
+    const key = turnCursorKey(conversationId, turnId);
+    const stored = await state.get(key);
+    await state.set(
+      key,
+      {
+        ...(stored as Record<string, unknown>),
+        runtimeContext: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "<runtime-turn-context>old context</runtime-turn-context>",
+              },
+            ],
+            timestamp: 1,
+          },
+        ],
+      },
+      60_000,
+    );
 
-    const resumed = await loadTurnCheckpoint({
-      conversationId: "conversation-active-compaction-resume",
-      turnId: "turn-active-compaction-resume",
+    const resumed = await loadTurnCheckpoint({ conversationId, turnId });
+
+    expect(resumed).toMatchObject({
+      resumed: true,
+      record: { piMessages: [instruction] },
     });
-
-    expect(resumed.resumed).toBe(true);
-    expect(resumed.record?.piMessages).toEqual([
-      runtimeContext,
-      instruction,
-      summary,
-    ]);
+    await expect(
+      upsertTurnRecord({
+        conversationId,
+        turnId,
+        sliceId: 2,
+        state: "paused",
+        resumeReason: "yield",
+        piMessages: [instruction, followup],
+      }),
+    ).resolves.toMatchObject({ piMessages: [instruction, followup] });
   });
 
   it("restores mid-run AGENTS context at its causal position", async () => {

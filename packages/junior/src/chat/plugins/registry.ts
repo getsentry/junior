@@ -275,10 +275,15 @@ function registerInlineManifests(
     const pkg = definition.packageName
       ? packageContentByName(source.packagedContent, definition.packageName)
       : undefined;
-    const dir = pkg?.dir ?? process.cwd();
-    const skillsDir = pkg?.hasSkillsDir
-      ? path.join(pkg.dir, "skills")
-      : undefined;
+    const dir = pkg?.dir ?? definition.dir ?? process.cwd();
+    const skillsDir =
+      pkg?.hasSkillsDir ||
+      (definition.dir &&
+        statSync(path.join(dir, "skills"), {
+          throwIfNoEntry: false,
+        })?.isDirectory())
+        ? path.join(dir, "skills")
+        : undefined;
     const migrationsDir =
       pkg?.hasMigrationsDir &&
       statSync(path.join(pkg.dir, "migrations"), {
@@ -511,7 +516,9 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
           commands.push({
             cmd: command.cmd,
             ...(command.args ? { args: [...command.args] } : undefined),
-            ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),
+            ...(command.sudo !== undefined
+              ? { sudo: command.sudo }
+              : undefined),
           });
         }
       }

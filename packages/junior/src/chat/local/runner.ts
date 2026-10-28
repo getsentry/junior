@@ -6,6 +6,8 @@
  * a local destination, and only commits assistant delivery after the CLI sink
  * accepts each completed tool-free assistant message.
  */
+import { messageCardText } from "@/chat/conversations/cards";
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { randomUUID } from "node:crypto";
@@ -23,7 +25,6 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,
@@ -49,7 +50,10 @@ import {
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@/chat/conversations/history";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
@@ -152,7 +156,7 @@ async function loadLocalPiMessages(args: {
   if (projection.length === 0) {
     return undefined;
   }
-  return stripRuntimeTurnContext(projection);
+  return projection;
 }
 
 /** Run one local CLI message through Junior's shared agent-run boundary. */
@@ -192,6 +196,7 @@ async function runLocalAgentTurnInContext(
     destination,
     nowMs: Date.now(),
     source: "local",
+    visibility: "private",
   });
   const persisted = await getPersistedThreadState(input.conversationId);
   const conversation = coerceThreadConversationState(persisted);
@@ -242,6 +247,7 @@ async function runLocalAgentTurnInContext(
   let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
   let failureCode: ConversationTurnFailureCode = "persistence_failed";
   let modelFailureEventId: string | undefined;
+  let modelFailureReason: ConversationTurnFailureReason | undefined;
   let modelFailureCaptureAttempted = false;
   let currentRunId: string | undefined;
   let completionSliceId = 1;
@@ -263,9 +269,13 @@ async function runLocalAgentTurnInContext(
       return;
     }
     failureCode = "delivery_failed";
-    await deps.deliverReply({ text });
+    const cards = await loadPendingMessageCards(input.conversationId);
+    await deps.deliverReply({
+      text: [text, ...cards.map(messageCardText)].join("\n\n"),
+    });
     assistantMessageDelivered = true;
     const recordedMessageId = recordDeliveredAssistantMessage({
+      cards,
       conversation,
       sessionId: turnId,
       text,
@@ -287,9 +297,8 @@ async function runLocalAgentTurnInContext(
       );
     } catch (error) {
       logException(
-        new Error("Accepted assistant message persistence failed"),
+        error,
         "local.assistant.message_post_delivery_persist.failed",
-        { "error.type": error instanceof Error ? error.name : typeof error },
       );
     }
     failureCode = "agent_run_failed";
@@ -419,6 +428,7 @@ async function runLocalAgentTurnInContext(
     });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
+    modelFailureReason = finalized.failureReason;
 
     if (reply.diagnostics.outcome !== "success") {
       await deliverAssistantMessage(reply.text);
@@ -539,6 +549,9 @@ async function runLocalAgentTurnInContext(
       createdAtMs: Date.now(),
       ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
       failureCode: "model_execution_failed",
+      ...(modelFailureReason
+        ? { failureReason: modelFailureReason }
+        : undefined),
       turnId,
     });
   }

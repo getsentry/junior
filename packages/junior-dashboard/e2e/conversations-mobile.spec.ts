@@ -1,22 +1,57 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
+import { expect, test } from "./test";
+import { mobile, screenshot } from "./screenshot";
 
-let server: DashboardE2eServer;
+const FOCUSED_COMPOSER_HEIGHT_PX = 520;
+const FOCUSED_COMPOSER_OFFSET_TOP_PX = 140;
 
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
+test("records focused mobile conversation composer", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(
+      "slack:CQA123:1770003600.000200",
+    )}`,
+    { waitUntil: "networkidle" },
+  );
+  await expect(
+    page.getByRole("heading", { name: "Investigate checkout latency" }),
+  ).toBeVisible();
 
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
+  const composer = page.getByPlaceholder("Message Junior…");
+  await composer.focus();
+  await page.evaluate(
+    ({ height, offsetTop }) => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: height },
+        offsetTop: { configurable: true, value: offsetTop },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    },
+    {
+      height: FOCUSED_COMPOSER_HEIGHT_PX,
+      offsetTop: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+    },
+  );
+  const shell = page.locator("main").first();
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("1");
+  await expect(composer).toBeFocused();
+  await screenshot(page, "conversation-detail-focused", {
+    clip: {
+      height: FOCUSED_COMPOSER_HEIGHT_PX,
+      width: mobile.width,
+      x: 0,
+      y: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+    },
+    view: "mobile",
+  });
 });
 
 /**
@@ -59,9 +94,10 @@ async function expectFocusedComposerAtVisualViewportBottom(
 
 test("starts a new conversation from a centered compose empty state", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
@@ -71,19 +107,20 @@ test("starts a new conversation from a centered compose empty state", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Home and create are the same landing: simple app chrome + compose hero +
-  // list nav. Not a thread destination and not a reply dock.
-  await expect(page).toHaveURL(`${server.baseURL}/`);
-  await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  // Home and create share one page. It is not a conversation or a reply dock.
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(
+    page.getByRole("button", { name: "Open navigation" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
   // Legacy create deep link collapses onto home.
-  await page.goto(`${server.baseURL}/conversations/new`);
-  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(heading).toBeVisible();
   await expect
     .poll(() =>
@@ -98,67 +135,27 @@ test("starts a new conversation from a centered compose empty state", async ({
         if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
           return "title-not-above-composer";
         }
-        // Landing compose must live under the page scroll owner, not the reply
-        // dock. Ownership markers are the product contract (see frontend policy).
         if (form.closest("[data-composer-dock]")) {
           return "pinned-on-composer-dock";
         }
-        if (!form.closest("[data-create-landing-scroll]")) {
-          return "missing-landing-scroll";
-        }
+        if (!form.closest("main")) return "missing-page-scroll";
         return "landing-compose";
       }),
     )
     .toBe("landing-compose");
 
-  // Hero lives outside the list scroller so focus cannot pan it away.
-  await expect
-    .poll(() =>
-      composer.evaluate((node) => {
-        const frame = node.closest("[data-create-landing-scroll]");
-        const list = frame?.querySelector("[data-create-landing-list]");
-        if (!(frame instanceof HTMLElement) || !(node instanceof HTMLElement)) {
-          return "missing-frame";
-        }
-        if (!(list instanceof HTMLElement)) return "missing-list-scroller";
-        if (list.contains(node)) return "hero-inside-list-scroller";
-        return "hero-outside-list-scroller";
-      }),
-    )
-    .toBe("hero-outside-list-scroller");
-  await composer.focus();
-  await expect(composer).toBeFocused();
-
-  // List search owns the only landing scroll region under the hero.
-  const search = page.getByRole("searchbox", {
-    name: "Search your conversations",
+  const conversationList = page.getByRole("list", {
+    name: "Your conversations",
   });
-  await search.focus();
-  await expect(search).toBeFocused();
-  await expect
-    .poll(() =>
-      search.evaluate((node) => {
-        const list = node
-          .closest("[data-create-landing-scroll]")
-          ?.querySelector("[data-create-landing-list]");
-        if (!(list instanceof HTMLElement)) return "missing-list-scroller";
-        if (!list.contains(node)) return "search-outside-list-scroller";
-        const before = list.scrollTop;
-        list.scrollTop = before + 40;
-        const after = list.scrollTop;
-        if (after === before) {
-          return list.scrollHeight > list.clientHeight
-            ? "search-scroll-rejected"
-            : "search-unlocked";
-        }
-        return "search-unlocked";
-      }),
-    )
-    .toBe("search-unlocked");
+  await expect(conversationList.getByRole("listitem").first()).toBeVisible();
+  await expect(
+    page.getByRole("searchbox", { name: "Search your conversations" }),
+  ).toBeVisible();
 });
 
-test("opens and closes a conversation in the mobile workspace", async ({
+test("opens and closes a conversation on mobile", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.route("**/api/conversations/*/messages", async (route) => {
@@ -170,14 +167,14 @@ test("opens and closes a conversation in the mobile workspace", async ({
       },
     });
   });
-  await page.goto(`${server.baseURL}/conversations`);
-  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await page.goto(`${dashboard.baseURL}/conversations`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   // Mobile home is the create landing (hero + list), same as desktop empty state.
   await expect(
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
   const navigationTrigger = page.getByRole("button", {
     name: "Open navigation",
@@ -197,12 +194,12 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(page.getByText(/^junior version /)).toBeVisible();
   const navigationSheet = page.getByRole("dialog", { name: "Navigation" });
   const spendCallout = navigationSheet.getByLabel(
-    "Personal model spend: 7 days $0.07, 30 days $0.07",
+    "Personal model spend: 7 days $0.46, 30 days $0.46",
     { exact: true },
   );
   await expect(spendCallout).toBeVisible();
-  await expect(spendCallout.getByText("7d $0.07")).toBeVisible();
-  await expect(spendCallout.getByText("30d $0.07")).toBeVisible();
+  await expect(spendCallout.getByText("7d $0.46")).toBeVisible();
+  await expect(spendCallout.getByText("30d $0.46")).toBeVisible();
   // Spend sits above every destination, including primary nav.
   const spendAbovePrimary = await spendCallout.evaluate((node) => {
     const dialog = node.closest('[role="dialog"]');
@@ -216,9 +213,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByLabel("Account menu for Dashboard User"),
   ).toBeVisible();
-  await expect(
-    page.getByLabel("Signed in as Dashboard User"),
-  ).toBeVisible();
+  await expect(page.getByLabel("Signed in as Dashboard User")).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("link", { name: "API tokens" })).toBeVisible();
@@ -233,12 +228,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(page).toHaveURL(
-    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
   );
   // One shell row: back + title + overflow. No duplicate title chrome.
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
+
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toBeVisible();
@@ -359,15 +355,17 @@ test("opens and closes a conversation in the mobile workspace", async ({
       composer.evaluate((node) => {
         const form = node.closest("form");
         if (!form) return "missing-form";
-        if (form.closest("[data-create-landing-scroll]")) {
-          return "reply-on-landing-scroll";
-        }
-        if (!form.closest("[data-composer-dock]")) return "missing-composer-dock";
-        if (!form.closest("[data-chat-scroll]") && !document.querySelector("[data-chat-scroll]")) {
+        if (!form.closest("[data-composer-dock]"))
+          return "missing-composer-dock";
+        if (
+          !form.closest("[data-chat-scroll]") &&
+          !document.querySelector("[data-chat-scroll]")
+        ) {
           return "missing-chat-scroll";
         }
         // Dock is a sibling of the scroll region under ChatLayout, not inside it.
-        if (form.closest("[data-chat-scroll]")) return "composer-inside-chat-scroll";
+        if (form.closest("[data-chat-scroll]"))
+          return "composer-inside-chat-scroll";
         return "reply-dock";
       }),
     )
@@ -549,12 +547,12 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 
   await page.getByRole("link", { name: "Back to conversations" }).click();
-  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
 
   // Log out must POST and dismiss the sheet before the response completes.

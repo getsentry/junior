@@ -4,6 +4,7 @@
 import type {
   Actor,
   SandboxPrepareHookContext,
+  User,
 } from "@sentry/junior-plugin-api";
 
 function cleanIdentityPart(value: unknown): string {
@@ -56,6 +57,28 @@ function actorEmail(actor?: Actor): string | undefined {
 }
 
 /**
+ * Prefer a GitHub noreply address when the linked user has a GitHub identity.
+ * That form encodes a resolvable login for downstream assignee automation.
+ */
+function githubNoreplyEmail(user?: User): string | undefined {
+  for (const identity of user?.identities ?? []) {
+    if (identity.provider !== "github") {
+      continue;
+    }
+    const login = cleanIdentityPart(identity.handle);
+    const userId = cleanIdentityPart(identity.providerSubjectId);
+    if (!login || login.toLowerCase().endsWith("[bot]")) {
+      continue;
+    }
+    if (/^[1-9]\d*$/.test(userId)) {
+      return `${userId}+${login}@users.noreply.github.com`;
+    }
+    return `${login}@users.noreply.github.com`;
+  }
+  return undefined;
+}
+
+/**
  * Stable identity key for an actor, matching the distinctness rule
  * `instructionActors` uses to build `run.actors` (identity ids only, never
  * display fields) so the run actor is recognized here even under a different
@@ -78,14 +101,23 @@ function actorIdentityKey(actor: Actor): string {
  * denying the commit. Dedupes by identity and resolved email so the same human
  * under two display profiles, or an actor matching the bot identity, only ever
  * produces one line.
+ *
+ * When the current actor has a linked GitHub identity, prefer that noreply
+ * address so external automation can resolve a login for assignment.
  */
 export function additionalActorCoauthorTrailers(args: {
   actors?: Actor[];
   botEmail: string;
+  /** Linked user for the current run actor, when already resolved. */
+  currentUser?: User;
 }): string[] {
   if (!args.actors || args.actors.length === 0) {
     return [];
   }
+  const currentActorKey = args.actors[0]
+    ? actorIdentityKey(args.actors[0])
+    : undefined;
+  const currentNoreply = githubNoreplyEmail(args.currentUser);
   const seenEmails = new Set<string>([args.botEmail.toLowerCase()]);
   const seenActors = new Set<string>();
   const trailers: string[] = [];
@@ -95,7 +127,9 @@ export function additionalActorCoauthorTrailers(args: {
       continue;
     }
     const name = actorName(candidate);
-    const email = actorEmail(candidate);
+    const email =
+      (currentActorKey === actorKey ? currentNoreply : undefined) ||
+      actorEmail(candidate);
     if (!name || !email) {
       continue;
     }

@@ -19,6 +19,7 @@ export default defineConfig({
     "/extend/cloudflare": "/extend/cloudflare-plugin",
     "/extend/datadog": "/extend/datadog-plugin",
     "/extend/hex": "/extend/hex-plugin",
+    "/extend/pagerduty": "/extend/pagerduty-plugin",
     "/plugins/overview": "/extend",
     "/plugins/agent-browser": "/extend/agent-browser-plugin",
     "/plugins/amplitude": "/extend/amplitude-plugin",
@@ -29,8 +30,8 @@ export default defineConfig({
     "/plugins/linear": "/extend/linear-plugin",
     "/plugins/maintenance": "/extend/maintenance-plugin",
     "/plugins/notion": "/extend/notion-plugin",
-    "/plugins/scheduler": "/concepts/tasks",
-    "/extend/scheduler-plugin": "/concepts/tasks",
+    "/plugins/scheduler": "/concepts/automations",
+    "/extend/scheduler-plugin": "/concepts/automations",
     "/plugins/sentry": "/extend/sentry-plugin",
     "/plugins/vercel": "/extend/vercel-plugin",
     "/extend/vercel": "/extend/vercel-plugin",
@@ -46,7 +47,7 @@ export default defineConfig({
       title: "Junior",
       description:
         "Production docs for Junior, the Slack bot runtime for Hono and Nitro apps.",
-      favicon: "/favicon.svg",
+      favicon: "/favicon.png",
       customCss: ["./src/styles/custom.css", "./src/styles/homepage-mocks.css"],
       social: [
         {
@@ -98,10 +99,10 @@ export default defineConfig({
               link: "/concepts/credentials-and-oauth/",
             },
             {
-              label: "Resource Subscriptions",
-              link: "/concepts/resource-subscriptions/",
+              label: "Watches",
+              link: "/concepts/watches/",
             },
-            { label: "Tasks", link: "/concepts/tasks/" },
+            { label: "Automations", link: "/concepts/automations/" },
             {
               label: "Data & Privacy",
               link: "/concepts/data-and-privacy/",
@@ -126,6 +127,7 @@ export default defineConfig({
               link: "/extend/cloudflare-plugin/",
             },
             { label: "Datadog Plugin", link: "/extend/datadog-plugin/" },
+            { label: "TTS Plugin", link: "/extend/tts-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
             { label: "Hex Plugin", link: "/extend/hex-plugin/" },
             { label: "Linear Plugin", link: "/extend/linear-plugin/" },
@@ -135,6 +137,10 @@ export default defineConfig({
             },
             { label: "Memory Plugin", link: "/extend/memory-plugin/" },
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
+            {
+              label: "PagerDuty Plugin",
+              link: "/extend/pagerduty-plugin/",
+            },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
           ],
@@ -162,7 +168,9 @@ export default defineConfig({
           label: "CLI",
           items: [
             { label: "junior init", link: "/cli/init/" },
+            { label: "junior admin", link: "/cli/admin/" },
             { label: "junior chat", link: "/cli/chat/" },
+            { label: "junior briefs", link: "/cli/briefs/" },
             { label: "junior check", link: "/cli/check/" },
             {
               label: "junior snapshot create",

@@ -8,7 +8,7 @@
 }
 
 .jr-real-work::before {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
   border-block: 5px solid var(--jr-black);
   content: "";
   inset: 0;
@@ -29,7 +29,7 @@
 }
 
 .jr-real-work-heading p {
-  color: var(--jr-blue);
+  color: var(--jr-black);
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 0.8rem;
   font-weight: 900;
@@ -89,7 +89,7 @@
 .jr-product-mock-label > span {
   align-items: center;
   background: var(--jr-black);
-  color: var(--jr-acid);
+  color: var(--jr-yellow);
   display: flex;
   flex: 0 0 auto;
   font-family: "Arial Black", Impact, sans-serif;
@@ -194,22 +194,22 @@
 }
 
 .jr-mini-message p strong {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
   color: var(--jr-black);
   padding: 0 0.15rem;
 }
 
 .jr-mini-message-bot {
-  background: rgba(105, 92, 255, 0.15);
+  background: rgba(108, 76, 156, 0.15);
   border-block: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .jr-mini-message-bot > b {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
 }
 
 .jr-mock-status {
-  background: var(--jr-blue);
+  background: var(--jr-violet);
   color: #fff;
   display: inline-block;
   font-family: "Arial Black", Impact, sans-serif;
@@ -235,8 +235,8 @@
 
 .jr-receipt-list span {
   background: var(--jr-black);
-  border: 2px solid var(--jr-acid);
-  color: var(--jr-acid);
+  border: 2px solid var(--jr-yellow);
+  color: var(--jr-yellow);
   font-size: 0.72rem;
   font-weight: 800;
   padding: 0.45rem 0.55rem;
@@ -282,7 +282,7 @@
 }
 
 .jr-linear-issue-top i {
-  background: var(--jr-blue);
+  background: var(--jr-violet);
   color: #fff;
   padding: 0.25rem 0.35rem;
 }
@@ -321,7 +321,7 @@
 }
 
 .jr-linear-done {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
   border: 3px solid var(--jr-black);
   color: var(--jr-black);
   font-size: 0.7rem;
@@ -332,7 +332,7 @@
 }
 
 .jr-browser-window {
-  background: var(--jr-blue);
+  background: var(--jr-violet);
   padding-bottom: 1rem;
 }
 
@@ -361,7 +361,7 @@
 }
 
 .jr-browser-preview {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
   border: 4px solid var(--jr-black);
   box-shadow: 7px 7px 0 var(--jr-black);
   height: 12rem;

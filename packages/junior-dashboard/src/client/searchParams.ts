@@ -6,13 +6,23 @@ export function pathWithSearch(
   pathname: string,
   search: string | URLSearchParams | undefined,
 ): string {
-  const query =
+  const ambient =
     typeof search === "string"
       ? search.startsWith("?")
         ? search.slice(1)
         : search
       : (search?.toString() ?? "");
-  return query ? `${pathname}?${query}` : pathname;
+  const separator = pathname.indexOf("?");
+  const path = separator === -1 ? pathname : pathname.slice(0, separator);
+  const existing =
+    separator === -1 ? "" : pathname.slice(separator + 1).replace(/^\?+/, "");
+  // Path-owned params win when a caller already baked a query into `pathname`.
+  const merged = new URLSearchParams(ambient);
+  for (const [key, value] of new URLSearchParams(existing)) {
+    merged.set(key, value);
+  }
+  const query = merged.toString();
+  return query ? `${path}?${query}` : path;
 }
 
 /** Accept only one of the allowed enum values from a query param. */
@@ -29,9 +39,10 @@ export function parseSearchParamEnum<T extends string>(
 /** Read and write one debounced free-text query param (default `q`). */
 export function useDebouncedSearchParam(
   key = "q",
-  options: { delayMs?: number } = {},
+  options: { delayMs?: number; resetPage?: boolean } = {},
 ) {
   const delayMs = options.delayMs ?? 250;
+  const resetPage = options.resetPage ?? false;
   const [searchParams, setSearchParams] = useSearchParams();
   const committed = searchParams.get(key)?.trim() ?? "";
   const [value, setValue] = useState(committed);
@@ -48,6 +59,7 @@ export function useDebouncedSearchParam(
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
+          if (resetPage) next.delete("page");
           if (normalized) next.set(key, normalized);
           else next.delete(key);
           return next;
@@ -56,7 +68,7 @@ export function useDebouncedSearchParam(
       );
     }, delayMs);
     return () => window.clearTimeout(timeout);
-  }, [committed, delayMs, key, setSearchParams, value]);
+  }, [committed, delayMs, key, resetPage, setSearchParams, value]);
 
   return [value, setValue, committed] as const;
 }

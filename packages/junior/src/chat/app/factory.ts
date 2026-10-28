@@ -1,5 +1,4 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import type { Message } from "chat";
 import {
   createSlackTurnRuntime,
   type AssistantLifecycleEvent,
@@ -7,18 +6,11 @@ import {
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { logException, logWarn, withSpan } from "@/chat/logging";
 import { createSlackTurn } from "@/chat/providers/slack/turn";
 import {
   initializeAssistantThread as initializeAssistantThreadImpl,
   refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
 } from "@/chat/slack/assistant-thread/lifecycle";
-import {
-  getChannelId,
-  getRunId,
-  getThreadId,
-  stripLeadingBotMention,
-} from "@/chat/runtime/thread-context";
 import {
   getLocationConfigurationService,
   persistThreadState,
@@ -27,28 +19,33 @@ import {
   createPrepareTurnState,
   type PreparedTurnState,
 } from "@/chat/runtime/turn-preparation";
-import type { TurnMessageText } from "@/chat/runtime/turn-input";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
-import { toConversationMessage } from "@/chat/runtime/conversation-message";
-import {
-  markConversationMessage,
-  upsertConversationMessage,
-} from "@/chat/services/conversation-memory";
-import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
+import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
+import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
-import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
+import { cancelSubscriptions as cancelWatches } from "@/chat/events/store";
 import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
 import {
   ensureSlackMessageActorIdentity,
   getMessageActorIdentity,
 } from "@/chat/services/message-actor-identity";
+import { lookupSlackUser } from "@/chat/slack/user";
+import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import {
+  createPausedTurns,
+  type PausedTurns,
+} from "@/chat/task-execution/turn-wake";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
   now?: () => number;
+  pausedTurns?: PausedTurns;
+  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
   services?: JuniorRuntimeServiceOverrides;
+  /** Keeps background work started by a turn alive. */
+  waitUntil?: (task: Promise<unknown>) => void;
 }
 
 function clearSkippedTurnIfActive(
@@ -60,29 +57,6 @@ function clearSkippedTurnIfActive(
   ) {
     conversation.processing.activeTurnId = undefined;
   }
-}
-
-function upsertSkippedConversationMessage(
-  conversation: PreparedTurnState["conversation"],
-  args: {
-    decision: SubscribedReplyDecision;
-    message: Message;
-    text: TurnMessageText;
-  },
-): void {
-  const conversationMessage = toConversationMessage({
-    entry: args.message,
-    explicitMention: Boolean(args.message.isMention),
-    text: args.text.userText,
-  });
-  upsertConversationMessage(conversation, {
-    ...conversationMessage,
-    meta: {
-      ...conversationMessage.meta,
-      replied: false,
-      skippedReason: args.decision.reason,
-    },
-  });
 }
 
 export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
@@ -111,17 +85,21 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
             ensureSlackMessageActorIdentity(
               message,
               destination.teamId,
-              services.replyExecutor.lookupSlackUser,
+              lookupSlackUser,
             ),
           ),
       );
     },
   });
   const executeSlackTurn = createSlackTurn({
+    contextCompactor: services.contextCompactor,
+    executeTurn: services.executeTurn,
     getSlackAdapter: options.getSlackAdapter,
+    pausedTurns: options.pausedTurns ?? createPausedTurns(),
     prepareTurnState,
     resolveUserAttachments: services.visionContext.resolveUserAttachments,
-    services: services.replyExecutor,
+    sendPluginTask: options.sendPluginTask,
+    waitUntil: options.waitUntil,
   });
 
   const runtime = createSlackTurnRuntime<
@@ -129,22 +107,10 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     AssistantLifecycleEvent
   >({
     assistantUserName: botConfig.userName,
-    cancelEventSubscriptions,
+    cancelWatches,
+    getBotUserId: () => options.getSlackAdapter().botUserId,
     modelId: defaultModelId(botConfig),
     now: options.now ?? (() => Date.now()),
-    getThreadId,
-    getChannelId,
-    getRunId,
-    stripLeadingBotMention: (text, stripOptions) =>
-      stripLeadingBotMention(text, {
-        ...stripOptions,
-        botUserId: options.getSlackAdapter().botUserId,
-      }),
-    withSpan,
-    logWarn,
-    logException,
-    failConversationTurn: (input) =>
-      services.replyExecutor.turnLifecycle.fail(input),
     prepareTurnState,
     persistPreparedState: async ({ thread, preparedState }) => {
       await persistThreadState(thread, {
@@ -180,10 +146,11 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       text,
     }) => {
       const conversation = coerceThreadConversationState(await thread.state);
-      upsertSkippedConversationMessage(conversation, {
-        decision,
+      recordSkippedConversationMessage({
+        conversation,
         message,
-        text,
+        skippedReason: decision.reason,
+        text: text.userText,
       });
       await persistThreadState(thread, {
         conversation,
@@ -197,10 +164,11 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       text,
     }) => {
       const conversation = coerceThreadConversationState(await thread.state);
-      upsertSkippedConversationMessage(conversation, {
-        decision,
+      recordSkippedConversationMessage({
+        conversation,
         message,
-        text,
+        skippedReason: decision.reason,
+        text: text.userText,
       });
       clearSkippedTurnIfActive(conversation, message.id);
       conversation.processing.lastCompletedAtMs = completedAtMs;

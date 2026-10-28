@@ -8,8 +8,8 @@ import {
 } from "../../evals/guardian/helpers";
 
 describe("guardian eval helpers", () => {
-  it("builds a local proposal snapshot with only supplied optional fields", () => {
-    const snapshot = proposal({
+  it("builds a local proposal snapshot with only supplied optional fields", async () => {
+    const snapshot = await proposal({
       context: localContext("Delete preview-18."),
       input: { workspace: "preview-18" },
       tool: {
@@ -27,13 +27,18 @@ describe("guardian eval helpers", () => {
           conversationId: "local:guardian-eval",
         },
         source: {
-          platform: "local",
+          kind: "local",
           visibility: "private",
           conversationId: "local:guardian-eval",
         },
         userIntent: "Delete preview-18.",
       },
       input: { workspace: "preview-18" },
+      // Core persists the current message first, so it is the root's last line.
+      rootConversation: {
+        messages: [{ author: "user", text: "Delete preview-18." }],
+        truncated: false,
+      },
       tool: {
         description: "Delete a workspace.",
         name: "delete-eval-workspace",
@@ -43,14 +48,18 @@ describe("guardian eval helpers", () => {
     expect(snapshot).not.toHaveProperty("priorRejectedActions");
   });
 
-  it("includes evidence and prior rejections when provided", () => {
+  it("copies a person's messages into the root and keeps the evidence", async () => {
     const tool = {
       description: "Delete a workspace.",
       name: "delete-eval-workspace",
     };
-    const snapshot = proposal({
+    const snapshot = await proposal({
       context: slackContext("Clean up preview-42 if needed."),
-      evidence: evidence([{ role: "user", text: "Clean up preview-42 if needed." }]),
+      evidence: evidence([
+        { role: "user", text: "Check preview-42." },
+        { role: "assistant", text: "preview-42 is idle." },
+        { role: "tool listWorkspaces result", text: "preview-42: idle" },
+      ]),
       input: { workspace: "preview-42" },
       priorRejectedActions: [
         priorRejection({
@@ -68,8 +77,20 @@ describe("guardian eval helpers", () => {
       teamId: "TGUARDIAN",
       userId: "UACTOR",
     });
+    expect(snapshot.rootConversation).toEqual({
+      messages: [
+        { author: "user", text: "Check preview-42." },
+        { author: "assistant", text: "preview-42 is idle." },
+        { author: "user", text: "Clean up preview-42 if needed." },
+      ],
+      truncated: false,
+    });
     expect(snapshot.evidence).toEqual({
-      entries: [{ role: "user", text: "Clean up preview-42 if needed." }],
+      entries: [
+        { role: "user", text: "Check preview-42." },
+        { role: "assistant", text: "preview-42 is idle." },
+        { role: "tool listWorkspaces result", text: "preview-42: idle" },
+      ],
       omittedEntries: 0,
     });
     expect(snapshot.priorRejectedActions).toEqual([
@@ -80,5 +101,38 @@ describe("guardian eval helpers", () => {
         tool,
       },
     ]);
+  });
+
+  it("builds an agent tool as production sends it to Guardian", async () => {
+    const input = {
+      tool_name: "mcp__linear__save_issue",
+      arguments: { title: "Consumer lag spikes after deploy" },
+    };
+    const snapshot = await proposal({
+      context: slackContext("File a Linear bug for the consumer lag."),
+      input,
+      priorRejectedActions: [
+        priorRejection({
+          decision: "ask",
+          input,
+          reason: "Needs confirmation.",
+          tool: "callMcpTool",
+        }),
+      ],
+      tool: "callMcpTool",
+    });
+
+    expect(snapshot.tool).toMatchObject({
+      dispatcherName: "callMcpTool",
+      name: "mcp__linear__save_issue",
+    });
+    expect(snapshot.priorRejectedActions?.[0]?.tool).toEqual(snapshot.tool);
+    await expect(
+      proposal({
+        context: slackContext("Run it."),
+        input: {},
+        tool: "notAnAgentTool",
+      }),
+    ).rejects.toThrow("The agent has no tool named notAnAgentTool.");
   });
 });

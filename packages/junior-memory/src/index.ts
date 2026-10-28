@@ -1,9 +1,11 @@
 export { memoryPlugin } from "./plugin";
 export {
   memoryApiSchema,
+  memoryCountsResponseSchema,
   memoryDashboardResponseSchema,
   memoryListResponseSchema,
   type MemoryApi,
+  type MemoryCountsResponse,
   type MemoryDashboardResponse,
   type MemoryListResponse,
 } from "./api";

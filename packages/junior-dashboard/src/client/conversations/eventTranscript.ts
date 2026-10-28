@@ -1,3 +1,4 @@
+import { resolveMessageCards } from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   ConversationReportEvent,
@@ -36,6 +37,7 @@ function eventMessage(
     role,
     sourceSeq: event.seq,
     timestamp: eventTimestamp(event),
+    ...(event.mentions ? { mentions: event.mentions } : undefined),
   };
 }
 
@@ -74,13 +76,16 @@ export function pendingTranscriptMessage(
     parts: message.redacted
       ? [{ type: "text", redacted: true }]
       : [{ type: "text", text: message.text ?? "" }],
+    ...(message.attachments ? { attachments: message.attachments } : undefined),
     pending: true,
     role: "user",
     source: message.source,
     // Keep pending rows after history without colliding with real event seqs.
     sourceSeq: Number.MAX_SAFE_INTEGER - 1_000_000 + index,
     timestamp: Date.parse(message.createdAt),
-    ...(message.actorIdentity ? { actorIdentity: message.actorIdentity } : undefined),
+    ...(message.actorIdentity
+      ? { actorIdentity: message.actorIdentity }
+      : undefined),
   };
 }
 
@@ -121,12 +126,17 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
-  return transcriptMessagesFromEvents(conversation.events, pendingMessages);
+  return transcriptMessagesFromEvents(
+    conversation.events,
+    conversation.annotations,
+    pendingMessages,
+  );
 }
 
-/** Reduce ordered reporting events without subscribing to detail metadata. */
+/** Reduce ordered events and resolve cards from the latest saved annotations. */
 export function transcriptMessagesFromEvents(
   events: ConversationReportEvent[],
+  annotations: ConversationTranscript["annotations"],
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
   const replacedToolIds = specialToolIds(events);
@@ -197,8 +207,19 @@ export function transcriptMessagesFromEvents(
             : { type: "text", text: data.text! },
         ]),
         messageId: data.messageId,
-        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : undefined),
+        ...(data.attachments ? { attachments: data.attachments } : undefined),
+        ...(data.cards
+          ? { cards: resolveMessageCards(data.cards, annotations ?? []) }
+          : undefined),
+        ...(data.actorIdentity
+          ? { actorIdentity: data.actorIdentity }
+          : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        eventObjectType: data.eventObjectType,
+        ...(data.trustedSummary
+          ? { trustedSummary: data.trustedSummary }
+          : undefined),
+        ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
@@ -223,6 +244,8 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "assistant_message") {
+      // Calls with no reasoning still carry usage in the event log, not a chat bubble.
+      if (data.parts.length === 0) continue;
       messages.push(
         eventMessage(
           event,
@@ -331,8 +354,12 @@ export function transcriptMessagesFromEvents(
     if (data.type === "subagent") {
       const subagentId = `${data.childConversationId}:${data.startedSeq}`;
       const existing = subagents.get(subagentId);
+      const finishedTimestamp =
+        data.status === "running" ? undefined : eventTimestamp(event);
       if (existing) {
         existing.status = data.status;
+        if (finishedTimestamp === undefined) delete existing.finishedTimestamp;
+        else existing.finishedTimestamp = finishedTimestamp;
         continue;
       }
       const part = {
@@ -341,6 +368,12 @@ export function transcriptMessagesFromEvents(
         childConversationId: data.childConversationId,
         subagentKind: data.subagentKind,
         status: data.status,
+        ...(finishedTimestamp === undefined
+          ? undefined
+          : { finishedTimestamp }),
+        ...(data.agentName ? { agentName: data.agentName } : undefined),
+        ...(data.task ? { task: data.task } : undefined),
+        ...(data.title ? { title: data.title } : undefined),
       };
       subagents.set(subagentId, part);
       messages.push({
@@ -356,6 +389,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "structured_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             namespace: data.namespace,
             name: data.name,
             version: data.version,
@@ -383,6 +417,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "context_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             event:
               data.type === "handoff"
                 ? {
@@ -413,8 +448,15 @@ export function transcriptMessagesFromEvents(
 
     if (data.type === "turn_lifecycle" && data.state === "failed") {
       messages.push({
-        role: data.failureKind === "delivery" ? "system" : "assistant",
-        outcome: data.failureKind === "delivery" ? "delivery_failed" : "error",
+        role: data.failureCode === "delivery_failed" ? "system" : "assistant",
+        failureCode: data.failureCode,
+        ...(data.failureReason
+          ? { failureReason: data.failureReason }
+          : undefined),
+        ...(data.eventId ? { eventId: data.eventId } : undefined),
+        ...(data.sentryEventUrl
+          ? { sentryEventUrl: data.sentryEventUrl }
+          : undefined),
         parts: [],
         sourceSeq: event.seq,
         timestamp: eventTimestamp(event),

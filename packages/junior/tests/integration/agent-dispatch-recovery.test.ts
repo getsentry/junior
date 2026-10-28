@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   getDispatchConversationId,
   getDispatchRecord,
@@ -20,6 +19,7 @@ import {
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import {
+  agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
   createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
@@ -58,8 +58,9 @@ describe("agent dispatch recovery", () => {
     ).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
       outcome: "failed",
-      resultMessageTs: expect.any(String),
     });
+    // A failed Automation run posts no internal error to its outcomes.
+    expect(slackApiOutbox.messages()).toEqual([]);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "pending",
     });
@@ -87,7 +88,6 @@ describe("agent dispatch recovery", () => {
     expect(replay.queue.hasQueuedMessages()).toBe(false);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
-      resultMessageTs: expect.any(String),
       status: "failed",
     });
   });
@@ -98,26 +98,46 @@ describe("agent dispatch recovery", () => {
       {
         type: "user",
         userId: "U123",
-        allowedWhen: "scheduled-task",
+        allowedWhen: "scheduled-automation",
         taskId: "task-123",
         binding: {
-          type: "scheduled-task",
+          type: "scheduled-automation",
           plugin: "scheduler",
           taskId: "task-123",
           signature: "v1=test",
         },
       },
-      createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        visibility: "private",
-      }),
-      { label: "Scheduled task", detail: "Weekly" },
+      { kind: "scheduled_automation" },
+      { label: "Scheduled automation", detail: "Weekly" },
+      "Post the scheduled digest.",
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, threadTs: "1700000000.000300" },
+        },
+      ],
+      { ...destination, threadTs: "1700000000.000300" },
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([
-        { type: "toolCall", name: "systemTime", arguments: {} },
-        { type: "text", text: "Resumed scheduled digest" },
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: {
+            result: "send_message",
+            message: "Resumed scheduled digest",
+          },
+        },
+        // The declared result is final. The resumed slice must not call the
+        // model again and replace it.
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: {
+            result: "send_message",
+            message: "Replaced scheduled digest",
+          },
+        },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
@@ -134,7 +154,7 @@ describe("agent dispatch recovery", () => {
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
         run,
-        // Pause the first slice after the tool result is saved.
+        // Pause the first slice after the declared result is saved.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
       });
@@ -142,7 +162,8 @@ describe("agent dispatch recovery", () => {
 
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
-      text: "Resumed scheduled digest\n\nScheduled task · Weekly",
+      text: "Resumed scheduled digest\n\nScheduled automation · Weekly",
+      thread_ts: "1700000000.000300",
     });
     await expect(
       getTurnRecord(`agent-dispatch:${dispatch.id}`, `dispatch:${dispatch.id}`),
@@ -168,9 +189,11 @@ describe("agent dispatch recovery", () => {
         plugin: dispatch.plugin,
         replyAttribution: dispatch.replyAttribution,
       },
-      source: dispatch.source,
+      location: { threadTs: "1700000000.000300" },
+      source: { kind: "scheduled_automation" },
       surface: "api",
     });
+    expect(resumedRun).not.toHaveProperty("delivery");
     expect(resumedRun?.instruction.text).toBe(dispatch.input);
     expect(resumedRun?.instruction.context).toBeUndefined();
   });

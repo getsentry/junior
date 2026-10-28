@@ -4,10 +4,11 @@ import {
   decideSubscribedThreadReply,
   type SubscribedDecisionInput,
 } from "@/chat/services/subscribed-decision";
-import type { completeObject } from "@/chat/pi/client";
 
 export interface SubscribedReplyPolicyDeps {
-  completeObject: typeof completeObject;
+  completeDecision: Parameters<
+    typeof decideSubscribedThreadReply
+  >[0]["completeDecision"];
 }
 
 export interface SubscribedReplyDecision {
@@ -27,9 +28,9 @@ export function createSubscribedReplyPolicy(
   return async (args) => {
     const decision = await decideSubscribedThreadReply({
       botUserName: botConfig.userName,
-      modelId: botConfig.fastModelId,
+      modelId: botConfig.decisionModelId,
       input: args,
-      completeObject: deps.completeObject,
+      completeDecision: deps.completeDecision,
       logClassifierFailure: (error) => {
         logWarn("subscribed_message.classifier.failed", {
           "exception.message":
@@ -42,7 +43,9 @@ export function createSubscribedReplyPolicy(
       ? `${decision.reason}:${decision.reasonDetail}`
       : decision.reason;
     return {
-      ...(decision.costUsd !== undefined ? { costUsd: decision.costUsd } : undefined),
+      ...(decision.costUsd !== undefined
+        ? { costUsd: decision.costUsd }
+        : undefined),
       shouldReply: decision.shouldReply,
       shouldUnsubscribe: decision.shouldUnsubscribe,
       reason,

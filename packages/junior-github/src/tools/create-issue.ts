@@ -1,4 +1,8 @@
+import { githubObjectFacts } from "../object-facts.js";
+import { githubObjectAnnotation } from "../annotations.js";
 import {
+  objectFactsSchema,
+  type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -13,7 +17,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import { gitHubIssueSubscribable } from "../resource-events/issue.js";
+import { gitHubIssueSubscribable } from "../events/issue.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
@@ -38,7 +42,7 @@ const createIssueInputSchema = Type.Object(
     }),
     body: Type.Optional(
       Type.String({
-        description: "Issue body. Junior appends the conversation footer.",
+        description: "Issue body. The runtime appends the conversation footer.",
       }),
     ),
     labels: Type.Optional(
@@ -57,7 +61,7 @@ const createIssueToolInputSchema = z
     title: z.string().describe("Issue title."),
     body: z
       .string()
-      .describe("Issue body. Junior appends the conversation footer.")
+      .describe("Issue body. The runtime appends the conversation footer.")
       .optional(),
     labels: z
       .array(z.string())
@@ -72,6 +76,9 @@ const createIssueStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createIssueInputSchema),
       number: Type.Number(),
+      facts: Type.Optional(Type.Unknown()),
+      description: Type.Optional(Type.String({ maxLength: 4000 })),
+      sourceUpdatedAt: Type.Optional(Type.String()),
       status: Type.Literal("completed"),
       url: Type.String(),
     },
@@ -94,6 +101,9 @@ const createIssueStateSchema = Type.Union([
 type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
+  facts?: ObjectAnnotation["facts"];
+  description?: string;
+  sourceUpdatedAt?: string;
   number: number;
   url: string;
 }
@@ -130,8 +140,25 @@ function gitHubIssueToolResult(
         repo: `${repo.owner}/${repo.name}`,
       })
     : undefined;
-  const data = { ...result, ...(subscribable ? { subscribable } : undefined) };
+  const data = {
+    number: result.number,
+    url: result.url,
+    ...(subscribable ? { subscribable } : undefined),
+  };
   return {
+    objectAnnotations: [
+      githubObjectAnnotation({
+        facts: result.facts,
+        description: result.description,
+        sourceUpdatedAt: result.sourceUpdatedAt,
+        repo: input.repo,
+        number: result.number,
+        title: input.title,
+        url: result.url,
+        objectType: "task",
+        status: "open",
+      }),
+    ],
     target: "createIssue",
     ...data,
   };
@@ -281,24 +308,10 @@ async function createGitHubIssue(
     throw new Error("GitHub issue creation returned an invalid response.");
   }
   return {
+    ...githubObjectFacts("task", parsed),
     number: issue.number,
     url: issue.html_url,
   };
-}
-
-async function annotateIssue(
-  ctx: ToolRegistrationHookContext,
-  input: CreateGitHubIssueInput,
-  result: GitHubIssueResult,
-): Promise<void> {
-  const repo = parseRepo(input.repo);
-  await ctx.annotations?.upsert({
-    kind: "resource_link",
-    key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
-    label: `${repo.owner}/${repo.name}#${result.number}`,
-    url: result.url,
-    status: "open",
-  });
 }
 
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
@@ -311,7 +324,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub issue with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
+      "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
     inputSchema: createIssueToolInputSchema,
     outputSchema: gitHubIssueOutputSchema,
     async execute(
@@ -333,14 +346,19 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
             const completedResult = {
+              facts:
+                state.facts === undefined
+                  ? undefined
+                  : objectFactsSchema.parse(state.facts),
+              sourceUpdatedAt: state.sourceUpdatedAt,
+              description: state.description,
               number: state.number,
               url: state.url,
             };
-            await annotateIssue(ctx, completedInput, completedResult);
             return gitHubIssueToolResult(
               completedInput,
               completedResult,
-              ctx.resourceEvents.canSubscribe,
+              ctx.events.canSubscribe,
             );
           }
           if (state?.status === "pending") {
@@ -375,15 +393,14 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               );
             } catch (error) {
               throw new Error(
-                "GitHub issue was created, but Junior could not persist the completed issue state.",
+                "GitHub issue was created, but the runtime could not persist the completed issue state.",
                 { cause: error },
               );
             }
-            await annotateIssue(ctx, parsedInput, result);
             return gitHubIssueToolResult(
               parsedInput,
               result,
-              ctx.resourceEvents.canSubscribe,
+              ctx.events.canSubscribe,
             );
           } catch (error) {
             if (

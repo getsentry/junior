@@ -1,18 +1,16 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  getModel,
-  streamAnthropic,
-  type Message as PiAiMessage,
-} from "@/chat/pi/sdk";
+import { streamAnthropic, type Message as PiAiMessage } from "@/chat/pi/sdk";
+import { resolveGatewayModel } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { installEvalAiGatewayDispatcher } from "../../src/eval-ai-gateway-dispatcher";
 
 const openServers = new Set<http.Server>();
 
-async function startStalledServer(): Promise<string> {
+async function startStalledServer(sendHeaders = true): Promise<string> {
   const server = http.createServer((_request, response) => {
+    if (!sendHeaders) return;
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.flushHeaders();
   });
@@ -36,6 +34,18 @@ afterEach(async () => {
 });
 
 describe("eval AI Gateway dispatcher", () => {
+  it("terminates a request that never receives headers", async () => {
+    const targetOrigin = await startStalledServer(false);
+    const restore = installEvalAiGatewayDispatcher(100, targetOrigin);
+    try {
+      await expect(fetch(targetOrigin)).rejects.toMatchObject({
+        cause: expect.objectContaining({ code: "UND_ERR_HEADERS_TIMEOUT" }),
+      });
+    } finally {
+      await restore();
+    }
+  });
+
   it("terminates a response body that stops producing data", async () => {
     const targetOrigin = await startStalledServer();
     const restore = installEvalAiGatewayDispatcher(100, targetOrigin);
@@ -64,14 +74,16 @@ describe("eval AI Gateway dispatcher", () => {
 
     try {
       const stream = streamAnthropic(
-        getModel("vercel-ai-gateway", "xai/grok-4.5"),
+        resolveGatewayModel("openai/gpt-5.6-sol"),
         { messages: [userMessage] },
         {
           client: {
-            messages: {
-              create: () => ({
-                asResponse: async () => await fetch(targetOrigin),
-              }),
+            beta: {
+              messages: {
+                create: () => ({
+                  asResponse: async () => await fetch(targetOrigin),
+                }),
+              },
             },
           } as never,
         },
@@ -89,7 +101,7 @@ describe("eval AI Gateway dispatcher", () => {
           failure: failedAssistant,
           messages: [userMessage as PiMessage, failedAssistant as PiMessage],
         }),
-      ).toEqual({ delayMs: 2_000, messages: [userMessage as PiMessage] });
+      ).toMatchObject({ delayMs: 2_000, messages: [userMessage as PiMessage] });
     } finally {
       await restore();
     }

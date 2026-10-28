@@ -467,10 +467,10 @@ vi.mock("@/chat/pi/client", () => ({
     },
   }),
   getGatewayApiKey: () => "test-gateway-key",
-  resolveGatewayModel: (modelId: string) => modelId,
+  resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
-vi.mock("@/chat/services/guardian-action-review", () => ({
+vi.mock("@/chat/guardian/reviewer", () => ({
   createGuardianActionReviewer: () => ({
     review: async (proposal: unknown) => {
       guardianProposals.push(proposal);
@@ -635,14 +635,23 @@ vi.mock("@/chat/mcp/client", () => {
   }
 
   class MockPluginMcpClient {
+    private readonly plugin: { manifest: { name: string } };
+    private readonly options: {
+      authProvider?: {
+        redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
+      };
+    };
+
     constructor(
-      private readonly plugin: { manifest: { name: string } },
-      private readonly options: {
+      plugin: { manifest: { name: string } },
+      options: {
         authProvider?: {
           redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
         };
       },
     ) {
+      this.plugin = plugin;
+      this.options = options;
       clientOptions.push({ ...options });
     }
 
@@ -673,11 +682,7 @@ import {
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import {
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
-
-
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -734,7 +739,6 @@ function makeAgentRun(
       ...(instructionOverrides ?? {}),
     },
     ...(history ? { history } : undefined),
-    destinationVisibility: "private",
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
     },
@@ -1115,7 +1119,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     await executeAgentRun(
       makeAgentRun(
-        "run the scheduled task",
+        "run the scheduled automation",
         {
           conversationId: "conversation-delegated-provider",
           threadTs: "1712345.0092",
@@ -1128,12 +1132,12 @@ describe("executeAgentRun progressive MCP loading", () => {
             subject: {
               type: "user",
               userId: "U123",
-              allowedWhen: "scheduled-task",
-              taskId: "scheduled-task-1",
+              allowedWhen: "scheduled-automation",
+              taskId: "scheduled-automation-1",
               binding: {
-                type: "scheduled-task",
+                type: "scheduled-automation",
                 plugin: "scheduler",
-                taskId: "scheduled-task-1",
+                taskId: "scheduled-automation-1",
                 signature: "v1=test",
               },
             },
@@ -1151,7 +1155,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   it("preserves the execution-limit error when provider restore pauses for auth", async () => {
     const conversationId = "conversation-restore-auth-limit";
     const turnId = "turn-restore-auth-limit";
-        const priorMessages = ([
+    const priorMessages = [
       {
         // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
         input: {
@@ -1165,7 +1169,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 1,
       },
-    ]) as PiMessage[];
+    ] as PiMessage[];
     await upsertTurnRecord({
       conversationId,
       piMessages: priorMessages,
@@ -1191,7 +1195,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   });
 
   it("adds missing bootstrap context when actor-owned provider restore pauses before prompt", async () => {
-        const priorMessages = ([
+    const priorMessages = [
       {
         role: "user",
         content: [{ type: "text", text: "prior question" }],
@@ -1209,7 +1213,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 2,
       },
-    ]) as PiMessage[];
+    ] as PiMessage[];
     await recordMcpProviderConnected({
       conversationId: "conversation-restore-auth",
       provider: "demo",
@@ -1492,7 +1496,11 @@ describe("executeAgentRun progressive MCP loading", () => {
     );
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
-    expect(turnContextInputs).toHaveLength(0);
+    // Request-scoped context, such as disabled tools, may still build a Turn
+    // context. Session context must not repeat.
+    expect(
+      turnContextInputs.filter((input) => input.includeSessionContext),
+    ).toHaveLength(0);
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<runtime-turn-context>",
     );

@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   Info,
+  PanelRight,
   MessagesSquare,
   ScrollText,
   Search,
@@ -13,6 +14,7 @@ import { Button, ToggleButton } from "../components/Button";
 import { IconButtonTooltip } from "../components/Tooltip";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import { ShareConversationButton } from "./ShareConversationButton";
 
 export type ConversationArchiveAction = {
   archived: boolean;
@@ -22,9 +24,10 @@ export type ConversationArchiveAction = {
   pending: boolean;
 };
 
-/** Render the compact icon controls for one conversation header. */
+/** Show conversation actions in the header or mobile menu. */
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
+  conversationId: string;
   copyAction?: ReactNode;
   detailsOpen: boolean;
   /** `bar` is the desktop icon row. `menu` stacks actions for mobile overflow. */
@@ -64,6 +67,11 @@ export function ConversationHeaderActions(props: {
         >
           <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
         </MenuActionButton>
+        <ShareConversationButton
+          key={props.conversationId}
+          conversationId={props.conversationId}
+          layout="menu"
+        />
         {props.copyAction}
         <ArchiveConversationButton {...props.archive} layout="menu" />
         <MenuActionButton
@@ -83,34 +91,41 @@ export function ConversationHeaderActions(props: {
         onClick={props.onSearchClick}
         open={props.searchOpen}
       />
-      <TranscriptViewToggle onChange={props.onViewChange} value={props.view} />
       {props.copyAction}
       <ArchiveConversationButton {...props.archive} layout="bar" />
-      <HeaderIconButton
-        label="Conversation details"
+      <Button
+        aria-label="Conversation details"
+        aria-pressed={props.detailsOpen}
+        className="ml-2"
         onClick={props.onDetailsClick}
-        pressed={props.detailsOpen}
       >
-        <Info aria-hidden="true" size={15} strokeWidth={2} />
-      </HeaderIconButton>
+        <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
+        Details
+      </Button>
     </div>
   );
 }
 
-/** Icon-only conversation / event-log toggle shared by transcript surfaces. */
+/** Switch between the conversation and event log. */
 export function TranscriptViewToggle(props: {
+  labelled?: boolean;
   onChange(value: TranscriptViewMode): void;
   value: TranscriptViewMode;
 }) {
   return (
     <div
       aria-label="Transcript view"
-      className="inline-flex items-center gap-0.5 rounded-md border border-white/[0.08] bg-black/20 p-0.5"
+      className={
+        props.labelled
+          ? "inline-flex items-center gap-6"
+          : "inline-flex items-center gap-0.5 rounded-md border border-dashboard-border bg-dashboard-overlay-soft p-0.5"
+      }
       role="group"
     >
       <ViewModeButton
         active={props.value === "rich"}
         label="Conversation"
+        labelled={props.labelled}
         onClick={() => props.onChange("rich")}
       >
         <MessagesSquare aria-hidden="true" size={14} strokeWidth={2} />
@@ -118,6 +133,7 @@ export function TranscriptViewToggle(props: {
       <ViewModeButton
         active={props.value === "raw"}
         label="Event log"
+        labelled={props.labelled}
         onClick={() => props.onChange("raw")}
       >
         <ScrollText aria-hidden="true" size={14} strokeWidth={2} />
@@ -130,25 +146,34 @@ function ViewModeButton(props: {
   active: boolean;
   children: ReactNode;
   label: string;
+  labelled?: boolean;
   onClick(): void;
 }) {
-  return (
-    <IconButtonTooltip label={props.label}>
-      <ToggleButton
-        aria-label={props.label}
-        className={cn(
-          "!normal-case !no-underline grid size-7 place-items-center rounded px-0 py-0",
-          props.active
-            ? "bg-white/[0.08] text-dashboard-text"
-            : "text-dashboard-text-muted",
-        )}
-        onClick={props.onClick}
-        pressed={props.active}
-        variant="text"
-      >
-        {props.children}
-      </ToggleButton>
-    </IconButtonTooltip>
+  const button = (
+    <ToggleButton
+      aria-label={props.label}
+      className={cn(
+        "!no-underline",
+        props.labelled
+          ? "relative flex h-11 items-center gap-2 rounded-none px-0 py-0 text-sm after:absolute after:inset-x-0 after:bottom-0 after:h-0.5"
+          : "grid size-7 place-items-center rounded-md px-0 py-0",
+        props.active &&
+          (props.labelled
+            ? "text-dashboard-text after:bg-dashboard-text-solid"
+            : "bg-dashboard-fill-hover text-dashboard-text"),
+      )}
+      onClick={props.onClick}
+      pressed={props.active}
+      variant="text"
+    >
+      {props.children}
+      {props.labelled ? props.label : null}
+    </ToggleButton>
+  );
+  return props.labelled ? (
+    button
+  ) : (
+    <IconButtonTooltip label={props.label}>{button}</IconButtonTooltip>
   );
 }
 
@@ -166,7 +191,7 @@ export function HeaderIconButton(props: {
         aria-pressed={props.pressed}
         className={cn(
           "text-dashboard-text-muted",
-          props.pressed && "bg-white/10 text-dashboard-text",
+          props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
         )}
         onClick={props.onClick}
         size="icon"
@@ -208,8 +233,8 @@ function MenuActionButton(props: {
       aria-label={props.label}
       aria-pressed={props.pressed}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none",
-        props.pressed && "bg-white/[0.08]",
+        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none",
+        props.pressed && "bg-dashboard-fill-strong",
       )}
       onClick={props.onClick}
       type="button"
@@ -233,7 +258,7 @@ function ArchiveConversationButton(
     return (
       <button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={props.disabled}
         onClick={props.onClick}
         type="button"

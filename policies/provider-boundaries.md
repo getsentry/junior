@@ -20,6 +20,10 @@ runtime and the provider-neutral contracts that plugins use.
   reviewers must apply this rule to values and control flow as well as imports.
 - Shared code must use Junior-owned types. Examples include `Destination`,
   `Source`, actor identity, a local interface, or a feature-owned view.
+- A Junior-owned runtime contract may carry provider fields in Source, Actor,
+  or Location when the agent or its tools need them. Their presence must not
+  select another runtime or grant provider delivery. Keep provider decisions
+  with the provider owner.
 - Tests for one provider may use its SDK types. Tests outside that provider
   must use its public adapter or a Junior runtime contract.
 
@@ -31,5 +35,8 @@ runtime and the provider-neutral contracts that plugins use.
   must not perform the provider action itself.
 - Slack runtime and delivery code remains in core until Slack is a plugin. Keep
   Slack behavior in Slack-owned modules and out of shared services.
+- Core owns the native Slack and Google identities and the Google sign-in that
+  links a Google identity. Plugins must not link identities under these
+  provider names. See `packages/junior/src/chat/identities/README.md`.
 - Existing domain-specific core behavior is debt, not a pattern for new code.
   Move it to the owning plugin when the touched contract makes that practical.

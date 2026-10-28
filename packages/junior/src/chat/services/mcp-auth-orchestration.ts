@@ -8,12 +8,19 @@
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import { serviceAccountOnly } from "@/chat/credentials/service-account";
+import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
   patchMcpAuthSession,
 } from "@/chat/mcp/auth-store";
+import {
+  createMcpServiceAccountClientProvider,
+  getMcpServiceAccountCredentials,
+} from "@/chat/mcp/service-account";
 import {
   authorizationId,
   type OAuthAuthorization,
@@ -33,6 +40,8 @@ import {
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import type { McpAuthorizationContext } from "@/chat/mcp/tool-manager";
+import { describeAuthorizationReason } from "@/chat/services/auth-pause-response";
 
 export class McpAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -70,7 +79,14 @@ export interface McpAuthOrchestration {
   authProviderFactory: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
-  onAuthorizationRequired: (provider: string) => Promise<boolean>;
+  /** Return the plugin's service account when the actor has no connection of their own. */
+  serviceAccountProviderFactory: (
+    plugin: PluginDefinition,
+  ) => Promise<OAuthClientProvider | undefined>;
+  onAuthorizationRequired: (
+    provider: string,
+    context?: McpAuthorizationContext,
+  ) => Promise<boolean>;
   getPendingPause: () => McpAuthorizationPauseError | undefined;
 }
 
@@ -80,10 +96,20 @@ export function createMcpAuthOrchestration(
 ): McpAuthOrchestration {
   let pendingPause: McpAuthorizationPauseError | undefined;
   const authSessionIdsByProvider = new Map<string, string>();
+  const botAuthProviders = new Set<string>();
 
   const authProviderFactory = async (
     plugin: PluginDefinition,
   ): Promise<OAuthClientProvider | undefined> => {
+    const mcp = plugin.manifest.mcp;
+    if (mcp?.auth) {
+      botAuthProviders.add(plugin.manifest.name);
+      return createJwtBearerMcpClientProvider(
+        plugin.manifest.name,
+        mcp.url,
+        mcp.auth,
+      );
+    }
     if (!input.conversationId || !input.sessionId || !input.actorId) {
       return undefined;
     }
@@ -103,7 +129,9 @@ export function createMcpAuthOrchestration(
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
       configuration: input.getConfiguration(),
       createAuthorizationState: input.authorization?.createState,
     });
@@ -111,9 +139,38 @@ export function createMcpAuthOrchestration(
     return provider;
   };
 
+  const serviceAccountProviderFactory = async (
+    plugin: PluginDefinition,
+  ): Promise<OAuthClientProvider | undefined> => {
+    const provider = plugin.manifest.name;
+    if (!plugin.manifest.accounts?.serviceAccount) {
+      return undefined;
+    }
+    // An actor's own connection can see and do more, so it wins unless the
+    // plugin uses only its service account.
+    if (
+      !serviceAccountOnly(plugin.manifest) &&
+      input.actorId &&
+      (await getMcpStoredOAuthCredentials(input.actorId, provider))?.tokens
+    ) {
+      return undefined;
+    }
+    const credentials = await getMcpServiceAccountCredentials(provider);
+    return credentials
+      ? createMcpServiceAccountClientProvider(provider, credentials)
+      : undefined;
+  };
+
   const onAuthorizationRequired = async (
     provider: string,
+    context?: McpAuthorizationContext,
   ): Promise<boolean> => {
+    // Bot auth has no user OAuth session or authorization link. If the SDK
+    // ever reports an unauthorized response from that non-interactive flow,
+    // let the original MCP auth error surface without creating a user pause.
+    if (botAuthProviders.has(provider)) {
+      return false;
+    }
     if (pendingPause) {
       return true;
     }
@@ -178,7 +235,7 @@ export function createMcpAuthOrchestration(
       await recordPendingAuth(nextPendingAuth);
       const authorizationRequest = {
         authorizationUrl: authSession.authorizationUrl,
-        label: `Click here to link your ${providerLabel} MCP access`,
+        label: `Connect your ${providerLabel} account`,
         completionText:
           "Once you've authorized, Junior will continue automatically.",
       };
@@ -222,7 +279,7 @@ export function createMcpAuthOrchestration(
       provider,
       providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
-      input.userMessage,
+      describeAuthorizationReason(context) ?? input.userMessage,
     );
     input.abortAgent();
     return true;
@@ -230,6 +287,7 @@ export function createMcpAuthOrchestration(
 
   return {
     authProviderFactory,
+    serviceAccountProviderFactory,
     onAuthorizationRequired,
     getPendingPause: () => pendingPause,
   };

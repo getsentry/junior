@@ -15,8 +15,10 @@ type SavedTurnResult =
       outcome: CompleteConversationTurnInput["outcome"];
     }
   | {
+      eventId?: string;
       finishedAtMs?: number;
       failureCode: FailConversationTurnInput["failureCode"];
+      failureReason?: FailConversationTurnInput["failureReason"];
       outcome: "failed";
     };
 
@@ -67,7 +69,11 @@ export async function executeTurn(
   if (saved.outcome === "failed") {
     await lifecycle.fail({
       ...common,
+      ...(saved.eventId ? { eventId: saved.eventId } : undefined),
       failureCode: saved.failureCode,
+      ...(saved.failureReason
+        ? { failureReason: saved.failureReason }
+        : undefined),
     });
   } else {
     await lifecycle.complete({
@@ -78,3 +84,9 @@ export async function executeTurn(
 
   return { status: "completed" };
 }
+
+/** Run the agent and finish a Turn after its caller saves the result. */
+export type ExecuteTurn = (
+  run: AgentRun,
+  saveResult: (result: AgentRunResult) => Promise<SavedTurnResult>,
+) => Promise<TurnExecutionOutcome>;

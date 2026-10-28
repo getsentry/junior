@@ -1,0 +1,48 @@
+/** Sanitize persisted scheduled-automation creators. */
+import type { ScheduledAutomationPrincipal } from "./types";
+
+const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{5,}$/;
+
+function clean(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function cleanSlackUserId(value: string | undefined): string | undefined {
+  const normalized = clean(value);
+  return normalized && normalized.toLowerCase() !== "unknown"
+    ? normalized
+    : undefined;
+}
+
+function cleanDisplay(
+  value: string | undefined,
+  slackUserId: string,
+): string | undefined {
+  const normalized = clean(value);
+  if (
+    !normalized ||
+    normalized.toLowerCase() === "unknown" ||
+    normalized === slackUserId
+  ) {
+    return undefined;
+  }
+  return SLACK_USER_ID_PATTERN.test(normalized) ? undefined : normalized;
+}
+
+/** Keep scheduler creator metadata from promoting Slack IDs into display names. */
+export function sanitizeScheduledAutomationPrincipal(
+  principal: ScheduledAutomationPrincipal,
+): ScheduledAutomationPrincipal {
+  const slackUserId = cleanSlackUserId(principal.slackUserId);
+  if (!slackUserId) {
+    throw new Error("Scheduled automation principal requires a Slack user id");
+  }
+  const fullName = cleanDisplay(principal.fullName, slackUserId);
+  const userName = cleanDisplay(principal.userName, slackUserId);
+  return {
+    slackUserId,
+    ...(fullName ? { fullName } : undefined),
+    ...(userName ? { userName } : undefined),
+  };
+}

@@ -2,17 +2,20 @@ import {
   and,
   eq,
   exists,
+  gte,
   inArray,
   isNotNull,
   notExists,
   or,
   type SQL,
 } from "drizzle-orm";
+import { union } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
 
@@ -36,33 +39,53 @@ export function conversationHasParticipantUser(userId: string): SQL {
 }
 
 /**
- * True when a verified primary-email user participates on this root
- * conversation. Used only for the actorEmail feed fallback.
+ * True when the conversation is one the person started or participates in.
+ * Feeds filter with this id set instead of a per-row membership check, so
+ * Postgres reads only that person's conversations, not every root.
  */
-export function conversationHasParticipantEmail(email: string): SQL {
-  const participant = getDb()
-    .select({
-      rootConversationId: juniorConversationParticipants.rootConversationId,
-    })
-    .from(juniorConversationParticipants)
+export function conversationIsMemberRoot(
+  member: { userId: string } | { email: string },
+): SQL {
+  const db = getDb();
+  const started = db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
     .innerJoin(
-      juniorUsers,
-      eq(juniorUsers.id, juniorConversationParticipants.userId),
-    )
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorUsers.primaryEmailNormalized, email),
-      ),
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     );
-  return exists(participant);
+  const participating = db
+    .select({
+      conversationId: juniorConversationParticipants.rootConversationId,
+    })
+    .from(juniorConversationParticipants);
+  const memberRoots =
+    "userId" in member
+      ? union(
+          started.where(eq(juniorIdentities.userId, member.userId)),
+          participating.where(
+            eq(juniorConversationParticipants.userId, member.userId),
+          ),
+        )
+      : union(
+          started
+            .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+            .where(eq(juniorUsers.primaryEmailNormalized, member.email)),
+          participating
+            .innerJoin(
+              juniorUsers,
+              eq(juniorUsers.id, juniorConversationParticipants.userId),
+            )
+            .where(eq(juniorUsers.primaryEmailNormalized, member.email)),
+        );
+  return inArray(juniorConversations.conversationId, memberRoots);
 }
 
-/** True when one user's personal feed has archived this root. */
-export function conversationArchivedForUser(userId: string): SQL {
+/** True when one user's personal feed has archived this root after the cutoff. */
+export function conversationArchivedForUser(
+  userId: string,
+  archivedAfter?: Date,
+): SQL {
   const archive = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
@@ -76,6 +99,9 @@ export function conversationArchivedForUser(userId: string): SQL {
         ),
         eq(juniorConversationParticipants.userId, userId),
         isNotNull(juniorConversationParticipants.archivedAt),
+        archivedAfter
+          ? gte(juniorConversationParticipants.archivedAt, archivedAfter)
+          : undefined,
       ),
     );
   return exists(archive);
@@ -101,8 +127,11 @@ export function conversationNotArchivedForUser(userId: string): SQL {
   return notExists(archive);
 }
 
-/** True when one primary-email user's personal feed has archived this root. */
-export function conversationArchivedForEmail(email: string): SQL {
+/** True when one primary-email user's feed archived this root after the cutoff. */
+export function conversationArchivedForEmail(
+  email: string,
+  archivedAfter?: Date,
+): SQL {
   const archive = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
@@ -120,6 +149,9 @@ export function conversationArchivedForEmail(email: string): SQL {
         ),
         eq(juniorUsers.primaryEmailNormalized, email),
         isNotNull(juniorConversationParticipants.archivedAt),
+        archivedAfter
+          ? gte(juniorConversationParticipants.archivedAt, archivedAfter)
+          : undefined,
       ),
     );
   return exists(archive);

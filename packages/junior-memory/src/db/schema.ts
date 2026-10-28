@@ -12,6 +12,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   uniqueIndex,
   vector,
@@ -20,6 +21,7 @@ import {
   MEMORY_EMBEDDING_DIMENSIONS,
   MEMORY_EMBEDDING_METRICS,
   MEMORY_SCOPES,
+  MEMORY_SIGNALS,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
@@ -50,6 +52,8 @@ export const juniorMemoryMemories = pgTable(
     sourceKey: text("source_key").notNull(),
     /** Location where Junior learned the memory, when known. */
     locationId: text("location_id"),
+    /** Conversation where Junior learned the memory, when known. */
+    conversationId: text("conversation_id"),
     idempotencyKey: text("idempotency_key"),
     observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
@@ -142,6 +146,38 @@ export const juniorMemoryEmbeddings = pgTable(
     check(
       "junior_memory_embeddings_dimensions_check",
       sql`${table.dimensions} = ${sql.raw(String(MEMORY_EMBEDDING_DIMENSIONS))}`,
+    ),
+  ],
+);
+
+/**
+ * Thin log of signals about stored memories, such as a capture that resolved
+ * to an existing memory. Callers count recent rows to weigh memories.
+ */
+export const juniorMemorySignals = pgTable(
+  "junior_memory_signals",
+  {
+    memoryId: text("memory_id")
+      .notNull()
+      .references(() => juniorMemoryMemories.id, { onDelete: "cascade" }),
+    signal: text("signal", { enum: MEMORY_SIGNALS }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    /** Conversation where Junior saw the signal, when known. */
+    conversationId: text("conversation_id"),
+    observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.memoryId, table.signal, table.idempotencyKey],
+    }),
+    index("junior_memory_signals_observed_idx").on(
+      table.memoryId,
+      table.signal,
+      table.observedAtMs,
+    ),
+    check(
+      "junior_memory_signals_signal_check",
+      sql`${table.signal} IN ('duplicate')`,
     ),
   ],
 );

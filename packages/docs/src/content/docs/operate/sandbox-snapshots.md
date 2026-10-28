@@ -46,11 +46,11 @@ Any change to those inputs produces a new profile hash and a new snapshot.
 
 Junior stores install-wide Workspace recipes and their repositories in SQL. The agent reads this configuration when it lists a Workspace, resumes an active Workspace, or starts a switch.
 
-Manage recipes from the authenticated dashboard at `/system/workspaces`, or through the `/api/workspaces` REST routes. Each recipe has a stable name, optional setup script, and one or more repositories. Junior loads `AGENTS.md` from each repository checkout and labels those instructions with the related directory.
+Manage recipes from the authenticated dashboard at `/system/workspaces`, or through the `/api/workspaces` REST routes. Each recipe has a stable name, optional setup script, optional vCPU count, and one or more repositories. Junior loads `AGENTS.md` from each repository checkout and labels those instructions with the related directory.
 
-Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch builds the snapshot on demand. Later switches reuse it until its floating profile becomes stale.
+Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch starts that build in the background and returns `building` with a temporary subscription for ready and failed events. Call `switchWorkspace` again after the ready event. Later switches reuse the snapshot until its floating profile becomes stale.
 
-After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, size in bytes when the provider reports it, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Repository or setup-script changes clear the recorded snapshot so the page does not show stale build data. Renames preserve it because the Workspace name is not part of the snapshot profile.
+After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, size in bytes when the provider reports it, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Repository or setup-script changes clear the recorded snapshot so the page does not show stale build data. Renames and vCPU changes preserve it because the Workspace name and size are not part of the snapshot profile.
 
 Provider plugins prepare repositories through Junior's host egress proxy. Junior removes the credential route before it runs the setup script and captures the snapshot. Real provider credentials do not enter the Sandbox or the captured snapshot.
 
@@ -70,6 +70,8 @@ The default floating dependency max age is seven days. Set `SANDBOX_SNAPSHOT_FLO
 ## Build resources
 
 Snapshot builds use `SANDBOX_VCPUS` because `junior snapshot create` runs before app initialization. Set it when dependency installation needs more CPU or memory than the Vercel Sandbox default. Runtime sandboxes should normally use `createApp({ sandbox: { vcpus } })`. Each vCPU provides 2 GB of memory, so a value of `4` creates an 8 GB sandbox.
+
+A Workspace recipe can set its own vCPU count. Junior uses that value for the Workspace snapshot build and for each sandbox that starts from the Workspace snapshot. It takes precedence over the app setting and `SANDBOX_VCPUS`. Use it when one Workspace, such as a large monorepo, needs more memory than the others. For example, `8` gives that Workspace 16 GB. The dashboard Workspaces page shows the default Sandbox size and the size of each Workspace.
 
 Leave the variable unset to use the Vercel default. Requested vCPU counts must be supported by the deployment's Vercel plan; unsupported values cause sandbox creation to fail.
 

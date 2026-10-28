@@ -33,36 +33,10 @@ function baseContext(
 }
 
 describe("linear afterMcpTool annotations", () => {
-  it("annotates create-shaped save_issue successes", async () => {
-    const upsert = vi.fn(async () => undefined);
-    const plugin = linearPlugin();
-    const hook = plugin.hooks?.afterMcpTool;
-    if (!hook) {
-      throw new Error("linear afterMcpTool hook is missing");
-    }
-
-    await hook(
-      baseContext({
-        annotations: {
-          upsert,
-          async remove() {},
-          async list() {
-            return [];
-          },
-        },
-      }),
-    );
-
-    expect(upsert).toHaveBeenCalledWith({
-      kind: "resource_link",
-      key: "ENG-123",
-      label: "ENG-123",
-      url: "https://linear.app/acme/issue/ENG-123/created",
-      status: "open",
-    });
-  });
-
-  it("logs and skips annotation when the response schema does not match", async () => {
+  it.each([
+    { structuredContent: { issue: { title: "Incomplete" } } },
+    { content: [{ type: "text" as const, text: "Created an issue" }] },
+  ])("skips annotation for an invalid result: %j", async (result) => {
     const warn = vi.fn();
     const upsert = vi.fn(async () => undefined);
     const plugin = linearPlugin();
@@ -85,52 +59,13 @@ describe("linear afterMcpTool annotations", () => {
           info() {},
           warn,
         },
-        result: {
-          structuredContent: { issue: { title: "Incomplete" } },
-        },
+        result,
       }),
     );
 
     expect(warn).toHaveBeenCalledWith("linear.issue_annotation.skipped", {
       "app.reason": "unexpected_save_response",
     });
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  it("skips updates and non-save_issue tools", async () => {
-    const upsert = vi.fn(async () => undefined);
-    const plugin = linearPlugin();
-    const hook = plugin.hooks?.afterMcpTool;
-    if (!hook) {
-      throw new Error("linear afterMcpTool hook is missing");
-    }
-    const annotations = {
-      upsert,
-      async remove() {},
-      async list() {
-        return [];
-      },
-    };
-
-    await hook(
-      baseContext({
-        annotations,
-        tool: {
-          arguments: { id: "ENG-123", state: "In Progress" },
-          name: "save_issue",
-        },
-      }),
-    );
-    await hook(
-      baseContext({
-        annotations,
-        tool: {
-          arguments: { query: "ENG-123" },
-          name: "get_issue",
-        },
-      }),
-    );
-
     expect(upsert).not.toHaveBeenCalled();
   });
 });

@@ -1,39 +1,46 @@
+import { useState } from "react";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import { CircleDot, GitMerge, GitPullRequest, LibraryBig } from "lucide-react";
+import { Link } from "react-router";
 import { useCodeOverviewData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { LoadingView } from "../../components/LoadingView";
-import { StatusChip } from "../../components/StatusChip";
+import { PageRouteLoading } from "../../components/PageRouteLoading";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
-import { StatCard } from "../../components/metrics/StatCard";
-import { formatCompactNumber } from "../../format";
-
-function mergeRate(value: number | undefined): string {
-  return value === undefined ? "—" : `${Math.round(value * 100)}%`;
-}
-
-function stateTone(state: "closed" | "merged" | "open") {
-  if (state === "merged") return "success" as const;
-  if (state === "open") return "info" as const;
-  return "neutral" as const;
-}
+import { CodeActivityChart } from "./CodeActivityChart";
+import { CodeChangeRow } from "./CodeChangeRow";
+import {
+  CodeSummaryCards,
+  formatCodeCost,
+  formatMergeRate,
+} from "./CodeSummaryCards";
+import { codeRepositoryPath } from "./codeRepositoryRoutes";
 
 /** Render code analytics and recent code changes. */
 export function CodePage() {
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useCodeOverviewData();
   if (!query.data && !query.error) {
     return (
-      <PageLayout>
-        <LoadingView label="Loading code activity" />
-      </PageLayout>
+      <PageRouteLoading
+        description="Repositories and code changes created by Junior."
+        label="Loading code activity"
+        title="Code"
+        variant="stats"
+      />
     );
   }
   return (
     <PageLayout>
       <PageHeader
         description="Repositories and code changes created by Junior."
+        onRangeChange={setRange}
+        range={range}
         title="Code"
       />
       {query.error ? (
@@ -41,41 +48,35 @@ export function CodePage() {
           Code activity is unavailable. Try refreshing the dashboard.
         </EmptyTelemetry>
       ) : null}
-      {query.data ? <CodeOverview data={query.data} /> : null}
+      {query.data ? <CodeOverview data={query.data} range={range} /> : null}
     </PageLayout>
   );
 }
 
-function CodeOverview(props: { data: CodeOverviewReport }) {
+function CodeOverview(props: {
+  data: CodeOverviewReport;
+  range: TimeRangeDays;
+}) {
   const data = props.data;
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          detail="Across all repositories"
-          icon={CircleDot}
-          label="Open changes"
-          value={formatCompactNumber(data.summary.open)}
-        />
-        <StatCard
-          detail="In the last 30 days"
-          icon={GitPullRequest}
-          label="Created"
-          value={formatCompactNumber(data.summary.created)}
-        />
-        <StatCard
-          detail="In the last 30 days"
-          icon={GitMerge}
-          label="Merged"
-          value={formatCompactNumber(data.summary.merged)}
-        />
-        <StatCard
-          detail="Share of completed changes that merged"
-          icon={LibraryBig}
-          label="Merge rate"
-          value={mergeRate(data.summary.mergeRate)}
-        />
-      </div>
+      <CodeSummaryCards summary={data.summary} />
+      <CodeActivityChart
+        bucketUnit={timeRangeBucketUnit(props.range)}
+        days={selectTimeSeries({
+          days: data.activityDays,
+          hours: data.activityHours,
+          sixHours: data.activitySixHours,
+          range: props.range,
+          emptySixHour: (date) => ({
+            closed: 0,
+            created: 0,
+            date,
+            merged: 0,
+          }),
+        })}
+        range={props.range}
+      />
       <Card as="section">
         <div className="border-b border-dashboard-border-subtle px-4 py-3 font-display text-lg text-dashboard-text">
           Repositories
@@ -88,15 +89,25 @@ function CodeOverview(props: { data: CodeOverviewReport }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
-              <thead className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <table className="w-full min-w-[36rem] table-fixed border-collapse text-left">
+              <colgroup>
+                <col />
+                <col className="w-28" />
+                <col className="w-28" />
+                <col className="w-28" />
+              </colgroup>
+              <thead className="font-sans font-medium text-xs text-dashboard-text-muted">
                 <tr className="border-b border-dashboard-border-subtle">
                   <th className="px-4 py-2.5 font-medium">Repository</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Open</th>
-                  <th className="px-4 py-2.5 text-right font-medium">
+                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
                     Created
                   </th>
-                  <th className="px-4 py-2.5 text-right font-medium">Merged</th>
+                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
+                    Merge rate
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
+                    Median cost
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -105,33 +116,27 @@ function CodeOverview(props: { data: CodeOverviewReport }) {
                     className="border-b border-dashboard-border-subtle last:border-b-0"
                     key={repository.id}
                   >
-                    <td className="px-4 py-3">
-                      <div className="font-display text-sm text-dashboard-text">
-                        {repository.url ? (
-                          <a
-                            className="text-inherit no-underline hover:text-cyan-100"
-                            href={repository.url}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            {repository.name}
-                          </a>
-                        ) : (
-                          repository.name
-                        )}
+                    <td className="min-w-0 px-4 py-3">
+                      <div className="truncate font-display text-sm text-dashboard-text">
+                        <Link
+                          className="text-inherit no-underline hover:text-dashboard-accent-text"
+                          to={codeRepositoryPath(repository.id)}
+                        >
+                          {repository.name}
+                        </Link>
                       </div>
-                      <div className="mt-1 font-mono text-xs text-dashboard-text-muted">
+                      <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
                         {repository.provider}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
-                      {repository.open}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
+                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
                       {repository.created}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
-                      {repository.merged}
+                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
+                      {formatMergeRate(repository.mergeRate)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
+                      {formatCodeCost(repository.medianCostUsd)}
                     </td>
                   </tr>
                 ))}
@@ -147,34 +152,7 @@ function CodeOverview(props: { data: CodeOverviewReport }) {
           </div>
           <div>
             {data.changes.map((change) => (
-              <div
-                className="flex min-w-0 items-center justify-between gap-4 border-b border-dashboard-border-subtle px-4 py-3 last:border-b-0"
-                key={change.id}
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-display text-sm text-dashboard-text">
-                    {change.url ? (
-                      <a
-                        className="text-inherit no-underline hover:text-cyan-100"
-                        href={change.url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {change.title ??
-                          `${change.repository} #${change.number}`}
-                      </a>
-                    ) : (
-                      (change.title ?? `${change.repository} #${change.number}`)
-                    )}
-                  </div>
-                  <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
-                    {change.repository} #{change.number} · {change.provider}
-                  </div>
-                </div>
-                <StatusChip size="compact" tone={stateTone(change.state)}>
-                  {change.state}
-                </StatusChip>
-              </div>
+              <CodeChangeRow change={change} key={change.id} />
             ))}
           </div>
         </Card>

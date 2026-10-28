@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -16,6 +17,22 @@ const workspaceRoot = path.resolve(
 
 interface EvalTestProject {
   provide(key: "juniorPostgresHarness", value: PostgresHarnessConfig): void;
+}
+
+/**
+ * Every first-party plugin that owns SQL tables. All evals share one schema,
+ * so a test's plugin options never change which tables exist. A package
+ * `junior-<name>` holds the plugin `<name>`.
+ */
+function pluginMigrationRoots(): { dir: string; pluginName: string }[] {
+  const packagesDir = path.join(workspaceRoot, "packages");
+  return readdirSync(packagesDir)
+    .filter((name) => name.startsWith("junior-"))
+    .map((name) => ({
+      dir: path.join(packagesDir, name, "migrations"),
+      pluginName: name.slice("junior-".length),
+    }))
+    .filter((root) => existsSync(root.dir));
 }
 
 function assertLocalDatabaseUrl(databaseUrl: string): void {
@@ -44,15 +61,7 @@ export default async function setup(
       const executor = createPostgresJuniorSqlExecutor({ connectionString });
       try {
         await migrateSchema(executor);
-        await migratePluginSchemas(executor, [
-          {
-            dir: path.resolve(
-              workspaceRoot,
-              "packages/junior-memory/migrations",
-            ),
-            pluginName: "memory",
-          },
-        ]);
+        await migratePluginSchemas(executor, pluginMigrationRoots());
       } finally {
         await executor.close();
       }

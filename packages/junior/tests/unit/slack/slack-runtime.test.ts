@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
@@ -10,6 +10,12 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 
+const failTurn = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock("@/chat/conversations/turn-lifecycle", () => ({
+  getTurnLifecycle: () => ({ fail: failTurn }),
+}));
+
 interface TestState {
   prepared: boolean;
 }
@@ -19,17 +25,12 @@ function createMockDeps(
 ): SlackTurnRuntimeDependencies<TestState> {
   return {
     assistantUserName: "test-bot",
-    cancelEventSubscriptions: vi.fn().mockResolvedValue(undefined),
+    cancelWatches: vi.fn().mockResolvedValue(undefined),
+    getBotUserId: () => "U0APP",
     modelId: "test-model",
     now: () => 1700000000000,
-    getChannelId: (_thread, message) => message.threadId?.split(":")[1],
-    getThreadId: (_thread, message) => message.threadId,
-    getRunId: () => undefined,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
     refreshAssistantThreadContext: vi.fn().mockResolvedValue(undefined),
-    failConversationTurn: vi.fn().mockResolvedValue(undefined),
-    logException: vi.fn(() => "evt_test"),
-    logWarn: vi.fn(),
     onSubscribedMessageSkipped: vi.fn().mockResolvedValue(undefined),
     recordSkippedSteeringMessage: vi.fn().mockResolvedValue(undefined),
     recordSkippedSubscribedTurn: vi.fn().mockResolvedValue(undefined),
@@ -42,14 +43,16 @@ function createMockDeps(
       shouldReply: true,
       reason: "test",
     } satisfies SubscribedReplyDecision),
-    stripLeadingBotMention: vi.fn((text: string) => text),
     getPreparedConversationContext: vi.fn(() => undefined),
-    withSpan: vi.fn(async (_name, _op, _ctx, cb) => cb()),
     ...overrides,
   };
 }
 
 describe("createSlackTurnRuntime", () => {
+  beforeEach(() => {
+    failTurn.mockClear();
+  });
+
   describe("handleNewMention", () => {
     it("subscribes thread and calls executeSlackTurn with explicitMention: true", async () => {
       const deps = createMockDeps();
@@ -74,11 +77,7 @@ describe("createSlackTurnRuntime", () => {
     });
 
     it("forwards queued SDK context as ordered turn messages", async () => {
-      const deps = createMockDeps({
-        stripLeadingBotMention: vi.fn((text: string) =>
-          text.replace("<@U0APP> ", ""),
-        ),
-      });
+      const deps = createMockDeps();
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = await createTestThread({});
       const skipped = createTestMessage({
@@ -155,24 +154,18 @@ describe("createSlackTurnRuntime", () => {
           isFinalAttempt,
         });
 
-        const expectedFailure = {
-          conversationId: message.threadId,
-          createdAtMs: 1700000000000,
-          eventId: "evt_test",
-          failureCode: "agent_run_failed",
-          turnId: "turn_m-failed-turn",
-        };
-        expect(thread.posts).toEqual(
-          shouldPostFallback
-            ? [
-                "I ran into an internal error while processing that. " +
-                  "Reference: `event_id=evt_test`.",
-              ]
-            : [],
-        );
-        expect(vi.mocked(deps.failConversationTurn).mock.calls).toEqual(
-          shouldPostFallback ? [[expectedFailure]] : [],
-        );
+        expect(failTurn).toHaveBeenCalledTimes(shouldPostFallback ? 1 : 0);
+        expect(thread.posts).toHaveLength(shouldPostFallback ? 1 : 0);
+        expect(
+          thread.posts.some((post) =>
+            typeof post === "string"
+              ? post.includes(
+                  "I ran into an internal error while processing that. " +
+                    "Reference: `event_id=",
+                )
+              : false,
+          ),
+        ).toBe(shouldPostFallback);
       },
     );
   });
@@ -183,7 +176,6 @@ describe("createSlackTurnRuntime", () => {
       setExperimentalFeatures(undefined);
       try {
         const deps = createMockDeps({
-          withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
           decideSubscribedReply: vi.fn().mockResolvedValue({
             shouldReply: false,
             reason: "passive_disabled:passive-routing",
@@ -227,7 +219,7 @@ describe("createSlackTurnRuntime", () => {
     it("does not unsubscribe the thread when resource cleanup fails", async () => {
       const cleanupError = new Error("resource cleanup failed");
       const deps = createMockDeps({
-        cancelEventSubscriptions: vi.fn().mockRejectedValue(cleanupError),
+        cancelWatches: vi.fn().mockRejectedValue(cleanupError),
         decideSubscribedReply: vi.fn().mockResolvedValue({
           shouldReply: false,
           shouldUnsubscribe: true,
@@ -245,7 +237,7 @@ describe("createSlackTurnRuntime", () => {
         }),
       ).resolves.toBeUndefined();
 
-      expect(deps.cancelEventSubscriptions).toHaveBeenCalledWith({
+      expect(deps.cancelWatches).toHaveBeenCalledWith({
         conversationId: thread.id,
       });
       expect(thread.subscribed).toBe(true);
@@ -255,10 +247,9 @@ describe("createSlackTurnRuntime", () => {
       );
     });
 
-    it("passes stripped text via stripLeadingBotMention to prepareTurnState", async () => {
+    it("removes the leading bot mention before preparing the turn", async () => {
       const deps = createMockDeps({
-        stripLeadingBotMention: vi.fn(() => "stripped text"),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
+        getBotUserId: () => "U123",
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = await createTestThread({});
@@ -271,10 +262,6 @@ describe("createSlackTurnRuntime", () => {
         destination: createTestDestination(thread),
       });
 
-      expect(deps.stripLeadingBotMention).toHaveBeenCalledWith(
-        "<@U123> stripped text",
-        { stripLeadingSlackMentionToken: true },
-      );
       expect(deps.prepareTurnState).toHaveBeenCalledWith(
         expect.objectContaining({
           text: {
@@ -288,7 +275,6 @@ describe("createSlackTurnRuntime", () => {
     it("passes conversationContext from getPreparedConversationContext to decideSubscribedReply", async () => {
       const deps = createMockDeps({
         getPreparedConversationContext: vi.fn(() => "some context"),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = await createTestThread({});
@@ -300,30 +286,6 @@ describe("createSlackTurnRuntime", () => {
 
       expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
         expect.objectContaining({ conversationContext: "some context" }),
-      );
-    });
-
-    it("prepares resource-event notifications without a actor", async () => {
-      const deps = createMockDeps({
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = await createTestThread({});
-      const message = createTestMessage({
-        author: { userId: "UJRNEVENT", isBot: true },
-        raw: { event_type: "resource_event" },
-      });
-
-      await runtime.handleSubscribedMessage(thread, message, {
-        destination: createTestDestination(thread),
-      });
-
-      expect(deps.prepareTurnState).toHaveBeenCalledWith(
-        expect.objectContaining({
-          context: expect.objectContaining({
-            actorId: undefined,
-          }),
-        }),
       );
     });
   });

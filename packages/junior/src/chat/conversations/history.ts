@@ -12,6 +12,7 @@ import type { ConversationCompaction } from "@/chat/state/conversation";
 import { modelProfileSchema } from "@/chat/model-profile";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { conversationMessageProvenanceSchema } from "./provenance";
+import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
 
 const userMessageEventDataSchema = z
   .object({
@@ -236,7 +237,7 @@ export const conversationTurnSurfaceSchema = z.enum([
   "internal",
 ]);
 
-/** Stable, privacy-safe classification for a failed turn. */
+/** Where a failed turn stopped. */
 export const conversationTurnFailureCodeSchema = z.enum([
   "agent_run_failed",
   "delivery_failed",
@@ -244,9 +245,36 @@ export const conversationTurnFailureCodeSchema = z.enum([
   "persistence_failed",
 ]);
 
-/** Failure classification persisted without raw provider or exception data. */
+/** Where a failed turn stopped. */
 export type ConversationTurnFailureCode = z.output<
   typeof conversationTurnFailureCodeSchema
+>;
+
+/**
+ * Why a failed turn stopped.
+ * Values are fixed labels only. Do not store raw exception text.
+ */
+export const conversationTurnFailureReasonSchema = z.enum([
+  "auth",
+  "permission",
+  "rate_limit",
+  "capacity",
+  "timeout",
+  "network",
+  "server",
+  "invalid_request",
+  "invalid_response",
+  "quota",
+  "content_policy",
+  "unknown",
+  "empty_output",
+  "tool_errors",
+  "suppressed_output",
+]);
+
+/** Why a failed turn stopped. */
+export type ConversationTurnFailureReason = z.output<
+  typeof conversationTurnFailureReasonSchema
 >;
 
 const turnStartedEventDataSchema = z
@@ -331,6 +359,7 @@ const turnFailedEventDataSchema = z
     type: z.literal("turn_failed"),
     turnId: z.string().min(1),
     failureCode: conversationTurnFailureCodeSchema,
+    failureReason: conversationTurnFailureReasonSchema.optional(),
     eventId: z
       .string()
       .regex(/^[a-f0-9]{32}$/i)
@@ -345,6 +374,9 @@ const subagentStartedEventDataSchema = z
     type: z.literal("subagent_started"),
     subagentInvocationId: z.string().min(1),
     subagentKind: z.string().min(1),
+    agentName: z.string().min(1).optional(),
+    task: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     parentToolCallId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
@@ -358,6 +390,7 @@ const subagentEndedEventDataSchema = z
     subagentInvocationId: z.string().min(1),
     outcome: z.union([
       z.literal("success"),
+      z.literal("blocked"),
       z.literal("error"),
       z.literal("aborted"),
     ]),
@@ -464,10 +497,15 @@ const conversationEventEnvelopeSchema = z
  * `schemaVersion` is persisted with every physical event row.
  */
 export const conversationEventSchema = z.union([
-  conversationEventEnvelopeSchema.extend({
-    schemaVersion: z.literal(1),
-    data: conversationEventDataSchema,
-  }),
+  conversationEventEnvelopeSchema
+    .extend({
+      schemaVersion: z.union([z.literal(1), z.literal(2)]),
+      data: conversationEventDataSchema,
+    })
+    .refine(
+      (event) =>
+        event.schemaVersion === 1 || isEncodedHistoryType(event.data.type),
+    ),
   conversationEventEnvelopeSchema.extend({
     data: unknownConversationEventDataSchema,
   }),
@@ -478,7 +516,7 @@ export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
 /** A decoded message-summary event and its readable history boundary. */
 export type MessagesSummarizedEvent = Omit<
-  Extract<ConversationEvent, { schemaVersion: 1 }>,
+  Extract<ConversationEvent, { schemaVersion: 1 | 2 }>,
   "data"
 > & {
   data: Extract<ConversationEventData, { type: "messages_summarized" }>;
@@ -499,7 +537,7 @@ const storedConversationEventSchema = conversationEventEnvelopeSchema.extend({
 /**
  * Decode a physical event row without making old or future event types
  * unreadable. Unsupported rows stay opaque until an upgrade migration defines
- * their semantics; known version-one events remain strict so corrupt canonical
+ * their semantics; supported events remain strict so corrupt canonical
  * data cannot be mistaken for compatibility data.
  */
 export function decodeStoredConversationEvent(
@@ -508,6 +546,12 @@ export function decodeStoredConversationEvent(
   const stored = storedConversationEventSchema.parse(value);
   const { type, payload, ...envelope } = stored;
   const knownType = knownConversationEventTypeSchema.safeParse(type).success;
+  if (stored.schemaVersion === 2 && isEncodedHistoryType(type)) {
+    return conversationEventSchema.parse({
+      ...envelope,
+      data: { ...decodeHistoryPayload(type, payload), type },
+    });
+  }
   if (stored.schemaVersion === 1 && knownType) {
     const data =
       typeof payload === "object" && payload !== null && !Array.isArray(payload)
@@ -557,14 +601,14 @@ export interface ConversationEventPage {
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
   /**
-   * Append events atomically, optionally preserving conversation activity.
+   * Append events atomically and return each event's sequence and history version.
    * Archive clears only for human user activity, not every non-preserve write.
    */
   append(
     conversationId: string,
     events: NewConversationEvent[],
     options?: { activity?: "preserve" },
-  ): Promise<void>;
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>>;
   /** Replace active model history with a compaction or handoff event. */
   replaceHistory(
     conversationId: string,
@@ -585,6 +629,8 @@ export interface ConversationEventStore {
   loadLatestInstruction(
     conversationId: string,
   ): Promise<ConversationEvent | undefined>;
+  /** Current model-history version, or zero when no event exists. */
+  loadCurrentHistoryVersion(conversationId: string): Promise<number>;
   /** Events of the current history version in `seq` order. */
   loadCurrentHistory(conversationId: string): Promise<ConversationEvent[]>;
   /** Events in the history version containing `seq`, when it exists. */

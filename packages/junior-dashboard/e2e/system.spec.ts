@@ -1,36 +1,81 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer
-} from "./harness";
+import { expect, test } from "./test";
+import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { screenshot } from "./screenshot";
 
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
-
-test("shows system usage and plugin details", async ({ page }) => {
+test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(`${server.baseURL}/system`);
+  await page.route("**/api/conversations/stats", async (route) => {
+    const response = await route.fetch();
+    const report = await response.json();
+    const metricDays = Array.from({ length: 30 }, (_, index) => ({
+      date: new Date(NOW_MS - (29 - index) * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
+      conversations: 8,
+      durationMs: 120_000,
+      inputTokens: 2_000,
+      cachedInputTokens: index === 25 ? 8_000 : 180_000,
+      cacheCreationTokens: index === 25 ? 190_000 : 10_000 + index * 100,
+      tokens: 205_000,
+      costUsd: 1.5,
+    }));
+    const metricHours = Array.from({ length: 24 }, (_, index) => ({
+      ...metricDays[index],
+      date: new Date(NOW_MS - (23 - index) * 3_600_000)
+        .toISOString()
+        .slice(0, 13),
+      ...(index === 23 ? { cacheCreationTokens: undefined } : {}),
+    }));
+    await route.fulfill({
+      json: { ...report, metricDays, metricHours, metricSixHours: undefined },
+    });
+  });
+  await page.goto(`${dashboard.baseURL}/system`);
 
+  await expect(
+    page.getByRole("heading", { name: "System", exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
-  await expect(page.getByText("Cache hit rate")).toBeVisible();
-  await expect(page.getByText("Input token cache")).toBeVisible();
+  await expect(page.getByText("Input cache")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Percent", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("group", { name: "Reporting period" }),
+  ).toHaveCount(1);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-share");
+  await page.getByRole("button", { name: "Tokens", exact: true }).click();
+  await expect(page.getByLabel("Input cache tokens per day")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tokens", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-tokens", { view: "desktop" });
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
+  await page.getByText("Largest cache writes", { exact: true }).click();
+  const largestWrites = page.getByRole("table", {
+    name: "Largest cache writes",
+  });
+  await expect(largestWrites).not.toContainText("190k");
+  await expect(page.getByText(/Missing data in 1 of 24/)).toBeVisible();
+  await page.getByText("How to read this", { exact: true }).click();
+  await expect(
+    page.getByText(/They do not show individual calls/),
+  ).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-missing", { view: "desktop" });
+  await page.getByRole("button", { name: "30d", exact: true }).click();
+  await expect(largestWrites).toContainText("190k");
+  await expect(page.getByText(/Missing data in 1 of 24/)).toHaveCount(0);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
 
   const systemNavigation = page.getByLabel("System navigation");
   await expect(systemNavigation.getByRole("link")).toHaveText([
@@ -42,22 +87,23 @@ test("shows system usage and plugin details", async ({ page }) => {
   ]);
   const pluginsLink = systemNavigation.getByRole("link", {
     name: "Plugins",
-    exact: true
+    exact: true,
   });
   await pluginsLink.click();
-  await expect(page).toHaveURL(`${server.baseURL}/system/plugins`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/plugins`);
   await expect(
     page.getByRole("heading", { name: "Plugins", exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("Reporting period")).toHaveCount(0);
+  await screenshot(page, "system-plugins", { view: "desktop" });
 
   const pluginPanels = page.getByRole("region", { name: "Plugins" });
   const githubPanel = pluginPanels.getByRole("link", {
-    name: /GitHub/
+    name: /GitHub/,
   });
 
   await githubPanel.click();
-  await expect(page).toHaveURL(`${server.baseURL}/system/plugins/github`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/plugins/github`);
   await expect(
     page.getByRole("heading", { name: "GitHub", exact: true }),
   ).toBeVisible();
@@ -65,9 +111,33 @@ test("shows system usage and plugin details", async ({ page }) => {
     page.getByText("This plugin does not expose operational activity yet."),
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
+  await screenshot(page, "system-plugin-github", { view: "desktop" });
 });
 
-test("creates a Workspace recipe", async ({ page }) => {
+test("lists Workspaces with the baseline snapshot", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/system/workspaces`);
+
+  await expect(
+    page.getByRole("heading", { name: "Workspaces", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Base Sandbox", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Manage sentry" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Manage sentry" }),
+  ).toContainText("2 repos · 4 vCPUs · 8 GB");
+  await expect(page.getByRole("link", { name: "New Workspace" })).toBeVisible();
+  await screenshot(page, "workspaces");
+});
+
+test("creates a Workspace recipe", async ({ page, dashboard }) => {
   let createdBody: unknown;
   await page.route("**/api/workspaces", async (route) => {
     if (route.request().method() === "POST") {
@@ -77,47 +147,59 @@ test("creates a Workspace recipe", async ({ page }) => {
           id: "11111111-1111-4111-8111-111111111111",
           name: "sentry",
           setupScript: "pnpm install",
+          vcpus: 8,
           snapshot: null,
           repos: [
             {
               checkoutPath: "repos/sentry",
               provider: "github",
-              repo: "getsentry/sentry"
+              repo: "getsentry/sentry",
             },
-          ]
+          ],
         },
-        status: 201
+        status: 201,
       });
       return;
     }
-    await route.fulfill({ json: { baselineSnapshot: null, workspaces: [] } });
+    await route.fulfill({
+      json: { baselineSnapshot: null, defaultVcpus: 4, workspaces: [] },
+    });
   });
 
-  await page.goto(`${server.baseURL}/system/workspaces`);
+  await page.goto(`${dashboard.baseURL}/system/workspaces`);
   await page.getByRole("link", { name: "New Workspace" }).click();
-  await expect(page).toHaveURL(`${server.baseURL}/system/workspaces/new`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/workspaces/new`);
+  await expect(
+    page.getByRole("heading", { name: "New Workspace", exact: true }),
+  ).toBeVisible();
+  await screenshot(page, "workspace-create");
   await page.getByLabel("Name").fill("sentry");
   await page
     .getByLabel("Repository 1", { exact: true })
     .fill("getsentry/sentry");
   await page.getByLabel("Setup script").fill("pnpm install");
+  await page.getByLabel("vCPUs").fill("8");
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
-  await expect(page).toHaveURL(`${server.baseURL}/system/workspaces`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/workspaces`);
   await expect(page.getByText("github:getsentry/sentry")).toBeVisible();
   expect(createdBody).toEqual({
     name: "sentry",
     repos: [
       {
         provider: "github",
-        repo: "getsentry/sentry"
+        repo: "getsentry/sentry",
       },
     ],
-    setupScript: "pnpm install"
+    setupScript: "pnpm install",
+    vcpus: 8,
   });
 });
 
-test("shows Workspace snapshot details on its direct route", async ({ page }) => {
+test("shows Workspace snapshot details on its direct route", async ({
+  page,
+  dashboard,
+}) => {
   const workspaceId = "11111111-1111-4111-8111-111111111111";
   await page.route(`**/api/workspaces/${workspaceId}`, async (route) => {
     await route.fulfill({
@@ -125,9 +207,10 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
         id: workspaceId,
         name: "sentry",
         setupScript: "pnpm install",
+        vcpus: null,
         snapshot: {
           id: "snap_workspace_123",
-          generatedAt: new Date(Date.now() - 60_000).toISOString(),
+          generatedAt: new Date(NOW_MS - 60_000).toISOString(),
           buildDurationMs: 45_000,
           sizeBytes: 4_194_304,
         },
@@ -135,20 +218,21 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
           {
             checkoutPath: "repos/sentry",
             provider: "github",
-            repo: "getsentry/sentry"
+            repo: "getsentry/sentry",
           },
-        ]
-      }
+        ],
+      },
     });
   });
 
-  await page.goto(`${server.baseURL}/system/workspaces/${workspaceId}`);
+  await page.goto(`${dashboard.baseURL}/system/workspaces/${workspaceId}`);
 
   await expect(
     page.getByRole("heading", { name: "Current snapshot" }),
   ).toBeVisible();
   await expect(page.getByText("snap_workspace_123")).toBeVisible();
   await expect(page.getByText("45s")).toBeVisible();
+  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("sentry");
   await expect(
     page.getByLabel("System navigation").getByRole("link", {
@@ -156,17 +240,23 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
       exact: true,
     }),
   ).toHaveAttribute("href", "/system/workspaces");
+  await screenshot(page, "workspace-detail");
 });
 
-test("keeps System navigation usable on mobile", async ({ page }) => {
+test("keeps System navigation usable on mobile", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(`${server.baseURL}/system`);
+  await page.goto(`${dashboard.baseURL}/system`);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
-  await expect(page.getByLabel("System navigation")).not.toBeVisible();
-  await page.getByRole("button", { name: "Open navigation" }).click();
-  const systemNavigation = page.getByLabel("System navigation");
+  // Page tabs stay on the page, so moving between System pages does not need
+  // the navigation menu.
+  const systemNavigation = page.getByRole("navigation", {
+    name: "System navigation",
+  });
   await expect(systemNavigation.getByRole("link")).toHaveText([
     "Overview",
     "People",
@@ -174,11 +264,15 @@ test("keeps System navigation usable on mobile", async ({ page }) => {
     "Workspaces",
     "Plugins",
   ]);
-  await systemNavigation.getByRole("link", { name: "Plugins" }).click();
-  await expect(page).toHaveURL(`${server.baseURL}/system/plugins`);
+  const pluginsLink = systemNavigation.getByRole("link", { name: "Plugins" });
+  await pluginsLink.click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/plugins`);
   await expect(
     page.getByRole("heading", { name: "Plugins", exact: true }),
   ).toBeVisible();
+  // The current page tab scrolls into view when the row is wider than the screen.
+  await expect(pluginsLink).toHaveAttribute("aria-current", "page");
+  await expect(pluginsLink).toBeInViewport({ ratio: 1 });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);

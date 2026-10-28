@@ -46,6 +46,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "chat.postEphemeral",
   "chat.getPermalink",
   "views.publish",
+  "entity.presentDetails",
   "reactions.add",
   "reactions.remove",
   "conversations.history",
@@ -203,6 +204,7 @@ async function parseSlackApiRequestBody(
 
 function defaultSlackApiResponse(
   method: SlackApiMethod,
+  params: Record<string, unknown>,
 ): SlackMockHttpResponse {
   switch (method) {
     case "assistant.search.context":
@@ -223,6 +225,7 @@ function defaultSlackApiResponse(
       return { body: chatPostEphemeralOk() };
     case "chat.getPermalink":
       return { body: chatGetPermalinkOk() };
+    case "entity.presentDetails":
     case "views.publish":
       return { body: slackOk() };
     case "reactions.add":
@@ -264,7 +267,11 @@ function defaultSlackApiResponse(
     case "files.completeUploadExternal":
       return { body: filesCompleteUploadOk() };
     case "users.info":
-      return { body: usersInfoOk() };
+      return {
+        body: usersInfoOk({
+          userId: typeof params.user === "string" ? params.user : undefined,
+        }),
+      };
     case "users.list":
       return { body: usersListPage() };
     case "users.lookupByEmail":
@@ -328,7 +335,6 @@ function getSlackConversationParam(
 }
 
 function validateSlackApiRequest(
-  method: SlackApiMethod,
   params: Record<string, unknown>,
 ): SlackMockHttpResponse | undefined {
   const conversation = getSlackConversationParam(params);
@@ -440,13 +446,14 @@ export const slackApiHandlers = [
       params: requestBody,
     });
 
-    const validationResponse = validateSlackApiRequest(rawMethod, requestBody);
+    const validationResponse = validateSlackApiRequest(requestBody);
     if (validationResponse) {
       return toHttpResponse(validationResponse);
     }
 
     const response =
-      dequeueResponse(rawMethod) ?? defaultSlackApiResponse(rawMethod);
+      dequeueResponse(rawMethod) ??
+      defaultSlackApiResponse(rawMethod, requestBody);
     response.onRequest?.();
     if (response.waitFor) {
       await response.waitFor;

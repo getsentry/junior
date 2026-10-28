@@ -1,39 +1,31 @@
 import type {
   ConversationAnnotation,
   ConversationSidebarAnnotation,
+  ObjectAnnotation,
+  PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 
-const STATUS_ICON = {
-  warning: "triangle-alert",
-  open: "circle-dot",
-  draft: "circle-dashed",
-  merged: "git-merge",
-  closed: "circle-x",
-} as const;
-
-type GitHubAnnotationStatus = keyof typeof STATUS_ICON;
-
-function isPullRequestUrl(url: string): boolean {
-  try {
-    return /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(url).pathname);
-  } catch {
-    return false;
+function githubObjectType(
+  annotation: ConversationAnnotation,
+): "task" | "code_change" {
+  if (
+    annotation.objectType === "task" ||
+    annotation.objectType === "code_change"
+  ) {
+    return annotation.objectType;
   }
-}
-
-function sidebarIconForStatus(
-  status: GitHubAnnotationStatus,
-  url: string,
-): ConversationSidebarAnnotation["icon"] {
-  if (status === "open" && isPullRequestUrl(url)) return "git-pull-request";
-  return STATUS_ICON[status];
+  // Older resource links have no type. Only the provider interprets its URLs.
+  return annotation.url &&
+    /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(annotation.url).pathname)
+    ? "code_change"
+    : "task";
 }
 
 function repositoryName(
   annotation: ConversationAnnotation,
 ): string | undefined {
   try {
-    const [, , repo] = new URL(annotation.url).pathname.split("/");
+    const [, , repo] = new URL(annotation.url ?? "").pathname.split("/");
     return repo || undefined;
   } catch {
     return undefined;
@@ -46,13 +38,14 @@ export function githubSidebarAnnotations(
 ): ConversationSidebarAnnotation[] {
   return annotations
     .flatMap((annotation) => {
-      const status = annotation.status as GitHubAnnotationStatus | undefined;
+      const status = annotation.status;
       const label = repositoryName(annotation);
-      return status && label
+      return label
         ? [
             {
               annotation: {
-                icon: sidebarIconForStatus(status, annotation.url),
+                objectType: githubObjectType(annotation),
+                status,
                 key: annotation.key,
                 label,
               },
@@ -63,4 +56,69 @@ export function githubSidebarAnnotations(
     })
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .map(({ annotation }) => annotation);
+}
+
+/** Build the annotation returned by GitHub create and update tools. */
+export function githubObjectAnnotation(input: {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  objectType: "task" | "code_change";
+  status: string;
+  facts?: ObjectAnnotation["facts"];
+  sourceUpdatedAt?: string;
+  description?: string;
+}): ObjectAnnotation {
+  return {
+    kind: "object",
+    key: `${input.repo.toLowerCase()}#${input.number}`,
+    label: `${input.repo}#${input.number}`,
+    title: input.title.slice(0, 512),
+    url: input.url,
+    objectType: input.objectType,
+    status: input.status,
+    displayType: input.objectType === "code_change" ? "Pull request" : "Issue",
+    facts: input.facts,
+    description: input.description,
+    sourceUpdatedAt: input.sourceUpdatedAt,
+  };
+}
+
+/** Refresh an existing object's status without selecting a card for delivery. */
+export async function updateGitHubAnnotation(
+  store: PluginAnnotations,
+  input: {
+    repo: string;
+    number: number;
+    objectType: "task" | "code_change";
+    status: "merged" | "closed";
+  },
+): Promise<void> {
+  const key = `${input.repo.toLowerCase()}#${input.number}`;
+  const current = (await store.list()).find(
+    (annotation) => annotation.key === key,
+  );
+  if (current?.kind === "object") {
+    const {
+      plugin: _plugin,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      ...annotation
+    } = current;
+    await store.upsert({
+      ...annotation,
+      objectType: input.objectType,
+      status: input.status,
+    });
+    return;
+  }
+  await store.upsert({
+    kind: "resource_link",
+    objectType: input.objectType,
+    key,
+    label: `${input.repo}#${input.number}`,
+    url: `https://github.com/${input.repo}/${input.objectType === "code_change" ? "pull" : "issues"}/${input.number}`,
+    status: input.status,
+  });
 }

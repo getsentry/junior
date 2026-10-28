@@ -67,7 +67,7 @@ interface DurableDispatchTurnResult extends DispatchTurnResult {
 
 type DispatchRoutingContext = Pick<
   DispatchTurnContext,
-  "credentialContext" | "destinationVisibility" | "dispatch" | "surface"
+  "credentialContext" | "dispatch" | "surface"
 > & { actor: DispatchRecord["actor"] };
 
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
@@ -80,13 +80,17 @@ export function buildDispatchRoutingContext(
       dispatch.actor,
       dispatch.credentialSubject,
     ),
-    destinationVisibility: dispatch.destinationVisibility,
     dispatch: {
       actor: dispatch.actor,
       id: dispatch.id,
       metadata: dispatch.metadata,
       plugin: dispatch.plugin,
       replyAttribution: dispatch.replyAttribution,
+      outcomes: dispatch.outcomes,
+      ...(dispatch.source.kind === "scheduled_automation" ||
+      dispatch.source.kind === "event_automation"
+        ? { declaresResult: true }
+        : undefined),
     },
     surface: "api",
   };
@@ -135,7 +139,6 @@ export function buildAgentDispatchInboundMessage(
       },
     },
     receivedAtMs: nowMs,
-    publishExternally: true,
     source: "plugin",
   };
 }
@@ -256,30 +259,6 @@ export async function resolveAgentDispatchId(
     : undefined;
 }
 
-/**
- * Route leased work through dispatch execution when durable metadata owns it.
- *
- * The fallback retains ownership of every other conversation source.
- */
-export function createAgentDispatchWorkRouter(options: {
-  dispatchWorker: (
-    context: ConversationWorkerContext,
-    dispatchId: string,
-  ) => Promise<ConversationWorkerResult>;
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const dispatchId = await resolveAgentDispatchId(context);
-    return dispatchId
-      ? await options.dispatchWorker(context, dispatchId)
-      : await options.fallbackWorker(context);
-  };
-}
-
 async function readDispatchTurnResult(
   dispatch: DispatchRecord,
 ): Promise<DurableDispatchTurnResult> {
@@ -339,7 +318,8 @@ async function projectDispatchTurnResult(
     case "blocked":
       await markDispatchBlocked(
         dispatchId,
-        "Dispatch requires authorization that is unavailable for background work",
+        result.errorMessage ??
+          "Dispatch requires authorization that is unavailable for background work",
         result.resultMessageTs,
       );
       break;
@@ -366,6 +346,16 @@ function getDispatchBlockingError(
     : undefined;
 }
 
+// A system-credential run has no account to connect, so name the real fix.
+function missingAuthorizationReason(
+  dispatch: DispatchRecord,
+  provider: string,
+): string {
+  return dispatch.credentialSubject
+    ? `This run needs a connected ${provider} account.`
+    : `This run uses system credentials, which have no ${provider} access. Switch it to creator credentials and connect a ${provider} account.`;
+}
+
 async function persistBlockedDispatchTurn(
   dispatch: DispatchRecord,
   error: AuthorizationFlowDisabledError | PluginCredentialFailureError,
@@ -389,7 +379,7 @@ async function persistBlockedDispatchTurn(
   await markDispatchBlocked(
     dispatch.id,
     error instanceof AuthorizationFlowDisabledError
-      ? `Dispatch requires ${error.provider} authorization.`
+      ? missingAuthorizationReason(dispatch, error.provider)
       : error.message,
   );
 }

@@ -1,3 +1,4 @@
+import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import { setSpanAttributes } from "@/chat/logging";
 import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
@@ -14,7 +15,7 @@ function resolveMcpArguments(
   input: Record<string, unknown>,
 ): Record<string, unknown> {
   const extraKeys = Object.keys(input).filter(
-    (key) => key !== "tool_name" && key !== "arguments",
+    (key) => key !== "tool_name" && key !== "arguments" && key !== "intent",
   );
   if (extraKeys.length > 0) {
     throw new ToolInputError(
@@ -52,7 +53,7 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 }
 
 /** Create the stable dispatcher for active MCP provider tools. */
-// TODO(future): Fold MCP execution into executeTool once searchTools can
+// TODO(dcramer): Fold MCP execution into executeTool once searchTools can
 // disclose MCP tool schemas and the execution catalog keeps them active.
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
@@ -77,6 +78,13 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
             'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required.',
           )
           .optional(),
+        intent: z
+          .string()
+          .min(1)
+          .describe(
+            'Optional short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
+          )
+          .optional(),
       })
       .passthrough(),
     resolveApprovalMetadata: ({ tool_name }) => {
@@ -98,8 +106,11 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         },
       };
     },
+    outputSchema: z.object({
+      objectCards: z.array(ownedObjectAnnotationSchema),
+    }),
     execute: async (input, options) => {
-      const { tool_name } = input;
+      const { tool_name, intent } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
       const activeTools = mcpToolManager.getResolvedActiveTools();
       const mcpTool = activeTools.find(
@@ -111,7 +122,9 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           : [];
         setSpanAttributes({
           "app.mcp.requested_tool_name": tool_name,
-          ...(provider ? { "app.mcp.requested_provider": provider } : undefined),
+          ...(provider
+            ? { "app.mcp.requested_provider": provider }
+            : undefined),
           "app.mcp.active_provider_names": activeProviderNames(activeTools),
           "app.mcp.active_tool_count": activeTools.length,
           ...(provider
@@ -128,11 +141,18 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       const result = await mcpTool.execute(
         resolveMcpArguments(input as Record<string, unknown>),
         {
+          ...(intent ? { authorizationIntent: intent } : undefined),
           conversationPrivacy: options?.conversationPrivacy ?? "private",
-          ...(options?.toolCallId ? { toolCallId: options.toolCallId } : undefined),
+          ...(options?.signal ? { signal: options.signal } : undefined),
+          ...(options?.toolCallId
+            ? { toolCallId: options.toolCallId }
+            : undefined),
         },
       );
-      return { content: result.content };
+      return {
+        content: result.content,
+        details: { objectCards: result.cards ?? [] },
+      };
     },
   });
 }

@@ -2,11 +2,9 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 
 export const COMPACTION_SUMMARY_PREFIX =
-  "Context compaction summary for future Junior turns:";
-export const ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX =
-  "Active-turn context checkpoint. If no newer user instruction follows this checkpoint, continue the same unfinished task now using the authoritative instructions above and this summary as internal continuation state. If a newer user instruction follows, treat this checkpoint as prior context and follow that newer instruction. Do not reply with a plan or summary solely because this checkpoint appeared:";
-export const MODEL_HANDOFF_SUMMARY_PREFIX =
-  "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:";
+  "Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:";
+export const ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX = COMPACTION_SUMMARY_PREFIX;
+export const MODEL_HANDOFF_SUMMARY_PREFIX = COMPACTION_SUMMARY_PREFIX;
 
 /** Return whether text is one of Junior's durable compacted-context markers. */
 export function isCompactionSummaryText(text: string): boolean {

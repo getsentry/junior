@@ -33,6 +33,7 @@ import {
 } from "./event-actor";
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
+import { encodeHistoryPayload } from "../history-payload";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -55,7 +56,7 @@ const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
 /**
  * Whether one event should restore an archived conversation to the feed.
  *
- * Archive hides finished noise until a human comes back. Resource events,
+ * Archive hides finished noise until a human comes back. Events,
  * turn lifecycle, compaction, and other system writes may still refresh
  * activity clocks, but they must not unarchive on their own.
  */
@@ -97,15 +98,16 @@ function insertFromEvent(
   actorIdentityId?: string,
 ): ConversationEventInsert {
   const stripped = stripPayloadAuthorIdentityId(event.data);
-  const { type, ...payload } = conversationEventDataSchema.parse(stripped);
+  const data = conversationEventDataSchema.parse(stripped);
+  const encoded = encodeHistoryPayload(data);
   return {
     conversationId,
     seq,
     historyVersion,
-    schemaVersion: 1,
+    schemaVersion: encoded.schemaVersion,
     idempotencyKey: event.idempotencyKey ?? null,
-    type,
-    payload: sanitizePostgresJson(payload),
+    type: data.type,
+    payload: sanitizePostgresJson(encoded.payload),
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
@@ -126,7 +128,9 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : undefined),
+    ...(row.idempotencyKey
+      ? { idempotencyKey: row.idempotencyKey }
+      : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload,
@@ -147,98 +151,110 @@ function messagesSummarizedEventFromRow(
 }
 
 class SqlConversationEventStore implements ConversationEventStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async append(
     conversationId: string,
     events: NewConversationEvent[],
     options: { activity?: "preserve" } = {},
-  ): Promise<void> {
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>> {
     const parsed = events.map((event) =>
       newConversationEventSchema.parse(event),
     );
     if (parsed.length === 0) {
-      return;
+      return [];
     }
-    await withConversationEventLock(this.executor, conversationId, async () => {
-      const existingKeys = parsed
-        .map((event) => event.idempotencyKey)
-        .filter((key): key is string => key !== undefined);
-      const persistedKeys =
-        existingKeys.length === 0
-          ? new Set<string>()
-          : new Set(
-              (
-                await this.executor
-                  .db()
-                  .select({ key: juniorConversationEvents.idempotencyKey })
-                  .from(juniorConversationEvents)
-                  .where(
-                    and(
-                      eq(
-                        juniorConversationEvents.conversationId,
-                        conversationId,
+    return withConversationEventLock(
+      this.executor,
+      conversationId,
+      async () => {
+        const existingKeys = parsed
+          .map((event) => event.idempotencyKey)
+          .filter((key): key is string => key !== undefined);
+        const persistedKeys =
+          existingKeys.length === 0
+            ? new Set<string>()
+            : new Set(
+                (
+                  await this.executor
+                    .db()
+                    .select({ key: juniorConversationEvents.idempotencyKey })
+                    .from(juniorConversationEvents)
+                    .where(
+                      and(
+                        eq(
+                          juniorConversationEvents.conversationId,
+                          conversationId,
+                        ),
+                        inArray(
+                          juniorConversationEvents.idempotencyKey,
+                          existingKeys,
+                        ),
                       ),
-                      inArray(
-                        juniorConversationEvents.idempotencyKey,
-                        existingKeys,
-                      ),
-                    ),
-                  )
-              ).flatMap((row) => (row.key ? [row.key] : [])),
-            );
-      const acceptedKeys = new Set(persistedKeys);
-      const pending = parsed.filter((event) => {
-        if (event.idempotencyKey === undefined) return true;
-        if (acceptedKeys.has(event.idempotencyKey)) return false;
-        acceptedKeys.add(event.idempotencyKey);
-        return true;
-      });
-      if (pending.length === 0) {
-        return;
-      }
-      const newestCreatedAtMs = Math.max(
-        ...pending.map((event) => event.createdAtMs),
-      );
-      await ensureConversationRow(
-        this.executor,
-        conversationId,
-        newestCreatedAtMs,
-        options,
-      );
-      const cursor = await this.readCursor(conversationId);
-      const historyVersion = cursor.maxHistoryVersion ?? 0;
-      let seq = cursor.nextSeq;
-      const rows: ConversationEventInsert[] = [];
-      for (const event of pending) {
-        const actorIdentityId = await resolveEventActorIdentityId(
-          this.executor,
-          {
-            conversationId,
-            data: event.data,
-            nowMs: event.createdAtMs,
-          },
-        );
-        rows.push(
-          insertFromEvent(
-            conversationId,
-            seq++,
-            historyVersion,
-            event,
-            actorIdentityId,
-          ),
-        );
-        if (actorIdentityId) {
-          await recordConversationParticipant(this.executor, {
-            actorIdentityId,
-            conversationId,
-            atMs: event.createdAtMs,
-            restoreArchive: eventUnarchivesConversation(event.data),
-          });
+                    )
+                ).flatMap((row) => (row.key ? [row.key] : [])),
+              );
+        const acceptedKeys = new Set(persistedKeys);
+        const pending = parsed.filter((event) => {
+          if (event.idempotencyKey === undefined) return true;
+          if (acceptedKeys.has(event.idempotencyKey)) return false;
+          acceptedKeys.add(event.idempotencyKey);
+          return true;
+        });
+        if (pending.length === 0) {
+          return [];
         }
-      }
-      await this.executor.db().insert(juniorConversationEvents).values(rows);
-    });
+        const newestCreatedAtMs = Math.max(
+          ...pending.map((event) => event.createdAtMs),
+        );
+        await ensureConversationRow(
+          this.executor,
+          conversationId,
+          newestCreatedAtMs,
+          options,
+        );
+        const cursor = await this.readCursor(conversationId);
+        const historyVersion = cursor.maxHistoryVersion ?? 0;
+        let seq = cursor.nextSeq;
+        const rows: ConversationEventInsert[] = [];
+        for (const event of pending) {
+          const actorIdentityId = await resolveEventActorIdentityId(
+            this.executor,
+            {
+              conversationId,
+              data: event.data,
+              nowMs: event.createdAtMs,
+            },
+          );
+          rows.push(
+            insertFromEvent(
+              conversationId,
+              seq++,
+              historyVersion,
+              event,
+              actorIdentityId,
+            ),
+          );
+          if (actorIdentityId) {
+            await recordConversationParticipant(this.executor, {
+              actorIdentityId,
+              conversationId,
+              atMs: event.createdAtMs,
+              restoreArchive: eventUnarchivesConversation(event.data),
+            });
+          }
+        }
+        await this.executor.db().insert(juniorConversationEvents).values(rows);
+        return rows.map((row) => ({
+          seq: row.seq,
+          historyVersion: row.historyVersion,
+        }));
+      },
+    );
   }
 
   async replaceHistory(
@@ -262,6 +278,10 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         );
     });
+  }
+
+  async loadCurrentHistoryVersion(conversationId: string): Promise<number> {
+    return (await this.readCursor(conversationId)).maxHistoryVersion ?? 0;
   }
 
   async loadCurrentHistory(

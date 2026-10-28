@@ -1,0 +1,221 @@
+import { eq } from "drizzle-orm";
+import { afterEach, describe, expect, it } from "vitest";
+import { createJuniorApi } from "@/api";
+import {
+  conversationChildAgentsReportSchema,
+  conversationDetailReportSchema,
+} from "@/api/schema";
+import {
+  completeAgentInvocation,
+  createAgentInvocation,
+} from "@/chat/agent-invocations/store";
+import { closeDb, getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
+import {
+  invocationInput,
+  parentConversationId,
+  prepareParentConversation,
+  prepareSlackParentConversation,
+  slackInvocationInput,
+  slackParentConversationId,
+} from "../../../fixtures/agent-invocations";
+
+async function requestDetail(conversationId: string) {
+  return await createJuniorApi().request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+  );
+}
+
+async function requestChildAgents(conversationId: string) {
+  return await createJuniorApi().request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/agents`,
+  );
+}
+
+describe("conversation child agents API", () => {
+  afterEach(async () => {
+    await closeDb();
+  });
+
+  it("returns child agent state from agent invocation records", async () => {
+    await prepareSlackParentConversation();
+    const reviewer = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        agentName: "reviewer",
+        idempotencyKey: "child-agents-reviewer",
+        input: "Review the plan.",
+        title: "Plan review",
+      },
+      1_000,
+    );
+    const blocked = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        idempotencyKey: "child-agents-blocked",
+        input: "Read the private repo.",
+      },
+      2_000,
+    );
+    await completeAgentInvocation({
+      errorMessage: "GitHub access is missing.",
+      invocationId: blocked.invocationId,
+      nowMs: 3_000,
+      status: "blocked",
+    });
+
+    await getDb()
+      .update(juniorConversations)
+      .set({
+        durationMs: 42_000,
+        usage: { cost: { total: 0.02 }, inputTokens: 900, outputTokens: 100 },
+      })
+      .where(
+        eq(juniorConversations.conversationId, reviewer.childConversationId),
+      );
+    // A nested child agent counts toward the reviewer, not only the root.
+    const helper = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        idempotencyKey: "child-agents-reviewer-helper",
+        input: "Check one claim.",
+        parentConversationId: reviewer.childConversationId,
+      },
+      1_500,
+    );
+    await getDb()
+      .update(juniorConversations)
+      .set({
+        durationMs: 8_000,
+        usage: { cost: { total: 0.01 }, inputTokens: 300, outputTokens: 50 },
+      })
+      .where(
+        eq(juniorConversations.conversationId, helper.childConversationId),
+      );
+
+    const response = await requestChildAgents(slackParentConversationId);
+    const reviewerDetail = conversationDetailReportSchema.parse(
+      await (await requestDetail(reviewer.childConversationId)).json(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      conversationChildAgentsReportSchema.parse(await response.json()),
+    ).toEqual({
+      agents: [
+        {
+          conversationId: blocked.childConversationId,
+          cumulativeDurationMs: 0,
+          error: "GitHub access is missing.",
+          status: "blocked",
+          task: "Read the private repo.",
+          updatedAt: new Date(3_000).toISOString(),
+        },
+        {
+          childAgentTotals: {
+            count: 1,
+            cumulativeDurationMs: 8_000,
+            cumulativeUsage: {
+              cost: { total: 0.01 },
+              inputTokens: 300,
+              outputTokens: 50,
+            },
+          },
+          conversationId: reviewer.childConversationId,
+          cumulativeDurationMs: 50_000,
+          cumulativeUsage: {
+            cost: { total: 0.03 },
+            inputTokens: 1_200,
+            outputTokens: 150,
+          },
+          name: "reviewer",
+          status: "pending",
+          task: "Review the plan.",
+          title: "Plan review",
+          updatedAt: new Date(1_000).toISOString(),
+        },
+      ],
+      conversationId: slackParentConversationId,
+    });
+    expect(reviewerDetail).toMatchObject({
+      childAgentTotals: { count: 1, cumulativeDurationMs: 8_000 },
+      cumulativeDurationMs: 50_000,
+      cumulativeUsage: {
+        cost: { total: 0.03 },
+        inputTokens: 1_200,
+        outputTokens: 150,
+      },
+    });
+  });
+
+  it("returns the agent tree of a nested child Conversation", async () => {
+    await prepareSlackParentConversation();
+    const reviewer = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        agentName: "reviewer",
+        idempotencyKey: "agent-tree-reviewer",
+        title: "Plan review",
+      },
+      1_000,
+    );
+    const helper = await createAgentInvocation(
+      {
+        ...slackInvocationInput,
+        idempotencyKey: "agent-tree-helper",
+        input: "Check one claim.",
+        parentConversationId: reviewer.childConversationId,
+        title: "Claim check",
+      },
+      2_000,
+    );
+
+    const root = conversationDetailReportSchema.parse(
+      await (await requestDetail(slackParentConversationId)).json(),
+    );
+    const response = await requestDetail(helper.childConversationId);
+
+    expect(root.agentTree).toBeUndefined();
+    expect(response.status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(await response.json()).agentTree,
+    ).toEqual([
+      { conversationId: slackParentConversationId, label: root.displayTitle },
+      { conversationId: reviewer.childConversationId, label: "Plan review" },
+      { conversationId: helper.childConversationId, label: "Claim check" },
+    ]);
+  });
+
+  it("redacts child agent content from viewers without private access", async () => {
+    await prepareParentConversation();
+    const child = await createAgentInvocation(
+      {
+        ...invocationInput,
+        agentName: "private-reviewer",
+        idempotencyKey: "child-agents-private",
+        title: "Private plan review",
+      },
+      1_000,
+    );
+
+    const response = await requestChildAgents(parentConversationId);
+    const detail = await requestDetail(child.childConversationId);
+
+    expect(
+      conversationDetailReportSchema.parse(await detail.json()).agentTree?.[1],
+    ).toEqual({ conversationId: child.childConversationId, label: "Subagent" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      agents: [
+        {
+          conversationId: child.childConversationId,
+          cumulativeDurationMs: 0,
+          redacted: true,
+          status: "pending",
+          updatedAt: new Date(1_000).toISOString(),
+        },
+      ],
+      conversationId: parentConversationId,
+    });
+  });
+});

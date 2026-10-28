@@ -39,8 +39,19 @@ traffic through verified host egress.
 - Automatic selection currently uses the worktree root, so Junior reads only
   its root `AGENTS.md`. Changed instructions are added as runtime-owned user
   context; sandbox tool results never contain them.
-- Only `AGENTS.md` is supported. Overrides, Git hooks, recursive repository
-  discovery, and filesystem watchers are intentionally out of scope.
+- Junior also lists the repository skills in `.agents/skills/` and
+  `.claude/skills/` at the Git root. The first directory wins when both have a
+  skill with the same name. The list holds the name, description, and
+  `SKILL.md` path of each skill. Junior leaves out skills that set
+  `disable-model-invocation`. The model reads a skill body with `readFile`.
+  Repository skills do not go into `<available-skills>`, and `loadSkill`
+  cannot load them.
+- `AGENTS.md` comes first in the shared byte budget. Repository skills use the
+  remaining budget, one whole entry at a time.
+- Repository skills have the same trust level as `AGENTS.md`. Direct
+  instructions take precedence over both.
+- Overrides, Git hooks, recursive repository discovery, and filesystem
+  watchers are intentionally out of scope.
 
 ## Dependency Snapshots
 
@@ -52,12 +63,18 @@ traffic through verified host egress.
   dependencies, prepares repositories, runs setup, and captures the complete
   snapshot. Operators manage recipes from `/system/workspaces` or
   `/api/workspaces`. The `junior_snapshots` table records each build as
-  `building`, `failed`, or `ready`. A cold build uses one named Sandbox for up
-  to one hour. Short execution slices create the builder, install
-  dependencies, prepare repositories, start setup, and poll setup. Each slice
-  records its phase in SQL. The next run can continue after a soft yield or a
-  worker stop. The host continues a waiting `switchWorkspace` tool call without
-  asking the model to repeat it.
+  `building`, `failed`, or `ready`. A cold build runs on a background job with
+  one named Sandbox for up to one hour. Short job slices create the builder,
+  install dependencies, prepare repositories, start setup, and poll setup. Each
+  slice records its phase in SQL. The next job can continue after a soft yield
+  or a worker stop.
+- When `switchWorkspace` finds no ready snapshot, it returns
+  `status: "building"` and a temporary watch for
+  `workspace_snapshot.ready` and `workspace_snapshot.failed`. It does not keep
+  the tool call open. The build job publishes those core `junior` events when it
+  finishes. The next Turn should call `switchWorkspace` again with the same
+  name. Other sandbox tools use the same plain preparing message when the
+  snapshot is not ready yet.
 - SQL is the only source of Workspace snapshot state. Redis coordinates the
   build lock and its fencing. It does not store Workspace snapshot pointers.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts

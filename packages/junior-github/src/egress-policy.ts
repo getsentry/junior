@@ -17,7 +17,6 @@ import {
   HTTP_READ_METHODS,
   USER_WRITE_REQUIREMENTS,
   githubRepositoryFromUrl,
-  githubRepositoryLeaseScope,
   isRecord,
   type GitHubGrant,
   type GitHubGrantName,
@@ -238,6 +237,7 @@ type GitHubBodyWrite = {
   graphqlField:
     | "createIssue"
     | "createPullRequest"
+    | "addPullRequestReview"
     | "updateIssue"
     | "updatePullRequest";
   method: "PATCH" | "POST";
@@ -245,9 +245,13 @@ type GitHubBodyWrite = {
     | "github.issue.create"
     | "github.issue.update"
     | "github.pull.create"
+    | "github.pull.review.create"
     | "github.pull.update";
   restPath: RegExp;
 };
+
+const PULL_REQUEST_COMMENT_REACTIONS_PATH =
+  /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/;
 
 const GITHUB_BODY_WRITES = [
   {
@@ -263,6 +267,13 @@ const GITHUB_BODY_WRITES = [
     method: "POST",
     operation: "github.pull.create",
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls$/,
+  },
+  {
+    denialMessage: `GitHub pull request reviews must use the github_submitPullRequestReview tool. The tool posts to /repos/{owner}/{repo}/pulls/{number}/reviews. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    graphqlField: "addPullRequestReview",
+    method: "POST",
+    operation: "github.pull.review.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews$/,
   },
   {
     denialMessage: `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
@@ -328,15 +339,17 @@ function githubApiWriteGrantName(
     return "installation-write";
   }
   if (
-    method === "POST" &&
-    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/ready_for_review$/.test(pathname)
+    (method === "POST" || method === "DELETE") &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/requested_reviewers$/.test(pathname)
   ) {
     return "installation-write";
   }
   if (
-    (method === "POST" || method === "DELETE") &&
-    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/requested_reviewers$/.test(pathname)
+    method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/stacks(?:\/[^/]+\/(add|unstack))?$/.test(pathname)
   ) {
+    // Stack create/add/unstack writes carry only PR numbers. PR creation and
+    // base or draft changes stay with the typed pull request tools.
     return "installation-write";
   }
   if (
@@ -365,44 +378,61 @@ function githubApiWriteGrantName(
     // interactive review feedback both post as Junior, not the requesting user.
     return "installation-write";
   }
+  if (
+    (method === "POST" || method === "DELETE") &&
+    PULL_REQUEST_COMMENT_REACTIONS_PATH.test(pathname)
+  ) {
+    // Feedback-status reactions on conversation and inline review comments.
+    return "installation-write";
+  }
   return undefined;
 }
 
-function reviewThreadResolveRepository(
+/**
+ * GraphQL writes that host tools may send. A request matches only when its
+ * egress operation starts with the prefix and its operation name and mutation
+ * field match. Sandbox requests have no egress operation, so they stay denied.
+ */
+const HOST_GRAPHQL_MUTATIONS = [
+  {
+    field: "resolveReviewThread",
+    operationName: "ResolveReviewThread",
+    operationPrefix: "github.pull.review-thread.resolve:",
+  },
+  {
+    field: "markPullRequestReadyForReview",
+    operationName: "MarkPullRequestReadyForReview",
+    operationPrefix: "github.pull.draft.update:",
+  },
+  {
+    field: "convertPullRequestToDraft",
+    operationName: "ConvertPullRequestToDraft",
+    operationPrefix: "github.pull.draft.update:",
+  },
+] as const;
+
+function hostGraphqlMutationRepository(
   operation: string | undefined,
   method: string,
   upstreamUrl: URL,
   bodyText: string | undefined,
 ): string | undefined {
-  const prefix = "github.pull.review-thread.resolve:";
-  if (
-    method !== "POST" ||
-    !isGitHubGraphqlUrl(upstreamUrl) ||
-    !operation?.startsWith(prefix)
-  ) {
+  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl) || !operation) {
     return undefined;
   }
-  const repository = operation.slice(prefix.length);
-  if (!/^[^/]+\/[^/]+$/.test(repository)) return undefined;
   const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (
-    parsed?.operationName !== "ResolveReviewThread" ||
-    !/\bmutation\s+ResolveReviewThread\b/.test(parsed.normalized) ||
-    !/\bresolveReviewThread\b/.test(parsed.normalized)
-  ) {
-    return undefined;
-  }
-  return repository;
-}
-
-function repositoryLeaseScopeFromRef(repository: string): string {
-  const [owner, name] = repository.split("/");
-  if (!owner || !name) {
-    throw new EgressPolicyDenied(
-      "GitHub review thread resolution does not identify a target repository.",
-    );
-  }
-  return githubRepositoryLeaseScope({ owner, name });
+  const mutation = HOST_GRAPHQL_MUTATIONS.find(
+    (candidate) =>
+      operation.startsWith(candidate.operationPrefix) &&
+      parsed?.operationName === candidate.operationName &&
+      new RegExp(`\\bmutation\\s+${candidate.operationName}\\b`).test(
+        parsed.normalized,
+      ) &&
+      new RegExp(`\\b${candidate.field}\\b`).test(parsed.normalized),
+  );
+  if (!mutation) return undefined;
+  const repository = operation.slice(mutation.operationPrefix.length);
+  return /^[^/]+\/[^/]+$/.test(repository) ? repository : undefined;
 }
 
 function isGitHubGraphqlMutation(
@@ -412,6 +442,7 @@ function isGitHubGraphqlMutation(
   field:
     | "createIssue"
     | "createPullRequest"
+    | "addPullRequestReview"
     | "updateIssue"
     | "updatePullRequest",
 ): boolean {
@@ -432,8 +463,28 @@ function applyGitHubEgressPolicy(input: {
   operation?: string;
   upstreamUrl: URL;
 }): void {
+  const reactionWrite =
+    isGitHubApiUrl(input.upstreamUrl) &&
+    (input.method === "POST" || input.method === "DELETE") &&
+    PULL_REQUEST_COMMENT_REACTIONS_PATH.test(
+      input.upstreamUrl.pathname.toLowerCase(),
+    );
+  if (reactionWrite) {
+    const expectedOperation =
+      input.method === "POST"
+        ? "github.pull.comment-reaction.create"
+        : "github.pull.comment-reaction.delete";
+    enforceEgressPolicy({
+      allowed: input.operation === expectedOperation,
+      denialMessage:
+        "GitHub pull request feedback reactions must use the github_updatePullRequestFeedback tool.",
+    });
+  }
+
   assertGitHubPullRequestApprovalDenied({
-    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
+    ...(input.bodyText !== undefined
+      ? { bodyText: input.bodyText }
+      : undefined),
     method: input.method,
     upstreamUrl: input.upstreamUrl,
   });
@@ -463,25 +514,24 @@ function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
   name: GitHubGrantName,
-  leaseScope?: string,
 ): GitHubGrant {
   return {
     name,
     access,
-    ...(leaseScope ? { leaseScope } : undefined),
     reason,
-    ...(name === "user-write" ? { requirements: USER_WRITE_REQUIREMENTS } : undefined),
+    ...(name === "user-write"
+      ? { requirements: USER_WRITE_REQUIREMENTS }
+      : undefined),
   };
 }
 
-function repositoryLeaseScope(upstreamUrl: URL): string {
-  const repository = githubRepositoryFromUrl(upstreamUrl);
-  if (!repository) {
-    throw new EgressPolicyDenied(
-      "GitHub write request does not identify a target repository.",
-    );
+function requireRepositoryTarget(upstreamUrl: URL): void {
+  if (githubRepositoryFromUrl(upstreamUrl)) {
+    return;
   }
-  return githubRepositoryLeaseScope(repository);
+  throw new EgressPolicyDenied(
+    "GitHub write request has no repository in its URL. Use a /repos/{owner}/{repo}/... URL or a GitHub tool for the operation.",
+  );
 }
 
 export async function githubGrantForEgress(
@@ -494,7 +544,9 @@ export async function githubGrantForEgress(
       ? { bodyText: ctx.request.bodyText }
       : undefined),
     method,
-    ...(ctx.request.operation ? { operation: ctx.request.operation } : undefined),
+    ...(ctx.request.operation
+      ? { operation: ctx.request.operation }
+      : undefined),
     upstreamUrl,
   });
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
@@ -504,11 +556,11 @@ export async function githubGrantForEgress(
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
     if (smartHttpAccess === "write") {
+      requireRepositoryTarget(upstreamUrl);
       return grantForAccess(
         "write",
         "github.installation-write",
         "installation-write",
-        repositoryLeaseScope(upstreamUrl),
       );
     }
     return grantForAccess(
@@ -525,28 +577,29 @@ export async function githubGrantForEgress(
 
   const writeGrantName = githubApiWriteGrantName(method, upstreamUrl);
   if (writeGrantName) {
+    if (writeGrantName === "installation-write") {
+      requireRepositoryTarget(upstreamUrl);
+    }
     return grantForAccess(
       "write",
       writeGrantName === "user-write"
         ? "github.user-write"
         : "github.installation-write",
       writeGrantName,
-      repositoryLeaseScope(upstreamUrl),
     );
   }
 
-  const reviewThreadRepository = reviewThreadResolveRepository(
+  const hostMutationRepository = hostGraphqlMutationRepository(
     ctx.request.operation,
     method,
     upstreamUrl,
     ctx.request.bodyText,
   );
-  if (reviewThreadRepository) {
+  if (hostMutationRepository) {
     return grantForAccess(
       "write",
       "github.installation-write",
       "installation-write",
-      repositoryLeaseScopeFromRef(reviewThreadRepository),
     );
   }
 
@@ -558,7 +611,7 @@ export async function githubGrantForEgress(
   if (graphqlAccess) {
     if (graphqlAccess === "write") {
       throw new EgressPolicyDenied(
-        "GitHub GraphQL mutations are not enabled for Junior credentials.",
+        "GitHub GraphQL mutations are not enabled for runtime credentials. Use the matching GitHub tool or a supported REST endpoint. For pull request reviews, use github_submitPullRequestReview. It posts to /repos/{owner}/{repo}/pulls/{number}/reviews.",
       );
     }
     return grantForAccess(
@@ -571,7 +624,7 @@ export async function githubGrantForEgress(
   const access = HTTP_READ_METHODS.has(method) ? "read" : "write";
   if (access === "write") {
     throw new EgressPolicyDenied(
-      "GitHub write request is not an explicitly allowed Junior operation.",
+      "Junior does not support this GitHub write request. Use the matching GitHub tool or a supported REST endpoint.",
     );
   }
   return grantForAccess(access, "github.api-read", "installation-read");

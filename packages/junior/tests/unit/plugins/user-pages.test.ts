@@ -69,7 +69,7 @@ describe("plugin user pages", () => {
         ],
       }),
     ).toThrow(
-      'Junior plugin "memory" user page "memories" navigation must be "primary" or "profile".',
+      'Junior plugin "memory" user page "memories" navigation must be "primary", "profile", or "admin".',
     );
   });
 

@@ -11,7 +11,7 @@ type SpawnOptions = {
   state?: StateAdapter;
 };
 
-/** Bind one run's runtime-owned authority to the model-safe spawn capability. */
+/** Bind a Run's Actor and credentials to new Agent invocations. */
 export function bindSpawnAgent(
   run: AgentRun,
   options: SpawnOptions,
@@ -35,21 +35,20 @@ export function bindSpawnAgent(
           ? { credentialContext: run.credentialContext }
           : undefined),
         destination: toolInvocationDestination(run),
-        ...(run.destinationVisibility
-          ? {
-              destinationVisibility: run.destinationVisibility,
-            }
-          : undefined),
         idempotencyKey: `${run.turnId}:${call.toolCallId}`,
         input: input.task,
+        modelProfile: input.profile,
         parentConversationId: run.conversationId,
+        parentToolCallId: call.toolCallId,
         ...(input.reasoningLevel
           ? { reasoningLevel: input.reasoningLevel }
           : undefined),
-        source: run.source,
+        ...(input.title ? { title: input.title } : undefined),
       },
       { ...options, queue },
     );
-    return { invocationId: invocation.invocationId };
+    return {
+      childConversationId: invocation.childConversationId,
+    };
   };
 }

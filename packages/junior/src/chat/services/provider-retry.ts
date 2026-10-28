@@ -3,7 +3,10 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
-import { createProviderError } from "@/chat/services/provider-error";
+import {
+  createProviderError,
+  type ProviderError,
+} from "@/chat/services/provider-error";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
@@ -17,7 +20,13 @@ export function nextProviderRetry(args: {
   attempt: number;
   failure?: AssistantMessage;
   messages: PiMessage[];
-}): { delayMs: number; messages: PiMessage[] } | undefined {
+}):
+  | {
+      delayMs: number;
+      messages: PiMessage[];
+      providerError: ProviderError;
+    }
+  | undefined {
   const backoffMs = PROVIDER_RETRY_DELAYS_MS[args.attempt];
   const errorMessage = args.failure?.errorMessage;
   if (backoffMs === undefined || !args.failure || !errorMessage) {
@@ -27,8 +36,12 @@ export function nextProviderRetry(args: {
   const providerError = createProviderError(errorMessage, {
     retryable: true,
   });
+  // The SDK classifier does not recognize capacity messages. Junior's own
+  // classification carries that signal so no dependency patch is needed.
   const hasRetrySignal =
-    isRetryableAssistantError(args.failure) || providerError.status === 408;
+    isRetryableAssistantError(args.failure) ||
+    providerError.status === 408 ||
+    providerError.kind === "capacity";
   if (!hasRetrySignal || !providerError.retryable) {
     return undefined;
   }
@@ -47,5 +60,5 @@ export function nextProviderRetry(args: {
     return undefined;
   }
 
-  return { delayMs, messages };
+  return { delayMs, messages, providerError };
 }

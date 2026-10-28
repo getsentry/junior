@@ -42,6 +42,23 @@ export function TranscriptHeadingRow(props: {
   );
 }
 
+/** Keep message authors, timestamps, and actions together at the text edge. */
+export function TranscriptMessageHeading(props: {
+  children: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-6 min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
+      {props.children}
+      {props.action ? (
+        <div className="flex h-6 shrink-0 items-center self-center [@media(hover:hover)_and_(pointer:fine)_and_(not_(any-pointer:coarse))]:opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100 has-[[aria-expanded=true]]:opacity-100">
+          {props.action}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Render compact transcript heading metadata without changing row alignment. */
 export function TranscriptHeadingMeta(props: {
   children: ReactNode;

@@ -1,0 +1,819 @@
+import { eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { describe, expect, test } from "vitest";
+import {
+  automationExecutionListSchema,
+  automationListSchema,
+  automationRunListSchema,
+} from "@/api/schema/automation";
+import { createJuniorApi } from "@/api";
+import type { JuniorApiEnv } from "@/api/route";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { createSqlStore } from "@/chat/conversations/sql/store";
+import {
+  createEventAutomation,
+  getEventAutomation,
+} from "@/chat/event-automations/store";
+import {
+  resolveViewerUser,
+  resolveViewerUserFromSql,
+} from "@/chat/plugins/viewer";
+import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
+import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { juniorIdentities } from "@/db/schema/identities";
+import { juniorConversations } from "@/db/schema/conversations";
+import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
+
+function authenticatedApi(email: string) {
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error(`missing viewer for ${email}`);
+    }
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  return app;
+}
+
+describe("Automations API", () => {
+  test("requires an authenticated viewer", async () => {
+    const response = await createJuniorApi().request(
+      "http://localhost/api/automations",
+    );
+    expect(response.status).toBe(401);
+  });
+
+  test("lists owned and public automations but only deletes viewer-owned tasks", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const conversationStore = createSqlStore(fixture.sql);
+    try {
+      await migrateSchema(fixture.sql);
+      await conversationStore.recordActivity({
+        conversationId: "slack:C123:tasks-api",
+        actor: {
+          email: "viewer@example.com",
+          platform: "slack",
+          slackUserId: "U123",
+          teamId: "T123",
+        },
+        destination: {
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
+        },
+        channelName: "project-updates",
+        title: "Automations API fixture",
+        visibility: "public",
+      });
+      await conversationStore.recordActivity({
+        conversationId: "slack:C456:tasks-api",
+        actor: {
+          email: "aisha@example.com",
+          fullName: "Aisha Patel",
+          platform: "slack",
+          slackUserId: "U456",
+          teamId: "T123",
+        },
+        channelName: "incident-response",
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        title: "Public automations fixture",
+        visibility: "public",
+      });
+      const user = await resolveViewerUserFromSql(
+        fixture.sql.db(),
+        "viewer@example.com",
+      );
+      const identity = user?.identities.find(
+        (candidate) =>
+          candidate.provider === "slack" &&
+          candidate.providerTenantId === "T123" &&
+          candidate.providerSubjectId === "U123",
+      );
+      expect(identity).toBeDefined();
+      const otherUser = await resolveViewerUserFromSql(
+        fixture.sql.db(),
+        "aisha@example.com",
+      );
+      const otherIdentity = otherUser?.identities.find(
+        (candidate) =>
+          candidate.provider === "slack" &&
+          candidate.providerTenantId === "T123" &&
+          candidate.providerSubjectId === "U456",
+      );
+      expect(otherIdentity).toBeDefined();
+      await fixture.sql
+        .db()
+        .update(juniorIdentities)
+        .set({ avatarUrl: "https://example.com/aisha.png" })
+        .where(eq(juniorIdentities.id, otherIdentity!.id));
+
+      // Keep fixture times inside the trailing 7-day stats window.
+      const nowMs = Date.now();
+      const todayUtc = new Date(nowMs);
+      todayUtc.setUTCHours(0, 0, 0, 0);
+      const yesterdayUtcMs = todayUtc.getTime() - 24 * 60 * 60 * 1000;
+      const eventRunAtMs = yesterdayUtcMs - 12 * 60 * 60 * 1000;
+      const scheduledRun1AtMs = yesterdayUtcMs + 12 * 60 * 60 * 1000;
+      const scheduledRun2AtMs = yesterdayUtcMs + 13 * 60 * 60 * 1000;
+      const runWindows = (...runAtMs: number[]) => {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const countSince = (agoMs: number) =>
+          runAtMs.filter((value) => value >= nowMs - agoMs).length;
+        return {
+          1: countSince(1 * dayMs),
+          7: countSince(7 * dayMs),
+          30: countSince(30 * dayMs),
+          90: countSince(90 * dayMs),
+        };
+      };
+      const startDate = todayUtc.toISOString().slice(0, 10);
+      const scheduledAutomation: ScheduledAutomation = {
+        id: "sched_tasks_api",
+        conversationAccess: { audience: "channel", visibility: "public" },
+        createdAtMs: nowMs,
+        createdBy: { slackUserId: "U123" },
+        creatorIdentityId: identity!.id,
+        credentialMode: "creator",
+        destination: {
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
+        },
+        nextRunAtMs: nowMs + 60_000,
+        outcomes: [],
+        schedule: {
+          description: "",
+          kind: "recurring",
+          recurrence: {
+            frequency: "daily",
+            interval: 1,
+            startDate,
+            time: { hour: 12, minute: 0 },
+          },
+          timezone: "UTC",
+        },
+        status: "active",
+        task: { text: "" },
+        updatedAtMs: nowMs,
+      };
+      await saveScheduledAutomation(fixture.sql.db(), scheduledAutomation);
+      await saveScheduledAutomation(fixture.sql.db(), {
+        ...scheduledAutomation,
+        id: "sched_public_tasks_api",
+        createdAtMs: nowMs + 2,
+        createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        task: { text: "Post the public incident digest for <@U456>." },
+        updatedAtMs: nowMs + 2,
+      });
+      await createEventAutomation(fixture.sql.db(), {
+        id: "event_automations_api",
+        createdAtMs: nowMs + 1,
+        createdBy: { slackUserId: "U123" },
+        creatorIdentityId: identity!.id,
+        credentialMode: "system",
+        destination: {
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
+        },
+        destinationVisibility: "public",
+        outcomes: [],
+        task: { text: "Summarize the closed issue." },
+        trigger: {
+          events: ["issue.closed"],
+          match: { action: ["closed", "resolved"] },
+          identifier: "ACME-42",
+          label: "Issue",
+          namespace: "linear",
+          resourceType: "issue",
+        },
+      });
+      await createEventAutomation(fixture.sql.db(), {
+        id: "event_public_tasks_api",
+        createdAtMs: nowMs + 3,
+        createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
+        credentialMode: "system",
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        destinationVisibility: "public",
+        outcomes: [],
+        task: { text: "Notify responders when the incident changes." },
+        trigger: {
+          events: ["incident.updated"],
+          identifier: "INC-17",
+          label: "Incident",
+          namespace: "pagerduty",
+          resourceType: "incident",
+        },
+      });
+      await createEventAutomation(fixture.sql.db(), {
+        id: "event_private_tasks_api",
+        createdAtMs: nowMs + 4,
+        createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
+        credentialMode: "system",
+        destination: {
+          channelId: "CPRIVATE",
+          platform: "slack",
+          teamId: "T123",
+        },
+        destinationVisibility: "private",
+        outcomes: [],
+        task: { text: "This private task must stay hidden." },
+        trigger: {
+          events: ["incident.updated"],
+          identifier: "INC-PRIVATE",
+          label: "Incident",
+          namespace: "pagerduty",
+          resourceType: "incident",
+        },
+      });
+
+      for (const conversationId of [
+        "agent-dispatch:sched-run-1",
+        "agent-dispatch:sched-run-2",
+        "agent-dispatch:event-run-1",
+      ]) {
+        await conversationStore.recordActivity({
+          conversationId,
+          actor: {
+            email: "viewer@example.com",
+            platform: "slack",
+            slackUserId: "U123",
+            teamId: "T123",
+          },
+          destination: {
+            channelId: "C123",
+            platform: "slack",
+            teamId: "T123",
+          },
+          title: "Automation execution fixture",
+          visibility: "public",
+        });
+      }
+      // Public runs from another workspace must stay out of the viewer Runs list.
+      await conversationStore.recordActivity({
+        conversationId: "agent-dispatch:foreign-public-run",
+        actor: {
+          email: "foreign@example.com",
+          platform: "slack",
+          slackUserId: "U999",
+          teamId: "TFOREIGN",
+        },
+        destination: {
+          channelId: "CFOREIGN",
+          platform: "slack",
+          teamId: "TFOREIGN",
+        },
+        title: "Foreign public task run",
+        visibility: "public",
+      });
+      await recordAutomationExecution("event_foreign_public", {
+        conversationId: "agent-dispatch:foreign-public-run",
+        executionId: "foreign-public-run",
+        nowMs: scheduledRun2AtMs + 1_000,
+        status: "completed",
+      });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          durationMs: 42_000,
+          usage: { cost: { total: 0.42 }, totalTokens: 1200 },
+        })
+        .where(
+          eq(juniorConversations.conversationId, "agent-dispatch:sched-run-2"),
+        );
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          durationMs: 18_000,
+          usage: { cost: { total: 0.18 }, totalTokens: 400 },
+        })
+        .where(
+          eq(juniorConversations.conversationId, "agent-dispatch:sched-run-1"),
+        );
+
+      await recordAutomationExecution("sched_tasks_api", {
+        conversationId: "agent-dispatch:sched-run-1",
+        executionId: "sched-run-1",
+        nowMs: scheduledRun1AtMs,
+        status: "completed",
+      });
+      await recordAutomationExecution("sched_tasks_api", {
+        conversationId: "agent-dispatch:sched-run-2",
+        executionId: "sched-run-2",
+        nowMs: scheduledRun2AtMs,
+        status: "failed",
+      });
+      await recordAutomationExecution("event_automations_api", {
+        conversationId: "agent-dispatch:event-run-1",
+        executionId: "event-run-1",
+        nowMs: eventRunAtMs,
+        status: "completed",
+      });
+      await recordAutomationExecution("sched_tasks_api", {
+        conversationId: "agent-dispatch:sched-run-2",
+        executionId: "sched-run-2",
+        nowMs: scheduledRun2AtMs,
+        status: "failed",
+      });
+
+      const response = await authenticatedApi("VIEWER@example.com").request(
+        "http://localhost/api/automations",
+      );
+      expect(response.status).toBe(200);
+      expect(automationListSchema.parse(await response.json())).toEqual({
+        executionDays: expect.any(Array),
+        executionHours: expect.any(Array),
+        executionSixHours: expect.any(Array),
+        automations: [
+          expect.objectContaining({
+            createdBy: "Aisha Patel",
+            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByEmail: "aisha@example.com",
+            destination: expect.objectContaining({
+              label: "#incident-response",
+              visibility: "public",
+            }),
+            id: "event_public_tasks_api",
+            kind: "event",
+            ownedByViewer: false,
+            source: "pagerduty",
+          }),
+          expect.objectContaining({
+            createdBy: "Aisha Patel",
+            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByEmail: "aisha@example.com",
+            destination: expect.objectContaining({
+              label: "#incident-response",
+              visibility: "public",
+            }),
+            id: "sched_public_tasks_api",
+            // Instructions resolve mentions like transcript messages do.
+            mentions: [
+              expect.objectContaining({
+                email: "aisha@example.com",
+                slackUserId: "U456",
+              }),
+            ],
+            schedule: "Schedule unavailable",
+            timezone: "UTC",
+            kind: "scheduled",
+            ownedByViewer: false,
+          }),
+          expect.objectContaining({
+            createdByEmail: "viewer@example.com",
+            id: "event_automations_api",
+            match: { action: ["closed", "resolved"] },
+            kind: "event",
+            lastConversationId: "agent-dispatch:event-run-1",
+            lastRunAt: new Date(eventRunAtMs).toISOString(),
+            ownedByViewer: true,
+            runs: runWindows(eventRunAtMs),
+            source: "linear",
+            totalRuns: 1,
+            triggerAvailable: false,
+          }),
+          expect.objectContaining({
+            createdByEmail: "viewer@example.com",
+            destination: expect.objectContaining({
+              label: "#project-updates",
+            }),
+            id: "sched_tasks_api",
+            instruction: "Untitled scheduled automation",
+            kind: "scheduled",
+            lastConversationId: "agent-dispatch:sched-run-2",
+            lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
+            ownedByViewer: true,
+            runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
+            schedule: "Schedule unavailable",
+            timezone: "UTC",
+            status: "active",
+            title: "Untitled scheduled automation",
+            totalRuns: 2,
+          }),
+        ],
+        total: 4,
+        page: 1,
+        pageSize: 25,
+        counts: { all: 4, mine: 2, public: 4, private: 0 },
+        creators: expect.any(Array),
+        destinations: expect.any(Array),
+      });
+
+      // An avatar does not make an unverified email a profile link.
+      await fixture.sql
+        .db()
+        .update(juniorIdentities)
+        .set({ emailVerified: false })
+        .where(eq(juniorIdentities.id, otherIdentity!.id));
+      const unverifiedResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations");
+      const unverifiedCreator = automationListSchema
+        .parse(await unverifiedResponse.json())
+        .automations.find(
+          (automation) => automation.id === "event_public_tasks_api",
+        );
+      expect(unverifiedCreator?.createdByAvatarUrl).toBe(
+        "https://example.com/aisha.png",
+      );
+      expect(unverifiedCreator?.createdByEmail).toBeUndefined();
+
+      const searchResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations?q=closed%20issue");
+      expect(searchResponse.status).toBe(200);
+      expect(
+        automationListSchema
+          .parse(await searchResponse.json())
+          .automations.map((task) => task.id),
+      ).toEqual(["event_automations_api"]);
+
+      const runsResponse = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/automations/runs",
+      );
+      expect(runsResponse.status).toBe(200);
+      expect(automationRunListSchema.parse(await runsResponse.json())).toEqual({
+        runs: [
+          expect.objectContaining({
+            costUsd: 0.42,
+            durationMs: 42_000,
+            executionId: "sched-run-2",
+            kind: "scheduled",
+            status: "failed",
+            automationId: "sched_tasks_api",
+            automationTitle: "Untitled scheduled automation",
+            totalTokens: 1_200,
+          }),
+          expect.objectContaining({
+            costUsd: 0.18,
+            durationMs: 18_000,
+            executionId: "sched-run-1",
+            kind: "scheduled",
+            status: "completed",
+            automationId: "sched_tasks_api",
+            totalTokens: 400,
+          }),
+          expect.objectContaining({
+            executionId: "event-run-1",
+            kind: "event",
+            automationId: "event_automations_api",
+          }),
+        ],
+        truncated: false,
+      });
+
+      const executionsResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations/sched_tasks_api/executions");
+      expect(executionsResponse.status).toBe(200);
+      const executionList = automationExecutionListSchema.parse(
+        await executionsResponse.json(),
+      );
+      const scheduledRunDay = new Date(scheduledRun2AtMs)
+        .toISOString()
+        .slice(0, 10);
+      expect(executionList).toEqual({
+        executionDays: expect.any(Array),
+        executionHours: expect.any(Array),
+        executionSixHours: expect.any(Array),
+        executions: [
+          {
+            conversationId: "agent-dispatch:sched-run-2",
+            costUsd: 0.42,
+            durationMs: 42_000,
+            executedAt: new Date(scheduledRun2AtMs).toISOString(),
+            executionId: "sched-run-2",
+            status: "failed",
+            title: "Automation execution fixture",
+            totalTokens: 1_200,
+          },
+          {
+            conversationId: "agent-dispatch:sched-run-1",
+            costUsd: 0.18,
+            durationMs: 18_000,
+            executedAt: new Date(scheduledRun1AtMs).toISOString(),
+            executionId: "sched-run-1",
+            status: "completed",
+            title: "Automation execution fixture",
+            totalTokens: 400,
+          },
+        ],
+        automation: expect.objectContaining({
+          id: "sched_tasks_api",
+          kind: "scheduled",
+          totalRuns: 2,
+        }),
+        truncated: false,
+      });
+      expect(executionList.executionDays).toHaveLength(90);
+      expect(
+        executionList.executionDays.find((day) => day.date === scheduledRunDay),
+      ).toEqual({
+        blocked: 0,
+        completed: 1,
+        date: scheduledRunDay,
+        failed: 1,
+      });
+
+      const deniedExecutions = await authenticatedApi(
+        "viewer@example.com",
+      ).request(
+        "http://localhost/api/automations/event_private_tasks_api/executions",
+      );
+      expect(deniedExecutions.status).toBe(404);
+
+      for (let index = 0; index < 501; index += 1) {
+        await saveScheduledAutomation(fixture.sql.db(), {
+          ...scheduledAutomation,
+          id: `sched_public_crowding_${index}`,
+          createdAtMs: nowMs + 1_000 + Math.floor(index / 2),
+          createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+          creatorIdentityId: otherIdentity!.id,
+          destination: {
+            channelId: "C456",
+            platform: "slack",
+            teamId: "T123",
+          },
+          task: { text: `Public crowding task ${index}.` },
+          updatedAtMs: nowMs + 1_000 + index,
+        });
+      }
+      const crowdedResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations");
+      expect(crowdedResponse.status).toBe(200);
+      const crowdedList = automationListSchema.parse(
+        await crowdedResponse.json(),
+      );
+      expect(crowdedList.executionDays).toHaveLength(90);
+      expect(crowdedList.automations).toHaveLength(25);
+      expect(crowdedList.total).toBe(505);
+      // Neither the foreign workspace run nor private work contributes to charts.
+      expect(
+        crowdedList.executionDays.reduce(
+          (sum, day) => sum + day.event + day.scheduled,
+          0,
+        ),
+      ).toBe(2);
+      expect(crowdedList.counts).toEqual({
+        all: 505,
+        mine: 2,
+        public: 505,
+        private: 0,
+      });
+      const list = async (query: string) => {
+        const response = await authenticatedApi("viewer@example.com").request(
+          `http://localhost/api/automations?${query}`,
+        );
+        expect(response.status).toBe(200);
+        return automationListSchema.parse(await response.json());
+      };
+      const attention = await list("scope=attention");
+      expect(attention.total).toBe(3);
+      expect(attention.automations.map((task) => task.id)).toEqual([
+        "event_public_tasks_api",
+        "event_automations_api",
+        "sched_tasks_api",
+      ]);
+      expect(
+        attention.automations.find((task) => task.id === "sched_tasks_api"),
+      ).toMatchObject({ status: "active", lastRunStatus: "failed" });
+      expect((await list("state=unavailable")).total).toBe(2);
+      const lastPage = await list("page=21");
+      expect(lastPage.automations.map((task) => task.id)).toEqual([
+        "sched_public_crowding_0",
+        "event_public_tasks_api",
+        "sched_public_tasks_api",
+        "event_automations_api",
+        "sched_tasks_api",
+      ]);
+      const previous = await list("page=20");
+      expect(
+        previous.automations.some((task) =>
+          lastPage.automations.some((last) => last.id === task.id),
+        ),
+      ).toBe(false);
+      expect((await list("scope=mine")).total).toBe(2);
+      expect(
+        (
+          await list(
+            "type=event&creator=T123:U456&destination=T123:C456&state=active",
+          )
+        ).automations.map((task) => task.id),
+      ).toEqual(["event_public_tasks_api"]);
+      expect(
+        (await list("q=ACME-42")).automations.map((task) => task.id),
+      ).toEqual(["event_automations_api"]);
+      expect((await list("q=INC-PRIVATE")).total).toBe(0);
+      expect((await list("q=private&scope=public")).automations).toEqual([]);
+      expect((await list("sort=oldest")).automations[0]?.id).toBe(
+        "sched_tasks_api",
+      );
+      expect(
+        (await list("q=crowding&sort=title")).automations[0]?.instruction,
+      ).toBe("Public crowding task 0.");
+      expect((await list("page=1000")).page).toBe(21);
+      const direct = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/automations/sched_tasks_api",
+      );
+      expect(direct.status).toBe(200);
+      expect(await direct.json()).toMatchObject({ id: "sched_tasks_api" });
+      expect(
+        (
+          await authenticatedApi("viewer@example.com").request(
+            "http://localhost/api/automations/event_private_tasks_api",
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await authenticatedApi("viewer@example.com").request(
+            "http://localhost/api/automations?page=0",
+          )
+        ).status,
+      ).toBe(400);
+      await saveScheduledAutomation(fixture.sql.db(), {
+        ...scheduledAutomation,
+        id: "sched_owned_private",
+        status: "blocked",
+        destination: { platform: "slack", teamId: "T123", channelId: "D123" },
+      });
+      const privateOwned = await list("scope=mine&state=blocked");
+      expect(privateOwned.automations.map((task) => task.id)).toEqual([
+        "sched_owned_private",
+      ]);
+      expect(privateOwned.counts).toEqual({
+        all: 506,
+        mine: 3,
+        public: 505,
+        private: 1,
+      });
+      expect((await list("scope=public&state=blocked")).total).toBe(0);
+      await saveScheduledAutomation(fixture.sql.db(), {
+        ...scheduledAutomation,
+        id: "sched_owned_private",
+        status: "completed",
+      });
+      expect((await list("state=completed&scope=mine")).total).toBe(1);
+      await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/automations/sched_owned_private",
+        { method: "DELETE" },
+      );
+      // A manual title must not hide the instruction from search.
+      await saveScheduledAutomation(fixture.sql.db(), {
+        ...scheduledAutomation,
+        title: "Manual title",
+        task: { text: "Unique instruction phrase" },
+      });
+      expect((await list("q=unique%20instruction")).total).toBe(1);
+
+      await conversationStore.recordActivity({
+        conversationId: "slack:C456:tasks-api-private",
+        actor: {
+          email: "aisha@example.com",
+          fullName: "Aisha Patel",
+          platform: "slack",
+          slackUserId: "U456",
+          teamId: "T123",
+        },
+        channelName: "incident-response",
+        destination: {
+          channelId: "C456",
+          platform: "slack",
+          teamId: "T123",
+        },
+        title: "Private automations fixture",
+        visibility: "private",
+      });
+      const privateResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations");
+      expect(privateResponse.status).toBe(200);
+      const privateList = automationListSchema.parse(
+        await privateResponse.json(),
+      );
+      expect(privateList.executionDays).toHaveLength(90);
+      expect(privateList.counts).toEqual({
+        all: 2,
+        mine: 2,
+        public: 2,
+        private: 0,
+      });
+      expect(privateList.creators).toEqual([
+        { value: "T123:U123", label: "U123" },
+      ]);
+      expect(privateList.destinations).toEqual([
+        { value: "T123:C123", label: "project-updates" },
+      ]);
+      expect((await list("creator=T123:U456")).total).toBe(0);
+      expect(
+        (
+          await authenticatedApi("viewer@example.com").request(
+            "http://localhost/api/automations/event_public_tasks_api",
+          )
+        ).status,
+      ).toBe(404);
+      expect(privateList.automations.map((task) => task.id)).toEqual([
+        "event_automations_api",
+        "sched_tasks_api",
+      ]);
+      expect(privateList.automations.every((task) => task.ownedByViewer)).toBe(
+        true,
+      );
+
+      const deniedPublicDelete = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations/event_public_tasks_api", {
+        method: "DELETE",
+      });
+      expect(deniedPublicDelete.status).toBe(404);
+
+      const deletedScheduled = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations/sched_tasks_api", {
+        method: "DELETE",
+      });
+      expect(deletedScheduled.status).toBe(204);
+      const [deletedScheduledAutomation] = await fixture.sql.query<{
+        status: string;
+      }>("SELECT status FROM junior_automations WHERE id = $1", [
+        "sched_tasks_api",
+      ]);
+      expect(deletedScheduledAutomation).toMatchObject({ status: "deleted" });
+
+      const deletedEvent = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/automations/event_automations_api",
+        { method: "DELETE" },
+      );
+      expect(deletedEvent.status).toBe(204);
+      await expect(
+        getEventAutomation(fixture.sql.db(), "event_automations_api"),
+      ).resolves.toMatchObject({
+        id: "event_automations_api",
+        status: "deleted",
+      });
+
+      const afterDeleteList = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations");
+      expect(afterDeleteList.status).toBe(200);
+      expect(
+        automationListSchema.parse(await afterDeleteList.json()).automations,
+      ).toEqual([]);
+
+      const afterDeleteRuns = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations/runs");
+      expect(afterDeleteRuns.status).toBe(200);
+      expect(
+        automationRunListSchema.parse(await afterDeleteRuns.json()),
+      ).toEqual({
+        runs: [
+          expect.objectContaining({
+            executionId: "sched-run-2",
+            kind: "scheduled",
+            automationId: "sched_tasks_api",
+            automationTitle: "Manual title",
+          }),
+          expect.objectContaining({
+            executionId: "sched-run-1",
+            kind: "scheduled",
+            automationId: "sched_tasks_api",
+            automationTitle: "Manual title",
+          }),
+          expect.objectContaining({
+            executionId: "event-run-1",
+            kind: "event",
+            automationId: "event_automations_api",
+            automationTitle: "Summarize the closed issue.",
+          }),
+        ],
+        truncated: false,
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
+});

@@ -49,8 +49,10 @@ settings:
     request_url: https://example.com/api/webhooks/slack
     bot_events:
       - app_home_opened
+      - entity_details_requested
       - assistant_thread_started
       - assistant_thread_context_changed
+      - agent_session_stopped
       - app_mention
       - message.channels
       - message.groups

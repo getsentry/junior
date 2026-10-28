@@ -7,12 +7,13 @@ export function cn(
 
 export const dashboardContainerClass = "mx-auto w-full min-w-0 max-w-screen-xl";
 
+/** Underline a neutral inline link, such as a channel or record name in prose. */
+export const dashboardInlineLinkClass =
+  "text-dashboard-text underline decoration-dashboard-border-heavy underline-offset-2 transition-colors hover:decoration-dashboard-text-muted";
+
 export const dashboardInteractiveTextClass =
   "text-dashboard-text-muted hover:text-dashboard-text";
 
 /** Raised input surface so the chat box reads against the near-black shell. */
 export const dashboardComposerSurfaceClass =
-  "rounded-2xl bg-dashboard-fill-soft shadow-[inset_0_0_0_1px_var(--color-dashboard-border-subtle)]";
-
-/** Shared shell canvas + grid background class from `tailwind.css`. */
-export const dashboardShellBgClass = "dashboard-shell-bg";
+  "rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-colors";

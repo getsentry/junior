@@ -1,5 +1,13 @@
-import { afterEach, beforeEach, inject } from "vitest";
+import { afterAll, afterEach, beforeEach, inject, vi } from "vitest";
 import "./eval-context";
+
+// The product waits 30 seconds after a watched event for more events. An
+// eval sends its events as one batch, so the wait only adds time.
+// `event-wake-delay.test.ts` in `packages/junior` covers the wait.
+vi.mock("@/chat/events/notification", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/events/notification")>()),
+  EVENT_WAIT_MS: 0,
+}));
 
 const context = inject("juniorEvalContext");
 if (!context) {
@@ -11,23 +19,23 @@ process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX = evalContext.stateKeyPrefix;
 process.env.REDIS_URL = evalContext.redisUrl;
 
-/** Read fixture observations owned by the invocation-wide egress process. */
-export async function readEvalEgressFixtureState<T>(): Promise<T> {
-  const response = await fetch(evalContext.stateUrl, {
-    headers: { authorization: `Bearer ${evalContext.controlToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Eval egress fixture read failed with HTTP ${response.status}`,
-    );
-  }
-  return (await response.json()) as T;
-}
+// Load model code only after the worker's runtime environment is set.
+// Global setup has a separate dispatcher, so install the limit here too.
+const { installEvalAiGatewayDispatcher } =
+  await import("./eval-ai-gateway-dispatcher");
+const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
+afterAll(restoreAiGatewayDispatcher);
 
 beforeEach(async () => {
+  // `stable-setup.ts` set the eval clock of this test. The main process uses
+  // the same time when it checks sandbox egress tokens and leases.
   const response = await fetch(evalContext.controlUrl, {
     method: "POST",
-    headers: { authorization: `Bearer ${evalContext.controlToken}` },
+    headers: {
+      authorization: `Bearer ${evalContext.controlToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ nowMs: Date.now() }),
   });
   if (!response.ok) {
     throw new Error(
@@ -38,8 +46,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   // Keep stateful runtime modules behind the invocation-provided Redis env.
-  const { drainPendingEvalPluginTasks } = await import("./behavior-harness");
-  await drainPendingEvalPluginTasks();
   const { closeDb } = await import("@/chat/db");
   await closeDb();
 });

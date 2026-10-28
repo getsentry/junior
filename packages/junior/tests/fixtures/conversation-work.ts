@@ -1,3 +1,5 @@
+import { slackEventsApiEnvelope } from "./slack/factories/events";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -8,16 +10,10 @@ import {
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { executeAgentRun } from "@/chat/agent";
-import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { getConversationStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
-import {
-  coerceThreadConversationState,
-  type ThreadConversationState,
-} from "@/chat/state/conversation";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -33,7 +29,6 @@ import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { slackApiOutbox } from "./slack-api-outbox";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { readProxyProperty } from "./proxy-property";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
@@ -65,7 +60,10 @@ interface QueueSendHold {
  */
 export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   #idempotentMessageIds = new Map<string, string>();
-  #queuedMessages: ConversationQueueMessage[] = [];
+  #queuedMessages: Array<{
+    message: ConversationQueueMessage;
+    availableAtMs: number;
+  }> = [];
   #rejectSends = false;
   #sendHolds: QueueSendHold[] = [];
   #sendAttempts: ConversationQueueSendRecord[] = [];
@@ -85,7 +83,7 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   }
 
   queuedMessages(): ConversationQueueMessage[] {
-    return this.#queuedMessages.map((message) => ({ ...message }));
+    return this.#queuedMessages.map(({ message }) => ({ ...message }));
   }
 
   rejectSends(): void {
@@ -131,7 +129,10 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
       return { messageId: duplicateMessageId };
     }
     const messageId = `queue-${this.#sentRecords.length + 1}`;
-    this.#queuedMessages.push({ ...message });
+    this.#queuedMessages.push({
+      message: { ...message },
+      availableAtMs: Date.now() + Math.max(0, options?.delayMs ?? 0),
+    });
     this.#sentRecords.push(record);
     if (options?.idempotencyKey) {
       this.#idempotentMessageIds.set(options.idempotencyKey, messageId);
@@ -144,12 +145,26 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     return { messageId };
   }
 
+  /** Deliver the next payload immediately when a test controls the clock. */
   takeMessage(): ConversationQueueMessage {
-    const message = this.#queuedMessages.shift();
-    if (!message) {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
       throw new Error("Expected queued conversation work payload");
     }
-    return message;
+    return entry.message;
+  }
+
+  /** Honor queue delays when running evals against the real clock. */
+  async takeReadyMessage(
+    signal?: AbortSignal,
+  ): Promise<ConversationQueueMessage> {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
+      throw new Error("Expected queued conversation work payload");
+    }
+    const waitMs = entry.availableAtMs - Date.now();
+    if (waitMs > 0) await delay(waitMs, undefined, { signal });
+    return entry.message;
   }
 }
 
@@ -223,7 +238,6 @@ export function inboundMessage(
     source: "slack",
     createdAtMs: 1_000,
     receivedAtMs: 1_100,
-    publishExternally: true,
     input: {
       text: `message ${inboundMessageId}`,
       authorId: "U123",
@@ -294,7 +308,7 @@ export function slackWebhookRequest(body: unknown): Request {
   }).event(body);
 }
 
-/** Build the minimal Slack Events API envelope used by durable ingress tests. */
+/** Build the canonical Slack envelope with durable ingress test defaults. */
 export function slackEnvelope(input: {
   channel?: string;
   eventType?: "app_mention" | "message";
@@ -303,22 +317,13 @@ export function slackEnvelope(input: {
   ts?: string;
   user?: string;
 }) {
-  const channel = input.channel ?? "C123";
-  const ts = input.ts ?? "1712345.0001";
-  return {
-    team_id: "T123",
-    type: "event_callback",
-    event: {
-      type: input.eventType ?? "app_mention",
-      user: input.user ?? "U123",
-      text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
-      channel,
-      ts,
-      event_ts: ts,
-      channel_type: channel.startsWith("D") ? "im" : "channel",
-      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
-    },
-  };
+  return slackEventsApiEnvelope({
+    ...input,
+    channel: input.channel ?? "C123",
+    ts: input.ts ?? "1712345.0001",
+    user: input.user ?? "U123",
+    text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
+  });
 }
 
 /** Create a manually-resolved promise for coordinating async worker tests. */
@@ -417,9 +422,6 @@ export type ConversationWorkSlackHarness = {
   state: StateAdapter;
   wakes: ConversationWorkQueueTestAdapter;
   replies: () => string[];
-  authLinksFor: (userId: string) => ReturnType<typeof getCapturedSlackApiCalls>;
-  setModelStream: (next: StreamFn) => void;
-  setSubscribedShouldReply: (shouldReply: boolean) => void;
   next: (
     requestStartedAtMs?: number,
   ) => Promise<Awaited<ReturnType<typeof processConversationQueueMessage>>>;
@@ -431,9 +433,6 @@ export type ConversationWorkSlackHarness = {
     ts?: string;
     user?: string;
   }) => Promise<Response>;
-  mention: (user: string, text: string) => Promise<string>;
-  /** Non-mention thread message (subscribed path). */
-  passive: (user: string, text: string) => Promise<string>;
 };
 
 /**
@@ -445,16 +444,13 @@ export async function createConversationWorkSlackHarness(
   options: {
     agentRunner?: AgentRunner;
     modelStream?: StreamFn;
-    /** Default subscribed-message classifier outcome. */
-    subscribedShouldReply?: boolean;
   } = {},
 ): Promise<ConversationWorkSlackHarness> {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
-  let modelStream = options.modelStream ?? streamReplies("Deploy checked.");
-  let subscribedShouldReply = options.subscribedShouldReply ?? false;
+  const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
   const agentRunner: AgentRunner = options.agentRunner ?? {
     run: async (request) => await executeAgentRun(request, modelStream),
   };
@@ -464,17 +460,10 @@ export async function createConversationWorkSlackHarness(
     getSlackAdapter: () => adapter,
     queue: wakes,
     services: {
-      replyExecutor: { agentRunner },
+      agentRunner,
       subscribedReplyPolicy: {
-        completeObject: async ({ schema }) => ({
-          object: schema.parse({
-            should_reply: subscribedShouldReply,
-            should_unsubscribe: false,
-            confidence: 1,
-            reason: subscribedShouldReply
-              ? "test_follow_up"
-              : "side_conversation",
-          }),
+        completeDecision: async () => ({
+          answers: { route: { choice: "stay_quiet" } },
         }),
       },
       visionContext: {
@@ -484,12 +473,6 @@ export async function createConversationWorkSlackHarness(
     state,
   });
 
-  let messageSeq = 0;
-  const nextTs = () => {
-    messageSeq += 1;
-    return `1712345.${String(messageSeq).padStart(4, "0")}`;
-  };
-
   const services = {
     getSlackAdapter: () => adapter,
     queue: wakes,
@@ -497,47 +480,15 @@ export async function createConversationWorkSlackHarness(
     state,
   };
 
-  const post = async (input: {
-    eventType: "app_mention" | "message";
-    user: string;
-    text: string;
-  }) => {
-    const ts = nextTs();
-    const mention = input.eventType === "app_mention";
-    await handleSlackWebhookAndFlush({
-      request: slackWebhookRequest(
-        slackEnvelope({
-          eventType: input.eventType,
-          text: mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text,
-          threadTs: THREAD_TS,
-          ts,
-          user: input.user,
-        }),
-      ),
-      services,
-    });
-    return ts;
-  };
-
   return {
     agentRunner,
     state,
     wakes,
-    setModelStream(next: StreamFn) {
-      modelStream = next;
-    },
-    setSubscribedShouldReply(shouldReply: boolean) {
-      subscribedShouldReply = shouldReply;
-    },
     replies: () =>
       slackApiOutbox
         .messages()
         .map((call) => call.params.text)
         .filter((text): text is string => typeof text === "string"),
-    authLinksFor: (userId: string) =>
-      getCapturedSlackApiCalls("chat.postEphemeral").filter(
-        (call) => String(call.params.user ?? "") === userId,
-      ),
     next: async (requestStartedAtMs?: number) => {
       const process = async () =>
         await processConversationQueueMessage(wakes.takeMessage(), {
@@ -571,23 +522,5 @@ export async function createConversationWorkSlackHarness(
         ),
         services,
       }),
-    mention: async (user: string, text: string) =>
-      await post({ eventType: "app_mention", user, text }),
-    passive: async (user: string, text: string) =>
-      await post({ eventType: "message", user, text }),
   };
-}
-
-/** Load the fixture conversation's persisted thread state with messages. */
-export async function loadConversationState(
-  conversationId = CONVERSATION_ID,
-): Promise<ThreadConversationState> {
-  const conversation = coerceThreadConversationState(
-    await getPersistedThreadState(conversationId),
-  );
-  await hydrateConversationMessages({
-    conversation,
-    conversationId,
-  });
-  return conversation;
 }

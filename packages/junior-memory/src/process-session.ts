@@ -22,9 +22,9 @@ import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 import { capturedMemory, memoriesCapturedEvent } from "./events";
 
 const MEMORY_TOOL_NAMES = new Set([
+  "archiveMemory",
   "createMemory",
   "listMemories",
-  "removeMemory",
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -223,7 +223,9 @@ export async function processMemorySession(
   context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
-  if (run.source.platform === "local") {
+  // TODO(dcramer): Replace this hardcoded Source check when a plugin Run can
+  // state whether passive memory extraction should run.
+  if (run.source.kind !== "slack" && run.source.kind !== "web") {
     return;
   }
   // Memory tool turns already own memory management or recall; do not reinterpret

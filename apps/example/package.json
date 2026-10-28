@@ -20,6 +20,7 @@
     "@sentry/junior-dashboard": "workspace:*",
     "@sentry/junior-datadog": "workspace:*",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-google": "workspace:*",
     "@sentry/junior-hex": "workspace:*",
     "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-memory": "workspace:*",
@@ -34,6 +35,6 @@
     "cross-env": "^10.1.0",
     "jiti": "^2.7.0",
     "nitro": "3.0.260522-beta",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }

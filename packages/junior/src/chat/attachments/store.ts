@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { AttachmentStorage } from "./storage";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const ATTACHMENT_GC_BATCH_LIMIT = 200;
+
+/** Time that Junior keeps attachment bytes after the file is stored. */
+export const ATTACHMENT_RETENTION_MS = 30 * DAY_MS;
 
 export interface StoredAttachment {
   id: string;
@@ -18,8 +22,8 @@ export interface AttachmentRecord {
   conversationId: string;
   filename: string;
   id: string;
-  provider: string;
   storageKey: string;
+  storageProvider: string;
 }
 
 export interface AttachmentGarbageCollectionResult {
@@ -35,20 +39,21 @@ function attachmentId(args: {
   conversationId: string;
   contentType: string;
   filename: string;
-  provider: string;
+  source?: { id: string; provider: string };
+  storageProvider: string;
   sha256: string;
 }): string {
-  return createHash("sha256")
-    .update(
-      [
-        args.conversationId,
-        args.provider,
-        args.sha256,
-        args.filename,
-        args.contentType,
-      ].join("\0"),
-    )
-    .digest("hex");
+  const identity = [
+    args.conversationId,
+    args.storageProvider,
+    args.sha256,
+    args.filename,
+    args.contentType,
+  ];
+  if (args.source) {
+    identity.push(args.source.provider, args.source.id);
+  }
+  return createHash("sha256").update(identity.join("\0")).digest("hex");
 }
 
 /**
@@ -161,6 +166,7 @@ export async function storeAttachment(args: {
   db: JuniorSqlDatabase;
   file: SandboxFileUpload;
   nowMs?: number;
+  source?: { id: string; provider: string };
   storage: AttachmentStorage;
 }): Promise<StoredAttachment> {
   const now = new Date(args.nowMs ?? Date.now());
@@ -169,7 +175,8 @@ export async function storeAttachment(args: {
     conversationId: args.conversationId,
     contentType: args.file.mimeType,
     filename: args.file.filename,
-    provider: args.storage.provider,
+    source: args.source,
+    storageProvider: args.storage.provider,
     sha256,
   });
   const [existing] = await args.db
@@ -181,6 +188,8 @@ export async function storeAttachment(args: {
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
+      providerId: juniorAttachments.providerId,
+      storageProvider: juniorAttachments.storageProvider,
       sha256: juniorAttachments.sha256,
       storageKey: juniorAttachments.storageKey,
     })
@@ -191,7 +200,9 @@ export async function storeAttachment(args: {
       existing.contentType !== args.file.mimeType ||
       existing.conversationId !== args.conversationId ||
       existing.filename !== args.file.filename ||
-      existing.provider !== args.storage.provider ||
+      existing.provider !== (args.source?.provider ?? null) ||
+      existing.providerId !== (args.source?.id ?? null) ||
+      existing.storageProvider !== args.storage.provider ||
       existing.sha256 !== sha256
     ) {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
@@ -280,8 +291,10 @@ export async function storeAttachment(args: {
       .values({
         id,
         conversationId: args.conversationId,
-        provider: args.storage.provider,
+        storageProvider: args.storage.provider,
         storageKey,
+        provider: args.source?.provider,
+        providerId: args.source?.id,
         filename: args.file.filename,
         contentType: args.file.mimeType,
         bytes: args.file.bytes,
@@ -407,7 +420,7 @@ export async function readLiveAttachment(args: {
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
-      provider: juniorAttachments.provider,
+      storageProvider: juniorAttachments.storageProvider,
       storageKey: juniorAttachments.storageKey,
     })
     .from(juniorAttachments)
@@ -428,8 +441,8 @@ export async function readLiveAttachment(args: {
     conversationId: row.conversationId,
     filename: row.filename,
     id: row.id,
-    provider: row.provider,
     storageKey: row.storageKey,
+    storageProvider: row.storageProvider,
   };
 }
 
@@ -478,10 +491,10 @@ export async function requestAttachmentDeletion(
 /**
  * Delete purged attachments in one bounded batch.
  *
- * Eligible rows are explicitly purge-marked, or owned by a conversation whose
- * transcript is already purged. That second path covers a concurrent store that
- * inserted after purge marked existing rows. Delete object keys first, then
- * remove rows that are still eligible so a failed blob delete remains retryable.
+ * Eligible rows are 30 days old, explicitly purge-marked, or owned by a
+ * conversation whose transcript is already purged. Delete object keys first,
+ * then remove rows that are still eligible so a failed blob delete remains
+ * retryable.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -489,7 +502,7 @@ export async function collectAttachmentGarbage(args: {
   storage: AttachmentStorage;
   limit?: number;
 }): Promise<AttachmentGarbageCollectionResult> {
-  void args.nowMs;
+  const expiresBefore = new Date(args.nowMs - ATTACHMENT_RETENTION_MS);
   const rows = await args.db
     .db()
     .select({
@@ -499,15 +512,13 @@ export async function collectAttachmentGarbage(args: {
     .from(juniorAttachments)
     .innerJoin(
       juniorConversations,
-      eq(
-        juniorAttachments.conversationId,
-        juniorConversations.conversationId,
-      ),
+      eq(juniorAttachments.conversationId, juniorConversations.conversationId),
     )
     .where(
       and(
-        eq(juniorAttachments.provider, args.storage.provider),
+        eq(juniorAttachments.storageProvider, args.storage.provider),
         or(
+          lte(juniorAttachments.createdAt, expiresBefore),
           isNotNull(juniorAttachments.deleteRequestedAt),
           isNotNull(juniorConversations.transcriptPurgedAt),
         ),
@@ -524,10 +535,7 @@ export async function collectAttachmentGarbage(args: {
     .from(juniorAttachments)
     .innerJoin(
       juniorConversations,
-      eq(
-        juniorAttachments.conversationId,
-        juniorConversations.conversationId,
-      ),
+      eq(juniorAttachments.conversationId, juniorConversations.conversationId),
     )
     .where(
       and(
@@ -536,6 +544,7 @@ export async function collectAttachmentGarbage(args: {
           rows.map((row) => row.id),
         ),
         or(
+          lte(juniorAttachments.createdAt, expiresBefore),
           isNotNull(juniorAttachments.deleteRequestedAt),
           isNotNull(juniorConversations.transcriptPurgedAt),
         ),

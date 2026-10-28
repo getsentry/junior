@@ -6,23 +6,43 @@ import {
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
 import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
+import { parseSkillFile } from "@/chat/skills";
 import { isMissingPathError } from "@/chat/tools/sandbox/file-utils";
 
 const AGENTS_FILENAME = "AGENTS.md";
 const MAX_REPOSITORY_INSTRUCTIONS_BYTES = 32 * 1024;
+/** Repository skill directories, in priority order, relative to the Git root. */
+const REPOSITORY_SKILL_ROOTS = [".agents/skills", ".claude/skills"];
+const REPOSITORY_SKILLS_HEADER = [
+  "## Repository skills",
+  "",
+  "These skills come from the repository, not from `<available-skills>`. `loadSkill` cannot load them.",
+  "Before work that matches a skill description, read its `SKILL.md` with `readFile` and follow it.",
+  "Resolve relative paths in a skill against the skill directory.",
+].join("\n");
 
 export const AGENTS_REPLACEMENT_NOTICE =
   "These AGENTS.md instructions replace all previously provided AGENTS.md instructions.";
 export const AGENTS_REMOVAL_NOTICE =
   "The previously provided AGENTS.md instructions no longer apply.";
 
-/** Effective AGENTS.md instructions plus host-only discovery provenance. */
+/** Effective AGENTS.md instructions and repository skills, plus host-only discovery provenance. */
 export interface RepositoryInstructions {
   /** Selected directory when instructions come from one repository tree. */
   directory?: string;
   fingerprint: string;
+  /** Model-invocable skills found in repository skill directories. */
+  skills?: RepositorySkill[];
   sources: Array<{ content: string; path: string }>;
   text: string;
+}
+
+/** One repository-owned skill that the model can read from the sandbox. */
+export interface RepositorySkill {
+  description: string;
+  name: string;
+  /** Absolute sandbox path of the skill's SKILL.md file. */
+  path: string;
 }
 
 /** Latest model-visible AGENTS.md state parsed from trusted runtime context. */
@@ -130,33 +150,104 @@ async function readInstructionFile(
   }
 }
 
-/** Resolve the effective root-to-cwd AGENTS.md bundle for one selected directory. */
-export async function resolveRepositoryInstructions(args: {
+async function readOptionalDirectory(
+  fs: SandboxFileSystem,
+  directory: string,
+): Promise<string[]> {
+  try {
+    return await fs.readdir(directory);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/** Read model-invocable skills from the repository skill directories. */
+async function readRepositorySkills(
+  fs: SandboxFileSystem,
+  gitRoot: string,
+): Promise<RepositorySkill[]> {
+  const roots = REPOSITORY_SKILL_ROOTS.map((root) =>
+    path.posix.join(gitRoot, root),
+  );
+  const listings = await Promise.all(
+    roots.map(async (root) => await readOptionalDirectory(fs, root)),
+  );
+  // The first root wins for each directory name. Repositories often link
+  // `.claude/skills` to `.agents/skills`, so this also skips duplicate reads.
+  const candidates = new Map<string, string>();
+  listings.forEach((entries, index) => {
+    for (const entry of [...entries].sort()) {
+      if (!candidates.has(entry)) {
+        candidates.set(entry, path.posix.join(roots[index]!, entry));
+      }
+    }
+  });
+
+  const skills = await Promise.all(
+    [...candidates].map(async ([name, skillDirectory]) => {
+      // Skill roots can also hold plain files, such as a README.
+      if (!(await directoryExists(fs, skillDirectory))) {
+        return undefined;
+      }
+      const filePath = path.posix.join(skillDirectory, "SKILL.md");
+      const raw = await readInstructionFile(fs, filePath);
+      const parsed = raw ? parseSkillFile(raw, name) : undefined;
+      if (!parsed?.ok || parsed.skill.disableModelInvocation) {
+        return undefined;
+      }
+      return {
+        description: parsed.skill.description.replace(/\s+/g, " ").trim(),
+        name,
+        path: filePath,
+      };
+    }),
+  );
+  return skills
+    .filter((skill): skill is RepositorySkill => Boolean(skill))
+    .sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
+}
+
+type RepositorySources = RepositoryInstructions["sources"];
+
+function sourceBytes(sources: RepositorySources): number {
+  return sources.reduce(
+    (total, source) => total + Buffer.byteLength(source.content, "utf8"),
+    0,
+  );
+}
+
+function skillListBytes(skills: RepositorySkill[]): number {
+  return skills.reduce(
+    (total, skill) => total + repositorySkillBytes(skill),
+    0,
+  );
+}
+
+/** Read root-to-cwd AGENTS.md files within the byte budget. */
+async function readAgentsSources(args: {
   cwd: string;
   fs: SandboxFileSystem;
-  maxBytes?: number;
-}): Promise<RepositoryInstructions | undefined> {
-  const gitRoot = await findGitRoot(args.fs, args.cwd);
-  if (!gitRoot) {
-    return undefined;
-  }
-
+  gitRoot: string;
+  maxBytes: number;
+}): Promise<RepositorySources> {
   const directories: string[] = [];
   let current = args.cwd;
   for (;;) {
     directories.push(current);
-    if (current === gitRoot) {
+    if (current === args.gitRoot) {
       break;
     }
     current = path.posix.dirname(current);
   }
   directories.reverse();
 
-  const sources: RepositoryInstructions["sources"] = [];
-  let remaining = Math.max(
-    0,
-    args.maxBytes ?? MAX_REPOSITORY_INSTRUCTIONS_BYTES,
-  );
+  const sources: RepositorySources = [];
+  let remaining = Math.max(0, args.maxBytes);
   for (const directory of directories) {
     if (remaining <= 0) {
       break;
@@ -174,15 +265,81 @@ export async function resolveRepositoryInstructions(args: {
     sources.push({ content: bounded, path: filePath });
     remaining -= Buffer.byteLength(bounded, "utf8");
   }
-  if (sources.length === 0) {
+  return sources;
+}
+
+/** Read repository skills that fit the byte budget, keeping each entry whole. */
+async function readRepositorySkillsWithinBudget(args: {
+  fs: SandboxFileSystem;
+  gitRoot: string;
+  maxBytes: number;
+}): Promise<RepositorySkill[]> {
+  const skills: RepositorySkill[] = [];
+  let remaining = args.maxBytes;
+  if (remaining <= 0) {
+    return skills;
+  }
+  for (const skill of await readRepositorySkills(args.fs, args.gitRoot)) {
+    const bytes = repositorySkillBytes(skill);
+    if (bytes > remaining) {
+      break;
+    }
+    skills.push(skill);
+    remaining -= bytes;
+  }
+  return skills;
+}
+
+function buildRepositoryInstructions(
+  directory: string,
+  sources: RepositorySources,
+  skills: RepositorySkill[],
+): RepositoryInstructions | undefined {
+  if (sources.length === 0 && skills.length === 0) {
     return undefined;
   }
-
-  const text = formatInstructionSources(sources);
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify({ directory: args.cwd, sources }))
+    .update(
+      JSON.stringify({
+        directory,
+        sources,
+        ...(skills.length > 0 ? { skills } : undefined),
+      }),
+    )
     .digest("hex");
-  return { directory: args.cwd, fingerprint, sources, text };
+  return {
+    directory,
+    fingerprint,
+    ...(skills.length > 0 ? { skills } : undefined),
+    sources,
+    text: formatRepositoryInstructions(sources, skills),
+  };
+}
+
+/** Resolve the root-to-cwd AGENTS.md bundle and repository skills for one selected directory. */
+export async function resolveRepositoryInstructions(args: {
+  cwd: string;
+  fs: SandboxFileSystem;
+  maxBytes?: number;
+}): Promise<RepositoryInstructions | undefined> {
+  const gitRoot = await findGitRoot(args.fs, args.cwd);
+  if (!gitRoot) {
+    return undefined;
+  }
+  const maxBytes = args.maxBytes ?? MAX_REPOSITORY_INSTRUCTIONS_BYTES;
+  const sources = await readAgentsSources({
+    cwd: args.cwd,
+    fs: args.fs,
+    gitRoot,
+    maxBytes,
+  });
+  // AGENTS.md has priority. Skills use only the budget that remains.
+  const skills = await readRepositorySkillsWithinBudget({
+    fs: args.fs,
+    gitRoot,
+    maxBytes: maxBytes - sourceBytes(sources),
+  });
+  return buildRepositoryInstructions(args.cwd, sources, skills);
 }
 
 function formatInstructionSources(
@@ -193,10 +350,36 @@ function formatInstructionSources(
   }
   return sources
     .map(
-      (source) =>
-        `## ${path.posix.dirname(source.path)}\n\n${source.content}`,
+      (source) => `## ${path.posix.dirname(source.path)}\n\n${source.content}`,
     )
     .join("\n\n");
+}
+
+function formatRepositorySkill(skill: RepositorySkill): string {
+  return `- \`${skill.name}\` (\`${skill.path}\`): ${skill.description}`;
+}
+
+function repositorySkillBytes(skill: RepositorySkill): number {
+  // One extra byte for the line break between entries.
+  return Buffer.byteLength(formatRepositorySkill(skill), "utf8") + 1;
+}
+
+function formatRepositoryInstructions(
+  sources: Array<{ content: string; path: string }>,
+  skills: RepositorySkill[],
+): string {
+  const sections: string[] = [];
+  if (sources.length > 0) {
+    sections.push(formatInstructionSources(sources));
+  }
+  if (skills.length > 0) {
+    sections.push(
+      [REPOSITORY_SKILLS_HEADER, "", ...skills.map(formatRepositorySkill)].join(
+        "\n",
+      ),
+    );
+  }
+  return sections.join("\n\n");
 }
 
 /** Combine AGENTS.md bundles from one or more repository directories. */
@@ -211,16 +394,23 @@ export function mergeRepositoryInstructions(
   }
 
   const sources = bundles.flatMap((bundle) => bundle.sources);
-  const text = formatInstructionSources(sources);
+  const skills = bundles.flatMap((bundle) => bundle.skills ?? []);
+  const text = formatRepositoryInstructions(sources, skills);
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify({
         directories: bundles.map((bundle) => bundle.directory ?? null),
         sources,
+        ...(skills.length > 0 ? { skills } : undefined),
       }),
     )
     .digest("hex");
-  return { fingerprint, sources, text };
+  return {
+    fingerprint,
+    ...(skills.length > 0 ? { skills } : undefined),
+    sources,
+    text,
+  };
 }
 
 /** Resolve AGENTS.md instructions for each selected repository directory. */
@@ -239,27 +429,46 @@ export async function resolveRepositoryInstructionsForDirectories(args: {
   ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
   // One shared budget across every selected repository. Without this, N repos
-  // could each contribute the full single-repo limit.
+  // could each contribute the full single-repo limit. Every AGENTS.md comes
+  // before any repository skill list. Directory labels and the skills header
+  // are tiny and not charged.
   let remaining = MAX_REPOSITORY_INSTRUCTIONS_BYTES;
-  const bundles: RepositoryInstructions[] = [];
+  const repositories: Array<{
+    directory: string;
+    gitRoot: string;
+    sources: RepositorySources;
+  }> = [];
   for (const directory of uniqueDirectories) {
-    if (remaining <= 0) {
-      break;
-    }
-    const instructions = await resolveRepositoryInstructions({
-      cwd: directory,
-      fs: args.fs,
-      maxBytes: remaining,
-    });
-    if (!instructions) {
+    const gitRoot = await findGitRoot(args.fs, directory);
+    if (!gitRoot) {
       continue;
     }
-    bundles.push(instructions);
-    // Charge source content only. Directory labels are tiny and applied later.
-    remaining -= instructions.sources.reduce(
-      (total, source) => total + Buffer.byteLength(source.content, "utf8"),
-      0,
+    const sources = await readAgentsSources({
+      cwd: directory,
+      fs: args.fs,
+      gitRoot,
+      maxBytes: remaining,
+    });
+    remaining -= sourceBytes(sources);
+    repositories.push({ directory, gitRoot, sources });
+  }
+
+  const bundles: RepositoryInstructions[] = [];
+  for (const repository of repositories) {
+    const skills = await readRepositorySkillsWithinBudget({
+      fs: args.fs,
+      gitRoot: repository.gitRoot,
+      maxBytes: remaining,
+    });
+    remaining -= skillListBytes(skills);
+    const bundle = buildRepositoryInstructions(
+      repository.directory,
+      repository.sources,
+      skills,
     );
+    if (bundle) {
+      bundles.push(bundle);
+    }
   }
   return mergeRepositoryInstructions(bundles);
 }

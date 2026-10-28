@@ -4,6 +4,8 @@ import { juniorCodeChanges, juniorCodeRepositories } from "./schema/code";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
+import { juniorConversationMetrics } from "./schema/conversation-metrics";
+import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
 import { juniorConversations } from "./schema/conversations";
@@ -13,14 +15,11 @@ import {
 } from "./schema/agent-invocations";
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
-import { juniorEventTasks } from "./schema/event-tasks";
 import { juniorIdentities } from "./schema/identities";
 import { juniorStats } from "./schema/stats";
-import { juniorTaskExecutions } from "./schema/task-executions";
-import {
-  juniorSchedulerRuns,
-  juniorSchedulerTasks,
-} from "./schema/scheduled-tasks";
+import { juniorAutomationRuns } from "./schema/automation-runs";
+import { juniorAutomationVersions } from "./schema/automation-versions";
+import { juniorAutomations } from "./schema/automations";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
@@ -35,18 +34,19 @@ export {
   juniorAgentBindings,
   juniorAgentInvocations,
   juniorConversationEvents,
+  juniorConversationMetrics,
+  juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
-  juniorEventTasks,
   juniorIdentities,
   juniorSnapshots,
   juniorStats,
-  juniorTaskExecutions,
-  juniorSchedulerRuns,
-  juniorSchedulerTasks,
+  juniorAutomationRuns,
+  juniorAutomationVersions,
+  juniorAutomations,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,
@@ -62,18 +62,19 @@ export const juniorSqlSchema = {
   juniorAgentBindings,
   juniorAgentInvocations,
   juniorConversationEvents,
+  juniorConversationMetrics,
+  juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
-  juniorEventTasks,
   juniorIdentities,
   juniorSnapshots,
   juniorStats,
-  juniorTaskExecutions,
-  juniorSchedulerRuns,
-  juniorSchedulerTasks,
+  juniorAutomationRuns,
+  juniorAutomationVersions,
+  juniorAutomations,
   juniorUsers,
   juniorWorkspaceRepos,
   juniorWorkspaces,

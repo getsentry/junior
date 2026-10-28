@@ -1,18 +1,14 @@
-/**
- * Public agent-run launch contract.
- *
- * Providers build one flat `AgentRun` and call `AgentRunner.run`. Delivery and
- * durability are capabilities that affect the run. `onEvent` is best-effort UI
- * only. Stable composition binds stream, spawn, and tracing outside this type.
- */
+import type { MessageAttachment } from "@/chat/attachments/input";
+/** Input for one Run through Junior's agent. */
 import type {
   Destination,
   ReplyAttribution,
   Source,
   SystemActor,
+  TaskOutcome,
 } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
@@ -27,6 +23,7 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
+import type { ModelProfile } from "@/chat/model-profile";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -38,6 +35,7 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
+  attachmentId?: string;
   data?: Buffer;
   mediaType: string;
   filename?: string;
@@ -50,7 +48,8 @@ export type AgentInstructionActor = {
   authorName?: string;
   /**
    * Slack message ts for the instruction when known.
-   * TODO: generalize to a provider-neutral message id once prompt attrs are neutral.
+   * TODO(dcramer): Use a provider-neutral message id after prompt attributes no
+   * longer require the Slack timestamp.
    */
   slackTs?: string;
 };
@@ -69,13 +68,15 @@ export type AgentSteeringMessage = {
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   name?: string;
+  profile: ModelProfile;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
+  title?: string;
 };
 
 /** Handle returned after a child-agent task is durably scheduled. */
 export type SpawnAgentResult = {
-  invocationId: string;
+  childConversationId: string;
 };
 
 /** Runtime-bound child-agent capability exposed to model-facing tool wiring. */
@@ -84,10 +85,35 @@ export type SpawnAgent = (
   options: { signal?: AbortSignal; toolCallId: string },
 ) => Promise<SpawnAgentResult>;
 
+/** Model-safe input for one message to the parent or a child agent. */
+export type MessageAgentInput = {
+  /** `parent`, or the name or Conversation id of a child agent. */
+  to: string;
+  text: string;
+};
+
+/** How one message reached its target agent. */
+export type MessageAgentResult = {
+  conversationId: string;
+  /**
+   * `started`: the target child agent starts work on the message now.
+   * `queued`: the target reads it after its current work.
+   */
+  delivery: "queued" | "started";
+};
+
+/** Runtime-bound capability to message the parent or a child agent. */
+export type MessageAgent = (
+  input: MessageAgentInput,
+  options: { signal?: AbortSignal; toolCallId: string },
+) => Promise<MessageAgentResult>;
+
 /** Current user instruction for one agent-run slice. */
 export type AgentInstruction = {
   text: string;
   attachments?: readonly AgentAttachment[];
+  /** Durable web image references, resolved by the host before execution. */
+  storedAttachments?: readonly MessageAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
   /** Host-owned turn context shown to the model near the instruction. */
@@ -107,6 +133,13 @@ export type AgentDispatch = {
   metadata?: Record<string, string>;
   plugin?: string;
   replyAttribution?: ReplyAttribution;
+  /** Visible effects after successful work. */
+  outcomes?: TaskOutcome[];
+  /**
+   * The run ends with one declared Automation result. It gets no Delivery,
+   * and only a declared message posts. The dispatch layer sets this once.
+   */
+  declaresResult?: boolean;
 };
 
 /** Optional agent capabilities that a run slice can turn off. */
@@ -131,10 +164,12 @@ export type AgentRunState = {
  *
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
+ *
+ * TODO(dcramer): Remove Conversation Message persistence from Delivery
+ * implementations after the core Turn lifecycle stores each completed
+ * assistant Message.
  */
-export type AgentDelivery = (
-  message: AssistantMessage,
-) => void | Promise<void>;
+export type Delivery = (message: AssistantMessage) => void | Promise<void>;
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
@@ -148,6 +183,8 @@ export class RetryableDeliveryError extends Error {
 export type AgentDurability = {
   /** Schedule delegated work with authority bound by the active parent run. */
   spawnAgent?: SpawnAgent;
+  /** Message the parent or a child agent with the authority of this run. */
+  messageAgent?: MessageAgent;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
@@ -190,7 +227,7 @@ export type AgentEnvironment = {
 };
 
 /**
- * One provider-launched agent-run slice.
+ * One bounded attempt to advance a Turn.
  *
  * Build identity, instruction, history, delivery, and durability here. Bind
  * stable model/stream composition when creating the runner, not on each run.
@@ -198,6 +235,11 @@ export type AgentEnvironment = {
 export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
+  /**
+   * Parent of a child agent Conversation. The final reply of this run goes to
+   * that parent, not to a person. Unset for a root Conversation.
+   */
+  parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
   turnId: string;
   /** Optional bounded-run identifier used only for observability. */
@@ -216,16 +258,16 @@ export type AgentRun = {
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
   source: Source;
+  /** Conversation Location available to this Run. */
+  location?: Location;
+  // TODO(dcramer): Remove AgentRun.destination after tool side effects use
+  // feature-owned targets and place context comes from Location.
   destination: Destination;
-  /** When true, also publish assistant output to the conversation destination. */
-  publishExternally?: boolean;
-  /** Confirmed visibility of the destination where this run is delivered. */
-  destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: AgentDispatch;
 
   /**
-   * TODO: Move ephemeral Slack credentials and conversation labels into
+   * TODO(dcramer): Move ephemeral Slack credentials and conversation labels into
    * provider-owned tool/prompt context so the shared run edge stays neutral.
    */
   slackConversation?: SlackConversationContext;
@@ -239,15 +281,17 @@ export type AgentRun = {
    * Optional agent capabilities disabled for this run slice.
    * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
    * hard-fail instead. Default is enabled when omitted.
-   * TODO(#881, #883): child invocations currently disable interactive-auth, but
-   * may later need a path to force the auth flow when a delegated tool requires
-   * credentials the parent can already request.
+   * TODO(dcramer): Issues #881 and #883 track a path for child invocations to
+   * force interactive auth when a delegated tool requires credentials the
+   * parent can already request. Children currently disable it.
    */
   disabledFeatures?: readonly AgentFeature[];
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   deadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
+  /** Fixed model profile for this run. */
+  modelProfile?: ModelProfile;
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoning?: TurnReasoningLevel;
   environment?: AgentEnvironment;
@@ -255,7 +299,7 @@ export type AgentRun = {
   state?: AgentRunState;
   /** Best-effort progress only. */
   onEvent?: (event: AgentEvent) => void | Promise<void>;
-  delivery?: AgentDelivery;
+  delivery?: Delivery;
   durability?: AgentDurability;
 };
 
@@ -289,21 +333,20 @@ export function assertRunConsistency(
     AgentRun,
     | "conversationId"
     | "source"
+    | "location"
     | "destination"
     | "surface"
-    | "publishExternally"
     | "actor"
     | "dispatch"
   >,
 ): void {
   const { destination, source } = run;
-  // Source records what produced the work. Destination is the conversation's
-  // reply container and may already be Slack when a dashboard turn continues a
-  // Slack-rooted conversation without publishing externally.
-  switch (source.platform) {
+  switch (source.kind) {
     case "slack": {
       if (destination.platform !== "slack") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.teamId !== destination.teamId) {
         throw new TypeError("Slack source and destination teams do not match");
@@ -312,7 +355,9 @@ export function assertRunConsistency(
     }
     case "local": {
       if (destination.platform !== "local") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.conversationId !== destination.conversationId) {
         throw new TypeError(
@@ -353,51 +398,35 @@ export function assertRunConsistency(
           }
           break;
         }
-        case "slack": {
-          // Dashboard continues keep the Slack destination for location/context
-          // but must stay conversation-log only.
-          if (run.publishExternally) {
-            throw new TypeError(
-              "Web turns on Slack destinations must not publish externally",
-            );
-          }
+        case "slack":
           break;
-        }
       }
       break;
     }
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      // These Sources do not identify the Actor's platform.
+      return;
   }
 
   const actor = run.dispatch?.actor ?? run.actor;
   if (!actor || actor.platform === "system") {
     return;
   }
-  const actorMatchesDestination = (() => {
-    switch (actor.platform) {
-      case "slack":
-        return destination.platform === "slack";
-      case "local":
-        return destination.platform === "local";
-      case "web":
-        // Web actors may write on local roots or continue Slack-rooted
-        // conversations without publishing externally.
-        return (
-          destination.platform === "local" ||
-          (destination.platform === "slack" && run.publishExternally !== true)
-        );
-    }
-  })();
-  if (!actorMatchesDestination) {
+  if (actor.platform !== source.kind) {
     throw new TypeError(
-      `Actor platform "${actor.platform}" does not match destination platform "${destination.platform}"`,
+      `Actor platform "${actor.platform}" does not match Source kind "${source.kind}"`,
     );
   }
   if (
     actor.platform === "slack" &&
-    destination.platform === "slack" &&
-    actor.teamId !== destination.teamId
+    source.kind === "slack" &&
+    actor.teamId !== source.teamId
   ) {
-    throw new TypeError("Slack actor team does not match destination team");
+    throw new TypeError("Slack Actor team does not match Source team");
   }
 }
 
@@ -422,10 +451,12 @@ export function surfaceFromRun(
   if (run.surface) {
     return run.surface;
   }
-  if (run.source.platform === "slack") {
+  // TODO(dcramer): Remove Source-based inference after every work owner and
+  // deployed Turn checkpoint provides surface.
+  if (run.source.kind === "slack") {
     return "slack";
   }
-  if (run.source.platform === "web") {
+  if (run.source.kind === "web") {
     // Web/dashboard turns share the non-Slack api surface with agent-dispatch.
     return "api";
   }

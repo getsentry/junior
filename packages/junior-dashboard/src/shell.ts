@@ -2,18 +2,22 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   dashboardAvatarHeaderAsset,
+  dashboardFaviconAsset,
   dashboardClientAsset,
+  dashboardClientChunks,
   dashboardInstallIconAsset,
   dashboardTailwindAsset,
 } from "./assets";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
+import { DASHBOARD_THEME_COLORS, DASHBOARD_THEME_SCRIPT } from "./theme";
 
 const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
 export const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 export const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 export const DASHBOARD_INSTALL_ICON_PATH = "/_junior/dashboard/icon-512.png";
-export const DASHBOARD_MANIFEST_PATH = "/_junior/dashboard/manifest.webmanifest";
-const DASHBOARD_THEME_COLOR = "#000000";
+export const DASHBOARD_MANIFEST_PATH =
+  "/_junior/dashboard/manifest.webmanifest";
+const DASHBOARD_THEME_COLOR = DASHBOARD_THEME_COLORS.dark;
 const DASHBOARD_BACKGROUND_COLOR = "#000000";
 
 function escapeHtml(value: string): string {
@@ -60,6 +64,20 @@ export function readDashboardClient(): string {
   return client;
 }
 
+/** Read a content-hashed browser chunk without allowing arbitrary file paths. */
+export function readDashboardClientChunk(file: string): string | undefined {
+  if (!/^[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+\.js$/.test(file)) return undefined;
+  return (
+    (Object.hasOwn(dashboardClientChunks, file)
+      ? dashboardClientChunks[file]
+      : undefined) ||
+    readAssetUrl(new URL(`./chunks/${file}`, import.meta.url)) ||
+    readAssetUrl(new URL(`../dist/chunks/${file}`, import.meta.url)) ||
+    readWorkspaceAsset(`chunks/${file}`) ||
+    undefined
+  );
+}
+
 function readDashboardTailwind(): string {
   return (
     dashboardTailwindAsset ||
@@ -104,6 +122,10 @@ export function dashboardPagePaths(
   const paths: Array<{ nested?: boolean; path: string }> = [
     { path: basePath },
     {
+      path: basePath === "/" ? "/admin" : `${basePath}/admin`,
+    },
+    {
+      nested: true,
       path: basePath === "/" ? "/code" : `${basePath}/code`,
     },
     {
@@ -121,6 +143,10 @@ export function dashboardPagePaths(
     {
       nested: true,
       path: basePath === "/" ? "/system" : `${basePath}/system`,
+    },
+    {
+      nested: true,
+      path: basePath === "/" ? "/automations" : `${basePath}/automations`,
     },
     {
       nested: true,
@@ -199,6 +225,7 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="${DASHBOARD_THEME_COLOR}" />
+  <script>${DASHBOARD_THEME_SCRIPT}</script>
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -278,12 +305,26 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   );
 }
 
-/** Serve the dashboard favicon. */
+function readDashboardFavicon(): ArrayBuffer {
+  if (dashboardFaviconAsset) {
+    return Uint8Array.from(Buffer.from(dashboardFaviconAsset, "base64")).buffer;
+  }
+
+  const assetUrl = new URL("./assets/junior-favicon.png", import.meta.url);
+  if (!existsSync(assetUrl)) {
+    throw new Error("Junior dashboard favicon was not found");
+  }
+  return Uint8Array.from(readFileSync(assetUrl)).buffer;
+}
+
+/** Serve the head-only dashboard favicon, which stays readable at 16px. */
 export function renderFavicon(): Response {
-  return new Response(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#000000"/><text x="16" y="20.5" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="900" text-anchor="middle">Jr</text></svg>`,
-    { headers: { "content-type": "image/svg+xml" } },
-  );
+  return new Response(readDashboardFavicon(), {
+    headers: {
+      "cache-control": "public, max-age=0, must-revalidate",
+      "content-type": "image/png",
+    },
+  });
 }
 
 /** Render a browser-readable access denied page for blocked dashboard users. */
@@ -295,6 +336,7 @@ export function renderForbiddenPage(agentName: string): Response {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>${escapeHtml(agentName)} access denied</title>
+  <script>${DASHBOARD_THEME_SCRIPT}</script>
   <style>
     ${readDashboardTailwind()}
   </style>

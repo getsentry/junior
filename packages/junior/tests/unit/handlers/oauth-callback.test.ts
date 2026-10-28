@@ -116,15 +116,12 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET } from "@/handlers/oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
-import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
 
 const testWaitUntil: WaitUntilFn = (task) => {
   waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
 };
-
-const testAgentRunner = neverRunAgentRunner();
 
 beforeEach(async () => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -257,7 +254,7 @@ describe("oauth callback handler", () => {
       ),
       "unknown",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(404);
@@ -271,7 +268,7 @@ describe("oauth callback handler", () => {
       makeRequest("https://example.com/api/oauth/callback/sentry"),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -287,7 +284,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -312,7 +309,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -341,7 +338,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(await getStoredState(stateKey)).toBeFalsy();
@@ -369,7 +366,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);
@@ -393,7 +390,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(500);
@@ -424,7 +421,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);
@@ -470,7 +467,7 @@ describe("oauth callback handler", () => {
       ),
       "example",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);
@@ -528,7 +525,7 @@ describe("oauth callback handler", () => {
       ),
       "github",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);
@@ -550,6 +547,9 @@ describe("oauth callback handler", () => {
     expect(stored.scope).toBeUndefined();
     expect(resolvePluginOAuthAccountMock).toHaveBeenCalledWith({
       provider: "github",
+      tokenResponse: expect.objectContaining({
+        access_token: "github-user-token",
+      }),
       tokens: expect.objectContaining({
         accessToken: "github-user-token",
         refreshToken: "github-refresh-token",
@@ -585,7 +585,7 @@ describe("oauth callback handler", () => {
       ),
       "github",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);
@@ -618,7 +618,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -644,7 +644,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(500);
@@ -669,7 +669,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(500);
@@ -692,7 +692,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -713,7 +713,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -729,7 +729,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -745,7 +745,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(400);
@@ -785,7 +785,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      { agentRunner: testAgentRunner },
+      {},
     );
 
     expect(response.status).toBe(200);

@@ -156,7 +156,9 @@ describe("createMcpOAuthClientProvider", () => {
         cancelled = true;
       },
     });
-    globalThis.fetch = (vi.fn(async () => new Response(body, { status: 502 })) as typeof fetch);
+    globalThis.fetch = vi.fn(
+      async () => new Response(body, { status: 502 }),
+    ) as typeof fetch;
     finishAuthMock.mockImplementation(
       async (_code: string, options: { fetch?: typeof fetch } | undefined) => {
         const response = await options?.fetch?.(

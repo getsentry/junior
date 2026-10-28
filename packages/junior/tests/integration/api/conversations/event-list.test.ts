@@ -18,6 +18,7 @@ import { purgeConversation } from "@/chat/conversations/retention";
 
 async function recordConversation(conversationId: string): Promise<void> {
   await getConversationStore().recordActivity({
+    destination: { platform: "local" as const, conversationId },
     conversationId,
     nowMs: 1,
     source: "internal",
@@ -41,7 +42,9 @@ function assistantMessage(createdAtMs: number, inputTokens = 0) {
   return {
     data: {
       type: "assistant_message" as const,
-      content: [{ type: "text", text: "not a reporting event" }],
+      content: [
+        { type: "text", text: "answer text stays on the visible message" },
+      ],
       api: "responses",
       provider: "openai",
       model: "gpt-5",
@@ -72,7 +75,7 @@ describe("conversation event list API", () => {
   });
 
   it("pages backward without gaps", async () => {
-    const conversationId = "internal:paged-events";
+    const conversationId = "local:test:paged-events";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       message("message-1", 1),
@@ -132,9 +135,10 @@ describe("conversation event list API", () => {
       before = page.previousCursor;
     }
     const events = pages.flat();
-    expect(events.map((event) => event.seq)).toEqual([0, 2, 3, 4, 5]);
+    expect(events.map((event) => event.seq)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(events.map((event) => event.data.type)).toEqual([
       "message",
+      "assistant_message",
       "message",
       "message",
       "subagent",
@@ -142,8 +146,153 @@ describe("conversation event list API", () => {
     ]);
   });
 
+  it("keeps recorded model settings and call usage across handoffs and page boundaries", async () => {
+    const conversationId = "local:test:event-model";
+    await recordConversation(conversationId);
+    const store = getConversationEventStore();
+    const initialModel = {
+      modelId: "openai/gpt-5",
+      modelProfile: "standard",
+      reasoningLevel: "low",
+    };
+    const targetModel = {
+      modelId: "openai/gpt-5.6-sol",
+      modelProfile: "handoff",
+      reasoningLevel: "high",
+    };
+    const call = assistantMessage(3, 120);
+    call.data.usage.output = 40;
+    call.data.usage.cacheRead = 500;
+    call.data.usage.cacheWrite = 60;
+    call.data.usage.totalTokens = 720;
+    await store.append(conversationId, [
+      {
+        createdAtMs: 1,
+        data: {
+          type: "turn_started",
+          turnId: "turn-1",
+          inputMessageIds: ["input-1"],
+          surface: "internal",
+        },
+      },
+      {
+        createdAtMs: 2,
+        data: {
+          type: "turn_routed",
+          turnId: "turn-1",
+          ...initialModel,
+          reasoningLevel: "low",
+          source: "router",
+          costUsd: 0.001,
+        },
+      },
+      {
+        ...call,
+        data: {
+          ...call.data,
+          usage: { ...call.data.usage, reasoning: 20 },
+          providerMetadata: { secret: "must-not-leak" },
+        },
+      },
+    ]);
+    await store.replaceHistory(conversationId, {
+      createdAtMs: 4,
+      data: { type: "handoff", ...targetModel, replacementHistory: [] },
+    });
+    await store.append(conversationId, [
+      {
+        ...assistantMessage(5),
+        data: {
+          ...assistantMessage(5).data,
+          provider: "vercel-ai-gateway",
+          model: targetModel.modelId,
+        },
+      },
+      // More than one scan batch: the latest page must resolve context from SQL.
+      ...Array.from({ length: 70 }, (_, index) => ({
+        createdAtMs: 6 + index,
+        data: {
+          type: "tool_execution_started" as const,
+          toolCallId: `call-${index}`,
+          toolName: "bash",
+        },
+      })),
+    ]);
+    const app = createJuniorApi();
+    const read = async (limit: number) =>
+      conversationDetailReportSchema.parse(
+        await (
+          await app.request(
+            `http://localhost/api/conversations/${conversationId}?limit=${limit}`,
+          )
+        ).json(),
+      );
+    const latest = await read(1);
+    expect(latest.events[0]?.model).toEqual(targetModel);
+    expect(latest.events[0]?.modelCall).toBeUndefined();
+    const full = await read(100);
+    expect(full.events[2]).toMatchObject({
+      model: initialModel,
+      modelCall: {
+        provider: "openai",
+        api: "responses",
+        stopReason: "stop",
+        usage: {
+          inputTokens: 120,
+          outputTokens: 40,
+          cachedInputTokens: 500,
+          cacheCreationTokens: 60,
+          reasoningTokens: 20,
+          totalTokens: 720,
+          cost: call.data.usage.cost,
+        },
+      },
+    });
+    expect(full.events[3]?.model).toEqual(targetModel);
+    expect(full.events[4]?.model).toEqual(targetModel);
+    expect(full.events.at(-1)).toEqual(latest.events[0]);
+    expect(JSON.stringify(full.events)).not.toContain("must-not-leak");
+    if (!latest.previousCursor) throw new Error("Expected a previous cursor");
+    const earlier = conversationEventPageSchema.parse(
+      await (
+        await app.request(
+          `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(latest.previousCursor)}&limit=1`,
+        )
+      ).json(),
+    );
+    expect(earlier.events[0]).toEqual(full.events.at(-2));
+
+    await store.append(conversationId, [
+      {
+        createdAtMs: 80,
+        data: { type: "turn_completed", turnId: "turn-1", outcome: "success" },
+      },
+      message("between-turns", 81),
+      {
+        createdAtMs: 82,
+        data: {
+          type: "turn_started",
+          turnId: "turn-2",
+          inputMessageIds: ["input-2"],
+          surface: "internal",
+        },
+      },
+      ...Array.from({ length: 70 }, (_, index) =>
+        message(`pending-route-${index}`, 83 + index),
+      ),
+    ]);
+    expect((await read(1)).events[0]?.model).toBeUndefined();
+    const finished = await read(100);
+    expect(finished.events.find((event) => event.seq === 75)?.model).toEqual(
+      targetModel,
+    );
+    expect(
+      finished.events.find((event) => event.seq === 76)?.model,
+    ).toBeUndefined();
+  });
+
   it("reports privacy-safe Guardian decisions", async () => {
-    const conversationId = "internal:guardian-events";
+    const conversationId = "local:test:guardian-events";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       {
@@ -181,7 +330,7 @@ describe("conversation event list API", () => {
   });
 
   it("keeps a history page self-contained when a subagent start is older", async () => {
-    const conversationId = "internal:paged-subagent";
+    const conversationId = "local:test:paged-subagent";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       {
@@ -238,7 +387,7 @@ describe("conversation event list API", () => {
   });
 
   it("keeps a terminal tool observation self-contained when its start is older", async () => {
-    const conversationId = "internal:paged-tool";
+    const conversationId = "local:test:paged-tool";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       {
@@ -298,7 +447,7 @@ describe("conversation event list API", () => {
   });
 
   it("rejects tampered, cross-conversation, and invalid pagination input", async () => {
-    const firstConversationId = "internal:first-cursor-owner";
+    const firstConversationId = "local:test:first-cursor-owner";
     const secondConversationId = "internal:second-cursor-owner";
     await recordConversation(firstConversationId);
     await recordConversation(secondConversationId);
@@ -323,7 +472,7 @@ describe("conversation event list API", () => {
     for (const [conversationId, cursor] of [
       [firstConversationId, tampered],
       [secondConversationId, previousCursor],
-    ]) {
+    ] as const) {
       const response = await app.request(
         `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(cursor)}`,
       );
@@ -364,7 +513,26 @@ describe("conversation event list API", () => {
     });
     await getConversationEventStore().append(conversationId, [
       message("private-message-1", 1),
-      message("private-message-2", 2),
+      {
+        ...message("private-message-2", 2),
+        data: {
+          ...message("private-message-2", 2).data,
+          meta: {
+            cards: [
+              {
+                kind: "automation",
+                id: "secret-task",
+                title: "Private automation",
+                operation: "created",
+                url: "https://junior.example.com/automations/secret-task",
+                instruction: "Private instruction",
+                trigger: "Private repository",
+                warning: null,
+              },
+            ].flatMap((card) => [card, { ...card, operation: "deleted" }]),
+          },
+        },
+      },
     ]);
 
     const app = createJuniorApi();
@@ -445,6 +613,21 @@ describe("conversation event list API", () => {
     const participantDetail = conversationDetailReportSchema.parse(
       await participantDetailResponse.json(),
     );
+    const savedResponse = await participantApi.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    const saved = conversationDetailReportSchema.parse(
+      await savedResponse.json(),
+    );
+    const savedCards = saved.events.find(
+      (event) =>
+        event.data.type === "message" &&
+        event.data.messageId === "private-message-2",
+    )?.data;
+    expect(savedCards).toMatchObject({
+      cards: [{ kind: "object", plugin: "junior", key: "secret-task" }],
+    });
+    expect(JSON.stringify(savedCards)).not.toContain('"operation"');
     expect(participantDetail.eventHistory.status).toBe("available");
     expect(participantDetail.events[0]?.data).toEqual({
       type: "message",
@@ -455,7 +638,7 @@ describe("conversation event list API", () => {
   });
 
   it("returns expired history and detail after retention purge", async () => {
-    const conversationId = "internal:expired-paged-events";
+    const conversationId = "local:test:expired-paged-events";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       message("expired-message-1", 1),

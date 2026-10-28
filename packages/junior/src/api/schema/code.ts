@@ -4,10 +4,27 @@ import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 export const codeChangeSummarySchema = z
   .object({
     closed: z.number().int().nonnegative(),
+    costUsd: z.number().nonnegative().optional(),
     created: z.number().int().nonnegative(),
+    medianCostUsd: z.number().nonnegative().optional(),
+    medianMergeTimeMs: z.number().nonnegative().optional(),
     merged: z.number().int().nonnegative(),
     mergeRate: z.number().min(0).max(1).optional(),
     open: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const codeMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
+export const codeActivityDaySchema = z
+  .object({
+    closed: z.number().int().nonnegative(),
+    created: z.number().int().nonnegative(),
+    date: codeMetricBucketSchema,
+    merged: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -16,7 +33,9 @@ export const codeRepositorySummarySchema = z
     closed: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     id: z.string().uuid(),
+    medianCostUsd: z.number().nonnegative().optional(),
     merged: z.number().int().nonnegative(),
+    mergeRate: z.number().min(0).max(1).optional(),
     name: z.string().min(1),
     open: z.number().int().nonnegative(),
     provider: z.string().min(1),
@@ -41,6 +60,9 @@ export const codeChangeSummaryReportSchema = z
 
 export const codeOverviewReportSchema = z
   .object({
+    activityDays: z.array(codeActivityDaySchema),
+    activityHours: z.array(codeActivityDaySchema).optional(),
+    activitySixHours: z.array(codeActivityDaySchema).optional(),
     changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
     repositories: z.array(codeRepositorySummarySchema),
@@ -50,8 +72,54 @@ export const codeOverviewReportSchema = z
   })
   .strict();
 
+export const codeRepositoryParamsSchema = z
+  .object({ repositoryId: z.string().uuid() })
+  .strict();
+
+/** Code activity, recent changes, and Workspaces for one repository. */
+export const codeRepositoryReportSchema = z
+  .object({
+    activityDays: z.array(codeActivityDaySchema),
+    activityHours: z.array(codeActivityDaySchema).optional(),
+    activitySixHours: z.array(codeActivityDaySchema).optional(),
+    changes: z.array(codeChangeSummaryReportSchema),
+    generatedAt: z.string(),
+    repository: z
+      .object({
+        id: z.string().uuid(),
+        name: z.string().min(1),
+        provider: z.string().min(1),
+        url: z.string().url().optional(),
+      })
+      .strict(),
+    summary: codeChangeSummarySchema,
+    windowEnd: z.string(),
+    windowStart: z.string(),
+    workspaces: z.array(
+      z.object({ id: z.string().min(1), name: z.string().min(1) }).strict(),
+    ),
+  })
+  .strict();
+
+/** Person-scoped code activity and recent code changes for one People profile. */
+export const codePersonReportSchema = z
+  .object({
+    activityDays: z.array(codeActivityDaySchema),
+    activityHours: z.array(codeActivityDaySchema).optional(),
+    activitySixHours: z.array(codeActivityDaySchema).optional(),
+    changes: z.array(codeChangeSummaryReportSchema),
+    generatedAt: z.string(),
+    summary: codeChangeSummarySchema,
+    windowEnd: z.string(),
+    windowStart: z.string(),
+  })
+  .strict();
+
+export type CodeActivityDay = z.infer<typeof codeActivityDaySchema>;
 export type CodeChangeSummaryReport = z.infer<
   typeof codeChangeSummaryReportSchema
 >;
 export type CodeOverviewReport = z.infer<typeof codeOverviewReportSchema>;
+export type CodePersonReport = z.infer<typeof codePersonReportSchema>;
+export type CodeRepositoryReport = z.infer<typeof codeRepositoryReportSchema>;
 export type CodeRepositorySummary = z.infer<typeof codeRepositorySummarySchema>;

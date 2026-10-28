@@ -44,12 +44,20 @@ describe("assistant reply", () => {
     ).toEqual({ kind: "deliver", text: "Visible answer." });
   });
 
-  it("suppresses explicit protocol output", () => {
+  it("suppresses trailing no-reply text and tool-call messages", () => {
     expect(decideReply(assistant(NO_REPLY_MARKER))).toEqual({
       kind: "suppress",
     });
+    expect(
+      decideReply(assistant(`staying silent.\n${NO_REPLY_MARKER}`)),
+    ).toEqual({ kind: "suppress" });
     expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
       kind: "suppress",
+    });
+    const mention = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
+    expect(decideReply(assistant(mention))).toEqual({
+      kind: "deliver",
+      text: mention,
     });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",

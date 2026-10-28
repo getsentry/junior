@@ -9,7 +9,7 @@ import type {
   GitHubPullRequestLinkedIssuesInput,
   GitHubPullRequestOutcomeInput,
 } from "../pull-request-outcomes/store.js";
-import { botLoginFromEmail } from "./ownership.js";
+import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 
 const canonicalPullRequestOutcomeSchema = z
   .object({
@@ -154,16 +154,13 @@ export function normalizeGitHubPullRequestOutcome(args: {
   if (!openedAt || !updatedAt) {
     throw new Error("GitHub pull request lifecycle timestamps are invalid");
   }
-  const authorLogin = pullRequest.user.login.trim().toLowerCase();
-  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
-  if (parsed.action === "opened" && !botLogin) {
+  if (parsed.action === "opened" && !botLoginFromEmail(args.botEmail)) {
     throw new Error(
       "The configured GitHub App bot email must encode a [bot] login in GitHub's noreply format to classify pull request ownership",
     );
   }
   const hasOwnershipMarker = Boolean(
-    botLogin &&
-    authorLogin === botLogin &&
+    isBotLogin(pullRequest.user.login, args.botEmail) &&
     pullRequest.body?.includes(GITHUB_SESSION_FOOTER_START),
   );
   const candidateOwned =
@@ -204,11 +201,10 @@ export function normalizeGitHubPullRequestConversations(args: {
   botEmail?: string;
 }): GitHubPullRequestConversationsInput | undefined {
   const parsed = pullRequestConversationSchema.safeParse(args.body);
-  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
-  if (!parsed.success || !botLogin) return undefined;
+  if (!parsed.success) return undefined;
   if (
-    parsed.data.pull_request.user.login.trim().toLowerCase() !== botLogin ||
-    parsed.data.sender.login.trim().toLowerCase() !== botLogin
+    !isBotLogin(parsed.data.pull_request.user.login, args.botEmail) ||
+    !isBotLogin(parsed.data.sender.login, args.botEmail)
   ) {
     return undefined;
   }
@@ -227,11 +223,10 @@ export function normalizeGitHubPullRequestLinkedIssues(args: {
   botEmail?: string;
 }): GitHubPullRequestLinkedIssuesInput | undefined {
   const parsed = pullRequestConversationSchema.safeParse(args.body);
-  const botLogin = botLoginFromEmail(args.botEmail)?.toLowerCase();
-  if (!parsed.success || !botLogin) return undefined;
+  if (!parsed.success) return undefined;
   if (
-    parsed.data.pull_request.user.login.trim().toLowerCase() !== botLogin ||
-    parsed.data.sender.login.trim().toLowerCase() !== botLogin
+    !isBotLogin(parsed.data.pull_request.user.login, args.botEmail) ||
+    !isBotLogin(parsed.data.sender.login, args.botEmail)
   ) {
     return undefined;
   }

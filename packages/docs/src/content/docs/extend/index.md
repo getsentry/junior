@@ -25,13 +25,15 @@ fixed behavior that code must control.
 | [Amplitude](/extend/amplitude-plugin/)         | Product analytics queries                     |
 | [Cloudflare](/extend/cloudflare-plugin/)       | Cloudflare resources and APIs                 |
 | [Datadog](/extend/datadog-plugin/)             | Logs, metrics, and incidents                  |
+| [TTS](/extend/tts-plugin/)                     | Gemini narration through Vercel AI Gateway    |
 | [GitHub](/extend/github-plugin/)               | Repository, issue, and pull-request workflows |
 | [Hex](/extend/hex-plugin/)                     | Hex projects and runs                         |
 | [Linear](/extend/linear-plugin/)               | Issues, projects, and issue webhooks          |
 | [Maintenance](/extend/maintenance-plugin/)     | Repository maintenance workflows              |
 | [Memory](/extend/memory-plugin/)               | Long-term scoped memory                       |
 | [Notion](/extend/notion-plugin/)               | Notion content                                |
-| [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled tasks                       |
+| [PagerDuty](/extend/pagerduty-plugin/)         | On-call, schedules, and incidents (read-only) |
+| [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled automations                 |
 | [Sentry](/extend/sentry-plugin/)               | Sentry issues, telemetry, and issue webhooks  |
 | [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
 

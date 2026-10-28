@@ -12,7 +12,6 @@ import type {
 } from "@/chat/conversations/history";
 import { agentHistoryItemSchema } from "@/chat/conversations/history";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { type ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import { contextProvenance } from "@/chat/conversations/provenance";
 type AuthorizationCompletedEventData = Extract<
@@ -43,15 +42,11 @@ function authorizationObservationMessage(
     content: [
       {
         type: "text",
-        text: `${label} completed for provider "${data.provider}". Continue the blocked request and retry the provider operation if needed.`,
+        text: `${label} completed for provider "${data.provider}". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that ${data.provider} is connected.`,
       },
     ],
     timestamp: createdAtMs,
   });
-}
-
-function durableMessages(message: PiMessage): PiMessage[] {
-  return stripRuntimeTurnContext([message]);
 }
 
 /** Translate one Pi message into Junior's native durable history item. */
@@ -137,13 +132,10 @@ export function projectConversationEvents(
       modelProfile = event.data.modelProfile;
       replacementSeq = event.seq;
       for (const replacement of event.data.replacementHistory) {
-        for (const message of durableMessages(
-          piMessageFromHistoryItem(replacement.item),
-        )) {
-          messages.push(message);
-          provenance.push(historyItemProvenance(replacement.item));
-          seqs.push(replacement.sourceEventSeq ?? event.seq);
-        }
+        const message = piMessageFromHistoryItem(replacement.item);
+        messages.push(message);
+        provenance.push(historyItemProvenance(replacement.item));
+        seqs.push(replacement.sourceEventSeq ?? event.seq);
       }
       continue;
     }
@@ -152,13 +144,10 @@ export function projectConversationEvents(
       event.data.type === "assistant_message" ||
       event.data.type === "tool_result"
     ) {
-      for (const message of durableMessages(
-        piMessageFromHistoryItem(event.data),
-      )) {
-        messages.push(message);
-        provenance.push(historyItemProvenance(event.data));
-        seqs.push(event.seq);
-      }
+      const message = piMessageFromHistoryItem(event.data);
+      messages.push(message);
+      provenance.push(historyItemProvenance(event.data));
+      seqs.push(event.seq);
       continue;
     }
     if (event.data.type === "authorization_completed") {

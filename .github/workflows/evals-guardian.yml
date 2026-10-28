@@ -1,7 +1,9 @@
-name: Guardian evals
+name: Evals
 
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
   checks: write
 
 on:
@@ -10,7 +12,7 @@ on:
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: evals-guardian-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,14 +31,27 @@ jobs:
         with:
           filters: |
             relevant:
+              - 'packages/junior-evals/src/roach/**'
+              - 'packages/junior-evals/src/recording-rules.ts'
+              - 'packages/junior-evals/src/recording-run.ts'
+              - 'packages/junior-evals/src/recording-setup.ts'
+              - 'packages/junior-evals/src/proxy-dispatcher.ts'
               - 'packages/junior-evals/evals/guardian/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'
+              - 'packages/junior-evals/src/guardian-tools.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/guardian-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.guardian.config.ts'
               - 'packages/junior-evals/package.json'
-              - 'packages/junior/src/chat/services/guardian-action-policy.ts'
+              - 'packages/junior-evals/scripts/report.mjs'
+              - 'packages/junior-evals/scripts/network-jail.sh'
+              - 'packages/junior/src/chat/guardian/**'
+              # guardian-tools.ts builds each case's tool from these sources.
+              - 'packages/junior/src/chat/tools/**'
+              - 'packages/junior-github/src/**'
+              - 'packages/junior-google/src/**'
+              - 'packages/junior-vercel/src/**'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -83,7 +98,9 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: guardian-results.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:guardian
+          # The write token of Roach. With it, the run records new requests.
+          ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
       - name: Require Guardian eval results
         id: results
         if: steps.run.conclusion != 'skipped'
@@ -110,3 +127,8 @@ jobs:
           path: packages/junior-evals/guardian-results.json
           if-no-files-found: error
           retention-days: 7
+      - name: Report evals to Sentry Evals
+        if: ${{ !cancelled() && steps.results.outcome == 'success' }}
+        env:
+          SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
+        run: node packages/junior-evals/scripts/report.mjs guardian packages/junior-evals/guardian-results.json

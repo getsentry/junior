@@ -6,6 +6,7 @@ export type WorkspaceUsageDay = {
   date: string;
 };
 
+// TODO: build hour series once junior_stats stores hour keys for 24h usage.
 /** UTC calendar day keys for the inclusive trailing window ending today. */
 export function trailingUtcDates(
   range: TimeRangeDays,

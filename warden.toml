@@ -1,14 +1,12 @@
 version = 1
 
+# CI records these eval fixtures. Keep them out of the review and its file
+# and line budget. See "Recordings" in packages/junior-evals/README.md.
+[defaults.ignore]
+paths = ["packages/junior-evals/recordings/**"]
+
 [[skills]]
 name = "security-review"
-
-[[skills.triggers]]
-type = "pull_request"
-actions = ["opened", "synchronize", "reopened"]
-
-[[skills]]
-name = "code-review"
 
 [[skills.triggers]]
 type = "pull_request"

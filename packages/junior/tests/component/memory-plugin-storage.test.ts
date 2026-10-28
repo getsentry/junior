@@ -17,7 +17,7 @@ import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 import {
   createSlackSource,
   defineJuniorPlugin,
@@ -26,7 +26,7 @@ import {
 
 const NEON = vi.hoisted(() => ({
   sql: undefined as
-    | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["sql"]
+    | Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>["sql"]
     | undefined,
   originalDatabaseUrl: process.env.DATABASE_URL,
 }));
@@ -60,6 +60,7 @@ vi.mock("@/chat/pi/client", () => ({
       decision: "store",
       expiresAtMs: null,
       kind: "preference",
+      reason: null,
     },
   })),
   embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
@@ -96,7 +97,7 @@ function memoryMigrationFiles(): string[] {
 }
 
 async function migrateMemorySchema(
-  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
+  fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
 ) {
   await migratePluginSchemas(fixture.sql, [
     {
@@ -107,7 +108,7 @@ async function migrateMemorySchema(
 }
 
 async function recordPrivateConversation(
-  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
+  fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
   args: {
     channelId: string;
     conversationId: string;
@@ -183,7 +184,7 @@ function memoryToolsFor(args: {
 
 describe("memory plugin host wiring", () => {
   it("adopts exact legacy migration hashes without replaying them", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const migrations = readMigrationFiles({
       migrationsFolder: memoryMigrationsDir(),
     });
@@ -234,7 +235,7 @@ CREATE TABLE junior_schema_migrations (
   });
 
   it("does not adopt an unknown memory legacy checksum", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const migrationCount = readMigrationFiles({
       migrationsFolder: memoryMigrationsDir(),
     }).length;
@@ -272,7 +273,7 @@ CREATE TABLE junior_schema_migrations (
   });
 
   it("applies packaged migrations through plugin discovery", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     NEON.sql = fixture.sql;
 
     try {
@@ -331,7 +332,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
   }, 15_000);
 
   it("reports core and nonempty plugin migration journals", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     NEON.sql = fixture.sql;
 
     try {
@@ -376,7 +377,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
   }, 15_000);
 
   it("reads public memory everywhere and private memory only for its User", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const plugin = memoryPlugin();
     setPlugins([plugin]);
     NEON.sql = fixture.sql;
@@ -469,7 +470,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "slack:D999:1718800099.000000",
           locationId: "other-location",
           userId: "U123",
-        }).memory_listMemories.execute!({}, {}),
+        }).memory_listMemories!.execute!({}, {}),
       ).resolves.toEqual({
         memories: [
           expect.objectContaining({ id: privateMemory.memory.id }),
@@ -483,7 +484,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
   }, 15_000);
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     setPlugins([memoryPlugin()]);
     NEON.sql = fixture.sql;
 
@@ -555,7 +556,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       expect(tools).toHaveProperty("memory_createMemory");
       await expect(
-        tools.memory_listMemories.execute!({}, {}),
+        tools.memory_listMemories!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -567,7 +568,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_searchMemories.execute!({ query: "personal recall" }, {}),
+        tools.memory_searchMemories!.execute!({ query: "personal recall" }, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -576,7 +577,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_createMemory.execute!(
+        tools.memory_createMemory!.execute!(
           {
             content: "I prefer terse status updates.",
             scope: "public",

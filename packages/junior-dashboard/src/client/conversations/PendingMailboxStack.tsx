@@ -91,7 +91,7 @@ function PendingMetaIcons(props: {
                 ? "Could not remove. Try again."
                 : "Remove queued message"
             }
-            className="inline-flex size-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+            className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
             disabled={props.cancelDisabled}
             onClick={props.onCancel}
             type="button"
@@ -120,9 +120,15 @@ function PendingRow(props: {
   onCancel?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
 }) {
-  const text = props.message.text ?? "";
+  const filenames = [
+    ...(props.message.images ?? []),
+    ...(props.message.attachments ?? []),
+  ]
+    .map((attachment) => attachment.filename)
+    .join(", ");
+  const text = [props.message.text, filenames].filter(Boolean).join(" · ");
   const redacted = Boolean(props.message.redacted);
-  // Pending rows are always the local user message. Avoid rebuilding a full
+  // Pending rows can come from web or Slack. Avoid rebuilding a full
   // transcript projection just to label the stack above the composer.
   const roleLabel = actorLabel(props.message.actorIdentity) ?? "User";
   const showSlack = props.message.source === "slack";
@@ -135,7 +141,7 @@ function PendingRow(props: {
     <article className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-2 text-dashboard-text md:px-3.5">
       <TranscriptHeadingRow
         left={
-          <span className="inline-block max-w-full truncate font-display text-sm font-semibold leading-tight text-dashboard-text">
+          <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-dashboard-text">
             {roleLabel}
           </span>
         }
@@ -154,11 +160,11 @@ function PendingRow(props: {
         }
       />
       {redacted ? (
-        <p className="m-0 font-mono text-sm leading-snug text-dashboard-text-muted">
+        <p className="m-0 font-sans text-sm leading-snug text-dashboard-text-muted">
           [redacted]
         </p>
       ) : (
-        <p className="m-0 line-clamp-3 font-mono text-sm leading-snug text-dashboard-text/90">
+        <p className="m-0 line-clamp-3 font-sans text-sm leading-snug text-dashboard-text-subtle">
           {text}
         </p>
       )}
@@ -168,7 +174,7 @@ function PendingRow(props: {
             Could not send.
           </p>
           <button
-            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-cyan-200/90 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55"
+            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-dashboard-accent-text/90 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
             onClick={() => props.onRetry?.(props.message)}
             type="button"
           >
@@ -272,7 +278,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
       {showCollapsed ? (
         // Desktop keeps a two-row preview; mobile collapses to the control only.
         <div className="hidden md:block">
-          {previewRows.map((message, index) => (
+          {previewRows.map((message) => (
             <PendingRow
               cancelDisabled={Boolean(props.cancelPending)}
               cancelError={Boolean(
@@ -283,7 +289,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
                 props.cancelPending &&
                 props.cancelTargetInboundMessageId === message.inboundMessageId,
               )}
-              key={message.messageId ?? `${message.inboundMessageId}:${index}`}
+              key={message.messageId}
               message={message}
               onCancel={
                 message.clientStatus === undefined
@@ -295,7 +301,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
           ))}
         </div>
       ) : (
-        visibleRows.map((message, index) => (
+        visibleRows.map((message) => (
           <PendingRow
             cancelDisabled={Boolean(props.cancelPending)}
             cancelError={Boolean(
@@ -306,7 +312,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
               props.cancelPending &&
               props.cancelTargetInboundMessageId === message.inboundMessageId,
             )}
-            key={message.messageId ?? `${message.inboundMessageId}:${index}`}
+            key={message.messageId}
             message={message}
             onCancel={
               message.clientStatus === undefined

@@ -11,7 +11,11 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import {
+  disableTools,
+  tool,
+  type AnyToolDefinition,
+} from "@/chat/tools/definition";
 
 const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),
@@ -31,6 +35,7 @@ const TEST_EGRESS = {
 
 function runtimeContext() {
   return {
+    conversationId: LOCAL_DESTINATION.conversationId,
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
@@ -137,14 +142,15 @@ describe("Pi tool adapter integration", () => {
 
       const searchResult = await agentTool(tools, "searchTools").execute(
         "tool-search",
-        { query: "customer identifier" },
+        { query: "lookupCustomer", source: "agent-demo" },
       );
       expect(searchResult.details).toMatchObject({
         returned_tools: 1,
+        source: "agent-demo",
         tools: [
           {
             tool_name: "agentDemo_lookupCustomer",
-            source: "agent-demo",
+            // source is omitted on tools when the search already selected one.
             input_schema: {
               properties: {
                 customerId: {
@@ -245,5 +251,52 @@ describe("Pi tool adapter integration", () => {
         arguments: {},
       }),
     ).rejects.toThrow("can only call catalog tools");
+  });
+
+  it("keeps a disabled tool in the model tool list but rejects its calls", async () => {
+    const execute = vi.fn(async () => ({ tool: "notify" }));
+    const definitions: Record<string, AnyToolDefinition> = {
+      notify: tool({
+        description: "Notify a person",
+        inputSchema: Type.Object({ text: Type.String() }),
+        execute,
+      }),
+      catalogNotify: tool({
+        description: "Notify from the catalog",
+        exposure: "deferred",
+        inputSchema: Type.Object({ text: Type.String() }),
+        execute,
+      }),
+    };
+    const sandbox = new SkillSandbox([], []);
+    const enabled = createPiAgentTools(definitions, sandbox, {});
+    const disabled = createPiAgentTools(
+      disableTools(definitions, "It needs a person's message."),
+      sandbox,
+      {},
+    );
+    const modelView = (tools: ReturnType<typeof createPiAgentTools>) =>
+      JSON.stringify(
+        tools.map(({ name, description, parameters }) => ({
+          name,
+          description,
+          parameters,
+        })),
+      );
+
+    // The provider caches the tool list, so disabling must not change it.
+    expect(modelView(disabled)).toBe(modelView(enabled));
+    await expect(
+      agentTool(disabled, "notify").execute("disabled-direct", { text: "hi" }),
+    ).rejects.toThrow(
+      "notify is disabled in this Turn. It needs a person's message.",
+    );
+    await expect(
+      agentTool(disabled, "executeTool").execute("disabled-catalog", {
+        tool_name: "catalogNotify",
+        arguments: { text: "hi" },
+      }),
+    ).rejects.toThrow("catalogNotify is disabled in this Turn.");
+    expect(execute).not.toHaveBeenCalled();
   });
 });

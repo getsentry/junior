@@ -35,6 +35,7 @@ export interface AgentSandboxOptions {
   traceContext: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   egressSignals?: SandboxEgressSignalTransport;
+  conversationId?: string;
   credentialEgress?: CredentialContext;
   actor?: Actor;
   locationConfiguration?: LocationConfigurationService;
@@ -45,7 +46,7 @@ export interface AgentSandboxOptions {
     workspace: SandboxWorkspace,
     recipe: Workspace,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<() => Promise<void>>;
   onSandboxRefChanged(sandboxRef: SandboxRef): void;
   persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
 }
@@ -110,6 +111,19 @@ export function createPluginToolSandbox(
       await options.handleAuthSignal(normalized.details);
       input.signal?.throwIfAborted();
       const details = record(normalized.details);
+      if (details.status === "building") {
+        const message =
+          typeof details.message === "string" && details.message.trim()
+            ? details.message.trim()
+            : textContent(normalized.content).trim();
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr:
+            message ||
+            "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
+        };
+      }
       return {
         exitCode: typeof details.exit_code === "number" ? details.exit_code : 1,
         stdout: typeof details.stdout === "string" ? details.stdout : "",
@@ -153,6 +167,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     traceContext: options.traceContext,
     tracePropagation: options.tracePropagation,
     egressSignals: options.egressSignals,
+    conversationId: options.conversationId,
     credentialEgress: options.credentialEgress,
     prepare: options.prepareSandbox,
     prepareWorkspace: options.prepareWorkspace,

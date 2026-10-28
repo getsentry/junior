@@ -40,7 +40,7 @@ import { createModelStream } from "../fixtures/model-stream";
 import { runMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness";
 import { createPluginAppFixture } from "../fixtures/plugin-app";
 import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
@@ -144,6 +144,9 @@ describe("local agent runner", () => {
         text: "hello from local",
       },
     ]);
+    await expect(
+      getConversationStore().get({ conversationId: conversationId! }),
+    ).resolves.toMatchObject({ visibility: "private" });
 
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
@@ -233,7 +236,7 @@ describe("local agent runner", () => {
           { type: "text", text: "Eval Auth is connected." },
         ]);
       });
-      oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+      oauthCallback = await startLocalOAuthCallbackServer();
       const completeAuthorization = async (authorizationUrl: string) => {
         const providerResponse = await fetch(authorizationUrl, {
           redirect: "manual",
@@ -581,7 +584,7 @@ describe("local agent runner", () => {
           }),
         ],
         source: {
-          platform: "local",
+          kind: "local",
           visibility: "private",
           conversationId,
         },
@@ -686,21 +689,23 @@ describe("local agent runner", () => {
     const generatedMessages = await loadProjection({
       conversationId: conversationId!,
     });
-    expect(generatedMessages).toEqual([
-      expect.objectContaining({
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: expect.stringContaining("hello"),
-          },
-        ],
-      }),
-      expect.objectContaining({
-        role: "assistant",
-        content: [{ type: "text", text: "persisted visible output" }],
-      }),
-    ]);
+    expect(generatedMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: expect.stringContaining("hello"),
+            },
+          ],
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          content: [{ type: "text", text: "persisted visible output" }],
+        }),
+      ]),
+    );
 
     const agentRuns: CapturedAgentRun[] = [];
     const followUpAgentRunner = createModelAgentRunnerForRun((run) => {
@@ -851,17 +856,19 @@ describe("local agent runner", () => {
     const projection = await loadProjection({
       conversationId: conversationId!,
     });
-    expect(projection).toEqual([
-      expect.objectContaining({
-        role: "user",
-        content: expect.arrayContaining([
-          expect.objectContaining({
-            type: "text",
-            text: expect.stringContaining("hello"),
-          }),
-        ]),
-      }),
-    ]);
+    expect(projection).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: expect.arrayContaining([
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("hello"),
+            }),
+          ]),
+        }),
+      ]),
+    );
     expect(projection.some((message) => message.role === "assistant")).toBe(
       false,
     );

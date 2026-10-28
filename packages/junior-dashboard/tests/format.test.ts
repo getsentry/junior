@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NOW_MS } from "../src/mock-reporting/fixtures";
 import type {
   ConversationReportEvent,
   ConversationReportEventData,
-  ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -13,7 +13,6 @@ import {
   conversationFromDetail,
   conversationIdentityMeta,
   conversationMessageCount,
-  filterConversationList,
   formatActivityChartAverage,
   formatCompactNumber,
   formatConversationDuration,
@@ -31,6 +30,7 @@ import {
   slackLocationLabel,
   setDashboardTimeZone,
   summarizeMessages,
+  summarizeModelUsage,
   summarizeToolCalls,
   summarizeTurns,
 } from "../src/client/format";
@@ -106,6 +106,28 @@ describe("dashboard conversation formatting", () => {
     expect(formatCostTotal({ cost: { total: 0.0042 } })).toBe("$0.0042");
   });
 
+  it("reconciles model usage totals with their breakdown", () => {
+    expect(
+      summarizeModelUsage([
+        {
+          modelId: "anthropic/claude-sonnet-4-5",
+          usage: {
+            inputTokens: 18,
+            outputTokens: 592,
+            cachedInputTokens: 179_000,
+            cacheCreationTokens: 36_000,
+          },
+        },
+      ]),
+    ).toEqual({
+      inputTokens: 18,
+      outputTokens: 592,
+      cachedInputTokens: 179_000,
+      cacheCreationTokens: 36_000,
+      totalTokens: 215_610,
+    });
+  });
+
   it("formats human-readable durations at increasing scales", () => {
     expect(formatDuration(999)).toBe("999ms");
     expect(formatDuration(3_500)).toBe("3.5s");
@@ -137,11 +159,10 @@ describe("dashboard conversation formatting", () => {
   });
 
   it("formats old transcript timestamps relative to now", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-10T16:00:00.000Z"));
-    expect(
-      formatRelativeMessageTimestamp(Date.parse("2026-08-09T16:00:00.000Z")),
-    ).toBe("yesterday");
+    vi.useFakeTimers({ now: NOW_MS });
+    expect(formatRelativeMessageTimestamp(NOW_MS - 86_400_000)).toBe(
+      "yesterday",
+    );
   });
 
   it("formats canonical transcript timestamp details in local time and UTC", () => {
@@ -311,45 +332,6 @@ describe("dashboard conversation formatting", () => {
       },
     ]);
     expect(conversationDisplayTitle(conversation)).toBe("Newer");
-  });
-
-  it("filters conversation rows by text and source", () => {
-    const summaries: ConversationSummaryReport[] = [
-      {
-        conversationId: "slack:C1:1",
-        cumulativeDurationMs: 0,
-        displayTitle: "Checkout incident",
-        isParticipant: false,
-        lastProgressAt: "2026-01-01T00:00:00.000Z",
-        lastSeenAt: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "failed",
-        surface: "slack",
-      },
-      {
-        conversationId: "scheduler:1",
-        cumulativeDurationMs: 0,
-        displayTitle: "Daily digest",
-        isParticipant: false,
-        lastProgressAt: "2026-01-01T00:00:00.000Z",
-        lastSeenAt: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "completed",
-        surface: "scheduler",
-      },
-    ];
-    const rows = buildConversations(summaries);
-    expect(filterConversationList(rows, { query: "checkout" })).toHaveLength(1);
-    expect(filterConversationList(rows, { source: "scheduler" })).toHaveLength(
-      1,
-    );
-    const archivedRows = [
-      ...rows,
-      { ...rows[0]!, archivedAt: "2026-01-02T00:00:00.000Z" },
-    ];
-    expect(
-      filterConversationList(archivedRows, { status: "archived" }),
-    ).toEqual([expect.objectContaining({ archivedAt: expect.any(String) })]);
   });
 
   it("formats actor and Slack labels", () => {

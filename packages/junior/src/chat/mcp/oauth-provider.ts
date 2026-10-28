@@ -7,6 +7,7 @@ import type {
   OAuthClientProvider,
   OAuthDiscoveryState,
 } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { PluginMcpOAuthClientConfig } from "@sentry/junior-plugin-api";
 import {
   deleteMcpServerSessionId,
   getMcpAuthSession,
@@ -41,13 +42,39 @@ function clientAllowsRedirectUri(
   return redirectUris.includes(callbackUrl);
 }
 
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`MCP OAuth client env var ${name} is unset`);
+  }
+  return value;
+}
+
 export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   readonly clientMetadata: OAuthClientMetadata;
 
+  readonly authSessionId: string;
+  private readonly callbackUrl: string;
+  private readonly sessionContext:
+    | Omit<
+        McpAuthSessionState,
+        | "schemaVersion"
+        | "authSessionId"
+        | "authorizationUrl"
+        | "codeVerifier"
+        | "createdAtMs"
+        | "updatedAtMs"
+      >
+    | undefined;
+  private readonly runCredentialMutation:
+    | (<T>(mutation: () => Promise<T>) => Promise<T>)
+    | undefined;
+  private readonly oauthClient: PluginMcpOAuthClientConfig | undefined;
+
   constructor(
-    readonly authSessionId: string,
-    private readonly callbackUrl: string,
-    private readonly sessionContext?: Omit<
+    authSessionId: string,
+    callbackUrl: string,
+    sessionContext?: Omit<
       McpAuthSessionState,
       | "schemaVersion"
       | "authSessionId"
@@ -56,10 +83,14 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
       | "createdAtMs"
       | "updatedAtMs"
     >,
-    private readonly runCredentialMutation?: <T>(
-      mutation: () => Promise<T>,
-    ) => Promise<T>,
+    runCredentialMutation?: <T>(mutation: () => Promise<T>) => Promise<T>,
+    oauthClient?: PluginMcpOAuthClientConfig,
   ) {
+    this.authSessionId = authSessionId;
+    this.callbackUrl = callbackUrl;
+    this.sessionContext = sessionContext;
+    this.runCredentialMutation = runCredentialMutation;
+    this.oauthClient = oauthClient;
     this.clientMetadata = createClientMetadata(callbackUrl);
   }
 
@@ -72,6 +103,12 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
+    if (this.oauthClient) {
+      return {
+        client_id: requireEnv(this.oauthClient.clientIdEnv),
+        client_secret: requireEnv(this.oauthClient.clientSecretEnv),
+      };
+    }
     const session = await this.getCredentialContext();
     const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
@@ -129,6 +166,16 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    // The SDK requests every scope the server advertises. A pre-registered
+    // client may need a narrower scope and provider-specific parameters.
+    if (this.oauthClient?.scope) {
+      authorizationUrl.searchParams.set("scope", this.oauthClient.scope);
+    }
+    for (const [key, value] of Object.entries(
+      this.oauthClient?.authorizeParams ?? {},
+    )) {
+      authorizationUrl.searchParams.set(key, value);
+    }
     const existing = await getMcpAuthSession(this.authSessionId);
     if (
       existing?.authorizationUrl &&

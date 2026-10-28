@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router";
+import { createBrowserRouter, RouterProvider } from "react-router";
 
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
@@ -22,18 +22,18 @@ class DashboardErrorBoundary extends Component<
   { children: ReactNode },
   ErrorBoundaryState
 > {
-  state: ErrorBoundaryState = { error: null };
+  override state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     const stack = error.stack ?? errorInfo.componentStack;
     window.__JUNIOR_DASHBOARD_SHOW_ERROR__?.(stack ? new Error(stack) : error);
   }
 
-  render() {
+  override render() {
     if (this.state.error) {
       return <DashboardErrorPanel error={this.state.error} />;
     }
@@ -79,12 +79,15 @@ const queryClient = new QueryClient({
   },
 });
 
+const router = createBrowserRouter(
+  [{ path: "*", element: <DashboardShell /> }],
+  { basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/" },
+);
+
 createRoot(root).render(
   <DashboardErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename={window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/"}>
-        <DashboardShell />
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   </DashboardErrorBoundary>,
 );

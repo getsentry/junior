@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
@@ -26,21 +25,10 @@ if (!TEST_TEAM_ID) {
 }
 
 const TEST_SLACK_CONTEXT: SlackToolContext = {
-  destination: {
-    platform: "slack",
-    teamId: TEST_TEAM_ID,
-    channelId: TEST_CHANNEL_ID,
-  },
-  source: createSlackSource({
-    teamId: TEST_TEAM_ID,
-    channelId: TEST_CHANNEL_ID,
-    messageTs: TEST_MESSAGE_TS,
-
-    visibility: "private",
-  }),
   destinationChannelId: TEST_CHANNEL_ID,
+  locationChannelId: TEST_CHANNEL_ID,
+  messageChannelId: TEST_CHANNEL_ID,
   messageTs: TEST_MESSAGE_TS,
-  sourceChannelId: TEST_CHANNEL_ID,
   teamId: TEST_TEAM_ID,
 };
 

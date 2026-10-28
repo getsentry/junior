@@ -1,6 +1,6 @@
 # GitHub Issue API Surface
 
-Issue creation uses `github_createIssue`. Issue title, body, and state updates use `github_updateIssue` so Junior keeps requester attribution and the conversation footer. Comments, labels, assignees, and reads use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh issue` mutations are not supported.
+Issue creation uses `github_createIssue`. Issue title, body, and state updates use `github_updateIssue` so the runtime keeps requester attribution and the conversation footer. Comments, labels, assignees, and reads use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh issue` mutations are not supported.
 
 ## Repo scoping
 

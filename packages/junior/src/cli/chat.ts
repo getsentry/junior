@@ -240,6 +240,8 @@ async function prepareLocalChatRun(
   // subagents here so spawnAgent matches the wired child-worker path.
   const { setExperimentalFeatures } = await import("@/chat/experimental");
   setExperimentalFeatures({ subagents: true });
+  const { setBriefsConfig } = await import("@/chat/briefs/registration");
+  setBriefsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
@@ -247,8 +249,13 @@ async function prepareLocalChatRun(
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
+  const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
   const { createAgentInvocationWorker, routeAgentInvocationWork } =
     await import("@/chat/agent-invocations/work");
+  const { startAgentInvocationsForChildInput } =
+    await import("@/chat/agent-invocations/result");
+  const { skipInputBeforeConversationStop } =
+    await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
   const { processConversationWork } =
@@ -259,8 +266,19 @@ async function prepareLocalChatRun(
       throw new Error("Local agent runner is not ready");
     }
     const run = routeAgentInvocationWork({
-      fallbackWorker: async () => {
-        throw new Error("Local child queue received non-invocation work");
+      // The local queue carries only child Conversation work.
+      fallbackWorker: async (context) => {
+        const skipped = await skipInputBeforeConversationStop(context);
+        if (skipped) {
+          return skipped;
+        }
+        const started = await startAgentInvocationsForChildInput(context, {
+          queue: localConversationWork.queue,
+        });
+        if (!started) {
+          throw new Error("Local child queue received non-invocation work");
+        }
+        return started;
       },
       invocationWorker: createAgentInvocationWorker(agentRunner),
     });
@@ -270,10 +288,16 @@ async function prepareLocalChatRun(
     });
   });
   agentRunner = createAgentRunner(executeAgentRun, {
+    // The local CLI does not send child results or messages back to the
+    // root Conversation, so only the root gets messageAgent here.
+    bindMessageAgent: (request) =>
+      request.parentConversationId
+        ? undefined
+        : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
   });
-  const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+  const oauthCallback = await startLocalOAuthCallbackServer();
   const deps: LocalAgentTurnDeps = {
     agentRunner,
     authorization: {

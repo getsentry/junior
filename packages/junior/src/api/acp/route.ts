@@ -104,16 +104,36 @@ function rejectUnsupportedMcpServers(mcpServers: readonly unknown[]): void {
   }
 }
 
-/** Convert supported ACP text blocks to one bounded API Turn message. */
+function resourceLinkText(
+  block: Extract<PromptParams["prompt"][number], { type: "resource_link" }>,
+): string {
+  return [
+    "Resource link:",
+    `Name: ${block.name}`,
+    `URI: ${block.uri}`,
+    ...(block.title ? [`Title: ${block.title}`] : []),
+    ...(block.description ? [`Description: ${block.description}`] : []),
+    ...(block.mimeType ? [`MIME type: ${block.mimeType}`] : []),
+    ...(block.size !== undefined && block.size !== null
+      ? [`Size: ${block.size} bytes`]
+      : []),
+  ].join("\n");
+}
+
+/** Convert supported ACP content blocks to one bounded Conversation Message. */
 function promptText(prompt: PromptParams["prompt"]): string {
   if (prompt.length === 0) {
     throw acp.RequestError.invalidParams(
       { field: "prompt" },
-      "Junior accepts one or more text blocks only",
+      "Junior accepts one or more text or resource link blocks",
     );
   }
   const blocks: string[] = [];
   for (const block of prompt) {
+    if (block.type === "resource_link") {
+      blocks.push(resourceLinkText(block));
+      continue;
+    }
     if (!block.text.trim()) {
       throw acp.RequestError.invalidParams(
         { field: "prompt" },
@@ -276,16 +296,16 @@ async function acceptPrompt(args: {
     promptParamsSchema,
     args.call.params,
   );
-  const admission = await args.conversations.prompt({
+  const result = await args.conversations.prompt({
     conversationId: params.sessionId,
     idempotencyKey: `${args.connection.nonce}:${args.requestKey}`,
     text: promptText(params.prompt),
     user: args.user,
   });
-  if (admission.status === "not_found") {
+  if (result.status === "not_found") {
     throw acp.RequestError.resourceNotFound(params.sessionId);
   }
-  if (admission.status === "active") {
+  if (result.status === "active") {
     throw acp.RequestError.invalidParams(
       { field: "sessionId" },
       "This ACP session already has an active prompt",
@@ -293,11 +313,11 @@ async function acceptPrompt(args: {
   }
   return {
     output: {
-      afterSeq: admission.afterCursor,
+      afterSeq: result.afterCursor,
       kind: "prompt",
-      messageId: admission.messageId,
+      messageId: result.messageId,
       requestId: args.requestId,
-      turnId: admission.turnId,
+      turnId: result.turnId,
     },
     sessionId: params.sessionId,
   };

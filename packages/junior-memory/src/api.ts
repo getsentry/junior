@@ -6,6 +6,7 @@
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
+  type PluginConversationEventReader,
   type PluginConversationEventStats,
   type PluginRouteApp,
   type User,
@@ -13,14 +14,17 @@ import {
 import type { MemoryDb } from "./store";
 import {
   archiveMemory,
+  countMemories,
   getMemory,
   getMemoryStats,
   getMemoryTimeline,
+  getMemoryTimelineHours,
   InvalidMemoryCursorError,
   listMemories,
   MemoryNotFoundError,
   type MemoryView,
 } from "./viewer";
+import { parseCapturedMemories } from "./events";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -44,9 +48,25 @@ export const memoryListResponseSchema = z
   })
   .strict();
 
+export const conversationMemorySchema = z
+  .object({
+    capturedAt: z.iso.datetime(),
+    content: z.string().min(1),
+    id: z.string().min(1),
+    kind: z.enum(["preference", "procedure", "knowledge"]),
+    visibility: z.enum(["private", "public"]),
+  })
+  .strict();
+
+export const conversationMemoryListResponseSchema = z
+  .object({ memories: z.array(conversationMemorySchema) })
+  .strict();
+
+const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 const memoryDashboardDaySchema = z
   .object({
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     personal: z.number().int().min(0),
     public: z.number().int().min(0),
   })
@@ -55,7 +75,7 @@ const memoryDashboardDaySchema = z
 const memoryCostDaySchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     events: z.number().int().min(0),
   })
   .strict();
@@ -64,8 +84,11 @@ export const memoryDashboardResponseSchema = z
   .object({
     days: z.array(memoryDashboardDaySchema).length(90),
     extractionDays: z.array(memoryCostDaySchema).length(90),
+    extractionHours: z.array(memoryCostDaySchema).min(24).optional(),
     generatedAt: z.iso.datetime(),
+    hours: z.array(memoryDashboardDaySchema).min(24).optional(),
     recallDays: z.array(memoryCostDaySchema).length(90),
+    recallHours: z.array(memoryCostDaySchema).min(24).optional(),
     stats: z
       .object({
         active: z.number().int().min(0),
@@ -83,11 +106,21 @@ export const memoryDashboardResponseSchema = z
   })
   .strict();
 
+/** Active memory totals for one search query, split by visibility. */
+export const memoryCountsResponseSchema = z
+  .object({
+    active: z.number().int().min(0),
+    personal: z.number().int().min(0),
+    public: z.number().int().min(0),
+  })
+  .strict();
+
 export type MemoryApi = z.output<typeof memoryApiSchema>;
 export type MemoryDashboardResponse = z.output<
   typeof memoryDashboardResponseSchema
 >;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
+export type MemoryCountsResponse = z.output<typeof memoryCountsResponseSchema>;
 
 const memoryListQuerySchema = z
   .object({
@@ -97,7 +130,12 @@ const memoryListQuerySchema = z
   })
   .strict();
 
+const memoryCountsQuerySchema = z
+  .object({ q: z.string().trim().max(200).optional() })
+  .strict();
+
 interface MemoryApiOptions {
+  conversationEvents: PluginConversationEventReader;
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
   users: {
@@ -128,6 +166,12 @@ function apiMemory(memory: MemoryView): z.output<typeof memoryApiSchema> {
   };
 }
 
+function currentMemoryVisibility(
+  scope: "personal" | "conversation" | "private" | "public",
+): "private" | "public" {
+  return scope === "personal" || scope === "private" ? "private" : "public";
+}
+
 function viewerEmail(context: unknown): string | undefined {
   const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
   if (!parsed.success || parsed.data.auth.user.emailVerified !== true) {
@@ -147,9 +191,19 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
+      const conversationPath = /^\/conversations\/([^/]+)\/memories$/.exec(
+        url.pathname,
+      );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      if (!isCollection && !isDashboard && !memoryPath) {
+      const isCounts = url.pathname === "/counts";
+      if (
+        !isCollection &&
+        !isDashboard &&
+        !isCounts &&
+        !memoryPath &&
+        !conversationPath
+      ) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
@@ -163,16 +217,33 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       try {
         if (isDashboard && isRead) {
-          const [stats, days, extractionDays, recallDays] = await Promise.all([
+          const [
+            stats,
+            days,
+            hours,
+            extractionDays,
+            extractionHours,
+            recallDays,
+            recallHours,
+          ] = await Promise.all([
             getMemoryStats(options.db, userId),
             getMemoryTimeline(options.db, userId, 90),
+            getMemoryTimelineHours(options.db, userId, 7 * 24),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_captured",
             }),
+            options.eventStats.costsByHour({
+              eventName: "memories_captured",
+              hours: 7 * 24,
+            }),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_recalled",
+            }),
+            options.eventStats.costsByHour({
+              eventName: "memories_recalled",
+              hours: 7 * 24,
             }),
           ]);
           const { private: personal, ...dashboardStats } = stats;
@@ -182,9 +253,75 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
               personal,
             })),
             extractionDays,
+            extractionHours,
             generatedAt: new Date().toISOString(),
+            hours: hours.map(({ private: personal, ...day }) => ({
+              ...day,
+              personal,
+            })),
             recallDays,
+            recallHours,
             stats: { ...dashboardStats, personal },
+          });
+          return request.method === "HEAD"
+            ? new Response(null, {
+                headers: { "cache-control": "no-store" },
+                status: 200,
+              })
+            : json(body);
+        }
+
+        if (isCounts && isRead) {
+          const query = memoryCountsQuerySchema.parse({
+            q: url.searchParams.get("q") ?? undefined,
+          });
+          const counts = await countMemories(
+            options.db,
+            userId,
+            query.q || undefined,
+          );
+          const body = memoryCountsResponseSchema.parse({
+            active: counts.active,
+            personal: counts.private,
+            public: counts.public,
+          });
+          return request.method === "HEAD"
+            ? new Response(null, {
+                headers: { "cache-control": "no-store" },
+                status: 200,
+              })
+            : json(body);
+        }
+
+        if (conversationPath && isRead) {
+          const events = await options.conversationEvents.list({
+            conversationId: decodeURIComponent(conversationPath[1]!),
+            eventName: "memories_captured",
+            viewer,
+          });
+          if (!events) return json({ error: "Conversation not found." }, 404);
+          const memories = new Map<
+            string,
+            z.input<typeof conversationMemorySchema>
+          >();
+          for (const event of events) {
+            for (const memory of parseCapturedMemories(
+              event.version,
+              event.content,
+            )) {
+              if (!memories.has(memory.id)) {
+                memories.set(memory.id, {
+                  capturedAt: event.createdAt,
+                  content: memory.content,
+                  id: memory.id,
+                  kind: memory.kind,
+                  visibility: currentMemoryVisibility(memory.scope),
+                });
+              }
+            }
+          }
+          const body = conversationMemoryListResponseSchema.parse({
+            memories: [...memories.values()],
           });
           return request.method === "HEAD"
             ? new Response(null, {

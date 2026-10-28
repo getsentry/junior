@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  getConversationWorkState,
+  startConversationWork,
+  releaseConversationWork,
+} from "@/chat/task-execution/store";
+import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   getTurnRecord,
@@ -119,44 +124,6 @@ describe("paused turn scheduling", () => {
     });
   });
 
-  it("queue continue does not take a second resume lock", async () => {
-    const conversationId = "slack:C123:1712345.0002";
-    const state = getStateAdapter();
-    await state.connect();
-    // Hold the old thread lock. Queue continue must still run — it owns the
-    // conversation work lease only, not a second resume lock.
-    const lock = await state.acquireLock(conversationId, 90_000);
-    expect(lock).toBeTruthy();
-    const resumeTurn = vi.fn().mockResolvedValue(false);
-    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
-
-    await expect(
-      runPausedTurn(
-        {
-          conversationId,
-          destination: SLACK_DESTINATION,
-          turnId: "turn_msg_2",
-          expectedVersion: 1,
-        },
-        {
-          agentRunner: agentRunnerShouldNotRun,
-          resumeTurn,
-        },
-      ),
-    ).resolves.toBe(false);
-
-    expect(resumeTurn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId,
-        turnId: "turn_msg_2",
-        ownsConversationLease: true,
-      }),
-    );
-    if (lock) {
-      await state.releaseLock(lock);
-    }
-  });
-
   it("fails a running turn only after exclusive ownership is available", async () => {
     const { runNextPausedTurn } =
       await import("@/chat/task-execution/paused-turn");
@@ -198,19 +165,41 @@ describe("paused turn scheduling", () => {
       },
     });
 
-    const owner = await state.acquireLock(conversationId, 90_000);
-    expect(owner).toBeTruthy();
-    await runNextPausedTurn(conversationId, {
-      agentRunner: agentRunnerShouldNotRun,
-    });
+    const queue = createConversationWorkQueueTestAdapter();
+    await wakePausedTurn(
+      {
+        conversationId,
+        destination: SLACK_DESTINATION,
+        turnId,
+        expectedVersion: 1,
+      },
+      { queue, state },
+    );
+    const owner = await startConversationWork({ conversationId, state });
+    if (owner.status !== "acquired") throw new Error("Expected worker lease");
+    const worker = {
+      queue,
+      state,
+      run: async () => {
+        await runNextPausedTurn(conversationId, {
+          agentRunner: agentRunnerShouldNotRun,
+        });
+        return { status: "completed" as const };
+      },
+    };
+    await expect(
+      processConversationWork(queue.takeMessage(), worker),
+    ).resolves.toEqual({ status: "active" });
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       state: "running",
     });
 
-    await state.releaseLock(owner!);
-    await runNextPausedTurn(conversationId, {
-      agentRunner: agentRunnerShouldNotRun,
+    await releaseConversationWork({
+      conversationId,
+      leaseToken: owner.leaseToken,
+      state,
     });
+    await processConversationWork(queue.takeMessage(), worker);
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Turn lost its worker before reaching a safe boundary",
@@ -243,36 +232,6 @@ describe("paused turn scheduling", () => {
       state: "failed",
       errorMessage: "Awaiting paused-turn metadata could not be materialized",
     });
-  });
-
-  it("resumes delivery retries with the supplied runner", async () => {
-    const { runNextPausedTurn } =
-      await import("@/chat/task-execution/paused-turn");
-    const conversationId = "slack:C123:1712345.0005";
-    const generateReply = vi.fn();
-    const resumeTurn = vi.fn(async () => true);
-
-    await upsertTurnRecord({
-      conversationId,
-      turnId: "turn_msg_5",
-      sliceId: 2,
-      state: "paused",
-      destination: SLACK_DESTINATION,
-      source: slackSessionSource("1712345.0005"),
-      resumeReason: "retry",
-      piMessages: [],
-    });
-
-    await expect(
-      runNextPausedTurn(conversationId, {
-        agentRunner: { run: generateReply },
-        resumeTurn,
-      }),
-    ).resolves.toBe(true);
-
-    expect(resumeTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ agentRunner: { run: generateReply } }),
-    );
   });
 
   it("fails stale continuations skipped during resume startup", async () => {

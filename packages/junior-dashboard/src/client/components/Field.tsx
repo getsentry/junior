@@ -5,8 +5,7 @@ import { cn } from "../styles";
 export type FieldSize = "compact" | "default";
 
 const labelClass: Record<FieldSize, string> = {
-  compact:
-    "font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted",
+  compact: "font-sans font-medium text-xs text-dashboard-text-muted",
   default: "text-sm font-semibold text-dashboard-text",
 };
 
@@ -20,6 +19,7 @@ export function Field(props: {
   children: ReactNode;
   className?: string;
   help?: ReactNode;
+  error?: string;
   htmlFor?: string;
   label: ReactNode;
   size?: FieldSize;
@@ -31,8 +31,20 @@ export function Field(props: {
         {props.label}
       </label>
       {props.children}
+      {props.error ? (
+        <p
+          id={props.htmlFor ? `${props.htmlFor}-error` : undefined}
+          role="alert"
+          className="m-0 text-xs leading-relaxed text-rose-300"
+        >
+          {props.error}
+        </p>
+      ) : null}
       {props.help ? (
-        <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
+        <p
+          id={props.htmlFor ? `${props.htmlFor}-help` : undefined}
+          className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm"
+        >
           {props.help}
         </p>
       ) : null}

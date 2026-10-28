@@ -27,6 +27,10 @@ import {
   isSandboxUnavailableError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
+import {
+  getWorkspaceSnapshotNotReadyError,
+  workspaceSnapshotNotReadyUserMessage,
+} from "@/chat/sandbox/snapshot/not-ready-error";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
@@ -99,6 +103,8 @@ export interface SandboxOptions {
   timeoutMs?: number;
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
+  /** Conversation that sandbox egress records for its credentialed requests. */
+  conversationId?: string;
   credentialEgress?: CredentialContext;
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
@@ -106,7 +112,7 @@ export interface SandboxOptions {
     workspace: SandboxWorkspace,
     recipe: Workspace,
     signal?: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<() => Promise<void>>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
@@ -126,6 +132,19 @@ function createSandboxUnavailableToolError(
     `The temporary sandbox became unavailable during ${operation}, so the operation did not complete reliably. The next sandbox operation will use a fresh session. It may have produced side effects; retry only if it is safe.`,
     { cause },
   );
+}
+
+/** Tool result when the Workspace sandbox is still preparing. */
+function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
+  const notReady = getWorkspaceSnapshotNotReadyError(cause);
+  if (!notReady) {
+    throw new Error("expected WorkspaceSnapshotNotReadyError");
+  }
+  return makeStructuredToolOutput({
+    status: "building" as const,
+    workspace: notReady.workspaceName,
+    message: workspaceSnapshotNotReadyUserMessage(notReady),
+  });
 }
 
 const SANDBOX_TOOL_NAMES = new Set([
@@ -175,6 +194,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     }
     const now = Date.now();
     const token = createSandboxEgressCredentialToken({
+      conversationId: options.conversationId,
       credentials: credentialEgress,
       egressId,
       ttlMs: sandboxEgressTokenTtlMs,
@@ -414,7 +434,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       stdout_truncated: result.stdoutTruncated,
       stderr_truncated: result.stderrTruncated,
       ...(authRequired ? { auth_required: authRequired } : undefined),
-      ...(permissionDenied ? { permission_denied: permissionDenied } : undefined),
+      ...(permissionDenied
+        ? { permission_denied: permissionDenied }
+        : undefined),
     }) as T;
   };
 
@@ -616,8 +638,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
-          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
+          ...(typeof rawInput.glob === "string"
+            ? { glob: rawInput.glob }
+            : undefined),
           ...(typeof rawInput.ignoreCase === "boolean"
             ? { ignoreCase: rawInput.ignoreCase }
             : undefined),
@@ -664,7 +690,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
           ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
@@ -689,7 +717,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         const response = await listDir({
           fs: fileSystem,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
           ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
@@ -747,6 +777,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       }
     } catch (error) {
       params.signal?.throwIfAborted();
+      if (getWorkspaceSnapshotNotReadyError(error)) {
+        return createWorkspaceSnapshotNotReadyToolResult(error) as T;
+      }
       if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
@@ -770,6 +803,15 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     try {
       return await callback(await runtime.acquire());
     } catch (error) {
+      const notReady = getWorkspaceSnapshotNotReadyError(error);
+      if (notReady) {
+        throw new ToolInputError(
+          workspaceSnapshotNotReadyUserMessage(notReady),
+          {
+            cause: notReady,
+          },
+        );
+      }
       if (isSandboxUnavailableError(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }

@@ -363,6 +363,7 @@ describe("people profile API", () => {
       const nowMs = Date.parse("2026-06-15T11:00:00.000Z");
       await store.recordActivity({
         conversationId: "slack:C1:seed",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         actor: {
           email: "aggregate@example.com",
           fullName: "Aggregate Example",
