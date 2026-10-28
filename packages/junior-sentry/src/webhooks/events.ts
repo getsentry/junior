@@ -40,7 +40,12 @@ const metricAlertWebhookSchema = z
       description_title: z.string().optional(),
       metric_alert: z
         .object({
-          alert_rule: z.object({ id: z.coerce.string().min(1) }).passthrough(),
+          alert_rule: z
+            .object({
+              id: z.coerce.string().min(1),
+              projects: z.array(z.string().min(1)).optional(),
+            })
+            .passthrough(),
           id: z.coerce.string().min(1),
         })
         .passthrough(),
@@ -176,17 +181,25 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     .filter((part): part is string => Boolean(part))
     .join("\n");
 
+  const event = {
+    // One event per incident state. Sentry retries get new Request-IDs.
+    eventKey: `sentry:${resource.identifier}:${incidentId}:${eventType}`,
+    eventType,
+    occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
+    trustedSummary: `${resource.label} is ${parsed.data.action}.`,
+    data: { alertRuleId, incidentId, url: data.web_url },
+    untrustedText,
+  } satisfies Omit<EventInput, "identifier">;
+  // Also publish to each project of the alert rule, so one project
+  // subscription receives its new issues and its metric alerts.
+  const projects = [...new Set(data.metric_alert.alert_rule.projects ?? [])];
+
   return [
-    {
-      // One event per incident state. Sentry retries get new Request-IDs.
-      eventKey: `sentry:${resource.identifier}:${incidentId}:${eventType}`,
-      eventType,
-      identifier: resource.identifier,
-      occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
-      trustedSummary: `${resource.label} is ${parsed.data.action}.`,
-      data: { alertRuleId, incidentId, url: data.web_url },
-      untrustedText,
-    },
+    { ...event, identifier: resource.identifier },
+    ...projects.map((project) => ({
+      ...event,
+      identifier: sentryProjectResource({ org, project }).identifier,
+    })),
   ];
 }
 
