@@ -47,7 +47,15 @@ function useOAuthClientMcpServer() {
         PROVIDER,
       );
     }),
-    http.get(`${ORIGIN}/.well-known/oauth-protected-resource/mcp`, () =>
+    http.get(
+      `${ORIGIN}/.well-known/oauth-protected-resource/mcp`,
+      () =>
+        new HttpResponse("OAuth metadata moved", {
+          status: 307,
+          headers: { location: "/oauth-resource-metadata" },
+        }),
+    ),
+    http.get(`${ORIGIN}/oauth-resource-metadata`, () =>
       HttpResponse.json({
         resource: MCP_URL,
         authorization_servers: [ORIGIN],
@@ -64,7 +72,15 @@ function useOAuthClientMcpServer() {
         token_endpoint_auth_methods_supported: ["client_secret_basic"],
       }),
     ),
-    http.post(`${ORIGIN}/token`, async ({ request }) => {
+    http.post(
+      `${ORIGIN}/token`,
+      () =>
+        new HttpResponse("Token endpoint moved", {
+          status: 307,
+          headers: { location: "/token/exchange" },
+        }),
+    ),
+    http.post(`${ORIGIN}/token/exchange`, async ({ request }) => {
       tokenRequests.push(request.clone());
       const params = new URLSearchParams(await request.text());
       const clientAuth = `Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}`;
