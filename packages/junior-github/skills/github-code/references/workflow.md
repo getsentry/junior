@@ -37,8 +37,8 @@ Open this when making repository edits, not for read-only inspection.
    If the branch has an open PR, check that it can merge. Do this after every push, including fixes for review feedback or failed checks. A conflicted PR gets no new checks, so no event shows it.
    - Run `gh pr view NUMBER --repo owner/repo --json mergeable`.
    - `UNKNOWN`: GitHub is still calculating it. Wait about 5 seconds and check again, up to 3 times. If it stays `UNKNOWN`, report that and continue.
-   - `CONFLICTING`: fetch the base, merge `origin/BASE` into the branch, resolve the conflicts, run the checks again, and push. Do not rebase unless the requester asks for it.
-   - If a conflict needs a decision about intent that the code cannot answer, stop. Report the conflicting files.
+   - `CONFLICTING`: resolve it now. Do not ask first. Fetch the default branch and merge `origin/DEFAULT` into the branch. Do not rebase. Resolve each conflict so that both the PR change and the default branch change stay intact. Run the checks again, push, and check mergeability again.
+   - In the report, name the files that had conflicts and say how you resolved them.
 4. Resolve the actual default branch.
 5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
 6. PR title matches the current dominant change, same conventional form as commits.
