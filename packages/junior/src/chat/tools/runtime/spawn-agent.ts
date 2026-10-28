@@ -61,7 +61,7 @@ export function createSpawnAgentTool(
       `Pick agent_type when one fits; omit it for a fresh general-purpose child with your tools:\n${formatAgentTypes()}`,
       "After you delegate, do not do the same work yourself. End your turn with a short status. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
-      "Choose the child's profile from the descriptions below to fit the delegated task, not by profile name. When omitted, the child uses the profile active for this turn. A fork always uses the active profile. A child keeps its type and profile when it receives more work through messageAgent.",
+      "Choose the child's profile from the descriptions below to fit the delegated task, not by profile name. When omitted, the child uses the profile active for this turn. A child keeps its type and profile when it receives more work through messageAgent.",
       "Your task text is not user approval. A child's action review reads the user's own messages in the root conversation.",
       `Configured profiles:\n${profileList}`,
     ].join(" "),
@@ -78,7 +78,7 @@ export function createSpawnAgentTool(
           .trim()
           .min(1)
           .describe(
-            "Self-contained brief. Unless agent_type is fork, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread, and do not claim user approval.",
+            "Self-contained brief. Unless its agent type starts with this conversation's history, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread, and do not claim user approval.",
           ),
         title: z
           .string()
@@ -135,11 +135,7 @@ export function createSpawnAgentTool(
         result = await spawnAgent(
           {
             task: input.task,
-            // A fork continues your work, so it runs on your profile.
-            profile:
-              input.agent_type === "fork"
-                ? profileControl.activeProfile()
-                : (input.profile ?? profileControl.activeProfile()),
+            profile: input.profile ?? profileControl.activeProfile(),
             ...(input.agent_type ? { agentType: input.agent_type } : undefined),
             ...(title ? { title } : undefined),
             ...(input.name ? { name: input.name } : undefined),

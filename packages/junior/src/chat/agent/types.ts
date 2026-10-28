@@ -146,8 +146,6 @@ export type AgentDispatch = {
 
 /** Optional agent capabilities that a run slice can turn off. */
 export const AGENT_RUN_FEATURES = [
-  // Tools that change state outside the Sandbox. Off for read-only children.
-  "external-writes",
   "handoff",
   "interactive-auth",
   "subagents",

@@ -6,7 +6,6 @@ import type {
   ToolExposure,
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /**
  * Tool definition boundary for Pi-facing agent tools.
@@ -188,51 +187,5 @@ export function disableTools(
       name,
       { ...tool, disabledReason: reason },
     ]),
-  );
-}
-
-const READ_ONLY_REASON =
-  "This child agent is read-only. It can read and use its own Sandbox, but it cannot change anything outside it.";
-
-/** Read-only or Sandbox-local actions are allowed in a read-only run. */
-function isReadOnlyAction(annotations: ToolAnnotations | undefined): boolean {
-  return (
-    annotations?.readOnlyHint === true || annotations?.openWorldHint === false
-  );
-}
-
-/**
- * Keep only read-only and Sandbox-local actions. Other tools stay in the tool
- * list, disabled like `disableTools`. A dispatcher, such as `callMcpTool`,
- * names its real action for each input, so it checks that action per call.
- */
-export function restrictToReadOnlyTools(tools: ToolRegistry): ToolRegistry {
-  return Object.fromEntries(
-    Object.entries(tools).map(([name, tool]) => {
-      const { execute, resolveApprovalMetadata } = tool;
-      if (!resolveApprovalMetadata || !execute) {
-        return [
-          name,
-          isReadOnlyAction(tool.annotations)
-            ? tool
-            : { ...tool, disabledReason: READ_ONLY_REASON },
-        ];
-      }
-      return [
-        name,
-        {
-          ...tool,
-          execute: async (input: unknown, options: ToolExecuteOptions) => {
-            const resolved = await resolveApprovalMetadata(input);
-            if (!isReadOnlyAction(resolved?.annotations ?? tool.annotations)) {
-              throw new ToolInputError(
-                disabledToolMessage(resolved?.name ?? name, READ_ONLY_REASON),
-              );
-            }
-            return await execute(input, options);
-          },
-        },
-      ];
-    }),
   );
 }

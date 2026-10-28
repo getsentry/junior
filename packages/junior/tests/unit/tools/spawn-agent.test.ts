@@ -126,7 +126,7 @@ describe("spawnAgent", () => {
       tool.prepareArguments!({ task: "Unknown profile.", profile: "missing" }),
     ).toThrow(ToolInputError);
 
-    // A fork continues the parent's work, so it keeps the active profile.
+    // The agent type passes through; profile selection is independent of it.
     await tool.execute!(
       tool.prepareArguments!({
         agent_type: "fork",
@@ -141,7 +141,7 @@ describe("spawnAgent", () => {
         agentType: "fork",
         task: "Check the other path.",
         title: "Other path",
-        profile: "standard",
+        profile: "handoff",
       },
       { toolCallId: "call-fork" },
     );

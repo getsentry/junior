@@ -26,12 +26,12 @@ stores the terminal result for its parent to read later.
   purged with their root Conversation tree. A child cannot hand off its own
   active model profile or otherwise change its run policy.
 - An invocation may store an **agent type** (`agent-types.ts`). A child keeps
-  its type for later agent invocations, the same as its profile. `fork` starts
-  the child with the parent's history before the spawn call (`fork-history.ts`)
-  and uses the parent's active profile. The child commits that history as its
-  own in its first checkpoint. `explore` and `reviewer` turn off the
-  `external-writes` run feature, so only read-only and Sandbox-local tools run.
-  A dispatcher such as `callMcpTool` checks the real action for each call.
+  its type for later agent invocations, the same as its profile. A type is
+  data; runtime code reads its flags, never its name. A type with
+  `forkContext` starts the child with the parent's history before the spawn
+  call (`fork-history.ts`), and the child commits that history as its own in
+  its first checkpoint. Types do not limit tools: Guardian reviews each child
+  action against the root user's messages.
 - `limits.maxAgentDepth` is the number of child levels that can start their
   own children. The default, 0, lets only the root start children. The worker
   hides `spawnAgent` from deeper children.

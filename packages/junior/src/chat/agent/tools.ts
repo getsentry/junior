@@ -37,10 +37,7 @@ import {
   McpServiceAccountRequiredError,
 } from "@/chat/mcp/errors";
 import { createTools } from "@/chat/tools";
-import {
-  restrictToReadOnlyTools,
-  type AnyToolDefinition,
-} from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { DisabledToolPromptContext } from "@/chat/prompt";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
@@ -480,7 +477,7 @@ export async function wireAgentTools(
       modelId: botConfig.guardianModelId,
     }),
   });
-  const createdTools = createTools(
+  const tools = createTools(
     loadableSkills,
     {
       writeGeneratedArtifacts: async (files) => {
@@ -505,12 +502,6 @@ export async function wireAgentTools(
       }),
     },
   );
-  const tools = isAgentRunFeatureDisabled(
-    args.run.disabledFeatures,
-    "external-writes",
-  )
-    ? restrictToReadOnlyTools(createdTools)
-    : createdTools;
 
   const plannedToolExposure = planToolExposure(
     tools as Record<string, AnyToolDefinition>,
