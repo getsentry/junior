@@ -172,7 +172,7 @@ describe("conversation report event projection", () => {
     ).toEqual([]);
   });
 
-  it("projects the stored actor identity for each visible user message", () => {
+  it("projects the author of each user message without inventing a person", () => {
     const message = event(1, {
       type: "message",
       messageId: "message-1",
@@ -187,11 +187,19 @@ describe("conversation report event projection", () => {
         },
       },
     });
+    // A parent agent wrote this child input, so it names the agent invocation.
+    const agentInput = event(2, {
+      type: "message",
+      messageId: "agent-invocation:invocation-1:input",
+      role: "user",
+      text: "audit the repo",
+      meta: { agentInvocationId: "invocation-1" },
+    });
 
     expect(
       projectConversationReportEventPage({
         canExposePayload: true,
-        events: [message],
+        events: [message, agentInput],
       }),
     ).toEqual([
       {
@@ -209,12 +217,23 @@ describe("conversation report event projection", () => {
           },
         },
       },
+      {
+        seq: 2,
+        createdAt: "1970-01-01T00:00:02.000Z",
+        data: {
+          type: "message",
+          messageId: "agent-invocation:invocation-1:input",
+          role: "user",
+          agentInvocationId: "invocation-1",
+          text: "audit the repo",
+        },
+      },
     ]);
 
     expect(
       projectConversationReportEventPage({
         canExposePayload: false,
-        events: [message],
+        events: [message, agentInput],
       }),
     ).toEqual([
       {
@@ -224,6 +243,17 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "message-1",
           role: "user",
+          redacted: true,
+        },
+      },
+      {
+        seq: 2,
+        createdAt: "1970-01-01T00:00:02.000Z",
+        data: {
+          type: "message",
+          messageId: "agent-invocation:invocation-1:input",
+          role: "user",
+          agentInvocationId: "invocation-1",
           redacted: true,
         },
       },

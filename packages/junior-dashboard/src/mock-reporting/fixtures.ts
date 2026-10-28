@@ -1011,6 +1011,7 @@ function advisorConversation(
         type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
+        agentInvocationId: `${conversationId}:invocation`,
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 18_000), {

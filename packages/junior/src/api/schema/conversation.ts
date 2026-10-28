@@ -332,6 +332,8 @@ const conversationReportMessageEventDataSchema = z
     role: z.enum(["assistant", "system", "user"]),
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
+    /** Agent invocation whose input this is. An agent wrote it, not a person. */
+    agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),

@@ -346,6 +346,9 @@ function reportEventData(args: {
           ? { source: data.meta.source }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
+        ...(typeof data.meta?.agentInvocationId === "string"
+          ? { agentInvocationId: data.meta.agentInvocationId }
+          : undefined),
         eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
           .data,
         ...(typeof data.meta?.eventType === "string"

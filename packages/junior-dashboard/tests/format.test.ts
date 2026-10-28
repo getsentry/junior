@@ -294,6 +294,26 @@ describe("dashboard conversation formatting", () => {
     expect(summarizeTurns(conversation)).toBeUndefined();
   });
 
+  it("labels agent invocation input without the conversation actor", () => {
+    // Alice started the child agent, but its parent agent wrote the input.
+    const conversation = transcript(
+      [
+        event(0, {
+          type: "message",
+          messageId: "agent-invocation:invocation-1:input",
+          role: "user",
+          agentInvocationId: "invocation-1",
+          text: "audit",
+        }),
+      ],
+      { actorIdentity: { fullName: "Alice" } },
+    );
+    expect(summarizeMessages(conversation)).toEqual({
+      items: [{ author: "Agent invocation", bytes: 5 }],
+      total: 1,
+    });
+  });
+
   it("uses canonical detail metadata without carrying absent fields", () => {
     const detail = transcript([], {
       channel: "C1",
