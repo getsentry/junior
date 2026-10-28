@@ -229,7 +229,9 @@ export default await createApp({
 - **Slack:** Junior starts work from a mention or DM only when the email of the
   author's Slack profile is on an allowed domain. Slack verifies that email.
   Junior drops other messages and does not reply. Passive thread replies, slash
-  commands, and Slack actions are not checked yet.
+  commands, and Slack actions are not checked yet. Bots have no profile email.
+  To let a bot start work, add its Slack user ID to
+  `slack.allowedBotUserIds`.
 - **Dashboard:** Google sign-in accepts only Google Workspace accounts on an
   allowed domain. Junior checks the verified `hd` claim of the Google ID token,
   not the email. With one domain, Junior also sends it to Google as the `hd`

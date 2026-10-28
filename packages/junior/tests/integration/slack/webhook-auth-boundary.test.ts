@@ -261,7 +261,7 @@ describe("Slack webhook auth boundary", () => {
     await state.disconnect();
   });
 
-  it("lets only Slack authors on the allowed domains start a Turn", async () => {
+  it("lets only Slack authors on the allowed domains or allowed bots start a Turn", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const slack = createSlackWebhookTestClient({
       signingSecret: SIGNING_SECRET,
@@ -271,6 +271,7 @@ describe("Slack webhook auth boundary", () => {
       allowedDomains: ["example.com", "example.org"],
       conversationWorkQueue: () => queue,
       experimental: SUITE_EXPERIMENTAL,
+      slack: { allowedBotUserIds: ["UBOT"] },
       waitUntil: waitUntil.fn,
     });
     await getStateAdapter().connect();
@@ -278,12 +279,19 @@ describe("Slack webhook auth boundary", () => {
     const emails: Record<string, string> = {
       U123: "testuser@example.com",
       UCONTRACTOR: "someone@contractor.dev",
+      // Bot profiles have no email.
+      UBOT: "",
+      UOTHERBOT: "",
     };
     mswServer.use(
       http.post("https://slack.com/api/users.info", async ({ request }) => {
         const user = new URLSearchParams(await request.text()).get("user")!;
         return HttpResponse.json(
-          usersInfoOk({ userId: user, email: emails[user] }),
+          usersInfoOk({
+            userId: user,
+            email: emails[user],
+            isBot: emails[user] === "",
+          }),
         );
       }),
     );
@@ -309,6 +317,12 @@ describe("Slack webhook auth boundary", () => {
     expect(queue.queuedMessages()).toHaveLength(1);
     expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
     expect(slackApiOutbox.messages()).toEqual([]);
+
+    // Bots have no profile email. Only an allowed bot starts a Turn.
+    await mention("UOTHERBOT");
+    expect(queue.queuedMessages()).toHaveLength(1);
+    await mention("UBOT");
+    expect(queue.queuedMessages()).toHaveLength(2);
   });
 
   it.each(["message", "factory"] as const)(
