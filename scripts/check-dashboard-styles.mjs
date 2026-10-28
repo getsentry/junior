@@ -221,23 +221,59 @@ function main() {
       "utf8",
     ),
   );
-  const errors = [
-    ...findNonstandardNeutralTextColors(files),
-    ...findNeutralSurfaceLiterals(files),
-    ...findUnknownDashboardColorTokens(files, tokens),
-    ...findArbitraryTextSizes(files),
-    ...findUndersizedHardcodedFontSizes(files),
-    ...findClassicViewportHeights(files),
-    ...findAdditiveSafeAreaPadding(files),
-    ...findComposerSafeAreaBottomPadding(files),
-    ...findDashboardUtilityAssertions(testFiles),
-  ];
-  if (errors.length === 0) {
+  // Each fix names the design intent so an agent changes the design instead of
+  // rewriting the source until the pattern stops matching.
+  const checks = [
+    {
+      fix: "Use a dashboard text token by meaning: text-dashboard-text-solid, text-dashboard-text, text-dashboard-text-subtle, text-dashboard-text-muted, or text-dashboard-text-faint. Do not use text-white, text-dashboard-text-secondary, or gray hex text.",
+      lines: findNonstandardNeutralTextColors(files),
+    },
+    {
+      fix: "Use a dashboard surface, fill, overlay, or border token instead of raw white or black. Shadows may use black.",
+      lines: findNeutralSurfaceLiterals(files),
+    },
+    {
+      fix: "Use a color token defined in packages/junior-dashboard/src/tailwind.css. Add a new token only when no existing token has this meaning.",
+      lines: findUnknownDashboardColorTokens(files, tokens),
+    },
+    {
+      fix: "Use a named type step (text-2xs through text-4xl) chosen by role. Do not use an absolute text-[N] size.",
+      lines: findArbitraryTextSizes(files),
+    },
+    {
+      fix: `Keep SVG and chart text at ${MIN_PRODUCT_FONT_SIZE_PX}px or larger. Make room in the layout instead of shrinking the text.`,
+      lines: findUndersizedHardcodedFontSizes(files),
+    },
+    {
+      fix: "Use dvh or the visualViewport variables from layout/VisualViewportShell instead of 100vh.",
+      lines: findClassicViewportHeights(files),
+    },
+    {
+      fix: "Use max(<padding>, env(safe-area-inset-*)) instead of adding padding to the safe-area inset.",
+      lines: findAdditiveSafeAreaPadding(files),
+    },
+    {
+      fix: "conversations/ComposerDock owns the bottom safe-area pad. Remove this safe-area math and let ComposerDock set it.",
+      lines: findComposerSafeAreaBottomPadding(files),
+    },
+    {
+      fix: "Dashboard tests must not assert CSS utility classes. Assert the visible state, role, or text, or leave the look to visual QA.",
+      lines: findDashboardUtilityAssertions(testFiles),
+    },
+  ].filter((check) => check.lines.length > 0);
+  if (checks.length === 0) {
     console.log(
       "Dashboard source uses shared color tokens, type scale, and mobile-safe viewport padding.",
     );
     return;
   }
+  const errors = checks.flatMap((check) => [
+    check.fix,
+    ...check.lines.map((line) => `  ${line}`),
+  ]);
+  errors.push(
+    "Fix the design, not the match. Do not split class strings, build class names at runtime, or move values into inline styles to pass. See packages/junior-dashboard/src/client/components/README.md.",
+  );
   console.error(["Dashboard style check failed:", ...errors].join("\n"));
   process.exitCode = 1;
 }

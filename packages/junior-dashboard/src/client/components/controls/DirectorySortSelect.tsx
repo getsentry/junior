@@ -1,9 +1,11 @@
+import { Select } from "../Select";
+
 export type DirectorySortOption = {
   label: string;
   value: string;
 };
 
-/** Render a native directory sort control with an explicit dark color scheme. */
+/** Keep directory sorting consistent with the dashboard's shared select. */
 export function DirectorySortSelect(props: {
   ariaLabel: string;
   onChange(value: string): void;
@@ -15,9 +17,9 @@ export function DirectorySortSelect(props: {
       <span className="flex h-full items-center border-r border-dashboard-border-subtle px-2 font-sans font-medium text-xs text-dashboard-text-muted">
         Sort
       </span>
-      <select
+      <Select
         aria-label={props.ariaLabel}
-        className="h-full min-w-0 bg-dashboard-control px-2 font-sans text-xs text-dashboard-text-muted outline-none [color-scheme:var(--dashboard-color-scheme,dark)]"
+        variant="sort"
         value={props.value}
         onChange={(event) => props.onChange(event.currentTarget.value)}
       >
@@ -30,7 +32,7 @@ export function DirectorySortSelect(props: {
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

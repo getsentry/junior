@@ -48,7 +48,7 @@ export interface ToolActionReviewContext {
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
-  /** Read the root Conversation of a child agent when an action needs review. */
+  /** Read the root Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
 }
 

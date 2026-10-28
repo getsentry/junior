@@ -1,5 +1,5 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
@@ -17,6 +17,7 @@ import {
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, getDashboardTimeZone } from "../format";
+import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
@@ -28,7 +29,7 @@ const CONVERSATION_PAGE_SIZE = 20;
 export function ConversationWorkspace() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const search = useDeferredValue(query.trim());
+  const search = useDebouncedValue(query.trim());
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
