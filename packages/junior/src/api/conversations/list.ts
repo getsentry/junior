@@ -22,8 +22,8 @@ import {
   conversationArchivedForEmail,
   conversationArchivedForUser,
   conversationArchiveTimes,
-  conversationHasParticipantEmail,
   conversationHasParticipantUser,
+  conversationIsMemberRoot,
   conversationNotArchivedForEmail,
   conversationNotArchivedForUser,
   viewerConversationMembership,
@@ -56,10 +56,7 @@ function conversationFeedMembershipFilter(
   if (!filter) return status === "archived" ? sql`false` : undefined;
   if (filter.kind === "viewer") {
     return and(
-      viewerConversationMembership({
-        actorMatch: eq(juniorIdentities.userId, filter.userId),
-        participantMatch: conversationHasParticipantUser(filter.userId),
-      }),
+      conversationIsMemberRoot({ userId: filter.userId }),
       status === "archived"
         ? conversationArchivedForUser(filter.userId)
         : status === "all"
@@ -68,10 +65,7 @@ function conversationFeedMembershipFilter(
     );
   }
   return and(
-    viewerConversationMembership({
-      actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
-      participantMatch: conversationHasParticipantEmail(filter.email),
-    }),
+    conversationIsMemberRoot({ email: filter.email }),
     status === "archived"
       ? conversationArchivedForEmail(filter.email)
       : status === "all"

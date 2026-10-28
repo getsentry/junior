@@ -475,6 +475,7 @@ describe("conversation list API", () => {
         },
         nowMs: 4_000,
         source: "slack",
+        title: "Launch plan",
       });
       const otherUser = await fixture.sql
         .db()
@@ -542,6 +543,7 @@ describe("conversation list API", () => {
         },
         nowMs: 2_000,
         source: "slack",
+        title: "Launch plan follow-up",
         visibility: "private",
       });
       const linkedUser = await fixture.sql
@@ -590,6 +592,17 @@ describe("conversation list API", () => {
           isParticipant: true,
         }),
       ]);
+      // Search keeps the same membership: a newer match from someone else
+      // must not use up the limit.
+      await expect(
+        readConversationFeedFromSql({ viewer, q: "launch", limit: 1 }),
+      ).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: "slack:D1:morgan-linked",
+          }),
+        ],
+      });
       await expect(
         readConversationFeedFromSql({ actorEmail: "other@example.com" }),
       ).resolves.toMatchObject({ conversations: [] });
