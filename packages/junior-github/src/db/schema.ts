@@ -6,6 +6,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -127,25 +128,44 @@ export const juniorGitHubPullRequestIssues = pgTable(
 );
 
 /**
- * The person who asked Junior to open the pull request on one head branch.
- * The create tool writes the row before it opens the pull request, so the
- * `opened` webhook can read it. A new pull request on the same branch replaces
- * the row.
+ * People who asked Junior to open or update a pull request. Each row links
+ * the pull request to the Junior identity and user that acted, and keeps the
+ * linked GitHub login for role filters. The `create` row is the person who
+ * asked Junior to open it.
+ *
+ * The create tool writes a pending row with no `number` before GitHub opens
+ * the pull request, so the `opened` webhook can read it. After GitHub opens
+ * the pull request, the tool sets `number`. A failed create removes the
+ * pending row.
  */
 export const juniorGitHubPullRequestRequesters = pgTable(
   "junior_github_pull_request_requesters",
   {
     /** Lowercase `owner/name`. */
     repositoryFullName: text("repository_full_name").notNull(),
-    headBranch: text("head_branch").notNull(),
-    /** The requester's linked GitHub login when Junior opened the PR. */
-    requesterLogin: text("requester_login").notNull(),
+    /** Null only while the create call waits for GitHub. */
+    number: integer("number"),
+    /** Set by the create tool. Pending rows are found by it. */
+    headBranch: text("head_branch"),
+    identityId: text("identity_id").notNull(),
+    userId: text("user_id"),
+    /** The linked GitHub login when the person acted, if any. */
+    githubLogin: text("github_login"),
+    /**
+     * `create` for the person who asked Junior to open the pull request.
+     * `update` for a person who only asked Junior to change it.
+     */
+    action: text("action").$type<"create" | "update">().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => [
-    primaryKey({
-      columns: [table.repositoryFullName, table.headBranch],
-    }),
+    uniqueIndex("junior_github_pull_request_requesters_number_uidx")
+      .on(table.repositoryFullName, table.number, table.identityId)
+      .where(sql`${table.number} IS NOT NULL`),
+    uniqueIndex("junior_github_pull_request_requesters_pending_uidx")
+      .on(table.repositoryFullName, table.headBranch, table.identityId)
+      .where(sql`${table.number} IS NULL`),
   ],
 );
 

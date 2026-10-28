@@ -5,7 +5,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
-import { listGitHubPullRequestRequesters } from "../pull-request-requesters/store.js";
+import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { isBotLogin } from "./ownership.js";
 
 /** Match key for the pull request author's repository role. */
@@ -25,12 +25,17 @@ export interface GitHubRoleTarget {
   repositoryFullName: string;
 }
 
+/** Pull request number named by an Event identifier such as `owner/repo#12`. */
+function identifierNumber(identifier: string): number | undefined {
+  const match = /#(\d+)$/.exec(identifier);
+  return match ? Number(match[1]) : undefined;
+}
+
 /**
  * Find the person who asked for each pull request in a delivery. On a pull
- * request that Junior's bot opened, this is the linked requester that the
- * create tool saved for the head branch. Otherwise, and when Junior has no
- * saved requester, it is the author. Events without `headBranch`, such as
- * conversation comments, cannot use the saved requester.
+ * request that Junior's bot opened, this is the person who asked Junior to
+ * open it, from the saved requester rows. Otherwise, and when that person has
+ * no linked GitHub login, it is the author.
  */
 async function pullRequestRequesters(args: {
   botEmail: string | undefined;
@@ -38,20 +43,43 @@ async function pullRequestRequesters(args: {
   events: EventInput[];
   repositoryFullName: string;
 }): Promise<Map<EventInput, string>> {
-  const savedBranch = (event: EventInput) =>
-    isBotLogin(event.data!.authorUsername as string, args.botEmail) &&
-    typeof event.data?.headBranch === "string"
-      ? event.data.headBranch
-      : undefined;
-  const saved = await listGitHubPullRequestRequesters(args.db, {
-    headBranches: args.events.flatMap((event) => savedBranch(event) ?? []),
+  // Repository watches get a copy of each pull request Event with the
+  // repository identifier and the same key.
+  const numberByEventKey = new Map<string, number>();
+  for (const event of args.events) {
+    const number = identifierNumber(event.identifier);
+    if (number !== undefined) numberByEventKey.set(event.eventKey, number);
+  }
+  const botPullRequests = args.events.flatMap((event) => {
+    const number = numberByEventKey.get(event.eventKey);
+    const headBranch = event.data?.headBranch;
+    // Only `opened` can arrive before the create tool links its row.
+    const pendingHeadBranch =
+      event.eventType === "pull_request.opened" &&
+      typeof headBranch === "string"
+        ? headBranch
+        : undefined;
+    if (
+      number === undefined ||
+      !isBotLogin(event.data!.authorUsername as string, args.botEmail)
+    ) {
+      return [];
+    }
+    return [{ number, pendingHeadBranch }];
+  });
+  const openers = await listGitHubPullRequestOpeners(args.db, {
+    pullRequests: botPullRequests,
     repositoryFullName: args.repositoryFullName,
   });
   return new Map(
     args.events.map((event) => {
-      const branch = savedBranch(event);
-      const requester = branch ? saved.get(branch) : undefined;
-      return [event, requester ?? (event.data!.authorUsername as string)];
+      const number = numberByEventKey.get(event.eventKey);
+      const author = event.data!.authorUsername as string;
+      const opener =
+        number !== undefined && isBotLogin(author, args.botEmail)
+          ? openers.get(number)?.githubLogin
+          : undefined;
+      return [event, opener ?? author];
     }),
   );
 }

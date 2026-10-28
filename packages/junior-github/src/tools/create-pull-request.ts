@@ -29,7 +29,11 @@ import {
   linkedGitHubLogin,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
-import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
+import { resolveGitHubPullRequestRequester } from "../pull-request-requesters/actor.js";
+import {
+  attachGitHubPullRequestRequester,
+  recordPendingGitHubPullRequestRequester,
+} from "../pull-request-requesters/store.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -342,7 +346,7 @@ async function createGitHubPullRequest(
   };
 }
 
-/** The requester row key for the head branch that a create call names. */
+/** The pending requester key for the head branch that a create call names. */
 function requesterBranch(input: CreateGitHubPullRequestInput): {
   headBranch: string;
   repositoryFullName: string;
@@ -354,36 +358,6 @@ function requesterBranch(input: CreateGitHubPullRequestInput): {
     headBranch: head.slice(head.indexOf(":") + 1),
     repositoryFullName: `${repo.owner}/${repo.name}`,
   };
-}
-
-/**
- * Save the requester's linked GitHub login for the new pull request's head
- * branch. Webhooks read it to fill `requesterUsername` and `requesterRole`.
- * It runs before the create call because GitHub can deliver `opened` before
- * the create call returns. Returns the login the branch had before, so a
- * rejected create can restore it.
- */
-async function recordPullRequestRequester(
-  ctx: ToolRegistrationHookContext,
-  input: CreateGitHubPullRequestInput,
-): Promise<string | undefined> {
-  let requester: Awaited<ReturnType<typeof ctx.users.resolveActor>>;
-  if (ctx.actor && ctx.actor.platform !== "system") {
-    try {
-      requester = await ctx.users.resolveActor();
-    } catch (error) {
-      // An unknown requester falls back to the author in webhooks. Clearing
-      // the row below keeps that fallback instead of blocking the PR.
-      ctx.log.warn("github.pull_request.requester.resolve_actor.failed", {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-  return await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
-    ...requesterBranch(input),
-    requesterLogin: linkedGitHubLogin(requester?.user),
-  });
 }
 
 /** Assignment is optional: lookup or provider failures must not fail PR creation. */
@@ -580,10 +554,12 @@ export function createGitHubPullRequestTool(
             ctx,
             ctx.slack?.conversationLink?.url,
           );
-          const previousRequester = await recordPullRequestRequester(
-            ctx,
-            parsedInput,
-          );
+          // GitHub can deliver `opened` before the create call returns, so
+          // the requester must be saved first.
+          await recordPendingGitHubPullRequestRequester(ctx.db as GitHubDb, {
+            ...requesterBranch(parsedInput),
+            requester: await resolveGitHubPullRequestRequester(ctx),
+          });
           const pendingState: CreatePullRequestState = {
             status: "pending",
             createdAtMs: Date.now(),
@@ -603,12 +579,12 @@ export function createGitHubPullRequestTool(
               isDefinitiveGitHubPullRequestCreateRejection(error)
             ) {
               await ctx.state.delete(key);
-              // GitHub did not open a pull request, so this call must not
-              // change the requester of an existing pull request.
-              await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
-                ...requesterBranch(parsedInput),
-                requesterLogin: previousRequester,
-              });
+              // GitHub did not open a pull request, so no pending requester
+              // may remain for the branch.
+              await recordPendingGitHubPullRequestRequester(
+                ctx.db as GitHubDb,
+                requesterBranch(parsedInput),
+              );
             }
             throw error;
           }
@@ -632,6 +608,10 @@ export function createGitHubPullRequestTool(
               { cause: error },
             );
           }
+          await attachGitHubPullRequestRequester(ctx.db as GitHubDb, {
+            ...requesterBranch(parsedInput),
+            number: result.number,
+          });
           await assignPullRequestRequester(ctx, parsedInput, result);
           return await gitHubPullRequestStructuredResult(
             ctx,

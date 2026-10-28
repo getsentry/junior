@@ -10,6 +10,7 @@ import {
   githubSqlSchema,
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
+  juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import type { GitHubDb } from "../src/db/database";
@@ -2468,7 +2469,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("filters Junior pull requests by the requester the create tool saved", async () => {
+  it("saves Junior pull request requesters and filters by the opener", async () => {
     const fixture = await createGitHubFixture();
     const roleLogins: string[] = [];
     const published: EventInput[] = [];
@@ -2503,6 +2504,7 @@ describe("GitHub-owned pull request outcomes", () => {
       ),
     );
     const plugin = githubPlugin();
+    const db = fixture.db();
     const pluginCtx = {
       cache: {
         async getOrLoad<T>(
@@ -2512,75 +2514,10 @@ describe("GitHub-owned pull request outcomes", () => {
           return (await load()).value;
         },
       },
-      db: fixture.db(),
+      db,
       log: { error() {}, info() {}, warn() {} },
       plugin: { name: "github" },
     };
-    let requesterLogin: string | undefined = "dcramer";
-    let createStatus = 201;
-    const state = new Map<string, unknown>();
-    const createTool = plugin.hooks!.tools!({
-      ...pluginCtx,
-      actor: { platform: "slack", teamId: "T1", userId: "U039RR91S" },
-      conversationId: "slack:C123:1712345.0001",
-      destination: { platform: "local", conversationId: "local:test" },
-      source: {
-        kind: "local",
-        visibility: "private",
-        conversationId: "local:test",
-      },
-      egress: {
-        async fetch({ operation }: { operation: string }) {
-          if (operation !== "github.pull.create") return Response.json({});
-          return createStatus === 201
-            ? Response.json(
-                {
-                  html_url: "https://github.com/getsentry/junior/pull/946",
-                  number: 946,
-                },
-                { status: 201 },
-              )
-            : Response.json(
-                { message: "A pull request already exists" },
-                { status: createStatus },
-              );
-        },
-      },
-      events: { canSubscribe: false },
-      users: {
-        async resolveActor() {
-          return {
-            user: {
-              id: "user-1",
-              identities: requesterLogin
-                ? [
-                    {
-                      id: "github-identity",
-                      provider: "github",
-                      providerSubjectId: "1",
-                      handle: requesterLogin,
-                    },
-                  ]
-                : [],
-            },
-          };
-        },
-      },
-      state: {
-        async delete(key: string) {
-          state.delete(key);
-        },
-        async get(key: string) {
-          return state.get(key);
-        },
-        async set(key: string, value: unknown) {
-          state.set(key, value);
-        },
-        async withLock<T>(_key: string, _ttl: number, run: () => Promise<T>) {
-          return await run();
-        },
-      },
-    } as any).createPullRequest!;
     const [route] = plugin.hooks!.routes!({
       ...pluginCtx,
       annotations: {
@@ -2606,64 +2543,204 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       },
     });
+    // Webhooks ignore the attribution block in the body. Only saved
+    // requesters count.
+    const opened = pullRequestPayload();
+    Object.assign(opened.pull_request, {
+      body: `<!-- junior-request-attribution:start -->\nvia @octocat.\n<!-- junior-request-attribution:end -->\n\n${opened.pull_request.body}`,
+      head: { ref: "fix/requester-role" },
+    });
+    const requesterFields = () => {
+      const fields = published
+        .filter((event) => event.eventType === "pull_request.opened")
+        .map((event) => [
+          event.data?.requesterUsername,
+          event.data?.requesterRole,
+        ]);
+      published.length = 0;
+      return fields;
+    };
+
+    // `person` is the Actor of the next tool call. Burak has no linked
+    // GitHub account.
+    let person = "dcramer";
+    let createResponse = () =>
+      Response.json(
+        {
+          html_url: "https://github.com/getsentry/junior/pull/946",
+          number: 946,
+        },
+        { status: 201 },
+      );
+    const state = new Map<string, unknown>();
+    const tools = plugin.hooks!.tools!({
+      ...pluginCtx,
+      actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      conversationId: "slack:C123:1712345.0001",
+      destination: { platform: "local", conversationId: "local:test" },
+      source: {
+        kind: "local",
+        visibility: "private",
+        conversationId: "local:test",
+      },
+      egress: {
+        async fetch({ operation }: { operation: string }) {
+          if (operation === "github.pull.create") return createResponse();
+          if (operation === "github.pull.update") {
+            return Response.json({
+              base: { ref: "main" },
+              body: "Updated",
+              draft: false,
+              head: { ref: "fix/requester-role" },
+              html_url: "https://github.com/getsentry/junior/pull/946",
+              merged: false,
+              number: 946,
+              state: "open",
+              title: "Fix requester role",
+            });
+          }
+          return Response.json({});
+        },
+      },
+      events: { canSubscribe: false },
+      users: {
+        async resolveActor() {
+          return {
+            identity: {
+              id: `slack-identity-${person}`,
+              provider: "slack",
+              providerSubjectId: person,
+            },
+            user: {
+              email: `${person}@example.com`,
+              id: `user-${person}`,
+              identities:
+                person === "burak"
+                  ? []
+                  : [
+                      {
+                        id: `github-identity-${person}`,
+                        provider: "github",
+                        providerSubjectId: person,
+                        handle: person,
+                      },
+                    ],
+            },
+          };
+        },
+      },
+      state: {
+        async delete(key: string) {
+          state.delete(key);
+        },
+        async get(key: string) {
+          return state.get(key);
+        },
+        async set(key: string, value: unknown) {
+          state.set(key, value);
+        },
+        async withLock<T>(_key: string, _ttl: number, run: () => Promise<T>) {
+          return await run();
+        },
+      },
+    } as any);
     const createInput = {
       base: "main",
       head: "fix/requester-role",
       repo: "getsentry/junior",
       title: "Fix requester role",
     };
-    // Webhooks ignore the attribution block in the body. Only the saved
-    // requester counts.
-    const opened = pullRequestPayload();
-    Object.assign(opened.pull_request, {
-      body: `<!-- junior-request-attribution:start -->\nvia @octocat.\n<!-- junior-request-attribution:end -->\n\n${opened.pull_request.body}`,
-      head: { ref: "fix/requester-role" },
-    });
-    const requesterFields = () =>
-      published
-        .filter((event) => event.eventType === "pull_request.opened")
-        .map((event) => [
-          event.data?.requesterUsername,
-          event.data?.requesterRole,
-        ]);
+    const savedRequesters = async () =>
+      (
+        await db
+          .select()
+          .from(juniorGitHubPullRequestRequesters)
+          .orderBy(juniorGitHubPullRequestRequesters.createdAt)
+      ).map((row) => [
+        row.number,
+        row.action,
+        row.identityId,
+        row.userId,
+        row.githubLogin,
+      ]);
 
     try {
-      await createTool.execute!(createInput, { toolCallId: "call-1" });
-      await route!.handler(signedRequest(opened));
+      // GitHub can deliver `opened` before the create call returns.
+      createResponse = () => {
+        const response = Response.json(
+          {
+            html_url: "https://github.com/getsentry/junior/pull/946",
+            number: 946,
+          },
+          { status: 201 },
+        );
+        return route!.handler(signedRequest(opened)).then(() => response);
+      };
+      await tools.createPullRequest!.execute!(createInput, {
+        toolCallId: "call-create",
+      });
       expect(requesterFields()).toEqual([
         ["dcramer", "admin"],
         ["dcramer", "admin"],
       ]);
 
-      // A create that GitHub rejects does not change the saved requester.
-      requesterLogin = "octocat";
-      createStatus = 422;
+      // A create that GitHub rejects cannot change the requesters of an
+      // open pull request on the branch.
+      person = "octocat";
+      createResponse = () =>
+        Response.json(
+          { message: "A pull request already exists" },
+          {
+            status: 422,
+          },
+        );
       await expect(
-        createTool.execute!(createInput, { toolCallId: "call-rejected" }),
+        tools.createPullRequest!.execute!(createInput, {
+          toolCallId: "call-rejected",
+        }),
       ).rejects.toThrow("HTTP 422");
-      createStatus = 201;
-      published.length = 0;
+
+      // An update adds a requester. The opener does not change.
+      await tools.updatePullRequest!.execute!(
+        { body: "Updated", number: 946, repo: "getsentry/junior" },
+        { toolCallId: "call-update" },
+      );
       await route!.handler(signedRequest(opened));
       expect(requesterFields()).toEqual([
         ["dcramer", "admin"],
         ["dcramer", "admin"],
       ]);
+      expect(await savedRequesters()).toEqual([
+        [946, "create", "slack-identity-dcramer", "user-dcramer", "dcramer"],
+        [946, "update", "slack-identity-octocat", "user-octocat", "octocat"],
+      ]);
 
-      // A later PR on the branch from an unlinked requester clears the old
-      // requester, so the event falls back to the bot author.
-      requesterLogin = undefined;
-      published.length = 0;
-      await createTool.execute!(createInput, { toolCallId: "call-2" });
-      await route!.handler(signedRequest(opened));
+      // An opener with no linked GitHub account falls back to the bot.
+      person = "burak";
+      const reused = pullRequestPayload();
+      Object.assign(reused.pull_request, {
+        head: { ref: "fix/requester-role" },
+        id: 1002,
+        number: 947,
+      });
+      createResponse = () =>
+        Response.json(
+          {
+            html_url: "https://github.com/getsentry/junior/pull/947",
+            number: 947,
+          },
+          { status: 201 },
+        );
+      await tools.createPullRequest!.execute!(createInput, {
+        toolCallId: "call-unlinked",
+      });
+      await route!.handler(signedRequest(reused));
       expect(requesterFields()).toEqual([
         ["sentry-junior[bot]", "none"],
         ["sentry-junior[bot]", "none"],
       ]);
 
-      // A person's pull request uses its author, even on a saved branch.
-      requesterLogin = "dcramer";
-      await createTool.execute!(createInput, { toolCallId: "call-3" });
-      published.length = 0;
+      // A person's pull request uses its author.
       opened.pull_request.user = { login: "octocat" };
       await route!.handler(signedRequest(opened));
       expect(requesterFields()).toEqual([

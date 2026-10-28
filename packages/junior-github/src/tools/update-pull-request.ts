@@ -17,6 +17,9 @@ import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import type { GitHubDb } from "../db/database.js";
+import { resolveGitHubPullRequestRequester } from "../pull-request-requesters/actor.js";
+import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 
 const inputSchema = z
@@ -184,6 +187,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
   actor?: Actor;
   automationLink?: { url: string };
   conversationId?: string;
+  db: unknown;
   egress: PluginEgress;
   log: PluginLogger;
   events: { canSubscribe: boolean };
@@ -275,6 +279,16 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           egress: ctx.egress,
           nodeId: providerResult.node_id,
           repo: repo.ref,
+        });
+      }
+      // Like attribution, each person who asks Junior to change the pull
+      // request becomes one of its requesters.
+      const requester = await resolveGitHubPullRequestRequester(ctx);
+      if (requester) {
+        await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+          number: providerResult.number,
+          repositoryFullName: repo.ref,
+          requester,
         });
       }
       const subscribable = ctx.events.canSubscribe
