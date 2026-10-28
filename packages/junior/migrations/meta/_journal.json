@@ -435,6 +435,13 @@
       "when": 1793144595064,
       "tag": "0061_workspace_vcpus",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793152275367,
+      "tag": "0062_agent_invocation_type",
+      "breakpoints": true
     }
   ]
 }

@@ -125,6 +125,26 @@ describe("spawnAgent", () => {
     expect(() =>
       tool.prepareArguments!({ task: "Unknown profile.", profile: "missing" }),
     ).toThrow(ToolInputError);
+
+    // A fork continues the parent's work, so it keeps the active profile.
+    await tool.execute!(
+      tool.prepareArguments!({
+        agent_type: "fork",
+        task: "Check the other path.",
+        title: "Other path",
+        profile: "handoff",
+      }),
+      { toolCallId: "call-fork" },
+    );
+    expect(spawnAgent).toHaveBeenLastCalledWith(
+      {
+        agentType: "fork",
+        task: "Check the other path.",
+        title: "Other path",
+        profile: "standard",
+      },
+      { toolCallId: "call-fork" },
+    );
   });
 
   it("requires the runtime tool call id used for durable replay", async () => {

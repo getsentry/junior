@@ -13,6 +13,7 @@ import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import {
   disableTools,
+  restrictToReadOnlyTools,
   tool,
   type AnyToolDefinition,
 } from "@/chat/tools/definition";
@@ -298,5 +299,69 @@ describe("Pi tool adapter integration", () => {
       }),
     ).rejects.toThrow("catalogNotify is disabled in this Turn.");
     expect(execute).not.toHaveBeenCalled();
+  });
+  it("keeps only read-only and Sandbox-local actions for a read-only run", async () => {
+    const execute = vi.fn(async () => ({ ok: true }));
+    const annotations = (readOnlyHint: boolean, openWorldHint: boolean) => ({
+      destructiveHint: !readOnlyHint,
+      idempotentHint: readOnlyHint,
+      openWorldHint,
+      readOnlyHint,
+    });
+    const tools = createPiAgentTools(
+      restrictToReadOnlyTools({
+        lookup: tool({
+          annotations: annotations(true, true),
+          description: "Read a remote record",
+          inputSchema: Type.Object({}),
+          execute,
+        }),
+        scratch: tool({
+          annotations: annotations(false, false),
+          description: "Write a Sandbox file",
+          inputSchema: Type.Object({}),
+          execute,
+        }),
+        post: tool({
+          annotations: annotations(false, true),
+          description: "Post a message",
+          inputSchema: Type.Object({}),
+          execute,
+        }),
+        dispatch: tool({
+          annotations: annotations(false, true),
+          description: "Call a provider tool",
+          inputSchema: Type.Object({ tool_name: Type.String() }),
+          resolveApprovalMetadata: (input) => {
+            const { tool_name } = input as { tool_name: string };
+            return {
+              annotations: annotations(tool_name === "read", true),
+              description: tool_name,
+              name: tool_name,
+            };
+          },
+          execute,
+        }),
+      }),
+      new SkillSandbox([], []),
+      {},
+    );
+
+    await expect(
+      agentTool(tools, "lookup").execute("l", {}),
+    ).resolves.toBeDefined();
+    await expect(
+      agentTool(tools, "scratch").execute("s", {}),
+    ).resolves.toBeDefined();
+    await expect(
+      agentTool(tools, "dispatch").execute("d-read", { tool_name: "read" }),
+    ).resolves.toBeDefined();
+    await expect(agentTool(tools, "post").execute("p", {})).rejects.toThrow(
+      "post is disabled in this Turn.",
+    );
+    await expect(
+      agentTool(tools, "dispatch").execute("d-write", { tool_name: "write" }),
+    ).rejects.toThrow("write is disabled in this Turn.");
+    expect(execute).toHaveBeenCalledTimes(3);
   });
 });

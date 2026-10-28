@@ -25,5 +25,10 @@ describe("agentInvocationRunPolicy", () => {
       modelProfile: "handoff",
       reasoning: "medium",
     });
+    // A read-only child type cannot change anything outside its Sandbox.
+    expect(
+      agentInvocationRunPolicy({ ...invocation, agentType: "explore" }, false)
+        .disabledFeatures,
+    ).toEqual(["external-writes", "handoff", "interactive-auth", "subagents"]);
   });
 });
