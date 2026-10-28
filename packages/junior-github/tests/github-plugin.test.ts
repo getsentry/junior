@@ -3873,6 +3873,35 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
+  it.each([
+    ["git clone https://github.com/getsentry/junior.git", true],
+    ["cd /tmp && git -C repos clone git@github.com:getsentry/junior.git", true],
+    ["GIT_TERMINAL_PROMPT=0 gh repo clone getsentry/junior", true],
+    ["gh repo fork getsentry/junior --clone", true],
+    ["git clone /vercel/sandbox/repos/junior /tmp/junior", false],
+    ["git clone https://example.com/github.com/getsentry/junior", false],
+    ["git fetch origin main", false],
+  ])(
+    "denies GitHub clones in bash on a best-effort basis: %s",
+    async (command, denied) => {
+      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+      const before = beforeToolContext({
+        fullName: "David Cramer",
+        userId: "U039RR91S",
+        userName: "dcramer",
+      });
+      before.ctx.tool.input.command = command;
+
+      await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+      expect(before.denial?.includes("github_cloneRepository") ?? false).toBe(
+        denied,
+      );
+    },
+  );
+
   it("prefers linked GitHub noreply emails for the current actor", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";

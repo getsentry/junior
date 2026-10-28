@@ -26,6 +26,7 @@ export * from "./tools";
 export * from "./operations";
 export * from "./credentials";
 export * from "./egress-policy";
+export * from "./shell-command";
 export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";
