@@ -700,6 +700,19 @@ describe("durable queue contract", () => {
         replies: 1,
         error: "lost its worker",
       });
+      // The next turn sees that this one failed.
+      await expect(
+        loadProjection({ conversationId: CONVERSATION_ID }),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          role: "user",
+          content: [
+            expect.objectContaining({
+              text: expect.stringContaining("Your previous turn failed"),
+            }),
+          ],
+        }),
+      );
       await expectNextTurn(q, "1712345.0006");
     });
 

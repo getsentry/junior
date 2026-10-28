@@ -96,6 +96,11 @@ normalize older history shapes before the runtime reads them.
 stores and replays it unchanged. Reporting projections can omit it from the UI.
 Compaction and handoff can replace it with the current context.
 
+Two host events also appear in agent history as short user-role notes:
+`authorization_completed` and `turn_failed`. The note for a failed turn tells
+the model that the turn did not finish. It has the error reference, not the raw
+error.
+
 Message summarization is separate from agent-history compaction. A
 `messages_summarized` event stores the latest bounded summaries used to render
 older source-thread context; it does not replace Pi history.

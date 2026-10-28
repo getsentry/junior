@@ -21,6 +21,7 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { getTurnAuthorization } from "./authorized-turn";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   completeTurnRecord,
   abandonTurnRecord,
@@ -702,6 +703,14 @@ async function failStrandedTurnWithFallback(args: {
   const eventId = logException(new Error(args.errorMessage), eventName, {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": failed.turnId,
+  });
+  // Record the failure in history so the next turn knows about it.
+  await getTurnLifecycle().fail({
+    conversationId: args.conversationId,
+    createdAtMs: Date.now(),
+    ...(eventId ? { eventId } : undefined),
+    failureCode: "agent_run_failed",
+    turnId: failed.turnId,
   });
   let routing: RequiredTurnSessionRouting;
   try {

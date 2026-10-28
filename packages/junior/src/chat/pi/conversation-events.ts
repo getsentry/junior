@@ -18,6 +18,10 @@ type AuthorizationCompletedEventData = Extract<
   ConversationEventData,
   { type: "authorization_completed" }
 >;
+type TurnFailedEventData = Extract<
+  ConversationEventData,
+  { type: "turn_failed" }
+>;
 
 /** Pi context projected from one Junior model-history version. */
 export interface PiConversationProjection {
@@ -43,6 +47,30 @@ function authorizationObservationMessage(
       {
         type: "text",
         text: `${label} completed for provider "${data.provider}". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that ${data.provider} is connected.`,
+      },
+    ],
+    timestamp: createdAtMs,
+  });
+}
+
+/**
+ * Tell the model that an earlier turn failed. Pi drops a failed assistant
+ * message before it calls the model, so without this note the next turn cannot
+ * see the failure. The note has the error reference, never the raw error.
+ */
+function turnFailedObservationMessage(
+  data: TurnFailedEventData,
+  createdAtMs: number,
+): PiMessage {
+  const reference = data.eventId
+    ? ` The error reference is event_id=${data.eventId}.`
+    : "";
+  return piMessageSchema.parse({
+    role: "user",
+    content: [
+      {
+        type: "text",
+        text: `Your previous turn failed before it finished. The person may have seen an error reply or no reply.${reference} Do not assume that request was completed.`,
       },
     ],
     timestamp: createdAtMs,
@@ -106,8 +134,8 @@ function historyItemProvenance(
  * Compaction and handoff start with replacement history. Later native history
  * events append after it.
  *
- * Host-only events are filtered, completed authorization becomes a synthetic
- * observation, and `maxSeq` reproduces an exact committed boundary.
+ * Host-only events are filtered. Completed authorization and failed turns
+ * become user-role notes. `maxSeq` reproduces an exact committed boundary.
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
@@ -153,6 +181,14 @@ export function projectConversationEvents(
     if (event.data.type === "authorization_completed") {
       messages.push(
         authorizationObservationMessage(event.data, event.createdAtMs),
+      );
+      provenance.push(contextProvenance);
+      seqs.push(event.seq);
+      continue;
+    }
+    if (event.data.type === "turn_failed") {
+      messages.push(
+        turnFailedObservationMessage(event.data, event.createdAtMs),
       );
       provenance.push(contextProvenance);
       seqs.push(event.seq);

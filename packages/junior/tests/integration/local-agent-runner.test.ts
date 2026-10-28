@@ -410,6 +410,28 @@ describe("local agent runner", () => {
     });
     expect(JSON.stringify(lifecycle)).not.toContain("raw-error-sentinel");
     expect(JSON.stringify(lifecycle)).not.toContain("provider.invalid");
+
+    // The next turn sees that this one failed, without the raw error.
+    const history = await loadProjection({ conversationId: conversationId! });
+    expect(history.at(-1)).toMatchObject({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: expect.stringContaining(
+            "Your previous turn failed before it finished.",
+          ),
+        },
+      ],
+    });
+    expect(JSON.stringify(history.at(-1))).not.toContain("raw-error-sentinel");
+    // The next turn can save its history after that notice.
+    await expect(
+      commitMessages({
+        conversationId: conversationId!,
+        messages: [...history, userPiMessage("try again", Date.now())],
+      }),
+    ).resolves.toMatchObject({ messages: expect.any(Array) });
   });
 
   it("classifies a thrown agent run without persisting exception details", async () => {

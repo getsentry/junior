@@ -109,7 +109,7 @@ describe("projectConversationEvents", () => {
     }),
   ];
 
-  it("projects messages, authorization observations, provenance, and model profile", () => {
+  it("projects messages, authorization and failure observations, provenance, and model profile", () => {
     const projection = projectConversationEvents(events, {
       defaultProfile: "default",
     });
@@ -128,13 +128,24 @@ describe("projectConversationEvents", () => {
           timestamp: 1_003,
         },
         lastMessage,
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Your previous turn failed before it finished. The person may have seen an error reply or no reply. The error reference is event_id=0123456789abcdef0123456789abcdef. Do not assume that request was completed.",
+            },
+          ],
+          timestamp: 1_008,
+        },
       ],
       provenance: [
         instructionProvenance,
         { authority: "context" },
         { authority: "context" },
+        { authority: "context" },
       ],
-      seqs: [2, 3, 6],
+      seqs: [2, 3, 6, 8],
       modelProfile: "coding",
       replacementSeq: 0,
     });
