@@ -58,10 +58,7 @@ function ConversationHomeLoading() {
     <main
       aria-busy="true"
       aria-live="polite"
-      className={cn(
-        dashboardContainerClass,
-        "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
-      )}
+      className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6"
       role="status"
     >
       <span className="sr-only">Loading conversations</span>
