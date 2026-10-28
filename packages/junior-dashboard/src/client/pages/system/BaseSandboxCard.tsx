@@ -7,8 +7,8 @@ import { formatSandboxSize } from "./SandboxSizeSummary";
 
 /**
  * Show the base Sandbox: the default size and the baseline snapshot.
- * Workspaces use the default size unless they set vCPUs. They build their own
- * snapshot instead of the baseline snapshot.
+ * Workspaces inherit the base setup and use the default size unless they set
+ * vCPUs.
  */
 export function BaseSandboxCard(props: {
   defaultVcpus: number | null;
@@ -26,9 +26,7 @@ export function BaseSandboxCard(props: {
             Base Sandbox
           </h2>
           <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-            Used when a conversation has no Workspace. Workspaces use its size
-            unless they set their own vCPUs. Each Workspace builds its own
-            snapshot.
+            The base snapshot is inherited by all Workspaces.
           </p>
         </div>
 

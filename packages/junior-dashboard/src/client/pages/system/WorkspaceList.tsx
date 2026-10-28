@@ -6,7 +6,7 @@ import { Button } from "../../components/Button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
-import { formatWorkspaceSandboxSize } from "./SandboxSizeSummary";
+import { formatSandboxSize } from "./SandboxSizeSummary";
 
 type WorkspaceListProps = {
   busy: boolean;
@@ -76,13 +76,8 @@ function WorkspaceListItem(props: {
               </span>
               <span className="font-mono text-xs text-dashboard-text-muted">
                 {workspace.repos.length} repo
-                {workspace.repos.length === 1 ? "" : "s"}
-              </span>
-              <span className="font-mono text-xs text-dashboard-text-muted">
-                {formatWorkspaceSandboxSize(
-                  workspace.vcpus,
-                  props.defaultVcpus,
-                )}
+                {workspace.repos.length === 1 ? "" : "s"} ·{" "}
+                {formatSandboxSize(workspace.vcpus ?? props.defaultVcpus)}
               </span>
             </span>
             <span className="mt-1.5 block truncate font-mono text-xs text-dashboard-text-muted">

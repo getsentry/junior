@@ -6,10 +6,7 @@ import { WorkspaceUsageChart } from "../../components/charts/WorkspaceUsageChart
 import { workspaceUsageDays } from "../../components/charts/workspaceUsage";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import {
-  formatWorkspaceSandboxSize,
-  SandboxSizeSummary,
-} from "./SandboxSizeSummary";
+import { formatSandboxSize, SandboxSizeSummary } from "./SandboxSizeSummary";
 import { SnapshotSummary } from "./SnapshotSummary";
 
 /** Load Workspace usage stats and render snapshot plus switch volume. */
@@ -53,10 +50,7 @@ export function WorkspaceDetailsContent(props: {
         description="Sandboxes for this Workspace start with this size."
         headingId="workspace-sandbox-size-heading"
         title="Sandbox size"
-        value={formatWorkspaceSandboxSize(
-          props.workspace.vcpus,
-          props.defaultVcpus,
-        )}
+        value={formatSandboxSize(props.workspace.vcpus ?? props.defaultVcpus)}
       />
       {!props.stats ? (
         <Card padding="sm">

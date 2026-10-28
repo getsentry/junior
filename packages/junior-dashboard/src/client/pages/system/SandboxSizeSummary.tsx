@@ -12,17 +12,6 @@ export function formatSandboxSize(vcpus: number | null): string {
   return `${vcpus} vCPU${vcpus === 1 ? "" : "s"} · ${vcpus * MEMORY_GB_PER_VCPU} GB`;
 }
 
-/** Format the size a Workspace Sandbox uses, and mark when it is the default. */
-export function formatWorkspaceSandboxSize(
-  vcpus: number | null,
-  defaultVcpus: number | null,
-): string {
-  if (vcpus !== null) return formatSandboxSize(vcpus);
-  return defaultVcpus === null
-    ? "Vercel default"
-    : `Default · ${formatSandboxSize(defaultVcpus)}`;
-}
-
 /** Show one Sandbox size in the shared System summary surface. */
 export function SandboxSizeSummary(props: {
   description: string;

@@ -6,7 +6,7 @@ import { Field } from "../../components/Field";
 import { InlineError } from "../../components/InlineError";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
-import { formatWorkspaceSandboxSize } from "./SandboxSizeSummary";
+import { formatSandboxSize } from "./SandboxSizeSummary";
 import {
   createRepoDraft,
   type RepoDraft,
@@ -214,7 +214,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
             onChange={(event) =>
               props.onChange({ ...props.draft, vcpus: event.target.value })
             }
-            placeholder={formatWorkspaceSandboxSize(null, props.defaultVcpus)}
+            placeholder={formatSandboxSize(props.defaultVcpus)}
             value={props.draft.vcpus}
           />
         </Field>

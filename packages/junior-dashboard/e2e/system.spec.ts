@@ -132,7 +132,7 @@ test("lists Workspaces with the baseline snapshot", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Manage sentry" }),
-  ).toContainText("Default · 4 vCPUs · 8 GB");
+  ).toContainText("2 repos · 4 vCPUs · 8 GB");
   await expect(page.getByRole("link", { name: "New Workspace" })).toBeVisible();
   await screenshot(page, "workspaces");
 });
@@ -232,7 +232,7 @@ test("shows Workspace snapshot details on its direct route", async ({
   ).toBeVisible();
   await expect(page.getByText("snap_workspace_123")).toBeVisible();
   await expect(page.getByText("45s")).toBeVisible();
-  await expect(page.getByText("Default · 4 vCPUs · 8 GB")).toBeVisible();
+  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("sentry");
   await expect(
     page.getByLabel("System navigation").getByRole("link", {
