@@ -20,7 +20,12 @@ export function Select({
   const showArrow = !props.multiple && (props.size ?? 1) <= 1;
 
   return (
-    <div className={cn("relative min-w-0", variant === "sort" && "h-full")}>
+    <span
+      className={cn(
+        "relative block w-full min-w-0",
+        variant === "sort" && "h-full",
+      )}
+    >
       <select
         {...props}
         className={cn(
@@ -42,6 +47,6 @@ export function Select({
           size={16}
         />
       ) : null}
-    </div>
+    </span>
   );
 }

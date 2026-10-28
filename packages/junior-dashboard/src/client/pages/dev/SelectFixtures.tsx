@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { Field } from "../../components/Field";
+import { FilterGroup } from "../../components/FilterBar";
 import { Select } from "../../components/Select";
 
 /** Show shared select arrows at form, filter, and directory sizes. */
@@ -15,13 +16,13 @@ export function SelectFixtures() {
           <option value="weekly">Every week</option>
         </Select>
       </Field>
-      <Field label="State" htmlFor="gallery-select-filter">
-        <Select id="gallery-select-filter" variant="filter">
+      <FilterGroup label="State">
+        <Select aria-label="State" variant="filter">
           <option>All states</option>
           <option>Active</option>
           <option>Paused</option>
         </Select>
-      </Field>
+      </FilterGroup>
       <DirectorySortSelect
         ariaLabel="Gallery sort"
         onChange={setSort}
@@ -31,14 +32,12 @@ export function SelectFixtures() {
         ]}
         value={sort}
       />
-      <div className="w-36">
-        <Field label="Opened" htmlFor="gallery-select-narrow">
-          <Select id="gallery-select-narrow">
-            <option>Last 90 days</option>
-            <option>Any time</option>
-          </Select>
-        </Field>
-      </div>
+      <FilterGroup className="w-36" label="Opened">
+        <Select aria-label="Opened">
+          <option>Last 90 days</option>
+          <option>Any time</option>
+        </Select>
+      </FilterGroup>
       <Field label="Disabled" htmlFor="gallery-select-disabled">
         <Select id="gallery-select-disabled" disabled>
           <option>Every week</option>
