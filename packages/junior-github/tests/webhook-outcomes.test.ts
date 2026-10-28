@@ -2689,6 +2689,16 @@ describe("GitHub-owned pull request outcomes", () => {
         ["dcramer", "admin"],
       ]);
 
+      // The call can stop after it saves its completed state but before it
+      // saves the opener. A retry of the same call saves the opener.
+      await db.delete(juniorGitHubPullRequestRequesters);
+      await tools.createPullRequest!.execute!(createInput, {
+        toolCallId: "call-create",
+      });
+      expect(await savedRequesters()).toEqual([
+        [946, null, "slack-identity-dcramer"],
+      ]);
+
       // Two create calls on one branch at once are ambiguous, so `opened`
       // gives no opener until the create tool saves the one GitHub opened.
       const concurrent = pullRequestPayload();

@@ -47,6 +47,8 @@ number before it calls GitHub, because the `opened` webhook can arrive first.
 GitHub has not given a number yet, so the pending row names the head branch.
 Each pending row belongs to one Junior identity. After GitHub opens the pull
 request, the tool replaces its own pending row with a row that has the number.
+It saves the new row before it removes the pending row. A retry of the same
+tool call saves the row again, in case the first call stopped before it did.
 A create that GitHub rejects removes only its own pending row. Only `opened`
 events for a head in the same repository read pending rows. They use one only
 when the pull request has no row and the branch has exactly one pending row

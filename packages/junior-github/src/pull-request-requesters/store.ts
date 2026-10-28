@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -56,13 +56,17 @@ export async function removePendingGitHubPullRequestRequester(
 /**
  * Save the person who asked Junior to open the pull request GitHub just
  * opened, and remove their pending row. With no identity, it saves no row.
- * GitHub just gave out this number, so any older row for it belongs to an
- * earlier repository with the same name, and is removed. This also makes the
- * opener the first row for the number.
+ *
+ * `createdAt` is when the create call started. The saved row uses it, so the
+ * opener stays the first row for the number. Any row for the number from
+ * before that time belongs to an earlier repository with the same name, and
+ * is removed. The row is saved before the pending row is removed, so a failure
+ * never loses both. A retry of the same create call can call this again.
  */
 export async function attachGitHubPullRequestRequester(
   db: GitHubDb,
   input: {
+    createdAt: Date;
     headBranch?: string;
     identityId?: string;
     number: number;
@@ -70,30 +74,38 @@ export async function attachGitHubPullRequestRequester(
   },
 ): Promise<void> {
   const repositoryFullName = input.repositoryFullName.toLowerCase();
+  if (input.identityId) {
+    await db
+      .insert(table)
+      .values({
+        createdAt: input.createdAt,
+        identityId: input.identityId,
+        number: input.number,
+        repositoryFullName,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [table.repositoryFullName, table.number, table.identityId],
+        targetWhere: sql`${table.number} IS NOT NULL`,
+        set: { createdAt: input.createdAt },
+      });
+  }
   await db
     .delete(table)
     .where(
       and(
         eq(table.repositoryFullName, repositoryFullName),
         eq(table.number, input.number),
+        lt(table.createdAt, input.createdAt),
       ),
     );
-  if (!input.identityId) return;
-  if (input.headBranch) {
+  if (input.identityId && input.headBranch) {
     await removePendingGitHubPullRequestRequester(db, {
       headBranch: input.headBranch,
       identityId: input.identityId,
       repositoryFullName,
     });
   }
-  const now = new Date();
-  await db.insert(table).values({
-    createdAt: now,
-    identityId: input.identityId,
-    number: input.number,
-    repositoryFullName,
-    updatedAt: now,
-  });
 }
 
 /**

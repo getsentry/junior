@@ -537,6 +537,14 @@ export function createGitHubPullRequestTool(
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
+            // The call can stop after it saves this state but before it saves
+            // the opener, so a retry saves the opener again.
+            await attachGitHubPullRequestRequester(ctx.db as GitHubDb, {
+              ...requesterBranch(completedInput),
+              createdAt: new Date(state.createdAtMs),
+              identityId: (await resolveGitHubRequester(ctx))?.identity?.id,
+              number: state.number,
+            });
             const completedResult = {
               facts:
                 state.facts === undefined
@@ -634,6 +642,7 @@ export function createGitHubPullRequestTool(
             );
           }
           await attachGitHubPullRequestRequester(ctx.db as GitHubDb, {
+            createdAt: new Date(completedState.createdAtMs),
             headBranch,
             identityId,
             number: result.number,
