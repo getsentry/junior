@@ -1,8 +1,8 @@
 ---
 name: visual-web-qa
 description: Verifies user-visible web changes with scoped browser evidence and reports only what the captured screenshots, videos, or state checks support. Use when frontend, docs, CSS, layout, theme, responsive, navigation, loading, animation, or interaction changes need visual validation; use agent-browser for general automation that is not specifically visual QA.
-spec_hash: 7dd651f9311c
-allowed-tools: bash sendFiles
+spec_hash: 7ef6809d0e08
+allowed-tools: bash sendFiles viewImage publishImage unpublishImage
 ---
 
 # Visual Web QA
@@ -16,7 +16,8 @@ Verify rendered behavior in a browser instead of inferring visual correctness fr
 3. Choose representative pages, states, viewports, and themes.
 4. Capture browser evidence with meaningful waits and fresh element refs.
 5. Share requested artifacts with `sendFiles` and verify delivery success.
-6. Report the exact target, evidence, result, findings, and limitations.
+6. When the QA is for a pull request, attach safe screenshots to the PR.
+7. Report the exact target, evidence, result, findings, and limitations.
 
 ## Choose Evidence
 
@@ -100,9 +101,23 @@ Use `sendFiles` for every artifact the user should receive:
 - Claim an artifact was shared only when `sendFiles` succeeds in this turn.
 - If delivery fails or `sendFiles` is unavailable, report the error and saved paths without claiming attachment success.
 
+## Attach Evidence To Pull Requests
+
+When the QA is for a pull request, attach screenshots to the PR when you can. Reviewers then see the rendered result without the Slack thread.
+
+1. Open each screenshot with `viewImage` and check it for sensitive data. See **Protect Sensitive Data**.
+2. If a screenshot shows sensitive data, do not publish it. Recapture it with the data out of view, or skip it.
+3. Publish each safe screenshot with `publishImage`. The URL is public to anyone who has it.
+4. Embed the returned URLs in the PR body or a PR comment, with one short caption for each page, state, viewport, or theme.
+
+- `publishImage` accepts only images. Do not publish videos. Describe the temporal result in text instead.
+- Do not link private Slack files or conversation attachment URLs in the PR.
+- If you publish an image by mistake, remove it with `unpublishImage` and remove it from the PR.
+- If `publishImage` or the PR update fails, report the failure and do not claim the PR has screenshots.
+
 ## Protect Sensitive Data
 
-Never capture or share credential entry, session tokens, customer data, or unrelated sensitive UI state. If reaching the target requires exposing that data, use an existing safe authenticated session or report the authentication requirement as a limitation or blocker.
+Never capture or share credential entry, session tokens, customer data, or unrelated sensitive UI state. Apply this rule with more care to published images, because their URLs are public. Look for real emails, names, avatars, customer org or project names, tokens, API keys, DSNs, and private URLs. Seeded or fake local data is safe. If reaching the target requires exposing that data, use an existing safe authenticated session or report the authentication requirement as a limitation or blocker.
 
 ## Report The Result
 
