@@ -233,7 +233,26 @@ Spans: `chat.turn`, `chat.reply`, `chat.slash_command`,
 
 Attributes: `trace_id`, `span_id`, `gen_ai.conversation.id`,
 `messaging.message.conversation_id`, `messaging.destination.name`,
-`app.slack.reply_stage`, `app.slack.error_code`, `app.slack.api_error`
+`app.slack.reply_stage`, `app.slack.error_code`, `app.slack.api_error`,
+`app.turn.input_count`, `app.turn.delivery_lag_ms`, `app.turn.wait_ms`
+
+A Slack `chat.turn` span records mailbox timing for its input messages:
+
+- `app.turn.input_count`: input messages in the batch that started the turn.
+- `app.turn.delivery_lag_ms`: Slack send time to webhook receipt for the
+  oldest input message.
+- `app.turn.wait_ms`: webhook receipt of the oldest input message to the start
+  of the turn. It includes queue wait and worker setup.
+
+The timing attributes are absent when the value is negative. A negative value
+is clock skew between Slack and Junior hosts, not latency. Resumed `chat.turn`
+spans do not record these attributes.
+
+```text
+dataset=spans query='span.op:chat.turn has:app.turn.wait_ms'
+fields=timestamp,trace,span.duration,app.turn.input_count,app.turn.delivery_lag_ms,app.turn.wait_ms
+sort=-app.turn.wait_ms
+```
 
 ### Agent And Model
 

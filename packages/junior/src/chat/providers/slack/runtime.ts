@@ -26,6 +26,7 @@ import {
 import {
   logException,
   logWarn,
+  setSpanAttributes,
   withSpan,
   withLogContext,
 } from "@/chat/logging";
@@ -105,6 +106,8 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
+  /** Attributes to set on the `chat.turn` span, such as mailbox input timing. */
+  turnSpanAttributes?: Record<string, number>;
 }
 
 /** Sent when a stop decision unsubscribes a thread. */
@@ -732,6 +735,7 @@ export function createSlackTurnRuntime<
         );
 
         await withSpan("chat.turn", "chat.turn", context, async () => {
+          setSpanAttributes(hooks.turnSpanAttributes ?? {});
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             botUserId: deps.getBotUserId(),
             explicitMention: true,
@@ -912,6 +916,7 @@ export function createSlackTurnRuntime<
           runId,
         });
         await withSpan("chat.turn", "chat.turn", turnContext, async () => {
+          setSpanAttributes(hooks.turnSpanAttributes ?? {});
           // This path can compact context and run router/vision model calls
           // before executeSlackTurn() opens the main reply span.
           const content = parseContent(message);

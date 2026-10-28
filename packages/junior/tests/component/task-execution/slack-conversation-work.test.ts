@@ -446,6 +446,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
+      turnSpanAttributes?: Record<string, number>;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -486,12 +487,20 @@ describe("Slack conversation work execution", () => {
           thread,
           message,
           skipped: hooks.messageContext?.skipped ?? [],
+          turnSpanAttributes: hooks.turnSpanAttributes,
         });
       },
       handleSubscribedMessage: async () => {
         throw new Error("unexpected subscribed route");
       },
     };
+    const pendingWork = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    const oldestInput = pendingWork?.execution.pendingMessages.find((record) =>
+      record.inboundMessageId.endsWith(":1712345.0001"),
+    );
     await expect(
       processNextQueuedSlackWork({
         getSlackAdapter: () => slackAdapter,
@@ -502,6 +511,16 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(calls).toHaveLength(1);
+    expect(calls[0]?.turnSpanAttributes).toEqual({
+      "app.turn.input_count": 2,
+      "app.turn.delivery_lag_ms": Math.round(
+        oldestInput!.receivedAtMs - oldestInput!.createdAtMs,
+      ),
+      "app.turn.wait_ms": expect.any(Number),
+    });
+    expect(
+      calls[0]?.turnSpanAttributes?.["app.turn.wait_ms"],
+    ).toBeGreaterThanOrEqual(0);
     expect(calls[0]?.destination).toEqual(SLACK_DESTINATION);
     expect(calls[0]?.thread.id).toBe(CONVERSATION_ID);
     expect(calls[0]?.message.id).toBe("1712345.0002");
