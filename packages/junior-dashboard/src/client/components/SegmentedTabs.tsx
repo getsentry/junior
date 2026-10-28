@@ -12,7 +12,7 @@ const segmentedTabsInsetClass = "gap-1 p-1";
 /** Style one tab or link in the segmented pill track. */
 export function segmentedTabClass(selected: boolean): string {
   return cn(
-    "min-h-9 cursor-pointer rounded-md border-0 px-3 py-2 font-sans text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+    "min-h-9 cursor-pointer rounded-md border-0 px-1.5 py-2 font-sans text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
     selected
       ? "bg-dashboard-fill-strong text-dashboard-text"
       : "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-faint hover:text-dashboard-text",
@@ -23,6 +23,8 @@ export function segmentedTabClass(selected: boolean): string {
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
+  /** Fill the frame with fixed tabs and padded, scrolling content. */
+  scroll?: boolean;
   /** `count` is the number of entries in the panel. Zero and unknown counts are hidden. */
   items: readonly { count?: number; label: string; value: Value }[];
   onChange(value: NoInfer<Value>): void;
@@ -31,10 +33,22 @@ export function SegmentedTabs<const Value extends string>(props: {
   const id = useId();
 
   return (
-    <div className="grid min-w-0 gap-4">
+    <div
+      className={cn(
+        "grid min-w-0",
+        props.scroll
+          ? "h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]"
+          : "gap-4",
+      )}
+    >
       <div
         aria-label={props.label}
-        className={cn("flex", segmentedTabsFrameClass, segmentedTabsInsetClass)}
+        className={cn(
+          "flex min-w-0",
+          segmentedTabsFrameClass,
+          segmentedTabsInsetClass,
+          props.scroll && "m-4",
+        )}
         role="tablist"
       >
         {props.items.map((item, index) => (
@@ -88,7 +102,12 @@ export function SegmentedTabs<const Value extends string>(props: {
       </div>
       <div
         aria-labelledby={`${id}-${props.value}`}
-        className="min-w-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        className={cn(
+          "min-w-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+          props.scroll
+            ? "min-h-0 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus-visible:-outline-offset-2"
+            : "rounded-md",
+        )}
         id={`${id}-panel`}
         role="tabpanel"
         tabIndex={0}

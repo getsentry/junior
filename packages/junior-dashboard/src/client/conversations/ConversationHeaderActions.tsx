@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -30,6 +30,7 @@ export function ConversationHeaderActions(props: {
   conversationId: string;
   copyAction?: ReactNode;
   detailsOpen: boolean;
+  detailsButtonRef?: Ref<HTMLButtonElement>;
   /** `bar` is the desktop icon row. `menu` stacks actions for mobile overflow. */
   layout?: "bar" | "menu";
   onDetailsClick(): void;
@@ -94,6 +95,7 @@ export function ConversationHeaderActions(props: {
       {props.copyAction}
       <ArchiveConversationButton {...props.archive} layout="bar" />
       <Button
+        ref={props.detailsButtonRef}
         aria-label="Conversation details"
         aria-pressed={props.detailsOpen}
         className="ml-2"
@@ -180,6 +182,7 @@ function ViewModeButton(props: {
 /** Shared icon control used by conversation and subagent transcript headers. */
 export function HeaderIconButton(props: {
   children: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
   label: string;
   onClick(): void;
   pressed?: boolean;
@@ -187,6 +190,7 @@ export function HeaderIconButton(props: {
   return (
     <IconButtonTooltip label={props.label}>
       <Button
+        ref={props.ref}
         aria-label={props.label}
         aria-pressed={props.pressed}
         className={cn(

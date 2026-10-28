@@ -5,25 +5,26 @@ import { SegmentedTabs } from "../../components/SegmentedTabs";
 
 /** Show panel tabs switching the panel below them. */
 export function SegmentedTabsFixture() {
-  const [tab, setTab] = useState<"details" | "memories" | "usage">("details");
+  const [tab, setTab] = useState<"summary" | "memories" | "agents">("summary");
   return (
-    <div className="max-w-md">
+    <div className="h-64 max-w-xs">
       <SegmentedTabs
+        scroll
         items={[
-          { label: "Details", value: "details" },
+          { label: "Summary", value: "summary" },
           { count: 3, label: "Memories", value: "memories" },
-          { label: "Usage", value: "usage" },
+          { count: 2, label: "Subagents", value: "agents" },
         ]}
         label="Conversation panels"
         onChange={setTab}
         value={tab}
       >
         <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-          {tab === "details"
-            ? "Conversation summary and linked work."
+          {tab === "summary"
+            ? "Checkout latency increased after the latest release. Compare traces from before and after the deployment, then inspect the slow serialization span. The public brief links the affected repository, the release, and the open code change. Keep the rollout paused until the comparison confirms the cause. The next check is to run the same request against the previous release and compare its timings. Use the linked work to record the result and any rollback decision. The participants can continue this investigation in the conversation while keeping these details open. Model usage and related child conversations remain available in their own sections."
             : tab === "memories"
               ? "What Junior learned from this conversation."
-              : "Time, tokens, and cost for this conversation."}
+              : "Child conversations and their current work."}
         </p>
       </SegmentedTabs>
     </div>

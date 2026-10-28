@@ -254,7 +254,47 @@ test("opens and closes a conversation on mobile", async ({
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
   await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Close conversation menu" }).click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("dialog", { name: "Conversation details" });
+  const handle = details.locator("[data-drawer-handle]");
+  await expect(details).toHaveAttribute("aria-modal", "true");
+  await expect(
+    details.getByRole("tab", { name: "Summary", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(details.locator(":focus")).toHaveCount(1);
+  // Escape must finish dismissal even if the pointer is still on the handle.
+  await handle.hover({ position: { x: 100, y: 10 } });
+  await page.mouse.down();
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await menu.click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  // A continuous swipe ends below the handle and uses Base UI's release threshold.
+  await handle.hover({ position: { x: 100, y: 10 } });
+  await page.mouse.down();
+  await page.mouse.move(100, 400, { steps: 10 });
+  await page.mouse.up();
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  await expect(
+    details.getByRole("tab", { name: "Summary", exact: true }),
+  ).toBeFocused();
+  await page.mouse.click(8, 8);
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();

@@ -103,7 +103,6 @@ function SubagentTranscriptDrawerContent(props: {
         </>
       }
       closeLabel="Close subagent transcript"
-      dismissLabel="Dismiss subagent transcript"
       header={
         <>
           <div className="flex min-w-0 items-center gap-2">

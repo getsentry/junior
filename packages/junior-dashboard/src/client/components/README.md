@@ -80,8 +80,14 @@ token so each theme can redefine it.
   sentence-case text, with no border or fill. It is not a control.
 - **Messages.** Use `Notice` for compact transient messages and `FormNotice`
   for wrapping form recovery text.
-- **Overlays.** `Drawer` owns dismissal, focus trapping, focus return, scroll
-  locking, and panel layout. Context panels use it, not a separate modal.
+- **Overlays.** `Sheet` is a local adaptation of shadcn/ui's Base UI Sheet.
+  It uses Base UI Drawer for focus, dismissal, and native swipe support. The
+  app's shared scroll lock keeps it in sync with the mobile conversation shell.
+  `SheetContent` owns side placement, backdrop fade, and slide transitions.
+  `Drawer` adds a visible header and close control. `BottomSheet` adds a swipe
+  handle and keeps content scrolling separate from gestures. Both skip motion
+  when reduced motion is set. Docked conversation details use a non-modal aside
+  so the chat stays usable. The copied component's license is in `Sheet.LICENSE`.
   `Tooltip` and `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
@@ -103,7 +109,10 @@ levels stay distinct.
   the row width while their labels fit. Rows that do not fit scroll sideways.
 - **Panel switches** use `SegmentedTabs`, which draws a pill track. Pass the
   selected value, items, change handler, and panel content. It owns tab and
-  panel labels and keyboard focus.
+  panel labels and keyboard focus. Pass `scroll` to keep the tabs fixed while
+  the panel content scrolls. That mode fills its frame and owns the content
+  padding, so its scrollbar stays at the frame edge. `BottomSheet` content owns
+  its own padding.
 
 Keep collection filters in `FilterTabList`.
 

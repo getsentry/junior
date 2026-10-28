@@ -1,118 +1,29 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
-import {
-  acquireBodyScrollLock,
-  releaseBodyScrollLock,
-} from "../bodyScrollLock";
 import { cn } from "../styles";
 import { Button } from "./Button";
+import { Sheet, SheetBody, SheetClose, SheetContent } from "./Sheet";
 
-const focusableSelector = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled]):not([type='hidden'])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "summary",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
-/** Render an accessible modal drawer and own its focus and scroll lifecycle. */
+/** Render a side drawer with shared modal focus and dismissal behavior. */
 export function Drawer(props: {
   actions?: ReactNode;
   children: ReactNode;
   closeLabel: string;
-  dismissLabel: string;
   header: ReactNode;
   onClose(): void;
   openKey: string;
   titleId: string;
   width?: "default" | "wide" | "narrow";
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(props.onClose);
-  const previousFocusRef = useRef<HTMLElement | undefined>(undefined);
-  onCloseRef.current = props.onClose;
-
-  useEffect(() => {
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : undefined;
-    acquireBodyScrollLock();
-    const focusFrame = requestAnimationFrame(() => {
-      dialogRef.current
-        ?.querySelector<HTMLElement>("[data-drawer-close]")
-        ?.focus();
-    });
-    const onKeyDown = (event: KeyboardEvent) => {
-      // An event detail drawer can open above a child conversation drawer.
-      // Only the last mounted drawer owns Escape and the focus trap.
-      const drawers = document.querySelectorAll("[data-dashboard-drawer]");
-      if (drawers[drawers.length - 1] !== dialogRef.current) return;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-
-      const dialog = dialogRef.current;
-      const focusable = Array.from(
-        dialog?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
-      ).filter(
-        (element) =>
-          element.tabIndex >= 0 && element.getClientRects().length > 0,
-      );
-      const first = focusable.at(0);
-      const last = focusable.at(-1);
-      if (!dialog || !first || !last) {
-        event.preventDefault();
-        return;
-      }
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !dialog.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (
-        !event.shiftKey &&
-        (active === last || !dialog.contains(active))
-      ) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      window.removeEventListener("keydown", onKeyDown);
-      releaseBodyScrollLock();
-      const previousFocus = previousFocusRef.current;
-      previousFocusRef.current = undefined;
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, [props.openKey]);
-
+  const closeRef = useRef<HTMLButtonElement>(null);
   return (
-    <div
-      aria-labelledby={props.titleId}
-      aria-modal="true"
-      data-dashboard-drawer=""
-      className="fixed inset-0 z-50"
-      ref={dialogRef}
-      role="dialog"
-    >
-      <button
-        aria-label={props.dismissLabel}
-        className="absolute inset-0 cursor-default bg-dashboard-overlay"
-        onClick={props.onClose}
-        tabIndex={-1}
-        type="button"
-      />
-      <aside
+    <Sheet key={props.openKey} onClose={props.onClose} side="right">
+      <SheetContent
+        initialFocusRef={closeRef}
+        titleId={props.titleId}
+        side="right"
         className={cn(
-          "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:border-l md:border-dashboard-border-strong",
           props.width === "wide"
             ? "md:w-[min(760px,94vw)]"
             : props.width === "narrow"
@@ -124,21 +35,24 @@ export function Drawer(props: {
           <div className="min-w-0">{props.header}</div>
           <div className="flex items-start gap-1.5">
             {props.actions}
-            <Button
-              aria-label={props.closeLabel}
-              data-drawer-close
-              onClick={props.onClose}
-              size="icon"
-              title="Close"
+            <SheetClose
+              render={
+                <Button
+                  ref={closeRef}
+                  aria-label={props.closeLabel}
+                  size="icon"
+                  title="Close"
+                />
+              }
             >
               <X aria-hidden="true" size={15} strokeWidth={2.25} />
-            </Button>
+            </SheetClose>
           </div>
         </header>
-        <div className="min-h-0 overflow-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5">
+        <SheetBody className="min-h-0 overflow-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5">
           {props.children}
-        </div>
-      </aside>
-    </div>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }

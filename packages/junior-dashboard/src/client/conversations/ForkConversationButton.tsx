@@ -60,7 +60,6 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
   return (
     <Drawer
       closeLabel="Close fork dialog"
-      dismissLabel="Dismiss fork dialog"
       header={
         <h2 id={titleId} className="m-0 text-lg font-semibold">
           Fork Conversation

@@ -37,6 +37,7 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Drawer } from "../../components/Drawer";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
 import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
@@ -193,6 +194,7 @@ function FoundationsGalleryPage() {
   const [pressed, setPressed] = useState(true);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("deploy failure");
 
@@ -257,7 +259,6 @@ function FoundationsGalleryPage() {
         {drawerOpen ? (
           <Drawer
             closeLabel="Close gallery details"
-            dismissLabel="Dismiss gallery details"
             header={
               <h2
                 id="gallery-drawer-title"
@@ -281,7 +282,6 @@ function FoundationsGalleryPage() {
               ? createPortal(
                   <Drawer
                     closeLabel="Close nested details"
-                    dismissLabel="Dismiss nested details"
                     header={
                       <h2
                         id="gallery-nested-title"
@@ -303,6 +303,20 @@ function FoundationsGalleryPage() {
                 )
               : null}
           </Drawer>
+        ) : null}
+      </Fixture>
+      <Fixture title="Bottom sheet">
+        <Button onClick={() => setSheetOpen(true)}>Open bottom sheet</Button>
+        {sheetOpen ? (
+          <BottomSheet
+            label="Gallery details"
+            onClose={() => setSheetOpen(false)}
+          >
+            <p className="m-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-dashboard-text-muted">
+              Swipe the handle down, tap outside, or press Escape to return to
+              the page.
+            </p>
+          </BottomSheet>
         ) : null}
       </Fixture>
       <Fixture title="Theme">

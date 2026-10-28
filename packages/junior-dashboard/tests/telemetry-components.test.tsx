@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ActorProfileReport,
   ConversationReportEvent,
@@ -42,6 +43,25 @@ import { PluginReports } from "../src/client/pages/system/PluginReports";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
+
+// Browser journeys cover portals and focus. These checks cover transcript data.
+vi.mock("../src/client/components/Drawer", () => ({
+  Drawer: ({
+    header,
+    actions,
+    children,
+  }: {
+    header: ReactNode;
+    actions?: ReactNode;
+    children: ReactNode;
+  }) => (
+    <>
+      {header}
+      {actions}
+      {children}
+    </>
+  ),
+}));
 
 const client = new QueryClient();
 
@@ -352,7 +372,6 @@ describe("dashboard canonical-event components", () => {
   it("exposes pressed state for transcript view controls", () => {
     const html = renderToStaticMarkup(
       <ConversationHeader
-        annotations={null}
         archive={{
           archived: false,
           disabled: false,
@@ -361,14 +380,13 @@ describe("dashboard canonical-event components", () => {
           pending: false,
         }}
         conversationId="conversation-1"
-        identity={null}
+        detailsOpen={false}
+        onDetailsClick={() => {}}
         live={false}
-        onOpenSubagent={() => {}}
         onSearchChange={() => {}}
         onViewChange={() => {}}
         privacy={null}
         search=""
-        stats={null}
         title="Header QA"
         view="raw"
       />,

@@ -38,7 +38,6 @@ export function TranscriptTurnContextView(props: {
         ? createPortal(
             <Drawer
               closeLabel="Close turn context"
-              dismissLabel="Dismiss turn context"
               header={
                 <>
                   <h2

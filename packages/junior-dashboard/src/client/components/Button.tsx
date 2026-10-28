@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, Ref } from "react";
 import { Link, type LinkProps } from "react-router";
 
 import { cn } from "../styles";
@@ -8,6 +8,7 @@ type ButtonTone = "default" | "danger" | "primary";
 type ToggleButtonVariant = "pill" | "segment" | "text";
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  ref?: Ref<HTMLButtonElement>;
   size?: ButtonSize;
   tone?: ButtonTone;
 };
