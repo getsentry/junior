@@ -164,6 +164,35 @@ vi.mock("@/chat/sandbox/docker", () => ({
   ensureDockerDaemon: vi.fn(async () => {}),
 }));
 
+const { recordedSpans } = vi.hoisted(() => ({
+  recordedSpans: [] as Array<{
+    name: string;
+    attributes: Record<string, unknown>;
+  }>,
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
+  return {
+    ...actual,
+    withSpan: (async (name, op, context, callback, attributes = {}) => {
+      const span = { name, attributes: { ...attributes } };
+      recordedSpans.push(span);
+      return await actual.withSpan(
+        name,
+        op,
+        context,
+        async (setSpanAttributes) =>
+          await callback((nextAttributes) => {
+            Object.assign(span.attributes, nextAttributes);
+            setSpanAttributes(nextAttributes);
+          }),
+        attributes,
+      );
+    }) as typeof actual.withSpan,
+  };
+});
+
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import {
   parseSandboxEgressCredentialToken,
@@ -526,6 +555,7 @@ async function expectWorkspaceToDelegate(
 
 describe("createTestSandbox", () => {
   beforeEach(() => {
+    recordedSpans.length = 0;
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
     resolveMock.mockReset();
@@ -844,6 +874,33 @@ describe("createTestSandbox", () => {
 
     await expect(recovered).resolves.toBeDefined();
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("records which path sandbox acquisition took", async () => {
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_fresh"));
+    const fresh = createTestSandboxRuntime();
+    await fresh.createSandbox();
+    await fresh.createSandbox();
+
+    sandboxGetMock.mockResolvedValueOnce(makeSandbox("sbx_resumed"));
+    await createTestSandboxRuntime({
+      sandboxId: "sbx_resumed",
+    }).createSandbox();
+
+    resolveMock.mockResolvedValueOnce({
+      snapshotId: "snap_123",
+      dependencyCount: 1,
+      cacheHit: true,
+      resolveOutcome: "cache_hit",
+    });
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_snapshot"));
+    await createTestSandboxRuntime().createSandbox();
+
+    expect(
+      recordedSpans
+        .filter((span) => span.name === "sandbox.acquire")
+        .map((span) => span.attributes["app.sandbox.acquire.outcome"]),
+    ).toEqual(["created_fresh", "memory", "resumed", "created_snapshot"]);
   });
 
   it("does not report a reference change when restoring the same sandbox", async () => {
