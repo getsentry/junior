@@ -209,9 +209,13 @@ same way.
   and resumable boundary before execution continues. A handoff changes the
   active model and history, then passes through the same capacity check rather
   than bypassing it. Each history replacement keeps the open items from the
-  latest successful `updatePlan` call in its continuation context. Compaction
-  events retain the active model plus privacy-safe capacity and replacement
-  metrics for reporting without exposing the summary or replaced history.
+  latest successful `updatePlan` call in its continuation context. An in-turn
+  compaction keeps the runtime context of the current Turn. From earlier Turns,
+  it keeps only the latest session context and AGENTS.md instructions. Request
+  context, such as plugin context, Conversation notes, and disabled tools, is
+  true only for the Turn that received it. Compaction events retain the active
+  model plus privacy-safe capacity and replacement metrics for reporting
+  without exposing the summary or replaced history.
 - Cooperative yield preserves the exact agent history and occurs only at a user
   or tool-result tail. Unlike timeout or auth recovery, it never rolls history
   back past delivered assistant output.

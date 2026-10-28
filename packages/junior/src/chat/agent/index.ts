@@ -989,6 +989,7 @@ async function executeAgentRunInPrivacyContext(
               }
             : undefined),
           signal: hookSignal,
+          turnStartMessageIndex: runResume.turnStartMessageIndex,
         },
         {
           completeText: (args) => completeText(args),
@@ -1003,10 +1004,18 @@ async function executeAgentRunInPrivacyContext(
         usageSinceCurrentBoundary(messages),
       );
       const replacement = [...compaction.piMessages];
-      await runResume.requireDurableInputCheckpoint(replacement);
+      // The whole replacement belongs to this Turn. Set the Turn start first,
+      // so the checkpoint does not keep an index into the old history.
+      const previousTurnStartMessageIndex = runResume.turnStartMessageIndex;
+      runResume.setTurnStartMessageIndex(0);
+      try {
+        await runResume.requireDurableInputCheckpoint(replacement);
+      } catch (error) {
+        runResume.setTurnStartMessageIndex(previousTurnStartMessageIndex);
+        throw error;
+      }
       agent!.state.messages = replacement;
       runResume.setBeforeMessageCount(replacement.length);
-      runResume.setTurnStartMessageIndex(0);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
         agent!.clearSteeringQueue();
