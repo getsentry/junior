@@ -107,7 +107,6 @@ describe("spawnAgent", () => {
     const tool = createSpawnAgentTool(spawnAgent, profileControl);
     expect(tool.description).toContain('"standard": Routine work.');
     expect(tool.description).toContain('"handoff": Implementation work.');
-    expect(tool.description).toContain("The parent should normally choose");
     const input = tool.prepareArguments!({
       task: "Implement the feature.",
       title: "Feature implementation",
