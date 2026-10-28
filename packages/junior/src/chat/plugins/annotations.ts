@@ -1,11 +1,14 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import {
   conversationAnnotationInputSchema,
   type ConversationAnnotation,
   type PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationAnnotations } from "@/db/schema";
+import {
+  juniorConversationAnnotations,
+  juniorConversations,
+} from "@/db/schema";
 
 function annotationFromRow(row: {
   annotation: unknown;
@@ -70,14 +73,28 @@ export function createPluginAnnotations(args: {
         );
     },
     async list() {
-      return (
-        await listConversationAnnotations(args.db, args.conversationId)
-      ).filter((a) => a.plugin === args.plugin);
+      const rows = await args.db
+        .select()
+        .from(juniorConversationAnnotations)
+        .where(
+          and(
+            eq(
+              juniorConversationAnnotations.conversationId,
+              args.conversationId,
+            ),
+            eq(juniorConversationAnnotations.plugin, args.plugin),
+          ),
+        )
+        .orderBy(desc(juniorConversationAnnotations.updatedAt));
+      return rows.flatMap((row) => annotationFromRow(row) ?? []);
     },
   };
 }
 
-/** Load stored annotations for one conversation, newest update first. */
+/**
+ * Load stored annotations for one conversation, newest update first. A root
+ * Conversation also reads the annotations of its child Conversations.
+ */
 export async function listConversationAnnotations(
   db: JuniorDatabase,
   conversationId: string,
@@ -88,7 +105,12 @@ export async function listConversationAnnotations(
   return byConversation.get(conversationId) ?? [];
 }
 
-/** Load stored annotations for a bounded set of conversations. */
+/**
+ * Load stored annotations for a bounded set of conversations, newest update
+ * first. Child agents save annotations in their own Conversation, but people
+ * see the root Conversation. So a root also reads the annotations of every
+ * Conversation in its tree. The newest annotation wins for each object.
+ */
 export async function listConversationAnnotationsById(
   db: JuniorDatabase,
   conversationIds: readonly string[],
@@ -96,24 +118,44 @@ export async function listConversationAnnotationsById(
   const byConversation = new Map<string, ConversationAnnotation[]>();
   if (conversationIds.length === 0) return byConversation;
 
+  const requested = new Set(conversationIds);
   const rows = await db
-    .select()
+    .select({
+      annotation: juniorConversationAnnotations,
+      rootConversationId: juniorConversations.rootConversationId,
+    })
     .from(juniorConversationAnnotations)
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorConversationAnnotations.conversationId,
+      ),
+    )
     .where(
-      inArray(juniorConversationAnnotations.conversationId, [
-        ...conversationIds,
-      ]),
+      or(
+        inArray(juniorConversationAnnotations.conversationId, [...requested]),
+        inArray(juniorConversations.rootConversationId, [...requested]),
+      ),
     )
     .orderBy(desc(juniorConversationAnnotations.updatedAt));
 
-  for (const row of rows) {
+  const seen = new Set<string>();
+  for (const { annotation: row, rootConversationId } of rows) {
     const annotation = annotationFromRow(row);
     if (!annotation) continue;
-    const current = byConversation.get(row.conversationId);
-    if (current) {
-      current.push(annotation);
-    } else {
-      byConversation.set(row.conversationId, [annotation]);
+    // A root's own row matches both ids; add it once.
+    for (const owner of new Set([row.conversationId, rootConversationId])) {
+      if (!owner || !requested.has(owner)) continue;
+      const objectKey = JSON.stringify([owner, row.plugin, row.kind, row.key]);
+      if (seen.has(objectKey)) continue;
+      seen.add(objectKey);
+      const current = byConversation.get(owner);
+      if (current) {
+        current.push(annotation);
+      } else {
+        byConversation.set(owner, [annotation]);
+      }
     }
   }
   return byConversation;

@@ -125,11 +125,31 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
+const RESULT_MESSAGE_PREFIX = "agent-invocation:";
+const RESULT_MESSAGE_SUFFIX = ":result";
+
 /** Return the stable parent mailbox identity for one terminal result. */
 export function getAgentInvocationResultMessageId(
   invocationId: string,
 ): string {
-  return `agent-invocation:${invocationId}:result`;
+  return `${RESULT_MESSAGE_PREFIX}${invocationId}${RESULT_MESSAGE_SUFFIX}`;
+}
+
+/** Read the invocation identity from one parent result mailbox identity. */
+export function parseAgentInvocationResultMessageId(
+  messageId: string,
+): string | undefined {
+  if (
+    !messageId.startsWith(RESULT_MESSAGE_PREFIX) ||
+    !messageId.endsWith(RESULT_MESSAGE_SUFFIX)
+  ) {
+    return undefined;
+  }
+  const invocationId = messageId.slice(
+    RESULT_MESSAGE_PREFIX.length,
+    -RESULT_MESSAGE_SUFFIX.length,
+  );
+  return invocationId || undefined;
 }
 
 function bindingFromRow(
