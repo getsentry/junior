@@ -116,7 +116,7 @@ new branch; existing branches open at their current tip.
 Build and validate the published package artifacts:
 
 ```bash
-pnpm build:pkg
+pnpm build && pnpm package-types:check
 ```
 
 ## Releasing

@@ -62,7 +62,7 @@ This section is secondary. Use it only when the task is about Junior's Vercel Sa
 | `packages/junior/src/chat/sandbox/session.ts`          | Main sandbox create/get/reuse/keepalive logic                                       |
 | `packages/junior/src/chat/runtime/thread-state.ts`     | Persists `app_sandbox_id` and dependency profile hash into thread state             |
 | `packages/junior/src/chat/runtime/turn-preparation.ts` | Restores persisted sandbox metadata at the start of a turn                          |
-| `packages/junior/src/chat/runtime/reply-executor.ts`   | Persists sandbox metadata only on the success path                                  |
+| `packages/junior/src/chat/providers/slack/turn.ts`     | Saves each new sandbox ref to thread state through `onSandboxRefChanged`            |
 | `packages/junior/src/chat/agent/index.ts`              | Owns turn timeout detection and abort                                               |
 | `packages/junior/src/chat/agent/resume.ts`             | Persists timeout continuation state                                                 |
 | `packages/junior/src/chat/app/production.ts`           | Wires production timeout and continuation behavior                                  |
