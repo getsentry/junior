@@ -65,15 +65,13 @@ import { prepareWorkspace } from "./workspace-prepare.js";
 import { githubCloneCommandRedirect } from "./clone-command.js";
 import {
   githubGrantForEgress,
-  githubGraphqlPermissionDeniedMessage,
-  shouldInspectGitHubGraphqlResponse,
+  githubPermissionDeniedMessage,
 } from "./egress-policy.js";
 import {
   GITHUB_APP_ID_ENV,
   GITHUB_APP_PRIVATE_KEY_ENV,
   GITHUB_AUTH_TOKEN_ENV,
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
-  GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   GITHUB_INSTALLATION_ID_ENV,
   createPermissionCache,
   issueGitHubCredential,
@@ -439,16 +437,16 @@ export function githubPlugin(
         return githubGrantForEgress(ctx);
       },
       async onEgressResponse(ctx) {
-        if (!shouldInspectGitHubGraphqlResponse(ctx)) {
-          return;
+        if (ctx.response.status === 403) {
+          ctx.log.warn("github.egress.upstream_forbidden", {
+            "app.github.accepted_permissions":
+              ctx.response.headers.get("x-accepted-github-permissions") ??
+              undefined,
+            "app.github.sso":
+              ctx.response.headers.get("x-github-sso") ?? undefined,
+          });
         }
-        const bodyText = await ctx.response.readText(
-          GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
-        );
-        if (!bodyText) {
-          return;
-        }
-        const message = githubGraphqlPermissionDeniedMessage(bodyText);
+        const message = await githubPermissionDeniedMessage(ctx);
         if (message) {
           ctx.permissionDenied(message);
         }

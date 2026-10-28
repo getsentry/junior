@@ -229,34 +229,6 @@ function displayedUpstreamPath(upstreamUrl: URL): string {
   return upstreamUrl.pathname;
 }
 
-function upstreamPermissionAttributes(
-  provider: string,
-  upstream: Response,
-): Record<string, unknown> {
-  if (provider !== "github") {
-    return {};
-  }
-  return {
-    "app.github.accepted_permissions":
-      upstream.headers.get("x-accepted-github-permissions") ?? undefined,
-    "app.github.sso": upstream.headers.get("x-github-sso") ?? undefined,
-  };
-}
-
-function githubPermissionHeaders(upstream: Response): {
-  acceptedPermissions?: string;
-  sso?: string;
-} {
-  const acceptedPermissions = upstream.headers.get(
-    "x-accepted-github-permissions",
-  );
-  const sso = upstream.headers.get("x-github-sso");
-  return {
-    ...(acceptedPermissions ? { acceptedPermissions } : undefined),
-    ...(sso ? { sso } : undefined),
-  };
-}
-
 function permissionDeniedMessage(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
@@ -544,7 +516,6 @@ function leaseLogAttributes(input: {
   provider: string;
   request: Request;
   status: number;
-  upstream?: Response;
   upstreamUrl: URL;
 }): Record<string, unknown> {
   return {
@@ -560,9 +531,6 @@ function leaseLogAttributes(input: {
       status: input.status,
     }),
     ...routingAttributes(input.request, input.upstreamUrl),
-    ...(input.upstream
-      ? upstreamPermissionAttributes(input.provider, input.upstream)
-      : undefined),
   };
 }
 
@@ -602,9 +570,6 @@ async function recordSandboxPermissionDenied(input: {
     status: input.upstream.status,
     upstreamHost: input.upstreamUrl.hostname,
     upstreamPath: displayedUpstreamPath(input.upstreamUrl),
-    ...(input.provider === "github"
-      ? githubPermissionHeaders(input.upstream)
-      : undefined),
   });
 }
 
@@ -762,7 +727,6 @@ export async function executeCredentialedEgressRequest(input: {
   const attributes = (
     activeLease: SandboxEgressCredentialLease,
     status: number,
-    upstream?: Response,
   ) =>
     leaseLogAttributes({
       egressId: activeEgressId,
@@ -770,7 +734,6 @@ export async function executeCredentialedEgressRequest(input: {
       provider,
       request,
       status,
-      ...(upstream ? { upstream } : undefined),
       upstreamUrl,
     });
 
@@ -847,7 +810,7 @@ export async function executeCredentialedEgressRequest(input: {
         message: error.message,
       });
       logWarn("sandbox.egress.upstream_auth_requirement.classified", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       await upstream.body?.cancel().catch(() => undefined);
       return authRequiredResponse({
@@ -868,13 +831,13 @@ export async function executeCredentialedEgressRequest(input: {
     });
     if (upstream.status >= 400) {
       logWarn("sandbox.egress.upstream_response.failed", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
         "error.type": `http_${upstream.status}`,
       });
     }
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
         "app.sandbox.egress.www_authenticate":
           upstream.headers.get("www-authenticate") ?? undefined,
       });
@@ -898,12 +861,12 @@ export async function executeCredentialedEgressRequest(input: {
       !retriedAfter403
     ) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       await clearCredentialLease(provider, lease.grant, credentialContext);
       await upstream.body?.cancel().catch(() => undefined);
       logWarn("sandbox.egress.upstream_auth.retrying", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       leaseOrResponse = await resolveLease();
       if (leaseOrResponse instanceof Response) {
@@ -915,7 +878,7 @@ export async function executeCredentialedEgressRequest(input: {
     }
     if (upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       await clearCredentialLease(provider, lease.grant, credentialContext);
       await recordPermissionDenied({
@@ -930,7 +893,7 @@ export async function executeCredentialedEgressRequest(input: {
       });
       if (pluginPermissionDenied) {
         logWarn("sandbox.egress.upstream_permission.classified", {
-          ...attributes(lease, upstream.status, upstream),
+          ...attributes(lease, upstream.status),
         });
       }
       return new Response(upstream.body, {
@@ -950,7 +913,7 @@ export async function executeCredentialedEgressRequest(input: {
         upstreamUrl,
       });
       logWarn("sandbox.egress.upstream_permission.classified", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
     }
 
