@@ -16,6 +16,7 @@ const files = [
   "packages/junior-cloudflare/package.json",
   "packages/junior-dashboard/package.json",
   "packages/junior-datadog/package.json",
+  "packages/junior-figma/package.json",
   "packages/junior-tts/package.json",
   "packages/junior-github/package.json",
   "packages/junior-google/package.json",

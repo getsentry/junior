@@ -29,6 +29,7 @@ Start here:
 | `@sentry/junior-cloudflare`    | Cloudflare plugin package for production operations                          |
 | `@sentry/junior-dashboard`     | Authenticated dashboard package for Junior runtime diagnostics               |
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |
+| `@sentry/junior-figma`         | Read-only Figma frame, layout, and style lookups for design work             |
 | `@sentry/junior-tts`           | Gemini narration through Vercel AI Gateway with a reusable voice preset      |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |
 | `@sentry/junior-google`        | Google Workspace plugin package for calendar, Docs, Sheets, Slides as Junior |

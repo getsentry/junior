@@ -519,6 +519,8 @@ importers:
         specifier: 'catalog:'
         version: 4.5.4
 
+  packages/junior-figma: {}
+
   packages/junior-github:
     dependencies:
       '@sentry/junior-plugin-api':
