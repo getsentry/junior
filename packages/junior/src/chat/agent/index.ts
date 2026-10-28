@@ -989,6 +989,7 @@ async function executeAgentRunInPrivacyContext(
               }
             : undefined),
           signal: hookSignal,
+          turnStartMessageIndex: runResume.turnStartMessageIndex,
         },
         {
           completeText: (args) => completeText(args),

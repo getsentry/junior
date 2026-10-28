@@ -145,6 +145,10 @@ export function createResumeState(args: ResumeStateArgs) {
     get timedOut(): boolean {
       return timedOut;
     },
+    /** Index in the agent messages where the current Turn starts. */
+    get turnStartMessageIndex(): number | undefined {
+      return turnStartMessageIndex;
+    },
     setTurnStartMessageIndex(index: number | undefined): void {
       turnStartMessageIndex = index;
     },
