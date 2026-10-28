@@ -30,8 +30,11 @@ The reliability rules are small:
 - A paused turn can continue under the current lease while the host request has
   time left for soft yield or retry. When that deadline is spent, the worker
   releases the lease.
-- A process can stop while a turn runs. The next worker stops that turn and
-  records the error. The user can start new work. Committed SQL history remains.
+- A worker can stop checking in while a turn runs. Its process can be dead or
+  blocked, and the next worker cannot tell which. The next worker resumes the
+  turn once from its last save. If the turn loses its worker again, the next
+  worker fails the turn and records the error. The user can start new work.
+  Committed SQL history remains.
 - A paused Turn runs under the conversation lease. Slack OAuth callbacks save
   a `turn_authorized` event for the exact checkpoint version and wake the worker.
   They do not run the agent or write agent history. The worker checks the saved
@@ -150,8 +153,10 @@ Vercel signing, and Vercel options. The cases own these product outcomes (see is
 - **Accepted reply is terminal:** after Slack accepts a tool-free reply, the turn
   completes once with no second post (deadline during accept, or seeded
   dead-worker residue after accept).
-- **Worker dies mid-run:** an expired lease with no accepted reply fails the turn
-  once, keeps committed history, and leaves the conversation free.
+- **Worker dies mid-run:** an expired lease with no accepted reply resumes the
+  turn once from its last save and replies once. A second expired lease
+  fails the turn once, keeps committed history, and leaves the conversation
+  free.
 - **Transient agent failure:** failure before input commit retries without a
   Slack post; the retry limit stops with at most one fallback.
 - **Mid-turn steer:** a second `@` mention folds into the active turn and still

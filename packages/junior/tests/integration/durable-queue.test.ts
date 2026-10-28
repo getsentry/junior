@@ -3,7 +3,11 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import {
+  FUNCTION_TIMEOUT_BUFFER_SECONDS,
+  botConfig,
+  getChatConfig,
+} from "@/chat/config";
 import {
   commitAcceptedReply,
   loadProjection,
@@ -19,6 +23,7 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
+import { LOST_WORKER_RESUME_MESSAGE } from "@/chat/task-execution/paused-turn";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -247,7 +252,16 @@ async function expectAssistantInSql(text: string): Promise<void> {
  * Seed only the residue a dead prior worker leaves behind. Product paths that
  * the live ingress can create must not use this helper.
  */
-async function seedDeadWorkerResidue(mode: "paused" | "running") {
+async function seedDeadWorkerResidue(
+  mode: "paused" | "running",
+  options: {
+    errorMessage?: string;
+    lostWorkerResumeCount?: number;
+    reason?: "retry" | "timeout";
+    sliceId?: number;
+  } = {},
+) {
+  const { reason = "timeout", ...overrides } = options;
   const turnId = "turn_1712345_0001";
   const assistant = fauxAssistantMessage("checking");
   assistant.timestamp = 2;
@@ -287,9 +301,10 @@ async function seedDeadWorkerResidue(mode: "paused" | "running") {
       visibility: "private",
     }),
     surface: "slack" as const,
+    ...overrides,
   };
   if (mode === "paused") {
-    await saveTurnCheckpoint({ ...checkpoint, mode, reason: "timeout" });
+    await saveTurnCheckpoint({ ...checkpoint, mode, reason });
   } else {
     await saveTurnCheckpoint({ ...checkpoint, mode });
   }
@@ -631,11 +646,7 @@ describe("durable queue contract", () => {
   });
 
   describe("worker dies mid-run", () => {
-    it("fails once when the worker disappears before any reply", async () => {
-      // Dead-worker residue: heartbeat expires the lease, next wake fails the
-      // turn once, keeps committed history, and leaves the conversation free.
-      const turnId = await seedDeadWorkerResidue("running");
-      const q = await slack();
+    async function expireDeadWorkerLease(q: QueueTest): Promise<void> {
       await requestConversationWork({
         conversationId: CONVERSATION_ID,
         destination: SLACK_DESTINATION,
@@ -647,7 +658,6 @@ describe("durable queue contract", () => {
         nowMs: 1_000,
         state: q.state,
       });
-
       await expect(
         recoverConversationWork({
           nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
@@ -655,8 +665,73 @@ describe("durable queue contract", () => {
           state: q.state,
         }),
       ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
+    }
+
+    it("resumes from the last save when the worker stops checking in", async () => {
+      // A blocked event loop and a dead process both leave this residue. The
+      // next wake resumes the turn and replies once, without an error reply.
+      const turnId = await seedDeadWorkerResidue("running");
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
+      await expectAssistantInSql("Deploy checked.");
+    });
+
+    it("fails once when the resumed turn loses its worker again", async () => {
+      // A second loss fails the turn once, keeps committed history, and
+      // leaves the conversation free.
+      const turnId = await seedDeadWorkerResidue("running", {
+        lostWorkerResumeCount: 1,
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(q.wakes.sentRecords()).toHaveLength(1);
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "failed",
+        replies: 1,
+        error: "lost its worker",
+      });
+      await expectNextTurn(q, "1712345.0006");
+    });
+
+    it("fails once when the resumed turn stops before its first save", async () => {
+      // Recovery runs the resumed turn right away. A worker that stops before
+      // its first save leaves the resume message on the paused turn.
+      const turnId = await seedDeadWorkerResidue("paused", {
+        errorMessage: LOST_WORKER_RESUME_MESSAGE,
+        lostWorkerResumeCount: 1,
+        reason: "retry",
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "failed",
+        replies: 1,
+        error: "lost its worker",
+      });
+      await expectNextTurn(q, "1712345.0006");
+    });
+
+    it("fails once when the lost turn has no slice left to resume", async () => {
+      const turnId = await seedDeadWorkerResidue("running", {
+        sliceId: botConfig.maxSlicesPerTurn,
+      });
+      const q = await slack();
+      await expireDeadWorkerLease(q);
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
       await expectTerminalTurn(q, {
         turnId,
         state: "failed",
