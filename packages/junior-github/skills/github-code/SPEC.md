@@ -11,6 +11,7 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - Treat shallow clones as inspection checkouts; deepen before history work; never force-push around missing ancestry.
 - Install dependencies with the lockfile frozen mode before verification when needed.
 - Finish completed edits with a pushed PR unless the user opts out; default draft.
+- After each push to a branch with an open PR, check mergeability and resolve conflicts by merging the base. GitHub sends no event for a new conflict, and conflicted PRs get no new checks.
 - Write conventional PR titles and short plain-English bodies; keep check results out of the PR body.
 - Report exact validation and permission failures.
 

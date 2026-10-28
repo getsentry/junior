@@ -45,6 +45,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
 | Inline review comment   | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`              |
 | View PR / checks        | `gh pr view NUMBER --repo owner/repo` / `gh pr checks NUMBER --repo owner/repo`                 |
+| PR mergeability         | `gh pr view NUMBER --repo owner/repo --json mergeable`                                          |
 | Diff PR                 | `gh pr diff NUMBER --repo owner/repo`                                                           |
 | List runs               | `gh run list -R owner/repo --workflow WORKFLOW`                                                 |
 | View / watch run        | `gh run view RUN_ID -R owner/repo` / `gh run watch RUN_ID -R owner/repo --exit-status`          |

@@ -34,6 +34,11 @@ Open this when making repository edits, not for read-only inspection.
 1. Reuse the current non-default branch or create a focused branch.
 2. Commit with repo conventions, else `<type>(<scope>): <Subject>` imperative present, no agent branding.
 3. Push with `git push -u origin BRANCH`.
+   If the branch has an open PR, check that it can merge. Do this after every push, including fixes for review feedback or failed checks. A conflicted PR gets no new checks, so no event shows it.
+   - Run `gh pr view NUMBER --repo owner/repo --json mergeable`.
+   - `UNKNOWN`: GitHub is still calculating it. Wait about 5 seconds and check again, up to 3 times. If it stays `UNKNOWN`, report that and continue.
+   - `CONFLICTING`: fetch the base, merge `origin/BASE` into the branch, resolve the conflicts, run the checks again, and push. Do not rebase unless the requester asks for it.
+   - If a conflict needs a decision about intent that the code cannot answer, stop. Report the conflicting files.
 4. Resolve the actual default branch.
 5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
 6. PR title matches the current dominant change, same conventional form as commits.
