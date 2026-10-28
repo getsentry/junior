@@ -3908,14 +3908,10 @@ Conversation: \`local:test:old-conversation\`
 
       await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
-      expect(before.blocked).toEqual(
-        redirected
-          ? {
-              kind: "redirect",
-              message: expect.stringContaining("github_cloneRepository"),
-            }
-          : undefined,
-      );
+      expect(before.blocked?.kind).toBe(redirected ? "redirect" : undefined);
+      expect(
+        before.blocked?.message.includes("github_cloneRepository") ?? false,
+      ).toBe(redirected);
     },
   );
 
