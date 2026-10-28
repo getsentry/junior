@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import { getDb } from "@/chat/db";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -33,6 +34,7 @@ export async function listConversationWork(
         db: getDb(),
         log: createPluginLogger(plugin.manifest.name),
         plugin: { name: plugin.manifest.name },
+        cache: createPluginCache(plugin.manifest.name),
       });
       for (const conversationId of result.conversationIds) {
         if (!candidates.has(conversationId)) continue;

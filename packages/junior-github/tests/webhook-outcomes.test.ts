@@ -2425,7 +2425,19 @@ describe("GitHub-owned pull request outcomes", () => {
     opened.pull_request.user = { login: "octocat" };
 
     try {
+      const cached = new Map<string, unknown>();
       const [route] = githubPlugin().hooks!.routes!({
+        cache: {
+          async getOrLoad<T>(
+            key: string,
+            load: () => Promise<{ ttlMs?: number; value: T }>,
+          ) {
+            if (cached.has(key)) return cached.get(key) as T;
+            const entry = await load();
+            if (entry.ttlMs) cached.set(key, entry.value);
+            return entry.value;
+          },
+        },
         annotations: {
           forConversation() {
             return {
@@ -2470,6 +2482,12 @@ describe("GitHub-owned pull request outcomes", () => {
         ["pull_request.ready_for_review", "write"],
         ["pull_request.ready_for_review", "write"],
       ]);
+
+      // A later delivery reuses the cached role.
+      published.length = 0;
+      await route!.handler(signedRequest(opened));
+      expect(roleRequests).toHaveLength(1);
+      expect(published[0]?.data?.authorRole).toBe("write");
     } finally {
       await fixture.close();
     }

@@ -359,7 +359,7 @@ export function githubPlugin(
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
             loadAuthorRole: async (target) =>
-              await loadRepositoryRole(installationEnv, target),
+              await loadRepositoryRole(installationEnv, ctx.cache, target),
             loadPullRequestPeople: async (pullRequest) =>
               await loadGitHubPullRequestPeople({
                 logins: pullRequest.logins,
