@@ -73,7 +73,8 @@ token so each theme can redefine it.
   and `SearchInput`. Use `TextInput size="comfortable"` for larger mobile
   controls. Use `TextArea prose` for instructions, not code. `Field error`
   renders an error at `<htmlFor>-error`. The owning control must set
-  `aria-invalid` and `aria-describedby`. `Select` matches native text controls.
+  `aria-invalid` and `aria-describedby`. `Select` owns the native control and its
+  inset arrow. Use its `filter` and `sort` variants for compact controls.
 - **Status.** Use `StatusDot` for dense table or list markers. Use `StatusChip`
   when the label must stay visible. `StatusChip` is a small dot and
   sentence-case text, with no border or fill. It is not a control.
