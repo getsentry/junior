@@ -56,6 +56,13 @@ export const juniorConversationEvents = pgTable(
       table.type,
       table.seq,
     ),
+    index("junior_conversation_events_plugin_report_idx")
+      .on(
+        sql`(${table.payload}->>'namespace')`,
+        sql`(${table.payload}->>'name')`,
+        table.createdAt,
+      )
+      .where(sql`${table.type} = 'structured_event'`),
     index("junior_conversation_events_actor_identity_idx").on(
       table.actorIdentityId,
       table.conversationId,
