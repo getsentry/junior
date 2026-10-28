@@ -107,6 +107,11 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
     kind: "string",
     description: "pull request author login",
   },
+  authorRole: {
+    kind: "string",
+    description:
+      "pull request author's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+  },
   headBranch: {
     kind: "string",
     description: "head branch name from the webhook",

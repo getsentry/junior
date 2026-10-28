@@ -16,6 +16,7 @@ import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import {
   loadPullRequestCommitPages,
+  loadRepositoryRole,
   markPullRequestFeedbackReviewing,
 } from "./webhooks/installation-requests.js";
 import {
@@ -353,6 +354,8 @@ export function githubPlugin(
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
+            loadAuthorRole: async (target) =>
+              await loadRepositoryRole(installationEnv, target),
             loadPullRequestPeople: async (pullRequest) =>
               await loadGitHubPullRequestPeople({
                 logins: pullRequest.logins,

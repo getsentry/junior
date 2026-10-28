@@ -38,6 +38,10 @@ import {
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
 import {
+  withGitHubPullRequestAuthorRole,
+  type GitHubAuthorRoleTarget,
+} from "./pull-request-author-role.js";
+import {
   withGitHubPullRequestPeople,
   type GitHubPullRequestPeopleTarget,
 } from "./pull-request-people.js";
@@ -159,6 +163,8 @@ export function createGitHubWebhookRoute(args: {
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
+  /** Load a pull request author's repository role for `authorRole` filters. */
+  loadAuthorRole?(target: GitHubAuthorRoleTarget): Promise<string>;
   /** Load the people involved in a pull request for approvals and merges. */
   loadPullRequestPeople?(
     target: GitHubPullRequestPeopleTarget,
@@ -340,12 +346,19 @@ export function createGitHubWebhookRoute(args: {
       const events = await withGitHubPullRequestPeople({
         body,
         deliveryId,
-        events: normalizeGitHubEvents({
+        events: await withGitHubPullRequestAuthorRole({
           body,
-          botEmail,
-          ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
           deliveryId,
-          eventName,
+          events: normalizeGitHubEvents({
+            body,
+            botEmail,
+            ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
+            deliveryId,
+            eventName,
+          }),
+          load: args.loadAuthorRole,
+          log: args.log,
+          neededMatchKeys: args.events.neededMatchKeys,
         }),
         hasMatch,
         load: args.loadPullRequestPeople,

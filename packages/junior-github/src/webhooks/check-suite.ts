@@ -14,6 +14,7 @@ import { gitHubRepositoryResource } from "../events/repository.js";
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
   "authorEmail",
+  "authorRole",
   "authorUsername",
   "isDraft",
 ]);

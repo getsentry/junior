@@ -4,6 +4,7 @@
  * A webhook delivery has no Turn and no egress context, so these requests
  * call GitHub directly. Other plugin code must use host egress.
  */
+import { z } from "zod";
 import {
   githubRequest,
   issueInstallationToken,
@@ -78,4 +79,37 @@ export async function markPullRequestFeedbackReviewing(
       token: token.token,
     },
   );
+}
+
+const repositoryPermissionSchema = z.object({
+  permission: z.string().min(1),
+  role_name: z.string().optional(),
+});
+
+/**
+ * Read one user's role on a repository, with a metadata-only token. GitHub
+ * returns "none" for accounts without access, such as most bots.
+ */
+export async function loadRepositoryRole(
+  env: GitHubInstallationEnv,
+  target: { login: string; repositoryFullName: string },
+): Promise<string> {
+  const { owner, name } = splitRepository(
+    target.repositoryFullName,
+    "repository role",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { metadata: "read" },
+    repositories: [name],
+  });
+  const response = repositoryPermissionSchema.parse(
+    await githubRequest(
+      "https://api.github.com",
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/collaborators/${encodeURIComponent(target.login)}/permission`,
+      { token: token.token },
+    ),
+  );
+  // role_name includes maintain, triage, and custom roles; permission does not.
+  return response.role_name?.trim() || response.permission;
 }
