@@ -19,6 +19,7 @@ test("shows code activity", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "getsentry/junior", exact: true }),
   ).toBeVisible();
+  await expect(page).toHaveTitle("getsentry/junior - Junior");
   await expect(
     page.getByRole("link", { name: "junior", exact: true }),
   ).toHaveAttribute("href", "/system/workspaces/workspace-junior");

@@ -9,7 +9,7 @@ import {
   normalizeCheckSuiteEvents,
   type GitHubCheckSuiteFacts,
 } from "./check-suite.js";
-import { isBotLogin } from "./ownership.js";
+import { isBotLogin, mentionsBotLogin } from "./ownership.js";
 
 export type {
   GitHubCheckSuiteFacts,
@@ -64,6 +64,14 @@ function pullRequestAuthorData(
   const email = user?.email?.trim();
   if (email) data.authorEmail = email;
   return data;
+}
+
+/** The GitHub user who did what an Event describes, when GitHub names one. */
+function gitHubDoneBy(
+  login: string | undefined,
+): Pick<EventInput, "doneBy"> | undefined {
+  const handle = login?.trim();
+  return handle ? { doneBy: { provider: "github", handle } } : undefined;
 }
 
 /** Merge optional PR match values into one trusted data object. */
@@ -289,6 +297,7 @@ const issueCommentWebhookSchema = z.object({
       .nullable(),
   }),
   repository: repositorySchema,
+  sender: z.object({ id: z.number(), login: z.string().min(1) }).optional(),
 });
 
 /** Normalize a newly created issue or pull request comment. */
@@ -325,6 +334,7 @@ function normalizeIssueCommentEvents(
         occurredAtMs: Date.now(),
         identifier: resource.identifier,
         trustedSummary: `${resource.label} received a comment${author ? ` from ${author}` : ""}.`,
+        ...gitHubDoneBy(author),
         ...(data ? { data } : undefined),
         untrustedText: parsed.data.comment.body,
       },
@@ -334,24 +344,31 @@ function normalizeIssueCommentEvents(
 
   const issue = gitHubIssueResource(input);
   const repository = gitHubRepositoryResource(input);
-  return [
-    {
-      eventKey: gitHubEventKey(deliveryId, "issue.comment.created"),
-      eventType: "issue.comment.created",
-      occurredAtMs: Date.now(),
-      identifier: issue.identifier,
-      trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
-      untrustedText: parsed.data.comment.body,
-    },
-    {
-      eventKey: gitHubEventKey(deliveryId, "issue.comment.created"),
-      eventType: "issue.comment.created",
-      occurredAtMs: Date.now(),
-      identifier: repository.identifier,
-      trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
-      untrustedText: parsed.data.comment.body,
-    },
-  ];
+  // The webhook sender is the GitHub-authenticated person who wrote the
+  // comment. Match on its numeric id; logins can be renamed and reused.
+  const sender = parsed.data.sender;
+  const data: Record<string, unknown> = {
+    repo: input.repo,
+    issue: input.number,
+    commentId: parsed.data.comment.id,
+  };
+  if (sender) {
+    data.senderId = sender.id;
+    data.senderLogin = sender.login;
+  }
+  if (botEmail) {
+    data.mentionsBot = mentionsBotLogin(parsed.data.comment.body, botEmail);
+  }
+  return [issue, repository].map((resource) => ({
+    eventKey: gitHubEventKey(deliveryId, "issue.comment.created"),
+    eventType: "issue.comment.created",
+    occurredAtMs: Date.now(),
+    identifier: resource.identifier,
+    trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
+    ...gitHubDoneBy(author),
+    data,
+    untrustedText: parsed.data.comment.body,
+  }));
 }
 
 const issueWebhookSchema = z.object({
@@ -488,6 +505,7 @@ function normalizePullRequestReviewCommentEvent(
       occurredAtMs: Date.now(),
       identifier: resource.identifier,
       trustedSummary: `${resource.label} received an inline review comment${author ? ` from ${author}` : ""}.`,
+      ...gitHubDoneBy(author),
       ...(data ? { data } : undefined),
       untrustedText: parsed.data.comment.body,
     },
@@ -563,6 +581,7 @@ function normalizePullRequestReviewEvent(
         : eventType === "pull_request.review.changes_requested"
           ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
           : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
+    ...gitHubDoneBy(reviewer),
     ...(data ? { data } : undefined),
     untrustedText: parsed.data.review.body ?? undefined,
   };

@@ -7,6 +7,7 @@ import {
   actorProfileReportSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  conversationChildAgentsReportSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -38,6 +39,7 @@ import {
   readMockCodeRepository,
 } from "./code-repository";
 import {
+  readMockConversationChildAgents,
   readMockConversationDetail,
   readMockConversationEvents,
   readMockConversationFeed,
@@ -193,6 +195,16 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationEventPageSchema, report)
       : errorResponse("Invalid conversation cursor.", 400);
   });
+  app.get("/conversations/:conversationId/agents", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationChildAgents(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationChildAgentsReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
@@ -280,10 +292,7 @@ export function createMockReportingApi(): Hono<{
   app.get("/automations/runs", () => {
     const automations = readMockAutomationList().automations;
     const runs = automations.flatMap((automation) => {
-      const report = readMockAutomationExecutions(
-        automation.kind,
-        automation.id,
-      );
+      const report = readMockAutomationExecutions(automation.id);
       return (report?.executions ?? []).map((run) => ({
         ...run,
         kind: automation.kind,
@@ -306,15 +315,12 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(automationSummarySchema, automation)
       : errorResponse("Automation not found.", 404);
   });
-  app.get("/automations/:kind/:id/executions", (c) => {
+  app.get("/automations/:id/executions", (c) => {
     const params = automationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockAutomationExecutions(
-      params.data.kind,
-      params.data.id,
-    );
+    const report = readMockAutomationExecutions(params.data.id);
     return report
       ? jsonResponse(automationExecutionListSchema, report)
       : errorResponse("Task not found.", 404);

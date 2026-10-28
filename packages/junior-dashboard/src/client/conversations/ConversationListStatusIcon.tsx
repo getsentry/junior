@@ -45,7 +45,7 @@ export function ConversationListStatusIcon(props: {
       className={cn(
         "size-1.5 shrink-0 rounded-full",
         props.status === "failed" && "bg-rose-300",
-        props.status === "idle" && "bg-white/25",
+        props.status === "idle" && "bg-dashboard-text-faint",
       )}
     />
   );

@@ -5,13 +5,14 @@ import {
   findTranscriptMarkdownLinks,
   TRANSCRIPT_ANCHOR_CLASS,
 } from "./transcriptMarkdownLinks";
+import { renderMentionText } from "./transcriptMentions";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 type TableAlignment = "left" | "center" | "right" | null;
 
 type MarkdownBlock =
   | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
-  | { type: "list"; ordered: boolean; items: string[] }
+  | { type: "list"; ordered: boolean; items: string[]; start?: number }
   | {
       type: "table";
       alignments: TableAlignment[];
@@ -33,11 +34,11 @@ export function TranscriptMarkdown(props: {
       className={cn(
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.compact
-          ? "font-sans text-base leading-7"
+          ? "font-sans text-base leading-relaxed"
           : "font-sans text-sm leading-6 md:leading-7",
       )}
     >
-      <div className="grid min-w-0 gap-2">
+      <div className={cn("grid min-w-0", props.compact ? "gap-3" : "gap-2")}>
         {blocks.map((block, index) => (
           <MarkdownBlockView block={block} key={index} />
         ))}
@@ -50,7 +51,7 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
   switch (props.block.type) {
     case "heading": {
       const className = cn(
-        "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text",
+        "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text [&:not(:first-child)]:mt-1 [&+*]:-mt-1",
         props.block.level <= 2 ? "text-[1.05em]" : "text-[1em]",
       );
       const content = renderInlineMarkdown(props.block.text);
@@ -74,9 +75,10 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
       return (
         <ListTag
           className={cn(
-            "m-0 grid min-w-0 list-outside gap-1 pl-5 text-dashboard-text",
+            "m-0 grid min-w-0 list-outside gap-1.5 pl-6 text-dashboard-text marker:text-dashboard-text-muted",
             props.block.ordered ? "list-decimal" : "list-disc",
           )}
+          start={props.block.start}
         >
           {props.block.items.map((item, index) => (
             <li className="min-w-0 pl-1" key={index}>
@@ -122,6 +124,7 @@ function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
       const ordered = isOrderedListItem(line);
       const unordered = isUnorderedListItem(line);
       if (ordered || unordered) {
+        const start = ordered ? Number(/\d+/.exec(line)?.[0]) : undefined;
         const items: string[] = [];
         while (
           index < lines.length &&
@@ -131,13 +134,18 @@ function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
         ) {
           items.push(
             (lines[index] ?? "").replace(
-              ordered ? /^\s*\d+\.\s+/ : /^\s*[-*+]\s+/,
+              ordered ? ORDERED_LIST_MARKER : UNORDERED_LIST_MARKER,
               "",
             ),
           );
           index += 1;
         }
-        blocks.push({ items, ordered, type: "list" });
+        blocks.push({
+          items,
+          ordered,
+          start: start === 1 ? undefined : start,
+          type: "list",
+        });
         continue;
       }
 
@@ -177,7 +185,7 @@ function MarkdownTable(props: {
 
   return (
     <div className="min-w-0 max-w-full overflow-x-auto rounded-md border border-dashboard-border bg-dashboard-fill-faint">
-      <table className="w-max border-collapse text-left text-sm">
+      <table className="w-max min-w-full border-collapse text-left text-sm">
         <thead className="bg-dashboard-overlay-soft">
           <tr>
             {Array.from({ length: columnCount }, (_, index) => {
@@ -185,7 +193,7 @@ function MarkdownTable(props: {
               return (
                 <th
                   className={cn(
-                    "whitespace-nowrap border-b border-dashboard-border px-2.5 py-1.5 font-mono text-xs font-medium tracking-[0.04em] text-dashboard-text-muted",
+                    "whitespace-nowrap border-b border-dashboard-border px-2.5 py-1.5 font-sans text-xs font-medium text-dashboard-text-muted",
                     tableCellAlignClass(alignment),
                   )}
                   key={`h-${index}`}
@@ -323,6 +331,11 @@ function splitTableRow(line: string): string[] {
 }
 
 function matchHeading(line: string): MarkdownBlock | undefined {
+  // Agents often write a bold-only line as a section label. Give it heading
+  // spacing so the section reads as a group.
+  if (/^\s*(?:\*\*[^*]+\*\*|__[^_]+__):?\s*$/.test(line)) {
+    return { level: 3, text: line.trim(), type: "heading" };
+  }
   const match = /^(#{1,6})\s+(.+)$/.exec(line);
   if (!match) return undefined;
   return {
@@ -332,12 +345,16 @@ function matchHeading(line: string): MarkdownBlock | undefined {
   };
 }
 
+// Slack-style replies use "•" bullets and "1)" numbers; render them as lists.
+const UNORDERED_LIST_MARKER = /^\s*[-*+•◦]\s+(?=\S)/;
+const ORDERED_LIST_MARKER = /^\s*\d+[.)]\s+(?=\S)/;
+
 function isUnorderedListItem(line: string): boolean {
-  return /^\s*[-*+]\s+\S/.test(line);
+  return UNORDERED_LIST_MARKER.test(line);
 }
 
 function isOrderedListItem(line: string): boolean {
-  return /^\s*\d+\.\s+\S/.test(line);
+  return ORDERED_LIST_MARKER.test(line);
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -365,7 +382,7 @@ function renderInlineCode(text: string, keyBase: number): ReactNode[] {
     }
     nodes.push(
       <code
-        className="rounded-[0.25rem] bg-white/[0.08] px-1 py-0.5 font-mono text-[0.9em] text-cyan-50"
+        className="rounded-[0.25rem] bg-dashboard-fill-strong px-1 py-0.5 font-mono text-[0.9em] text-dashboard-text"
         key={`code-${keyBase}-${part++}`}
       >
         <HighlightText text={match[2] ?? ""} />
@@ -435,10 +452,10 @@ function renderLinkText(text: string, keyBase: string): ReactNode[] {
   for (const link of links) {
     if (link.start > cursor) {
       nodes.push(
-        <HighlightText
-          key={`${keyBase}-s-${part++}`}
-          text={text.slice(cursor, link.start)}
-        />,
+        ...renderMentionText(
+          text.slice(cursor, link.start),
+          `${keyBase}-s-${part++}`,
+        ),
       );
     }
     nodes.push(
@@ -451,7 +468,7 @@ function renderLinkText(text: string, keyBase: string): ReactNode[] {
 
   if (cursor < text.length) {
     nodes.push(
-      <HighlightText key={`${keyBase}-s-${part}`} text={text.slice(cursor)} />,
+      ...renderMentionText(text.slice(cursor), `${keyBase}-s-${part}`),
     );
   }
   return nodes;

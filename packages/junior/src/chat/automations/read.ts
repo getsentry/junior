@@ -31,7 +31,13 @@ import {
   type AutomationExecutionSummary,
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
+import { isAutomationCreator } from "@/chat/automations/creator";
 import { getDb } from "@/chat/db";
+import {
+  getDispatchIdForConversation,
+  getDispatchInputMessageId,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
 import {
   automationDefinition,
   listAutomationVersions,
@@ -39,8 +45,6 @@ import {
 } from "@/chat/automations/versions";
 import {
   deleteEventAutomation,
-  eventAutomationBelongsToUser,
-  getEventAutomation,
   listDeletedEventAutomationsCreatedBy,
   parseEventAutomationRow,
   type StoredEventAutomation,
@@ -51,17 +55,13 @@ import {
   deleteViewerScheduledAutomation,
   PersonalScheduledAutomationNotFoundError,
 } from "@/chat/scheduled-automations/personal";
-import {
-  parseScheduledAutomationRow,
-  readScheduledAutomation,
-} from "@/chat/scheduled-automations/tasks";
+import { parseScheduledAutomationRow } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
-  juniorAutomationExecutions,
+  juniorAutomationRuns,
+  juniorAutomations,
   juniorDestinations,
-  juniorEventAutomations,
   juniorIdentities,
-  juniorSchedulerTasks,
   juniorUsers,
 } from "@/db/schema";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
@@ -326,7 +326,8 @@ function eventAutomationSummary(
       instruction,
       "Untitled event automation",
     ),
-    status: task.status === "paused" ? "paused" : "active",
+    status: task.status === "deleted" ? "active" : task.status,
+    statusReason: task.statusReason,
     triggerAvailable: eventAutomationTriggerAvailable(task, getEventCatalog()),
   };
 }
@@ -345,42 +346,40 @@ function viewerTeamIds(user: User): string[] {
 /** Resolve an Automation the viewer owns or can read through a public Destination. */
 export async function resolveViewerTaskCandidate(
   user: User,
-  kind: "scheduled" | "event",
   id: string,
 ): Promise<TaskCandidate | undefined> {
-  const db = getDb();
-  const identityIds = new Set(user.identities.map((identity) => identity.id));
-  const teamIds = viewerTeamIds(user);
-  if (kind === "scheduled") {
-    const task = await readScheduledAutomation(db, id);
-    if (!task || task.status === "deleted") return undefined;
-    const ownedByViewer = identityIds.has(task.creatorIdentityId);
-    const destinations = await destinationDetails([task.destination]);
-    const destination = destinations.get(destinationKey(task.destination));
-    const publicToViewer =
-      teamIds.includes(task.destination.teamId) &&
-      destination?.visibility === "public";
-    if (!ownedByViewer && !publicToViewer) return undefined;
-    return {
+  const [row] = await getDb()
+    .select()
+    .from(juniorAutomations)
+    .where(eq(juniorAutomations.id, id))
+    .limit(1);
+  if (!row) return undefined;
+  let candidate: TaskCandidate;
+  if (row.kind === "scheduled") {
+    const task = parseScheduledAutomationRow(row);
+    if (!task) return undefined;
+    candidate = {
       kind: "scheduled",
-      ownedByViewer,
+      ownedByViewer: isAutomationCreator(user, task),
+      task,
+    };
+  } else {
+    const task = parseEventAutomationRow(row);
+    candidate = {
+      kind: "event",
+      ownedByViewer: isAutomationCreator(user, task),
       task,
     };
   }
-  const task = await getEventAutomation(db, id);
-  if (!task || task.status === "deleted") return undefined;
-  const ownedByViewer = eventAutomationBelongsToUser(task, user);
+  const { task } = candidate;
+  if (task.status === "deleted") return undefined;
+  if (candidate.ownedByViewer) return candidate;
   const destinations = await destinationDetails([task.destination]);
   const destination = destinations.get(destinationKey(task.destination));
   const publicToViewer =
-    teamIds.includes(task.destination.teamId) &&
+    viewerTeamIds(user).includes(task.destination.teamId) &&
     destination?.visibility === "public";
-  if (!ownedByViewer && !publicToViewer) return undefined;
-  return {
-    kind: "event",
-    ownedByViewer,
-    task,
-  };
+  return publicToViewer ? candidate : undefined;
 }
 
 /** Read one current Automation summary with the Automations view access rules. */
@@ -388,9 +387,7 @@ export async function readViewerAutomationSummary(
   user: User,
   id: string,
 ): Promise<AutomationSummary | undefined> {
-  const candidate =
-    (await resolveViewerTaskCandidate(user, "scheduled", id)) ??
-    (await resolveViewerTaskCandidate(user, "event", id));
+  const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) return undefined;
   return automationSummaryForCandidate(candidate);
 }
@@ -401,9 +398,7 @@ async function automationSummaryForCandidate(
   const [destinations, creators, stats] = await Promise.all([
     destinationDetails([candidate.task.destination]),
     creatorProfiles([candidate]),
-    readAutomationExecutionSummaries(candidate.kind, "junior", {
-      automationIds: [candidate.task.id],
-    }),
+    readAutomationExecutionSummaries([candidate.task.id]),
   ]);
   const destination = destinations.get(
     destinationKey(candidate.task.destination),
@@ -475,40 +470,34 @@ export async function readViewerAutomations(
   const { rows, ...page } = await readAutomationCollection(user, input);
   const db = getDb();
   const ids = rows.map((row) => row.id);
-  const [scheduled, events] = ids.length
-    ? await Promise.all([
-        db
-          .select()
-          .from(juniorSchedulerTasks)
-          .where(inArray(juniorSchedulerTasks.id, ids)),
-        db
-          .select()
-          .from(juniorEventAutomations)
-          .where(inArray(juniorEventAutomations.id, ids)),
-      ])
-    : [[], []];
-  const identityIds = new Set(user.identities.map((identity) => identity.id));
+  const stored = ids.length
+    ? await db
+        .select()
+        .from(juniorAutomations)
+        .where(inArray(juniorAutomations.id, ids))
+    : [];
   const candidates = new Map<string, TaskCandidate>();
-  for (const row of scheduled) {
-    const task = parseScheduledAutomationRow(row);
-    if (task && task.status !== "deleted")
-      candidates.set(`scheduled:${task.id}`, {
-        kind: "scheduled",
-        task,
-        ownedByViewer: identityIds.has(task.creatorIdentityId),
-      });
-  }
-  for (const row of events) {
+  for (const row of stored) {
+    if (row.kind === "scheduled") {
+      const task = parseScheduledAutomationRow(row);
+      if (task && task.status !== "deleted")
+        candidates.set(task.id, {
+          kind: "scheduled",
+          task,
+          ownedByViewer: isAutomationCreator(user, task),
+        });
+      continue;
+    }
     const task = parseEventAutomationRow(row);
     if (task.status !== "deleted")
-      candidates.set(`event:${task.id}`, {
+      candidates.set(task.id, {
         kind: "event",
         task,
-        ownedByViewer: eventAutomationBelongsToUser(task, user),
+        ownedByViewer: isAutomationCreator(user, task),
       });
   }
   const selected = rows.flatMap((row) => {
-    const candidate = candidates.get(`${row.kind}:${row.id}`);
+    const candidate = candidates.get(row.id);
     return candidate ? [candidate] : [];
   });
   const [destinations, creators] = await Promise.all([
@@ -526,25 +515,13 @@ export async function readViewerAutomations(
     getDb()
       .select({ id: collection.id })
       .from(collection)
-      .where(
-        and(
-          eq(collection.id, juniorAutomationExecutions.automationId),
-          eq(collection.kind, juniorAutomationExecutions.kind),
-          eq(juniorAutomationExecutions.namespace, "junior"),
-        ),
-      ),
+      .where(eq(collection.id, juniorAutomationRuns.automationId)),
   );
-  const [executionDays, executionHours, scheduledStats, eventStats] =
-    await Promise.all([
-      readAutomationExecutionDays(90, { access }),
-      readAutomationExecutionHours(7 * 24, { access }),
-      readAutomationExecutionSummaries("scheduled", "junior", {
-        automationIds: ids,
-      }),
-      readAutomationExecutionSummaries("event", "junior", {
-        automationIds: ids,
-      }),
-    ]);
+  const [executionDays, executionHours, stats] = await Promise.all([
+    readAutomationExecutionDays(90, { access }),
+    readAutomationExecutionHours(7 * 24, { access }),
+    readAutomationExecutionSummaries(ids),
+  ]);
   const automations = visible.map((candidate): AutomationSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -563,7 +540,7 @@ export async function readViewerAutomations(
         candidate.task,
         candidate.ownedByViewer,
         destination,
-        scheduledStats.get(candidate.task.id),
+        stats.get(candidate.task.id),
         creator,
       );
     }
@@ -571,7 +548,7 @@ export async function readViewerAutomations(
       candidate.task,
       candidate.ownedByViewer,
       destination,
-      eventStats.get(candidate.task.id),
+      stats.get(candidate.task.id),
       creator,
     );
   });
@@ -591,23 +568,16 @@ async function readDeletedOwnedScheduledAutomations(
   const identityIds = user.identities.map((identity) => identity.id);
   if (identityIds.length === 0) return [];
   const rows = await getDb()
-    .select({
-      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-      id: juniorSchedulerTasks.id,
-      record: juniorSchedulerTasks.record,
-      title: juniorSchedulerTasks.title,
-    })
-    .from(juniorSchedulerTasks)
+    .select()
+    .from(juniorAutomations)
     .where(
       and(
-        eq(juniorSchedulerTasks.status, "deleted"),
-        inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
+        eq(juniorAutomations.kind, "scheduled"),
+        eq(juniorAutomations.status, "deleted"),
+        inArray(juniorAutomations.creatorIdentityId, identityIds),
       ),
     )
-    .orderBy(
-      desc(juniorSchedulerTasks.createdAtMs),
-      desc(juniorSchedulerTasks.id),
-    )
+    .orderBy(desc(juniorAutomations.createdAtMs), desc(juniorAutomations.id))
     .limit(TASK_EXECUTION_LIST_LIMIT);
   return rows
     .map(parseScheduledAutomationRow)
@@ -719,8 +689,8 @@ export async function readViewerAutomationRuns(
     );
   }
   const runs = await readAutomationRuns({
+    automationIds: automations.map((automation) => automation.automationId),
     limit: TASK_EXECUTION_LIST_LIMIT + 1,
-    automations,
   });
   return {
     runs: runs.slice(0, TASK_EXECUTION_LIST_LIMIT).map((run) => ({
@@ -741,27 +711,19 @@ export class ViewerTaskNotFoundError extends Error {
 /** Read one viewer-visible task and its newest terminal executions. */
 export async function readViewerAutomationExecutions(
   user: User,
-  kind: "scheduled" | "event",
   id: string,
 ): Promise<AutomationExecutionList> {
-  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
   const [automation, executions, executionDays, executionHours] =
     await Promise.all([
       automationSummaryForCandidate(candidate),
       readAutomationExecutions({
-        kind,
+        automationId: id,
         limit: TASK_EXECUTION_LIST_LIMIT + 1,
-        automationId: id,
       }),
-      readAutomationExecutionStatusDays({
-        kind,
-        automationId: id,
-      }),
-      readAutomationExecutionStatusHours({
-        kind,
-        automationId: id,
-      }),
+      readAutomationExecutionStatusDays({ automationId: id }),
+      readAutomationExecutionStatusHours({ automationId: id }),
     ]);
   return {
     executionDays,
@@ -776,14 +738,12 @@ export async function readViewerAutomationExecutions(
 /** Read saved definitions for one viewer-visible Automation, newest first. */
 export async function readViewerAutomationVersions(
   user: User,
-  kind: "scheduled" | "event",
   id: string,
 ): Promise<AutomationVersionList> {
-  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
   const versions = await listAutomationVersions(
     getDb(),
-    kind,
     id,
     AUTOMATION_VERSION_LIST_LIMIT + 1,
   );
@@ -798,7 +758,37 @@ export async function readViewerAutomationVersions(
   };
 }
 
-/** Resolve the source task for one conversation when a terminal execution links it. */
+/** Name the event in a trigger, such as "opened" for `pull_request.opened`. */
+function eventActionLabel(eventName: string): string {
+  const [, ...action] = eventName.split(".");
+  return (action.length > 0 ? action : [eventName])
+    .join(" ")
+    .replaceAll("_", " ");
+}
+
+/**
+ * Read whose access one run used from its dispatch record. Return nothing when
+ * the record is gone, because the Automation's current setting can differ.
+ */
+async function readRunCredential(
+  dispatchId: string | undefined,
+  creator: { fullName?: string; slackUserId: string; userName?: string },
+): Promise<Pick<ConversationSourceTask, "credentialMode" | "credentialUser">> {
+  if (!dispatchId) return {};
+  const dispatch = await getDispatchRecord(dispatchId);
+  if (!dispatch) return {};
+  const subject = dispatch.credentialSubject;
+  if (!subject) return { credentialMode: "system" };
+  return {
+    credentialMode: "creator",
+    credentialUser:
+      subject.userId === creator.slackUserId
+        ? creatorLabel(creator)
+        : subject.userId,
+  };
+}
+
+/** Resolve the source task for one conversation when an Automation run links it. */
 export async function readConversationSourceTask(args: {
   conversationId: string;
   viewer?: User;
@@ -807,19 +797,32 @@ export async function readConversationSourceTask(args: {
     conversationId: args.conversationId,
   });
   if (!execution) return undefined;
-  if (!args.viewer) return { kind: execution.kind };
+  const dispatchId = getDispatchIdForConversation(args.conversationId);
+  const base = {
+    kind: execution.kind,
+    ...(dispatchId
+      ? { triggerMessageId: getDispatchInputMessageId(dispatchId) }
+      : undefined),
+  };
+  if (!args.viewer) return base;
   const candidate = await resolveViewerTaskCandidate(
     args.viewer,
-    execution.kind,
     execution.automationId,
   );
-  if (!candidate) return { kind: execution.kind };
+  if (!candidate) return base;
+  const credential = await readRunCredential(
+    dispatchId,
+    candidate.task.createdBy,
+  );
   if (candidate.kind === "scheduled") {
     const instruction = displayText(
       candidate.task.task.text,
       "Untitled scheduled automation",
     );
+    const schedule = candidate.task.schedule.description.trim();
     return {
+      ...base,
+      ...credential,
       id: candidate.task.id,
       kind: "scheduled",
       label: instruction,
@@ -828,13 +831,17 @@ export async function readConversationSourceTask(args: {
         instruction,
         "Untitled scheduled automation",
       ),
+      ...(schedule ? { triggerLabel: schedule } : undefined),
     };
   }
   const instruction = displayText(
     candidate.task.task.text,
     "Untitled event automation",
   );
+  const { events, label } = candidate.task.trigger;
   return {
+    ...base,
+    ...credential,
     id: candidate.task.id,
     kind: "event",
     label: instruction,
@@ -843,16 +850,16 @@ export async function readConversationSourceTask(args: {
       instruction,
       "Untitled event automation",
     ),
+    triggerLabel:
+      events.length === 1 ? `${label} ${eventActionLabel(events[0]!)}` : label,
   };
 }
 
 /** Delete one viewer-owned scheduled or event automation. */
-export async function deleteViewerTask(
-  user: User,
-  kind: "scheduled" | "event",
-  id: string,
-): Promise<void> {
-  if (kind === "scheduled") {
+export async function deleteViewerTask(user: User, id: string): Promise<void> {
+  const candidate = await resolveViewerTaskCandidate(user, id);
+  if (!candidate?.ownedByViewer) throw new ViewerTaskNotFoundError();
+  if (candidate.kind === "scheduled") {
     try {
       await deleteViewerScheduledAutomation(getDb(), user, id);
       return;
@@ -862,14 +869,6 @@ export async function deleteViewerTask(
       }
       throw error;
     }
-  }
-  const task = await getEventAutomation(getDb(), id);
-  if (
-    !task ||
-    task.status === "deleted" ||
-    !eventAutomationBelongsToUser(task, user)
-  ) {
-    throw new ViewerTaskNotFoundError();
   }
   await deleteEventAutomation(getDb(), id);
 }

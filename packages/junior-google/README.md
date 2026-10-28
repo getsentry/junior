@@ -4,22 +4,85 @@ Proof of concept. Junior acts as its own Google Workspace account, for example
 `junior@sentry.io`. Junior does not use the Google credentials of the people it
 helps. Tracking issue: getsentry/junior#2063.
 
-This version supports Calendar only. Drive and Gmail are out of scope.
+This version supports Calendar, Meet transcripts, and reading Google Docs,
+Sheets, and Slides.
+Gmail and Drive writes are out of scope.
 
 ## Surfaces
 
-- `findMeetingTimes` finds times when every attendee is free. It reads
-  free/busy data only. It never reads event titles or details.
+- `findMeetingTimes` finds times when every required attendee is free and
+  inside working hours (09:00 to 17:00 by default) in the time zone of their
+  own calendar. It reads free/busy data and calendar time zones only. It never
+  reads event titles or details. Optional attendees do not block a slot.
+  Slots where they are free come first, and each slot names the optional
+  attendees who are busy or off hours. Slots are spread across days and
+  across each day, so the requester gets a real choice.
+- Every Calendar tool takes an optional `timeZone` for the times it reads and
+  shows. Without it, the tool uses the requester's timezone from
+  `ctx.users.resolveTimezone()`, so Junior does not have to ask for one.
 - `createCalendarEvent` creates an event on Junior's own calendar. It sends
-  invites and can add a Google Meet link. A retry of the same tool call returns
-  the same event. It does not create a second invite.
-- `listCalendarEvents` reads the events on one colleague's calendar. It shows
-  only what the calendar's Google sharing settings let Junior's account see.
-  A calendar shared as free/busy only shows busy blocks without titles. It
-  never returns event descriptions.
-- `updateCalendarEvent` changes the title, description, time, or attendees of
-  an event that Junior organizes. Google emails the attendees about the
-  change. Only people invited to the event can ask for a change.
+  invites and always adds a Google Meet link. It can add a location, optional
+  attendees, and a simple repeat rule (weekdays, weekly, or monthly). A retry of the same
+  tool call returns the same event. It does not create a second invite.
+- `listCalendarEvents` reads the events on one colleague's calendar, or on
+  Junior's own calendar when no calendar is given. It shows only what the
+  calendar's Google sharing settings let Junior's account see. A calendar
+  shared as free/busy only shows busy blocks without titles. It never returns
+  event descriptions. Each event says whether Junior organizes it, and gives
+  attendee responses and the series id of a repeating event.
+- `updateCalendarEvent` and `cancelCalendarEvent` accept an event id or a
+  Google Calendar event link.
+- `updateCalendarEvent` changes the title, description, time, location, video
+  call, or attendees of an event that Junior organizes. Google emails the
+  attendees about the change. Only people invited to the event can ask for a
+  change.
+- `cancelCalendarEvent` deletes an event that Junior organizes. Google removes
+  it from every attendee's calendar and emails them a cancellation. Only
+  people invited to the event can ask to cancel it.
+- `createCalendarEvent` and `updateCalendarEvent` save a Calendar event
+  annotation on the Conversation. Junior shows its card with the next reply.
+  The card shows the title, time, and attendees, and links to the event. A
+  change to an event replaces its card.
+- `searchGoogleFiles` finds Google Docs, Sheets, and Slides that are shared
+  with Junior's account, by words in the title or text. A search can ask for only
+  some of these types. Files that are only shared by public link are not found,
+  because Drive search only covers files the account has.
+- The read tools take a link or a file id. They work for files shared with
+  Junior's account and for files shared with anyone who has the link. A link's
+  `resourcekey` value is sent to Google, because older files shared by link
+  need it. Each result stops at 100,000 characters.
+- `readGoogleDoc` reads one Doc as Markdown. Drive exports the Doc, so the
+  Docs API is not used.
+- `readGoogleSheet` reads the cells of one Sheet as CSV, with values formatted
+  as the Sheet shows them. It reads every tab, or one A1 range such as
+  `Budget!A1:F50`. The result names every tab, so Junior can ask for a smaller
+  range when a Sheet is too large. A Drive CSV export has only the first tab,
+  so this tool uses the Sheets API.
+- `readGoogleSlides` reads the text and speaker notes of each slide, with
+  tables as `|` rows. It uses the Slides API to keep slide numbers and notes.
+- `listGoogleFileComments` reads the comments and replies on one Doc, Sheet,
+  or Slides file, 100 per call. Each comment gives its author name, text, the
+  file text it is attached to, and whether it is resolved.
+- `readMeetingTranscript` reads the Meet transcript and Gemini notes of one
+  meeting on Junior's calendar. Junior and the requester must both be invited
+  to the meeting. Junior does not have to join the call. When someone turns on
+  transcription or Gemini notes, Google saves them as Docs in the organizer's
+  Drive, attaches them to the Calendar event, and shares them with every
+  invitee in the organizer's domain. The tool reads these Docs from the event
+  attachments, so it needs no Meet scope. It reads an attached Doc only when
+  the organizer owns it and it was made after the meeting started. Thus a Doc
+  that someone else attaches to the event, or an agenda made before the
+  meeting, is not read. It does not require a title format, because Meet can
+  change the titles and they differ by language. The title only sets `kind`.
+  Google can take from some minutes to a few hours after the call to attach
+  the records, so an automation must allow for this delay. The result marks
+  the text as untrusted. The tool only reads. Junior acts on what was said
+  only when the requester or an automation asks for it.
+- A transcript of a long meeting can be megabytes. The result returns at
+  most 100,000 characters inline. The tool saves the full text of each cut
+  record to a Markdown file in the Conversation sandbox, under `meetings/`,
+  and returns its `path`. Junior then reads or searches the full file in
+  parts. Drive cannot export a Doc larger than 10 MB.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
@@ -36,38 +99,58 @@ own.
 2. Google sign-in opens with PKCE and a single-use state value.
 3. The admin signs in as the configured account, not as themselves.
 4. Junior checks that the identity token names the configured account. It also
-   checks that Google granted every Calendar scope. If a check fails, Junior
-   revokes the grant and stores nothing.
+   checks that Google granted every Calendar and Drive scope. If a check
+   fails, Junior revokes the grant and stores nothing.
 5. Junior stores the refresh token in the `junior_google_accounts` table.
 
 At runtime, the `issueCredential` hook exchanges the refresh token for a
 one-hour access token. Junior applies that token only to `www.googleapis.com`
 requests from this plugin's tools. The `grantForEgress` hook denies sandbox
 commands and any request that does not match a declared operation. Thus the
-model cannot use `curl` to read Junior's calendar and skip the tool rules.
+model cannot use `curl` to read Junior's calendar or Drive and skip the tool
+rules.
 
 If Google rejects the refresh token (`invalid_grant`), Junior deletes it. The
 tools then report that an admin must connect the account again. If the stored
-grant does not have every scope the current tools need, the tools also ask an
-admin to reconnect.
+grant does not have every scope the current tools need, Google rejects the
+request and the tool asks an admin to reconnect.
 
 ## Rules in code
 
 - Junior checks and invites only people in the allowed domains. By default,
   the allowed domain is the domain of the account email.
 - Junior adds the requester to the attendees when it knows their email.
-- Junior changes only events that it organizes, and only for a requester who
-  is invited to the event.
+- Junior changes or cancels only events that it organizes, and only for a
+  requester who is invited to the event. The `calendar.events.owned` scope
+  also keeps events that other people organize out of reach.
 - Calendar scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
-  and `calendar.events.owned`. Junior also requests `openid email` to verify
-  the account during sign-in.
+  and `calendar.events.owned`.
+- The Drive scope is `drive.readonly`. The Drive comments API accepts no
+  narrower read scope, and the Sheets and Slides APIs also accept it. Junior
+  permits only these requests: Drive file search, file metadata, export, and
+  comment reads; Sheets metadata and cell reads; and Slides reads. Each
+  request must go to the host of its own API.
+- Junior also requests `openid email` to verify the account during sign-in.
+- Drive sharing decides which files Junior can read. The file tools read
+  any Doc, Sheet, or Slides file shared with Junior's account. This includes
+  Meet transcripts and Gemini notes, which Google shares with Junior when it
+  is invited. `readMeetingTranscript` finds the records from the Calendar
+  event and adds the invite checks. It is not the only way to read them.
 
 ## Setup
 
-1. In a Google Cloud project that the company owns, enable the Google Calendar
-   API.
-2. Configure the OAuth consent screen with user type **Internal**.
-3. Create an OAuth client of type **Web application**. Add these redirect URIs:
+The plugin uses the same Google OAuth client as dashboard sign-in. Each
+sign-in requests only its own scopes, so dashboard sign-in still asks only for
+identity.
+
+1. In the Google Cloud project of the dashboard OAuth client, enable the
+   Google Calendar API, Google Drive API, Google Sheets API, and Google Slides
+   API. If an API is not enabled, its tool tells the requester that an admin
+   must enable it.
+2. On the OAuth consent screen, use user type **Internal** and add the
+   Calendar and Drive scopes above. `drive.readonly` is a restricted scope.
+   An Internal app does not need Google verification for it.
+3. On the OAuth client, add these redirect URIs:
    - `https://<junior host>/api/plugins/google/oauth/callback`
    - `http://127.0.0.1:8765/oauth/callback`, for the CLI. Use another port with
      `junior google connect --port`.
@@ -76,8 +159,8 @@ admin to reconnect.
 
 | Variable                           | Purpose                                         |
 | ---------------------------------- | ----------------------------------------------- |
-| `GOOGLE_WORKSPACE_CLIENT_ID`       | OAuth client id                                 |
-| `GOOGLE_WORKSPACE_CLIENT_SECRET`   | OAuth client secret                             |
+| `GOOGLE_CLIENT_ID`                 | OAuth client id, shared with dashboard sign-in  |
+| `GOOGLE_CLIENT_SECRET`             | OAuth client secret                             |
 | `GOOGLE_WORKSPACE_ACCOUNT_EMAIL`   | The account Junior acts as                      |
 | `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` | Optional comma-separated domains to schedule in |
 
@@ -99,5 +182,23 @@ variables are set. The Admin page shows **Not configured** until then.
 - Anyone who can talk to Junior can ask it to read a colleague's calendar.
   Junior returns what its own account can see, so set the sharing default
   with that in mind.
+- Anyone who can talk to Junior can also ask it to read any file shared with
+  Junior's account. Share a file with that account only when everyone who can
+  talk to Junior may read it.
+- `drive.readonly` lets the account read every Drive file it can open. The
+  tools read only Google Docs, Sheets, and Slides.
+- `readGoogleSheet` does not return formulas, notes on cells, or charts.
+  `readGoogleSlides` does not describe images or charts.
+- Google does not expose the working hours that people set in Calendar.
+  Junior uses each calendar's time zone and one shared workday instead.
+- Junior cannot find or book meeting rooms. Room discovery needs the Admin
+  SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
+  admin role on Junior's account. Room emails are also outside the allowed
+  domains. It cannot accept or decline invites for other people.
+- Google does not share Meet records with invitees when more than 200 people
+  in the organizer's domain are invited.
+- Junior reads a transcript only when someone asks. No event tells
+  automations that a transcript is ready yet. Tracking issue:
+  getsentry/junior#2100.
 - No disconnect command. To revoke access, remove the app grant from the
   Junior account in Google.

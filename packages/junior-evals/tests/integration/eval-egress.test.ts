@@ -34,6 +34,7 @@ afterEach(() => {
 describe("eval egress", () => {
   it("retries a failed Quick Tunnel allocation through teardown", async () => {
     let resetCount = 0;
+    const resetTimes: number[] = [];
     let publicVerificationAttempts = 0;
     const fixtureDir = await mkdtemp(path.join(tmpdir(), "eval-egress-test-"));
     const cloudflaredPath = path.join(fixtureDir, "cloudflared");
@@ -81,9 +82,10 @@ setInterval(() => undefined, 1000);
 
     try {
       const egress = await startEvalEgress({
-        readFixtureState: () => ({ resetCount }),
-        resetFixtures: () => {
+        readFixtureState: () => ({ resetCount, resetTimes }),
+        resetFixtures: ({ nowMs }) => {
           resetCount += 1;
+          resetTimes.push(nowMs);
         },
         verifyPublicUrl: async () => {
           publicVerificationAttempts += 1;
@@ -98,19 +100,21 @@ setInterval(() => undefined, 1000);
         fetch(egress.controlUrl, {
           method: "POST",
           headers: { authorization: `Bearer ${egress.controlToken}` },
+          body: JSON.stringify({ nowMs: 1_000 }),
         }).then((response) => response.status),
       ).resolves.toBe(204);
       await expect(
         fetch(egress.controlUrl, {
           method: "POST",
           headers: { authorization: `Bearer ${egress.controlToken}` },
+          body: JSON.stringify({ nowMs: 2_000 }),
         }).then((response) => response.status),
       ).resolves.toBe(204);
       await expect(
         fetch(egress.stateUrl, {
           headers: { authorization: `Bearer ${egress.controlToken}` },
         }).then((response) => response.json()),
-      ).resolves.toEqual({ resetCount: 2 });
+      ).resolves.toEqual({ resetCount: 2, resetTimes: [1_000, 2_000] });
       // A disconnected tunnel can leave a partial HTTP request on the proxy.
       const socket = createConnection({
         host: "127.0.0.1",

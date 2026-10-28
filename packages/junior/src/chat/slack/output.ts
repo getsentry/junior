@@ -98,7 +98,7 @@ function getFenceContinuation(text: string): FenceContinuation | null {
   for (const line of text.split("\n")) {
     const trimmed = line.trimStart();
     const openerMatch = trimmed.match(/^(`{3,}|~{3,})(.*)$/);
-    if (!openerMatch) {
+    if (!openerMatch?.[1]) {
       continue;
     }
 

@@ -1,23 +1,12 @@
+import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import {
-  and,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
 import { notCopiedByFork } from "@/chat/conversations/fork";
-
-const auxiliaryRootConversation = alias(
-  juniorConversations,
-  "auxiliary_root_conversation",
-);
 
 function eventCost(): SQL<number | null> {
   return sql<number | null>`CASE
@@ -31,21 +20,29 @@ function eventCost(): SQL<number | null> {
   END`;
 }
 
-/** Aggregate additive event costs by namespaced operation for conversations. */
+/** Additive event costs of one Conversation and all its child agents. */
+export interface ConversationTreeAuxiliaryCosts {
+  total: ConversationAuxiliaryCosts;
+  /** Part of the total that child agents spent, at any depth. */
+  childAgentCostUsd?: number;
+}
+
+function addCostUsd(left: number, right: number): number {
+  return Math.round((left + right) * 1e12) / 1e12;
+}
+
+/**
+ * Aggregate additive event costs by namespaced operation. The total for each
+ * selected Conversation includes itself and all its child agents at any depth.
+ */
 export async function readConversationAuxiliaryCostsFromSql(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-  options: { includeDescendants: boolean },
-): Promise<Map<string, ConversationAuxiliaryCosts>> {
+): Promise<Map<string, ConversationTreeAuxiliaryCosts>> {
   if (conversationIds.length === 0) return new Map();
 
-  const selectedIds = [...conversationIds];
-  const conversationId = options.includeDescendants
-    ? sql<string>`coalesce(
-        ${auxiliaryRootConversation.conversationId},
-        ${juniorConversations.conversationId}
-      )`
-    : sql<string>`${juniorConversations.conversationId}`;
+  const scopeConversationId = conversationSubtreeColumns.scopeConversationId;
+  const isChildAgent = sql<boolean>`(${conversationSubtreeColumns.conversationId} <> ${scopeConversationId})`;
   const namespace = sql<string>`CASE
     WHEN ${juniorConversationEvents.type} = 'structured_event'
       THEN ${juniorConversationEvents.payload}->>'namespace'
@@ -57,18 +54,13 @@ export async function readConversationAuxiliaryCostsFromSql(
     ELSE ${juniorConversationEvents.type}
   END`;
   const cost = eventCost();
-  const selectedConversation = options.includeDescendants
-    ? or(
-        and(
-          inArray(juniorConversations.rootConversationId, selectedIds),
-          isNotNull(auxiliaryRootConversation.conversationId),
-        ),
-        inArray(juniorConversations.conversationId, selectedIds),
-      )
-    : inArray(juniorConversations.conversationId, selectedIds);
   const rows = await db
     .select({
-      conversationId,
+      conversationId: scopeConversationId,
+      childAgentCostUsd:
+        sql<number>`coalesce(round(sum(case when ${isChildAgent} then ${cost} end), 12), 0)::double precision`.mapWith(
+          Number,
+        ),
       costUsd: sql<number>`round(sum(${cost}), 12)::double precision`.mapWith(
         Number,
       ),
@@ -78,29 +70,14 @@ export async function readConversationAuxiliaryCostsFromSql(
     })
     .from(juniorConversationEvents)
     .innerJoin(
-      juniorConversations,
+      conversationSubtree(conversationIds),
       eq(
-        juniorConversations.conversationId,
+        conversationSubtreeColumns.conversationId,
         juniorConversationEvents.conversationId,
-      ),
-    )
-    .leftJoin(
-      auxiliaryRootConversation,
-      and(
-        eq(
-          auxiliaryRootConversation.conversationId,
-          juniorConversations.rootConversationId,
-        ),
-        isNull(auxiliaryRootConversation.parentConversationId),
-        eq(
-          auxiliaryRootConversation.rootConversationId,
-          auxiliaryRootConversation.conversationId,
-        ),
       ),
     )
     .where(
       and(
-        selectedConversation,
         or(
           eq(juniorConversationEvents.type, "structured_event"),
           inArray(juniorConversationEvents.type, [
@@ -113,17 +90,22 @@ export async function readConversationAuxiliaryCostsFromSql(
         notCopiedByFork(),
       ),
     )
-    .groupBy(conversationId, namespace, name)
-    .orderBy(conversationId, namespace, name);
+    .groupBy(scopeConversationId, namespace, name)
+    .orderBy(scopeConversationId, namespace, name);
 
-  const result = new Map<string, ConversationAuxiliaryCosts>();
+  const result = new Map<string, ConversationTreeAuxiliaryCosts>();
   for (const row of rows) {
     const current = result.get(row.conversationId) ?? {
-      costUsd: 0,
-      operations: [],
+      total: { costUsd: 0, operations: [] },
     };
-    current.costUsd = Math.round((current.costUsd + row.costUsd) * 1e12) / 1e12;
-    current.operations.push({
+    current.total.costUsd = addCostUsd(current.total.costUsd, row.costUsd);
+    if (row.childAgentCostUsd > 0) {
+      current.childAgentCostUsd = addCostUsd(
+        current.childAgentCostUsd ?? 0,
+        row.childAgentCostUsd,
+      );
+    }
+    current.total.operations.push({
       costUsd: row.costUsd,
       events: row.events,
       name: row.name,

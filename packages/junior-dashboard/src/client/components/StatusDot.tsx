@@ -5,7 +5,7 @@ const toneClass: Record<StatusChipTone, string> = {
   accent: "bg-violet-300",
   danger: "bg-rose-300",
   info: "bg-cyan-300",
-  neutral: "bg-white/30",
+  neutral: "bg-dashboard-text-faint",
   success: "bg-emerald-300",
   warning: "bg-amber-300",
 };

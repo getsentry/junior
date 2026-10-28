@@ -5,8 +5,7 @@ import { cn } from "../styles";
 export type FieldSize = "compact" | "default";
 
 const labelClass: Record<FieldSize, string> = {
-  compact:
-    "font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted",
+  compact: "font-sans font-medium text-xs text-dashboard-text-muted",
   default: "text-sm font-semibold text-dashboard-text",
 };
 

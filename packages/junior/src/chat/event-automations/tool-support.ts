@@ -17,7 +17,7 @@ import {
 } from "@/chat/event-automations/types";
 import {
   eventNamespaceSchema,
-  pluginEventCatalog,
+  automationEventCatalog,
   pluginSupportsEvent,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
@@ -33,7 +33,8 @@ import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 const compactEventAutomationResultSchema = z
   .object({
     id: z.string().min(1),
-    status: z.enum(["active", "paused", "deleted"]),
+    status: z.enum(["active", "blocked", "paused", "deleted"]),
+    statusReason: z.string().nullable(),
     title: z.string().min(1).nullable(),
     dashboardUrl: z.string().url().nullable(),
     instruction: z.string().min(1),
@@ -92,7 +93,7 @@ export const eventAutomationListToolResultSchema = juniorToolOutputSchema
 
 /** Build the validated event trigger accepted by event-automation tools. */
 export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
-  const plugins = pluginEventCatalog(catalog);
+  const plugins = automationEventCatalog(catalog);
   return z
     .object({
       namespace: eventNamespaceSchema(plugins),
@@ -119,7 +120,7 @@ export function requireSupportedEventAutomationTrigger(
     resourceType: string;
   },
 ): EventAutomation["trigger"]["match"] | undefined {
-  const plugins = pluginEventCatalog(catalog);
+  const plugins = automationEventCatalog(catalog);
   for (const eventType of trigger.events) {
     if (
       !pluginSupportsEvent(
@@ -199,7 +200,7 @@ export function eventAutomationIsWritableFrom(
 export async function writableEventAutomation(
   context: ToolRuntimeContext,
   id: string,
-): Promise<EventAutomation> {
+): Promise<StoredEventAutomation> {
   const { destination } = requireEventAutomationSlackContext(context);
   const task = await getEventAutomation(getDb(), id);
   if (
@@ -218,7 +219,7 @@ export function eventAutomationTriggerAvailable(
 ): boolean {
   // resourceType is presentation metadata; runtime matching uses namespace,
   // identifier, and event type. Core snapshot events never dispatch tasks.
-  const registration = pluginEventCatalog(catalog)[task.trigger.namespace];
+  const registration = automationEventCatalog(catalog)[task.trigger.namespace];
   return Boolean(
     registration &&
     task.trigger.events.every((eventType) =>
@@ -238,6 +239,7 @@ export function compactEventAutomation(
   return compactEventAutomationResultSchema.parse({
     id: task.id,
     status: task.status,
+    statusReason: task.statusReason ?? null,
     title: task.title?.trim() || null,
     dashboardUrl: getDashboardTaskLink(task.id) ?? null,
     instruction: task.task.text,

@@ -212,6 +212,7 @@ export function markConversationMessage(
   if (messageIndex < 0) return;
 
   const current = conversation.messages[messageIndex];
+  if (!current) return;
   conversation.messages[messageIndex] = {
     ...current,
     meta: {

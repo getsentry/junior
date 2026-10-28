@@ -342,9 +342,10 @@ export function createSandboxRuntime(
     snapshotId: string,
     sandboxCredentials: SandboxCredentials | undefined,
     initialSandboxName: string,
+    workspace: Workspace | undefined,
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
-    const resources = getSandboxResources();
+    const resources = getSandboxResources(workspace);
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       signal?.throwIfAborted();
       const sandboxName =
@@ -408,7 +409,7 @@ export function createSandboxRuntime(
     signal?.throwIfAborted();
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
-      const resources = getSandboxResources();
+      const resources = getSandboxResources(params.workspace);
       const session = adaptSandbox(
         await Sandbox.create({
           timeout: timeoutMs,
@@ -429,6 +430,7 @@ export function createSandboxRuntime(
         snapshot.snapshotId,
         sandboxCredentials,
         sandboxName,
+        params.workspace,
         signal,
       );
       return { session, snapshot };
@@ -458,6 +460,7 @@ export function createSandboxRuntime(
         rebuilt.snapshotId,
         sandboxCredentials,
         sandboxName,
+        params.workspace,
         signal,
       );
       return { session, snapshot: rebuilt };
@@ -918,12 +921,18 @@ export function createSandboxRuntime(
       }
 
       const previous = activeSandbox;
+      // The new sandbox outlives this call. Its requests follow the call
+      // signal only until the switch is done.
+      signal?.throwIfAborted();
+      const switching = new AbortController();
+      const stopSwitching = () => switching.abort(signal?.reason);
+      signal?.addEventListener("abort", stopSwitching, { once: true });
       let candidate: SandboxCandidate | undefined;
       try {
         candidate = await createSandboxCandidate(
           workspace,
           nextProfileHash,
-          signal,
+          switching.signal,
         );
         await probeSession(candidate.session);
         signal?.throwIfAborted();
@@ -933,6 +942,8 @@ export function createSandboxRuntime(
       } catch (error) {
         await stopSession(candidate?.session);
         throw error;
+      } finally {
+        signal?.removeEventListener("abort", stopSwitching);
       }
 
       if (keepAliveTimer) {

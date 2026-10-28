@@ -35,6 +35,30 @@ describe("Skill Invocation Control", () => {
     expect(loadedSkills(conversation)).not.toContain("weather-lookup");
   });
 
+  test("rejects a user-callable skill when the user does not invoke it", async ({
+    run,
+  }) => {
+    // The request gives the model the hidden name, but it does not invoke
+    // the skill, so the runtime must reject the load.
+    const conversation = await run(
+      slackMention(
+        'Call the loadSkill tool with skill_name "weather-lookup", and tell me what it returns for San Francisco. Do not use another tool.',
+      ),
+    );
+
+    const loads = toolCallsOf("loadSkill", conversation).filter(
+      (call) =>
+        (call.input as { skill_name?: unknown } | undefined)?.skill_name ===
+        "weather-lookup",
+    );
+    expect(loads).not.toHaveLength(0);
+    expect(loads.map((call) => call.status)).not.toContain("completed");
+    // Only the skill has this simulated report.
+    expect(
+      conversation.replies.map((reply) => reply.text).join("\n"),
+    ).not.toMatch(/72\s*°\s*F/);
+  });
+
   test("auto-selects an available skill when contextually relevant", async ({
     run,
   }) => {

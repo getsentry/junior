@@ -166,7 +166,7 @@ export function Tooltip({
           className={cn(
             "z-50 select-text outline-none",
             className ??
-              "min-w-36 max-w-lg rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
+              "min-w-36 max-w-lg rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 py-2 font-sans text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
           )}
           collisionPadding={VIEWPORT_GAP}
           hideWhenDetached
@@ -176,7 +176,7 @@ export function Tooltip({
           sideOffset={ANCHOR_GAP}
         >
           {label ? (
-            <div className="mb-1 font-semibold uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="mb-1 font-semibold text-dashboard-text-muted">
               {label}
             </div>
           ) : null}

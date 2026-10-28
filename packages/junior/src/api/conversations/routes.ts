@@ -19,13 +19,16 @@ import {
   conversationFeedSchema,
   conversationParamsSchema,
   conversationPendingMessagesReportSchema,
-  conversationStatsReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationStatsReportSchema } from "../schema/conversation-stats";
+import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
+import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { requireConversationChildAgents } from "./child-agents";
 import {
   conversationAttachmentHeaders,
   requireConversationAttachment,
@@ -42,6 +45,7 @@ import { readConversationFeed } from "./list";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
+import { stopConversationTurnForViewer } from "./stop";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
@@ -133,6 +137,24 @@ export function createConversationRoutes(
   );
 
   app.post(
+    "/:conversationId/stop",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      return jsonResponse(
+        stopConversationTurnResponseSchema,
+        await stopConversationTurnForViewer(viewer, conversationId, options),
+      );
+    },
+  );
+
+  app.post(
     "/:conversationId/forks",
     requireViewer,
     bodyLimit({ maxSize: 4096 }),
@@ -203,6 +225,23 @@ export function createConversationRoutes(
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.get(
+    "/:conversationId/agents",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      return jsonResponse(
+        conversationChildAgentsReportSchema,
+        await requireConversationChildAgents(conversationId, { viewer }),
+      );
     },
   );
 

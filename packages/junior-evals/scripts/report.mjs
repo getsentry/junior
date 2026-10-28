@@ -134,6 +134,7 @@ async function sourceFromEnvironment(env) {
     base_sha: pr?.base.sha ?? null,
     pr_number: pr?.number ?? null,
     pr_url: pr?.html_url ?? null,
+    pr_author: pr?.user?.login ?? null,
     commit_url: repositoryUrl && sha ? `${repositoryUrl}/commit/${sha}` : null,
     run_url:
       repositoryUrl && env.GITHUB_RUN_ID

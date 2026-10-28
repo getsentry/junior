@@ -68,7 +68,7 @@ export async function mockAutomationEditor(
     value,
     writes: [],
   };
-  const url = `**/api/automations/${kind}/${summary.id}`;
+  const url = `**/api/automations/${summary.id}`;
   await page.route(`${url}/edit`, (route) =>
     route.fulfill({ json: state.value }),
   );

@@ -13,10 +13,7 @@ import { PluginPanels } from "./PluginPanels";
 import { PluginReports } from "./PluginReports";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
-import {
-  SystemPageLayout,
-  SystemRouteLoading,
-} from "./SystemPageLayout";
+import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
 import {
   buildSystemPlugins,
   normalizeSystemPath,
@@ -172,14 +169,14 @@ function PluginReportError(props: { showingReports: boolean }) {
   return (
     <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
       <div className="flex items-center gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded border border-amber-300/15 bg-amber-300/[0.055] text-amber-200/70">
+        <div className="grid size-9 shrink-0 place-items-center rounded-md border border-amber-300/15 bg-amber-300/[0.055] text-amber-200/70">
           <TriangleAlert aria-hidden="true" size={15} />
         </div>
         <div>
           <div className="font-display text-sm font-medium text-dashboard-text-muted">
             Plugin stats failed to load.
           </div>
-          <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">
             {props.showingReports
               ? `Showing the last operational reports ${getDashboardAgentName()} received.`
               : "Plugin details and capabilities are still available."}

@@ -31,11 +31,11 @@ function Stat(props: {
   valueClassName?: string;
 }) {
   return (
-    <div className="rounded-md border border-white/[0.05] bg-black/10 px-3 py-3">
+    <div className="rounded-md border border-dashboard-border-subtle bg-dashboard-overlay-soft px-3 py-3">
       <div className="font-display text-xl font-light text-dashboard-text">
         <span className={props.valueClassName}>{props.value}</span>
       </div>
-      <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+      <div className="mt-1 font-sans text-xs leading-relaxed text-dashboard-text-muted">
         {props.label}
       </div>
     </div>
@@ -61,18 +61,18 @@ export function GuardianActivity(props: {
 
   return (
     <Card>
-      <div className="border-b border-white/[0.06] px-4 py-4">
+      <div className="border-b border-dashboard-border-subtle px-4 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+            <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
               Guardian reviews
             </h3>
-            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              {timeRangeBucketAdjective(bucketUnit)} decisions before
-              reviewed actions execute.
+            <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+              {timeRangeBucketAdjective(bucketUnit)} decisions before reviewed
+              actions execute.
             </p>
           </div>
-          <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+          <div className="font-sans font-medium text-xs text-dashboard-text-muted">
             <span className="mr-3 text-emerald-200/75">Allow</span>
             <span className="mr-3 text-amber-200/75">Ask</span>
             <span className="text-rose-200/75">Deny</span>
@@ -131,7 +131,7 @@ export function GuardianActivity(props: {
                 triggerClassName="h-full min-w-0 flex-1 items-end"
               >
                 <button
-                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
+                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-dashboard-fill-soft focus-visible:outline-1 focus-visible:outline-dashboard-focus"
                   style={{ height: `${height}%` }}
                   type="button"
                 >

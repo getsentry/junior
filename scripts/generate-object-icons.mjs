@@ -13,6 +13,7 @@ const names = [
   "git-merge",
   "workflow",
   "rocket",
+  "calendar",
   "package",
 ];
 const paths = Object.fromEntries(

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CORE_EVENT_NAMESPACE,
-  hasPluginEventCatalogEntries,
-  pluginEventCatalog,
+  automationEventCatalog,
   eventGuidance,
   requireEventIdentifier,
   type EventCatalog,
@@ -98,14 +97,8 @@ describe("event catalog", () => {
   });
 
   it("keeps core snapshot events out of durable event-automation selection", () => {
-    const plugins = pluginEventCatalog(catalog);
+    const plugins = automationEventCatalog(catalog);
     expect(Object.keys(plugins)).toEqual(["github"]);
-    expect(hasPluginEventCatalogEntries(catalog)).toBe(true);
-    expect(
-      hasPluginEventCatalogEntries({
-        [CORE_EVENT_NAMESPACE]: workspaceSnapshotEvents(),
-      }),
-    ).toBe(false);
 
     expect(() =>
       registeredEventAutomationTriggerSchema(catalog).parse({
@@ -138,6 +131,7 @@ describe("event catalog", () => {
           createdBy: {
             slackUserId: "U1",
           },
+          creatorIdentityId: "identity-U1",
           credentialMode: "system",
           destination: {
             platform: "slack",

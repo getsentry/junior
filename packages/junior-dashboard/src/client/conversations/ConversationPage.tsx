@@ -12,6 +12,7 @@ import {
   useArchiveConversation,
   useCancelConversationPendingMessages,
   useConversationData,
+  useStopConversationTurn,
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationIsResponding } from "./transcript";
@@ -26,6 +27,7 @@ import {
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationForkLinks } from "./ConversationForkLinks";
+import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
@@ -35,13 +37,16 @@ import {
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
+import { ConversationUsageBreakdown } from "./ConversationUsageBreakdown";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
+  conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
   visualStatusForConversation,
 } from "../format";
+import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import {
   conversationParticipants,
@@ -103,6 +108,11 @@ export function ConversationPage(props: {
       <ParticipantAvatarStack participants={participants} size="detail" />
     ) : null;
   const conversationDetail = detail.data;
+  const title =
+    conversationDetailTitle(detail.data) ??
+    conversationDisplayTitle(conversation);
+  useDocumentTitle(detail.data || conversation ? title : undefined);
+  const agentTree = detail.data?.agentTree;
   useEffect(() => {
     if (!conversation) return;
     onRead?.(conversation.id, conversation.lastSeenAt);
@@ -176,8 +186,10 @@ export function ConversationPage(props: {
       conversation: ConversationTranscript;
     }) => {
       setSubagentTarget({
+        ...(part.agentName ? { agentName: part.agentName } : undefined),
         conversationId: part.childConversationId,
-        part,
+        label: part.title ?? part.agentName,
+        status: part.status,
       });
     },
     [],
@@ -192,6 +204,9 @@ export function ConversationPage(props: {
         scroll={
           <section className="min-w-0">
             <ConversationHeader
+              agentTree={
+                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+              }
               conversationId={conversationId}
               forks={
                 detail.data?.forkedFromConversationId ||
@@ -273,6 +288,7 @@ export function ConversationPage(props: {
                   }
                 />
               }
+              onOpenSubagent={setSubagentTarget}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
               privacy={
@@ -286,13 +302,19 @@ export function ConversationPage(props: {
                   conversation,
                   detail: detail.data,
                 }) ? (
-                  <ConversationStats
-                    conversation={conversation}
-                    detail={detail.data}
-                  />
+                  <div className="grid min-w-0 gap-5">
+                    <ConversationStats
+                      conversation={conversation}
+                      detail={detail.data}
+                    />
+                    <ConversationUsageBreakdown
+                      conversation={conversation}
+                      detail={detail.data}
+                    />
+                  </div>
                 ) : null
               }
-              title={conversationDisplayTitle(conversation)}
+              title={title}
               view={view}
             />
 
@@ -306,7 +328,7 @@ export function ConversationPage(props: {
               {detail.isPending ? (
                 <TranscriptLoading />
               ) : detail.error && !detail.data ? (
-                <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
                   {detail.error.message}
                 </Card>
               ) : (
@@ -341,7 +363,9 @@ export function ConversationPage(props: {
           </section>
         }
         dock={
-          view === "rich" && detail.data?.isParticipant ? (
+          // A child Conversation takes input only from its parent agent, and it
+          // runs without interactive auth, so it has no approval to show.
+          view === "rich" && detail.data?.isParticipant && !agentTree ? (
             <ConversationReplyFooter
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is
@@ -353,6 +377,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              stoppable={live}
             />
           ) : undefined
         }
@@ -379,8 +404,13 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** True while the conversation has a Turn that a stop can end. */
+  stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
+  const stopTurn = useStopConversationTurn(props.conversationId);
+  const stopTurnRef = useRef(stopTurn);
+  stopTurnRef.current = stopTurn;
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
@@ -433,6 +463,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!cancelPendingMessagesRef.current.isPending) {
       cancelPendingMessagesRef.current.reset();
     }
+    if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
@@ -457,6 +488,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancellableMessageIds.includes(id),
     ),
   );
+
+  const onStop = useCallback(async () => {
+    const result = await stopTurnRef.current.mutateAsync();
+    const restored = result.stoppedMessages.map((message) => message.text);
+    return restored.length ? restored.join("\n") : undefined;
+  }, []);
 
   const onMailboxLayoutChange = useCallback(() => {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
@@ -491,9 +528,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     >
       <ConversationComposer
         draftId={props.conversationId}
+        error={stopTurn.error ? "Could not stop Junior. Try again." : undefined}
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}
+        onStop={props.stoppable ? onStop : undefined}
+        stopPending={stopTurn.isPending}
         onSubmitStart={onSubmitStart}
         onSubmit={onSubmit}
       />

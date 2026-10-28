@@ -88,6 +88,20 @@ export async function getSlackMessagePermalink(args: {
   }
 }
 
+/** Open the bot's direct message with one Slack user and return its channel ID. */
+export async function openSlackDirectMessage(userId: string): Promise<string> {
+  const response = await withSlackRetries(
+    () => getSlackClient().conversations.open({ users: userId }),
+    3,
+    { action: "conversations.open" },
+  );
+  const channelId = response.channel?.id;
+  if (!channelId) {
+    throw new Error("Slack did not return a direct message channel.");
+  }
+  return channelId;
+}
+
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
 export async function postSlackMessage(input: {
   entities?: SlackEntity[];

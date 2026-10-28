@@ -10,14 +10,31 @@ import {
   EVENT_SUMMARY_MAX_LENGTH,
   EVENT_TEXT_MAX_LENGTH,
   eventSchema,
-  type ReplyAttribution,
   type Event,
+  type TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
+import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
-import { findMatchingEventAutomations } from "@/chat/event-automations/store";
+import {
+  blockEventAutomation,
+  findMatchingEventAutomations,
+} from "@/chat/event-automations/store";
+import { recordEventAutomationRunStarted } from "@/chat/event-automations/runs";
+import {
+  admitEventAutomationRun,
+  eventAutomationRunLimitReason,
+} from "@/chat/event-automations/run-limit";
+import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { botConfig } from "@/chat/config";
+import {
+  slackChannelMessageReplyThreadTs,
+  slackChannelMessageRunsAutomation,
+} from "@/chat/slack/channel-message-events";
+import { logWarn } from "@/chat/logging";
+import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { eventGuidance } from "@/chat/events/catalog";
@@ -35,24 +52,12 @@ function eventAutomationDispatchKey(
     .slice(0, 32)}`;
 }
 
-function oneLine(value: string): string {
-  return value
-    .replace(/[\r\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 512);
-}
-
-/** Compact destination-visible context for event-automation replies. */
-function replyAttribution(task: EventAutomation): ReplyAttribution {
-  const detail = oneLine(task.trigger.label).slice(0, 128).trim();
-  return detail
-    ? { label: "Event automation", detail }
-    : { label: "Event automation" };
-}
-
 /** Render plain agent input for one matching event automation. */
-function eventInput(task: EventAutomation, event: Event): string {
+function eventInput(
+  task: EventAutomation,
+  event: Event,
+  outcomes: TaskOutcome[],
+): string {
   const guidance = eventGuidance(
     getEventCatalog(),
     event.namespace,
@@ -63,7 +68,7 @@ function eventInput(task: EventAutomation, event: Event): string {
     about: task.trigger.label,
     creator: slackMention(task.createdBy.slackUserId),
     instructions: task.task.text,
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
+    outcomes,
     guidance,
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: EVENT_SUMMARY_MAX_LENGTH,
@@ -85,7 +90,9 @@ export async function ingestEventAutomations(
   const event = eventSchema.parse(input);
   const db = getDb();
   const nowMs = options.nowMs ?? Date.now();
-  const tasks = await findMatchingEventAutomations(db, event, options.teamId);
+  const tasks = (
+    await findMatchingEventAutomations(db, event, options.teamId)
+  ).filter((task) => slackChannelMessageRunsAutomation(event, task));
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {
@@ -95,6 +102,49 @@ export async function ingestEventAutomations(
         event.namespace,
         event.eventKey,
       );
+      const admission = await admitEventAutomationRun({
+        automationId: task.id,
+        nowMs,
+        runKey: idempotencyKey,
+      });
+      if (admission === "limited") {
+        const reason = eventAutomationRunLimitReason();
+        logWarn("event_automation.run_limit.exceeded", {
+          "app.task.id": task.id,
+          "app.task.type": "event",
+        });
+        if (await blockEventAutomation(db, task.id, reason)) {
+          // One Sentry issue groups every block, so operators see noisy
+          // triggers. Capture once per block, not for each refused Event.
+          captureMessage("Event automation blocked by run limit", {
+            level: "warning",
+            fingerprint: ["event_automation.run_limit.blocked"],
+            tags: {
+              "app.event.namespace": event.namespace,
+              "app.task.type": "event",
+            },
+            extra: {
+              "app.event.event_type": event.eventType,
+              "app.event_automation.max_runs": botConfig.maxEventAutomationRuns,
+              "app.event_automation.run_window_ms":
+                botConfig.eventAutomationRunWindowMs,
+              "app.event_automation.resource_type": task.trigger.resourceType,
+              "app.task.id": task.id,
+            },
+          });
+          await notifyAutomationBlocked({
+            automationId: task.id,
+            kind: "event",
+            reason,
+          });
+        }
+        continue;
+      }
+      const replyThreadTs = slackChannelMessageReplyThreadTs(event);
+      const destination = replyThreadTs
+        ? { ...task.destination, threadTs: replyThreadTs }
+        : task.destination;
+      const outcomes = effectiveTaskOutcomes(task.outcomes, destination);
       const credentialSubject =
         task.credentialMode === "creator"
           ? {
@@ -105,18 +155,24 @@ export async function ingestEventAutomations(
             }
           : undefined;
       const dispatch = await dispatchEventAutomation({
+        automationId: task.id,
         conversationWorkQueue: options.queue,
         nowMs,
         options: {
           idempotencyKey,
           ...(credentialSubject ? { credentialSubject } : undefined),
-          destination: task.destination,
+          destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event),
+          input: eventInput(task, event, outcomes),
           metadata: { eventAutomationId: task.id },
-          replyAttribution: replyAttribution(task),
-          outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
+          replyAttribution: automationReplyAttribution(task.title),
+          outcomes,
         },
+      });
+      await recordEventAutomationRunStarted(db, {
+        automation: task,
+        dispatchId: dispatch.id,
+        nowMs,
       });
       if (dispatch.status === "created") {
         dispatched += 1;

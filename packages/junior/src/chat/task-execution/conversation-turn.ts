@@ -76,6 +76,7 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
+  getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
   type MailboxTurnWork,
@@ -83,21 +84,17 @@ import {
 } from "@/chat/task-execution/mailbox-turn";
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
-import type { Location } from "@/chat/conversations/location";
 import {
-  EVENT_WAIT_MS,
+  eventBatchMessageEvents,
   isEventMailboxMetadata,
+  renderEventBatchText,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
+import type { ConversationMessageEvent } from "@/chat/state/conversation";
 import { isEventConversationMessage } from "@/chat/events/actor";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
-
-/** Extra debounce time added per additional event already batched. */
-const EVENT_WAIT_PER_EXTRA_MESSAGE_MS = 5_000;
-/** Upper bound on the debounce window regardless of batch size. */
-const EVENT_MAX_WAIT_MS = 60_000;
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -123,26 +120,6 @@ function captureConversationTurnFailure(args: {
     },
   );
   return typeof eventId === "string" ? eventId : undefined;
-}
-
-/**
- * Reply in the thread started by a channel-level Conversation's first Message.
- * Automation runs post at the channel top level, so their Watches need this.
- */
-async function resolveStartedThreadLocation(
-  conversationId: string,
-  location: Location | undefined,
-): Promise<Location | undefined> {
-  if (location?.provider !== "slack" || location.threadTs) {
-    return location;
-  }
-  const threadTs = await getConversationStore().getFirstProviderConversationId({
-    conversationId,
-    provider: "slack",
-    providerDestinationId: location.channelId,
-    providerTenantId: location.teamId,
-  });
-  return threadTs ? { ...location, threadTs } : location;
 }
 
 /** Return the saved timer creator subject when it is still valid here. */
@@ -224,26 +201,13 @@ export function createConversationTurnWorker(
     context: ConversationWorkerContext,
     resolved: MailboxTurnWork,
   ): Promise<ConversationWorkerResult> => {
-    // A resource-event burst (e.g. several check runs on one PR) should
-    // produce one Turn instead of one per event. When the batch starts with
-    // an event, wait past its debounce window before running the Turn so
-    // later events in the same burst still land in this batch. The window
-    // grows with batch size (more events waiting means a longer burst) up to
-    // EVENT_MAX_WAIT_MS. If the window has not elapsed, defer without
-    // running: the worker re-enqueues this wake with the remaining delay
-    // (see `ensureConversationWake`'s `delayMs`), so this never sleeps in
-    // process.
+    // Wait out the event debounce window without sleeping in process. The
+    // worker re-enqueues this wake with the remaining delay.
     if (resolved.kind === "mailbox") {
-      const first = resolved.batch[0]!;
-      if (isEventMailboxMetadata(first.message.input.metadata)) {
-        const waitMs = Math.min(
-          EVENT_MAX_WAIT_MS,
-          EVENT_WAIT_MS +
-            EVENT_WAIT_PER_EXTRA_MESSAGE_MS * (resolved.batch.length - 1),
-        );
-        const delayMs = first.message.receivedAtMs + waitMs - Date.now();
-        if (delayMs > 0) return { status: "deferred", delayMs };
-      }
+      const delayMs = getEventBatchDelayMs(
+        resolved.batch.map((entry) => entry.message),
+      );
+      if (delayMs > 0) return { status: "deferred", delayMs };
     }
 
     const lifecycle = new ConversationTurnLifecycleService(
@@ -259,6 +223,7 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let event: EventMailboxMetadata["event"] | undefined;
+    let batchEvents: ConversationMessageEvent[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -276,7 +241,15 @@ export function createConversationTurnWorker(
     });
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
-      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
+      const messages = resolved.batch.map((entry) => entry.message);
+      const firstMetadata = first.message.input.metadata;
+      if (isEventMailboxMetadata(firstMetadata)) {
+        text = renderEventBatchText(messages);
+        event = firstMetadata.event;
+        batchEvents = eventBatchMessageEvents(messages);
+      } else {
+        text = joinMailboxText(messages);
+      }
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
       );
@@ -287,9 +260,6 @@ export function createConversationTurnWorker(
         (entry) => entry.message.inboundMessageId,
       );
       turnInputFacts = first;
-      if (isEventMailboxMetadata(first.message.input.metadata)) {
-        event = first.message.input.metadata.event;
-      }
     } else {
       turnId = resolved.turnId;
     }
@@ -354,10 +324,7 @@ export function createConversationTurnWorker(
       visibility: storedConversation?.visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    const conversationLocation = await resolveStartedThreadLocation(
-      context.conversationId,
-      storedConversation?.location,
-    );
+    const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
     // cursor stores Event Source.
     // TODO(dcramer): Remove this Source-based Delivery choice after the core
@@ -447,6 +414,9 @@ export function createConversationTurnWorker(
                     eventObjectType: event.objectType,
                     ...(event.trustedSummary
                       ? { trustedSummary: event.trustedSummary }
+                      : undefined),
+                    ...(batchEvents.length > 1
+                      ? { events: batchEvents }
                       : undefined),
                   }
                 : undefined),

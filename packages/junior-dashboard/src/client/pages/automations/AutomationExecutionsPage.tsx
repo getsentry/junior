@@ -42,20 +42,15 @@ const EXECUTION_GRID = "grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem_auto]";
 
 /** Render one automation's terminal executions as a conversation-style list. */
 export function AutomationExecutionsPage(props: { enabled: boolean }) {
-  const { automationId, kind } = useParams();
+  const { automationId } = useParams();
   const [searchParams] = useSearchParams();
-  const taskKind = kind === "scheduled" || kind === "event" ? kind : undefined;
-  const query = useAutomationExecutionsData(
-    props.enabled && Boolean(automationId && taskKind),
-    taskKind,
-    automationId,
-  );
+  const query = useAutomationExecutionsData(props.enabled, automationId);
   const backTo = pathWithSearch(
     automationId ? automationPath(automationId) : "/automations/list",
     searchParams,
   );
 
-  if (!automationId || !taskKind) {
+  if (!automationId) {
     return <Navigate replace to="/automations" />;
   }
   if (!query.data && !query.error) {
@@ -87,7 +82,7 @@ export function AutomationExecutionsPage(props: { enabled: boolean }) {
               : "Automation executions could not be loaded. Try again."}
           </InlineError>
           <Link
-            className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+            className="mt-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
             to={
               automationId ? automationPath(automationId) : "/automations/list"
             }
@@ -122,7 +117,7 @@ function AutomationExecutionsView(props: {
     <>
       <div>
         <Link
-          className="mb-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+          className="mb-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
           to={props.backTo}
         >
           <ArrowLeft aria-hidden="true" size={14} />
@@ -133,6 +128,7 @@ function AutomationExecutionsView(props: {
           {...(data.executionDays.length > 0
             ? { onRangeChange: setRange, range }
             : {})}
+          documentTitle={`${data.automation.title} · Executions`}
           title={data.automation.title}
         />
       </div>
@@ -176,7 +172,7 @@ function AutomationExecutionsView(props: {
             <div className="min-w-[36rem]">
               <div
                 className={cn(
-                  "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
+                  "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-sans font-medium text-xs text-dashboard-text-muted md:grid",
                   EXECUTION_GRID,
                 )}
                 role="row"
@@ -289,7 +285,7 @@ function MetricCell(props: { label: string; value: string }) {
     <div className="min-w-0 max-md:flex max-md:items-center max-md:gap-2">
       <div
         aria-hidden="true"
-        className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:mb-0 max-md:block"
+        className="mb-1 hidden font-sans font-medium text-2xs text-dashboard-text-muted max-md:mb-0 max-md:block"
       >
         {props.label}
       </div>

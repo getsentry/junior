@@ -470,7 +470,7 @@ vi.mock("@/chat/pi/client", () => ({
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
-vi.mock("@/chat/services/guardian-action-review", () => ({
+vi.mock("@/chat/guardian/reviewer", () => ({
   createGuardianActionReviewer: () => ({
     review: async (proposal: unknown) => {
       guardianProposals.push(proposal);
@@ -635,14 +635,23 @@ vi.mock("@/chat/mcp/client", () => {
   }
 
   class MockPluginMcpClient {
+    private readonly plugin: { manifest: { name: string } };
+    private readonly options: {
+      authProvider?: {
+        redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
+      };
+    };
+
     constructor(
-      private readonly plugin: { manifest: { name: string } },
-      private readonly options: {
+      plugin: { manifest: { name: string } },
+      options: {
         authProvider?: {
           redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
         };
       },
     ) {
+      this.plugin = plugin;
+      this.options = options;
       clientOptions.push({ ...options });
     }
 
@@ -1487,7 +1496,11 @@ describe("executeAgentRun progressive MCP loading", () => {
     );
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
-    expect(turnContextInputs).toHaveLength(0);
+    // Request-scoped context, such as disabled tools, may still build a Turn
+    // context. Session context must not repeat.
+    expect(
+      turnContextInputs.filter((input) => input.includeSessionContext),
+    ).toHaveLength(0);
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<runtime-turn-context>",
     );

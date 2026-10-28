@@ -93,15 +93,7 @@ export default defineConfig({
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
-  dts: {
-    entry: {
-      index: "src/index.ts",
-    },
-    compilerOptions: {
-      // TODO(upstream): Remove after tsup stops adding deprecated baseUrl.
-      ignoreDeprecations: "6.0",
-    },
-  },
+  dts: false,
   outDir: "dist",
   clean: false,
   splitting: false,
@@ -114,7 +106,6 @@ export default defineConfig({
     "@sentry/junior/api",
     "@sentry/junior/api/schema",
     "@sentry/junior/instrumentation",
-    "better-auth",
     "hono",
   ],
 });

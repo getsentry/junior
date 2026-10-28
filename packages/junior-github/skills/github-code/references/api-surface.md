@@ -1,6 +1,6 @@
 # GitHub commands and permissions
 
-Use the tools in `SKILL.md` to create or update a PR, submit a review, or resolve a review thread. Use supported REST endpoints for other writes. Do not use GraphQL mutations.
+Use the tools in `SKILL.md` to create or update a PR, mark it ready for review or draft, submit a review, or resolve a review thread. Use supported REST endpoints for other writes. Do not send GraphQL mutations, for example with `gh api graphql`. The egress proxy denies them.
 
 ## Repo targeting
 
@@ -12,7 +12,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | ---------------------------- | ------------------------------------------------------------------------------------ |
 | `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
 | `github.actions.write`       | `gh workflow run`, `gh run rerun`, `gh run cancel`                                   |
-| `github.contents.read`       | `gh repo clone`, `git fetch`                                                         |
+| `github.contents.read`       | `github_cloneRepository`, `git fetch`                                                |
 | `github.contents.write`      | Git smart-HTTP `git push` only                                                       |
 | `github.workflows.write`     | Workflow-file changes on push                                                        |
 | `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
@@ -22,7 +22,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 
 | Operation               | Command                                                                                         |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
-| Clone (default shallow) | `gh repo clone owner/repo [DIR] -- --depth=1`                                                   |
+| Clone (default shallow) | `github_cloneRepository`. Do not use `git clone` or `gh repo clone`.                            |
 | Fetch bounded base      | `git -C DIR fetch --depth=N origin BASE:refs/remotes/origin/BASE`                               |
 | Deepen base             | `git -C DIR fetch --deepen=N origin BASE:refs/remotes/origin/BASE`                              |
 | Unshallow               | `git -C DIR fetch --unshallow origin`                                                           |
@@ -35,8 +35,11 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Push                    | `git -C DIR push -u origin BRANCH`                                                              |
 | Workflow dispatch       | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                           |
 | Rerun / cancel          | `gh run rerun RUN_ID -R owner/repo [--failed]` / `gh run cancel RUN_ID -R owner/repo`           |
-| Ready for review        | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                           |
+| Mark PR ready / draft   | `github_updatePullRequest` with `draft: false` / `draft: true`                                  |
 | Request reviewers       | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json` |
+| Link stacked PRs        | `gh stack link [STACK_NUMBER] PR_NUMBER...` (bottom to top)                                     |
+| Restack                 | `gh stack rebase` then `gh stack push`, or `gh stack sync`                                      |
+| Unstack                 | `gh stack unstack STACK_NUMBER`                                                                 |
 | Submit review           | `github_submitPullRequestReview`                                                                |
 | Set feedback status     | `github_updatePullRequestFeedback`                                                              |
 | Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
@@ -48,11 +51,12 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 
 ## Notes
 
-- Prefer `--json` where available. Pass clone flags after `--`.
+- Prefer `--json` where available.
 - A local commit does not call GitHub. A push uses installation credentials. Workflow changes also need `workflows.write`.
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.
-- Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, or GraphQL mutations.
+- Stacks: open each PR with `github_createPullRequest`, based on the branch below, before `gh stack link`. Without local stack state, run `gh stack checkout STACK_NUMBER` first. Do not pass `--open`.
+- Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
 - Embed local images with `publishImage` first (public URL). Do not use private Slack file links.

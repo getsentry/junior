@@ -1,4 +1,8 @@
-import type { PluginManifest, PluginMcpConfig } from "./types";
+import type {
+  PluginAccountsConfig,
+  PluginManifest,
+  PluginMcpConfig,
+} from "./types";
 
 type ManifestSource = Record<string, unknown>;
 
@@ -75,6 +79,16 @@ export function mcpOauthClientSource(
   };
   setDefined(result, "scope", oauthClient.scope);
   setDefined(result, "authorize-params", oauthClient.authorizeParams);
+  return result;
+}
+
+/** Convert a camelCase `accounts` block to its plugin.yaml source keys. */
+export function accountsSource(
+  accounts: Partial<Record<keyof PluginAccountsConfig, unknown>>,
+): ManifestSource {
+  const result: ManifestSource = {};
+  setDefined(result, "user-oauth", accounts.userOAuth);
+  setDefined(result, "service-account", accounts.serviceAccount);
   return result;
 }
 
@@ -164,6 +178,11 @@ export function inlineManifestSource(manifest: PluginManifest): ManifestSource {
   setDefined(result, "runtime-postinstall", manifest.runtimePostinstall);
   setDefined(result, "mcp", inlineMcpSource(manifest.mcp));
   setDefined(result, "oauth", inlineOauthSource(manifest.oauth));
+  setDefined(
+    result,
+    "accounts",
+    manifest.accounts && accountsSource(manifest.accounts),
+  );
   setDefined(
     result,
     "target",

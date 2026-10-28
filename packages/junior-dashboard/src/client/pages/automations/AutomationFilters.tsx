@@ -9,6 +9,7 @@ import { Button, ToggleButton } from "../../components/Button";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { FilterGroup } from "../../components/FilterBar";
 import { SearchInput } from "../../components/SearchInput";
+import { Select } from "../../components/Select";
 
 /** Keep collection controls visible while a filtered page loads. */
 export function AutomationFilters(props: {
@@ -157,9 +158,9 @@ function AutomationFilterSelect(props: {
 }) {
   return (
     <FilterGroup label={props.label}>
-      <select
+      <Select
         aria-label={props.ariaLabel ?? `Filter by ${props.label.toLowerCase()}`}
-        className="h-9 w-full min-w-0 rounded-lg border border-dashboard-border-emphasis bg-dashboard-control px-2 text-sm text-dashboard-text transition-colors hover:border-dashboard-border-interactive focus:border-dashboard-focus focus:outline-none focus:ring-1 focus:ring-dashboard-focus/25 [color-scheme:var(--dashboard-color-scheme,dark)]"
+        variant="filter"
         value={props.value}
         onChange={(event) => props.onChange(event.currentTarget.value)}
       >
@@ -173,7 +174,7 @@ function AutomationFilterSelect(props: {
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
     </FilterGroup>
   );
 }

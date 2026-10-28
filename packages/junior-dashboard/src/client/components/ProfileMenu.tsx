@@ -3,6 +3,7 @@ import {
   ChevronDown,
   KeyRound,
   LogOut,
+  Plug,
   Settings,
   ShieldCheck,
   UserRound,
@@ -21,6 +22,7 @@ import { formatCostSummary, peoplePath } from "../format";
 import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import { ThemeSwitcher } from "./ThemeSwitcher";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -155,7 +157,7 @@ export function ProfileMenu({
           ) : null}
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs tabular-nums text-dashboard-text-muted">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted">
         <span>
           7d{" "}
           <span className="font-semibold text-dashboard-text">
@@ -194,6 +196,14 @@ export function ProfileMenu({
         <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
         API tokens
       </Link>
+      <Link
+        className={profileLinkClass}
+        onClick={close}
+        to="/settings/connections"
+      >
+        <Plug aria-hidden="true" size={16} strokeWidth={2} />
+        Connected accounts
+      </Link>
       {identity.user.isAdmin ? (
         <Link className={profileLinkClass} onClick={close} to="/admin">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={2} />
@@ -230,11 +240,9 @@ export function ProfileMenu({
     return (
       <div
         aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
-        className="grid gap-1.5 rounded-lg border border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 font-mono text-xs tabular-nums text-dashboard-text-muted"
+        className="grid gap-1.5 rounded-lg border border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 font-sans text-xs tabular-nums text-dashboard-text-muted"
       >
-        <span className="text-xs font-medium uppercase tracking-[0.08em]">
-          Spend
-        </span>
+        <span className="text-xs font-medium">Spend</span>
         <span className="whitespace-nowrap">
           7d{" "}
           <span className="font-semibold text-dashboard-text">
@@ -254,7 +262,7 @@ export function ProfileMenu({
   if (variant === "sheet-links") {
     // Match primary sheet rows exactly.
     const sheetItemClass = cn(
-      "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal no-underline transition-colors hover:bg-dashboard-fill-soft focus-visible:bg-dashboard-fill-soft focus-visible:outline-none",
+      "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-sans text-sm font-medium no-underline transition-colors hover:bg-dashboard-fill-soft focus-visible:bg-dashboard-fill-soft focus-visible:outline-none",
       dashboardInteractiveTextClass,
     );
     return (
@@ -267,6 +275,9 @@ export function ProfileMenu({
         </Link>
         <Link className={sheetItemClass} to="/settings/api-tokens">
           API tokens
+        </Link>
+        <Link className={sheetItemClass} to="/settings/connections">
+          Connected accounts
         </Link>
         {identity.user.isAdmin ? (
           <Link className={sheetItemClass} to="/admin">
@@ -292,6 +303,7 @@ export function ProfileMenu({
         >
           Log out
         </button>
+        <ThemeSwitcher className="px-3 py-2" />
       </nav>
     );
   }
@@ -313,7 +325,7 @@ export function ProfileMenu({
             {name}
           </p>
           {name !== email ? (
-            <p className="mt-0.5 mb-0 truncate font-mono text-xs text-dashboard-text-muted">
+            <p className="mt-0.5 mb-0 truncate font-sans text-xs text-dashboard-text-muted">
               {email}
             </p>
           ) : null}
@@ -395,6 +407,7 @@ export function ProfileMenu({
           id="profile-popover"
         >
           {identityBlock}
+          <ThemeSwitcher className="border-b border-dashboard-border-strong px-2.5 py-2" />
           {menuLinks(() => setOpen(false))}
         </div>
       ) : null}

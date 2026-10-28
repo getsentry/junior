@@ -30,9 +30,9 @@ const profiles = {
 const routeTurn = (
   args: Omit<
     Parameters<typeof selectTurnRoute>[0],
-    "defaultProfile" | "profiles"
+    "currentProfile" | "profiles"
   >,
-) => selectTurnRoute({ ...args, defaultProfile: "standard", profiles });
+) => selectTurnRoute({ ...args, currentProfile: "standard", profiles });
 
 describe("selectTurnRoute", () => {
   beforeEach(() => {
@@ -185,7 +185,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "standard",
+      currentProfile: "standard",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "research this architecture",
       profiles: {
@@ -228,7 +228,7 @@ describe("selectTurnRoute", () => {
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");
   });
 
-  it("falls back to the configured default profile when confidence is low", async () => {
+  it("keeps the current profile when confidence is low", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         reasoning_level: "high",
@@ -240,7 +240,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
       profiles: {
@@ -263,7 +263,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
       profiles: {
@@ -305,7 +305,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "refactor this module and add tests",
       profiles: {
@@ -332,7 +332,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "refactor this module and add tests",
       profiles: {
@@ -358,7 +358,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
-      defaultProfile: "expert",
+      currentProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "refactor this module and add tests",
       profiles: {

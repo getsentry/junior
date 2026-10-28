@@ -7,7 +7,7 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 ## Behavioral contract
 
 - Resolve and inspect the repository before acting.
-- Preserve unrelated work; reject destructive Git operations.
+- Preserve unrelated work; reject destructive Git operations except `--force-with-lease` pushes to branches Junior pushed or the requester named.
 - Treat shallow clones as inspection checkouts; deepen before history work; never force-push around missing ancestry.
 - Install dependencies with the lockfile frozen mode before verification when needed.
 - Finish completed edits with a pushed PR unless the user opts out; default draft.

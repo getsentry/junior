@@ -81,16 +81,16 @@ If a new standalone `@sentry/junior-*` plugin package was added, add it to the a
 node scripts/check-plugin-packages.mjs
 ```
 
-Compare the consumer config with `apps/example` at `target_ref` to catch shape drift. Choose `target_ref` from the version bump commit, then the publish timestamp, then `origin/main` as approximate:
+Compare the consumer config with `apps/example` at `target_ref` to catch shape drift. Call `github_cloneRepository` with `repo: "getsentry/junior"`, `directory: "repos/junior-upstream"`, and `allowAdHoc: true`. Do not switch to a `junior` Workspace: the switch replaces the sandbox and removes this app checkout. Use the returned `path` as `<upstream>`. Choose `target_ref` from the version bump commit, then the publish timestamp, then `origin/main` as approximate:
 
 ```bash
-git clone --filter=blob:none --depth=200 https://github.com/getsentry/junior.git /tmp/junior-upstream
-git -C /tmp/junior-upstream log --oneline -S'"version": "<target_version>"' -- packages/junior/package.json
-git -C /tmp/junior-upstream rev-list -n 1 --before="<target_published_at>" origin/main
-git -C /tmp/junior-upstream checkout <target_ref>
-git diff --no-index -- /tmp/junior-upstream/apps/example/nitro.config.ts nitro.config.ts
-git diff --no-index -- /tmp/junior-upstream/apps/example/plugins.ts plugins.ts
-git diff --no-index -- /tmp/junior-upstream/apps/example/server.ts server.ts
+git -C <upstream> fetch --deepen=200 origin main
+git -C <upstream> log --oneline -S'"version": "<target_version>"' -- packages/junior/package.json
+git -C <upstream> rev-list -n 1 --before="<target_published_at>" origin/main
+git -C <upstream> checkout <target_ref>
+git diff --no-index -- <upstream>/apps/example/nitro.config.ts nitro.config.ts
+git diff --no-index -- <upstream>/apps/example/plugins.ts plugins.ts
+git diff --no-index -- <upstream>/apps/example/server.ts server.ts
 ```
 
 Ignore app-local values. Apply only obvious low-risk fixes; put ambiguous drift in the PR body. For `package.json`, compare only build tooling (`nitro`, `jiti`, `typescript`), not plugin dependency lists or pins.
@@ -98,7 +98,7 @@ Ignore app-local values. Apply only obvious low-risk fixes; put ambiguous drift 
 For `vercel.json`, do not normalize the whole file against the example. Use upstream diff-backed changes when possible:
 
 ```bash
-git -C /tmp/junior-upstream diff <old_ref>..<target_ref> -- apps/example/vercel.json
+git -C <upstream> diff <old_ref>..<target_ref> -- apps/example/vercel.json
 ```
 
 Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.

@@ -122,6 +122,7 @@ function utcDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+// The dashboard search highlight mirrors this split in `MemorySearchHighlight`.
 function searchTerms(query: string): string[] {
   return [
     ...new Set(
@@ -132,6 +133,19 @@ function searchTerms(query: string): string[] {
         .filter((term) => term.length >= 2),
     ),
   ];
+}
+
+/**
+ * Match memory content that contains any search term. A query with no usable
+ * term matches nothing, so a punctuation-only search does not list all memory.
+ */
+function searchPredicate(query: string | undefined) {
+  if (query === undefined) return undefined;
+  const terms = searchTerms(query);
+  if (terms.length === 0) return sql`false`;
+  return or(
+    ...terms.map((term) => ilike(juniorMemoryMemories.content, `%${term}%`)),
+  );
 }
 
 function memoryOrigin(idempotencyKey: string | null): MemoryView["origin"] {
@@ -259,17 +273,7 @@ export async function listMemories(
         ),
       )
     : undefined;
-  const terms = input.query ? searchTerms(input.query) : [];
-  const search =
-    input.query === undefined
-      ? undefined
-      : terms.length === 0
-        ? sql`false`
-        : or(
-            ...terms.map((term) =>
-              ilike(juniorMemoryMemories.content, `%${term}%`),
-            ),
-          );
+  const search = searchPredicate(input.query);
   const kind = input.kind
     ? eq(juniorMemoryMemories.kind, input.kind)
     : undefined;
@@ -344,6 +348,35 @@ export async function getMemoryStats(db: MemoryDb, userId: string) {
     )
     .where(activeMemoryPredicate(userId, nowMs));
   if (!counts) throw new Error("Memory stats query returned no row.");
+  return counts;
+}
+
+/**
+ * Count active memory visible to the authenticated User, split by visibility.
+ * A query applies the same term match as `listMemories`.
+ */
+export async function countMemories(
+  db: MemoryDb,
+  userId: string,
+  query?: string,
+) {
+  const [counts] = await db
+    .select({
+      active: sql<number>`count(*)`.mapWith(Number),
+      private:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
+          Number,
+        ),
+      public:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
+          Number,
+        ),
+    })
+    .from(juniorMemoryMemories)
+    .where(
+      and(activeMemoryPredicate(userId, Date.now()), searchPredicate(query)),
+    );
+  if (!counts) throw new Error("Memory count query returned no row.");
   return counts;
 }
 
@@ -438,4 +471,3 @@ export async function getMemoryTimelineHours(
     };
   });
 }
-

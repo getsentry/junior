@@ -2,6 +2,8 @@ name: Evals
 
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
 
 on:
   pull_request:
@@ -37,6 +39,7 @@ jobs:
               - 'packages/junior-evals/fixtures/**'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
+              - 'packages/junior-evals/scripts/network-jail.sh'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.integration.config.ts'
@@ -124,17 +127,26 @@ jobs:
           set -euo pipefail
           curl --fail --location --silent --show-error \
             --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
-            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.10.4/cloudflared-linux-amd64 \
             --output "$RUNNER_TEMP/cloudflared"
-          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          echo "ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42  $RUNNER_TEMP/cloudflared" | sha256sum --check
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
+      # The evals build a sandbox snapshot only when this file does not have it.
+      - name: Keep sandbox snapshot ids
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/junior-evals/sandbox-snapshots.json
+          key: eval-sandbox-snapshots-${{ github.run_id }}
+          restore-keys: eval-sandbox-snapshots-
       - name: Run integration evals
         env:
           VITEST_EVALS_OUTPUT_FILE: integration-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:integration --shard=${{ matrix.shard }}/2
+          # The write token of Roach. With it, the run records new requests.
+          ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:integration --shard=${{ matrix.shard }}/2
       - name: Upload integration eval results
         if: always() && !cancelled()
         uses: actions/upload-artifact@v4
@@ -155,7 +167,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
       - name: Download integration eval results
         uses: actions/download-artifact@v4
         with:

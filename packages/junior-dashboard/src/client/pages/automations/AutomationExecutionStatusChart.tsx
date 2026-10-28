@@ -15,9 +15,9 @@ import {
 import { Card } from "../../components/layout/Card";
 
 const series = [
-  { color: "#6ee7b7", key: "completed", label: "Completed" },
-  { color: "#fda4af", key: "failed", label: "Failed" },
-  { color: "#fcd34d", key: "blocked", label: "Blocked" },
+  { color: "var(--color-emerald-300)", key: "completed", label: "Completed" },
+  { color: "var(--color-rose-300)", key: "failed", label: "Failed" },
+  { color: "var(--color-amber-300)", key: "blocked", label: "Blocked" },
 ] as const;
 
 /** Render one automation's terminal executions by status over a trailing window. */
@@ -44,7 +44,7 @@ export function AutomationExecutionStatusChart(props: {
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           Executions over time
         </h2>
-        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"
             ? "Terminal runs for this automation each hour."
             : bucketUnit === "6hour"
@@ -121,7 +121,7 @@ export function AutomationExecutionStatusChart(props: {
           />
         </ChartSvg>
         {!hasExecutions ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No automation executions in this period.
           </div>
         ) : null}

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { getZonedDateTimeParts } from "@/chat/scheduled-automations/cadence";
+import {
+  getZonedDateTimeParts,
+  isValidTimeZone,
+} from "@/chat/scheduled-automations/cadence";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -91,15 +94,6 @@ export function createSystemTimeTool() {
       };
     },
   });
-}
-
-function isValidTimeZone(timezone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function getTimeZoneOffsetMinutes(

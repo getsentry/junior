@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, gte, sql } from "drizzle-orm";
+import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
 import {
   juniorConversations,
@@ -14,7 +15,7 @@ import {
   surfaceLabel,
 } from "../conversations/reporting";
 import { readConversationAccessFromSql } from "../conversations/access";
-import { readRootConversationMetricsFromSql } from "../conversations/usage";
+import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
   ConversationStatsItem,
   ActorActivityDayReport,
@@ -240,7 +241,9 @@ export async function readPeopleProfileFromSql(
   const actor: ActorIdentity & { email: string } = {
     email: totalsRow.email,
     ...(totalsRow.fullName ? { fullName: totalsRow.fullName } : undefined),
-    ...(totalsRow.slackUserId ? { slackUserId: totalsRow.slackUserId } : undefined),
+    ...(totalsRow.slackUserId
+      ? { slackUserId: totalsRow.slackUserId }
+      : undefined),
     ...(totalsRow.slackUserName
       ? { slackUserName: totalsRow.slackUserName }
       : undefined),
@@ -282,14 +285,16 @@ export async function readPeopleProfileFromSql(
     );
   }
   const recentConversationIds = recentRows.map((row) => row.conversationId);
-  const [accessByConversation, metricsByRoot] = await Promise.all([
-    readConversationAccessFromSql(
-      getDb(),
-      recentConversationIds,
-      options.viewer,
-    ),
-    readRootConversationMetricsFromSql(getDb(), recentConversationIds),
-  ]);
+  const [accessByConversation, metricsByRoot, automationTitleByConversation] =
+    await Promise.all([
+      readConversationAccessFromSql(
+        getDb(),
+        recentConversationIds,
+        options.viewer,
+      ),
+      readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
+      readAutomationTitlesByConversationId(recentRows),
+    ]);
 
   return {
     activityDays: activityDays(days, nowMs),
@@ -300,6 +305,7 @@ export async function readPeopleProfileFromSql(
     recentConversations: recentRows.map((row) =>
       summaryFromRow(row, {
         access: accessByConversation.get(row.conversationId),
+        automationTitle: automationTitleByConversation.get(row.conversationId),
         metrics: metricsByRoot.get(row.conversationId),
       }),
     ),

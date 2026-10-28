@@ -12,7 +12,7 @@ import { moveTaskOutcomes, resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
-import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
+import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { readScheduledAutomation, saveScheduledAutomation } from "../tasks";
 import { scheduleIntentSchema } from "../schedule-intent";
 import { scheduledAutomationAttributes } from "../telemetry";
@@ -140,12 +140,12 @@ export function createSlackScheduleUpdateAutomationTool(
       const changingDestination = moveDestination && !alreadyHere;
       if (changingDestination) {
         const incompleteRuns = await db
-          .select({ id: juniorSchedulerRuns.id })
-          .from(juniorSchedulerRuns)
+          .select({ id: juniorAutomationRuns.id })
+          .from(juniorAutomationRuns)
           .where(
             and(
-              eq(juniorSchedulerRuns.taskId, lookup.id),
-              inArray(juniorSchedulerRuns.status, ["pending", "running"]),
+              eq(juniorAutomationRuns.automationId, lookup.id),
+              inArray(juniorAutomationRuns.status, ["pending", "running"]),
             ),
           )
           .limit(1);

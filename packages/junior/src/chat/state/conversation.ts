@@ -13,6 +13,15 @@ export interface ConversationAuthor {
   userName?: string;
 }
 
+/** One Event listed on a conversation message. */
+export interface ConversationMessageEvent {
+  eventType: string;
+  /** Resource label, used to group Events under one heading. */
+  label?: string;
+  objectType?: ObjectType;
+  trustedSummary?: string;
+}
+
 export interface ConversationMessageMeta {
   cards?: MessageCard[];
   objectCards?: MessageCardRef[];
@@ -21,8 +30,11 @@ export interface ConversationMessageMeta {
   attachmentCount?: number;
   /** Known message provenance. Omit when unknown; never invent a default. */
   source?: "slack" | "web";
+  /** First Event of the batch. Marks the message as an Event message. */
   eventType?: string;
   eventObjectType?: ObjectType;
+  /** Every Event when several arrived together. Omitted for one Event. */
+  events?: ConversationMessageEvent[];
   explicitMention?: boolean;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;

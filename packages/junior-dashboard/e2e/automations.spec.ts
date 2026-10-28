@@ -145,9 +145,12 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(deleteItem).toHaveCount(0);
   await page.keyboard.press("ArrowDown");
   await expect(deleteItem).toBeFocused();
-  const deletePath = "/api/automations/scheduled/scheduled-1";
+  const deletePath = "/api/automations/scheduled-1";
+  // The summary GET uses the same URL, so fail only the DELETE.
   await page.route(`**${deletePath}`, (route) =>
-    route.fulfill({ status: 500, json: { error: "Delete failed" } }),
+    route.request().method() === "DELETE"
+      ? route.fulfill({ status: 500, json: { error: "Delete failed" } })
+      : route.fallback(),
   );
   page.once("dialog", (dialog) => dialog.accept());
   const deletion = page.waitForRequest(
@@ -317,9 +320,7 @@ test("opens one automation's execution history", async ({
   page,
   dashboard,
 }) => {
-  await page.goto(
-    `${dashboard.baseURL}/automations/scheduled/scheduled-1/executions`,
-  );
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1/executions`);
 
   await expect(
     page.getByRole("heading", { name: "Weekly project summary" }),
@@ -370,31 +371,28 @@ test("pauses and resumes from details, keeps failures visible, and limits action
     route.fulfill({ json: summary }),
   );
   let fail = true;
-  await page.route(
-    "**/api/automations/scheduled/scheduled-1/lifecycle",
-    (route) => {
-      expect(route.request().postDataJSON()).toMatchObject({
-        revision: editor.value.revision,
+  await page.route("**/api/automations/scheduled-1/lifecycle", (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({
+      revision: editor.value.revision,
+    });
+    if (fail) {
+      fail = false;
+      return route.fulfill({
+        status: 409,
+        json: {
+          error: "The Automation changed. Try again.",
+          code: "conflict",
+        },
       });
-      if (fail) {
-        fail = false;
-        return route.fulfill({
-          status: 409,
-          json: {
-            error: "The Automation changed. Try again.",
-            code: "conflict",
-          },
-        });
-      }
-      const status =
-        route.request().postDataJSON().action === "pause" ? "paused" : "active";
-      summary.status = status;
-      if (summary.kind === "scheduled" && status === "paused")
-        delete summary.nextRunAt;
-      editor.value = { ...editor.value, status, revision: "b".repeat(64) };
-      return route.fulfill({ json: editor.value });
-    },
-  );
+    }
+    const status =
+      route.request().postDataJSON().action === "pause" ? "paused" : "active";
+    summary.status = status;
+    if (summary.kind === "scheduled" && status === "paused")
+      delete summary.nextRunAt;
+    editor.value = { ...editor.value, status, revision: "b".repeat(64) };
+    return route.fulfill({ json: editor.value });
+  });
   await page.goto(`${dashboard.baseURL}/automations/list?scope=attention`);
   await expect(
     page.getByRole("button", { name: "Needs attention" }),

@@ -11,7 +11,11 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import {
+  disableTools,
+  tool,
+  type AnyToolDefinition,
+} from "@/chat/tools/definition";
 
 const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),
@@ -247,5 +251,52 @@ describe("Pi tool adapter integration", () => {
         arguments: {},
       }),
     ).rejects.toThrow("can only call catalog tools");
+  });
+
+  it("keeps a disabled tool in the model tool list but rejects its calls", async () => {
+    const execute = vi.fn(async () => ({ tool: "notify" }));
+    const definitions: Record<string, AnyToolDefinition> = {
+      notify: tool({
+        description: "Notify a person",
+        inputSchema: Type.Object({ text: Type.String() }),
+        execute,
+      }),
+      catalogNotify: tool({
+        description: "Notify from the catalog",
+        exposure: "deferred",
+        inputSchema: Type.Object({ text: Type.String() }),
+        execute,
+      }),
+    };
+    const sandbox = new SkillSandbox([], []);
+    const enabled = createPiAgentTools(definitions, sandbox, {});
+    const disabled = createPiAgentTools(
+      disableTools(definitions, "It needs a person's message."),
+      sandbox,
+      {},
+    );
+    const modelView = (tools: ReturnType<typeof createPiAgentTools>) =>
+      JSON.stringify(
+        tools.map(({ name, description, parameters }) => ({
+          name,
+          description,
+          parameters,
+        })),
+      );
+
+    // The provider caches the tool list, so disabling must not change it.
+    expect(modelView(disabled)).toBe(modelView(enabled));
+    await expect(
+      agentTool(disabled, "notify").execute("disabled-direct", { text: "hi" }),
+    ).rejects.toThrow(
+      "notify is disabled in this Turn. It needs a person's message.",
+    );
+    await expect(
+      agentTool(disabled, "executeTool").execute("disabled-catalog", {
+        tool_name: "catalogNotify",
+        arguments: { text: "hi" },
+      }),
+    ).rejects.toThrow("catalogNotify is disabled in this Turn.");
+    expect(execute).not.toHaveBeenCalled();
   });
 });

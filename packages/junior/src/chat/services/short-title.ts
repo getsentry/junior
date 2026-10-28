@@ -4,12 +4,30 @@ import { logWarn } from "@/chat/logging";
 
 export const SHORT_TITLE_MAX_LENGTH = 60;
 
-export type ShortTitleKind = "conversation" | "task";
+export type ShortTitleKind = "conversation" | "run" | "task";
+
+// Run input starts with fixed task boilerplate, so it needs more source text.
+const SOURCE_TEXT_MAX_LENGTH: Record<ShortTitleKind, number> = {
+  conversation: 500,
+  run: 2000,
+  task: 500,
+};
+
+const SOURCE_LABELS: Record<ShortTitleKind, string> = {
+  conversation: "First user message",
+  run: "Task input",
+  task: "Task instruction",
+};
 
 const TITLE_PROMPTS: Record<ShortTitleKind, string[]> = {
   conversation: [
     "Generate a concise 5-8 word conversation title from the first user message below.",
     "Capture the user's main request.",
+    "Reply with ONLY the title, with no quotes or trailing punctuation.",
+  ],
+  run: [
+    "Generate a concise 5-8 word title for one task run from its task input below.",
+    "Capture what this run is about. Prefer the specific event or subject over the task wording.",
     "Reply with ONLY the title, with no quotes or trailing punctuation.",
   ],
   task: [
@@ -40,9 +58,14 @@ export function fallbackShortTitle(
   return normalizeShortTitle(firstLine) || fallback;
 }
 
-/** Generate a short title with the fast model, or return undefined on failure. */
+/**
+ * Generate a short title with the fast model, or return undefined on failure.
+ * `context` holds facts about objects that the source text links, such as
+ * issue titles.
+ */
 export async function generateShortTitle(args: {
   completeText: typeof completeText;
+  context?: string[];
   kind: ShortTitleKind;
   sourceText: string;
   signal?: AbortSignal;
@@ -63,9 +86,18 @@ export async function generateShortTitle(args: {
           content: [
             ...TITLE_PROMPTS[args.kind],
             "",
-            args.kind === "conversation"
-              ? `First user message: ${sourceText.slice(0, 500)}`
-              : `Task instruction: ${sourceText.slice(0, 500)}`,
+            `${SOURCE_LABELS[args.kind]}: ${sourceText.slice(0, SOURCE_TEXT_MAX_LENGTH[args.kind])}`,
+            // Add this block only with context, so other title requests stay
+            // the same.
+            ...(args.context?.length
+              ? [
+                  "",
+                  "Linked objects:",
+                  ...args.context.map((line) => `- ${line}`),
+                  "",
+                  "When the message refers to a linked object, name it by its number and title, for example: Fix #123: Login fails on Safari.",
+                ]
+              : []),
           ].join("\n"),
           timestamp: Date.now(),
         },

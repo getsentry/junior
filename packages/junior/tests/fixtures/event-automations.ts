@@ -1,4 +1,7 @@
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import { createSlackSource, type SlackActor } from "@sentry/junior-plugin-api";
+import { getSqlExecutor } from "@/chat/db";
+import { upsertIdentity } from "@/chat/identities/sql";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -43,12 +46,23 @@ export function context(
     teamId: workspaceTeamId,
     channelId,
   };
+  const actor: SlackActor = {
+    platform: "slack",
+    teamId: workspaceTeamId,
+    userId,
+  };
   return {
     conversationId: "test:event-annotations",
-    actor: {
-      platform: "slack",
-      teamId: workspaceTeamId,
-      userId,
+    actor,
+    // Slack turns store the actor identity before tools run.
+    resolveActorIdentity: async () => {
+      await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: workspaceTeamId,
+        providerSubjectId: userId,
+      });
+      return await readActorIdentity(actor);
     },
     destination,
     source: createSlackSource({
@@ -75,6 +89,18 @@ export async function execute<TInput>(
   return await tool.execute(prepared as TInput, {
     toolCallId,
   });
+}
+
+/** Build the review event that `createTask` Automations match. */
+export function changesRequestedEvent(eventKey: string) {
+  return {
+    eventKey,
+    eventType: "pull_request.review.changes_requested",
+    occurredAtMs: Date.now(),
+    namespace: "github",
+    identifier: "getsentry/junior#1174",
+    trustedSummary: "A reviewer requested changes.",
+  };
 }
 
 /** Create an event Automation through its production tool. */

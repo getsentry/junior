@@ -5,13 +5,18 @@ import { formatRelativeTime, formatTime } from "../format";
 import { ButtonLink } from "../components/Button";
 import { Drawer } from "../components/Drawer";
 import { SegmentedTabs } from "../components/SegmentedTabs";
-import { ConversationMemories } from "./ConversationMemories";
+import {
+  ConversationChildAgents,
+  useConversationChildAgents,
+} from "./ConversationChildAgents";
+import {
+  ConversationMemories,
+  useConversationMemories,
+} from "./ConversationMemories";
 import { ShareConversationButton } from "./ShareConversationButton";
+import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
-const tabs = [
-  { label: "Details", value: "details" },
-  { label: "Memories", value: "memories" },
-] as const;
+type DetailsTab = "agents" | "details" | "memories";
 
 /** Put conversation context before usage and diagnostic links. */
 export function ConversationDetailsDrawer(props: {
@@ -21,12 +26,26 @@ export function ConversationDetailsDrawer(props: {
   identity: ReactNode;
   lastActivityAt?: string;
   onClose(): void;
+  /** Open one child agent transcript. The details drawer closes first. */
+  onOpenSubagent(target: SubagentTranscriptTarget): void;
   sentryConversationUrl?: string;
   privacy: ReactNode;
   stats: ReactNode;
   title: string;
 }) {
-  const [tab, setTab] = useState<"details" | "memories">("details");
+  const [tab, setTab] = useState<DetailsTab>("details");
+  // Load both lists with the drawer so each tab can show its count.
+  const memories = useConversationMemories(props.conversationId);
+  const agents = useConversationChildAgents(props.conversationId);
+  const tabs = [
+    { label: "Details", value: "details" },
+    {
+      count: memories.data?.memories.length,
+      label: "Memories",
+      value: "memories",
+    },
+    { count: agents.data?.agents.length, label: "Subagents", value: "agents" },
+  ] as const;
   const titleId = "conversation-details-drawer-title";
   const sections = [
     { content: props.brief, title: "Summary" },
@@ -65,6 +84,14 @@ export function ConversationDetailsDrawer(props: {
       >
         {tab === "memories" ? (
           <ConversationMemories conversationId={props.conversationId} />
+        ) : tab === "agents" ? (
+          <ConversationChildAgents
+            conversationId={props.conversationId}
+            onOpenAgent={(target) => {
+              props.onClose();
+              props.onOpenSubagent(target);
+            }}
+          />
         ) : sections.length > 0 ? (
           <div className="grid min-w-0 gap-5">
             {sections.map((section) => (

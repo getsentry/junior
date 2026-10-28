@@ -10,8 +10,6 @@ import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import {
-  eventAutomationBelongsToUser,
-  getEventAutomation,
   saveEventAutomation,
   setEventAutomationStatus,
   type StoredEventAutomation,
@@ -20,10 +18,7 @@ import { eventAutomationTriggerAvailable } from "@/chat/event-automations/tool-s
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import {
-  readScheduledAutomation,
-  saveScheduledAutomation,
-} from "@/chat/scheduled-automations/tasks";
+import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
 import {
   weekdaySchema,
@@ -51,41 +46,23 @@ type OwnedAutomation =
   | { kind: "scheduled"; task: ScheduledAutomation }
   | { kind: "event"; task: StoredEventAutomation };
 
-async function requireOwnedAutomation(
-  user: User,
-  kind: AutomationEdit["kind"],
-  id: string,
-): Promise<OwnedAutomation> {
-  if (kind === "scheduled") {
-    const task = await readScheduledAutomation(getDb(), id);
-    if (
-      !task ||
-      task.status === "deleted" ||
-      !user.identities.some(
-        (identity) => identity.id === task.creatorIdentityId,
-      )
-    )
-      throw new ViewerTaskNotFoundError();
-    return { kind, task };
-  }
-  const task = await getEventAutomation(getDb(), id);
-  if (
-    !task ||
-    task.status === "deleted" ||
-    !eventAutomationBelongsToUser(task, user)
-  )
-    throw new ViewerTaskNotFoundError();
-  return { kind, task };
-}
-
 /** Owners and public Destination readers can edit. Others get not found. */
 async function requireEditableAutomation(
   user: User,
-  kind: AutomationEdit["kind"],
   id: string,
 ): Promise<TaskCandidate> {
-  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  const candidate = await resolveViewerTaskCandidate(user, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
+  return candidate;
+}
+
+/** Lifecycle actions are creator-only. Others get not found. */
+async function requireOwnedAutomation(
+  user: User,
+  id: string,
+): Promise<TaskCandidate> {
+  const candidate = await requireEditableAutomation(user, id);
+  if (!candidate.ownedByViewer) throw new ViewerTaskNotFoundError();
   return candidate;
 }
 
@@ -139,7 +116,8 @@ function editView(
   return {
     ...common,
     kind: "event",
-    status: automation.task.status === "paused" ? "paused" : "active",
+    status:
+      automation.task.status === "deleted" ? "active" : automation.task.status,
     trigger: automation.task.trigger,
     triggerAvailable: eventAutomationTriggerAvailable(
       automation.task,
@@ -151,10 +129,9 @@ function editView(
 /** Load exact editable values by ID, independent of list filters. */
 export async function readViewerAutomationEdit(
   user: User,
-  kind: AutomationEdit["kind"],
   id: string,
 ): Promise<AutomationEdit> {
-  const automation = await requireEditableAutomation(user, kind, id);
+  const automation = await requireEditableAutomation(user, id);
   return editView(automation, automation.ownedByViewer);
 }
 
@@ -164,7 +141,9 @@ export async function updateViewerAutomation(
   id: string,
   input: AutomationUpdate,
 ): Promise<AutomationEdit> {
-  const current = await requireEditableAutomation(user, input.kind, id);
+  const current = await requireEditableAutomation(user, id);
+  if (input.kind !== current.kind)
+    throw new AutomationEditError("The trigger type cannot change.", "kind");
   requireAutomationRevision(current.task, input.revision);
   return saveViewerEdit(user, current, input);
 }
@@ -284,13 +263,12 @@ async function restorableOutcomes(
  */
 export async function activateViewerAutomationVersion(
   user: User,
-  kind: AutomationEdit["kind"],
   id: string,
   input: { version: number; revision: string },
 ): Promise<AutomationEdit> {
-  const current = await requireEditableAutomation(user, kind, id);
+  const current = await requireEditableAutomation(user, id);
   requireAutomationRevision(current.task, input.revision);
-  const saved = await readAutomationVersion(getDb(), kind, id, input.version);
+  const saved = await readAutomationVersion(getDb(), id, input.version);
   if (!saved)
     throw new AutomationEditError("This version does not exist.", "version");
   const { definition } = saved;
@@ -341,11 +319,10 @@ export async function activateViewerAutomationVersion(
 /** Pause or resume future triggers. Already-claimed work can finish. */
 export async function changeViewerAutomationLifecycle(
   user: User,
-  kind: AutomationEdit["kind"],
   id: string,
   input: { action: "pause" | "resume"; revision: string },
 ): Promise<AutomationEdit> {
-  const current = await requireOwnedAutomation(user, kind, id);
+  const current = await requireOwnedAutomation(user, id);
   requireAutomationRevision(current.task, input.revision);
   const status = current.task.status;
   if (status === "completed")

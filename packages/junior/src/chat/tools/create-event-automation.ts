@@ -21,6 +21,7 @@ import {
 } from "@/chat/event-automations/tool-support";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { completeText } from "@/chat/pi/client";
+import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
 import {
   requireEventIdentifier,
   type EventCatalog,
@@ -163,13 +164,24 @@ export function createEventAutomationTool(
           );
         }
       }
+      const identity = (await context.resolveActorIdentity?.())?.identity;
+      if (
+        !identity ||
+        identity.provider !== "slack" ||
+        identity.providerTenantId !== destination.teamId ||
+        identity.providerSubjectId !== actor.userId
+      ) {
+        throw new ToolInputError(
+          "Event automation creator identity is unavailable.",
+        );
+      }
       const title = await resolveTaskTitle({
         signal: options.signal,
         completeText,
         instruction: input.instruction,
         title: input.title,
       });
-      const task: EventAutomation = {
+      const task: EventAutomation = requireSlackChannelMessageScope({
         id,
         destinationVisibility: source.visibility,
         createdAtMs: Date.now(),
@@ -178,6 +190,7 @@ export function createEventAutomationTool(
           ...(actor.fullName ? { fullName: actor.fullName } : undefined),
           ...(actor.userName ? { userName: actor.userName } : undefined),
         },
+        creatorIdentityId: identity.id,
         credentialMode: input.credentialMode ?? "creator",
         destination,
         outcomes: await resolveTaskOutcomes(
@@ -195,7 +208,7 @@ export function createEventAutomationTool(
           events: [...new Set(input.trigger.events)],
           ...(match ? { match } : undefined),
         },
-      };
+      });
       return eventAutomationToolResult(
         context.conversationId,
         await createEventAutomation(db, task),

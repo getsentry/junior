@@ -22,6 +22,7 @@ import { DashboardHeader } from "./components/layout/DashboardHeader";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
+  conversationDetailTitle,
   conversationDisplayTitle,
   setDashboardTimeZone,
 } from "./format";
@@ -37,6 +38,7 @@ import { CodePage } from "./pages/code/CodePage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
+import { ConnectionsPage } from "./pages/ConnectionsPage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -62,7 +64,6 @@ import {
 } from "./pages/user/PluginUserPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
-import { dashboardShellBgClass } from "./styles";
 import type { DashboardCoreData } from "./types";
 
 const dashboardNoise = {
@@ -105,8 +106,8 @@ export function DashboardShell() {
   // Create mode is a landing page (normal app chrome), not a thread destination.
   // Only open conversations use the mobile back chevron + title row.
   const mobileConversationTitle = conversationId
-    ? conversationDetail.data?.displayTitle?.trim() ||
-      conversationDisplayTitle(mobileConversation)
+    ? (conversationDetailTitle(conversationDetail.data) ??
+      conversationDisplayTitle(mobileConversation))
     : undefined;
   const primaryNavItems = buildPrimaryNavItems({
     loading,
@@ -141,10 +142,7 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <VisualViewportShell
-        className={dashboardShellBgClass}
-        enabled={workspace}
-      >
+      <VisualViewportShell className="bg-dashboard-bg" enabled={workspace}>
         <DashboardChrome
           banner={
             <>
@@ -154,7 +152,6 @@ export function DashboardShell() {
           }
           header={
             <DashboardHeader
-              compact={workspace}
               mobileBackTo={conversationId ? "/" : undefined}
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
@@ -230,7 +227,7 @@ export function DashboardShell() {
                 <Navigate replace to="/" />
               )
             }
-            path="/automations/:kind/:automationId/executions"
+            path="/automations/:automationId/executions"
           />
           <Route
             element={
@@ -251,7 +248,7 @@ export function DashboardShell() {
                 <Navigate replace to="/" />
               )
             }
-            path="/automations/:kind/:automationId/versions"
+            path="/automations/:automationId/versions"
           />
           <Route
             element={
@@ -296,7 +293,7 @@ export function DashboardShell() {
             path="/automations/list"
           />
           <Route
-            path="/automations/:kind/:automationId/edit"
+            path="/automations/:automationId/edit"
             element={
               loading || loggedIn ? (
                 <AutomationEditPage enabled={loggedIn} />
@@ -567,6 +564,23 @@ export function DashboardShell() {
           />
           <Route
             element={
+              loading ? (
+                <PageRouteLoading
+                  description="Connect and disconnect your accounts."
+                  label="Loading connected accounts"
+                  title="Connected accounts"
+                  variant="list"
+                />
+              ) : loggedIn ? (
+                <ConnectionsPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/settings/connections"
+          />
+          <Route
+            element={
               loading || userPagesQuery.isPending ? (
                 <MemoryRouteLoading label="Loading memories" />
               ) : loggedIn && userPagesQuery.data ? (
@@ -618,6 +632,7 @@ export function DashboardShell() {
         <span
           aria-hidden="true"
           className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
+          data-dashboard-noise=""
           style={dashboardNoise}
         />
       </VisualViewportShell>

@@ -101,12 +101,13 @@ export const codeRepositoryReportSchema = z
   })
   .strict();
 
-/** Person-scoped code activity for one People profile. */
+/** Person-scoped code activity and recent code changes for one People profile. */
 export const codePersonReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
     activitySixHours: z.array(codeActivityDaySchema).optional(),
+    changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
     summary: codeChangeSummarySchema,
     windowEnd: z.string(),

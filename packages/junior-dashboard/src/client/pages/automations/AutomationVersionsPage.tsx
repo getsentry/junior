@@ -28,20 +28,16 @@ const DESCRIPTION = "Saved settings for this automation, newest first.";
 
 /** Load one Automation's versions with its summary for labels and access. */
 export function AutomationVersionsPage(props: { enabled: boolean }) {
-  const { automationId, kind } = useParams();
+  const { automationId } = useParams();
   const [searchParams] = useSearchParams();
-  const taskKind = kind === "scheduled" || kind === "event" ? kind : undefined;
-  const enabled = props.enabled && Boolean(automationId && taskKind);
-  const summary = useAutomationData(enabled, automationId);
-  const versions = useAutomationVersionsData(enabled, taskKind, automationId);
-  if (!automationId || !taskKind) {
+  const summary = useAutomationData(props.enabled, automationId);
+  const versions = useAutomationVersionsData(props.enabled, automationId);
+  if (!automationId) {
     return <Navigate replace to="/automations" />;
   }
   const backTo = pathWithSearch(automationPath(automationId), searchParams);
   const error = summary.error ?? versions.error;
-  const notFound =
-    (error instanceof DashboardApiError && error.status === 404) ||
-    (summary.data && summary.data.kind !== taskKind);
+  const notFound = error instanceof DashboardApiError && error.status === 404;
   if (error || notFound) {
     return (
       <>
@@ -77,7 +73,7 @@ export function AutomationVersionsPage(props: { enabled: boolean }) {
 function BackLink(props: { to: string }) {
   return (
     <Link
-      className="mb-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+      className="mb-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
       to={props.to}
     >
       <ArrowLeft aria-hidden="true" size={14} />
@@ -97,7 +93,7 @@ function AutomationVersionsView(props: {
   const canActivate = !(
     automation.kind === "scheduled" && automation.status === "completed"
   );
-  const path = `/api/automations/${automation.kind}/${encodeURIComponent(automation.id)}`;
+  const path = `/api/automations/${encodeURIComponent(automation.id)}`;
   const activate = useMutation({
     mutationFn: async (version: number) => {
       // The user chose an exact saved version, so the latest revision is safe here.
@@ -125,6 +121,7 @@ function AutomationVersionsView(props: {
         <BackLink to={props.backTo} />
         <PageHeader
           description={`${automation.kind} automation · ${automation.destination.label} · ${data.versions.length} ${data.versions.length === 1 ? "version" : "versions"}`}
+          documentTitle={`${automation.title} · Version history`}
           title={automation.title}
         />
       </div>

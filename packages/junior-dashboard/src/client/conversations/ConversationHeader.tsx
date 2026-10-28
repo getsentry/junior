@@ -24,9 +24,12 @@ import {
 } from "./ConversationHeaderActions";
 import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
 /** Show the conversation title, search, and details. */
 export function ConversationHeader(props: {
+  /** Parent chain of a child Conversation. Root Conversations omit it. */
+  agentTree?: ReactNode;
   copyAction?: ReactNode;
   annotations: ReactNode;
   archive: ConversationArchiveAction;
@@ -40,6 +43,7 @@ export function ConversationHeader(props: {
   sentryConversationUrl?: string;
   live: boolean;
   meta?: ReactNode;
+  onOpenSubagent(target: SubagentTranscriptTarget): void;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
@@ -110,7 +114,7 @@ export function ConversationHeader(props: {
         <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
       </HeaderIconButton>
       {mobileMenuOpen ? (
-        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-white/[0.08] bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
+        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
           <ConversationHeaderActions
             archive={props.archive}
             conversationId={props.conversationId}
@@ -134,7 +138,7 @@ export function ConversationHeader(props: {
           />
           {openMobileNavigation ? (
             <button
-              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none"
+              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none"
               onClick={() => {
                 setMobileMenuOpen(false);
                 openMobileNavigation();
@@ -154,7 +158,8 @@ export function ConversationHeader(props: {
     searchOpenVisible ||
     props.archive.error ||
     Boolean(props.linkedWork) ||
-    Boolean(props.forks);
+    Boolean(props.forks) ||
+    Boolean(props.agentTree);
 
   const liveIndicator = props.live ? (
     <span
@@ -170,12 +175,15 @@ export function ConversationHeader(props: {
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
         className={cn(
-          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border-emphasis bg-dashboard-bg md:-mx-7",
+          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border bg-dashboard-bg md:-mx-7",
           !showMobileHeader && "hidden md:block",
         )}
       >
         <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
           <div className="min-w-0">
+            {props.agentTree ? (
+              <div className="mb-1.5 min-w-0">{props.agentTree}</div>
+            ) : null}
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
                 {props.title}
@@ -204,18 +212,21 @@ export function ConversationHeader(props: {
             view={props.view}
           />
         </div>
+        {props.agentTree ? (
+          <div className="px-4 py-2 md:hidden">{props.agentTree}</div>
+        ) : null}
         {props.forks ? (
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
         ) : null}
         {props.linkedWork ? (
           <div
             aria-label="Linked work"
-            className="border-t border-dashboard-border bg-dashboard-surface-panel px-4 py-3 md:px-7"
+            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:px-7"
           >
             {props.linkedWork}
           </div>
         ) : null}
-        <div className="hidden border-t border-dashboard-border px-7 md:flex">
+        <div className="hidden border-t border-dashboard-border-subtle px-7 md:flex">
           <TranscriptViewToggle
             labelled
             onChange={props.onViewChange}
@@ -251,6 +262,7 @@ export function ConversationHeader(props: {
           lastActivityAt={props.lastActivityAt}
           sentryConversationUrl={props.sentryConversationUrl}
           onClose={() => setDetailsOpen(false)}
+          onOpenSubagent={props.onOpenSubagent}
           privacy={props.privacy}
           stats={props.stats}
           title={props.title}

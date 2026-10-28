@@ -50,6 +50,15 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.
 - Telemetry is diagnostic, not a product behavior assertion; follow `policies/observability.md` and `TELEMETRY.md`.
 
+## Eval Recordings
+
+- Evals replay model calls and web pages from Roach, the shared recording service at `https://roach-proxy.getsentry.net` ([`getsentry/roach`](https://github.com/getsentry/roach)). Recordings are in its GCS bucket, not in git. `packages/junior-evals/src/roach/` is a copy of its client.
+- `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more, reach a new site, or add a value pattern, edit only that file.
+- All eval HTTP traffic must go through the proxy. In CI, a firewall (`packages/junior-evals/scripts/network-jail.sh`) rejects other connections. If a request fails with a refused connection, send it through the proxy. Do not allow its host in the firewall.
+- `ROACH_TOKEN` is the write token. With it, a run uses `auto` mode and records new requests, which go live once. Without it, a run can only `replay`, and requests without a recording fail. CI passes the token to eval runs.
+- Each run prints `[evals] Recordings: ...` and the first miss of each test. Fix a value that changes on each run for all tests, in the fixture or in `values` of the rule, not in one test. For ids and times that only the product can make, add a pattern to `values` of the rule. The proxy keys the request without the value and gives a replayed response the value of the current run.
+- Details: "Recordings" in `packages/junior-evals/README.md`.
+
 ## Architecture
 
 - Core owns the runtime and provider-neutral plugin contracts. Plugins own their domain behavior.

@@ -6,8 +6,9 @@
  * history for `conversations.replies`, and profiles for `users.info`. It also
  * signs Events API webhooks and slash commands for the app route.
  */
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
+import { onTestFinished } from "vitest";
 import { getChatConfig, getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
 import {
@@ -15,6 +16,7 @@ import {
   chatPostEphemeralOk,
   chatPostMessageOk,
   conversationsRepliesPage,
+  slackError,
   usersInfoOk,
 } from "@junior-tests/fixtures/slack/factories/api";
 import {
@@ -179,11 +181,41 @@ export function slackAuthorEmail(author: Required<SlackAuthor>): string {
   return `${author.userName}@example.com`;
 }
 
-/** Install the fixture Slack handlers for the current test. */
-export function installSlackMock(): SlackMock {
+/** The earliest second of a fixture Slack timestamp, in May 2026. */
+const SLACK_TS_EPOCH_SECONDS = 1_780_000_000;
+
+/**
+ * The first second of the Slack timestamps of a test. It comes from the test
+ * name, so a test has the same timestamps, channels, and Conversation ids on
+ * each run, and model replay sees the same requests. Different tests get
+ * different seconds, so they do not share threads in shared state.
+ */
+function slackBaseSeconds(testName: string): number {
+  const hash = createHash("sha256").update(testName).digest();
+  return SLACK_TS_EPOCH_SECONDS + (hash.readUInt32BE(0) % 10_000_000);
+}
+
+let rejectedReplies = 0;
+
+/**
+ * Make Slack reject the next thread reply that Junior posts in this test, as
+ * Slack does when Junior can no longer post in the channel.
+ */
+export function rejectNextSlackReply(): void {
+  rejectedReplies += 1;
+  onTestFinished(() => {
+    rejectedReplies = 0;
+  });
+}
+
+/**
+ * Install the fixture Slack handlers for the current test. `testName` makes
+ * the timestamps and channel ids of the test the same on each run.
+ */
+export function installSlackMock(testName: string): SlackMock {
   let tsSequence = 0;
   let channelSequence = 0;
-  const baseSeconds = Math.floor(Date.now() / 1000);
+  const baseSeconds = slackBaseSeconds(testName);
   const threads = new Map<string, SlackThreadMessage[]>();
   const authors = new Map<string, Required<SlackAuthor>>([
     [DEFAULT_SLACK_AUTHOR.userId, DEFAULT_SLACK_AUTHOR],
@@ -242,6 +274,10 @@ export function installSlackMock(): SlackMock {
     http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
       const params = await readSlackParams(request);
       const channel = params.channel ?? "";
+      if (params.thread_ts && rejectedReplies > 0) {
+        rejectedReplies -= 1;
+        return HttpResponse.json(slackError({ error: "channel_not_found" }));
+      }
       const post: SlackPost = {
         channel,
         text: readPostBody(params),
@@ -253,15 +289,14 @@ export function installSlackMock(): SlackMock {
       if (authorizationUrl) {
         authorizationLinks.push({ channel, url: authorizationUrl });
       }
-      if (post.threadTs) {
-        addThreadMessage(channel, {
-          bot_id: "B_TEST_BOT",
-          text: post.text,
-          thread_ts: post.threadTs,
-          ts: post.ts,
-          user: SLACK_BOT_USER_ID,
-        });
-      }
+      // A post at the channel top level is the root of its own thread.
+      addThreadMessage(channel, {
+        bot_id: "B_TEST_BOT",
+        text: post.text,
+        thread_ts: post.threadTs ?? post.ts,
+        ts: post.ts,
+        user: SLACK_BOT_USER_ID,
+      });
       await replyHook?.(post);
       return HttpResponse.json(chatPostMessageOk({ channel, ts: post.ts }));
     }),
@@ -311,9 +346,11 @@ export function installSlackMock(): SlackMock {
     http.get("https://slack.com/api/users.info", ({ request }) =>
       usersInfo(new URL(request.url).searchParams.get("user")),
     ),
-    http.post("https://slack.com/api/users.info", async ({ request }) =>
-      usersInfo((await readSlackParams(request)).user ?? null),
-    ),
+    // Read a copy, so the shared handler can answer for an unknown person.
+    http.post("https://slack.com/api/users.info", async ({ request }) => {
+      const params = await readSlackParams(request.clone());
+      return usersInfo(params.user ?? null);
+    }),
   );
 
   return {
@@ -422,6 +459,26 @@ export async function postSlackMessageEvent(
     type: "message",
     channel_type: event.channelType,
     ...(event.files ? { subtype: "file_share" } : undefined),
+  });
+}
+
+/**
+ * Tell Junior that a person opened a new chat with the Junior app, as Slack
+ * does before the first message of an assistant thread.
+ */
+export async function postSlackAssistantThreadStarted(
+  app: RequestApp,
+  thread: { channel: string; threadTs: string; user: string },
+): Promise<void> {
+  await postSlackEvent(app, {
+    type: "assistant_thread_started",
+    event_ts: thread.threadTs,
+    assistant_thread: {
+      channel_id: thread.channel,
+      context: {},
+      thread_ts: thread.threadTs,
+      user_id: thread.user,
+    },
   });
 }
 

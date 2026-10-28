@@ -39,6 +39,12 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     revision: text.optional(),
     branch: text.optional(),
   }),
+  // Calendar events: the owner formats the time for the requester's time zone.
+  z.strictObject({
+    type: z.literal("calendar_event"),
+    when: text.optional(),
+    attendees: z.array(text).max(5).optional(),
+  }),
 ]);
 export type ObjectFacts = z.output<typeof objectFactsSchema>;
 
@@ -80,6 +86,10 @@ export function objectFactFields(
       add("project", "Project", facts.project);
       add("revision", "Revision", facts.revision);
       add("branch", "Branch", facts.branch);
+      break;
+    case "calendar_event":
+      add("when", "When", facts.when);
+      add("attendees", "Attendees", list(facts.attendees));
       break;
   }
   return fields.slice(0, 4);

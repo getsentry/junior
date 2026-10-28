@@ -16,6 +16,7 @@ import {
   isNull,
   isNotNull,
   like,
+  lt,
   lte,
   or,
   sql,
@@ -27,7 +28,11 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
 import * as memorySqlSchema from "./db/schema";
-import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
+import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+  juniorMemorySignals,
+} from "./db/schema";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,
@@ -36,6 +41,7 @@ import {
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
   memoryRuntimeContextSchema,
+  type MemorySignal,
   type MemoryRuntimeContext,
   type MemorySourcePlatform,
 } from "./types";
@@ -50,8 +56,8 @@ import {
 const DEFAULT_LIST_LIMIT = 50;
 const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
-const PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT = 10;
-const PREFERENCE_ADJUDICATION_VECTOR_LIMIT = 5;
+const ADJUDICATION_CANDIDATE_LIMIT = 10;
+const ADJUDICATION_VECTOR_LIMIT = 5;
 /** Explicit search overfetch: keep a wider fusion window for tool/CLI search. */
 const SEARCH_RETRIEVAL_OVERFETCH = 4;
 /**
@@ -77,6 +83,8 @@ const EMBEDDING_METRIC = "cosine";
  * Tuned for text-embedding-3-small; retune if the embedding model changes.
  */
 const RECALL_MAX_VECTOR_DISTANCE = 0.45;
+/** Keep signal rows long enough to weigh recent activity. */
+const SIGNAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
@@ -240,19 +248,19 @@ const memorySupersessionCandidateSchema = z
 const memorySupersessionCandidatesSchema = z
   .array(memorySupersessionCandidateSchema)
   .min(1)
-  .max(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
+  .max(ADJUDICATION_CANDIDATE_LIMIT);
 const supersededIdsSchema = z
   .array(z.string().min(1))
   .min(1)
-  .max(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
+  .max(ADJUDICATION_CANDIDATE_LIMIT);
 
-/** Validated preference comparison input supplied to a supersession decider. */
+/** Validated memory comparison input supplied to a supersession decider. */
 export const memorySupersessionInputSchema = z
   .object({
     candidate: z
       .object({
         content: z.string().min(1),
-        kind: z.literal("preference"),
+        kind: z.enum(MEMORY_KINDS),
       })
       .strict(),
     existingMemories: memorySupersessionCandidatesSchema,
@@ -261,8 +269,8 @@ export const memorySupersessionInputSchema = z
   .strict();
 
 /**
- * Validated preference decision whose referenced ids must come from the
- * supplied existing memories.
+ * Validated duplicate or supersession decision whose referenced ids must come
+ * from the supplied existing memories.
  */
 export const memorySupersessionDecisionSchema = z.discriminatedUnion(
   "decision",
@@ -334,7 +342,7 @@ export type MemorySupersessionDecision = z.output<
 >;
 
 export interface MemorySupersessionDecider {
-  /** Classify a new preference against related active preferences. */
+  /** Classify a new memory against related active memories of the same kind. */
   adjudicateSupersession(
     input: MemorySupersessionInput,
   ): Promise<MemorySupersessionDecision> | MemorySupersessionDecision;
@@ -624,10 +632,10 @@ export async function archiveExpiredMemoryBatch(args: {
   return { archivedCount: archivedIds.length };
 }
 
-function denseRanks<T>(
+function withDenseRanks<T>(
   values: T[],
   key: (value: T) => string | number,
-): number[] {
+): Array<{ rank: number; value: T }> {
   let previous: string | number | undefined;
   let rank = 0;
   return values.map((value, index) => {
@@ -636,7 +644,7 @@ function denseRanks<T>(
       rank = index + 1;
       previous = current;
     }
-    return rank;
+    return { rank, value };
   });
 }
 
@@ -651,13 +659,14 @@ async function embedOne(
   const result = embeddingResultSchema.parse(
     await embedder.embedTexts({ texts: [normalized] }),
   );
-  if (result.vectors.length !== 1) {
+  const [vector] = result.vectors;
+  if (result.vectors.length !== 1 || !vector) {
     throw new Error("Embedding provider returned an unexpected vector count.");
   }
   return {
     model: result.model,
     provider: result.provider,
-    vector: result.vectors[0],
+    vector,
   };
 }
 
@@ -810,18 +819,53 @@ async function rememberDuplicateIdempotency(args: {
     .onConflictDoNothing();
 }
 
-/** Select semantic preferences, then fill the window by recency for unembedded records. */
-async function listPreferenceAdjudicationCandidates(args: {
+/**
+ * Log one signal for a memory, then drop that memory's rows for the same
+ * signal older than the retention window. Retries with the same key count once.
+ */
+async function recordMemorySignal(args: {
+  db: MemoryDb;
+  idempotencyKey: string;
+  memoryId: string;
+  nowMs: number;
+  runtimeContext: MemoryRuntimeContext;
+  signal: MemorySignal;
+}): Promise<void> {
+  await args.db
+    .insert(juniorMemorySignals)
+    .values({
+      conversationId: args.runtimeContext.conversationId,
+      idempotencyKey: args.idempotencyKey,
+      memoryId: args.memoryId,
+      observedAtMs: args.nowMs,
+      signal: args.signal,
+    })
+    .onConflictDoNothing();
+  await args.db
+    .delete(juniorMemorySignals)
+    .where(
+      and(
+        eq(juniorMemorySignals.memoryId, args.memoryId),
+        eq(juniorMemorySignals.signal, args.signal),
+        lt(juniorMemorySignals.observedAtMs, args.nowMs - SIGNAL_RETENTION_MS),
+      ),
+    );
+}
+
+/** Select semantic neighbors, then fill the window by recency for unembedded records. */
+async function listAdjudicationCandidates(args: {
   db: MemoryDb;
   embedding?: MemoryEmbedding;
+  kind: MemoryRecord["kind"];
   nowMs: number;
   scope: ResolvedMemoryScope;
   subject: ResolvedMemorySubject;
 }): Promise<MemoryRecord[]> {
   const vectorCandidates = args.embedding
-    ? await listVectorPreferenceAdjudicationCandidates({
+    ? await listVectorAdjudicationCandidates({
         db: args.db,
         embedding: args.embedding,
+        kind: args.kind,
         nowMs: args.nowMs,
         scope: args.scope,
         subject: args.subject,
@@ -831,17 +875,12 @@ async function listPreferenceAdjudicationCandidates(args: {
     await args.db
       .select()
       .from(juniorMemoryMemories)
-      .where(
-        activeScopedSubjectPredicate({
-          ...args,
-          kind: "preference",
-        }),
-      )
+      .where(activeScopedSubjectPredicate(args))
       .orderBy(
         desc(juniorMemoryMemories.createdAtMs),
         asc(juniorMemoryMemories.id),
       )
-      .limit(PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT)
+      .limit(ADJUDICATION_CANDIDATE_LIMIT)
   ).map(parseMemoryRow);
   return [
     ...new Map(
@@ -850,12 +889,13 @@ async function listPreferenceAdjudicationCandidates(args: {
         memory,
       ]),
     ).values(),
-  ].slice(0, PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT);
+  ].slice(0, ADJUDICATION_CANDIDATE_LIMIT);
 }
 
-async function listVectorPreferenceAdjudicationCandidates(args: {
+async function listVectorAdjudicationCandidates(args: {
   db: MemoryDb;
   embedding: MemoryEmbedding;
+  kind: MemoryRecord["kind"];
   nowMs: number;
   scope: ResolvedMemoryScope;
   subject: ResolvedMemorySubject;
@@ -877,7 +917,7 @@ async function listVectorPreferenceAdjudicationCandidates(args: {
     )
     .where(
       and(
-        activeScopedSubjectPredicate({ ...args, kind: "preference" }),
+        activeScopedSubjectPredicate(args),
         eq(juniorMemoryEmbeddings.provider, args.embedding.provider),
         eq(juniorMemoryEmbeddings.model, args.embedding.model),
         eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
@@ -889,7 +929,7 @@ async function listVectorPreferenceAdjudicationCandidates(args: {
       desc(juniorMemoryMemories.createdAtMs),
       asc(juniorMemoryMemories.id),
     )
-    .limit(PREFERENCE_ADJUDICATION_VECTOR_LIMIT);
+    .limit(ADJUDICATION_VECTOR_LIMIT);
   return rows.flatMap((row) => {
     if (hashEmbeddedContent(row.memory.content) !== row.contentHash) {
       return [];
@@ -898,21 +938,24 @@ async function listVectorPreferenceAdjudicationCandidates(args: {
   });
 }
 
-type PreferenceAdjudicationResult =
+type AdjudicationResult =
   | { decision: "create" }
   | { decision: "duplicate"; memory: MemoryRecord }
   | { decision: "supersede"; ids: [string, ...string[]] };
 
 /**
- * Normalize a preference decision to known duplicate or supersession targets.
- * Uncertainty, invalid ids, and model failure leave existing memories active.
+ * Normalize a review decision to known duplicate or supersession targets.
+ * Only user preferences can supersede. Uncertainty, invalid ids, and model
+ * failure leave existing memories active.
  */
-async function adjudicatePreferenceCandidate(args: {
+async function adjudicateCandidate(args: {
+  allowSupersession: boolean;
   candidates: MemoryRecord[];
   content: string;
   decider: MemorySupersessionDecider;
+  kind: MemoryRecord["kind"];
   runtimeContext: MemoryRuntimeContext;
-}): Promise<PreferenceAdjudicationResult> {
+}): Promise<AdjudicationResult> {
   const [firstCandidate, ...remainingCandidates] = args.candidates;
   if (!firstCandidate) {
     return { decision: "create" };
@@ -929,7 +972,7 @@ async function adjudicatePreferenceCandidate(args: {
     const decision = await args.decider.adjudicateSupersession({
       candidate: {
         content: args.content,
-        kind: "preference",
+        kind: args.kind,
       },
       existingMemories,
       runtimeContext: args.runtimeContext,
@@ -942,7 +985,7 @@ async function adjudicatePreferenceCandidate(args: {
         ? { decision: "duplicate", memory }
         : { decision: "create" };
     }
-    if (decision.decision === "supersedes_old") {
+    if (decision.decision === "supersedes_old" && args.allowSupersession) {
       const ids = decision.supersededIds.filter((id) => candidateIds.has(id));
       const [firstId, ...remainingIds] = ids;
       return firstId
@@ -1068,11 +1111,12 @@ async function searchVisibleLexicalMemories(args: {
     .from(candidates)
     .orderBy(desc(textRank), desc(candidates.observedAtMs), asc(candidates.id))
     .limit(args.limit);
-  const ranks = denseRanks(rows, (row) => Number(row.textRank));
-  return rows.map((row, index) => ({
-    lexical: { rank: ranks[index] },
-    memory: parseMemoryRow(row.memory),
-  }));
+  return withDenseRanks(rows, (row) => Number(row.textRank)).map(
+    ({ rank, value: row }) => ({
+      lexical: { rank },
+      memory: parseMemoryRow(row.memory),
+    }),
+  );
 }
 
 /** Search active visible records with pgvector cosine distance. */
@@ -1125,25 +1169,26 @@ async function searchVisibleVectorMemories(args: {
       asc(juniorMemoryMemories.id),
     )
     .limit(args.limit);
-  const ranks = denseRanks(rows, (row) => Number(row.distance));
-  return rows.flatMap((row, index) => {
-    const distanceValue = Number(row.distance);
-    if (
-      row.distance === null ||
-      !Number.isFinite(distanceValue) ||
-      hashEmbeddedContent(row.memory.content) !== row.contentHash
-    ) {
-      return [];
-    }
-    return [
-      {
-        memory: parseMemoryRow(row.memory),
-        vector: {
-          rank: ranks[index],
+  return withDenseRanks(rows, (row) => Number(row.distance)).flatMap(
+    ({ rank, value: row }) => {
+      const distanceValue = Number(row.distance);
+      if (
+        row.distance === null ||
+        !Number.isFinite(distanceValue) ||
+        hashEmbeddedContent(row.memory.content) !== row.contentHash
+      ) {
+        return [];
+      }
+      return [
+        {
+          memory: parseMemoryRow(row.memory),
+          vector: {
+            rank,
+          },
         },
-      },
-    ];
-  });
+      ];
+    },
+  );
 }
 
 /** Create a context-bound SQL-backed store for explicit memory operations. */
@@ -1174,7 +1219,7 @@ export function createMemoryStore(
   async function reuseDuplicateMemory(args: {
     content: string;
     duplicate: MemoryRecord;
-    idempotencyKey?: string;
+    idempotencyKey: string;
     nowMs: number;
     scope: ResolvedMemoryScope;
     subject: ResolvedMemorySubject;
@@ -1183,6 +1228,14 @@ export function createMemoryStore(
       ...args,
       db,
       runtimeContext,
+    });
+    await recordMemorySignal({
+      db,
+      idempotencyKey: args.idempotencyKey,
+      memoryId: args.duplicate.id,
+      nowMs: args.nowMs,
+      runtimeContext,
+      signal: "duplicate",
     });
     await storeEmbedding({
       content: args.duplicate.content,
@@ -1269,22 +1322,24 @@ export function createMemoryStore(
     }
     let supersededIds: string[] = [];
     if (
-      subjectType === "user" &&
-      input.kind === "preference" &&
       supersessionDecider &&
       (input.expiresAtMs === undefined || input.expiresAtMs > nowMs)
     ) {
-      const preferenceCandidates = await listPreferenceAdjudicationCandidates({
+      const candidates = await listAdjudicationCandidates({
         db,
         ...(candidateEmbedding ? { embedding: candidateEmbedding } : undefined),
+        kind: input.kind,
         nowMs,
         scope,
         subject,
       });
-      const adjudication = await adjudicatePreferenceCandidate({
-        candidates: preferenceCandidates,
+      const adjudication = await adjudicateCandidate({
+        allowSupersession:
+          subjectType === "user" && input.kind === "preference",
+        candidates,
         content,
         decider: supersessionDecider,
+        kind: input.kind,
         runtimeContext,
       });
       if (adjudication.decision === "duplicate") {

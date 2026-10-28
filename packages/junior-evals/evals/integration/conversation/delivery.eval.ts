@@ -2,6 +2,7 @@ import { describe, expect } from "vitest";
 import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { rejectNextSlackReply } from "@junior-evals/fixture/slack";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Slack Message Delivery", () => {
@@ -101,5 +102,34 @@ describe("Slack Message Delivery", () => {
     expect(conversation.files).toHaveLength(1);
     // The image is a separate Slack upload; limit acknowledgements, not files.
     expect(conversation.replies.length).toBeLessThanOrEqual(1);
+  });
+
+  test("when Slack rejects the reply, the turn fails and the next turn does not use the lost reply", async ({
+    run,
+  }) => {
+    rejectNextSlackReply();
+    const conversation = await run(
+      slackMention("Pick a random four-digit number and tell me only that."),
+    );
+
+    // Junior stores no reply for the turn. The person sees a failure notice.
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    expect(conversation.turns[0]!.replies).toEqual([]);
+    expect(conversation.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("I ran into an internal error"),
+    ]);
+
+    const next = await conversation.continue(
+      slackMention("Which number did you just tell me?"),
+    );
+    await expect(next).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says that it has not told the person a number, or that its earlier reply did not arrive.",
+        ],
+        fail: ["The reply states a number as the number it told the person."],
+      }),
+    );
   });
 });

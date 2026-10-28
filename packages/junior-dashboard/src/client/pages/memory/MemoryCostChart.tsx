@@ -66,7 +66,7 @@ export function MemoryCostChart(props: {
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           {formatCostSummary({ total })}
         </h2>
-        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           System-wide estimate across {formatRunCount(runs)} spanning extraction
           and recall.
         </p>
@@ -74,13 +74,13 @@ export function MemoryCostChart(props: {
           ariaLabel="Memory cost legend"
           items={[
             {
-              color: "#67e8f9",
+              color: "var(--color-cyan-300)",
               key: "extraction",
               label: "Extraction",
               value: formatCostSummary({ total: extractionTotal }),
             },
             {
-              color: "#e879f9",
+              color: "var(--color-fuchsia-400)",
               key: "recall",
               label: "Recall",
               value: formatCostSummary({ total: recallTotal }),
@@ -128,11 +128,9 @@ export function MemoryCostChart(props: {
                 date={day.date}
                 summary={`extraction ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}; recall ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`}
               >
-                <g
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   <rect
-                    fill="#67e8f9"
+                    fill="var(--color-cyan-300)"
                     height={extractionHeight}
                     opacity={day.extraction.costUsd > 0 ? 0.82 : 0.1}
                     rx="1"
@@ -141,7 +139,7 @@ export function MemoryCostChart(props: {
                     y={layout.top + layout.plotHeight - extractionHeight}
                   />
                   <rect
-                    fill="#e879f9"
+                    fill="var(--color-fuchsia-400)"
                     height={recallHeight}
                     opacity={day.recall.costUsd > 0 ? 0.82 : 0.1}
                     rx="1"
@@ -171,7 +169,7 @@ export function MemoryCostChart(props: {
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-slate-200)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
@@ -180,7 +178,7 @@ export function MemoryCostChart(props: {
           />
         </ChartSvg>
         {runs === 0 ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No memory extraction or recall ran in this period.
           </div>
         ) : null}

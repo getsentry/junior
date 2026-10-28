@@ -11,6 +11,10 @@ Watches route events back into an existing conversation.
 - Inspection and stop actions stay in the tool catalog. A successful
   watch result identifies the exact watch id to stop. Omitting that id
   is reserved for an explicit request to stop every watch in the thread.
+- A Conversation owns its own watches and the watches of every child agent
+  below it. `listWatches` and `stopWatchingResources` act on all of them. A
+  stop of a child agent's watch adds a Conversation note to that child. See
+  "Watches on a Child" in `agent-invocations/README.md`.
 - A thread opt-out cancels every active subscription for that conversation
   before the Slack thread is marked unsubscribed.
 - Plugin route code validates and normalizes incoming events before calling
@@ -38,12 +42,15 @@ Watches route events back into an existing conversation.
   destination or rewrite the conversation id.
 - Root conversations set destination on first upsert. Later event wakes
   use that destination.
-- A channel-level Location, such as an automation run's, has no thread. Its
-  first reply starts one. Later event Turns reply in that thread.
+- An automation run's Location starts at the channel top level. Its first
+  post starts the thread, so later event Turns reply there.
 - Ingestion only wakes that Conversation mailbox with plain system input. The
   input contains text and event metadata. Destination and Location stay on the
   Conversation. The shared mailbox worker runs a normal Turn. Slack supplies
   Delivery for the Location. It does not build webhook Message or Thread objects.
+- Core can also wake a Conversation with an Event that has no Watch. Agent
+  invocation results use this path (see `agent-invocations/README.md`). Their
+  mailbox metadata has no `subscriptionId`.
 - TODO(subagents): child conversations still store watches on their own id.
   When subagents matter, store the parent root id or give children the parent's
   destination and worker path.
@@ -64,6 +71,10 @@ Watches route events back into an existing conversation.
   external text. When the agent replies, it should summarize what it was acting
   on and what it did or needs next. Stable handling rules live in runtime and
   docs, not a long per-event prompt (`notification.ts`).
+- Events that arrive in one wait window run in one Turn. Several Watch Events
+  become one task input that states each Watch's instructions once
+  (`renderEventBatchText`). The conversation message lists every Event, so the
+  dashboard can show them all. See "Event batch" in `../README.md`.
 - A subscription selector is one conversation, one namespace, one identifier,
   and one or more event types. Optional `match` requires exact trusted values
   from the resource type `matchFields`. Core drops events that do not match
@@ -87,6 +98,17 @@ Watches route events back into an existing conversation.
   watch without asking the model to call
   `watchEvents`. Forced subscriptions should omit those events from the
   tool result's suggested events.
+- A tool-created Watch can store its own guidance by event type. Core adds it
+  after the resource type guidance, only for that Watch and only for the
+  events that the Watch receives.
+- An Event can name the people involved (`people`), by provider identity
+  (`provider` and `handle`) or by email. The plugin collects them in code when
+  the Event arrives, for example from the pull request. Core resolves each one
+  to a linked Slack user in the bot's Slack workspace and lists the mentions as
+  `People involved:`. Core drops people that are unlinked or match more than
+  one Slack user. If the lookup fails, core logs it and delivers the Event
+  without people. People are only for mentions. They never grant authority.
+  Guidance says when to address them.
 - Resource types may declare optional app guidance per event type. Core inserts
   that text only for the matching resource type. The prompt applies it within
   the subscription intent or stored event automation instruction. Keep it separate

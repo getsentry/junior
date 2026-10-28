@@ -10,6 +10,7 @@ import { EventUsage } from "./EventUsage";
 /** Present event content as readable sections, with the exact report available on demand. */
 export function EventDetails({ event }: { event: ConversationReportEvent }) {
   const data = event.data;
+  const mentions = event.mentions ?? [];
   const model = eventLogModel(event);
   const { usage, ...callAttributes } = event.modelCall ?? {};
   let content: ReactNode;
@@ -54,7 +55,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           ) : null}
           {summary ? (
             <DetailSection title="Continuation summary">
-              <TranscriptText text={summary} />
+              <TranscriptText mentions={mentions} text={summary} />
             </DetailSection>
           ) : null}
         </>
@@ -70,7 +71,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
             {redacted ? (
               <RedactedMarker />
             ) : (
-              <TranscriptText text={text ?? ""} />
+              <TranscriptText mentions={mentions} text={text ?? ""} />
             )}
           </DetailSection>
         </>
@@ -112,7 +113,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           {part.redacted ? (
             <RedactedMarker />
           ) : (
-            <TranscriptText text={part.text ?? ""} />
+            <TranscriptText mentions={mentions} text={part.text ?? ""} />
           )}
         </DetailSection>
       ));
@@ -124,12 +125,15 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           <DetailValue value={metadata} />
           <DetailSection title={presentation.title}>
             {presentation.preview ? (
-              <TranscriptText text={presentation.preview} />
+              <TranscriptText mentions={mentions} text={presentation.preview} />
             ) : null}
             {presentation.details?.map((detail, index) => (
               <DetailSection key={index} title={detail.title}>
                 {detail.description ? (
-                  <TranscriptText text={detail.description} />
+                  <TranscriptText
+                    mentions={mentions}
+                    text={detail.description}
+                  />
                 ) : null}
                 {detail.content ? <DetailValue value={detail.content} /> : null}
                 {detail.metadata ? (

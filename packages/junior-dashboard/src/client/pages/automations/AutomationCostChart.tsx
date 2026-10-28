@@ -18,7 +18,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 
-const COST_COLOR = "#67e8f9";
+const COST_COLOR = "var(--color-cyan-300)";
 
 /** Render linked conversation spend for completed automation executions. */
 export function AutomationCostChart(props: {
@@ -45,7 +45,7 @@ export function AutomationCostChart(props: {
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           {formatCostSummary({ total }) || "$0.00"}
         </h2>
-        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           Spend from conversations linked to completed automation executions.
         </p>
       </div>
@@ -103,7 +103,7 @@ export function AutomationCostChart(props: {
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-slate-200)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
@@ -112,7 +112,7 @@ export function AutomationCostChart(props: {
           />
         </ChartSvg>
         {!hasCost ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No linked spend in this period.
           </div>
         ) : null}

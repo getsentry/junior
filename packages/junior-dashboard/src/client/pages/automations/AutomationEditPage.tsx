@@ -6,6 +6,7 @@ import {
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { useAutomationData } from "../../api";
+import { useDocumentTitle } from "../../documentTitle";
 import { fetchDashboardJson } from "../../http";
 import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
@@ -18,29 +19,36 @@ import { AutomationOutcomeList } from "./AutomationOutcomeFields";
 
 /** Load a linkable editor. Owners and public readers can edit until work completes. */
 export function AutomationEditPage(props: { enabled: boolean }) {
-  const { kind, automationId } = useParams();
+  const { automationId } = useParams();
   const location = useLocation();
   const summary = useAutomationData(props.enabled, automationId);
   const canEdit =
     summary.data &&
     !(summary.data.kind === "scheduled" && summary.data.status === "completed");
   const edit = useQuery({
-    queryKey: ["dashboard", "automations", "edit", kind, automationId],
-    enabled: props.enabled && Boolean(canEdit) && summary.data?.kind === kind,
+    queryKey: ["dashboard", "automations", "edit", automationId],
+    enabled: props.enabled && Boolean(canEdit),
     retry: false,
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationEditSchema,
-        `/api/automations/${kind}/${encodeURIComponent(automationId!)}/edit`,
+        `/api/automations/${encodeURIComponent(automationId!)}/edit`,
         signal,
       ),
   });
   const returnPath = `/automations/list${location.search}`;
   const value = summary.data;
+  useDocumentTitle(
+    value
+      ? canEdit
+        ? `${value.title} · Edit`
+        : value.title
+      : "Edit automation",
+  );
   const status =
     value?.kind === "event"
-      ? value.status === "paused"
-        ? "paused"
+      ? value.status !== "active"
+        ? value.status
         : value.triggerAvailable
           ? "active"
           : "unavailable"
@@ -76,7 +84,7 @@ export function AutomationEditPage(props: { enabled: boolean }) {
           {value ? (
             <div className="flex items-center gap-4">
               <Link
-                to={`/automations/${value.kind}/${encodeURIComponent(value.id)}/versions${location.search}`}
+                to={`/automations/${encodeURIComponent(value.id)}/versions${location.search}`}
                 className="text-sm text-dashboard-text-muted underline underline-offset-2 hover:text-dashboard-text"
               >
                 Version history
@@ -87,9 +95,7 @@ export function AutomationEditPage(props: { enabled: boolean }) {
             </div>
           ) : null}
         </div>
-        {(!value && summary.error) ||
-        (!edit.data && edit.error) ||
-        (value && value.kind !== kind) ? (
+        {(!value && summary.error) || (!edit.data && edit.error) ? (
           <FormNotice tone="error" title="Automation could not be loaded.">
             It may no longer be available, or you may not have access.{" "}
             <Button
@@ -105,7 +111,7 @@ export function AutomationEditPage(props: { enabled: boolean }) {
           <AutomationEditorLoading />
         ) : canEdit && edit.data ? (
           <AutomationEditor
-            key={`${kind}:${automationId}`}
+            key={automationId}
             automation={edit.data}
             summary={value}
             returnPath={returnPath}

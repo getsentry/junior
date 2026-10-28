@@ -18,7 +18,7 @@ export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
         <div className="truncate font-display text-sm text-dashboard-text">
           {change.url ? (
             <a
-              className="text-inherit no-underline hover:text-cyan-100"
+              className="text-inherit no-underline hover:text-dashboard-accent-text"
               href={change.url}
               rel="noreferrer"
               target="_blank"

@@ -48,6 +48,10 @@ export default defineConfig({
     globalSetup: [path.resolve(__dirname, "router-global-setup.ts")],
     include: ["evals/router/**/*.eval.ts"],
     maxWorkers: 1,
+    setupFiles: [
+      path.resolve(__dirname, "src/stable-setup.ts"),
+      path.resolve(__dirname, "src/recording-setup.ts"),
+    ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
     testTimeout: ROUTER_EVAL_TEST_TIMEOUT_MS,

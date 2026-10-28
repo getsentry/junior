@@ -48,6 +48,12 @@ reports, and other typed hook surfaces exported by this package.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
 - `formatMarkdown` is a pure text rewrite into ordinary Markdown before delivery.
+- `conversationTitleContext` returns short facts about objects that the first
+  human message refers to, such as an issue number and title. The hook gets the
+  plugin's config values, such as a default repository. It must read provider
+  data through `ctx.egress`, which uses Junior's system identity and never
+  starts authorization. Only the title model sees the facts. Junior bounds the
+  wait and ignores a failed hook.
 - User prompt hooks for durable turns may emit registered structured events
   through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
@@ -66,7 +72,8 @@ reports, and other typed hook surfaces exported by this package.
   one subject user on a person profile. Core owns viewer authorization,
   collection, sanitization, and browser rendering.
 - Tool hooks may resolve the active Actor's Identity and User through
-  `ctx.users.resolveActor()`.
+  `ctx.users.resolveActor()`, and the Actor's timezone through
+  `ctx.users.resolveTimezone()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
   User lookup. Routes that do not need User data do not query identity storage.
 - User page readers receive the signed-in `User`. Plugins return limited data.

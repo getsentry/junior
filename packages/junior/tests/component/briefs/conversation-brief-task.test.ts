@@ -330,23 +330,23 @@ describe("Conversation Brief task", () => {
     const { readConversationAuxiliaryCostsFromSql } =
       await import("@/api/conversations/auxiliary-costs");
     await expect(
-      readConversationAuxiliaryCostsFromSql(getDb(), [conversationId], {
-        includeDescendants: false,
-      }),
+      readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     ).resolves.toEqual(
       new Map([
         [
           conversationId,
           {
-            costUsd: 0.0042,
-            operations: [
-              {
-                namespace: "briefs",
-                name: "brief_updated",
-                events: 1,
-                costUsd: 0.0042,
-              },
-            ],
+            total: {
+              costUsd: 0.0042,
+              operations: [
+                {
+                  namespace: "briefs",
+                  name: "brief_updated",
+                  events: 1,
+                  costUsd: 0.0042,
+                },
+              ],
+            },
           },
         ],
       ]),

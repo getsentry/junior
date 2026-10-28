@@ -10,6 +10,8 @@ import {
   type AgentTool,
 } from "@earendil-works/pi-agent-core";
 import type { ResumeState } from "@/chat/agent/resume";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { botConfig } from "@/chat/config";
 import {
   extractGenAiUsageSummary,
@@ -50,7 +52,12 @@ export type PendingHandoff = {
 };
 
 /** Tools that must be the only tool call in their assistant message. */
-const EXCLUSIVE_TOOL_NAMES = [HANDOFF_TOOL_NAME, "switchWorkspace"] as const;
+const EXCLUSIVE_TOOL_NAMES = [
+  HANDOFF_TOOL_NAME,
+  "switchWorkspace",
+  FINISH_AUTOMATION_RUN_TOOL_NAME,
+  REPORT_BLOCKED_TOOL_NAME,
+] as const;
 
 /** Return the exclusive tool name when one is present among the calls. */
 export function exclusiveToolName(

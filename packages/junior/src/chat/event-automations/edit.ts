@@ -10,6 +10,7 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
 import { requireSupportedEventAutomationTrigger } from "./tool-support";
 import type { EventAutomation } from "./types";
 import type { z } from "zod";
@@ -67,7 +68,7 @@ export async function editEventAutomation(
     (input.instruction !== undefined &&
       input.instruction !== current.task.text) ||
     changesEventAutomationTrigger(current.trigger, trigger);
-  return {
+  const next: EventAutomation = {
     ...current,
     ...(await editAutomationFields(
       current,
@@ -77,4 +78,11 @@ export async function editEventAutomation(
     )),
     trigger,
   };
+  try {
+    return requireSlackChannelMessageScope(next);
+  } catch (error) {
+    if (error instanceof ToolInputError)
+      throw new AutomationEditError(error.message, "trigger");
+    throw error;
+  }
 }

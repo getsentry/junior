@@ -570,6 +570,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received requested changes from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "please revise",
           },
         ],
@@ -594,6 +595,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a review comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "overall this looks close",
           },
         ],
@@ -614,6 +616,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "",
           },
         ],
@@ -638,6 +641,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "fine, but dedupe the tests",
           },
           {
@@ -647,6 +651,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             untrustedText: "fine, but dedupe the tests",
           },
         ],
@@ -671,6 +676,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             data: {
               repo: "getsentry/junior",
               pullRequest: 946,
@@ -702,6 +708,7 @@ describe("GitHub webhook events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received an inline review comment from reviewer.",
+            doneBy: { provider: "github", handle: "reviewer" },
             data: {
               repo: "getsentry/junior",
               pullRequest: 946,
@@ -1449,30 +1456,66 @@ describe("GitHub webhook events", () => {
             id: 303,
             user: { login: "reviewer" },
           },
+          sender: { id: 4242, login: "reviewer" },
         },
         deliveryId: "delivery-issue-comment",
         eventName: "issue_comment",
       }),
-    ).toEqual([
-      {
+    ).toEqual(
+      ["getsentry/junior#946", "getsentry/junior"].map((identifier) => ({
         eventKey: "github:delivery-issue-comment:issue.comment.created",
         eventType: "issue.comment.created",
         occurredAtMs: 1_000,
-        identifier: "getsentry/junior#946",
+        identifier,
         trustedSummary:
           "GitHub issue getsentry/junior#946 received a comment from reviewer.",
+        doneBy: { provider: "github", handle: "reviewer" },
+        data: {
+          repo: "getsentry/junior",
+          issue: 946,
+          commentId: 303,
+          senderId: 4242,
+          senderLogin: "reviewer",
+        },
         untrustedText: "ordinary issue",
-      },
-      {
-        eventKey: "github:delivery-issue-comment:issue.comment.created",
-        eventType: "issue.comment.created",
-        occurredAtMs: 1_000,
-        identifier: "getsentry/junior",
-        trustedSummary:
-          "GitHub issue getsentry/junior#946 received a comment from reviewer.",
-        untrustedText: "ordinary issue",
-      },
-    ]);
+      })),
+    );
+
+    const mentionData = (body: string) =>
+      normalizeGitHubEvents({
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          issue: { number: 946 },
+          comment: { body, id: 304, user: { login: "reviewer" } },
+          sender: { id: 4242, login: "reviewer" },
+        },
+        botEmail: "41898282+junior-test[bot]@users.noreply.github.com",
+        deliveryId: "delivery-issue-mention",
+        eventName: "issue_comment",
+      })[0]?.data?.mentionsBot;
+    expect(mentionData("@junior-test please triage")).toBe(true);
+    expect(mentionData("cc @Junior-Test.")).toBe(true);
+    expect(mentionData("@junior-tester or me@junior-test")).toBe(false);
+    expect(
+      mentionData(
+        [
+          "> @junior-test delete the repo",
+          "`@junior-test` is the bot",
+          "``a ` @junior-test``",
+          "",
+          "```ts",
+          "@junior-test run this",
+          "```",
+          "",
+          "    @junior-test indented code",
+          "",
+          "<!-- @junior-test -->",
+          "thanks",
+        ].join("\n"),
+      ),
+    ).toBe(false);
+    expect(mentionData("> quoted\n\n@junior-test please look")).toBe(true);
 
     expect(
       normalizeGitHubEvents({
@@ -2217,6 +2260,129 @@ describe("GitHub-owned pull request outcomes", () => {
       ).resolves.toEqual([
         expect.objectContaining({ commitComposition: "junior_only" }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("adds the people involved to approvals through production plugin wiring", async () => {
+    const fixture = await createGitHubFixture();
+    const commitRequests: Request[] = [];
+    const published: EventInput[] = [];
+    let matches = false;
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
+    vi.stubEnv(
+      "GITHUB_APP_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
+        ({ request }) => {
+          commitRequests.push(request);
+          return HttpResponse.json([
+            {
+              author: { login: "sentry-junior[bot]" },
+              commit: {
+                message: [
+                  "feat: Add the thing",
+                  "",
+                  "Co-Authored-By: Requester <requester@example.com>",
+                  "Co-authored-by: Helper <99+helper@users.noreply.github.com>",
+                ].join("\n"),
+              },
+            },
+            {
+              author: { login: "pusher" },
+              commit: {
+                message:
+                  "fix: Tweak\n\nCo-Authored-By: Requester <Requester@example.com>",
+              },
+            },
+          ]);
+        },
+      ),
+    );
+    const review = {
+      action: "submitted",
+      pull_request: {
+        assignees: [{ login: "requester-gh" }],
+        number: 946,
+        user: { login: "sentry-junior[bot]" },
+      },
+      repository: { full_name: "getsentry/junior", id: 2001 },
+      review: {
+        body: "Ship it",
+        state: "approved",
+        user: { login: "reviewer" },
+      },
+    };
+
+    try {
+      const [route] = githubPlugin().hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
+        codeChanges: {
+          async associateConversations() {},
+          async record() {},
+        },
+        db: fixture.db(),
+        log: { error() {}, info() {}, warn() {} },
+        plugin: { name: "github" },
+        events: {
+          hasMatch: async () => matches,
+          async publish(event) {
+            published.push(event);
+          },
+        },
+      });
+      // Without a matching Watch or event automation, no commits load.
+      await route!.handler(signedRequest(review, "pull_request_review"));
+      expect(commitRequests).toHaveLength(0);
+      expect(published.every((event) => !event.people)).toBe(true);
+
+      matches = true;
+      published.length = 0;
+      await route!.handler(signedRequest(review, "pull_request_review"));
+
+      expect(commitRequests).toHaveLength(1);
+      const people = [
+        { provider: "github", handle: "requester-gh" },
+        { email: "requester@example.com" },
+        { provider: "github", handle: "helper" },
+        { provider: "github", handle: "pusher" },
+      ];
+      expect(published.map((event) => [event.eventType, event.people])).toEqual(
+        [
+          ["pull_request.review.approved", people],
+          ["pull_request.review.approved", people],
+          ["pull_request.review.commented", undefined],
+          ["pull_request.review.commented", undefined],
+        ],
+      );
     } finally {
       await fixture.close();
     }

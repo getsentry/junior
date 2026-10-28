@@ -37,6 +37,14 @@ Canonical words used across Junior's code and documentation.
 - **Admin**: a user with the Junior-wide admin role. Only the `junior admin`
   CLI grants or revokes it. Plugins use it for setup that other users must not
   reach. Do not add plugin-specific admin lists.
+- **Service account**: an optional provider account, often a bot, that Junior
+  itself uses for one plugin. An Admin connects it on the dashboard Admin
+  page, or with `junior service-account connect`. The plugin's
+  `accounts.service-account` block allows it and lists what it may use. By
+  default, per-Actor OAuth stays on. Junior uses the service account only for
+  an Actor who has not connected their own account, and only for what it
+  lists. With `accounts.user-oauth: false`, Junior uses only
+  the service account and never asks an Actor to connect.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are
@@ -59,14 +67,16 @@ Canonical words used across Junior's code and documentation.
 - **Watch**: a temporary association between an Event and a Conversation. It
   delivers matching Events to that Conversation and expires. It is not an
   Automation.
+- **Automation run**: one dispatch of an Automation, from claim or dispatch to
+  its outcome. It is not a Run.
 - **Scheduled automation**: an Automation that has a Schedule trigger.
 - **Event automation**: an Automation that has an Event trigger.
 - **Inbound message**: one normalized source event made available to the agent.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.
-- **Steering message**: a user message that interrupts the active turn at the
-  next safe boundary and joins that turn. Messages arriving together may be
-  batched into the same turn.
+- **Steering message**: a user message or agent message that interrupts the
+  active turn at the next safe boundary and joins that turn. Messages arriving
+  together may be batched into the same turn.
 - **Follow-up message**: a user message that waits for the active turn to finish
   before starting the next turn.
 - **Mailbox delivery**: the durable instruction for an inbound message:
@@ -99,10 +109,15 @@ Canonical words used across Junior's code and documentation.
 - **Ticket**: an issue or planned work item from a provider. Object annotations
   store this type as `task`.
 - **Deployment**: a revision sent to a target environment.
+- **Calendar event**: a meeting on a calendar. Object annotations store this
+  type as `calendar_event`.
 - **Item**: a linked object without a more specific native type.
 - **Message card**: a reference to an Annotation attached to a Message. Each
   surface shows the latest saved facts and owns its layout. A card does not
   record facts at delivery or fetch live provider state.
+- **Conversation note**: a short fact that core attaches to a Conversation
+  without starting a Turn. The next Turn shows it as runtime turn context. It is
+  not a Message and never gives authority.
 - **Message update**: later delivery or hydration state for an existing
   message, stored as a `message_updated` event without creating another message.
 - **Transcript**: a reporting view rendered from stored messages and agent
@@ -114,10 +129,19 @@ Canonical words used across Junior's code and documentation.
   is not complete.
 - **Assigned work**: plugin-owned work associated with a conversation, whether
   finished or unfinished.
-- **Agent binding**: a named reference, scoped to one parent agent
-  conversation, that reuses one child conversation and its history.
+- **Agent binding**: a name, scoped to one parent agent conversation, for one
+  child conversation. Each name belongs to one child. Later work for that child
+  is an agent message, not a new binding.
 - **Agent invocation**: one retry-safe delegated task sent from a parent agent
   conversation to a child conversation, including its durable terminal result.
+  The first task comes from `spawnAgent`. Each later task comes from an agent
+  message or from a result of the child's own child agents.
+- **Agent message**: text that one agent sends with `messageAgent` to its
+  parent agent or to one of its child agents. A message to a child starts an
+  agent invocation on that child. If the child is running, it reads the
+  message as a steering message. A message to the parent is an Event Inbound
+  message, the same as a child result. An agent message is not from a person,
+  so it does not give user approval.
 - **Reasoning level**: the configured or selected amount of model reasoning for
   a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Reply**: a destination-visible message owned by delivery or reply-policy

@@ -1,18 +1,20 @@
-import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { eq, sql, type SQL } from "drizzle-orm";
 import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
+import {
+  addAgentTurnUsage,
   hasAgentTurnUsage,
   type AgentTurnCost,
   type AgentTurnUsage,
 } from "@/chat/usage";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
+import type { ConversationChildAgentTotals } from "../schema/child-agent-totals";
+import type { ConversationTreeAuxiliaryCosts } from "./auxiliary-costs";
 
 const usage = juniorConversations.usage;
-const metricRootConversation = alias(
-  juniorConversations,
-  "metric_root_conversation",
-);
 const componentFields = [
   "inputTokens",
   "outputTokens",
@@ -34,7 +36,9 @@ function summedCostNumber(field: string): SQL<number | null> {
 }
 
 interface UsageAggregateRow {
-  rootConversationId: string | null;
+  scopeConversationId: string;
+  isChildAgent: boolean;
+  conversations: number;
   durationMs: number;
   inputTokens: number | null;
   outputTokens: number | null;
@@ -79,17 +83,31 @@ function usageFromAggregate(
   return hasAgentTurnUsage(result) ? result : undefined;
 }
 
-interface RootConversationMetrics {
+/** Saved work of all child agents below one Conversation, at any depth. */
+export interface ChildAgentMetrics {
+  /** Number of child Conversations below the Conversation. */
+  count: number;
   durationMs: number;
   usage?: AgentTurnUsage;
 }
 
-/** Aggregate persisted metrics in PostgreSQL for selected conversation trees. */
-export async function readRootConversationMetricsFromSql(
+/** Saved work of one Conversation and all its child agents. */
+export interface ConversationTreeMetrics {
+  durationMs: number;
+  usage?: AgentTurnUsage;
+  /** Present only when the Conversation has child agents. */
+  childAgents?: ChildAgentMetrics;
+}
+
+/**
+ * Aggregate saved runtime and usage in PostgreSQL. The total for each selected
+ * Conversation includes itself and all its child agents at any depth.
+ */
+export async function readConversationTreeMetricsFromSql(
   db: JuniorDatabase,
-  rootConversationIds: readonly string[],
-): Promise<Map<string, RootConversationMetrics>> {
-  if (rootConversationIds.length === 0) return new Map();
+  conversationIds: readonly string[],
+): Promise<Map<string, ConversationTreeMetrics>> {
+  if (conversationIds.length === 0) return new Map();
 
   const hasComponents = sql`coalesce(
     ${usage}->>'inputTokens',
@@ -97,9 +115,12 @@ export async function readRootConversationMetricsFromSql(
     ${usage}->>'cachedInputTokens',
     ${usage}->>'cacheCreationTokens'
   ) is not null`;
+  const isChildAgent = sql<boolean>`(${conversationSubtreeColumns.conversationId} <> ${conversationSubtreeColumns.scopeConversationId})`;
   const rows: UsageAggregateRow[] = await db
     .select({
-      rootConversationId: juniorConversations.rootConversationId,
+      scopeConversationId: conversationSubtreeColumns.scopeConversationId,
+      isChildAgent,
+      conversations: sql<number>`count(*)::integer`.mapWith(Number),
       durationMs: sql<number>`coalesce(sum(${juniorConversations.durationMs}), 0)::double precision`,
       inputTokens: summedUsageNumber("inputTokens"),
       outputTokens: summedUsageNumber("outputTokens"),
@@ -120,34 +141,58 @@ export async function readRootConversationMetricsFromSql(
     })
     .from(juniorConversations)
     .innerJoin(
-      metricRootConversation,
-      and(
-        eq(
-          metricRootConversation.conversationId,
-          juniorConversations.rootConversationId,
-        ),
-        isNull(metricRootConversation.parentConversationId),
-        eq(
-          metricRootConversation.rootConversationId,
-          metricRootConversation.conversationId,
-        ),
+      conversationSubtree(conversationIds),
+      eq(
+        conversationSubtreeColumns.conversationId,
+        juniorConversations.conversationId,
       ),
     )
-    .where(
-      inArray(juniorConversations.rootConversationId, [...rootConversationIds]),
-    )
-    .groupBy(juniorConversations.rootConversationId);
+    .groupBy(conversationSubtreeColumns.scopeConversationId, isChildAgent);
 
-  return new Map(
-    rows.flatMap((row) => {
-      if (!row.rootConversationId) return [];
-      const usage = usageFromAggregate(row);
-      return [
-        [
-          row.rootConversationId,
-          { durationMs: row.durationMs, ...(usage ? { usage } : undefined) },
-        ],
-      ];
-    }),
-  );
+  const ownRows = new Map<string, UsageAggregateRow>();
+  const childRows = new Map<string, UsageAggregateRow>();
+  for (const row of rows) {
+    (row.isChildAgent ? childRows : ownRows).set(row.scopeConversationId, row);
+  }
+  const result = new Map<string, ConversationTreeMetrics>();
+  for (const [conversationId, own] of ownRows) {
+    const ownUsage = usageFromAggregate(own);
+    const child = childRows.get(conversationId);
+    const childUsage = child ? usageFromAggregate(child) : undefined;
+    const usage = addAgentTurnUsage(ownUsage, childUsage);
+    result.set(conversationId, {
+      durationMs: own.durationMs + (child?.durationMs ?? 0),
+      ...(usage ? { usage } : undefined),
+      ...(child
+        ? {
+            childAgents: {
+              count: child.conversations,
+              durationMs: child.durationMs,
+              ...(childUsage ? { usage: childUsage } : undefined),
+            },
+          }
+        : undefined),
+    });
+  }
+  return result;
+}
+
+/**
+ * Project the child agent part of tree metrics into the API shape. Return
+ * nothing when the Conversation has no child agents.
+ */
+export function childAgentTotalsReport(
+  metrics: ConversationTreeMetrics | undefined,
+  auxiliaryCosts?: ConversationTreeAuxiliaryCosts,
+): ConversationChildAgentTotals | undefined {
+  const childAgents = metrics?.childAgents;
+  if (!childAgents) return undefined;
+  return {
+    ...(auxiliaryCosts?.childAgentCostUsd === undefined
+      ? undefined
+      : { auxiliaryCostUsd: auxiliaryCosts.childAgentCostUsd }),
+    count: childAgents.count,
+    cumulativeDurationMs: childAgents.durationMs,
+    ...(childAgents.usage ? { cumulativeUsage: childAgents.usage } : undefined),
+  };
 }

@@ -37,6 +37,7 @@ function eventMessage(
     role,
     sourceSeq: event.seq,
     timestamp: eventTimestamp(event),
+    ...(event.mentions ? { mentions: event.mentions } : undefined),
   };
 }
 
@@ -218,6 +219,7 @@ export function transcriptMessagesFromEvents(
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),
+        ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
@@ -352,8 +354,12 @@ export function transcriptMessagesFromEvents(
     if (data.type === "subagent") {
       const subagentId = `${data.childConversationId}:${data.startedSeq}`;
       const existing = subagents.get(subagentId);
+      const finishedTimestamp =
+        data.status === "running" ? undefined : eventTimestamp(event);
       if (existing) {
         existing.status = data.status;
+        if (finishedTimestamp === undefined) delete existing.finishedTimestamp;
+        else existing.finishedTimestamp = finishedTimestamp;
         continue;
       }
       const part = {
@@ -362,6 +368,12 @@ export function transcriptMessagesFromEvents(
         childConversationId: data.childConversationId,
         subagentKind: data.subagentKind,
         status: data.status,
+        ...(finishedTimestamp === undefined
+          ? undefined
+          : { finishedTimestamp }),
+        ...(data.agentName ? { agentName: data.agentName } : undefined),
+        ...(data.task ? { task: data.task } : undefined),
+        ...(data.title ? { title: data.title } : undefined),
       };
       subagents.set(subagentId, part);
       messages.push({
@@ -377,6 +389,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "structured_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             namespace: data.namespace,
             name: data.name,
             version: data.version,
@@ -404,6 +417,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "context_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             event:
               data.type === "handoff"
                 ? {

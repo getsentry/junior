@@ -55,6 +55,19 @@ function getWeekStart(date: LocalDate): LocalDate {
   return addDays(date, -((getLocalDateWeekday(date) + 6) % 7));
 }
 
+/**
+ * Check that a value is an IANA time zone that this runtime knows. This module
+ * has no runtime imports, so the dashboard client bundle can use it.
+ */
+export function isValidTimeZone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Resolve a UTC timestamp into calendar parts for a named time zone. */
 export function getZonedDateTimeParts(
   timestampMs: number,

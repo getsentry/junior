@@ -90,4 +90,22 @@ describe("Sentry Skill Workflows", () => {
 
     expect(issueListCommands(digest)).not.toHaveLength(0);
   });
+
+  test("when creator-bound scheduled Sentry work becomes due without a connected account, do not ask the channel to connect it", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "creator",
+      destination: slackChannel(),
+      due: true,
+      task: "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
+    });
+
+    const digest = await run(heartbeat());
+
+    // Nobody can connect Sentry during the run. The run does not wait for
+    // authorization, and the channel gets no question, link, or apology.
+    expect(digest.replies).toEqual([]);
+    expect(digest.turns.map((turn) => turn.status)).not.toContain("started");
+  });
 });

@@ -1,5 +1,7 @@
 import { FormNotice } from "../../components/FormNotice";
+import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
+import { SelectFixtures } from "./SelectFixtures";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
@@ -7,12 +9,18 @@ import {
   ConversationFixture,
   MessageAttachmentsFixture,
 } from "./ConversationFixture";
+import {
+  SubagentCardFixture,
+  ToolCallGallery,
+} from "./TranscriptActivityFixtures";
 import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
 import {
   Activity,
+  ArchiveRestore,
   Bot,
   ChevronRight,
+  CircleAlert,
   Copy,
   MessageSquare,
   Timer,
@@ -35,6 +43,7 @@ import { DashboardChromeProvider } from "../../components/layout/DashboardChrome
 import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
+import { Notice, NoticeAction } from "../../components/Notice";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { ActorAvatar } from "../../components/ActorAvatar";
 import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack";
@@ -42,12 +51,11 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
 import { TextArea, TextInput } from "../../components/TextInput";
+import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
 import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShell";
-import { TranscriptToolView } from "../../conversations/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
-import type { TranscriptViewToolCallPart } from "../../types";
 
 export type GallerySectionId = "foundations" | "charts" | "transcripts";
 
@@ -134,123 +142,6 @@ Findings:
 
 See https://docs.sentry.io for product docs.`;
 
-type ToolCallFixture = {
-  description: string;
-  part: TranscriptViewToolCallPart;
-  timestamp: number;
-};
-
-const TOOL_CALL_TIMESTAMP = Date.UTC(2026, 4, 1, 16);
-
-const TOOL_CALL_FIXTURES = [
-  {
-    description: "Default completed tool with normalized arguments",
-    part: {
-      id: "gallery-search",
-      input: {
-        query: "release regression",
-        limit: 25,
-        options: { includeArchived: false },
-      },
-      name: "searchIssues",
-      output: { matches: 3 },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 1_842,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP,
-  },
-  {
-    description: "Running webSearch with name-only shimmer",
-    part: {
-      id: "gallery-running",
-      input: {
-        query: "service:checkout status:error",
-        max_results: 50,
-      },
-      name: "webSearch",
-      status: "running",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 3_000,
-  },
-  {
-    description: "Failed tool",
-    part: {
-      id: "gallery-error",
-      input: {
-        command: "jr-rpc config get github.repo",
-        timeout_ms: 10_000,
-      },
-      name: "bash",
-      output: { error: "configuration unavailable" },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 6_416,
-      status: "error",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 6_000,
-  },
-  {
-    description: "Known loadSkill signature",
-    part: {
-      id: "gallery-load-skill",
-      input: { skill_name: "junior-qa" },
-      name: "loadSkill",
-      output: { skill_name: "junior-qa" },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 8_105,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 8_000,
-  },
-  {
-    description: "Known executeTool signature with nested arguments",
-    part: {
-      id: "gallery-execute-tool",
-      input: {
-        tool_name: "github_search",
-        arguments: { query: "is:pr is:open", limit: 25 },
-      },
-      name: "executeTool",
-      output: { matches: 3 },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 10_723,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 10_000,
-  },
-  {
-    description: "Long generic arguments exercise both truncation limits",
-    part: {
-      id: "gallery-long",
-      input: {
-        project: "payments-checkout-platform",
-        query:
-          "Find every regression associated with the most recent production deployment and include the complete evidence trail",
-        environment: "production",
-        includeResolved: false,
-        ignoredAfterFourEntries: "not shown in the collapsed preview",
-      },
-      name: "investigateDeploy",
-      output: { channel_id: "C123" },
-      resultTimestamp: TOOL_CALL_TIMESTAMP + 13_250,
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 12_000,
-  },
-  {
-    description: "Completed tool without argument or result payloads",
-    part: {
-      id: "gallery-empty",
-      name: "systemTime",
-      status: "completed",
-      type: "tool_call",
-    },
-    timestamp: TOOL_CALL_TIMESTAMP + 15_000,
-  },
-] as const satisfies readonly ToolCallFixture[];
-
 /** Config-gated component gallery with one page per category. */
 export function ComponentsPage() {
   return (
@@ -303,6 +194,7 @@ function FoundationsGalleryPage() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("deploy failure");
 
   return (
     <GalleryShell
@@ -338,10 +230,12 @@ function FoundationsGalleryPage() {
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
       </Fixture>
+      <Fixture title="Select controls">
+        <SelectFixtures />
+      </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
           <DashboardHeader
-            compact
             mobileNavigationOpen={navigationOpen}
             navItems={[
               { key: "code", label: "Code", to: "/code" },
@@ -411,6 +305,9 @@ function FoundationsGalleryPage() {
           </Drawer>
         ) : null}
       </Fixture>
+      <Fixture title="Theme">
+        <ThemeSwitcher className="max-w-64" />
+      </Fixture>
       <Fixture title="Color tokens">
         <div className="grid gap-4">
           <TokenSwatchRow
@@ -433,6 +330,14 @@ function FoundationsGalleryPage() {
               { className: "bg-dashboard-text-muted", label: "muted" },
               { className: "bg-dashboard-text-subtle", label: "subtle" },
               { className: "bg-dashboard-text-faint", label: "faint" },
+            ]}
+          />
+          <TokenSwatchRow
+            label="Accent"
+            swatches={[
+              { className: "bg-dashboard-accent", label: "accent" },
+              { className: "bg-dashboard-accent-text", label: "accent text" },
+              { className: "bg-dashboard-accent/10", label: "accent / 10" },
               { className: "bg-dashboard-focus", label: "focus" },
             ]}
           />
@@ -575,6 +480,12 @@ function FoundationsGalleryPage() {
             disabled
             value="read only"
           />
+          <SearchInput
+            label="Search conversations"
+            onChange={setSearchQuery}
+            placeholder="Search conversations…"
+            value={searchQuery}
+          />
         </div>
       </Fixture>
       <Fixture title="Status labels">
@@ -588,6 +499,23 @@ function FoundationsGalleryPage() {
           <StatusChip size="compact" tone="warning">
             Trigger unavailable
           </StatusChip>
+        </div>
+      </Fixture>
+      <Fixture title="Notices">
+        <div className="grid max-w-md gap-2">
+          <Notice
+            action={<NoticeAction>Undo</NoticeAction>}
+            detail="Investigate checkout latency"
+            icon={ArchiveRestore}
+            title="Conversation archived"
+          />
+          <Notice
+            action={<NoticeAction tone="error">Dismiss</NoticeAction>}
+            detail="Investigate checkout latency"
+            icon={CircleAlert}
+            title="Could not archive"
+            tone="error"
+          />
         </div>
       </Fixture>
       <Fixture title="Actor avatars">
@@ -808,8 +736,11 @@ function TranscriptsGalleryPage() {
       <Fixture title="Automation in a reply">
         <div className="max-w-[52.5rem]">
           <TranscriptMessageShell actor="Junior" role="assistant">
-            <span className="text-sm font-semibold text-cyan-100">Junior</span>
+            <span className="text-sm font-semibold text-dashboard-accent-text">
+              Junior
+            </span>
             <TranscriptText
+              mentions={[]}
               role="assistant"
               text={
                 "Your reminder is set.\n\nI'll remind you to drink water every 30 minutes until you ask me to stop."
@@ -870,39 +801,18 @@ function TranscriptsGalleryPage() {
         <TranscriptMarkdown text={GFM_SAMPLE} />
       </Fixture>
       <Fixture title="TranscriptText assistant">
-        <TranscriptText role="assistant" text={MIXED_ASSISTANT} />
+        <TranscriptText mentions={[]} role="assistant" text={MIXED_ASSISTANT} />
       </Fixture>
       <Fixture title="TranscriptText user">
-        <TranscriptText role="user" text={EVENT_NOTIFICATION} />
+        <TranscriptText mentions={[]} role="user" text={EVENT_NOTIFICATION} />
       </Fixture>
       <Fixture title="Tool calls">
         <ToolCallGallery />
       </Fixture>
+      <Fixture title="Subagent cards">
+        <SubagentCardFixture />
+      </Fixture>
     </GalleryShell>
-  );
-}
-
-/** Render typed transcript tool states for visual regression and interaction checks. */
-export function ToolCallGallery() {
-  return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-dashboard-border bg-dashboard-fill-faint">
-      <div className="border-b border-dashboard-border-subtle px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted">
-        Activity lane · click a row for arguments and result
-      </div>
-      <div className="grid min-w-0 gap-1 px-2 py-1.5">
-        {TOOL_CALL_FIXTURES.map((fixture) => (
-          <div className="grid min-w-0 gap-1" key={fixture.part.id}>
-            <div className="font-mono text-2xs uppercase tracking-[0.08em] text-dashboard-text-muted">
-              {fixture.description}
-            </div>
-            <TranscriptToolView
-              part={fixture.part}
-              timestamp={fixture.timestamp}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -938,7 +848,7 @@ function GalleryShell(props: {
 function Fixture(props: { children: ReactNode; title: string }) {
   return (
     <Card className="grid min-w-0 gap-3 p-4 sm:p-5" padding="none">
-      <div className="border-b border-dashboard-border-subtle pb-3 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+      <div className="border-b border-dashboard-border-subtle pb-3 font-sans text-xs font-medium text-dashboard-text-muted">
         {props.title}
       </div>
       <div className="min-w-0">{props.children}</div>
@@ -952,7 +862,7 @@ function TokenSwatchRow(props: {
 }) {
   return (
     <div className="grid gap-2">
-      <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <div className="font-sans font-medium text-xs text-dashboard-text-muted">
         {props.label}
       </div>
       <div className="flex flex-wrap gap-3">

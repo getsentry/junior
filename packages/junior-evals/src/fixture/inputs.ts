@@ -37,6 +37,11 @@ export interface FileInput {
 /** An `app_mention` through the Slack Events API webhook. */
 export interface MentionInput {
   kind: "mention";
+  /**
+   * The person wrote in the chat of the Junior app, which is a direct message.
+   * Slack starts an assistant thread there before the first message.
+   */
+  assistantThread?: boolean;
   author?: SlackAuthor;
   /** The channel for a new thread. Defaults to a new channel. */
   channel?: MentionChannel;
@@ -145,11 +150,13 @@ export type HistoryItem = MessageInput | HistoryReply | AppMessage;
 
 /**
  * Mention Junior in Slack. `run()` posts it to a new thread. With `fromApp`,
- * another Slack app posted the mention, as an alert tool does.
+ * another Slack app posted the mention, as an alert tool does. With
+ * `assistantThread`, `run()` posts it to a new assistant thread.
  */
 export function slackMention(
   text: string,
   options: {
+    assistantThread?: boolean;
     author?: SlackAuthor;
     channel?: MentionChannel;
     channelType?: "channel" | "im";

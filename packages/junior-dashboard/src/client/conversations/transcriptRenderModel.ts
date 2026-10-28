@@ -194,7 +194,12 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "reasoning") return part.text ?? "reasoning redacted";
       if (part.type === "tool_call") return `tool_call ${part.name}`;
       if (part.type === "subagent") {
-        return `subagent ${part.subagentKind}\nstatus ${part.status}`;
+        return [
+          `subagent ${part.agentName ?? part.subagentKind}`,
+          ...(part.title ? [`title ${part.title}`] : []),
+          ...(part.task ? [`task ${part.task}`] : []),
+          `status ${part.status}`,
+        ].join("\n");
       }
       if (part.type === "structured_event") {
         return [

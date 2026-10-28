@@ -23,6 +23,8 @@ type ReportEvent = ConversationDetail["events"][number];
 
 /** An assistant message that people saw. */
 export interface Reply {
+  /** The Slack channel of the post. Web replies have none. */
+  channelId?: string;
   conversationId: string;
   messageId: string;
   text: string;
@@ -327,6 +329,7 @@ export function slackCallReplies(args: {
     const durable = index >= 0 ? unmatched.splice(index, 1)[0] : undefined;
     if (!durable) extra.push({ content: post.text, role: "assistant" });
     return {
+      channelId: post.channel,
       conversationId: args.conversationId,
       messageId: durable?.messageId ?? `slack:${post.ts}`,
       text: post.text,

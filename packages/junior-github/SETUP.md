@@ -19,6 +19,11 @@ In GitHub:
 - Workflows: Write
 - Metadata: Read
 
+  Optional: under account permissions, grant Email addresses: Read. Junior then
+  reads the verified emails of a connected GitHub account to link it to a
+  person. Without it, Junior links the account only through the person who
+  connected it.
+
 4. Create the app and generate a private key.
 5. Install the app on the target org/repo(s).
 
@@ -164,11 +169,9 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 
 Run as a regular sandbox `bash` command while the relevant skill is active:
 
-Clone a repository with a shallow checkout by default:
-
-```bash
-gh repo clone owner/repo -- --depth=1
-```
+Clone a repository with the `github_cloneRepository` tool. It makes a shallow
+checkout. It first checks for a matching Workspace. Do not use `git clone` or
+`gh repo clone`, because they skip that check.
 
 Deepen later only if the task needs more history:
 

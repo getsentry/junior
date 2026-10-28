@@ -9,7 +9,7 @@ import { getGoogleAccount, saveGoogleAccount } from "../src/store";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
-  CALENDAR_SCOPE,
+  API_SCOPES,
   createGoogleDb,
   stubGoogleEnv,
 } from "./fixture";
@@ -35,6 +35,14 @@ describe("Google egress policy", () => {
         method: "POST",
         operation: "google.calendar.freebusy.query",
         url: "https://www.googleapis.com/drive/v3/files",
+      }),
+    ).toThrow(EgressPolicyDenied);
+    // Each operation is bound to the host of its own Google API.
+    expect(() =>
+      grantFor({
+        method: "GET",
+        operation: "google.sheets.spreadsheet.get",
+        url: "https://www.googleapis.com/v4/spreadsheets/1AbCdEfGhIjK",
       }),
     ).toThrow(EgressPolicyDenied);
 
@@ -88,7 +96,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: API_SCOPES,
     });
     const fetch = vi.fn(async () =>
       Response.json({ access_token: "access-token", expires_in: 3600 }),
@@ -102,11 +110,13 @@ describe("Google credential issuing", () => {
       lease: {
         account: { id: ACCOUNT_EMAIL },
         headerTransforms: [
-          {
-            domain: "www.googleapis.com",
-            headers: { Authorization: "Bearer access-token" },
-          },
-        ],
+          "www.googleapis.com",
+          "sheets.googleapis.com",
+          "slides.googleapis.com",
+        ].map((domain) => ({
+          domain,
+          headers: { Authorization: "Bearer access-token" },
+        })),
       },
     });
     const body = new URLSearchParams(String(fetch.mock.calls[0]![1]!.body));
@@ -120,7 +130,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: API_SCOPES,
     });
     vi.stubGlobal(
       "fetch",

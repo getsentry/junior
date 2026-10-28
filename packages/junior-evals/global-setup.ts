@@ -15,6 +15,9 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
+import { installEvalClock } from "./src/eval-clock";
+import { useGlobalDispatcherForFetch } from "./src/proxy-dispatcher";
+import { startRecordingRun } from "./src/recording-run";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
 import {
@@ -24,9 +27,10 @@ import {
 import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
 import { authSuitePlugins } from "./src/suites/auth-agent-options";
 
-type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
-  provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
-};
+type EvalGlobalProject = Parameters<typeof setupPostgres>[0] &
+  Parameters<typeof startRecordingRun>[0] & {
+    provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
+  };
 
 /** Set up shared Postgres and public sandbox egress for one eval invocation. */
 export default async function setup(
@@ -39,6 +43,7 @@ export default async function setup(
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
+  let stopRecordings: (() => Promise<void>) | undefined;
   let mswListening = false;
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
   const fixtureEnv = {
@@ -60,6 +65,7 @@ export default async function setup(
     const errors: unknown[] = [];
     for (const task of [
       async () => await egress?.close(),
+      async () => await stopRecordings?.(),
       async () => {
         if (mswListening) mswServer.close();
       },
@@ -108,19 +114,35 @@ export default async function setup(
     previousPlugins = setPlugins(runtimePlugins);
     Object.assign(process.env, fixtureEnv);
     previousCatalogConfig = pluginCatalogRuntime.setConfig(pluginConfig);
+    stopRecordings = await startRecordingRun(project);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
+    // The Vercel Sandbox client gives `fetch` its own agent.
+    useGlobalDispatcherForFetch();
     process.stdout.write("[evals] Starting public egress\n");
+    // The worker makes egress tokens, leases, and fixture credentials with
+    // the eval clock, and this process checks them. Until the first test
+    // sets it, the clock is real, so snapshot warmup below uses real time.
+    const evalClock = installEvalClock();
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({
         evalOAuthIdentityRequests: readTestEvalOAuthIdentityRequests(),
         evalOAuthRefreshTokens: readEvalOAuthRefreshTokens(),
       }),
-      resetFixtures: () => {
+      resetFixtures: ({ nowMs }) => {
+        evalClock.set(nowMs);
         resetEvalOAuthMockState();
         resetTestEvalOAuthHttpFixtures();
         resetTestGitHubHttpFixtures();
+      },
+      // Vercel signs real OIDC tokens with real times.
+      verifyOidc: async (token) => {
+        const { verifyVercelSandboxOidcToken } =
+          await import("@/chat/sandbox/egress/oidc");
+        return await verifyVercelSandboxOidcToken(token, {
+          currentDate: new Date(evalClock.realNow()),
+        });
       },
     });
     process.stdout.write("[evals] Public egress healthy; warming snapshots\n");

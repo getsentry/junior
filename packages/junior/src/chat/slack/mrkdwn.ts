@@ -118,7 +118,7 @@ function readBareUrl(
 ): { url: string; suffix: string; end: number } | undefined {
   let end = start;
   while (end < line.length) {
-    const ch = line[end];
+    const ch = line.charAt(end);
     if (
       /\s/.test(ch) ||
       ch === "<" ||
@@ -163,8 +163,28 @@ function readBareUrl(
   return { url: raw, suffix, end };
 }
 
-/** Wrap bare http(s) URLs on a single line as Slack explicit `<url>` links. */
-function wrapBareUrlsOnLine(line: string): string {
+// Slack user IDs start with U or W and contain a digit, so `@URGENT` stays text.
+const BARE_SLACK_USER_ID_RE = /^@([UW](?=[A-Z0-9]*\d)[A-Z0-9]{8,})(?![\w])/;
+
+function readBareSlackUserMention(
+  line: string,
+  start: number,
+): { text: string; end: number } | undefined {
+  if (line[start] !== "@" || /\w/.test(line[start - 1] ?? "")) {
+    return undefined;
+  }
+  const match = BARE_SLACK_USER_ID_RE.exec(line.slice(start));
+  if (!match) {
+    return undefined;
+  }
+  return { text: `<@${match[1]}>`, end: start + match[0].length };
+}
+
+/**
+ * Wrap bare http(s) URLs and bare `@U123` Slack user IDs on a single line as
+ * Slack explicit `<url>` links and `<@U123>` mentions.
+ */
+function wrapBareReferencesOnLine(line: string): string {
   let result = "";
   let i = 0;
 
@@ -190,6 +210,13 @@ function wrapBareUrlsOnLine(line: string): string {
       continue;
     }
 
+    const userMention = readBareSlackUserMention(line, i);
+    if (userMention) {
+      result += userMention.text;
+      i = userMention.end;
+      continue;
+    }
+
     if (line.startsWith("https://", i) || line.startsWith("http://", i)) {
       const parsed = readBareUrl(line, i);
       if (parsed) {
@@ -209,12 +236,13 @@ function wrapBareUrlsOnLine(line: string): string {
 /**
  * Pre-wrap bare http(s) URLs outside fenced code blocks as Slack explicit
  * links, preventing Slack's auto-linker from consuming adjacent formatting
- * markers into the URL.
+ * markers into the URL. Bare `@U123` user IDs become `<@U123>` mentions,
+ * because Slack shows a bare ID as literal text.
  *
  * Uses the same fence-toggle rule as `ensureBlockSpacing` so both passes
  * agree on which lines are code.
  */
-function wrapBareUrls(text: string): string {
+function wrapBareReferences(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
   let inCodeBlock = false;
@@ -225,7 +253,7 @@ function wrapBareUrls(text: string): string {
       out.push(line);
       continue;
     }
-    out.push(inCodeBlock ? line : wrapBareUrlsOnLine(line));
+    out.push(inCodeBlock ? line : wrapBareReferencesOnLine(line));
   }
 
   return out.join("\n");
@@ -239,8 +267,7 @@ export function ensureBlockSpacing(text: string): string {
   const result: string[] = [];
   let inCodeBlock = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const line of lines) {
     const isCodeFence = codeBlockPattern.test(line.trimStart());
 
     if (isCodeFence) {
@@ -291,7 +318,7 @@ export function normalizeSlackReplyMarkdown(text: string): string {
   let normalized = applyPluginFormatMarkdown(text)
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+$/gm, "");
-  normalized = wrapBareUrls(normalized);
+  normalized = wrapBareReferences(normalized);
   normalized = ensureBlockSpacing(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
 }

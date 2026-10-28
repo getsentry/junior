@@ -1,6 +1,10 @@
 import type { EventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { sentryIssueResource, sentryProjectResource } from "../events/issue.js";
+import {
+  SENTRY_METRIC_ALERT_EVENTS,
+  sentryMetricAlertResource,
+} from "../events/metric-alert.js";
 
 const issueWebhookSchema = z
   .object({
@@ -23,6 +27,24 @@ const issueWebhookSchema = z
           web_url: z.string().url().optional(),
         })
         .passthrough(),
+    }),
+    installation: z.object({ uuid: z.string().min(1) }).passthrough(),
+  })
+  .passthrough();
+
+const metricAlertWebhookSchema = z
+  .object({
+    action: z.string(),
+    data: z.object({
+      description_text: z.string().optional(),
+      description_title: z.string().optional(),
+      metric_alert: z
+        .object({
+          alert_rule: z.object({ id: z.coerce.string().min(1) }).passthrough(),
+          id: z.coerce.string().min(1),
+        })
+        .passthrough(),
+      web_url: z.string().url(),
     }),
     installation: z.object({ uuid: z.string().min(1) }).passthrough(),
   })
@@ -76,14 +98,25 @@ function issueText(issue: {
   return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
-/** Normalize one verified Sentry webhook into issue- and project-scoped events. */
-export function normalizeSentryEvents(input: {
+/**
+ * Read the org slug from a Sentry web URL. Sentry builds metric alert links
+ * with either `/organizations/<org>/` paths or `<org>.sentry.io` hosts.
+ */
+function webOrganizationSlug(webUrl: string): string | undefined {
+  const fromPath = organizationSlug(webUrl);
+  if (fromPath) return fromPath;
+  const labels = new URL(webUrl).hostname.split(".");
+  return labels.length >= 3 ? labels[0] : undefined;
+}
+
+interface WebhookInput {
   body: unknown;
   hookResource: string;
   hookTimestamp?: string;
   webhookOrg: string;
-}): EventInput[] {
-  if (input.hookResource !== "issue") return [];
+}
+
+function normalizeIssueEvents(input: WebhookInput): EventInput[] {
   const parsed = issueWebhookSchema.safeParse(input.body);
   if (!parsed.success || parsed.data.action !== "created") return [];
 
@@ -119,4 +152,52 @@ export function normalizeSentryEvents(input: {
     { ...event, identifier: issueResource.identifier },
     { ...event, identifier: projectResource.identifier },
   ];
+}
+
+function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
+  const parsed = metricAlertWebhookSchema.safeParse(input.body);
+  if (!parsed.success) return [];
+  const eventType = `metric_alert.${parsed.data.action}`;
+  if (!(SENTRY_METRIC_ALERT_EVENTS as readonly string[]).includes(eventType)) {
+    return [];
+  }
+
+  const { data } = parsed.data;
+  const org = webOrganizationSlug(data.web_url)?.toLowerCase();
+  if (!org || org !== input.webhookOrg.toLowerCase()) return [];
+  const alertRuleId = data.metric_alert.alert_rule.id;
+  const incidentId = data.metric_alert.id;
+  const resource = sentryMetricAlertResource({ alertRuleId, org });
+  const untrustedText = [
+    data.description_title,
+    data.description_text,
+    `URL: ${data.web_url}`,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n");
+
+  return [
+    {
+      // One event per incident state. Sentry retries get new Request-IDs.
+      eventKey: `sentry:${resource.identifier}:${incidentId}:${eventType}`,
+      eventType,
+      identifier: resource.identifier,
+      occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
+      trustedSummary: `${resource.label} is ${parsed.data.action}.`,
+      data: { alertRuleId, incidentId, url: data.web_url },
+      untrustedText,
+    },
+  ];
+}
+
+/** Normalize one verified Sentry webhook into subscribable Sentry events. */
+export function normalizeSentryEvents(input: WebhookInput): EventInput[] {
+  switch (input.hookResource) {
+    case "issue":
+      return normalizeIssueEvents(input);
+    case "metric_alert":
+      return normalizeMetricAlertEvents(input);
+    default:
+      return [];
+  }
 }

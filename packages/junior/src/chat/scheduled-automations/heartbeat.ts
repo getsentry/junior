@@ -1,19 +1,17 @@
 import { slackMention } from "@/chat/slack/mrkdwn";
-import {
-  type Dispatch,
-  type ReplyAttribution,
-} from "@sentry/junior-plugin-api";
+import { type Dispatch } from "@sentry/junior-plugin-api";
 import {
   dispatchScheduledAutomation,
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
-import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { settleEventAutomationRuns } from "@/chat/event-automations/runs";
+import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import type { JuniorDatabase } from "@/db/db";
 import {
   advanceScheduledAutomationAfterRun,
@@ -33,13 +31,6 @@ import {
 import type { ScheduledRun, ScheduledAutomation } from "./types";
 
 const SCHEDULED_AUTOMATION_HEARTBEAT_LIMIT = 10;
-
-const SCHEDULE_FREQUENCY_COPY = {
-  daily: { label: "Daily", unit: "day" },
-  weekly: { label: "Weekly", unit: "week" },
-  monthly: { label: "Monthly", unit: "month" },
-  yearly: { label: "Yearly", unit: "year" },
-} as const;
 
 function singleLineMetadataValue(value: string): string {
   return value
@@ -83,23 +74,6 @@ function buildDispatchMetadata(args: {
   };
 }
 
-function replyAttribution(task: ScheduledAutomation): ReplyAttribution {
-  if (task.schedule.kind === "one_off") {
-    return { label: "Scheduled automation", detail: "One-time" };
-  }
-  const recurrence = task.schedule.recurrence;
-  if (!recurrence) {
-    return { label: "Scheduled automation", detail: "Recurring" };
-  }
-  const frequency = SCHEDULE_FREQUENCY_COPY[recurrence.frequency];
-  return recurrence.interval === 1
-    ? { label: "Scheduled automation", detail: frequency.label }
-    : {
-        label: "Scheduled automation",
-        detail: `Every ${recurrence.interval} ${frequency.unit}s`,
-      };
-}
-
 function shouldSkipRun(
   task: ScheduledAutomation,
   run: ScheduledRun,
@@ -117,22 +91,6 @@ function shouldSkipRun(
     return `Scheduled automation ${task.id} no longer targets ${new Date(run.scheduledForMs).toISOString()}.`;
   }
   return undefined;
-}
-
-async function recordScheduledExecution(args: {
-  nowMs: number;
-  run: ScheduledRun;
-  status: "blocked" | "completed" | "failed";
-}): Promise<void> {
-  const dispatchId = args.run.dispatchId;
-  await recordAutomationExecution("scheduled", args.run.taskId, {
-    ...(dispatchId
-      ? { conversationId: getDispatchConversationId({ id: dispatchId }) }
-      : undefined),
-    executionId: args.run.id,
-    nowMs: args.nowMs,
-    status: args.status,
-  });
 }
 
 async function logRunOutcome(args: {
@@ -192,11 +150,6 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "completed",
     });
-    await recordScheduledExecution({
-      nowMs: args.nowMs,
-      run: args.run,
-      status: "completed",
-    });
     await logRunOutcome({
       eventName: "scheduled_automation.run.completed",
       run: completed,
@@ -212,17 +165,21 @@ async function applyDispatchResult(args: {
       startedAtMs: args.run.startedAtMs!,
     });
     if (!blocked) return false;
-    await advanceScheduledAutomationAfterRun(args.db, {
+    const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
       errorMessage: blocked.errorMessage,
       nowMs: args.nowMs,
       run: args.run,
       status: "blocked",
     });
-    await recordScheduledExecution({
-      nowMs: args.nowMs,
-      run: args.run,
-      status: "blocked",
-    });
+    // Notify only when the block is stored, so the dashboard matches.
+    if (storedBlock) {
+      await notifyAutomationBlocked({
+        automationId: args.run.taskId,
+        dispatchId: args.dispatch.id,
+        kind: "scheduled",
+        reason: blocked.errorMessage ?? "Dispatch blocked.",
+      });
+    }
     await logRunOutcome({
       eventName: "scheduled_automation.run.blocked",
       run: blocked,
@@ -243,11 +200,6 @@ async function applyDispatchResult(args: {
     if (!failed) return false;
     await advanceScheduledAutomationAfterRun(args.db, {
       errorMessage: failed.errorMessage,
-      nowMs: args.nowMs,
-      run: args.run,
-      status: "failed",
-    });
-    await recordScheduledExecution({
       nowMs: args.nowMs,
       run: args.run,
       status: "failed",
@@ -286,17 +238,19 @@ async function finishClaimedRun(args: {
           startedAtMs: args.run.startedAtMs,
         });
   if (!finished) return;
-  await advanceScheduledAutomationAfterRun(args.db, {
+  const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
     errorMessage: args.errorMessage,
     nowMs: args.nowMs,
     run: args.run,
     status: args.status,
   });
-  await recordScheduledExecution({
-    nowMs: args.nowMs,
-    run: args.run,
-    status: args.status,
-  });
+  if (storedBlock) {
+    await notifyAutomationBlocked({
+      automationId: args.run.taskId,
+      kind: "scheduled",
+      reason: args.errorMessage,
+    });
+  }
   await logRunOutcome({
     eventName:
       args.status === "blocked"
@@ -308,12 +262,16 @@ async function finishClaimedRun(args: {
   });
 }
 
-/** Reconcile completed dispatches and enqueue a bounded batch of due tasks. */
+/**
+ * Settle finished runs of both Automation kinds, then enqueue a bounded batch
+ * of due Scheduled automations.
+ */
 export async function runScheduledAutomationHeartbeat(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
 }): Promise<number> {
   const db = getDb();
+  await settleEventAutomationRuns(db, args.nowMs);
   let processedCount = 0;
   let dispatchCount = 0;
   for (const run of await listIncompleteScheduledRuns(db)) {
@@ -406,6 +364,7 @@ export async function runScheduledAutomationHeartbeat(args: {
     let dispatch;
     try {
       dispatch = await dispatchScheduledAutomation({
+        automationId: task.id,
         conversationWorkQueue: args.conversationWorkQueue,
         nowMs: args.nowMs,
         options: {
@@ -424,7 +383,7 @@ export async function runScheduledAutomationHeartbeat(args: {
           destinationVisibility: task.conversationAccess.visibility,
           input: buildDispatchInput(task),
           metadata,
-          replyAttribution: replyAttribution(task),
+          replyAttribution: automationReplyAttribution(task.title),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },
       });
@@ -446,6 +405,7 @@ export async function runScheduledAutomationHeartbeat(args: {
       dispatchId: dispatch.id,
       nowMs: args.nowMs,
       runId: run.id,
+      task,
     });
     logInfo(
       "scheduled_automation.run.dispatched",

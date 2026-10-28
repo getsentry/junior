@@ -20,7 +20,7 @@ The package includes three skills:
 
 - `/agent-browser` for general browser navigation, interaction, extraction, and capture
 - `/visual-web-qa` for evidence-driven verification of frontend, docs, layout, theme, loading, animation, and interaction changes
-- `/demo-video` for edited product presentations with browser captures, optional narration, and Remotion
+- `/demo-video` for edited demos, walkthroughs, and explainers with browser captures, optional narration and music, and Remotion
 
 For example:
 

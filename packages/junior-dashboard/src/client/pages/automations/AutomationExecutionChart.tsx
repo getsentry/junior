@@ -18,7 +18,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { formatActivityChartAverage } from "../../format";
 
-const EXECUTION_COLOR = "#fbbf24";
+const EXECUTION_COLOR = "var(--color-amber-400)";
 
 /** Render completed automation executions over a trailing window. */
 export function AutomationExecutionChart(props: {
@@ -45,7 +45,7 @@ export function AutomationExecutionChart(props: {
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
           {totals.reduce((sum, value) => sum + value, 0).toLocaleString()} runs
         </h2>
-        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           Completed automation executions over time.
         </p>
       </div>
@@ -95,7 +95,7 @@ export function AutomationExecutionChart(props: {
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-slate-200)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
@@ -104,7 +104,7 @@ export function AutomationExecutionChart(props: {
           />
         </ChartSvg>
         {!hasExecutions ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No automation executions in this period.
           </div>
         ) : null}

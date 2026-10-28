@@ -43,7 +43,7 @@ export function AutomationScheduleFields(props: {
     queryFn: () =>
       post(
         automationSchedulePreviewSchema,
-        `/api/automations/scheduled/${encodeURIComponent(props.automation.id)}/preview`,
+        `/api/automations/${encodeURIComponent(props.automation.id)}/preview`,
         previewValue,
       ),
   });
@@ -152,7 +152,7 @@ export function AutomationScheduleFields(props: {
                       })
                     }
                     className={cn(
-                      "min-h-11 cursor-pointer rounded border px-1 text-xs font-medium capitalize focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:min-h-10 sm:text-sm",
+                      "min-h-11 cursor-pointer rounded-md border px-1 text-xs font-medium capitalize focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:min-h-10 sm:text-sm",
                       value.weekdays?.includes(day)
                         ? "border-dashboard-focus/50 bg-dashboard-focus/10 text-dashboard-focus"
                         : "border-dashboard-border-emphasis text-dashboard-text-muted hover:bg-dashboard-fill-hover",

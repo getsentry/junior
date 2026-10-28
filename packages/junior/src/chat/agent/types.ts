@@ -23,6 +23,7 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
+import type { ModelProfile } from "@/chat/model-profile";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -67,13 +68,15 @@ export type AgentSteeringMessage = {
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   name?: string;
+  profile: ModelProfile;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
+  title?: string;
 };
 
 /** Handle returned after a child-agent task is durably scheduled. */
 export type SpawnAgentResult = {
-  invocationId: string;
+  childConversationId: string;
 };
 
 /** Runtime-bound child-agent capability exposed to model-facing tool wiring. */
@@ -81,6 +84,29 @@ export type SpawnAgent = (
   input: SpawnAgentInput,
   options: { signal?: AbortSignal; toolCallId: string },
 ) => Promise<SpawnAgentResult>;
+
+/** Model-safe input for one message to the parent or a child agent. */
+export type MessageAgentInput = {
+  /** `parent`, or the name or Conversation id of a child agent. */
+  to: string;
+  text: string;
+};
+
+/** How one message reached its target agent. */
+export type MessageAgentResult = {
+  conversationId: string;
+  /**
+   * `started`: the target child agent starts work on the message now.
+   * `queued`: the target reads it after its current work.
+   */
+  delivery: "queued" | "started";
+};
+
+/** Runtime-bound capability to message the parent or a child agent. */
+export type MessageAgent = (
+  input: MessageAgentInput,
+  options: { signal?: AbortSignal; toolCallId: string },
+) => Promise<MessageAgentResult>;
 
 /** Current user instruction for one agent-run slice. */
 export type AgentInstruction = {
@@ -109,6 +135,11 @@ export type AgentDispatch = {
   replyAttribution?: ReplyAttribution;
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
+  /**
+   * The run ends with one declared Automation result. It gets no Delivery,
+   * and only a declared message posts. The dispatch layer sets this once.
+   */
+  declaresResult?: boolean;
 };
 
 /** Optional agent capabilities that a run slice can turn off. */
@@ -152,6 +183,8 @@ export class RetryableDeliveryError extends Error {
 export type AgentDurability = {
   /** Schedule delegated work with authority bound by the active parent run. */
   spawnAgent?: SpawnAgent;
+  /** Message the parent or a child agent with the authority of this run. */
+  messageAgent?: MessageAgent;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
@@ -202,6 +235,11 @@ export type AgentEnvironment = {
 export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
+  /**
+   * Parent of a child agent Conversation. The final reply of this run goes to
+   * that parent, not to a person. Unset for a root Conversation.
+   */
+  parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
   turnId: string;
   /** Optional bounded-run identifier used only for observability. */
@@ -252,6 +290,8 @@ export type AgentRun = {
   deadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
+  /** Fixed model profile for this run. */
+  modelProfile?: ModelProfile;
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoning?: TurnReasoningLevel;
   environment?: AgentEnvironment;

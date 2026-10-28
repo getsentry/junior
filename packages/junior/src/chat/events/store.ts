@@ -37,6 +37,8 @@ const subscriptionSchema = z
     events: z.array(eventTypeSchema).min(1),
     expiresAtMs: z.number().finite(),
     firesAtMs: z.number().finite().optional(),
+    /** Guidance for this Watch only, by event type. */
+    guidance: z.record(eventTypeSchema, z.string().min(1)).optional(),
     id: z.string().min(1),
     intent: z.string().min(1),
     label: z.string().min(1),
@@ -55,6 +57,7 @@ export interface CreateWatchInput {
   conversationId: string;
   events: string[];
   expiresAtMs: number;
+  guidance?: Partial<Record<string, string>>;
   intent: string;
   label: string;
   match?: EventMatch;
@@ -296,6 +299,20 @@ function matchesEvent(
   );
 }
 
+/** Keep non-empty guidance for events that the Watch receives. */
+function watchGuidance(
+  guidance: Partial<Record<string, string>> | undefined,
+  events: readonly string[],
+): Record<string, string> | undefined {
+  if (!guidance) return undefined;
+  const kept: Record<string, string> = {};
+  for (const eventType of events) {
+    const text = guidance[eventType]?.trim();
+    if (text) kept[eventType] = text;
+  }
+  return Object.keys(kept).length > 0 ? kept : undefined;
+}
+
 /** Create or replace the active subscription for one conversation/resource/event set. */
 export async function createWatch(
   input: CreateWatchInput,
@@ -324,11 +341,13 @@ export async function createWatch(
     namespace: input.namespace,
     identifier: input.identifier,
   });
+  const guidance = watchGuidance(input.guidance, events);
   const record: Watch = {
     conversationId: input.conversationId,
     createdAtMs: nowMs,
     events,
     expiresAtMs: input.expiresAtMs,
+    ...(guidance ? { guidance } : undefined),
     id,
     intent: input.intent,
     label: input.label,
@@ -484,6 +503,19 @@ export async function listWatches(input: {
         activeAt(record, nowMs),
     )
     .sort((left, right) => left.createdAtMs - right.createdAtMs);
+}
+
+/**
+ * Read one watch by id in any status. The caller checks that its Conversation
+ * owns the watch before it acts on it.
+ */
+export async function getWatch(input: {
+  id: string;
+  state?: StateAdapter;
+}): Promise<Watch | undefined> {
+  const state = input.state ?? getStateAdapter();
+  await state.connect();
+  return parseSubscription(await state.get(subscriptionKey(input.id)));
 }
 
 /** Cancel a current-conversation subscription and remove it from match indexes. */

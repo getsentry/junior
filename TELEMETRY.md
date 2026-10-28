@@ -33,6 +33,7 @@ use the query recipes below to find the failing turn and next query.
 | `messaging.destination.name`        | Slack channel                 | logs, spans               | channel-scoped search |
 | `gen_ai.tool.name`                  | tool name                     | tool spans/logs           | tool failures         |
 | `app.credential.provider`           | auth provider                 | auth logs                 | auth/resume search    |
+| `user.id`                           | accountable person            | logs, spans, errors       | person's actions      |
 | `app.task.id`                       | scheduled/event automation id | task lifecycle logs       | task timeline         |
 | `app.task.run.id`                   | scheduled-automation run id   | scheduler run logs        | run outcome           |
 | `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
@@ -127,6 +128,16 @@ fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task
 sort=-timestamp
 ```
 
+Credentialed provider writes, with whose authority they used. Write-grant
+egress requests are audit events (`app.log.audit:true`), so Sentry keeps them
+in production. Other info events stay out of Sentry in production.
+
+```text
+dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
+fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.allowed_when,app.task.id,gen_ai.conversation.id,app.provider.name,app.grant.name,http.request.method,server.address,url.path,http.response.status_code
+sort=-timestamp
+```
+
 Auth, credential, and resume failures.
 
 ```text
@@ -134,6 +145,23 @@ dataset=logs query='app.credential.provider:"<provider>"'
 fields=timestamp,event.name,gen_ai.conversation.id,app.credential.provider,app.ai.retryable_reason,exception.message
 sort=-timestamp
 ```
+
+## Identity
+
+Runs, resumes, and the sandbox egress proxy bind the same identity attributes.
+Nested logs and spans inherit them.
+
+- `user.id`, `user.name`, `user.email`, `user.full_name`: the accountable
+  person. For a user Actor, this is that user. For a system Actor, this is the
+  owner of delegated credentials, such as the Automation creator. It is empty
+  when a system run has no delegated credentials. Sentry also uses `user.id`
+  for its user features.
+- `app.actor.type`, `app.actor.id`: who acted. The type is `user` or `system`.
+- `app.credential.allowed_when`, `app.task.id`: why delegated credentials were
+  allowed, and for which Automation.
+
+Do not add app-specific keys under `user.*`. Put facts about the request in
+`app.*`.
 
 ## Domains
 
@@ -215,7 +243,8 @@ Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.timed_out`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
 `agent.turn.empty_output.retrying`,
-`agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`,
+`agent.turn.empty_output.exhausted`, `agent.turn.automation_result.reminded`,
+`assistant.reply.generation.failed`,
 `guardian.action_review.retrying`, `guardian.action_review.exhausted`
 
 `guardian.action_review.exhausted` is a tool-boundary Sentry capture after three
@@ -226,7 +255,7 @@ Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
-`gen_ai.response.finish_reasons`, `app.ai.outcome`,
+`gen_ai.response.finish_reasons`, `app.ai.outcome`, `app.automation.result`,
 `app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
 `gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
 `gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
@@ -258,6 +287,12 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
 `app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
 
+Sandbox egress events: `sandbox.egress.upstream.requested` is logged for every
+forwarded request outside production. In production, it is logged only for
+write grants, as an audit event. Attributes: `app.provider.name`,
+`app.grant.name`, `app.grant.access`, `app.log.audit`, and the identity
+attributes below. The proxy binds them from the signed credential token.
+
 ### Scheduled automations
 
 A scheduled automation was created, claimed, dispatched, completed, or failed
@@ -268,7 +303,9 @@ Events: `scheduled_automation.create.completed`, `scheduled_automation.run.claim
 `scheduled_automation.run.failed`, `scheduled_automation.run.blocked`,
 `scheduled_automation.run.skipped` (heartbeat `shouldSkipRun` and claim-time late/stale
 skips), `scheduled_automations.heartbeat.dispatched`,
-`scheduled_automations.heartbeat.failed`, `task.execution.stat_failed`
+`scheduled_automations.heartbeat.failed`, `task.execution.stat_failed`,
+`automation.blocked_notice.failed` (the creator notice for a blocked
+Scheduled automation or Event automation did not send)
 
 Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateAutomation`; fire
 path `POST /api/internal/agent/continue` for the dispatch conversation

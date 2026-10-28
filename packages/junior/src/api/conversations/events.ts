@@ -12,6 +12,7 @@ import {
 } from "./event-model";
 import {
   conversationReportEventSchema,
+  conversationReportMessageEventSchema,
   type ConversationReportEvent,
   type ConversationReportEventData,
 } from "../schema/conversation";
@@ -301,6 +302,16 @@ export function conversationReportToolResultIds(
   ];
 }
 
+const storedMessageEventsSchema = z.array(conversationReportMessageEventSchema);
+
+/** Read the Events listed on a message that holds several Events. */
+function reportMessageEvents(
+  meta: Record<string, unknown> | undefined,
+): { events: z.output<typeof storedMessageEventsSchema> } | undefined {
+  const parsed = storedMessageEventsSchema.safeParse(meta?.events);
+  return parsed.success ? { events: parsed.data } : undefined;
+}
+
 function reportEventData(args: {
   canExposePayload: boolean;
   data: ConversationEvent["data"];
@@ -347,6 +358,7 @@ function reportEventData(args: {
         typeof data.meta?.trustedSummary === "string"
           ? { trustedSummary: data.meta.trustedSummary }
           : undefined),
+        ...(args.canExposePayload ? reportMessageEvents(data.meta) : undefined),
         ...(args.canExposePayload &&
         (data.meta?.cards || data.meta?.objectCards)
           ? { cards: readMessageCardRefs(data.meta) }
@@ -455,6 +467,20 @@ function reportEventData(args: {
       // Unsupported and host-only facts do not affect this observational view.
       return undefined;
   }
+}
+
+// The child name, task, and title are model content, so they follow payload
+// access.
+function reportSubagentLabel(
+  data: Extract<ConversationEvent["data"], { type: "subagent_started" }>,
+  canExposePayload: boolean,
+): { agentName?: string; task?: string; title?: string } {
+  if (!canExposePayload) return {};
+  return {
+    ...(data.agentName ? { agentName: data.agentName } : undefined),
+    ...(data.task ? { task: data.task } : undefined),
+    ...(data.title ? { title: data.title } : undefined),
+  };
 }
 
 /**
@@ -572,6 +598,7 @@ export function projectConversationReportEventPage(args: {
         startedAt: new Date(event.createdAtMs).toISOString(),
         childConversationId: event.data.childConversationId,
         subagentKind: event.data.subagentKind,
+        ...reportSubagentLabel(event.data, args.canExposePayload),
         status: "running",
         ...(event.data.parentToolCallId
           ? { parentToolCallId: event.data.parentToolCallId }
@@ -586,6 +613,7 @@ export function projectConversationReportEventPage(args: {
           startedAt: new Date(started.createdAtMs).toISOString(),
           childConversationId: started.data.childConversationId,
           subagentKind: started.data.subagentKind,
+          ...reportSubagentLabel(started.data, args.canExposePayload),
           ...(started.data.parentToolCallId
             ? { parentToolCallId: started.data.parentToolCallId }
             : undefined),

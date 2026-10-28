@@ -25,23 +25,7 @@ import { getMessageActorIdentity } from "@/chat/services/message-actor-identity"
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { escapeXml } from "@/chat/xml";
-
-/**
- * Return a stable key for one steering message. Resolved attachments may change
- * when Junior retries a mailbox delivery, so only the message time and text
- * form the key.
- */
-export function steeringMessageKey(message: PiMessage): string | undefined {
-  if (message.role !== "user") {
-    return undefined;
-  }
-  const first = Array.isArray(message.content) ? message.content[0] : undefined;
-  const text =
-    first && typeof first === "object" && "text" in first
-      ? String((first as { text?: unknown }).text ?? "")
-      : "";
-  return `${message.timestamp}:${text}`;
-}
+import { withoutSavedSteeringMessages } from "@/chat/agent/prompt";
 
 function renderRecentThreadMessageLines(
   conversationContext: string | undefined,
@@ -212,16 +196,11 @@ export async function saveSteeringMessages(args: {
     const projection = await loadConversationProjection({
       conversationId: args.conversationId,
     });
-    // A repeated mailbox delivery can contain saved and unsaved messages.
-    const savedKeys = new Set(
-      projection.messages
-        .map(steeringMessageKey)
-        .filter((key): key is string => key !== undefined),
+    const missing = withoutSavedSteeringMessages(
+      projection.messages,
+      args.messages,
+      (entry) => entry.message,
     );
-    const missing = args.messages.filter((entry) => {
-      const key = steeringMessageKey(entry.message);
-      return key === undefined || !savedKeys.has(key);
-    });
     if (missing.length === 0) {
       return true;
     }

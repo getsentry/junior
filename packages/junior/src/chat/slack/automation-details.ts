@@ -123,10 +123,7 @@ function renderAutomationDetails(
     entity_payload: {
       attributes: {
         title: { text: automation.title },
-        display_type:
-          automation.kind === "scheduled"
-            ? "Scheduled automation"
-            : "Event automation",
+        display_type: "Automation",
       },
       custom_fields: fields,
     },

@@ -26,8 +26,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
-    allowedGoogleDomains: ["sentry.io"],
-    allowedEmails: ["admin@example.com"],
+    allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
 }
@@ -70,7 +69,7 @@ describe("dashboard routes", () => {
       "/system/plugins/github",
       "/automations",
       "/automations/task-1",
-      "/automations/scheduled/task-1/executions",
+      "/automations/task-1/executions",
       "/memories",
       "/memories/memory-1",
       "/settings",
@@ -92,7 +91,7 @@ describe("dashboard routes", () => {
   it("uses the requested dashboard path as the Google sign-in callback", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
       }),
@@ -124,7 +123,7 @@ describe("dashboard routes", () => {
     ];
     const unauthenticatedApp = createDashboardApp({
       authenticatedRoutes,
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
       }),
@@ -143,7 +142,7 @@ describe("dashboard routes", () => {
 
     const authenticatedApp = createDashboardApp({
       authenticatedRoutes,
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
           email: "person@sentry.io",
@@ -169,7 +168,7 @@ describe("dashboard routes", () => {
           path: "/_junior/acp/auth/:transactionId",
         },
       ],
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
           email: "person@example.com",
@@ -191,7 +190,7 @@ describe("dashboard routes", () => {
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     let callbackURL: string | undefined;
     const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
       }),
@@ -234,7 +233,7 @@ describe("dashboard routes", () => {
   it("preserves non-root dashboard base paths through Google sign-in", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
       }),
@@ -260,7 +259,7 @@ describe("dashboard routes", () => {
 
   it("starts sign-in when the auth prefix overlaps the login route", async () => {
     const app = createDashboardApp({
-      allowedEmails: ["admin@example.com"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null),
       authPath: "/auth",
     });
@@ -278,7 +277,7 @@ describe("dashboard routes", () => {
   it("falls back to the dashboard root for unsafe login return paths", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
       }),
@@ -297,7 +296,7 @@ describe("dashboard routes", () => {
   it("does not restart Google sign-in for an already authorized session", async () => {
     let startedGoogleSignIn = false;
     const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(
         {
           user: {
@@ -327,7 +326,7 @@ describe("dashboard routes", () => {
   it("can explicitly disable dashboard auth for local development", async () => {
     const app = createDashboardApp({
       authRequired: false,
-      allowedGoogleDomains: [],
+      allowedDomains: [],
     });
 
     const page = await app.fetch(new Request("http://localhost/"));
@@ -493,7 +492,7 @@ describe("dashboard routes", () => {
 
   it("keeps mock profile edits process-local", async () => {
     const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
           email: "person@sentry.io",
@@ -561,7 +560,7 @@ describe("dashboard routes", () => {
   it("preserves the enabled component gallery path through login", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
-      allowedEmails: ["admin@example.com"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
       }),
@@ -598,8 +597,7 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get(DASHBOARD_VERSION_HEADER)).toBe(JUNIOR_VERSION);
     expect(await response.json()).toEqual({
-      allowedEmailCount: 1,
-      allowedGoogleDomainCount: 1,
+      allowedDomainCount: 1,
       authRequired: true,
       authPath: "/api/auth",
       basePath: "/",
@@ -625,25 +623,10 @@ describe("dashboard routes", () => {
     expect(await response.json()).toEqual({ error: "forbidden" });
   });
 
-  it("allows explicitly configured email exceptions", async () => {
+  it("requires a verified email on an allowed domain", async () => {
     const app = dashboard({
       user: {
-        email: "admin@example.com",
-        emailVerified: true,
-      },
-    });
-
-    const response = await app.fetch(
-      new Request("http://localhost/api/runtime"),
-    );
-
-    expect(response.status).toBe(200);
-  });
-
-  it("requires verified email for explicitly configured email exceptions", async () => {
-    const app = dashboard({
-      user: {
-        email: "admin@example.com",
+        email: "person@sentry.io",
         emailVerified: false,
       },
     });
@@ -655,15 +638,11 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(403);
   });
 
-  it("resolves auth policy from env when dashboard options omit allowlists", async () => {
-    process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS = "sentry.io, example.com";
-    process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = JSON.stringify([
-      "admin@example.com",
-    ]);
-    process.env.JUNIOR_DASHBOARD_TRUSTED_ORIGINS = "https://junior.example.com";
+  it("reports the allowed domains from core", async () => {
     process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS = "true";
 
     const app = createDashboardApp({
+      allowedDomains: ["sentry.io", "example.com"],
       auth: auth({
         user: {
           email: "person@sentry.io",
@@ -678,19 +657,8 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      allowedEmailCount: 1,
-      allowedGoogleDomainCount: 2,
+      allowedDomainCount: 2,
       authRequired: true,
     });
-  });
-
-  it("fails clearly when list env JSON is malformed", async () => {
-    process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = '["admin@example.com"';
-
-    expect(() =>
-      createDashboardApp({
-        authRequired: false,
-      }),
-    ).toThrow("JUNIOR_DASHBOARD_ALLOWED_EMAILS must be a JSON string array");
   });
 });

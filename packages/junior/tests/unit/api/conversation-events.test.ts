@@ -931,7 +931,7 @@ describe("conversation report event projection", () => {
     }
   });
 
-  it("exposes only generated continuation summaries to authorized viewers", () => {
+  it("exposes continuation summaries and child agent labels only to authorized viewers", () => {
     const events = [
       event(1, {
         type: "compaction",
@@ -978,6 +978,15 @@ describe("conversation report event projection", () => {
           },
         ],
       }),
+      event(3, {
+        type: "subagent_started",
+        subagentInvocationId: "subagent-invocation-1",
+        subagentKind: "agent",
+        agentName: "release-checker",
+        task: "Check the private release notes.",
+        title: "Private release notes",
+        childConversationId: "child-conversation-1",
+      }),
     ];
 
     expect(
@@ -998,6 +1007,17 @@ describe("conversation report event projection", () => {
         modelId: "openai/gpt-5.6-sol",
         summary: "Fix the remaining test.",
       },
+      {
+        type: "subagent",
+        startedSeq: 3,
+        startedAt: "1970-01-01T00:00:03.000Z",
+        childConversationId: "child-conversation-1",
+        subagentKind: "agent",
+        agentName: "release-checker",
+        task: "Check the private release notes.",
+        title: "Private release notes",
+        status: "running",
+      },
     ]);
 
     const redacted = JSON.stringify(
@@ -1009,6 +1029,9 @@ describe("conversation report event projection", () => {
     expect(redacted).not.toContain("Private retained user message.");
     expect(redacted).not.toContain("Continue monitoring CI.");
     expect(redacted).not.toContain("Fix the remaining test.");
+    expect(redacted).not.toContain("release-checker");
+    expect(redacted).not.toContain("Check the private release notes.");
+    expect(redacted).not.toContain("Private release notes");
   });
 
   it("emits only safe structural lifecycle, context, and child references", () => {
@@ -1072,6 +1095,8 @@ describe("conversation report event projection", () => {
           type: "subagent_started",
           subagentInvocationId: "subagent-invocation-1",
           subagentKind: "advisor",
+          agentName: "reviewer",
+          task: "Review the plan.",
           modelId: "private-child-model-id",
           parentToolCallId: "private-parent-tool-id",
           reasoningLevel: "private-reasoning-level",
@@ -1179,6 +1204,8 @@ describe("conversation report event projection", () => {
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
         subagentKind: "advisor",
+        agentName: "reviewer",
+        task: "Review the plan.",
         parentToolCallId: "private-parent-tool-id",
         status: "running",
       },
@@ -1188,6 +1215,8 @@ describe("conversation report event projection", () => {
         startedAt: "1970-01-01T00:00:09.000Z",
         childConversationId: "child-conversation-1",
         subagentKind: "advisor",
+        agentName: "reviewer",
+        task: "Review the plan.",
         parentToolCallId: "private-parent-tool-id",
         status: "error",
       },

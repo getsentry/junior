@@ -61,7 +61,7 @@ export function PagePagination(props: {
         props.className,
       )}
     >
-      <p className="m-0 font-mono text-xs text-dashboard-text-muted">
+      <p className="m-0 font-sans tabular-nums text-xs text-dashboard-text-muted">
         Showing {start.toLocaleString("en-US")}-{end.toLocaleString("en-US")} of{" "}
         {props.total.toLocaleString("en-US")}
       </p>
@@ -74,7 +74,7 @@ export function PagePagination(props: {
         >
           <ChevronLeft aria-hidden="true" size={16} />
         </Button>
-        <span className="min-w-16 text-center font-mono text-xs text-dashboard-text-muted">
+        <span className="min-w-16 text-center font-sans tabular-nums text-xs text-dashboard-text-muted">
           {current} / {props.pageCount}
         </span>
         <Button

@@ -24,7 +24,10 @@ import {
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import {
+  disabledToolMessage,
+  type AnyToolDefinition,
+} from "@/chat/tools/definition";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
@@ -34,6 +37,7 @@ import {
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   createExecuteToolTool,
@@ -48,7 +52,7 @@ import {
   reviewToolAction,
   ToolActionRejectedError,
   type ToolActionReview,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /**
@@ -174,6 +178,13 @@ export function createPiAgentTools(
       args;
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
+    }
+    // Disabled tools stay in the tool list. Reject them before hooks, action
+    // review, and the executor run.
+    if (toolDef.disabledReason) {
+      throw new ToolInputError(
+        disabledToolMessage(toolName, toolDef.disabledReason),
+      );
     }
 
     const beforeTool = agentHooks

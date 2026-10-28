@@ -1,4 +1,422 @@
 # Changelog
+## 0.260.0
+
+### New Features ✨
+
+- (conversations) Name conversations after linked issues by @BYK with @sentry-junior in [#2218](https://github.com/getsentry/junior/pull/2218)
+- (dashboard) Add a light theme that follows the system by @BYK with @sentry-junior in [#2261](https://github.com/getsentry/junior/pull/2261)
+- (events) Merge an Event batch into one task message by @dcramer with @sentry-junior in [#2259](https://github.com/getsentry/junior/pull/2259)
+- (github) Add trusted sender and mention data to issue comments by @BYK with @sentry-junior in [#2209](https://github.com/getsentry/junior/pull/2209)
+- (guardian) Let thread context authorize PR delivery by @sentry-junior in [#2256](https://github.com/getsentry/junior/pull/2256)
+- (workspaces) Add per-Workspace sandbox vCPUs by @dcramer with @sentry-junior in [#2262](https://github.com/getsentry/junior/pull/2262)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Use the same header on every page by @cleptric with @sentry-junior in [#2264](https://github.com/getsentry/junior/pull/2264)
+- Resolve mentions the same way in all display text by @dcramer with @sentry-junior in [#2257](https://github.com/getsentry/junior/pull/2257)
+
+#### Other
+
+- (events) Link the Event doer to their Slack mention by @BYK with @sentry-junior in [#2250](https://github.com/getsentry/junior/pull/2250)
+- (lint) Make lint failures steer toward the intended fix by @dcramer with @sentry-junior in [#2228](https://github.com/getsentry/junior/pull/2228)
+
+### Internal Changes 🔧
+
+- (guardian) Group Guardian code and build eval tool specs from real tools by @dcramer with @sentry-junior in [#2263](https://github.com/getsentry/junior/pull/2263)
+- (node) Bump Node to 24.22.1 by @geoffg-sentry with @sentry-junior in [#2247](https://github.com/getsentry/junior/pull/2247)
+
+## 0.259.0
+
+### New Features ✨
+
+- (linear) Allow an optional read-only service account by @sentry-junior in [#2249](https://github.com/getsentry/junior/pull/2249)
+- (plugins) Add optional service accounts for plugins by @sentry-junior in [#2245](https://github.com/getsentry/junior/pull/2245)
+- (slack) Route passive replies with a decision model by @sentry-junior in [#2238](https://github.com/getsentry/junior/pull/2238)
+
+### Internal Changes 🔧
+
+- (lint) Require GitHub plugin requests to use host egress by @sentry-junior in [#2222](https://github.com/getsentry/junior/pull/2222)
+
+## 0.258.0
+
+### New Features ✨
+
+- (auth) Replace Slack sign-in with an allowed domain list by @sentry-junior in [#2229](https://github.com/getsentry/junior/pull/2229)
+- (automations) Default event automation runs to 10 per minute with a configurable window by @sentry-junior in [#2237](https://github.com/getsentry/junior/pull/2237)
+- (pagerduty) Add read-only PagerDuty plugin by @sentry-junior in [#2236](https://github.com/getsentry/junior/pull/2236)
+
+### Bug Fixes 🐛
+
+- (egress) Skip body reading for OPTIONS requests by @sentry in [#2199](https://github.com/getsentry/junior/pull/2199)
+- (github) Attribute automation writes to the Automation run by @sentry-junior in [#2235](https://github.com/getsentry/junior/pull/2235)
+- (lint) Steer file-length failures toward module splits by @sentry-junior in [#2227](https://github.com/getsentry/junior/pull/2227)
+
+### Internal Changes 🔧
+
+- (evals) Bump cloudflared to 2026.10.4 by @sentry-junior in [#2239](https://github.com/getsentry/junior/pull/2239)
+- (ts) Upgrade to TypeScript 7 with strict compiler checks by @sentry-junior in [#2171](https://github.com/getsentry/junior/pull/2171)
+
+## 0.257.0
+
+### New Features ✨
+
+#### Automations
+
+- Run Slack channel automations on named bot posts by @sentry-junior in [#2197](https://github.com/getsentry/junior/pull/2197)
+- Record the Automation version on each run by @sentry-junior[bot] in [#2212](https://github.com/getsentry/junior/pull/2212)
+
+#### Dashboard
+
+- Render Slack mentions as names and profile links by @sentry-junior in [#2226](https://github.com/getsentry/junior/pull/2226)
+- Improve transcript prose typography by @sentry-junior in [#2224](https://github.com/getsentry/junior/pull/2224)
+- Add clear button to search inputs by @sentry-junior in [#2216](https://github.com/getsentry/junior/pull/2216)
+- List a person's code changes on their profile by @sentry-junior in [#2208](https://github.com/getsentry/junior/pull/2208)
+
+#### Slack
+
+- Require Google sign-in before first Slack use by @sentry-junior in [#2220](https://github.com/getsentry/junior/pull/2220)
+- Return avatar URL from user lookup by @sentry-junior in [#2221](https://github.com/getsentry/junior/pull/2221)
+
+#### Other
+
+- (identities) Link OAuth accounts from web connections and verified emails by @sentry-junior in [#2201](https://github.com/getsentry/junior/pull/2201)
+- (logging) Audit credentialed egress writes with one identity model by @sentry-junior in [#2214](https://github.com/getsentry/junior/pull/2214)
+
+### Bug Fixes 🐛
+
+- (automations) Say that send_message is how an automation run posts by @sentry-junior in [#2213](https://github.com/getsentry/junior/pull/2213)
+- (evals) Use a valid PNG for generated images by @sentry-junior in [#2223](https://github.com/getsentry/junior/pull/2223)
+
+## 0.256.0
+
+### New Features ✨
+
+- (google) Read Meet transcripts of meetings Junior is invited to by @sentry-junior in [#2107](https://github.com/getsentry/junior/pull/2107)
+
+### Internal Changes 🔧
+
+- (node) Bump Node to 24.22.1 by @sentry-junior in [#2202](https://github.com/getsentry/junior/pull/2202)
+
+## 0.255.0
+
+### New Features ✨
+
+- (automations) Bind Automation ownership to creator identity by @sentry-junior in [#2188](https://github.com/getsentry/junior/pull/2188)
+- (dashboard) Grow the composer with its text on desktop by @sentry-junior in [#2192](https://github.com/getsentry/junior/pull/2192)
+
+### Bug Fixes 🐛
+
+- (automations) Settle runs of deleted Scheduled automations by @sentry-junior in [#2185](https://github.com/getsentry/junior/pull/2185)
+- (prompt) Allow Slack reads from other public channels by @sentry-junior in [#2193](https://github.com/getsentry/junior/pull/2193)
+
+### Internal Changes 🔧
+
+- (automations) Address Automations by ID alone in URLs by @sentry-junior in [#2186](https://github.com/getsentry/junior/pull/2186)
+- (frameshift) Delete unused screenshot reports nightly by @sentry-junior in [#2194](https://github.com/getsentry/junior/pull/2194)
+
+## 0.254.0
+
+### New Features ✨
+
+- (automations) Drop the legacy Automation tables by @sentry-junior in [#2184](https://github.com/getsentry/junior/pull/2184)
+
+## 0.253.0
+
+### New Features ✨
+
+- (automations) Store all Automation runs in one table by @sentry-junior in [#2183](https://github.com/getsentry/junior/pull/2183)
+
+## 0.252.0
+
+### New Features ✨
+
+- (automations) Keep both Automation kinds in one table by @sentry-junior in [#2179](https://github.com/getsentry/junior/pull/2179)
+
+## 0.251.0
+
+### New Features ✨
+
+- (conversations) Deliver Conversation notes on a Conversation's next Turn by @sentry-junior in [#2177](https://github.com/getsentry/junior/pull/2177)
+- (dashboard) Show an automation card at the top of automation runs by @sentry-junior in [#2170](https://github.com/getsentry/junior/pull/2170)
+- (guardian) Allow by default and block only on a named rule by @sentry-junior in [#2180](https://github.com/getsentry/junior/pull/2180)
+- (watches) Let a parent list and stop its child agents' watches by @sentry-junior in [#2172](https://github.com/getsentry/junior/pull/2172)
+
+### Bug Fixes 🐛
+
+#### Automations
+
+- Title automation runs instead of "Internal" by @sentry-junior in [#2169](https://github.com/getsentry/junior/pull/2169)
+- Name the Automation in its reply footer by @sentry-junior in [#2167](https://github.com/getsentry/junior/pull/2167)
+
+#### Other
+
+- (dashboard) Show model token types as table rows by @sentry-junior in [#2168](https://github.com/getsentry/junior/pull/2168)
+- (guardian) Let a child's root request cover its conventional steps by @sentry-junior in [#2173](https://github.com/getsentry/junior/pull/2173)
+
+## 0.250.0
+
+### New Features ✨
+
+- (dashboard) Add connected accounts page for plugin OAuth by @sentry-junior in [#2166](https://github.com/getsentry/junior/pull/2166)
+- (github) Mention the people involved when a PR is approved or merged by @sentry-junior in [#2163](https://github.com/getsentry/junior/pull/2163)
+- (skills) Add narration-timed motion and music to demo video workflow by @sentry-junior in [#2154](https://github.com/getsentry/junior/pull/2154)
+- (slack) Add Conversation ids to thread reads by @sentry-junior in [#2164](https://github.com/getsentry/junior/pull/2164)
+
+### Bug Fixes 🐛
+
+- (github) Point clone guidance at github_cloneRepository by @sentry-junior in [#2165](https://github.com/getsentry/junior/pull/2165)
+
+### Internal Changes 🔧
+
+- (dashboard) Capture every chart in the gallery for visual review by @sentry-junior in [#2161](https://github.com/getsentry/junior/pull/2161)
+
+## 0.249.0
+
+### New Features ✨
+
+- (evals) Record and replay evals with the Roach service by @sentry-junior in [#2156](https://github.com/getsentry/junior/pull/2156)
+- (sentry) Allow requested Sentry writes beyond alerts by @sentry-junior in [#2158](https://github.com/getsentry/junior/pull/2158)
+- (subagents) Guide parents to write self-contained tasks by @sentry-junior in [#2146](https://github.com/getsentry/junior/pull/2146)
+
+### Bug Fixes 🐛
+
+- (agents) Never take parent agent text as user approval in a child by @sentry-junior in [#2147](https://github.com/getsentry/junior/pull/2147)
+- (dashboard) Make the design system consistent across core UI and the conversation view by @dcramer in [#2157](https://github.com/getsentry/junior/pull/2157)
+- (docs) Center homepage bands below 72rem by @sentry-junior in [#2155](https://github.com/getsentry/junior/pull/2155)
+
+## 0.248.0
+
+### New Features ✨
+
+- (chat) Limit turns by spend and wrap up at the limit by @sentry-junior in [#2152](https://github.com/getsentry/junior/pull/2152)
+- (dashboard) Count child agents at any depth in Conversation totals by @sentry-junior in [#2142](https://github.com/getsentry/junior/pull/2142)
+- (evals) Report PR author to Sentry Evals by @NicoHinderling in [#2150](https://github.com/getsentry/junior/pull/2150)
+- (subagents) Let listAgents show a child's parent and siblings by @sentry-junior in [#2140](https://github.com/getsentry/junior/pull/2140)
+
+### Bug Fixes 🐛
+
+- (agent) Do not prepare another model call after an abort by @sentry-junior in [#2153](https://github.com/getsentry/junior/pull/2153)
+- (chat) Keep the tool list stable across Turn origins by @sentry-junior in [#2148](https://github.com/getsentry/junior/pull/2148)
+- (memory) Hide memory write tools in child agent runs by @sentry-junior in [#2145](https://github.com/getsentry/junior/pull/2145)
+
+### Internal Changes 🔧
+
+- (dashboard) Use Frameshift v0.2.0 by @sentry-junior in [#2144](https://github.com/getsentry/junior/pull/2144)
+
+## 0.247.0
+
+### New Features ✨
+
+- (agent-invocations) Select child model profile by @sentry-junior in [#2141](https://github.com/getsentry/junior/pull/2141)
+- (images) Edit sandbox images with imageGenerate by @sentry-junior in [#2123](https://github.com/getsentry/junior/pull/2123)
+- (subagents) Let a running child read parent messages by @sentry-junior in [#2139](https://github.com/getsentry/junior/pull/2139)
+
+### Bug Fixes 🐛
+
+- (subagents) Run child watch events as agent invocations by @sentry-junior in [#2134](https://github.com/getsentry/junior/pull/2134)
+- (vercel) Ignore unknown fields in Vercel webhooks by @sentry-junior in [#2138](https://github.com/getsentry/junior/pull/2138)
+
+## 0.246.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Name browser tabs after the current page by @sentry-junior in [#2137](https://github.com/getsentry/junior/pull/2137)
+- Stop the active Turn from the composer by @sentry-junior in [#2136](https://github.com/getsentry/junior/pull/2136)
+
+#### Subagents
+
+- Add messageAgent and drop spawnAgent name reuse by @sentry-junior in [#2135](https://github.com/getsentry/junior/pull/2135)
+- Let a child agent report that it is blocked by @sentry-junior in [#2133](https://github.com/getsentry/junior/pull/2133)
+
+### Bug Fixes 🐛
+
+- (dashboard) Show subagent starts in the main transcript view by @sentry-junior in [#2132](https://github.com/getsentry/junior/pull/2132)
+
+## 0.245.0
+
+### New Features ✨
+
+#### Automations
+
+- Run event automations for new Slack channel messages by @sentry-junior in [#2119](https://github.com/getsentry/junior/pull/2119)
+- Limit runs for each event automation by @sentry-junior in [#2117](https://github.com/getsentry/junior/pull/2117)
+
+#### Dashboard
+
+- Show usage and runtime on subagent rows by @sentry-junior in [#2130](https://github.com/getsentry/junior/pull/2130)
+- Show counts on Memories and Subagents tabs by @sentry-junior in [#2125](https://github.com/getsentry/junior/pull/2125)
+
+#### Other
+
+- (google) Read Google Sheets and Slides by @sentry-junior[bot] in [#2131](https://github.com/getsentry/junior/pull/2131)
+
+### Bug Fixes 🐛
+
+- (evals) Start every eval test at the same clock time by @sentry-junior in [#2111](https://github.com/getsentry/junior/pull/2111)
+- (slack) Record steered mentions in the conversation transcript by @sentry-junior in [#2126](https://github.com/getsentry/junior/pull/2126)
+- (subagents) Show child transcripts and the agent tree by @sentry-junior in [#2128](https://github.com/getsentry/junior/pull/2128)
+
+### Internal Changes 🔧
+
+- (review) Keep eval recordings out of PR review by @sentry-junior in [#2127](https://github.com/getsentry/junior/pull/2127)
+
+## 0.244.0
+
+### New Features ✨
+
+- (memory) Review semantic duplicates for every kind and log repeats by @sentry-junior in [#2110](https://github.com/getsentry/junior/pull/2110)
+- (subagents) Label dashboard child rows with name and title by @sentry-junior in [#2124](https://github.com/getsentry/junior/pull/2124)
+
+## 0.243.0
+
+### New Features ✨
+
+#### Subagents
+
+- Stop child agents with stopAgent by @sentry-junior in [#2114](https://github.com/getsentry/junior/pull/2114)
+- Show child agents in the dashboard transcript by @sentry-junior in [#2112](https://github.com/getsentry/junior/pull/2112)
+- List child agents from agent invocation state by @sentry-junior in [#2109](https://github.com/getsentry/junior/pull/2109)
+- Send agent invocation results to the parent conversation by @sentry-junior in [#2106](https://github.com/getsentry/junior/pull/2106)
+
+#### Other
+
+- (dashboard) Show child agents in the conversation Details drawer by @sentry-junior in [#2122](https://github.com/getsentry/junior/pull/2122)
+- (google) Read Google Docs and their comments by @sentry-junior in [#2113](https://github.com/getsentry/junior/pull/2113)
+- (router) Route from the current profile by @sentry-junior in [#2116](https://github.com/getsentry/junior/pull/2116)
+- (sentry) Publish metric alert webhooks as events by @sentry-junior in [#2120](https://github.com/getsentry/junior/pull/2120)
+
+### Bug Fixes 🐛
+
+#### Agent
+
+- Commit new AGENTS.md context when it is added by @sentry-junior in [#2118](https://github.com/getsentry/junior/pull/2118)
+- Commit steering after new AGENTS.md context by @sentry-junior in [#2115](https://github.com/getsentry/junior/pull/2115)
+
+#### Other
+
+- (slack) Keep Slack mentions typed and tell Junior its own user ID by @sentry-junior in [#2108](https://github.com/getsentry/junior/pull/2108)
+
+## 0.242.0
+
+### New Features ✨
+
+- (github) Support stacked pull requests with gh stack by @sentry-junior in [#2104](https://github.com/getsentry/junior/pull/2104)
+
+## 0.241.0
+
+### New Features ✨
+
+#### Automations
+
+- Tell the creator when an automation becomes blocked by @dcramer in [#2096](https://github.com/getsentry/junior/pull/2096)
+- Block an Event automation when its run is blocked by @dcramer in [#2095](https://github.com/getsentry/junior/pull/2095)
+- Run automations in their own mode with a declared result by @sentry-junior in [#2052](https://github.com/getsentry/junior/pull/2052)
+
+#### Other
+
+- (memory) Count and highlight memory search matches by @sentry-junior in [#2085](https://github.com/getsentry/junior/pull/2085)
+- (slack) Stop the active Turn from Slack's native stop button by @sentry-junior in [#2103](https://github.com/getsentry/junior/pull/2103)
+
+### Bug Fixes 🐛
+
+- (slack) Prefer Slack user IDs in userLookup by @sentry-junior in [#2094](https://github.com/getsentry/junior/pull/2094)
+
+### Internal Changes 🔧
+
+- (evals) Reuse sandbox snapshots and do not wait for product timers by @dcramer in [#2097](https://github.com/getsentry/junior/pull/2097)
+
+## 0.240.0
+
+### New Features ✨
+
+- (github) Support marking pull requests ready for review by @sentry-junior in [#2071](https://github.com/getsentry/junior/pull/2071)
+- (google) Default Calendar time zones, always add Meet links, and add Calendar evals by @sentry-junior in [#2086](https://github.com/getsentry/junior/pull/2086)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Make visual review screenshots stable by @sentry-junior in [#2088](https://github.com/getsentry/junior/pull/2088)
+- Keep server code out of the client bundle by @sentry-junior in [#2091](https://github.com/getsentry/junior/pull/2091)
+
+#### Other
+
+- (conversations) Store an automation run's thread on its Location by @sentry-junior in [#2087](https://github.com/getsentry/junior/pull/2087)
+- (egress) Return a Junior error when the request body is unreadable by @sentry-junior in [#2068](https://github.com/getsentry/junior/pull/2068)
+
+### Internal Changes 🔧
+
+#### Evals
+
+- Move the Slack handler and turn failure tests to the agent test fixture by @dcramer in [#2089](https://github.com/getsentry/junior/pull/2089)
+- Add must-deny Guardian harmful action cases by @sentry-junior in [#2090](https://github.com/getsentry/junior/pull/2090)
+
+#### Other
+
+- (deps) Bump @modelcontextprotocol/sdk from 1.29.0 to 1.31.0 in /packages/junior by @dependabot in [#2077](https://github.com/getsentry/junior/pull/2077)
+
+## 0.239.0
+
+### New Features ✨
+
+#### Google
+
+- Annotate Conversations with Calendar events by @sentry-junior in [#2082](https://github.com/getsentry/junior/pull/2082)
+- Let Junior cancel its events and schedule like an assistant by @sentry-junior in [#2083](https://github.com/getsentry/junior/pull/2083)
+
+## 0.238.1
+
+### New Features ✨
+
+- (google) Use the dashboard Google OAuth client by @sentry-junior in [#2080](https://github.com/getsentry/junior/pull/2080)
+
+### Internal Changes 🔧
+
+- (evals) Move the Slack status and thread title tests to the agent test fixture by @dcramer in [#2076](https://github.com/getsentry/junior/pull/2076)
+
+## 0.238.0
+
+### New Features ✨
+
+- (admin) Add a Junior-wide admin role and Admin page by @sentry-junior in [#2074](https://github.com/getsentry/junior/pull/2074)
+- (evals) Record and replay eval model calls through a recording proxy by @sentry-junior in [#2054](https://github.com/getsentry/junior/pull/2054)
+- (github) Mention the linked GitHub requester in attribution by @sentry-junior in [#2039](https://github.com/getsentry/junior/pull/2039)
+- (google) Add a Google Calendar plugin by @sentry-junior in [#2064](https://github.com/getsentry/junior/pull/2064)
+- (mcp) Show why Junior asks for MCP auth by @sentry-junior in [#2067](https://github.com/getsentry/junior/pull/2067)
+
+### Bug Fixes 🐛
+
+#### Events
+
+- Keep automation Watch replies in the run's thread by @sentry-junior in [#2069](https://github.com/getsentry/junior/pull/2069)
+- Let timer Turns use the creator's credentials by @sentry-junior in [#2062](https://github.com/getsentry/junior/pull/2062)
+
+#### Other
+
+- (auth) Keep a request that waits for authorization when the person sends another message by @dcramer in [#2073](https://github.com/getsentry/junior/pull/2073)
+- (chat) Fix the product gaps behind the flaky integration evals by @dcramer in [#2055](https://github.com/getsentry/junior/pull/2055)
+- (github) Deliver approval review comments to review subscriptions by @sentry-junior in [#2072](https://github.com/getsentry/junior/pull/2072)
+- (mcp) Offer the configured providers when a search names an unknown provider by @dcramer in [#2060](https://github.com/getsentry/junior/pull/2060)
+
+### Internal Changes 🔧
+
+#### Evals
+
+- Move the auth callback and resume tests to the agent test fixture by @dcramer in [#2070](https://github.com/getsentry/junior/pull/2070)
+- Move the MCP auth orchestration tests to the agent test fixture by @dcramer in [#2059](https://github.com/getsentry/junior/pull/2059)
+- Add the slack prefix to the Slack input names by @dcramer in [#2058](https://github.com/getsentry/junior/pull/2058)
+- Move the Slack message content tests to the agent test fixture by @dcramer in [#2056](https://github.com/getsentry/junior/pull/2056)
+- Move the Slack file and image tests to the agent test fixture by @dcramer in [#2053](https://github.com/getsentry/junior/pull/2053)
+- Move the Slack reaction and reply tests to the agent test fixture by @dcramer in [#2045](https://github.com/getsentry/junior/pull/2045)
+
+#### Other
+
+- (memory) Copy one migrated database for each memory test by @dcramer in [#2075](https://github.com/getsentry/junior/pull/2075)
+
 ## 0.237.0
 
 ### New Features ✨

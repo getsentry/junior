@@ -2,8 +2,8 @@
  * Sentry plugin runtime boundary.
  *
  * This package owns per-user Sentry OAuth, org read access, CLI setup,
- * internal-integration issue webhook normalization, and Sentry resource
- * identities. Junior core owns watches and event automations.
+ * internal-integration issue and metric alert webhook normalization, and
+ * Sentry resource identities. Junior core owns watches and event automations.
  */
 import {
   defineJuniorPlugin,
@@ -11,10 +11,16 @@ import {
 } from "@sentry/junior-plugin-api";
 import { SENTRY_ISSUE_EVENTS } from "./events/issue.js";
 import {
+  SENTRY_METRIC_ALERT_EVENTS,
+  SENTRY_METRIC_ALERT_IDENTIFIER,
+  SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
+} from "./events/metric-alert.js";
+import {
   SENTRY_API_DOMAINS,
   issueSentryCredential,
   sentryGrantForEgress,
 } from "./org-read.js";
+import { resolveSentryOAuthAccount } from "./oauth-account.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
 import { sentryWebhookOrg, sentryWebhookSecret } from "./webhooks/secret.js";
 
@@ -34,6 +40,12 @@ export function sentryPlugin(): PluginRegistration {
           supportedEvents: [...SENTRY_ISSUE_EVENTS],
           suggestedEvents: [...SENTRY_ISSUE_EVENTS],
         },
+        {
+          type: "metric_alert",
+          identifier: SENTRY_METRIC_ALERT_IDENTIFIER,
+          supportedEvents: [...SENTRY_METRIC_ALERT_EVENTS],
+          suggestedEvents: SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
+        },
       ],
       isEnabled: () =>
         Boolean(sentryWebhookSecret()) && Boolean(sentryWebhookOrg()),
@@ -51,7 +63,7 @@ export function sentryPlugin(): PluginRegistration {
         type: "oauth-bearer",
       },
       description:
-        "Investigate Sentry telemetry, manage alerting, and receive issue webhooks",
+        "Investigate Sentry telemetry, manage projects, teams, and alerting, and receive issue and metric alert webhooks",
       displayName: "Sentry",
       envVars: {
         SENTRY_CLIENT_ID: {},
@@ -80,6 +92,7 @@ export function sentryPlugin(): PluginRegistration {
     hooks: {
       grantForEgress: sentryGrantForEgress,
       issueCredential: issueSentryCredential,
+      resolveOAuthAccount: resolveSentryOAuthAccount,
       routes(ctx) {
         return [
           createSentryWebhookRoute({

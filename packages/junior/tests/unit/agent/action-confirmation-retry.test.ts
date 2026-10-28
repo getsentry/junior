@@ -136,4 +136,39 @@ describe("action confirmation retry", () => {
 
     expect(actionConfirmationRetryMessages(messages)).toBeUndefined();
   });
+
+  it("does not continue a child run that reported the missing approval", () => {
+    const missing = "User approval to permanently delete workspace preview-42.";
+    const messages = rejectedMessages();
+    messages.push(
+      {
+        role: "assistant",
+        api: "test",
+        provider: "test",
+        model: "test",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool-2",
+            name: "reportBlocked",
+            arguments: { missing },
+          },
+        ],
+        usage,
+        stopReason: "toolUse",
+        timestamp: 3,
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "tool-2",
+        toolName: "reportBlocked",
+        content: [{ type: "text", text: missing }],
+        details: { missing },
+        isError: false,
+        timestamp: 4,
+      } as PiMessage,
+    );
+
+    expect(actionConfirmationRetryMessages(messages)).toBeUndefined();
+  });
 });

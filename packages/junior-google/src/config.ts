@@ -4,13 +4,15 @@
  * Values come from host environment variables. They never reach the sandbox.
  */
 
-export const GOOGLE_CLIENT_ID_ENV = "GOOGLE_WORKSPACE_CLIENT_ID";
-export const GOOGLE_CLIENT_SECRET_ENV = "GOOGLE_WORKSPACE_CLIENT_SECRET";
+/** Dashboard sign-in uses the same OAuth client. */
+export const GOOGLE_CLIENT_ID_ENV = "GOOGLE_CLIENT_ID";
+export const GOOGLE_CLIENT_SECRET_ENV = "GOOGLE_CLIENT_SECRET";
 export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
 
 /**
- * Scopes the Calendar tools need. Request nothing broader.
+ * API scopes the tools need. A connected grant must have all of them. Request
+ * nothing broader.
  *
  * - `calendar.events.freebusy`: availability for `findMeetingTimes`.
  * - `calendar.events.readonly`: events that Junior's account can see on other
@@ -18,11 +20,15 @@ export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
  *   still decide how much detail each calendar shows.
  * - `calendar.events.owned`: create and change events on Junior's own
  *   calendar.
+ * - `drive.readonly`: search Drive, export Docs, read Sheets and Slides, and
+ *   read comments. The Drive comments API accepts no narrower read scope. The
+ *   Sheets and Slides APIs also accept this scope.
  */
-export const GOOGLE_CALENDAR_SCOPES = [
+export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",
   "https://www.googleapis.com/auth/calendar.events.owned",
   "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/drive.readonly",
 ] as const;
 
 /** Identity scopes used only to verify which account signed in. */

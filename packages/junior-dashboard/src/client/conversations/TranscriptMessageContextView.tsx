@@ -31,12 +31,12 @@ export function TranscriptMessageContextView(props: {
   return (
     <>
       <details
-        className="group/message-context min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:hidden"
+        className="group/message-context min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:hidden"
         data-transcript-message-context
       >
         <TranscriptSummary
           flush
-          className="flex items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted"
+          className="flex items-center justify-between gap-2 font-sans text-xs font-medium text-dashboard-text-muted"
         >
           <span className="min-w-0 truncate">Context from {actor}</span>
           <ChevronRight
@@ -45,7 +45,7 @@ export function TranscriptMessageContextView(props: {
             size={14}
           />
         </TranscriptSummary>
-        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text/75">
+        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text-subtle">
           {content}
         </div>
         {!props.redacted && props.message.contexts?.length ? (
@@ -55,25 +55,25 @@ export function TranscriptMessageContextView(props: {
         ) : null}
       </details>
       <article
-        className="hidden min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:block"
+        className="hidden min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 md:block"
         data-transcript-message-context
       >
         <TranscriptHeadingRow
           left={
-            <span className="font-display text-xs font-semibold text-dashboard-text-muted">
+            <span className="font-sans text-xs font-medium text-dashboard-text-muted">
               Context from {actor}
             </span>
           }
           leftClassName="min-w-0"
           right={
             timestamp ? (
-              <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70">
+              <TranscriptHeadingMeta className="text-xs tabular-nums text-dashboard-text-muted">
                 {timestamp}
               </TranscriptHeadingMeta>
             ) : undefined
           }
         />
-        <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text/75">
+        <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text-subtle">
           {content}
         </div>
         {!props.redacted && props.message.contexts?.length ? (

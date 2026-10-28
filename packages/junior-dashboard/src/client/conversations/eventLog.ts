@@ -94,7 +94,7 @@ export function eventLogSummary(data: ConversationReportEventData): string {
     case "handoff":
       return "Handoff · New configuration applied";
     case "subagent":
-      return `${data.subagentKind} · ${data.status} · ${data.childConversationId}`;
+      return `${data.agentName ?? data.subagentKind} · ${data.status} · ${data.childConversationId}`;
   }
 }
 
@@ -111,7 +111,8 @@ export function eventLogTone(data: ConversationReportEventData): string {
   }
   if (
     (data.type === "guardian_action_reviewed" && data.decision === "ask") ||
-    (data.type === "subagent" && data.status === "aborted")
+    (data.type === "subagent" &&
+      (data.status === "aborted" || data.status === "blocked"))
   ) {
     return "text-amber-200";
   }

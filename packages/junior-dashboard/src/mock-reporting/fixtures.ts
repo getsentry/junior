@@ -8,6 +8,7 @@ import type {
   ActorProfileReport,
   ActorSummaryReport,
   ActorWindowMetrics,
+  ConversationChildAgentsReport,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -124,10 +125,14 @@ const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
+/** Event automation run. Its trigger message id equals the conversation id. */
+const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
 const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
+const DASHBOARD_QA_PLAN_CHECK_ID =
+  "junior:internal:dashboard-qa:advisor-plan:claim-check";
 /** Process-local archive state so mock restore can be exercised in visual QA. */
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 
@@ -163,7 +168,7 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
-  metadata?: Pick<ConversationReportEvent, "model" | "modelCall">,
+  metadata?: Pick<ConversationReportEvent, "mentions" | "model" | "modelCall">,
 ): ConversationReportEvent {
   return { seq, createdAt, data, ...metadata };
 }
@@ -671,7 +676,24 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 20_000),
       },
     ],
-    cumulativeDurationMs: 98_000,
+    // Totals include all three subagents, like the API.
+    childAgentTotals: {
+      count: 3,
+      cumulativeDurationMs: 88_400,
+      cumulativeUsage: {
+        inputTokens: 48_700,
+        outputTokens: 2_680,
+        cachedInputTokens: 21_600,
+        cost: { total: 0.172 },
+      },
+    },
+    cumulativeDurationMs: 186_400,
+    cumulativeUsage: {
+      inputTokens: 100_700,
+      outputTokens: 6_080,
+      cachedInputTokens: 51_600,
+      cost: { total: 0.382 },
+    },
     events: [
       reportEvent(0, startedAt, {
         type: "message",
@@ -694,7 +716,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
           },
         ],
@@ -704,11 +726,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            input: { automation: "Review the dashboard plan" },
+            input: { task: "Review the dashboard plan before editing." },
           },
         ],
       }),
@@ -717,7 +739,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
+        agentName: "planner",
+        task: "Review the dashboard plan before editing.",
+        title: "Review the dashboard plan",
         parentToolCallId: "qa-advisor",
         status: "running",
       }),
@@ -726,7 +751,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
+        agentName: "planner",
+        task: "Review the dashboard plan before editing.",
+        title: "Review the dashboard plan",
         parentToolCallId: "qa-advisor",
         status: "completed",
       }),
@@ -735,11 +763,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "completed",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            output: { child_conversation_id: DASHBOARD_QA_PLAN_ID },
+            output: { conversation_id: DASHBOARD_QA_PLAN_ID },
           },
         ],
       }),
@@ -748,7 +776,8 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
+        agentName: "reviewer",
         status: "running",
       }),
       reportEvent(7, iso(Date.parse(startedAt), 44_000), {
@@ -756,8 +785,9 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
-        status: "completed",
+        subagentKind: "agent",
+        agentName: "reviewer",
+        status: "blocked",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
         type: "tool_calls",
@@ -962,6 +992,11 @@ function advisorConversation(
   nowMs: number,
   conversationId: string,
   text: string,
+  metrics: Pick<
+    ConversationDetailReport,
+    "childAgentTotals" | "cumulativeDurationMs" | "cumulativeUsage"
+  >,
+  parentConversationId = DASHBOARD_QA_CONVERSATION_ID,
 ): MockConversation {
   const startedAt = iso(nowMs, -10 * 60_000);
   const conversation = detail(nowMs, {
@@ -970,7 +1005,7 @@ function advisorConversation(
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 18_000),
     lastProgressAt: iso(Date.parse(startedAt), 18_000),
-    cumulativeDurationMs: 18_000,
+    ...metrics,
     events: [
       reportEvent(0, startedAt, {
         type: "message",
@@ -986,10 +1021,7 @@ function advisorConversation(
       }),
     ],
   });
-  return {
-    ...conversation,
-    parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
-  };
+  return { ...conversation, parentConversationId };
 }
 
 function longConversation(nowMs: number): ConversationDetailReport {
@@ -1365,6 +1397,98 @@ function simpleConversation(
   });
 }
 
+const MOCK_MENTION_MORGAN: ActorIdentity = {
+  email: "dev@example.com",
+  fullName: "Morgan Lee",
+  slackUserId: "U123",
+  slackUserName: "morgan",
+};
+
+function eventAutomationRunConversation(
+  nowMs: number,
+): ConversationDetailReport {
+  const startedAt = iso(nowMs, -3 * 60 * 60_000);
+  const at = (offsetMs: number) => iso(Date.parse(startedAt), offsetMs);
+  return detail(nowMs, {
+    conversationId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+    displayTitle: "Closed issue summary",
+    surface: "internal",
+    startedAt,
+    lastSeenAt: at(14_000),
+    lastProgressAt: at(14_000),
+    cumulativeDurationMs: 14_000,
+    sourceTask: {
+      id: "event-1",
+      kind: "event",
+      label: "Summarize the closed issue",
+      title: "Closed issue summary",
+      triggerMessageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+      triggerLabel: "Linear issue ACME-42 closed",
+      credentialMode: "creator",
+      credentialUser: "Alex Rivera",
+    },
+    events: [
+      reportEvent(
+        0,
+        startedAt,
+        {
+          type: "message",
+          messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+          role: "user",
+          // Dispatch input is authored by the dispatch owner, not a person.
+          actorIdentity: {
+            fullName: "junior",
+            slackUserId: "junior",
+            slackUserName: "junior",
+          },
+          text: [
+            "[task]",
+            "",
+            "This is a task, not a message from a person.",
+            "",
+            "About: Issue · ACME-42",
+            'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
+            "Instructions: Summarize the closed issue",
+            "",
+            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
+            "",
+            "End with `finishAutomationRun`.",
+          ].join("\n"),
+        },
+        { mentions: [MOCK_MENTION_MORGAN] },
+      ),
+      reportEvent(1, at(1_000), {
+        type: "turn_lifecycle",
+        turnId: "dispatch:event-1",
+        state: "started",
+        inputMessageIds: [EVENT_AUTOMATION_RUN_CONVERSATION_ID],
+      }),
+      reportEvent(
+        2,
+        at(13_000),
+        {
+          type: "message",
+          messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
+          role: "assistant",
+          text: "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>.",
+        },
+        // U456 has no People profile, and U999 is not resolved.
+        {
+          mentions: [
+            MOCK_MENTION_MORGAN,
+            { fullName: "Casey Nguyen", slackUserId: "U456" },
+          ],
+        },
+      ),
+      reportEvent(3, at(14_000), {
+        type: "turn_lifecycle",
+        turnId: "dispatch:event-1",
+        state: "succeeded",
+      }),
+    ],
+  });
+}
+
 function actor(
   email: string | undefined,
   fullName: string,
@@ -1390,11 +1514,51 @@ function mockConversations(nowMs: number): MockConversation[] {
       nowMs,
       DASHBOARD_QA_PLAN_ID,
       "Review the dashboard plan before editing.",
+      {
+        childAgentTotals: {
+          count: 1,
+          cumulativeDurationMs: 6_200,
+          cumulativeUsage: {
+            inputTokens: 4_100,
+            outputTokens: 220,
+            cost: { total: 0.011 },
+          },
+        },
+        cumulativeDurationMs: 78_600,
+        cumulativeUsage: {
+          inputTokens: 42_500,
+          outputTokens: 2_370,
+          cachedInputTokens: 21_600,
+          cost: { input: 0.1, output: 0.053, total: 0.153 },
+        },
+      },
+    ),
+    advisorConversation(
+      nowMs,
+      DASHBOARD_QA_PLAN_CHECK_ID,
+      "Check one claim in the dashboard plan.",
+      {
+        cumulativeDurationMs: 6_200,
+        cumulativeUsage: {
+          inputTokens: 4_100,
+          outputTokens: 220,
+          cost: { total: 0.011 },
+        },
+      },
+      DASHBOARD_QA_PLAN_ID,
     ),
     advisorConversation(
       nowMs,
       DASHBOARD_QA_REVIEW_ID,
       "Review the implementation after the first advisor pass.",
+      {
+        cumulativeDurationMs: 9_800,
+        cumulativeUsage: {
+          inputTokens: 6_200,
+          outputTokens: 310,
+          cost: { input: 0.015, output: 0.004, total: 0.019 },
+        },
+      },
     ),
     longConversation(nowMs),
     incidentConversation(nowMs),
@@ -1418,6 +1582,7 @@ function mockConversations(nowMs: number): MockConversation[] {
         title: "Weekly project summary",
       },
     }),
+    eventAutomationRunConversation(nowMs),
     simpleConversation(nowMs, {
       conversationId: ARCHIVED_CONVERSATION_ID,
       displayTitle: "Archived restore target",
@@ -1446,6 +1611,9 @@ function summaryFromConversation(
     activityEvent?.data.type === "message" && activityEvent.data.text
       ? {
           createdAt: activityEvent.createdAt,
+          ...(activityEvent.mentions
+            ? { mentions: activityEvent.mentions }
+            : undefined),
           role: activityEvent.data.role as "assistant" | "user",
           text: activityEvent.data.text,
         }
@@ -1816,6 +1984,102 @@ export function readMockConversationPendingMessages(
   };
 }
 
+/** Return the child agents of one mock Conversation, matching its transcript. */
+export function readMockConversationChildAgents(
+  conversationId: string,
+): ConversationChildAgentsReport | undefined {
+  const conversations = mockConversations(NOW_MS);
+  const conversation = conversations.find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  const startedAtMs = NOW_MS - 5 * 60 * 60_000;
+  // Match the API: each row has the usage of its child Conversation and of
+  // that child's own subagents.
+  const childMetrics = (childConversationId: string) => {
+    const child = conversations.find(
+      (candidate) => candidate.conversationId === childConversationId,
+    )!;
+    return {
+      ...(child.childAgentTotals
+        ? { childAgentTotals: child.childAgentTotals }
+        : undefined),
+      cumulativeDurationMs: child.cumulativeDurationMs,
+      cumulativeUsage: child.cumulativeUsage,
+    };
+  };
+  if (conversationId === DASHBOARD_QA_PLAN_ID) {
+    return {
+      agents: [
+        {
+          ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
+          conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
+          status: "completed",
+          task: "Check one claim in the dashboard plan.",
+          title: "Check one plan claim",
+          updatedAt: iso(startedAtMs, 16_000),
+        },
+      ],
+      conversationId,
+    };
+  }
+  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
+    return { agents: [], conversationId };
+  }
+  return {
+    agents: [
+      {
+        ...childMetrics(DASHBOARD_QA_REVIEW_ID),
+        conversationId: DASHBOARD_QA_REVIEW_ID,
+        error: "GitHub access is needed to read the pull request.",
+        name: "reviewer",
+        status: "blocked",
+        task: "Review the open dashboard pull requests and list risky changes.",
+        updatedAt: iso(startedAtMs, 44_000),
+      },
+      {
+        ...childMetrics(DASHBOARD_QA_PLAN_ID),
+        conversationId: DASHBOARD_QA_PLAN_ID,
+        status: "completed",
+        task: "Review the dashboard plan before editing.",
+        title: "Review the dashboard plan",
+        updatedAt: iso(startedAtMs, 20_000),
+      },
+    ],
+    conversationId,
+  };
+}
+
+/** Build the agent tree of a mock child Conversation, like the API. */
+function mockAgentTree(
+  conversation: MockConversation,
+): ConversationDetailReport["agentTree"] {
+  if (!conversation.parentConversationId) return undefined;
+  const conversations = mockConversations(NOW_MS);
+  const chain = [conversation];
+  let current = conversation;
+  while (current.parentConversationId) {
+    const parent = conversations.find(
+      (candidate) => candidate.conversationId === current.parentConversationId,
+    );
+    if (!parent) break;
+    chain.unshift(parent);
+    current = parent;
+  }
+  return chain.map((item) => {
+    if (!item.parentConversationId) {
+      return { conversationId: item.conversationId, label: item.displayTitle };
+    }
+    const agent = readMockConversationChildAgents(
+      item.parentConversationId,
+    )?.agents.find((child) => child.conversationId === item.conversationId);
+    return {
+      conversationId: item.conversationId,
+      label: agent?.title ?? agent?.name ?? "Subagent",
+    };
+  });
+}
+
 /** Return one canonical-event visual-QA conversation detail fixture. */
 export function readMockConversationDetail(
   conversationId: string,
@@ -1826,9 +2090,11 @@ export function readMockConversationDetail(
   );
   if (!conversation) return undefined;
   const { parentConversationId, ...conversationDetail } = conversation;
+  const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
   const detail = {
     ...conversationDetail,
+    ...(agentTree ? { agentTree } : undefined),
     canFork:
       !parentConversationId &&
       conversationDetail.eventHistory.status !== "redacted",
@@ -2442,6 +2708,7 @@ export function readMockPeopleCode(
   const overview = readMockCodeOverview();
   return {
     activityDays: overview.activityDays,
+    changes: overview.changes,
     generatedAt: overview.generatedAt,
     summary: overview.summary,
     windowEnd: overview.windowEnd,
@@ -2791,13 +3058,10 @@ function mockStatusDays(
 
 /** Build mock terminal executions for one viewer-visible task. */
 export function readMockAutomationExecutions(
-  kind: "scheduled" | "event",
   id: string,
   nowMs = NOW_MS,
 ): AutomationExecutionList | undefined {
-  const task = mockTasks().find(
-    (candidate) => candidate.kind === kind && candidate.id === id,
-  );
+  const task = mockTasks().find((candidate) => candidate.id === id);
   if (!task) return undefined;
   if (task.totalRuns === 0) {
     return {

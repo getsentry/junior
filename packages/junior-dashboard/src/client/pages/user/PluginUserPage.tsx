@@ -87,7 +87,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
           >
             {content.metrics.map((metric) => (
               <Card className="p-4" key={metric.label}>
-                <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                <div className="font-sans font-medium text-xs text-dashboard-text-muted">
                   {metric.label}
                 </div>
                 <div className="mt-3 font-display text-2xl font-light text-dashboard-text">
@@ -121,7 +121,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
         ) : records.length === 0 ? (
           <Card padding="md">
             <div className="flex items-center gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted">
+              <div className="grid size-10 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
                 <Boxes aria-hidden="true" size={17} />
               </div>
               <p className="m-0 text-sm text-dashboard-text-muted">
@@ -180,7 +180,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                   <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
                     {record.metadata.map((item) => (
                       <div key={item.label}>
-                        <dt className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+                        <dt className="font-sans font-medium text-xs text-dashboard-text-muted">
                           {item.label}
                         </dt>
                         <dd className="mt-1 ml-0 font-mono text-xs text-dashboard-text-muted">

@@ -24,7 +24,7 @@ export function TranscriptTurnContextView(props: {
         aria-expanded={open}
         aria-label="View turn context"
         className={cn(
-          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         onClick={() => setOpen(true)}
@@ -80,13 +80,13 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
           {memory ? (
             <Brain
               aria-hidden="true"
-              className="shrink-0 text-cyan-100/60"
+              className="shrink-0 text-dashboard-accent-text/60"
               size={15}
             />
           ) : (
             <Braces
               aria-hidden="true"
-              className="shrink-0 text-cyan-100/60"
+              className="shrink-0 text-dashboard-accent-text/60"
               size={15}
             />
           )}

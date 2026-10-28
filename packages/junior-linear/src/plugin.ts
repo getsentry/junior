@@ -53,6 +53,32 @@ const savedIssueSchema = z
     }
     return { ...issue, identifier: identifier.data.toUpperCase() };
   });
+
+/** Read-only Linear MCP tools that the optional service account may call. */
+const LINEAR_SERVICE_ACCOUNT_TOOLS = [
+  "extract_images",
+  "get_attachment",
+  "get_document",
+  "get_issue",
+  "get_issue_status",
+  "get_milestone",
+  "get_project",
+  "get_team",
+  "get_user",
+  "list_comments",
+  "list_cycles",
+  "list_documents",
+  "list_issue_labels",
+  "list_issue_statuses",
+  "list_issues",
+  "list_milestones",
+  "list_project_labels",
+  "list_projects",
+  "list_teams",
+  "list_users",
+  "search_documentation",
+] as const;
+
 const saveIssueResultSchema = z.union([
   savedIssueSchema,
   z.object({ issue: savedIssueSchema }).transform(({ issue }) => issue),
@@ -160,6 +186,11 @@ export function linearPlugin(): PluginRegistration {
       normalizeIdentifier: (identifier) => identifier.toUpperCase(),
     },
     manifest: {
+      // Optional shared read account. It has no effect until an admin
+      // connects it on the dashboard Admin page.
+      accounts: {
+        serviceAccount: { tools: [...LINEAR_SERVICE_ACCOUNT_TOOLS] },
+      },
       configKeys: ["team", "project"],
       description:
         "Linear issue tracking via hosted MCP server and issue webhooks",

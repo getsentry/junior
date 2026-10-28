@@ -270,8 +270,9 @@ export class SkillSandbox {
       return active;
     }
 
-    if (this.loadedSkills.size === 1) {
-      return [...this.loadedSkills.values()][0];
+    const [onlySkill, ...otherSkills] = this.loadedSkills.values();
+    if (onlySkill && otherSkills.length === 0) {
+      return onlySkill;
     }
 
     throw new Error(

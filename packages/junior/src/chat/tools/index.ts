@@ -15,7 +15,14 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createEventAutomationTools } from "@/chat/tools/event-automations";
@@ -48,7 +55,7 @@ import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -76,11 +83,15 @@ function createToolState(): ToolState {
 export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
-  includeLoadSkill?: boolean;
   pluginSandbox?: PluginSandbox;
 }
 
-/** Build the model-facing tool registry from runtime-owned context and capabilities. */
+/**
+ * Build the model-facing tool registry from runtime-owned context and capabilities.
+ *
+ * Choose tools from the Conversation, not from one Turn, so the cached tool
+ * list stays the same. Use `disableTools` when a Turn cannot use a tool.
+ */
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -99,13 +110,9 @@ export function createTools(
   );
   const eventCatalog = getEventCatalog();
   const tools: ToolRegistry = {
-    ...(options.includeLoadSkill === false
-      ? undefined
-      : {
-          loadSkill: createLoadSkillTool(availableSkills, {
-            onSkillLoaded: hooks.onSkillLoaded,
-          }),
-        }),
+    loadSkill: createLoadSkillTool(availableSkills, {
+      onSkillLoaded: hooks.onSkillLoaded,
+    }),
     updatePlan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
@@ -160,6 +167,7 @@ export function createTools(
       {
         modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
+        sandbox: context.workspace,
       },
       hooks.toolOverrides?.imageGenerate,
     );
@@ -201,7 +209,38 @@ export function createTools(
   }
 
   if (context.spawnAgent) {
-    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+    if (!context.spawnAgentProfiles) {
+      throw new Error("spawnAgent is missing its configured model profiles");
+    }
+    tools.spawnAgent = createSpawnAgentTool(
+      context.spawnAgent,
+      context.spawnAgentProfiles,
+    );
+    tools.stopAgent = createStopAgentTool(context.conversationId);
+  }
+
+  // A child agent that is too deep to start child agents can still list its
+  // parent and siblings.
+  if (context.spawnAgent || context.messageAgent) {
+    tools.listAgents = createListAgentsTool({
+      conversationId: context.conversationId,
+      parentConversationId: context.parentConversationId,
+    });
+  }
+
+  if (context.messageAgent) {
+    tools.messageAgent = createMessageAgentTool(context.messageAgent);
+  }
+
+  // A child agent reports to its parent, whatever input started this Turn.
+  if (context.parentConversationId) {
+    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
+  }
+
+  if (context.automation) {
+    tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
+      context.automation,
+    );
   }
 
   if (context.mcpToolManager) {
@@ -229,13 +268,19 @@ export function createTools(
           context.conversationId,
         );
     }
-    // Always register public search in Slack turns. Without an action token the
-    // tool stays visible and returns an honest interactive-turn limit.
-    if (context.source.kind === "slack") {
-      tools.slackPublicSearch = createSlackPublicSearchTool(
-        context.slackActionToken,
-      );
-    }
+    Object.assign(
+      tools,
+      disableTools(
+        {
+          slackPublicSearch: createSlackPublicSearchTool(
+            context.slackActionToken,
+          ),
+        },
+        context.slackActionToken
+          ? undefined
+          : "Slack gives a search token only for a new message or mention.",
+      ),
+    );
     const identityProviders = [
       "slack",
       ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
@@ -283,13 +328,17 @@ export function createTools(
     tools.slackChannelListMessages =
       createSlackChannelListMessagesTool(slackContext);
 
-    if (
-      context.source.kind === "slack" &&
-      locationCapabilities.canAddReactions
-    ) {
-      tools.addReaction = createSlackMessageAddReactionTool(
-        slackContext,
-        state,
+    if (locationCapabilities.canAddReactions) {
+      Object.assign(
+        tools,
+        disableTools(
+          {
+            addReaction: createSlackMessageAddReactionTool(slackContext, state),
+          },
+          slackContext.messageTs
+            ? undefined
+            : "It needs a Slack message in this Turn to react to.",
+        ),
       );
     }
   }

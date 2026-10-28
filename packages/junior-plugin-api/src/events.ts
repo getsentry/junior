@@ -279,6 +279,22 @@ export const watchResultSchema = z
 
 export type WatchResult = z.output<typeof watchResultSchema>;
 
+/**
+ * One person involved in an Event, named by a provider identity or an email.
+ * Core resolves linked people to mentions. It drops people it cannot resolve.
+ */
+export const eventPersonSchema = z.union([
+  z
+    .object({
+      provider: z.string().min(1),
+      handle: z.string().min(1),
+    })
+    .strict(),
+  z.object({ email: z.string().trim().min(3) }).strict(),
+]);
+
+export type EventPerson = z.output<typeof eventPersonSchema>;
+
 export const eventInputSchema = z
   .object({
     objectType: objectTypeSchema.optional(),
@@ -297,6 +313,14 @@ export const eventInputSchema = z
       .string()
       .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
       .optional(),
+    /** People involved in the change. Watch Events list them as mentions. */
+    people: z.array(eventPersonSchema).max(20).optional(),
+    /**
+     * The person who did what the Event describes, such as a reviewer or a
+     * commenter. Core resolves them like `people`, so the agent knows when a
+     * mention and a provider name are the same person.
+     */
+    doneBy: eventPersonSchema.optional(),
   })
   .strict();
 

@@ -30,6 +30,7 @@ related:
 | `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
 | `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
+| `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
 | `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
 | `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                            |
@@ -40,7 +41,7 @@ related:
 | `JUNIOR_BASE_URL`                           | No          | Main base URL for callback and authorization URLs.                                                                                                                          |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments.                       |
 | `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.                          |
-| `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                      |
+| `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone when Junior does not know a person's timezone, such as for schedules and Calendar tools. Defaults to `America/Los_Angeles`.                           |
 | `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                    |
 | `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments and published public artifacts. Vercel sets this when an OIDC-enabled Blob store is connected to the project.        |
 | `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static Vercel Blob credential when OIDC is unavailable. Vercel sets this for a token-connected store.                                                                       |
@@ -90,12 +91,10 @@ If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 | `GOOGLE_CLIENT_SECRET` | Yes      | Google OAuth client secret.                                           |
 | `BETTER_AUTH_SECRET`   | No       | Optional override for dashboard cookies. Defaults to `JUNIOR_SECRET`. |
 
-Configure allowed Google Workspace domains in `createApp({ dashboard })` and `juniorNitro({ dashboard })` for normal deployments. Set these optional policy variables when you prefer environment-managed dashboard authorization:
+Dashboard auth requires at least one [allowed domain](#allowed-domains). Set these optional policy variables when you prefer environment-managed dashboard authorization:
 
 | Variable                              | Required | Purpose                                                                                 |
 | ------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`     | No       | Comma-separated or JSON array of allowed Google domains.                                |
-| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`     | No       | Comma-separated or JSON array of explicit email allowlist.                              |
 | `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                           |
 | `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures. |
 
@@ -159,8 +158,10 @@ const app = await createApp({
     // Off by default. Without this, Junior only replies to explicit @mentions
     // and event notifications in those threads.
     "passive-routing": true,
-    // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
-    // unless you are testing the #879 runtime.
+    // Model-facing spawnAgent, messageAgent, listAgents, and stopAgent for
+    // durable child agent work. Child agents get messageAgent, listAgents,
+    // and reportBlocked.
+    // Incomplete; keep off unless you are testing the #879 runtime.
     subagents: true,
     // Operator tools such as runOperatorSql. They read and write the app
     // database directly and skip Conversation privacy checks. Enable them only
@@ -172,6 +173,25 @@ const app = await createApp({
 
 `junior chat` enables experimental `subagents` automatically because it is the
 local createApp-equivalent entrypoint and already wires the child-worker path.
+
+By default, only the root Conversation can start child agents. Set
+`limits.maxAgentDepth` to let child agents start their own child agents. For
+example, `1` lets a child agent start child agents, and those cannot start more.
+
+Each event automation can start at most 10 runs in a rolling minute. Set
+`limits.eventAutomationRunLimit.maxRuns` to change the count. Set
+`limits.eventAutomationRunLimit.windowMs` to change the window, in ms. For
+example, `eventAutomationRunLimit: { maxRuns: 100, windowMs: 3_600_000 }`
+allows 100 runs per hour. When an automation reaches the limit, Junior blocks it, sends
+its creator a direct message, and reports a warning issue to Sentry.
+
+Each turn can spend at most $100 of model cost and make at most 1,000 tool
+calls, including later execution slices of the turn. Set
+`limits.maxTurnCostUsd` (whole USD) or `limits.maxToolCallsPerTurn` to change
+these numbers. When a turn reaches a limit, Junior blocks its next tool call
+and tells the model to reply with what it finished and what is left. A child
+agent sends that reply to its parent as its result. If the model calls more
+tools after that, the turn fails with an execution-limit error.
 
 ## Remote ACP
 
@@ -191,6 +211,36 @@ pre-stable surface.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
+
+## Allowed domains
+
+`createApp({ allowedDomains })` is one list of domains for Slack and the
+dashboard. When the option is unset, Junior reads `JUNIOR_ALLOWED_DOMAINS`, a
+comma-separated or JSON array of domains. It is optional, but we recommend it.
+Junior logs a warning at startup when it is empty.
+
+```ts title="server.ts"
+export default await createApp({
+  allowedDomains: ["example.com"],
+  plugins,
+});
+```
+
+- **Slack:** Junior starts work from a mention or DM only when the email of the
+  author's Slack profile is on an allowed domain. Slack verifies that email.
+  Junior drops other messages and does not reply. Passive thread replies, slash
+  commands, and Slack actions are not checked yet.
+- **Dashboard:** Google sign-in accepts only Google Workspace accounts on an
+  allowed domain. Junior checks the verified `hd` claim of the Google ID token,
+  not the email. With one domain, Junior also sends it to Google as the `hd`
+  hint. With more domains, it sends `hd=*`, so Google shows only Workspace
+  accounts. Dashboard auth requires at least one domain.
+
+When the list is empty, every member of the Slack workspace can use Junior.
+
+The old `dashboard.allowedGoogleDomains` option and
+`JUNIOR_DASHBOARD_GOOGLE_DOMAINS` variable were removed. Junior fails at
+startup when either is set, so a stale config cannot silently allow everyone.
 
 `operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
 runs one SQL statement against the app database and returns up to 200 rows.
@@ -233,6 +283,7 @@ const app = await createApp({
       reasoningLevel: "high",
     },
   },
+  decisionModelId: "typesafe-ai/jev",
   fastModelId: "openai/gpt-6-luna",
   guardianModelId: "openai/gpt-6-luna",
   embeddingModelId: "openai/text-embedding-3-small",
@@ -280,7 +331,7 @@ const app = await createApp({
 });
 ```
 
-The app setting takes precedence over `SANDBOX_VCPUS`. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
+The app setting takes precedence over `SANDBOX_VCPUS`. A Workspace recipe vCPU count takes precedence over both for sandboxes of that Workspace. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
 
 Pass `sandbox.egressTracePropagationDomains` when sandboxed commands should keep Sentry trace context across sandbox network egress:
 

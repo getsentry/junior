@@ -31,6 +31,10 @@ does not consume so Slack can add payload fields without breaking message text.
 Runtime modules should consume the `MessageContent` projection rather than
 inspect `message.raw` or assemble attachment text themselves.
 
+Agent-visible text keeps user and channel mentions as `<@U123>` and
+`<#C123|name>`, the same form that Slack tools return. The runtime context
+gives the agent its own user ID.
+
 ## Delivery
 
 - Post each completed tool-free assistant message in the originating
@@ -39,6 +43,7 @@ inspect `message.raw` or assemble attachment text themselves.
   each visible assistant message. Tool-bearing assistant text remains agent
   history; explicit progress uses the status surface.
 - Translate Junior Markdown to Slack `mrkdwn` only at the outbound boundary.
+  A bare `@U123` becomes a `<@U123>` mention.
 - Continue oversized replies without splitting code fences into invalid
   fragments. With no inbound thread, later chunks reply under the first chunk
   so the channel only gets one top-level message.

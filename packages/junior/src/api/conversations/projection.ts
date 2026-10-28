@@ -129,6 +129,7 @@ function statusFromConversation(
 }
 
 function titleFromConversation(args: {
+  automationTitle?: string;
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
   surface: ConversationSurface;
@@ -147,11 +148,16 @@ function titleFromConversation(args: {
   return (
     privateLabel ??
     args.conversation.title ??
+    // Read-time fallback while a run's own title is unset. Nothing is stored.
+    args.automationTitle ??
     slackStatsLocationLabel({
       channel: slackThread?.channelId,
       channelName: effectiveChannelName,
     }) ??
-    surfaceFallbackLabel(args.surface)
+    // Dispatched runs, such as automation runs, are not internal machinery.
+    (args.conversation.source === "plugin"
+      ? "Automation run"
+      : surfaceFallbackLabel(args.surface))
   );
 }
 
@@ -208,7 +214,10 @@ export function conversationEventHistory(args: {
 export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
   archivedAtMs?: number;
+  /** Name of the Automation that started this conversation, when known. */
+  automationTitle?: string;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
+  childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   conversation: ConversationProjectionSource;
   durationMs: number;
   locationId?: string;
@@ -248,6 +257,7 @@ export function conversationSummaryFromStoredConversation(args: {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
     displayTitle: titleFromConversation({
+      automationTitle: args.automationTitle,
       canViewPrivateContent,
       conversation,
       surface,
@@ -266,6 +276,9 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { auxiliaryCosts: args.auxiliaryCosts }
       : undefined),
     ...(usage ? { cumulativeUsage: usage } : undefined),
+    ...(args.childAgentTotals
+      ? { childAgentTotals: args.childAgentTotals }
+      : undefined),
     ...(actorIdentity ? { actorIdentity } : undefined),
     ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:

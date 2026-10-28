@@ -55,7 +55,7 @@ export function AutomationEditor(props: {
   useEffect(() => {
     if (blocker.state === "blocked") discardNotice.current?.focus();
   }, [blocker.state]);
-  const url = `/api/automations/${original.kind}/${encodeURIComponent(original.id)}`;
+  const url = `/api/automations/${encodeURIComponent(original.id)}`;
   useEffect(() => {
     const prevent = (event: BeforeUnloadEvent) => {
       if (dirty && !allowLeave.current) {
@@ -425,7 +425,7 @@ export function AutomationEditor(props: {
           <div className="flex shrink-0 gap-2">
             <Link
               to={props.returnPath}
-              className="inline-flex min-h-11 items-center rounded border border-dashboard-border-emphasis px-3 text-sm text-dashboard-text no-underline sm:min-h-9"
+              className="inline-flex min-h-11 items-center rounded-md border border-dashboard-border-emphasis px-3 text-sm text-dashboard-text no-underline sm:min-h-9"
             >
               Cancel
             </Link>

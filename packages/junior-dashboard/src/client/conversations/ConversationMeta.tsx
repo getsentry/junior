@@ -24,8 +24,13 @@ import {
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
-import { cn } from "../styles";
-import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
+import { cn, dashboardInlineLinkClass } from "../styles";
+import {
+  CostMetric,
+  DurationMetric,
+  SubagentsMetric,
+  TokenMetric,
+} from "./TelemetryMetrics";
 import type { Conversation } from "../types";
 import {
   projectSidebarAnnotationBadges,
@@ -44,9 +49,9 @@ export function PendingAuthorization(props: {
   };
 }) {
   return (
-    <div className="mb-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
+    <div className="mb-2 rounded-lg border border-dashboard-accent/20 bg-dashboard-accent/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
       <a
-        className="font-medium text-cyan-200 underline decoration-cyan-300/40 underline-offset-2 hover:text-cyan-100"
+        className="font-medium text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-accent-text"
         href={props.authorization.authorizationUrl}
         rel="noreferrer"
         target="_blank"
@@ -77,7 +82,7 @@ export function ConversationPrivacyChip(props: {
       className={
         isPublic
           ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
+          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
       }
       role="note"
       title={`${fullLabel}. ${detail}`}
@@ -162,7 +167,7 @@ export function ConversationSidebarAnnotations(props: {
         {useMobileFacepile ? (
           <SidebarAnnotationIconFacepile
             annotations={mobileFacepileAnnotations}
-            // Discs sit on the sidebar panel / row surface (#09090b).
+            // Discs sit on the sidebar panel / row surface.
             cutoutColor="var(--color-dashboard-surface-panel)"
           />
         ) : (
@@ -171,7 +176,7 @@ export function ConversationSidebarAnnotations(props: {
               <SidebarAnnotationGroupChip group={group} key={group.label} />
             ))}
             {badges.overflowGroupCount > 0 ? (
-              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
                 +{badges.overflowGroupCount}
               </span>
             ) : null}
@@ -220,7 +225,7 @@ function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
       {props.group.annotations.map((annotation) =>
         annotation.objectType ? (
           <ObjectIcon
@@ -264,7 +269,7 @@ function SidebarAnnotationStatusChip(props: {
         // real chips, not floating glyphs. Box-shadow cutout (not border) keeps
         // layout at 18px while punching a surface-colored ring through the chip
         // underneath — classic avatar-facepile silhouette.
-        "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control",
+        "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control",
         props.stacked && "-ml-1",
       )}
       style={{
@@ -338,21 +343,33 @@ type SidebarAnnotationIconName = NonNullable<
 >;
 
 const SIDEBAR_ICON_PRESENTATION = {
-  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
+  "circle-dot": {
+    className: "text-[#3fb950] light:text-[#1a7f37]",
+    Icon: CircleDot,
+    label: "Open",
+  },
   "circle-dashed": {
-    className: "text-[#8c959f]",
+    className: "text-[#8c959f] light:text-[#59636e]",
     Icon: CircleDashed,
     label: "Draft",
   },
-  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
-  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "circle-x": {
+    className: "text-[#f85149] light:text-[#cf222e]",
+    Icon: CircleX,
+    label: "Closed",
+  },
+  "git-merge": {
+    className: "text-[#a371f7] light:text-[#8250df]",
+    Icon: GitMerge,
+    label: "Merged",
+  },
   "git-pull-request": {
-    className: "text-[#3fb950]",
+    className: "text-[#3fb950] light:text-[#1a7f37]",
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922]",
+    className: "text-[#d29922] light:text-[#9a6700]",
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -415,7 +432,7 @@ export function ConversationAnnotations(props: {
           className={cn(
             "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
             props.layout === "strip"
-              ? "px-1 py-0.5 text-xs hover:text-cyan-100"
+              ? "px-1 py-0.5 text-xs hover:text-dashboard-accent-text"
               : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
           )}
           href={link.url ?? undefined}
@@ -466,7 +483,7 @@ function resourceLinkTitle(link: {
 function LocationLink(props: { label: string; locationUrl?: string }) {
   return props.locationUrl ? (
     <a
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className={dashboardInlineLinkClass}
       href={props.locationUrl}
       rel="noreferrer"
       target="_blank"
@@ -481,45 +498,18 @@ function LocationLink(props: { label: string; locationUrl?: string }) {
 function SourceTask(props: {
   sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
 }) {
-  const kindLabel =
-    props.sourceTask.kind === "scheduled"
-      ? "Scheduled automation"
-      : "Event automation";
   const automationId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
-  const link = automationId ? (
+  const label = title ? `Automation: ${title}` : "Automation";
+  return automationId ? (
     <Link
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className={dashboardInlineLinkClass}
       to={automationPath(automationId)}
     >
-      Triggered by {kindLabel}
+      {label}
     </Link>
   ) : (
-    <span>Triggered by {kindLabel}</span>
-  );
-  // Keep tooltips to short identity fields. Full task prompts belong on the
-  // task details page, not in hover chrome.
-  if (!title) return link;
-  return (
-    <Tooltip
-      align="left"
-      content={
-        <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <span>Title</span>
-          <span className="text-dashboard-text">{title}</span>
-          {automationId ? (
-            <>
-              <span>ID</span>
-              <span className="break-all text-dashboard-text">
-                {automationId}
-              </span>
-            </>
-          ) : null}
-        </span>
-      }
-    >
-      {link}
-    </Tooltip>
+    <span>{label}</span>
   );
 }
 
@@ -598,6 +588,8 @@ function conversationStatItems(props: {
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
+  const childAgentTotals =
+    props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -615,6 +607,8 @@ function conversationStatItems(props: {
       ? {
           content: (
             <DurationMetric
+              childAgentTotals={childAgentTotals}
+              durationMs={props.conversation.cumulativeDurationMs}
               endedAt={props.conversation.lastSeenAt}
               label={durationLabel}
               startedAt={props.conversation.startedAt}
@@ -627,6 +621,8 @@ function conversationStatItems(props: {
       ? {
           content: (
             <TokenMetric
+              detailsHint={variant === "compact"}
+              childAgentTotals={childAgentTotals}
               compactionCount={
                 completeDetail
                   ? completeDetail.events.filter(
@@ -650,10 +646,12 @@ function conversationStatItems(props: {
       ? {
           content: (
             <CostMetric
+              detailsHint={variant === "compact"}
               auxiliaryCosts={
                 props.detail?.auxiliaryCosts ??
                 props.conversation.auxiliaryCosts
               }
+              childAgentTotals={childAgentTotals}
               live={live}
               liveModelId={activeModelId}
               modelUsage={props.detail?.modelUsage}
@@ -661,6 +659,12 @@ function conversationStatItems(props: {
             />
           ),
           key: "cost",
+        }
+      : undefined,
+    childAgentTotals
+      ? {
+          content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
+          key: "subagents",
         }
       : undefined,
   ];

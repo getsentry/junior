@@ -33,7 +33,7 @@ import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 import { ConversationPage } from "../src/client/conversations/ConversationPage";
-import { ToolCallGallery } from "../src/client/pages/dev/ComponentsPage";
+import { ToolCallGallery } from "../src/client/pages/dev/TranscriptActivityFixtures";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
@@ -51,8 +51,9 @@ function event(
   seq: number,
   data: ConversationReportEventData,
   createdAt = `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
+  mentions?: ConversationReportEvent["mentions"],
 ): ConversationReportEvent {
-  return { seq, createdAt, data };
+  return { seq, createdAt, data, ...(mentions ? { mentions } : undefined) };
 }
 
 function conversation(
@@ -79,9 +80,11 @@ function conversation(
 function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} />
-      </TranscriptSearchProvider>
+      <MemoryRouter>
+        <TranscriptSearchProvider query="">
+          <ConversationTranscriptView conversation={detail} />
+        </TranscriptSearchProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -89,8 +92,7 @@ function renderTranscript(detail: ConversationTranscript): string {
 function systemData(): SystemData {
   return {
     config: {
-      allowedEmailCount: 0,
-      allowedGoogleDomainCount: 0,
+      allowedDomainCount: 0,
       authPath: "/api/auth",
       authRequired: false,
       basePath: "/",
@@ -161,7 +163,9 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
     configKeys: [],
     description: `${name} plugin description`,
     displayName:
-      name === "github" ? "GitHub" : `${name[0].toUpperCase()}${name.slice(1)}`,
+      name === "github"
+        ? "GitHub"
+        : `${name.charAt(0).toUpperCase()}${name.slice(1)}`,
     name,
     ...overrides,
   };
@@ -230,6 +234,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <TranscriptText
+          mentions={[]}
           role="user"
           text="The function reads a const value and returns it."
         />
@@ -244,7 +249,11 @@ describe("dashboard canonical-event components", () => {
   it("renders fenced XML as highlighted code", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText role="user" text={"```xml\n<root />\n```"} />
+        <TranscriptText
+          mentions={[]}
+          role="user"
+          text={"```xml\n<root />\n```"}
+        />
       </QueryClientProvider>,
     );
 
@@ -264,6 +273,19 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Handling:");
     expect(html).toContain("<ul");
     expect(html.match(/<li/g)).toHaveLength(2);
+
+    const slackHtml = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown
+          text={"Checking:\n• first item\n• second item\n2) next step"}
+        />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(slackHtml.match(/<li/g)).toHaveLength(3);
+    expect(slackHtml).not.toContain("•");
+    expect(slackHtml).toContain('<ol class="');
+    expect(slackHtml).toContain('start="2"');
   });
 
   it("renders typed tool states in the component gallery", () => {
@@ -341,6 +363,7 @@ describe("dashboard canonical-event components", () => {
         conversationId="conversation-1"
         identity={null}
         live={false}
+        onOpenSubagent={() => {}}
         onSearchChange={() => {}}
         onViewChange={() => {}}
         privacy={null}
@@ -455,6 +478,55 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain("Taylor Chen");
     expect(html).not.toContain("Morgan Lee");
+  });
+
+  it("renders Slack mention tokens as names and profile links", () => {
+    const html = renderTranscript(
+      conversation([
+        event(
+          0,
+          {
+            type: "message",
+            messageId: "assistant-1",
+            role: "assistant",
+            text: "<@U123> merged. cc <@U456> <@U999> in <#C42|proj-junior>",
+          },
+          undefined,
+          [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
+        ),
+        event(
+          1,
+          {
+            type: "message",
+            messageId: "event-1",
+            role: "user",
+            eventType: "pull_request.merged",
+            trustedSummary: "<@U456> merged PR #42.",
+            text: "PR merged.",
+          },
+          undefined,
+          [{ fullName: "Riley Park", slackUserId: "U456" }],
+        ),
+      ]),
+    );
+
+    expect(html).toContain("@Riley Park</span> merged PR #42.");
+    expect(html).not.toContain("&lt;@");
+    expect(html).not.toContain("&lt;#");
+    expect(html).toMatch(
+      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>@Taylor Chen<\/a>/,
+    );
+    expect(html).not.toMatch(/<a [^>]*>@Riley Park/);
+    expect(html).toContain("@Riley Park");
+    expect(html).toContain("@U999");
+    expect(html).toContain("#proj-junior");
   });
 
   it("shows a Slack icon for Slack-origin messages only", () => {
@@ -1005,13 +1077,7 @@ describe("dashboard canonical-event components", () => {
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: SubagentTranscriptTarget = {
       conversationId: "child-1",
-      part: {
-        type: "subagent",
-        id: "child-1",
-        childConversationId: "child-1",
-        status: "completed",
-        subagentKind: "advisor",
-      },
+      status: "completed",
     };
 
     const html = renderToStaticMarkup(
@@ -1039,13 +1105,7 @@ describe("dashboard canonical-event components", () => {
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: SubagentTranscriptTarget = {
       conversationId: "child-1",
-      part: {
-        type: "subagent",
-        id: "child-1",
-        childConversationId: "child-1",
-        status: "error",
-        subagentKind: "advisor",
-      },
+      status: "error",
     };
 
     const html = renderToStaticMarkup(
@@ -1055,8 +1115,8 @@ describe("dashboard canonical-event components", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(html).toContain("error ·");
-    expect(html).not.toContain("completed ·");
+    expect(html).toContain(">error</span>");
+    expect(html).not.toContain(">completed</span>");
   });
 
   it("keeps a child transcript openable when its end event is missing", () => {
@@ -1094,21 +1154,15 @@ describe("dashboard canonical-event components", () => {
           <SubagentTranscriptDrawer
             target={{
               conversationId: "child-1",
-              part: {
-                type: "subagent",
-                id: "invocation-1",
-                childConversationId: "child-1",
-                status: "running",
-                subagentKind: "advisor",
-              },
+              status: "running",
             }}
             onClose={() => {}}
           />
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(drawerHtml).toContain("completed ·");
-    expect(drawerHtml).not.toContain("running ·");
+    expect(drawerHtml).toContain(">completed</span>");
+    expect(drawerHtml).not.toContain(">running</span>");
     expect(drawerHtml).toContain("Open conversation");
   });
 
@@ -1139,13 +1193,7 @@ describe("dashboard canonical-event components", () => {
     );
     const target: SubagentTranscriptTarget = {
       conversationId: "child-error",
-      part: {
-        type: "subagent",
-        id: "child-error",
-        childConversationId: "child-error",
-        status: "error",
-        subagentKind: "advisor",
-      },
+      status: "error",
     };
 
     const html = renderToStaticMarkup(
@@ -1189,13 +1237,7 @@ describe("dashboard canonical-event components", () => {
     });
     const target: SubagentTranscriptTarget = {
       conversationId: "child-stale",
-      part: {
-        type: "subagent",
-        id: "child-stale",
-        childConversationId: "child-stale",
-        status: "running",
-        subagentKind: "advisor",
-      },
+      status: "running",
     };
 
     const html = renderToStaticMarkup(
@@ -1328,7 +1370,9 @@ describe("dashboard canonical-event components", () => {
             'aria-label="2026-01-01: 0 conversations, 0ms, $0.00 spend, 0 tokens"',
           ),
         )
-        .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
+        .match(
+          /class="size-3 border border-dashboard-overlay bg-dashboard-surface-raised"/g,
+        ),
     ).toHaveLength(4);
     expect(html).not.toContain('href="/people/avery%40example.com"');
     expect(html).toContain('href="/system/people"');
@@ -1920,14 +1964,11 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toMatch(
-      /href="\/automations\/sched_source_task"[^>]*>Triggered by Scheduled automation<\/a>/,
+      /href="\/automations\/sched_source_task"[^>]*>Automation: Refresh YC company data<\/a>/,
     );
-    // Full automation instructions stay off hover chrome; open the automation page for those.
+    // Full automation instructions stay on the automation page.
     expect(html).not.toContain("Update getsentry/yc-scraper");
     expect(html).not.toContain("Instruction");
-    expect(html).not.toContain(
-      "Triggered by Scheduled automation · Update getsentry/yc-scraper",
-    );
   });
 
   it("renders cached canonical conversation detail through decoded routing", () => {

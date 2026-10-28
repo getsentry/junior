@@ -37,6 +37,7 @@ describe("Workspace snapshot setup command", () => {
         id: "workspace-one",
         name: "one",
         setupScript: "",
+        vcpus: null,
         repos: [],
         snapshot: null,
       },
@@ -82,6 +83,7 @@ describe("Workspace snapshot setup command", () => {
         id: "workspace-one",
         name: "one",
         setupScript: "printf ready",
+        vcpus: null,
         repos: [],
         snapshot: null,
       },
@@ -103,6 +105,7 @@ describe("Workspace snapshot setup command", () => {
       id: "workspace-one",
       name: "one",
       setupScript: "printf ready",
+      vcpus: null,
       repos: [],
       snapshot: null,
     });

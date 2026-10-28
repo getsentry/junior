@@ -267,7 +267,7 @@ describe("Slack Work Object details", () => {
         entity_payload: {
           attributes: {
             title: { text: "Water reminder" },
-            display_type: "Scheduled automation",
+            display_type: "Automation",
           },
           custom_fields: [
             { key: "status", value: "active" },
@@ -313,7 +313,7 @@ describe("Slack Work Object details", () => {
       title: "Reminder execution",
     });
     const executedAtMs = Date.now();
-    await recordAutomationExecution("scheduled", task.id, {
+    await recordAutomationExecution(task.id, {
       conversationId: "agent-dispatch:reminder-run",
       executionId: "reminder-run",
       nowMs: executedAtMs,
@@ -366,11 +366,18 @@ describe("Slack Work Object details", () => {
       visibility: "public",
       title: "Public automation",
     });
+    const creator = await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U999",
+    });
     await createEventAutomation(getDb(), {
       id: "event_public",
       title: "Issue updates",
       createdAtMs: Date.now(),
       createdBy: { slackUserId: "U999" },
+      creatorIdentityId: creator.id,
       credentialMode: "system",
       destination: { platform: "slack", teamId: "T123", channelId: "C123" },
       destinationVisibility: "public",
@@ -390,7 +397,7 @@ describe("Slack Work Object details", () => {
         entity_payload: {
           attributes: {
             title: { text: "Issue updates" },
-            display_type: "Event automation",
+            display_type: "Automation",
           },
           custom_fields: expect.arrayContaining([
             expect.objectContaining({

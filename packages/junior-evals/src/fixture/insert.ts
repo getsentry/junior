@@ -23,6 +23,7 @@ import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
+import { fixtureId } from "./ids";
 import type { SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
 
@@ -33,12 +34,28 @@ export interface SlackChannel {
   teamId: string;
 }
 
-let channelSequence = 0;
+/**
+ * A fixed Monday that weekly setup automations start on. A date from the
+ * clock would change the model requests each day.
+ */
+const FIXTURE_START_DATE = "2026-05-04";
+
+/** The Slack timestamp of the message that stored a setup memory. */
+const FIXTURE_MESSAGE_TS = "1780000000.000100";
+
+/**
+ * The time of the last memory that `insertMemory()` stored. Each memory gets
+ * a later time than the one before. Memory search orders equal matches by
+ * time and then by random id, so memories that a loop stores in the same
+ * millisecond would come back in another order on each run.
+ */
+let lastMemoryMs = 0;
+const nextMemoryMs = () =>
+  (lastMemoryMs = Math.max(Date.now(), lastMemoryMs + 1));
 
 /** Return a new public Slack channel in the test workspace. */
 export function slackChannel(): SlackChannel {
-  channelSequence += 1;
-  const suffix = `${Date.now().toString(36)}${channelSequence}`.toUpperCase();
+  const suffix = fixtureId("channel", 9).toUpperCase();
   const destination = createSlackDestination({
     channelId: `CEVALSET${suffix}`,
     teamId: SLACK_TEAM_ID,
@@ -47,6 +64,16 @@ export function slackChannel(): SlackChannel {
     throw new Error("slackChannel() needs a Slack destination");
   }
   return { ...destination, platform: "slack" };
+}
+
+/** Return the direct message channel of a Slack person in the test workspace. */
+export function slackDirectMessage(): SlackChannel {
+  const suffix = fixtureId("direct-message", 9).toUpperCase();
+  return {
+    channelId: `DEVALDM${suffix}`,
+    platform: "slack",
+    teamId: SLACK_TEAM_ID,
+  };
 }
 
 function resolveAuthor(author: SlackAuthor | undefined) {
@@ -84,12 +111,17 @@ export async function insertScheduledAutomation(args: {
   due?: boolean;
   /** Run one time instead of every week. */
   once?: boolean;
+  /**
+   * Where a successful run sends its message. The default is `destination`.
+   * An empty list stores no outcomes, so a successful run posts nothing.
+   */
+  sendTo?: SlackChannel[];
   task: string;
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
   const nowMs = Date.now();
-  const id = `sched_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+  const id = `sched_${fixtureId("scheduled-automation", 20)}`;
   const automation: ScheduledAutomation = {
     id,
     conversationAccess: { audience: "channel", visibility: "public" },
@@ -104,7 +136,10 @@ export async function insertScheduledAutomation(args: {
     destination: args.destination,
     executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
     nextRunAtMs: args.due ? nowMs : nowMs + 7 * 24 * 60 * 60 * 1000,
-    outcomes: [{ action: "send_message", destination: args.destination }],
+    outcomes: (args.sendTo ?? [args.destination]).map((destination) => ({
+      action: "send_message",
+      destination,
+    })),
     schedule: args.once
       ? {
           description: "Once at 9:00 AM Pacific",
@@ -117,7 +152,7 @@ export async function insertScheduledAutomation(args: {
           recurrence: {
             frequency: "weekly",
             interval: 1,
-            startDate: new Date(nowMs).toISOString().slice(0, 10),
+            startDate: FIXTURE_START_DATE,
             time: { hour: 9, minute: 0 },
             weekdays: [1],
           },
@@ -143,8 +178,8 @@ export async function insertEventAutomation(args: {
   trigger: EventAutomation["trigger"];
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
-  await insertSlackIdentity(author);
-  const id = `evt_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+  const identity = await insertSlackIdentity(author);
+  const id = `evt_${fixtureId("event-automation", 20)}`;
   await createEventAutomation(getDb(), {
     id,
     createdAtMs: Date.now() - 60_000,
@@ -153,6 +188,7 @@ export async function insertEventAutomation(args: {
       slackUserId: author.userId,
       userName: author.userName,
     },
+    creatorIdentityId: identity.id,
     credentialMode: args.credentialMode ?? "system",
     destination: args.destination,
     destinationVisibility: "public",
@@ -221,7 +257,7 @@ export async function insertMemory(args: {
     visibility === "private"
       ? channel.channelId.replace(/^C/, "D")
       : channel.channelId;
-  const messageTs = `${Math.floor(Date.now() / 1000)}.000100`;
+  const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
     getDb() as unknown as MemoryDb,
     {
@@ -240,7 +276,7 @@ export async function insertMemory(args: {
       }),
       userId: identity.userId,
     },
-    { embedder: createPluginEmbedder("memory") },
+    { embedder: createPluginEmbedder("memory"), now: nextMemoryMs },
   );
   const input = {
     content: args.content,

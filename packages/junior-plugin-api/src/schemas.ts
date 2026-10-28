@@ -130,14 +130,26 @@ export const eventSourceSchema = z
   })
   .strict();
 
+// Stored automation Sources from before these fields existed omit them.
+const automationSourceFields = {
+  automationId: exactNonBlankStringSchema.optional(),
+  automationRunId: exactNonBlankStringSchema.optional(),
+};
+
 /** Runtime-owned Scheduled automation input Source. */
 export const scheduledAutomationSourceSchema = z
-  .object({ kind: z.literal("scheduled_automation") })
+  .object({
+    kind: z.literal("scheduled_automation"),
+    ...automationSourceFields,
+  })
   .strict();
 
 /** Runtime-owned Event automation input Source. */
 export const eventAutomationSourceSchema = z
-  .object({ kind: z.literal("event_automation") })
+  .object({
+    kind: z.literal("event_automation"),
+    ...automationSourceFields,
+  })
   .strict();
 
 /** Runtime-owned Plugin dispatch input Source. */

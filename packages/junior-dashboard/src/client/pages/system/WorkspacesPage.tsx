@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import {
   workspaceListSchema,
-  type BaselineSnapshotReport,
+  type WorkspaceListReport,
   type WorkspaceReport,
 } from "@sentry/junior/api/schema";
 
@@ -17,7 +17,7 @@ import {
   deleteDashboardResource,
   fetchDashboardJson,
 } from "../../http";
-import { BaselineSnapshotCard } from "./BaselineSnapshotCard";
+import { BaseSandboxCard } from "./BaseSandboxCard";
 import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
 import { WorkspaceList } from "./WorkspaceList";
 
@@ -55,15 +55,16 @@ export function WorkspacesPage() {
     },
     onSuccess: async (workspace) => {
       await queryClient.cancelQueries({ queryKey: workspacesQueryKey });
-      queryClient.setQueryData<{
-        baselineSnapshot: BaselineSnapshotReport | null;
-        workspaces: WorkspaceReport[];
-      }>(workspacesQueryKey, (current) => ({
-        baselineSnapshot: current?.baselineSnapshot ?? null,
-        workspaces: (current?.workspaces ?? []).filter(
-          (item) => item.id !== workspace.id,
-        ),
-      }));
+      queryClient.setQueryData<WorkspaceListReport>(
+        workspacesQueryKey,
+        (current) =>
+          current && {
+            ...current,
+            workspaces: current.workspaces.filter(
+              (item) => item.id !== workspace.id,
+            ),
+          },
+      );
     },
   });
 
@@ -80,6 +81,7 @@ export function WorkspacesPage() {
 
   const workspaces = workspacesQuery.data?.workspaces ?? [];
   const baselineSnapshot = workspacesQuery.data?.baselineSnapshot ?? null;
+  const defaultVcpus = workspacesQuery.data?.defaultVcpus ?? null;
   return (
     <SystemPageLayout>
       <PageHeader
@@ -111,11 +113,15 @@ export function WorkspacesPage() {
       ) : null}
 
       {!workspacesQuery.error ? (
-        <BaselineSnapshotCard snapshot={baselineSnapshot} />
+        <BaseSandboxCard
+          defaultVcpus={defaultVcpus}
+          snapshot={baselineSnapshot}
+        />
       ) : null}
 
       <WorkspaceList
         busy={deleteMutation.isPending}
+        defaultVcpus={defaultVcpus}
         onDelete={(workspace) => {
           if (
             window.confirm(

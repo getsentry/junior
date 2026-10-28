@@ -1,5 +1,5 @@
 export const TRANSCRIPT_ANCHOR_CLASS =
-  "font-medium text-cyan-100 underline decoration-cyan-300/35 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white";
+  "font-medium text-dashboard-accent-text underline decoration-dashboard-accent/35 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-dashboard-text-solid";
 
 export type TranscriptMarkdownLink = {
   end: number;
@@ -36,9 +36,7 @@ export function findTranscriptMarkdownLinks(
     ...markdownLinks,
     ...autolinks,
     ...findBareLinks(text, bareRanges),
-  ].sort(
-    (left, right) => left.start - right.start || left.end - right.end,
-  );
+  ].sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
 function findMarkdownLinks(
@@ -90,6 +88,7 @@ function findNextMarkdownLink(
       start: linkStart,
     };
   }
+  return undefined;
 }
 
 function findMarkdownLinkSyntaxRanges(
@@ -150,6 +149,7 @@ function readMarkdownDestination(
     const href = text.slice(start, index);
     return href ? { end: index + 1, href } : undefined;
   }
+  return undefined;
 }
 
 function findCommonMarkAutolinks(
@@ -201,6 +201,7 @@ function findNextBareLink(
       start: match.index,
     };
   }
+  return undefined;
 }
 
 function findBareLinks(

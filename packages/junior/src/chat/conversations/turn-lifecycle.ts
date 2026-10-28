@@ -41,7 +41,11 @@ export interface ConversationTurnLifecycle {
 
 /** Persist correlated turn lifecycle facts with retry-safe terminal exclusion. */
 export class ConversationTurnLifecycleService implements ConversationTurnLifecycle {
-  constructor(private readonly events: ConversationEventStore) {}
+  private readonly events: ConversationEventStore;
+
+  constructor(events: ConversationEventStore) {
+    this.events = events;
+  }
 
   /** Record the turn start once after every input message is durable. */
   async start(input: StartConversationTurnInput): Promise<void> {

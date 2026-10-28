@@ -18,7 +18,10 @@ import {
   formatActivityDate,
   formatActivityTooltipDate,
 } from "../src/client/components/charts/ActivityChart";
-import { ChartHeader } from "../src/client/components/charts/ChartHeader";
+import {
+  ChartHeader,
+  chartHeaderPrimaryClassName,
+} from "../src/client/components/charts/ChartHeader";
 import { SystemMetricCharts } from "../src/client/components/charts/SystemMetricCharts";
 import {
   cacheInputTotal,
@@ -115,9 +118,9 @@ describe("ChartHeader", () => {
     expect(html).toContain("Daily cumulative runtime");
     expect(html).toContain("<h3");
     // Title and total value use the same primary class string.
-    const primaryClass = html.match(/class="([^"]*font-mono[^"]*)"/)?.[1];
-    expect(primaryClass).toBeTruthy();
-    expect(html.split(primaryClass!).length - 1).toBeGreaterThanOrEqual(2);
+    expect(
+      html.split(`class="${chartHeaderPrimaryClassName}"`).length - 1,
+    ).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -199,8 +202,8 @@ describe("ActivityChartAverageLine", () => {
     expect(html).toContain(">40 / day</text>");
     expect(html).toContain('stroke="#22d3ee"');
     // Label sits on a dark chip so series colors stay off the text.
-    expect(html).toContain('fill="rgba(9, 12, 14, 0.92)"');
-    expect(html).toContain('fill="#ffffff"');
+    expect(html).toContain('fill="var(--color-dashboard-bg-elevated)"');
+    expect(html).toContain('fill="var(--color-dashboard-text-solid)"');
   });
 
   it("hides when the average is zero", () => {
@@ -283,10 +286,10 @@ describe("SystemMetricCharts average line", () => {
     expect(
       formatCacheShare(summary.input.cacheCreationTokens, summary.total),
     ).toBe("11.1%");
-    const missing = { ...days[0], cacheCreationTokens: undefined };
+    const missing = { ...days[0]!, cacheCreationTokens: undefined };
     expect(cacheInputTotal(missing)).toBeUndefined();
-    expect(summarizeCacheInput([missing, days[1]]).total).toBeUndefined();
-    expect(summarizeCacheInput([missing, days[1]]).incompletePeriods).toBe(1);
+    expect(summarizeCacheInput([missing, days[1]!]).total).toBeUndefined();
+    expect(summarizeCacheInput([missing, days[1]!]).incompletePeriods).toBe(1);
     const zeroWrites = { ...days[0], cacheCreationTokens: 0 };
     expect(cacheInputTotal(zeroWrites)).toBe(1_000_000_000);
     expect(formatCacheShare(0, cacheInputTotal(zeroWrites))).toBe("0.0%");

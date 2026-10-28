@@ -38,13 +38,9 @@
     "packages/junior/tests/integration/heartbeat-timers.test.ts": 2,
     "packages/junior/tests/integration/local-agent-runner.test.ts": 29,
     "packages/junior/tests/integration/model-message-history.test.ts": 2,
-    "packages/junior/tests/integration/skill-invocation.test.ts": 6,
-    "packages/junior/tests/integration/slack/assistant-thread-contract.test.ts": 9,
     "packages/junior/tests/integration/slack/attachment-media-behavior.test.ts": 9,
-    "packages/junior/tests/integration/slack/bot-handlers.test.ts": 50,
+    "packages/junior/tests/integration/slack/bot-handlers.test.ts": 2,
     "packages/junior/tests/integration/slack/bot-image-hydration.test.ts": 13,
-    "packages/junior/tests/integration/slack/finalized-reply-behavior.test.ts": 9,
-    "packages/junior/tests/integration/slack/new-mention-behavior.test.ts": 6,
     "packages/junior/tests/integration/slack/watched-message-behavior.test.ts": 12
   },
   "agent-test-imports": {},
@@ -72,16 +68,14 @@
     "packages/junior/tests/fixtures/title-model.ts": 1,
     "packages/junior/tests/fixtures/turn-router-model.ts": 1,
     "packages/junior/tests/integration/durable-queue.test.ts": 3,
-    "packages/junior/tests/integration/slack/bot-handlers.test.ts": 4,
     "packages/junior/tests/integration/slack/bot-image-hydration.test.ts": 5,
-    "packages/junior/tests/integration/slack/finalized-reply-behavior.test.ts": 3,
     "packages/junior/tests/integration/slack/watched-message-behavior.test.ts": 17,
     "packages/junior/tests/unit/briefs/generate.test.ts": 4,
     "packages/junior/tests/unit/briefs/snapshot.test.ts": 1,
+    "packages/junior/tests/unit/guardian/reviewer.test.ts": 3,
     "packages/junior/tests/unit/plugins/plugin-model.test.ts": 1,
     "packages/junior/tests/unit/routing/subscribed-decision.test.ts": 2,
     "packages/junior/tests/unit/runtime/update-plan.test.ts": 4,
-    "packages/junior/tests/unit/services/guardian-action-review.test.ts": 3,
     "packages/junior/tests/unit/services/plan-continuation.test.ts": 2,
     "packages/junior/tests/unit/services/provider-retry.test.ts": 3,
     "packages/junior/tests/unit/services/short-title.test.ts": 5,
@@ -164,7 +158,7 @@
     "packages/junior/tests/unit/plugins/agent-hooks.test.ts": 79,
     "packages/junior/tests/unit/plugins/plugin-egress.test.ts": 5,
     "packages/junior/tests/unit/plugins/unfinished-work.test.ts": 3,
-    "packages/junior/tests/unit/slack/tool-registration.test.ts": 5
+    "packages/junior/tests/unit/slack/tool-registration.test.ts": 4
   },
   "runtime-composition": {
     "packages/junior/tests/component/task-execution/conversation-work.test.ts": 2,
@@ -182,9 +176,8 @@
     "packages/junior/tests/integration/agent-invocation-work.test.ts": 6,
     "packages/junior/tests/integration/conversation-turn-work.test.ts": 9,
     "packages/junior/tests/integration/durable-queue.test.ts": 2,
-    "packages/junior/tests/integration/event-wake-delay.test.ts": 3,
+    "packages/junior/tests/integration/event-wake-delay.test.ts": 1,
     "packages/junior/tests/integration/slack/assistant-lifecycle-contract.test.ts": 2,
-    "packages/junior/tests/integration/slack/assistant-thread-contract.test.ts": 2,
     "packages/junior/tests/integration/slack/conversation-turn-steering-behavior.test.ts": 1
   }
 }

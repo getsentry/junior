@@ -1,11 +1,12 @@
 /** Automation versions keep each saved definition so people can see how it changed. */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import {
   automationVersionSchema,
   type AutomationVersion,
 } from "@/api/schema/automation";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationVersions } from "@/db/schema/automation-versions";
+import { juniorAutomations } from "@/db/schema/automations";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { canonicalJson } from "./revision";
@@ -40,7 +41,6 @@ export function sameDefinitionValue(left: unknown, right: unknown): boolean {
  */
 export async function recordAutomationVersion(
   db: JuniorDatabase,
-  kind: "scheduled" | "event",
   task: VersionedAutomation,
   current: VersionedAutomation | undefined,
   editedBy?: EventAutomation["createdBy"],
@@ -49,13 +49,11 @@ export async function recordAutomationVersion(
   if (current && sameDefinitionValue(automationDefinition(current), definition))
     return;
   await db.insert(juniorAutomationVersions).values({
-    kind,
     automationId: task.id,
     version: sql`(
       SELECT coalesce(max(${juniorAutomationVersions.version}), 0) + 1
       FROM ${juniorAutomationVersions}
-      WHERE ${juniorAutomationVersions.kind} = ${kind}
-        AND ${juniorAutomationVersions.automationId} = ${task.id}
+      WHERE ${juniorAutomationVersions.automationId} = ${task.id}
     )`,
     createdAtMs: Date.now(),
     editedBy: editedBy ?? (current ? null : task.createdBy),
@@ -63,12 +61,39 @@ export async function recordAutomationVersion(
   });
 }
 
-function parseVersionRow(
-  kind: "scheduled" | "event",
-  row: typeof juniorAutomationVersions.$inferSelect,
-): AutomationVersion {
+/**
+ * Select the newest saved version with the same definition as `task`.
+ *
+ * An Automation run stores this version so that a reader can see the
+ * instruction that ran after the definition changes. The value is null when
+ * no saved version has this definition.
+ */
+export function automationVersionOf(task: VersionedAutomation): SQL {
+  return sql`(
+    SELECT max(${juniorAutomationVersions.version})
+    FROM ${juniorAutomationVersions}
+    WHERE ${juniorAutomationVersions.automationId} = ${task.id}
+      AND ${juniorAutomationVersions.definition} = ${JSON.stringify(automationDefinition(task))}::jsonb
+  )`;
+}
+
+const versionColumns = {
+  createdAtMs: juniorAutomationVersions.createdAtMs,
+  definition: juniorAutomationVersions.definition,
+  editedBy: juniorAutomationVersions.editedBy,
+  kind: juniorAutomations.kind,
+  version: juniorAutomationVersions.version,
+};
+
+function parseVersionRow(row: {
+  createdAtMs: number;
+  definition: unknown;
+  editedBy: unknown;
+  kind: "scheduled" | "event";
+  version: number;
+}): AutomationVersion {
   return automationVersionSchema.parse({
-    kind,
+    kind: row.kind,
     version: row.version,
     createdAt: new Date(row.createdAtMs).toISOString(),
     editedBy: row.editedBy,
@@ -79,41 +104,41 @@ function parseVersionRow(
 /** Read one saved definition. */
 export async function readAutomationVersion(
   db: JuniorDatabase,
-  kind: "scheduled" | "event",
   automationId: string,
   version: number,
 ): Promise<AutomationVersion | undefined> {
   const [row] = await db
-    .select()
+    .select(versionColumns)
     .from(juniorAutomationVersions)
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationVersions.automationId),
+    )
     .where(
       and(
-        eq(juniorAutomationVersions.kind, kind),
         eq(juniorAutomationVersions.automationId, automationId),
         eq(juniorAutomationVersions.version, version),
       ),
     )
     .limit(1);
-  return row ? parseVersionRow(kind, row) : undefined;
+  return row ? parseVersionRow(row) : undefined;
 }
 
 /** Read saved definitions, newest first. */
 export async function listAutomationVersions(
   db: JuniorDatabase,
-  kind: "scheduled" | "event",
   automationId: string,
   limit: number,
 ): Promise<AutomationVersion[]> {
   const rows = await db
-    .select()
+    .select(versionColumns)
     .from(juniorAutomationVersions)
-    .where(
-      and(
-        eq(juniorAutomationVersions.kind, kind),
-        eq(juniorAutomationVersions.automationId, automationId),
-      ),
+    .innerJoin(
+      juniorAutomations,
+      eq(juniorAutomations.id, juniorAutomationVersions.automationId),
     )
+    .where(eq(juniorAutomationVersions.automationId, automationId))
     .orderBy(desc(juniorAutomationVersions.version))
     .limit(limit);
-  return rows.map((row) => parseVersionRow(kind, row));
+  return rows.map(parseVersionRow);
 }

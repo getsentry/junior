@@ -54,7 +54,6 @@ function conversationStore(
     createChild: vi.fn(),
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
-    getFirstProviderConversationId: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),

@@ -65,7 +65,7 @@ export function ConversationActivityChart(props: {
               >
                 <g tabIndex={0}>
                   <rect
-                    fill="#22d3ee"
+                    fill="var(--color-cyan-400)"
                     height={renderedHeight}
                     opacity={day.conversations ? 0.78 : 0.08}
                     rx="2"
@@ -89,7 +89,7 @@ export function ConversationActivityChart(props: {
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke="#22d3ee"
+            stroke="var(--color-cyan-400)"
             unit={timeRangeBucketAverageUnit(bucketUnit)}
           />
           <ActivityChartDateLabels

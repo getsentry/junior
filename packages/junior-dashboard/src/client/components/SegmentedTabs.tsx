@@ -3,11 +3,11 @@ import { useId, type ReactNode } from "react";
 import { cn } from "../styles";
 
 /** Style the border and fill of the segmented pill track. */
-export const segmentedTabsFrameClass =
+const segmentedTabsFrameClass =
   "rounded-lg border border-dashboard-border bg-dashboard-surface-panel";
 
 /** Style the spacing inside the segmented pill track. */
-export const segmentedTabsInsetClass = "gap-1 p-1";
+const segmentedTabsInsetClass = "gap-1 p-1";
 
 /** Style one tab or link in the segmented pill track. */
 export function segmentedTabClass(selected: boolean): string {
@@ -19,11 +19,12 @@ export function segmentedTabClass(selected: boolean): string {
   );
 }
 
-/** Switch between related panels with equal-width tabs and keyboard navigation. */
+/** Switch between related panels. Tabs share the row equally on wide screens. */
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
-  items: readonly { label: string; value: Value }[];
+  /** `count` is the number of entries in the panel. Zero and unknown counts are hidden. */
+  items: readonly { count?: number; label: string; value: Value }[];
   onChange(value: NoInfer<Value>): void;
   value: NoInfer<Value>;
 }) {
@@ -33,11 +34,7 @@ export function SegmentedTabs<const Value extends string>(props: {
     <div className="grid min-w-0 gap-4">
       <div
         aria-label={props.label}
-        className={cn(
-          "grid auto-cols-fr grid-flow-col",
-          segmentedTabsFrameClass,
-          segmentedTabsInsetClass,
-        )}
+        className={cn("flex", segmentedTabsFrameClass, segmentedTabsInsetClass)}
         role="tablist"
       >
         {props.items.map((item, index) => (
@@ -45,7 +42,7 @@ export function SegmentedTabs<const Value extends string>(props: {
             aria-controls={`${id}-panel`}
             aria-selected={props.value === item.value}
             className={cn(
-              "min-w-0",
+              "inline-flex min-w-0 flex-auto items-center justify-center gap-1.5 sm:flex-1",
               segmentedTabClass(props.value === item.value),
             )}
             id={`${id}-${item.value}`}
@@ -80,13 +77,18 @@ export function SegmentedTabs<const Value extends string>(props: {
             tabIndex={props.value === item.value ? 0 : -1}
             type="button"
           >
-            {item.label}
+            <span className="truncate">{item.label}</span>
+            {item.count ? (
+              <span className="min-w-5 shrink-0 rounded-full bg-dashboard-fill-strong px-1.5 text-center text-xs font-semibold leading-5 tabular-nums">
+                {item.count.toLocaleString("en-US")}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
       <div
         aria-labelledby={`${id}-${props.value}`}
-        className="min-w-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        className="min-w-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
         id={`${id}-panel`}
         role="tabpanel"
         tabIndex={0}

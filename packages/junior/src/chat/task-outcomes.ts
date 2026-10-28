@@ -1,6 +1,6 @@
 import type { TaskOutcomeInput } from "./task-outcomes-schema";
 import type { SlackDestination, TaskOutcome } from "@sentry/junior-plugin-api";
-import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
+import { openSlackDirectMessage } from "@/chat/slack/outbound";
 
 /** Resolve explicit message outcomes to the Slack Destinations stored on an Automation. */
 export async function resolveTaskOutcomes(
@@ -20,19 +20,7 @@ export async function resolveTaskOutcomes(
       });
       continue;
     }
-    const userId = creatorSlackUserId;
-    const response = await withSlackRetries(
-      () =>
-        getSlackClient().conversations.open({
-          users: userId,
-        }),
-      3,
-      { action: "conversations.open" },
-    );
-    const channelId = response.channel?.id;
-    if (!channelId) {
-      throw new Error("Slack did not return a direct message destination.");
-    }
+    const channelId = await openSlackDirectMessage(creatorSlackUserId);
     resolved.push({
       action: "send_message",
       destination: {

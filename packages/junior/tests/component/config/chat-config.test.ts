@@ -523,12 +523,23 @@ describe("chat config", () => {
 
   it("sets max tool calls per turn from core config", async () => {
     const { botConfig } = await loadConfig();
-    expect(botConfig.maxToolCallsPerTurn).toBe(250);
+    expect(botConfig.maxToolCallsPerTurn).toBe(1000);
+  });
+
+  it("sets max turn cost from core config", async () => {
+    const { botConfig } = await loadConfig();
+    expect(botConfig.maxTurnCostUsd).toBe(100);
   });
 
   it("sets max consecutive automated turns from core config", async () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.maxConsecutiveAutomatedTurns).toBe(25);
+  });
+
+  it("sets the event automation run limit from core config", async () => {
+    const { botConfig } = await loadConfig();
+    expect(botConfig.maxEventAutomationRuns).toBe(10);
+    expect(botConfig.eventAutomationRunWindowMs).toBe(60_000);
   });
 
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {

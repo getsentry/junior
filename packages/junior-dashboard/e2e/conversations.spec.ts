@@ -175,9 +175,7 @@ test("keeps cached conversation and draft available through reconnect", async ({
 
   const composer = page.getByLabel("Continue this conversation");
   await composer.fill("Keep this draft through reconnect");
-  await expect(
-    page.getByText("Connect to send. Your draft is saved."),
-  ).toBeVisible();
+  await expect(page.getByText(/Connect to send/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
 
   await context.setOffline(false);
@@ -214,6 +212,7 @@ test("opens a conversation in the built dashboard", async ({
   await page.goto(dashboard.baseURL);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
+  await expect(page).toHaveTitle("Junior");
   await expect(
     page.getByRole("region", { name: "Conversations" }),
   ).toBeVisible();
@@ -236,6 +235,7 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+  await expect(page).toHaveTitle("Checkout latency triage - Junior");
   await expect(page.getByRole("note")).toContainText("Public conversation");
   await expect(page.getByRole("note")).toContainText("Public");
 
@@ -512,8 +512,8 @@ test("groups the signed-in profile and session actions in the header", async ({
     name: "Open profile menu for Dashboard User",
   });
   await expect(trigger).toBeVisible();
-  await expect(trigger).toContainText("7d$0.07");
-  await expect(trigger).toContainText("30d$0.07");
+  await expect(trigger).toContainText("7d$0.46");
+  await expect(trigger).toContainText("30d$0.46");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
 
@@ -541,7 +541,7 @@ test("groups the signed-in profile and session actions in the header", async ({
   await signOutRequest;
 });
 
-test("inspects and copies an advisor transcript", async ({
+test("inspects and copies a child agent transcript", async ({
   context,
   page,
   dashboard,
@@ -557,22 +557,54 @@ test("inspects and copies an advisor transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Subagents live inside the collapsed activity chip between turns.
-  const activityChip = page
-    .locator("details")
-    .filter({ hasText: /\d+ events?/ })
-    .first();
-  await expect(activityChip).toBeVisible();
-  await activityChip.locator("> summary").click();
-  await page
-    .getByRole("button", { name: "Open advisor transcript" })
-    .first()
-    .click();
+  // Subagent rows show in the main view, outside collapsed activity groups.
+  const planner = page.getByRole("button", {
+    name: "Open planner transcript",
+  });
+  const reviewer = page.getByRole("button", {
+    name: "Open reviewer transcript",
+  });
+  await expect(planner).toContainText("Review the dashboard plan");
+  await expect(reviewer).toContainText("blocked");
+  await screenshot(page, "conversation-child-agents");
 
-  const drawer = page.getByRole("dialog", { name: "Advisor review" });
+  // The Details drawer lists child agents with the runtime status.
+  await page.getByRole("button", { name: "Conversation details" }).click();
+  const details = page.getByRole("dialog", { name: "Dashboard QA edge cases" });
+  const subagentsTab = details.getByRole("tab", { name: "Subagents" });
+  await expect(subagentsTab).toHaveAccessibleName("Subagents 2");
+  await subagentsTab.click();
+  const subagents = details.getByRole("list", { name: "Subagents" });
+  await expect(subagents.getByRole("listitem")).toHaveCount(2);
+  await expect(subagents.getByRole("listitem").first()).toContainText(
+    "GitHub access is needed to read the pull request.",
+  );
+  await screenshot(page, "conversation-subagents-tab");
+  // A row opens the same child transcript drawer as the transcript row.
+  await subagents.getByRole("button", { name: /^reviewer blocked/ }).click();
+  await expect(details).toBeHidden();
+  const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
   await expect(
-    drawer.getByRole("heading", { name: "Advisor review" }),
+    reviewerDrawer.getByText("blocked", { exact: true }),
   ).toBeVisible();
+  await expect(
+    reviewerDrawer.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-review")}`,
+  );
+  await page.keyboard.press("Escape");
+  await expect(reviewerDrawer).toBeHidden();
+
+  await planner.click();
+
+  const drawer = page.getByRole("dialog", {
+    name: "Review the dashboard plan",
+  });
+  await expect(
+    drawer.getByRole("heading", { name: "Review the dashboard plan" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-child-agent-drawer");
   await expect(
     drawer.getByText(childConversationId, { exact: true }),
   ).toBeVisible();
@@ -617,6 +649,39 @@ test("inspects and copies an advisor transcript", async ({
   await expect(entry).toBeFocused();
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
+});
+
+test("shows the agent tree of a child agent conversation", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-plan")}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Review the dashboard plan" }),
+  ).toBeVisible();
+  const tree = page.getByRole("navigation", { name: "Agent tree" });
+  await expect(
+    tree.getByRole("link", { name: "Dashboard QA edge cases" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+  );
+  await expect(tree).not.toContainText("Review the dashboard plan");
+  await expect(
+    page.getByText("Review complete; no blocking issues found."),
+  ).toBeVisible();
+  await screenshot(page, "conversation-child-agent-page");
+
+  await tree.getByRole("link", { name: "Dashboard QA edge cases" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dashboard QA edge cases" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Agent tree" }),
+  ).toHaveCount(0);
 });
 
 test("finds an old archived conversation by title and restores it", async ({

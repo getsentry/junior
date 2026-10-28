@@ -82,7 +82,10 @@ function decodeHtmlEntities(value: string): string {
 
 function extractTitle(html: string): string | undefined {
   const match = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
-  const title = match ? normalizeWhitespace(decodeHtmlEntities(match[1])) : "";
+  const title =
+    match?.[1] !== undefined
+      ? normalizeWhitespace(decodeHtmlEntities(match[1]))
+      : "";
   return title.length > 0 ? title : undefined;
 }
 

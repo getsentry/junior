@@ -14,7 +14,7 @@ export function StatCard(props: {
   return (
     <Card className="relative p-4 sm:p-5">
       <div className="flex items-start justify-between gap-4">
-        <div className="font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+        <div className="font-sans text-xs font-medium text-dashboard-text-muted">
           {props.label}
         </div>
         <Icon aria-hidden="true" className="text-amber-400/55" size={15} />
@@ -23,7 +23,7 @@ export function StatCard(props: {
         {props.value}
       </div>
       {props.detail ? (
-        <div className="mt-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <div className="mt-2 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {props.detail}
         </div>
       ) : null}

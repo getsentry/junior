@@ -546,6 +546,11 @@ export interface PluginEventToolContext {
     events: string[];
     intent: string;
     resource: SubscribableResource;
+    /**
+     * Guidance for this Watch only, by event type. Core adds it after the
+     * resource type guidance when a matching Event arrives.
+     */
+    guidance?: Partial<Record<string, string>>;
   }): Promise<WatchResult>;
 }
 
@@ -566,6 +571,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    */
   conversationId?: string;
   annotations?: PluginAnnotations;
+  /** Host-owned dashboard link to the Automation that started this run. */
+  automationLink?: { url: string };
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;
@@ -577,6 +584,11 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   users: {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+    /**
+     * Resolve the current actor's IANA timezone. Uses their profile when
+     * Junior knows it, else the install default. Always returns a timezone.
+     */
+    resolveTimezone(): Promise<string>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

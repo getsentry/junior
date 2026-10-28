@@ -12,6 +12,7 @@ import {
 } from "@/chat/automations/edit-schema";
 import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z
   .object({
@@ -41,6 +42,8 @@ const automationSummaryBaseSchema = z.object({
   destination: automationDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),
+  /** People mentioned in the instruction, resolved at read time. */
+  mentions: z.array(actorIdentitySchema).optional(),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
   lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),
@@ -71,7 +74,8 @@ export const eventAutomationSummarySchema = automationSummaryBaseSchema
     resource: z.string().min(1),
     source: z.string().min(1),
     triggerAvailable: z.boolean(),
-    status: z.enum(["active", "paused"]),
+    statusReason: z.string().optional(),
+    status: z.enum(["active", "blocked", "paused"]),
   })
   .strict();
 
@@ -144,7 +148,6 @@ export const automationListSchema = z
 export const automationParamsSchema = z
   .object({
     id: z.string().min(1),
-    kind: z.enum(["scheduled", "event"]),
   })
   .strict();
 
@@ -332,7 +335,7 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
       kind: z.literal("event"),
       trigger: eventAutomationTriggerSchema,
       triggerAvailable: z.boolean(),
-      status: z.enum(["active", "paused"]),
+      status: z.enum(["active", "blocked", "paused"]),
     })
     .strict(),
 ]);

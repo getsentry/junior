@@ -1,4 +1,4 @@
-/** Presentation helpers for persisted scheduled-automation creators. */
+/** Sanitize persisted scheduled-automation creators. */
 import type { ScheduledAutomationPrincipal } from "./types";
 
 const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{5,}$/;
@@ -45,21 +45,4 @@ export function sanitizeScheduledAutomationPrincipal(
     ...(fullName ? { fullName } : undefined),
     ...(userName ? { userName } : undefined),
   };
-}
-
-/** Render scheduler creator metadata without inventing human profile fields. */
-export function scheduledAutomationPrincipalLabel(
-  principal: ScheduledAutomationPrincipal,
-): string {
-  const author = sanitizeScheduledAutomationPrincipal(principal);
-  if (author.fullName && author.userName) {
-    return `${author.fullName} (@${author.userName})`;
-  }
-  if (author.fullName) {
-    return author.fullName;
-  }
-  if (author.userName) {
-    return `@${author.userName}`;
-  }
-  return `Slack User ${author.slackUserId}`;
 }

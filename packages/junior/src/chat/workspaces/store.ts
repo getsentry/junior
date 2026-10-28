@@ -27,6 +27,7 @@ function workspaceFromRows(
     id: row.id,
     name: row.name,
     setupScript: row.setupScript,
+    vcpus: row.vcpus,
     repos: repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -226,6 +227,7 @@ export async function getWorkspace(
 export async function createWorkspace(input: {
   name: string;
   setupScript?: string;
+  vcpus?: number | null;
   repos: Array<{
     provider: string;
     repo: string;
@@ -243,6 +245,7 @@ export async function createWorkspace(input: {
         id,
         name: recipe.name,
         setupScript: recipe.setupScript,
+        vcpus: recipe.vcpus,
         createdAt: now,
         updatedAt: now,
       });
@@ -266,6 +269,7 @@ export async function updateWorkspace(
   input: {
     name: string;
     setupScript?: string;
+    vcpus?: number | null;
     repos: Array<{
       provider: string;
       repo: string;
@@ -287,6 +291,7 @@ export async function updateWorkspace(
       const existing = existingRows[0];
       if (!existing) return undefined;
       const existingRepos = await loadWorkspaceRepos(db, id);
+      // Snapshot contents do not depend on vCPUs, so a size change keeps them.
       const snapshotChanged =
         existing.setupScript !== recipe.setupScript ||
         !sameWorkspaceRepos(existingRepos, recipe.repos);
@@ -295,6 +300,7 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
+          vcpus: recipe.vcpus,
           updatedAt: now,
         })
         .where(eq(juniorWorkspaces.id, id))

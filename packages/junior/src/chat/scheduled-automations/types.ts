@@ -16,9 +16,6 @@ export type ScheduledAutomationStatus = z.output<
   typeof scheduledAutomationStatusSchema
 >;
 const scheduledAutomationCredentialModeSchema = z.enum(["system", "creator"]);
-export type ScheduledAutomationCredentialMode = z.output<
-  typeof scheduledAutomationCredentialModeSchema
->;
 
 const scheduledRunStatusSchema = z.enum([
   "pending",
@@ -136,7 +133,18 @@ export const scheduledRunSchema = z
 
 export type ScheduledAutomation = z.output<typeof scheduledAutomationSchema>;
 export type ScheduledRun = z.output<typeof scheduledRunSchema>;
-export type ScheduledAutomationRecord = Omit<ScheduledAutomation, "title">;
+/** The part of a Scheduled automation that has no SQL column of its own. */
+export type ScheduledAutomationRecord = Omit<
+  ScheduledAutomation,
+  | "createdAtMs"
+  | "creatorIdentityId"
+  | "id"
+  | "nextRunAtMs"
+  | "runNowAtMs"
+  | "status"
+  | "statusReason"
+  | "title"
+>;
 export type ScheduledAutomationPrincipal = ScheduledAutomation["createdBy"];
 export type ScheduledAutomationExecutionActor = NonNullable<
   ScheduledAutomation["executionActor"]

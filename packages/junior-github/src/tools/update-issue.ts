@@ -6,6 +6,7 @@ import {
   type Actor,
   type PluginLogger,
   type PluginEgress,
+  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -100,11 +101,13 @@ function githubApiErrorMessage(payload: unknown): string {
 /** Update mutable issue metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdateIssueTool(ctx: {
   actor?: Actor;
+  automationLink?: { url: string };
   conversationId?: string;
   egress: PluginEgress;
   log: PluginLogger;
   events: { canSubscribe: boolean };
   slack?: { conversationLink?: { url?: string } };
+  source?: Source;
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
   };

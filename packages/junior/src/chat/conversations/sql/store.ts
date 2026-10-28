@@ -35,7 +35,6 @@ import type {
 import {
   bindProviderConversation,
   getConversationIdByProviderConversation,
-  getFirstProviderConversationId,
   type ProviderConversationBinding,
   type ProviderConversationReference,
 } from "./bindings";
@@ -129,12 +128,6 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
     return value;
   }
   return undefined;
-}
-
-function originTypeFromSource(
-  source: ConversationSource | undefined,
-): string | undefined {
-  return source;
 }
 
 function localWorkspaceFromConversationId(
@@ -345,18 +338,16 @@ function assertSameConversationDestination(args: {
 }
 
 export class SqlStore implements ConversationStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async getConversationIdByProviderConversation(
     args: ProviderConversationReference,
   ): Promise<string | undefined> {
     return await getConversationIdByProviderConversation(this.executor, args);
-  }
-
-  async getFirstProviderConversationId(
-    args: Omit<ProviderConversationBinding, "providerConversationId">,
-  ): Promise<string | undefined> {
-    return await getFirstProviderConversationId(this.executor, args);
   }
 
   async bindProviderConversation(
@@ -394,9 +385,6 @@ export class SqlStore implements ConversationStore {
             throw new Error(
               `Conversation parent is missing for ${args.childConversationId}`,
             );
-          }
-          if (parent.parentConversationId) {
-            throw new Error("Recursive agent delegation is not enabled");
           }
           const child: Conversation = {
             ...emptyConversation({
@@ -776,9 +764,6 @@ export class SqlStore implements ConversationStore {
         schemaVersion: 1,
         source: conversation.source ?? null,
         sessionSource: conversation.sessionSource ?? null,
-        originType: originTypeFromSource(conversation.source) ?? null,
-        originId: null,
-        originRunId: null,
         location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
@@ -814,9 +799,6 @@ export class SqlStore implements ConversationStore {
           // Origin source is set-once so dashboard continues cannot rewrite a Slack root.
           source: sql`coalesce(${juniorConversations.source}, excluded.source)`,
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
-          originType: sql`coalesce(excluded.origin_type, ${juniorConversations.originType})`,
-          originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,
-          originRunId: sql`coalesce(excluded.origin_run_id, ${juniorConversations.originRunId})`,
           location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
           actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,

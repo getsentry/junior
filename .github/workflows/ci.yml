@@ -83,6 +83,7 @@ jobs:
               - packages/junior-memory/**
               - packages/junior-notion/**
               - packages/junior-octolens/**
+              - packages/junior-pagerduty/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
             repo:
@@ -154,7 +155,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
       - run: node --test packages/junior-evals/scripts/report.test.mjs
 
   junior-tests:
@@ -405,7 +406,7 @@ jobs:
           github.event_name != 'pull_request' ||
           steps.frameshift-baseline.outputs.found == 'true'
         id: frameshift
-        uses: dcramer/frameshift/ci@b730732abf4000c24914ed820b42688f430829f3 # v0
+        uses: dcramer/frameshift/ci@57ef8e4fa0147a7da4601d5e42bf5628e408fe82 # v0.2.0
         with:
           screenshots: .playwright/junior-dashboard/screenshots
 
@@ -424,7 +425,7 @@ jobs:
       statuses: write
     steps:
       # This job does not check out or run pull request code.
-      - uses: dcramer/frameshift/publish/workflow@b730732abf4000c24914ed820b42688f430829f3 # v0
+      - uses: dcramer/frameshift/publish/workflow@57ef8e4fa0147a7da4601d5e42bf5628e408fe82 # v0.2.0
 
   build-packages:
     name: build / packages
@@ -501,6 +502,7 @@ jobs:
           pnpm --filter @sentry/junior-memory pack --pack-destination artifacts
           pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
           pnpm --filter @sentry/junior-octolens pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-pagerduty pack --pack-destination artifacts
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts

@@ -7,6 +7,7 @@ import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { TranscriptSummary } from "./TranscriptSummary";
 
 function countLabel(count: number, singular: string, plural: string): string {
@@ -20,6 +21,8 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
+  // Child agent rows stay in the main view, like their result events.
+  if (entry.kind === "subagent") return false;
   if (entry.kind === "message") return false;
   return true;
 }
@@ -91,9 +94,6 @@ export function activityGroupSummary(
       ? [entry.part.event]
       : [],
   );
-  const subagentCount = entries.filter(
-    (entry) => entry.kind === "subagent",
-  ).length;
   const structuredCount = entries.filter(
     (entry) => entry.kind === "structured_event",
   ).length;
@@ -101,9 +101,10 @@ export function activityGroupSummary(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
   const eventCount = entries.filter((entry) => entry.kind === "message").length;
+  const [onlyHandoff] = handoffs;
   const handoffSummary =
-    handoffs.length === 1
-      ? `model handoff to ${handoffs[0].modelId} (${handoffs[0].modelProfile})`
+    handoffs.length === 1 && onlyHandoff
+      ? `model handoff to ${onlyHandoff.modelId} (${onlyHandoff.modelProfile})`
       : handoffs.length > 1
         ? countLabel(handoffs.length, "model handoff", "model handoffs")
         : undefined;
@@ -114,9 +115,6 @@ export function activityGroupSummary(
       : undefined,
     reasoningCount > 0
       ? countLabel(reasoningCount, "1 reasoning entry", "reasoning entries")
-      : undefined,
-    subagentCount > 0
-      ? countLabel(subagentCount, "1 subagent", "subagents")
       : undefined,
     compactionCount > 0
       ? countLabel(compactionCount, "context compacted", "context compacted")
@@ -135,11 +133,9 @@ export function activityGroupSummary(
 }
 
 function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
-  return entries.some((entry) => {
-    if (entry.kind === "tool") return entry.part.status === "running";
-    if (entry.kind === "subagent") return entry.part.status === "running";
-    return false;
-  });
+  return entries.some(
+    (entry) => entry.kind === "tool" && entry.part.status === "running",
+  );
 }
 
 /** Keep activity collapsed until the reader explicitly opens it. */
@@ -162,7 +158,11 @@ export function TranscriptActivityGroup(props: {
   const live = hasLiveActivity(props.entries);
 
   if (searchActive) {
-    return <div className="grid min-w-0 gap-1">{rows}</div>;
+    return (
+      <TranscriptActivityNesting.Provider value>
+        <div className="grid min-w-0 gap-1">{rows}</div>
+      </TranscriptActivityNesting.Provider>
+    );
   }
 
   const open = activityGroupOpen(userOpen);
@@ -173,7 +173,7 @@ export function TranscriptActivityGroup(props: {
         flush
         className={cn(
           "flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
-          live && "text-cyan-100/80",
+          live && "text-dashboard-accent-text/80",
         )}
         onClick={(event) => {
           event.preventDefault();
@@ -196,7 +196,9 @@ export function TranscriptActivityGroup(props: {
           </span>
         </Tooltip>
       </TranscriptSummary>
-      <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
+      <TranscriptActivityNesting.Provider value>
+        <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
+      </TranscriptActivityNesting.Provider>
     </details>
   );
 }

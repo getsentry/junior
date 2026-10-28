@@ -1,7 +1,4 @@
-import type {
-  StatsReport,
-  WorkspaceReport,
-} from "@sentry/junior/api/schema";
+import type { StatsReport, WorkspaceReport } from "@sentry/junior/api/schema";
 
 import { useStatsData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -9,16 +6,19 @@ import { WorkspaceUsageChart } from "../../components/charts/WorkspaceUsageChart
 import { workspaceUsageDays } from "../../components/charts/workspaceUsage";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { formatSandboxSize, SandboxSizeSummary } from "./SandboxSizeSummary";
 import { SnapshotSummary } from "./SnapshotSummary";
 
 /** Load Workspace usage stats and render snapshot plus switch volume. */
 export function WorkspaceDetails(props: {
+  defaultVcpus: number | null;
   range: TimeRangeDays;
   workspace: WorkspaceReport;
 }) {
   const statsQuery = useStatsData();
   return (
     <WorkspaceDetailsContent
+      defaultVcpus={props.defaultVcpus}
       error={Boolean(statsQuery.error)}
       loading={statsQuery.isPending}
       range={props.range}
@@ -28,8 +28,9 @@ export function WorkspaceDetails(props: {
   );
 }
 
-/** Present snapshot metadata and switch volume for one Workspace recipe. */
+/** Present snapshot metadata, Sandbox size, and switch volume for one Workspace recipe. */
 export function WorkspaceDetailsContent(props: {
+  defaultVcpus: number | null;
   error: boolean;
   loading: boolean;
   range: TimeRangeDays;
@@ -45,6 +46,12 @@ export function WorkspaceDetailsContent(props: {
         snapshot={props.workspace.snapshot}
         title="Current snapshot"
       />
+      <SandboxSizeSummary
+        description="Sandboxes for this Workspace start with this size."
+        headingId="workspace-sandbox-size-heading"
+        title="Sandbox size"
+        value={formatSandboxSize(props.workspace.vcpus ?? props.defaultVcpus)}
+      />
       {!props.stats ? (
         <Card padding="sm">
           <EmptyTelemetry>
@@ -58,7 +65,7 @@ export function WorkspaceDetailsContent(props: {
       ) : (
         <div className="grid min-w-0 gap-3">
           {props.error ? (
-            <p className="m-0 font-mono text-xs text-rose-200/65">
+            <p className="m-0 font-sans text-xs text-rose-200/65">
               Workspace usage refresh failed. Showing cached data.
             </p>
           ) : null}

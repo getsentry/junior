@@ -22,6 +22,7 @@ import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
+import { MentionText } from "./transcriptMentions";
 import {
   buildConversationSections,
   type ConversationSection,
@@ -172,7 +173,7 @@ function ConversationCardSection(props: {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
       <h3
-        className="mb-2 mt-0 px-1 font-display text-xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted"
+        className="mb-2 mt-0 px-1 font-sans text-xs font-medium text-dashboard-text-muted"
         id={`conversation-section-${props.section.key}`}
       >
         {props.section.label}
@@ -238,7 +239,7 @@ function ConversationCard(props: {
         </div>
         <div className="flex items-start gap-3">
           <Link
-            className="pointer-events-auto whitespace-nowrap font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
+            className="pointer-events-auto whitespace-nowrap font-sans text-xs tabular-nums text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
             to={conversationPath(conversation.id)}
           >
             {formatRelativeTime(conversation.lastSeenAt)}
@@ -265,14 +266,19 @@ function ConversationCard(props: {
       </div>
       {conversation.activityPreview ? (
         <p className="relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle pointer-events-none">
-          {formatConversationActivityPreview(conversation.activityPreview.text)}
+          <MentionText
+            mentions={conversation.activityPreview.mentions ?? []}
+            text={formatConversationActivityPreview(
+              conversation.activityPreview.text,
+            )}
+          />
         </p>
       ) : (
         <p className="relative z-[1] m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted pointer-events-none">
           {status === "active" ? "Working…" : "No recent message"}
         </p>
       )}
-      <div className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-xs text-dashboard-text-muted pointer-events-none">
+      <div className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-sans text-xs text-dashboard-text-muted pointer-events-none">
         {location ? <span className="truncate">{location}</span> : null}
         {location && participants.length > 0 ? (
           <span aria-hidden="true">·</span>

@@ -75,6 +75,10 @@ describe("Thread Continuity", () => {
   `evals/integration/coding/`, and its behavioral evals are in `evals/coding/`.
   Put an eval that needs the GitHub plugin in this suite. Do not set up the
   plugin in the test.
+- The `google` suite has the Google plugin. `src/suites/google.ts` has its
+  settings. Its integration evals are in `evals/integration/google/`, and its
+  behavioral evals are in `evals/google/`. `src/fixture/google.ts` connects
+  Junior's Google account and mocks the Calendar APIs.
 - The `memory` suite has the memory plugin and no other plugin or skill.
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - The `sentry` suite has the Sentry plugin. `src/suites/sentry.ts` has its
@@ -91,8 +95,10 @@ describe("Thread Continuity", () => {
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles and plugin tasks, is finished.
   A call fails when the agent is not idle within 60 seconds. The product
-  delays some queued deliveries; for example, a watch delivery waits 30
-  seconds for more events. The 60 seconds start when the last delivery is due.
+  delays some queued deliveries; for example, the worker checks a busy
+  Conversation again after 15 seconds. The fixture starts a delayed delivery
+  at once when nothing else runs. The 60 seconds start when the last delivery
+  is due.
 - A channel `slackMention()` arrives as Slack sends it: an `app_mention` event
   without a channel type, then a `message` event with the same `ts` and the
   channel type. Slack does not fix the order, and Junior stores the first
@@ -114,6 +120,26 @@ describe("Thread Continuity", () => {
 - `slackMention(text, { fromApp: true })` is a mention that another Slack app
   posted. Junior takes a turn for it. An app cannot open an authorization
   link, so the turn does not wait for one.
+- `slackMention(text, { assistantThread: true })` is a message in the chat
+  of the Junior app, which is a direct message. Slack starts an assistant
+  thread there before the first message, so the fixture sends the
+  `assistant_thread_started` event and then the message in that thread. A
+  `slackMention(text, { channelType: "im" })` is a direct message that is not
+  in a thread.
+- `conversation.statuses` has the status lines that Junior set under the
+  Slack thread, and an empty string clears the status.
+  `conversation.threadTitles` has the titles that Junior gave the Slack
+  thread. Slack shows a status for a channel thread and for a direct message
+  in a thread. Slack shows a title only for a direct message in a thread.
+- `rejectNextModelRequest()` in `src/fixture/gateway.ts` makes the model
+  provider reject the next model request of the agent, as it does when it
+  blocks a request under its usage policy. Junior does not retry, so the turn
+  fails and the person sees a failure notice. The fixture returns only the
+  provider error. It never writes a model answer.
+- `rejectNextSlackReply()` in `src/fixture/slack.ts` makes Slack reject the
+  next thread reply of Junior in the test. The turn fails and Junior stores
+  no reply. The person sees a failure notice, which is in
+  `conversation.replies`.
 - Slack sends a forwarded message and the content of an app message outside
   the message text. The fixture builds those Slack shapes, so a test gives
   only the text.
@@ -127,8 +153,13 @@ describe("Thread Continuity", () => {
   also accepts a recorded conversation from `src/fixture/recordings/`. Export
   one with `exportRecordedConversation()`.
 - `onProgress` reacts to what the turn does: `model_request`,
-  `tool_request`, or `reply`. Its `send(input)` posts an input while the turn
-  waits, so the product decides whether it steers, waits, or stops the turn.
+  `tool_request`, `reply`, or `paused`. Its `send(input)` posts an input while
+  the turn waits, so the product decides whether it steers, waits, or stops
+  the turn.
+  `paused` means that a turn stopped before it finished, for example at its
+  deadline, and Junior queued the rest of it. The fixture sees this at the
+  queue, which it replaces. The rest of the turn waits until the handler
+  finishes, so a sent input arrives before the turn continues.
   `sendDuringFirstModelRequest(inputs)` in `src/fixture/progress.ts` sends
   inputs while the first model request waits.
 - Insert functions in `src/fixture/insert.ts` write setup data through the
@@ -137,8 +168,10 @@ describe("Thread Continuity", () => {
 - `run(heartbeat())` returns the Conversation that a due automation started.
   Make an automation due with `insertScheduledAutomation({ due: true })`.
   `run(githubWebhook(...))` returns the Conversation that a matching
-  `insertEventAutomation()` started. The agent needs the GitHub plugin. These
-  Conversations take no further input.
+  `insertEventAutomation()` started. The agent needs the GitHub plugin. When
+  the automation posts, `conversation.continue(slackMention(...))` is a
+  person's reply in the thread of its first post. An automation that posts
+  nothing takes no further input.
 - `conversation.continue(githubWebhook(...))` delivers the event to the
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.
@@ -227,7 +260,7 @@ Not in scope:
 
 - Integration system cases: `evals/integration/`
   - primary runtime/system correctness that must never regress (hard pass/fail)
-  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-automation contracts, and scheduler create/credential/management contracts
+  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-automation contracts, scheduler create/credential/management contracts, and Google Calendar find/read/book contracts
 - Behavioral conversation cases: `evals/conversation/`
   - participation, actor attribution, continuity, storage, and output shape
 - Behavioral agent cases: `evals/agent/`
@@ -237,6 +270,7 @@ Not in scope:
 - Behavioral coding suite cases: `evals/coding/`
   - file tools, GitHub skill workflows, watch intent, summary quality, a fix after a failed check, and a mention during a watch delivery, with the GitHub plugin
 - Behavioral feature cases:
+  - `evals/google/` (calendar scheduling)
   - `evals/memory/`
   - `evals/scheduler/` (due-occurrence delivery quality)
   - `evals/sentry/`
@@ -271,20 +305,169 @@ Global setup reports the Postgres, egress, and snapshot phases before cases
 start. Egress teardown stops the tunnel and closes its remaining HTTP
 connections.
 
-## Web Pages And Search
+Snapshot warmup keeps the snapshot ids in
+`~/.cache/junior-evals/sandbox-snapshots.json`, so a later run does not build
+the snapshots again. Delete the file to build them again. In CI, the Actions
+cache keeps the file for the later runs of a pull request.
 
-- The fixture replays the requests that the `webFetch` tool sends.
-  `src/fixture/web.ts` records each response under
-  `.vitest-evals/recordings/webFetch/` and answers later requests for the same
-  URL from the recording. A redirect is its own recording.
+## Web Search
+
 - The fixture always mocks the search provider of `webSearch`. No test turns
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
   the results for one test.
-- Use `pnpm evals:record` to record the pages again.
-- Git ignores new recordings. Add the ones that an eval needs with
-  `git add -f`. Review them for stale fetches and secret-like values before
-  you commit.
+
+## Recordings
+
+Evals replay model calls and web pages from recordings. Roach, a shared
+recording service ([`getsentry/roach`](https://github.com/getsentry/roach)),
+does this. Sentry runs it at `https://roach-proxy.getsentry.net`. The
+service keeps the recordings of the tenant `getsentry/junior` in a GCS
+bucket, not in git. The bucket deletes each recording 30 days after it was
+written. `src/roach/` is a copy of the Roach client. Its `README.md` tells
+how to update it.
+
+### How evals use the proxy
+
+- `src/recording-rules.ts` is the one list of recorded traffic, allowed
+  origins, and changing values:
+  - `model`: every POST to the AI Gateway. This includes agent, title,
+    compaction, judge, Guardian, and turn router requests.
+  - `web`: the pages that `webFetch` reads. A redirect is its own recording.
+- `src/recording-run.ts`: global setup starts a run on the service and sets
+  the proxy variables. Test workers and child processes inherit them. At
+  the end, it ends the run, prints the totals, and adds them to the GitHub
+  Actions job summary.
+- `src/recording-setup.ts`: each test opens a session before its first
+  request and ends it when it finishes. A passed test writes its new
+  recordings. A failed test writes nothing.
+- `src/proxy-dispatcher.ts`: sends `fetch` through the proxy in processes
+  that started before the proxy variables. It also removes the own agent
+  that some clients, such as `@vercel/sandbox`, give `fetch`.
+- MSW mocks, such as Slack and GitHub, answer before the proxy.
+- Requests that match no rule, such as Vercel Sandbox API calls, go live
+  through the proxy and are not recorded.
+- In CI, `scripts/network-jail.sh` runs the evals with a firewall. It allows
+  only loopback, DNS, the Roach service, and Cloudflare. Any connection that
+  does not use the proxy fails at once. Add a host to the jail only if it
+  cannot go through the proxy.
+
+### The write token
+
+`ROACH_TOKEN` is the write token of the service. Only global setup reads it.
+Test workers and child processes do not get it.
+
+- With the token, a run uses `auto` mode by default.
+- Without the token, the service allows only `replay` mode. Such a run also
+  refuses every request that no rule records, so evals that use the Vercel
+  Sandbox fail. Guardian and turn router evals do not use the Sandbox, so
+  they can replay without the token.
+- CI gets the token from the `ROACH_TOKEN` organization secret. Pull
+  requests from forks do not get secrets, so their eval runs only replay.
+- To record locally, put `ROACH_TOKEN` in `.env.local`. All tenants share
+  the token, so keep it private.
+
+### Modes
+
+`VITEST_EVALS_REPLAY_MODE` sets the mode. Without it, the mode is `auto` with
+the token and `replay` without it.
+
+- `auto` replays recordings and records misses.
+- `replay` replays recordings. A request without a recording fails with HTTP
+  412 and never goes live, and its test fails. Use it to prove that a run
+  makes no model calls, judge calls included.
+- `record` sends every request live and writes it again.
+- `off` sends every request live and records nothing.
+
+`record` and `off` also need the token.
+
+### Keep requests stable
+
+- A change to a prompt, a tool, a skill, or the model makes new requests.
+  An `auto` run with `ROACH_TOKEN` records them. Recordings are not in git.
+- Fix a changing value for all tests, not in one test. A new test must not
+  need its own fix. The fixture and the rules already handle these:
+  - Every eval suite loads `src/stable-setup.ts` first. It sets the time
+    zone to UTC and gives `Math.random` a seed from the test name. It keeps
+    `crypto.randomUUID` real; the file tells why.
+  - `Date` starts each test at the same instant (`EVAL_START_MS` in
+    `src/eval-clock.ts`) and moves forward in real time. The model often
+    calculates times from "now", such as the end of a search window, and
+    the recording keeps them. With the same "now" on each run, tools get the
+    same results for those times. The worker sends its clock to the main
+    process at the start of each test, so sandbox egress checks tokens and
+    leases with the same clock. Checks of real external tokens, such as
+    Vercel OIDC tokens, use `realNow()`.
+  - The Slack mock takes its timestamps and channel ids from the test name.
+    Setup data and web Conversations take ids from `fixtureId()` in
+    `src/fixture/ids.ts`.
+  - The `values` of the model rule in `src/recording-rules.ts` cover ids and
+    times that only the product makes: UUIDs, SHA-256 ids, git commit ids,
+    ISO times and dates, Unix milliseconds, local times, and the event id
+    in a failure notice. Each run sends these patterns to the service. A
+    slow pattern fails its request with HTTP 400, so avoid nested
+    quantifiers, such as `(a+)+`.
+  - Roach remembers the values of each request in a test. A later
+    request of the same test that repeats one, for example a short commit id
+    that the model quotes in its reply, gets the same placeholder.
+  - `insertMemory()` gives each memory a later time than the one before.
+    Memory search orders equal matches by time and then by random id.
+  - When `onProgress` sends input, the model request waits 1.5 seconds
+    before it goes on (`INPUT_SETTLE_MS` in `src/fixture/agent.ts`). The
+    product checks for a stop every 500 ms. Without the wait, a replayed
+    response comes back before the product sees the input, and the test
+    takes another path than in the recording run.
+- If a miss shows a new kind of changing value, add it to the fixture or to
+  `values` of the rule.
+- The AI SDK sends no model request when it has no gateway credential. To
+  replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
+
+### Check that recording works
+
+- At the end of a run, global setup prints one line:
+
+  ```text
+  [evals] Recordings: model 12 replayed, 0 live; web 4 replayed, 0 live. 0 recordings new or changed, 0 dropped from failed sessions. Not recorded: none.
+  ```
+
+- `Not recorded` lists the origins of requests that matched no rule. If
+  `https://ai-gateway.vercel.sh` is in this list, a rule misses a model
+  request.
+- Run a suite two times. If all tests pass, the second run must show `0 live`.
+  `VITEST_EVALS_REPLAY_MODE=replay` makes this a check that fails.
+
+### Debug a miss
+
+- For each test, the log and the job summary name the first request without
+  a recording:
+
+  ```text
+  [evals] No recording: <test>: model/<key>.json
+  ```
+
+- Fix the first miss of a test. The later misses usually follow from it.
+- The key changes when any part of the request changes. Compare the request
+  of two runs to find the changed value, for example with a log of the
+  request body in the fixture.
+- The service redacts credentials in recordings. It knows the values of
+  request headers whose names can mean a credential, such as `auth`,
+  `token`, or `key`. It also knows the values of the environment variables
+  in `SECRET_ENV` of `src/recording-rules.ts`, because the run config sends
+  them. Add a variable there when CI gets a new credential. Recordings are public to anyone who can make the same
+  request, so do not record responses that must stay private.
+
+### Recordings in CI
+
+- Each eval workflow passes `ROACH_TOKEN` to the run step, so a pull request
+  run uses `auto`. It replays the recordings that it has, and records new
+  requests. The next run replays them.
+- A recording that a passed test wrote is at once available to all later
+  runs, also of other branches.
+- Nothing prunes recordings. The bucket deletes each one 30 days after it
+  was written, and the next `auto` run records it again. A change of the
+  model id makes new requests, so they record on their own. A provider that
+  changes its behavior under the same model id goes unnoticed until the
+  recording is recorded again.
 
 ## Running
 
@@ -318,7 +501,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Adding a trigger label fires immediately; unrelated labels do not.
 - Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,memory,scheduler,sentry,skills}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
-- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
+- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/guardian/**`.
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard, Guardian job, and Router job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
@@ -342,10 +525,11 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep a rubric only when the case still needs light quality scoring.
 - Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`. Put a case that needs the plugins or skills of a suite in the directory of that suite.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
+- In a Guardian case, set `tool` to the name of the agent tool, as the agent calls it. MCP tools go through `callMcpTool`. `proposal()` then builds the `tool` field from the agent's own tools with the production builder, so the case sends what production sends, including the tool's own `proposalDescription`. `src/guardian-tools.ts` builds those tools and holds the copied MCP tool descriptors. Pass an object only for a made-up tool that the agent does not have.
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Keep each case focused on one primary behavior.
 - Put semantic, model-dependent expectations in a rubric for `RubricJudge`.
-- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, `compactions`, and `turns`.
+- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, `statuses`, `threadTitles`, `compactions`, and `turns`.
 - When an eval judges nondeterministic visible output, write the rubric with `rubric({ pass, fail })`.
 - Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.

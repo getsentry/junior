@@ -58,7 +58,7 @@ export function AutomationRow(props: {
           <button
             aria-expanded={props.selected}
             aria-label={`View automation details: ${automation.title}`}
-            className="block w-full min-w-0 cursor-pointer rounded border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            className="block w-full min-w-0 cursor-pointer rounded-md border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
             onClick={props.onSelect}
             type="button"
           >
@@ -88,7 +88,7 @@ export function AutomationRow(props: {
           <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-dashboard-text-muted">
             {automation.createdByEmail ? (
               <Link
-                className="inline-flex min-w-0 max-w-full items-center gap-2 rounded text-dashboard-text no-underline hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+                className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-md text-dashboard-text no-underline hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
                 title={automation.createdBy}
                 to={peoplePath(automation.createdByEmail)}
               >
@@ -108,7 +108,7 @@ export function AutomationRow(props: {
         {automation.ownedByViewer ? (
           <div className="-mr-2 -mt-1.5 shrink-0">
             <AutomationActions
-              editPath={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/edit${location.search}`}
+              editPath={`/automations/${encodeURIComponent(automation.id)}/edit${location.search}`}
               deleting={props.deleting}
               onDelete={props.onDelete}
               title={automation.title}
@@ -125,7 +125,7 @@ function automationStatus(automation: AutomationSummary): string | undefined {
   if (automation.kind === "scheduled") {
     return automation.status === "active" ? undefined : automation.status;
   }
-  if (automation.status === "paused") return "paused";
+  if (automation.status !== "active") return automation.status;
   return automation.triggerAvailable ? undefined : "Trigger unavailable";
 }
 
@@ -208,7 +208,7 @@ function AutomationTiming({ automation }: { automation: AutomationSummary }) {
         {lastRunFailed ? (
           <Link
             className="text-amber-300 underline"
-            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+            to={`/automations/${encodeURIComponent(automation.id)}/executions`}
           >
             Last run {automation.lastRunStatus}
             {automation.lastRunAt
@@ -320,12 +320,12 @@ function AutomationActions(props: {
           <Link
             role="menuitem"
             to={props.editPath}
-            className="flex min-h-11 items-center rounded px-3 text-sm text-dashboard-text no-underline hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-dashboard-focus"
+            className="flex min-h-11 items-center rounded-md px-3 text-sm text-dashboard-text no-underline hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-dashboard-focus"
           >
             Edit automation
           </Link>
           <button
-            className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded border-0 bg-transparent px-3 text-sm text-rose-300 hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-3 text-sm text-rose-300 hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
             onClick={() => {
               close();
               props.onDelete();

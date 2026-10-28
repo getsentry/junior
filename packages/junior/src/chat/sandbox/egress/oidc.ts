@@ -77,9 +77,15 @@ async function getJwks(
   return jwks;
 }
 
-/** Verify Vercel signed this Sandbox firewall proxy request for the active VM session. */
+/**
+ * Verify Vercel signed this Sandbox firewall proxy request for the active VM session.
+ *
+ * `currentDate` is the time for the `exp` and `nbf` checks. It defaults to
+ * now. Evals pass the real time because they replace `Date`.
+ */
 export async function verifyVercelSandboxOidcToken(
   token: string,
+  options: { currentDate?: Date } = {},
 ): Promise<JWTPayload> {
   const unverified = decodeJwt(token);
   if (typeof unverified.iss !== "string") {
@@ -88,6 +94,7 @@ export async function verifyVercelSandboxOidcToken(
   const jwks = await getJwks(unverified.iss);
   const verified = await jwtVerify(token, jwks, {
     issuer: unverified.iss,
+    ...(options.currentDate ? { currentDate: options.currentDate } : undefined),
   });
   // The Sandbox proxy token is request identity. Do not compare its audience,
   // team, or project claims with deployment OIDC; the signed actor

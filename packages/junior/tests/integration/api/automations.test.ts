@@ -176,13 +176,14 @@ describe("Automations API", () => {
           platform: "slack",
           teamId: "T123",
         },
-        task: { text: "Post the public incident digest." },
+        task: { text: "Post the public incident digest for <@U456>." },
         updatedAtMs: nowMs + 2,
       });
       await createEventAutomation(fixture.sql.db(), {
         id: "event_automations_api",
         createdAtMs: nowMs + 1,
         createdBy: { slackUserId: "U123" },
+        creatorIdentityId: identity!.id,
         credentialMode: "system",
         destination: {
           channelId: "C123",
@@ -205,6 +206,7 @@ describe("Automations API", () => {
         id: "event_public_tasks_api",
         createdAtMs: nowMs + 3,
         createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
         credentialMode: "system",
         destination: {
           channelId: "C456",
@@ -226,6 +228,7 @@ describe("Automations API", () => {
         id: "event_private_tasks_api",
         createdAtMs: nowMs + 4,
         createdBy: { fullName: "Aisha Patel", slackUserId: "U456" },
+        creatorIdentityId: otherIdentity!.id,
         credentialMode: "system",
         destination: {
           channelId: "CPRIVATE",
@@ -283,7 +286,7 @@ describe("Automations API", () => {
         title: "Foreign public task run",
         visibility: "public",
       });
-      await recordAutomationExecution("event", "event_foreign_public", {
+      await recordAutomationExecution("event_foreign_public", {
         conversationId: "agent-dispatch:foreign-public-run",
         executionId: "foreign-public-run",
         nowMs: scheduledRun2AtMs + 1_000,
@@ -310,25 +313,25 @@ describe("Automations API", () => {
           eq(juniorConversations.conversationId, "agent-dispatch:sched-run-1"),
         );
 
-      await recordAutomationExecution("scheduled", "sched_tasks_api", {
+      await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
         executionId: "sched-run-1",
         nowMs: scheduledRun1AtMs,
         status: "completed",
       });
-      await recordAutomationExecution("scheduled", "sched_tasks_api", {
+      await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
         nowMs: scheduledRun2AtMs,
         status: "failed",
       });
-      await recordAutomationExecution("event", "event_automations_api", {
+      await recordAutomationExecution("event_automations_api", {
         conversationId: "agent-dispatch:event-run-1",
         executionId: "event-run-1",
         nowMs: eventRunAtMs,
         status: "completed",
       });
-      await recordAutomationExecution("scheduled", "sched_tasks_api", {
+      await recordAutomationExecution("sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
         nowMs: scheduledRun2AtMs,
@@ -366,6 +369,13 @@ describe("Automations API", () => {
               visibility: "public",
             }),
             id: "sched_public_tasks_api",
+            // Instructions resolve mentions like transcript messages do.
+            mentions: [
+              expect.objectContaining({
+                email: "aisha@example.com",
+                slackUserId: "U456",
+              }),
+            ],
             schedule: "Schedule unavailable",
             timezone: "UTC",
             kind: "scheduled",
@@ -476,9 +486,7 @@ describe("Automations API", () => {
 
       const executionsResponse = await authenticatedApi(
         "viewer@example.com",
-      ).request(
-        "http://localhost/api/automations/scheduled/sched_tasks_api/executions",
-      );
+      ).request("http://localhost/api/automations/sched_tasks_api/executions");
       expect(executionsResponse.status).toBe(200);
       const executionList = automationExecutionListSchema.parse(
         await executionsResponse.json(),
@@ -532,7 +540,7 @@ describe("Automations API", () => {
       const deniedExecutions = await authenticatedApi(
         "viewer@example.com",
       ).request(
-        "http://localhost/api/automations/event/event_private_tasks_api/executions",
+        "http://localhost/api/automations/event_private_tasks_api/executions",
       );
       expect(deniedExecutions.status).toBe(404);
 
@@ -670,7 +678,7 @@ describe("Automations API", () => {
       });
       expect((await list("state=completed&scope=mine")).total).toBe(1);
       await authenticatedApi("viewer@example.com").request(
-        "http://localhost/api/automations/scheduled/sched_owned_private",
+        "http://localhost/api/automations/sched_owned_private",
         { method: "DELETE" },
       );
       // A manual title must not hide the instruction from search.
@@ -737,29 +745,26 @@ describe("Automations API", () => {
 
       const deniedPublicDelete = await authenticatedApi(
         "viewer@example.com",
-      ).request(
-        "http://localhost/api/automations/event/event_public_tasks_api",
-        {
-          method: "DELETE",
-        },
-      );
+      ).request("http://localhost/api/automations/event_public_tasks_api", {
+        method: "DELETE",
+      });
       expect(deniedPublicDelete.status).toBe(404);
 
       const deletedScheduled = await authenticatedApi(
         "viewer@example.com",
-      ).request("http://localhost/api/automations/scheduled/sched_tasks_api", {
+      ).request("http://localhost/api/automations/sched_tasks_api", {
         method: "DELETE",
       });
       expect(deletedScheduled.status).toBe(204);
       const [deletedScheduledAutomation] = await fixture.sql.query<{
         status: string;
-      }>("SELECT status FROM junior_scheduler_tasks WHERE id = $1", [
+      }>("SELECT status FROM junior_automations WHERE id = $1", [
         "sched_tasks_api",
       ]);
       expect(deletedScheduledAutomation).toMatchObject({ status: "deleted" });
 
       const deletedEvent = await authenticatedApi("viewer@example.com").request(
-        "http://localhost/api/automations/event/event_automations_api",
+        "http://localhost/api/automations/event_automations_api",
         { method: "DELETE" },
       );
       expect(deletedEvent.status).toBe(204);

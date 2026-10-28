@@ -3,20 +3,24 @@
  *
  * Every model request goes to the real AI Gateway. This observer only watches
  * agent requests (the ones that offer tools) and holds them while a test
- * reacts. It never changes a model request or its response. Two requests are
- * not model requests. Image generation is a third-party image API, so the
- * observer answers it with a 1x1 PNG. `webSearch` is a third-party search
- * provider, so `web.ts` answers it with the results of the test.
+ * reacts. It never changes a model request or its response, and it never
+ * writes a model answer. A test can make the provider reject one agent
+ * request with `rejectNextModelRequest()`. Two requests are not model requests. Image generation is a third-party image API, so the
+ * observer answers it with a 1x1 PNG, or with the image of
+ * `mockGeneratedImage()`. `webSearch` is a third-party search provider, so
+ * `web.ts` answers it with the results of the test.
  */
 import { bypass, http, HttpResponse, passthrough } from "msw";
+import { onTestFinished } from "vitest";
 import { mswServer } from "@junior-tests/msw/server";
 import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
 const GATEWAY_CHAT_COMPLETIONS_URL =
   "https://ai-gateway.vercel.sh/v1/chat/completions";
+// A valid 1x1 PNG. The agent can view it, so the model must decode it.
 const STUB_PNG_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH3cAAAAASUVORK5CYII=";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 
 /** Whether a request asks the gateway to generate an image. */
 async function isImageGeneration(request: Request): Promise<boolean> {
@@ -25,6 +29,34 @@ async function isImageGeneration(request: Request): Promise<boolean> {
   return (
     Array.isArray(payload.modalities) && payload.modalities.includes("image")
   );
+}
+
+let generatedImageDataUrl = STUB_PNG_DATA_URL;
+
+/**
+ * Set the PNG that image generation returns in this test. Use it when the
+ * agent can check the image, for example after an edit. A 1x1 PNG does not
+ * look like the result, so the agent may try again.
+ */
+export function mockGeneratedImage(png: Buffer): void {
+  generatedImageDataUrl = `data:image/png;base64,${png.toString("base64")}`;
+  onTestFinished(() => {
+    generatedImageDataUrl = STUB_PNG_DATA_URL;
+  });
+}
+
+let rejectedModelRequests = 0;
+
+/**
+ * Make the model provider reject the next model request of the agent in this
+ * test, as it does when it blocks a request under its usage policy. Junior
+ * does not retry such a request, so the turn fails.
+ */
+export function rejectNextModelRequest(): void {
+  rejectedModelRequests += 1;
+  onTestFinished(() => {
+    rejectedModelRequests = 0;
+  });
 }
 
 export type GatewayProgress =
@@ -107,13 +139,18 @@ export function installGatewayObserver(): GatewayObserver {
         return HttpResponse.json({
           choices: [
             {
-              message: { images: [{ image_url: { url: STUB_PNG_DATA_URL } }] },
+              message: {
+                images: [{ image_url: { url: generatedImageDataUrl } }],
+              },
             },
           ],
         });
       }
       const hook = progressHook;
-      if (!hook || !request.url.startsWith(GATEWAY_MESSAGES_URL)) {
+      if (
+        (!hook && rejectedModelRequests === 0) ||
+        !request.url.startsWith(GATEWAY_MESSAGES_URL)
+      ) {
         return passthrough();
       }
       const payload = (await request.clone().json()) as { tools?: unknown[] };
@@ -121,6 +158,21 @@ export function installGatewayObserver(): GatewayObserver {
         // Titles and other side calls do not offer tools.
         return passthrough();
       }
+      if (rejectedModelRequests > 0) {
+        rejectedModelRequests -= 1;
+        return HttpResponse.json(
+          {
+            type: "error",
+            error: {
+              type: "invalid_request_error",
+              message:
+                "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      if (!hook) return passthrough();
       await hook({ type: "model_request" });
       let response: Response;
       try {

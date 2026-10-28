@@ -29,6 +29,7 @@ import type {
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
   annotateToolResult,
@@ -45,7 +46,10 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import {
+  getDashboardConversationLink,
+  getDashboardTaskLink,
+} from "@/chat/dashboard-link";
 import { createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
@@ -682,6 +686,7 @@ export function getPluginTools(
           conversationId: context.conversationId,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+          guidance: input.guidance,
           intent: input.intent,
           label: input.resource.label,
           namespace: pluginName,
@@ -699,9 +704,18 @@ export function getPluginTools(
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
+    const automationUrl =
+      (context.source.kind === "event_automation" ||
+        context.source.kind === "scheduled_automation") &&
+      context.source.automationId
+        ? getDashboardTaskLink(context.source.automationId)
+        : undefined;
     const common = {
       ...basePluginContext(plugin),
       annotations,
+      ...(automationUrl
+        ? { automationLink: { url: automationUrl } }
+        : undefined),
       conversationId: context.conversationId,
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
@@ -713,7 +727,21 @@ export function getPluginTools(
       events,
       sandbox,
       state: createPluginState(pluginName),
-      users: { resolveActor },
+      users: {
+        resolveActor,
+        async resolveTimezone() {
+          const actor = context.actor;
+          const resolved = await resolveActor();
+          return await resolveUserTimezone({
+            db: getDb(),
+            nowMs: Date.now(),
+            ...(actor?.platform === "slack"
+              ? { slack: { teamId: actor.teamId, userId: actor.userId } }
+              : undefined),
+            ...(resolved?.user ? { userId: resolved.user.id } : undefined),
+          });
+        },
+      },
       workspaces: {
         async findByRepository(input: { provider: string; repo: string }) {
           return await listWorkspaceNamesByRepository(getDb(), input);
@@ -1276,12 +1304,13 @@ function sanitizeOperationalReport(args: {
               OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
             ) ?? String(categoryIndex + 1),
           values: Object.fromEntries(
-            seriesEntries.map(({ sanitizedSeries, sourceKey }) => [
-              sanitizedSeries.key,
-              Number.isFinite(category.values[sourceKey])
-                ? category.values[sourceKey]
-                : 0,
-            ]),
+            seriesEntries.map(({ sanitizedSeries, sourceKey }) => {
+              const value = category.values[sourceKey];
+              return [
+                sanitizedSeries.key,
+                value !== undefined && Number.isFinite(value) ? value : 0,
+              ];
+            }),
           ),
         }));
       const sanitizedWidget: NonNullable<

@@ -589,7 +589,12 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("reuses broker-managed credentials across read and write egress", async () => {
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      conversationId: "conversation-1",
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
@@ -628,11 +633,24 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
+    unregister();
+
     expect(writeResponse.status).toBe(200);
     await expect(writeResponse.text()).resolves.toBe(
       "Bearer integration-egress-token",
     );
     expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    const writeAudit = records.find(
+      (record) =>
+        record.eventName === "sandbox.egress.upstream.requested" &&
+        record.attributes["http.request.method"] === "POST",
+    );
+    expect(writeAudit?.attributes).toMatchObject({
+      "app.actor.type": "user",
+      "app.log.audit": true,
+      "gen_ai.conversation.id": "conversation-1",
+      "user.id": ACTOR_ID,
+    });
   });
 
   it("intercepts credential-injected provider traffic before live forwarding", async () => {
@@ -1118,6 +1136,46 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(204);
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
     expect(tokenRequests).toEqual([{}]);
+  });
+
+  it("returns a Junior egress error instead of forwarding an unreadable body", async () => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin({ appPermissions: { actions: "write" } });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      modules.policy.buildSandboxEgressNetworkPolicy({ credentialToken }),
+      GITHUB_API_HOST,
+    );
+    const upstreamFetch = vi.fn(
+      async () => new Response(null, { status: 202 }),
+    );
+    // Production can deliver an already-used body stream. The proxy cannot
+    // tell whether the body was empty, so it must not forward the write.
+    const request = proxiedRequest({
+      body: "{}",
+      forwardURL,
+      method: "POST",
+      upstreamHost: GITHUB_API_HOST,
+      upstreamPath: "/repos/getsentry/junior/actions/runs/123/cancel",
+    });
+    await request.arrayBuffer();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(request, {
+      fetch: upstreamFetch as typeof fetch,
+      verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      source: "junior-egress",
+      error: expect.stringContaining("did not send the request upstream"),
+    });
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
   it("records GitHub GraphQL repository access errors without rewriting the response", async () => {

@@ -33,7 +33,8 @@ const cachedSnapshotSchema = z
   })
   .strict();
 
-type CachedSnapshot = z.output<typeof cachedSnapshotSchema>;
+/** Pointer from one dependency profile to its reusable snapshot. */
+export type CachedSnapshot = z.output<typeof cachedSnapshotSchema>;
 
 export type ResolveOutcome =
   | "no_profile"
@@ -106,7 +107,7 @@ export async function getCachedSnapshot(
 }
 
 /** Persist one dependency profile's reusable snapshot pointer. */
-async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
+export async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   await state.set(

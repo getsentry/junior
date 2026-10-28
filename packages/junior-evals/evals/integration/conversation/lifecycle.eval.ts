@@ -2,6 +2,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import { slackMention, reply, webMessage } from "@junior-evals/fixture/inputs";
+import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
@@ -44,6 +45,37 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.title).toMatch(/leak/i);
   });
 
+  test("when the first message links a tracked issue, name the conversation after the issue", async ({
+    agent,
+  }) => {
+    // The plugin stands in for a provider that reads the linked issue.
+    const issueTracker = defineJuniorPlugin({
+      manifest: {
+        name: "eval-issue-tracker",
+        displayName: "Eval Issue Tracker",
+        description: "Eval issue titles",
+      },
+      hooks: {
+        conversationTitleContext: ({ text }) =>
+          text.includes("tracker.example.test/acme/app/issues/1583")
+            ? ["acme/app#1583: Checkout button freezes on Safari"]
+            : undefined,
+      },
+    });
+    const { run } = await agent({
+      plugins: defineJuniorPlugins([issueTracker]),
+    });
+
+    const conversation = await run(
+      slackMention(
+        "Fix this https://tracker.example.test/acme/app/issues/1583. For now, reply with exactly: on it",
+      ),
+    );
+
+    expect(conversation.title).toMatch(/1583/);
+    expect(conversation.title).toMatch(/safari|checkout/i);
+  });
+
   // A Slack turn compacts history before the agent starts. A web turn
   // compacts it in the agent, before the first model request.
   test.for([
@@ -79,20 +111,41 @@ describe("Lifecycle and Resilience", () => {
     },
   );
 
-  test("when a tool call is interrupted at a turn deadline, continue the task to completion", async ({
+  test("when a tool call is interrupted at a turn deadline, continue the task to completion with a message that arrived in between", async ({
     agent,
   }) => {
     // The first release push lands remotely but stalls past the turn deadline.
     // The runtime records the interrupted call as timed out and resumes the
     // turn, so the resumed turn knows that the push happened.
+    // The deadline must fall during the push, not during the model requests
+    // before it. Live model requests can take more than 15 seconds, so a run
+    // that can make them needs 30 seconds. Strict replay returns every
+    // request at once and never makes a live one, so 10 seconds are enough
+    // there. The push stalls for 45 seconds.
+    // A person writes again while the turn waits to continue. The continued
+    // turn takes that message too.
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
-      limits: { turnTimeoutMs: 15_000 },
+      limits: {
+        turnTimeoutMs:
+          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+      },
     });
+    let sentWhilePaused = false;
     const conversation = await run(
       slackMention(
         "Ship the release with mcp__eval-operation__release-push, then tell me the final remote status from mcp__eval-operation__release-status.",
       ),
+      {
+        onProgress: async (progress, { send }) => {
+          if (progress.type === "paused" && !sentWhilePaused) {
+            sentWhilePaused = true;
+            await send(
+              slackMention("Also end your reply with the line: Owner: Dana"),
+            );
+          }
+        },
+      },
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -127,5 +180,33 @@ describe("Lifecycle and Resilience", () => {
       ),
     ).not.toHaveLength(0);
     expect(conversation.replies).toHaveLength(1);
+    expect(sentWhilePaused).toBe(true);
+    expect(conversation.replies[0]!.text).toContain("Owner: Dana");
+  });
+
+  test("when the model provider rejects a request, Junior posts a safe failure reply and answers the next message", async ({
+    run,
+  }) => {
+    rejectNextModelRequest();
+    const conversation = await run(
+      slackMention("The code word for the launch is maple. Reply with: noted"),
+    );
+
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    expect(conversation.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("content policy"),
+    ]);
+    // The reply does not have the text of the provider.
+    expect(conversation.replies[0]!.text).not.toContain("flagged");
+    expect(conversation.statuses[0]).not.toBe("");
+    expect(conversation.statuses.at(-1)).toBe("");
+
+    const next = await conversation.continue(
+      slackMention("Which code word did I give you for the launch?"),
+    );
+
+    expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(next.replies).toHaveLength(1);
+    expect(next.replies[0]!.text).toMatch(/maple/i);
   });
 });

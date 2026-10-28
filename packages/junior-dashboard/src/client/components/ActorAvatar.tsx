@@ -9,15 +9,18 @@ export function ActorAvatar(props: {
 }) {
   const [failedUrl, setFailedUrl] = useState<string>();
   const words = props.name.trim().split(/\s+/).filter(Boolean);
+  // The compact size fits one initial at the 12px type floor.
   const initials =
-    words.length > 1
-      ? `${words[0]![0]}${words.at(-1)![0]}`
-      : props.name.slice(0, 2);
+    props.size === "list"
+      ? props.name.trim().slice(0, 1)
+      : words.length > 1
+        ? `${words[0]![0]}${words.at(-1)![0]}`
+        : props.name.slice(0, 2);
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full border-2 border-dashboard-bg bg-dashboard-focus font-sans font-bold leading-none text-dashboard-text-inverse shadow-sm",
+        "relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full border-2 border-dashboard-bg bg-dashboard-focus font-sans font-semibold leading-none tracking-tight text-dashboard-text-inverse shadow-sm",
         props.size === "list" ? "size-6 text-2xs" : "size-7 text-xs",
       )}
     >

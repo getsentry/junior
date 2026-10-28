@@ -1,6 +1,6 @@
 ---
 title: Sentry Plugin
-description: Configure Sentry OAuth, org read access, and issue webhooks.
+description: Configure Sentry OAuth, org read access, and issue and metric alert webhooks.
 type: tutorial
 prerequisites:
   - /extend/
@@ -10,7 +10,7 @@ related:
   - /operate/security-hardening/
 ---
 
-Use the Sentry plugin to investigate issues with a user's Sentry account and respond to new issues through watches and event automations.
+Use the Sentry plugin to investigate issues with a user's Sentry account, make requested project, team, and alert changes, and respond to new issues and metric alerts through watches and event automations.
 
 Junior stores each user's OAuth grant and uses it only for that user's requests. Optional org read access lets Junior read Sentry data without a user's OAuth token, such as in scheduled tasks and event automations. Webhooks use a separate internal integration.
 
@@ -97,7 +97,7 @@ Internal integration token with read-only scopes. Junior uses it for Sentry API 
 <details class="plugin-config">
 <summary><code>SENTRY_WEBHOOK_ORG</code></summary>
 
-Organization slug allowed to send issue webhooks.
+Organization slug allowed to send webhooks.
 
 - **Define:** Set `SENTRY_WEBHOOK_ORG` in the deployment environment
 - **Required:** Yes for events; otherwise no
@@ -108,7 +108,7 @@ Organization slug allowed to send issue webhooks.
 <details class="plugin-config">
 <summary><code>SENTRY_WEBHOOK_SECRET</code></summary>
 
-Internal integration client secret used to verify issue webhooks.
+Internal integration client secret used to verify webhooks.
 
 - **Define:** Set `SENTRY_WEBHOOK_SECRET` in the deployment environment
 - **Required:** Yes for events; otherwise no
@@ -129,6 +129,8 @@ Set `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` to the app's credentials. Juni
 `alerts:write event:write member:read org:read project:releases project:write team:write`
 
 Reconnect after scope changes. Existing grants do not pick up new scopes automatically.
+
+With these scopes, Junior can make Sentry writes that a user asks for, such as creating projects, changing project settings, managing teams, and managing alerts. The user's own Sentry role still applies. The skill does not limit which requests Junior makes. To limit access, narrow the OAuth scopes or add host egress rules.
 
 ## Set up org read access
 
@@ -164,6 +166,22 @@ https://<junior-host>/api/webhooks/sentry
 
 Junior verifies each webhook signature and accepts webhooks only from the configured organization.
 
+### Metric alert webhooks
+
+Sentry sends metric alerts only to an integration that is an action on the alert.
+
+1. In the same internal integration, enable **Alert Rule Action**.
+2. On each metric alert that Junior should receive, add this trigger action:
+
+```text
+{
+  "type": "sentry_app",
+  "sentryAppId": <integration-id>,
+  "targetType": "sentry_app",
+  "targetIdentifier": <integration-id>
+}
+```
+
 ## Watches
 
 Set `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` to enable watches. See [Watches](/concepts/watches/) for the difference between temporary watches and durable event automations.
@@ -190,7 +208,34 @@ An issue was created in the project.
 
 </details>
 
-Create the watch or event automation before the issue arrives. Junior does not replay earlier webhooks.
+### `metric_alert`
+
+Subscribe to one metric alert with `metric-alert:org/alertRuleId`.
+
+<details class="event">
+<summary><code>metric_alert.critical</code></summary>
+
+The alert reached its critical threshold.
+
+</details>
+
+<details class="event">
+<summary><code>metric_alert.warning</code></summary>
+
+The alert reached its warning threshold.
+
+</details>
+
+<details class="event">
+<summary><code>metric_alert.resolved</code></summary>
+
+The alert resolved.
+
+</details>
+
+Junior publishes each state once for each alert incident.
+
+Create the watch or event automation before the webhook arrives. Junior does not replay earlier webhooks.
 
 ## Verify
 
@@ -198,7 +243,7 @@ Create the watch or event automation before the issue arrives. Junior does not r
 
 **Org read access:** Ask Junior to read an issue from a scheduled task, then make sure it does not ask you to connect Sentry.
 
-**Webhooks:** Subscribe to a project, then create a test issue in that project.
+**Webhooks:** Subscribe to a project, then create a test issue in that project. For metric alerts, subscribe to the alert, then lower its threshold until it triggers.
 
 ## Security
 
@@ -214,7 +259,7 @@ Create the watch or event automation before the issue arrives. Junior does not r
 - **Sentry reports a missing scope:** Reconnect Sentry to grant the current scopes.
 - **Sentry returns `403`:** Connect an account with access to the requested organization and project. With org read access, also check the integration's read permissions.
 - **A scheduled task cannot read Sentry:** Set `SENTRY_READ_TOKEN`. Confirm the request targets the organization that installed the integration.
-- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists.
+- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists. For metric alerts, also confirm the integration is a trigger action on the alert.
 - **Authorization links use the wrong host:** Set `JUNIOR_BASE_URL` to Junior's public URL.
 
 ## Next step

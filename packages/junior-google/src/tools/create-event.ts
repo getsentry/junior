@@ -19,16 +19,70 @@ import {
   type GoogleToolContext,
 } from "./shared";
 
+const repeatSchema = z
+  .object({
+    frequency: z
+      .enum(["weekdays", "weekly", "monthly"])
+      .describe(
+        "`weekdays` repeats Monday to Friday. `weekly` repeats on the start's weekday. `monthly` repeats on the start's day of the month.",
+      ),
+    interval: z
+      .number()
+      .int()
+      .min(1)
+      .max(12)
+      .default(1)
+      .describe(
+        "Repeat every N weeks or months. 2 with `weekly` means every other week. Ignored for `weekdays`.",
+      ),
+    count: z
+      .number()
+      .int()
+      .min(2)
+      .max(200)
+      .optional()
+      .describe("Number of occurrences. Omit when the series has no end."),
+  })
+  .strict();
+
+type Repeat = z.infer<typeof repeatSchema>;
+
+/** Build the Google recurrence rule for a repeating event. Exported for tests. */
+export function recurrenceRule(repeat: Repeat): string {
+  const parts =
+    repeat.frequency === "weekdays"
+      ? ["FREQ=WEEKLY", "BYDAY=MO,TU,WE,TH,FR"]
+      : [
+          `FREQ=${repeat.frequency === "weekly" ? "WEEKLY" : "MONTHLY"}`,
+          ...(repeat.interval > 1 ? [`INTERVAL=${repeat.interval}`] : []),
+        ];
+  if (repeat.count) parts.push(`COUNT=${repeat.count}`);
+  return `RRULE:${parts.join(";")}`;
+}
+
 const inputSchema = z
   .object({
-    title: z.string().trim().min(1).max(200),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .describe(
+        'Specific title that says who and what, such as "Alice / Bob: Q4 hiring plan". Avoid generic titles such as "Meeting" or "Sync".',
+      ),
     description: z
       .string()
       .max(4000)
       .optional()
       .describe(
-        "Event description. Do not include private details the attendees should not see.",
+        "Purpose, agenda, and links attendees need to prepare. Do not include private details the attendees should not see.",
       ),
+    location: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .describe("Room name or address for an in-person meeting."),
     start: z.iso
       .datetime({ offset: true })
       .describe("Event start, RFC 3339 with offset."),
@@ -37,9 +91,14 @@ const inputSchema = z
       .describe("Event end, RFC 3339 with offset."),
     timeZone: timeZoneSchema,
     attendees: emailListSchema(50).describe(
-      "Email addresses to invite. Junior adds the requester automatically when it knows their email.",
+      "Email addresses of required attendees. Junior adds the requester automatically when it knows their email.",
     ),
-    addVideoCall: z.boolean().default(true).describe("Add a Google Meet link."),
+    optionalAttendees: emailListSchema(50)
+      .default([])
+      .describe("Email addresses to invite as optional attendees."),
+    repeat: repeatSchema
+      .optional()
+      .describe("Make a repeating series, such as a weekly 1:1."),
   })
   .strict();
 
@@ -72,13 +131,20 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       readOnlyHint: false,
     },
     describeProposal(input) {
-      return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end} and email invites to ${input.attendees.join(", ") || "the requester"}.`;
+      const optional = input.optionalAttendees.length
+        ? ` (optional: ${input.optionalAttendees.join(", ")})`
+        : "";
+      const repeat = input.repeat
+        ? `, repeating ${recurrenceRule(input.repeat)}`
+        : "";
+      return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
     },
     description:
-      "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Use after the requester confirms the time. Only people in the company's Google Workspace domains can be invited.",
+      "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Every event gets a Google Meet link. Junior can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
     inputSchema,
     outputSchema,
     async execute(input, options) {
+      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
       const startMs = Date.parse(input.start);
       const endMs = Date.parse(input.end);
       if (endMs <= startMs) {
@@ -88,38 +154,48 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
         throw new PluginToolInputError("Events can be at most 8 hours long.");
       }
       const attendees = await withRequester(ctx, input.attendees);
-      if (attendees.length === 0) {
+      const required = new Set(attendees);
+      const optionalAttendees = [...new Set(input.optionalAttendees)].filter(
+        (email) => !required.has(email),
+      );
+      if (attendees.length + optionalAttendees.length === 0) {
         throw new PluginToolInputError("Invite at least one attendee.");
       }
-      requireAllowedEmails(attendees, ctx.allowedDomains);
+      requireAllowedEmails(
+        [...attendees, ...optionalAttendees],
+        ctx.allowedDomains,
+      );
 
       const eventId = calendarEventId(options.toolCallId);
       const response = await googleApiRequest(ctx, {
         body: {
-          attendees: attendees.map((email) => ({ email })),
-          ...(input.addVideoCall
-            ? {
-                conferenceData: {
-                  createRequest: {
-                    conferenceSolutionKey: { type: "hangoutsMeet" },
-                    requestId: eventId,
-                  },
-                },
-              }
-            : undefined),
+          attendees: [
+            ...attendees.map((email) => ({ email })),
+            ...optionalAttendees.map((email) => ({ email, optional: true })),
+          ],
+          conferenceData: {
+            createRequest: {
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+              requestId: eventId,
+            },
+          },
           ...(input.description
             ? { description: input.description }
             : undefined),
-          end: { dateTime: input.end, timeZone: input.timeZone },
+          end: { dateTime: input.end, timeZone },
           guestsCanModify: false,
           id: eventId,
-          start: { dateTime: input.start, timeZone: input.timeZone },
+          ...(input.location ? { location: input.location } : undefined),
+          ...(input.repeat
+            ? { recurrence: [recurrenceRule(input.repeat)] }
+            : undefined),
+          start: { dateTime: input.start, timeZone },
           summary: input.title,
         },
         operation: "google.calendar.event.create",
         path: "/calendar/v3/calendars/primary/events",
         query: {
-          conferenceDataVersion: input.addVideoCall ? "1" : "0",
+          conferenceDataVersion: "1",
           sendUpdates: "all",
         },
       });
@@ -143,7 +219,7 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), input.timeZone),
+        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
       };
     },
   });

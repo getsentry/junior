@@ -287,6 +287,42 @@ describe("Event automation management", () => {
     ).toEqual([]);
   });
 
+  test("when asked to pause and then resume an event automation, change its status", async ({
+    run,
+  }) => {
+    const channel = slackChannel();
+    const { id } = await insertEventAutomation({
+      destination: channel,
+      task: "Summarize issue closures and reopenings in this channel.",
+      trigger: issueTrigger,
+    });
+
+    const paused = await run(
+      slackMention("Pause the issue event automation in this channel.", {
+        channel,
+      }),
+    );
+    const resumed = await paused.continue(slackMention("Resume it now."));
+
+    expect(
+      completedToolCalls("updateEventAutomation", paused, resumed).map(
+        toolOutput,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        automation: expect.objectContaining({ id, status: "paused" }),
+      }),
+      expect.objectContaining({
+        automation: expect.objectContaining({ id, status: "active" }),
+      }),
+    ]);
+    const names = [...paused.toolCalls, ...resumed.toolCalls].map(
+      (call) => call.name,
+    );
+    expect(names).not.toContain("deleteEventAutomation");
+    expect(names).not.toContain("createEventAutomation");
+  });
+
   test("when a stored automation's plugin event is unavailable, explain that it cannot currently run", async ({
     agent,
   }) => {

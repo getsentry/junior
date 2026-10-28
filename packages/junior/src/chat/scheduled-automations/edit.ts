@@ -5,7 +5,7 @@ import {
   editAutomationFields,
 } from "@/chat/automations/edit-rules";
 import { compileScheduleIntent, ScheduleIntentError } from "./schedule-intent";
-import { getDefaultScheduleTimezone } from "./tool-support";
+import { defaultTimezone } from "@/chat/identities/timezone";
 import type { ScheduledAutomation } from "./types";
 import type { z } from "zod";
 
@@ -25,8 +25,7 @@ export async function editScheduledAutomation(
   if (input.schedule !== undefined) {
     try {
       compiled = compileScheduleIntent({
-        defaultTimezone:
-          current.schedule.timezone || getDefaultScheduleTimezone(),
+        defaultTimezone: current.schedule.timezone || defaultTimezone(),
         intent: input.schedule,
         nowMs,
       });

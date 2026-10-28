@@ -17,11 +17,13 @@ import {
   buildPluginSystemPromptContributions,
   buildSystemPrompt,
   buildTurnContextPrompt,
+  type DisabledToolPromptContext,
 } from "@/chat/prompt";
 import {
   getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
 } from "@/chat/plugins/agent-hooks";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   hasRuntimeTurnContext,
@@ -339,6 +341,43 @@ export function buildSteeringPiMessage(
   } as PiMessage;
 }
 
+/**
+ * Return a stable key for one steering message. Resolved attachments may change
+ * when Junior retries a mailbox delivery, so only the message time and text
+ * form the key.
+ */
+function steeringMessageKey(message: PiMessage): string | undefined {
+  if (message.role !== "user") {
+    return undefined;
+  }
+  const first = Array.isArray(message.content) ? message.content[0] : undefined;
+  const text =
+    first && typeof first === "object" && "text" in first
+      ? String((first as { text?: unknown }).text ?? "")
+      : "";
+  return `${message.timestamp}:${text}`;
+}
+
+/**
+ * Remove steering messages that saved history already holds. A repeated
+ * mailbox delivery can contain saved and unsaved messages.
+ */
+export function withoutSavedSteeringMessages<T>(
+  saved: readonly PiMessage[],
+  entries: readonly T[],
+  toMessage: (entry: T) => PiMessage,
+): T[] {
+  const savedKeys = new Set(
+    saved
+      .map(steeringMessageKey)
+      .filter((key): key is string => key !== undefined),
+  );
+  return entries.filter((entry) => {
+    const key = steeringMessageKey(toMessage(entry));
+    return key === undefined || !savedKeys.has(key);
+  });
+}
+
 function withoutTrailingUncheckpointedUserPrompt(
   messages: PiMessage[] | undefined,
   userContentParts: UserContentPart[],
@@ -473,9 +512,11 @@ export async function assemblePrompt(args: {
     | "slackConversation"
     | "location"
     | "delivery"
+    | "parentConversationId"
   >;
   spanContext: LogContext;
   turnId: string;
+  disabledTools: DisabledToolPromptContext[];
   toolGuidance: Array<{
     name: string;
     promptGuidelines: AnyToolDefinition["promptGuidelines"];
@@ -514,8 +555,16 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
+  const promptMode = args.run.dispatch?.declaresResult
+    ? "automation"
+    : args.run.parentConversationId
+      ? "child_agent"
+      : "conversation";
+  // Automation runs have no Delivery port. Their declared message still goes
+  // to Slack, so they keep Slack formatting rules.
   const platform =
-    args.run.delivery && args.run.location?.provider === "slack"
+    (args.run.delivery || promptMode === "automation") &&
+    args.run.location?.provider === "slack"
       ? "slack"
       : "local";
   const systemPromptContributions =
@@ -523,7 +572,10 @@ export async function assemblePrompt(args: {
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     systemPromptContributions,
   );
-  const baseInstructions = [buildSystemPrompt(platform), pluginSystemPrompt]
+  const baseInstructions = [
+    buildSystemPrompt(platform, promptMode),
+    pluginSystemPrompt,
+  ]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions =
@@ -533,11 +585,26 @@ export async function assemblePrompt(args: {
           context: args.toolRuntimeContext,
           turnId: args.turnId,
         });
+  const disabledTools =
+    !shouldPromptAgent || replayedPrompt ? [] : args.disabledTools;
+  // A replayed or checkpointed prompt already holds the notes of this Turn.
+  const conversationNotes =
+    !shouldPromptAgent || replayedPrompt
+      ? undefined
+      : await loadTurnConversationNotes({
+          conversationId: args.toolRuntimeContext.conversationId,
+          turnId: args.turnId,
+        });
   const turnContextPrompt =
-    needsBootstrapContextForPrompt || pluginUserPromptContributions.length > 0
+    needsBootstrapContextForPrompt ||
+    pluginUserPromptContributions.length > 0 ||
+    (conversationNotes?.length ?? 0) > 0 ||
+    disabledTools.length > 0
       ? buildTurnContextPrompt({
           availableSkills: args.availableSkills,
           activeMcpCatalogs: args.activeMcpCatalogs,
+          conversationNotes,
+          disabledTools,
           includeSessionContext: needsBootstrapContextForPrompt,
           pluginPromptContributions: pluginUserPromptContributions,
           toolGuidance: args.toolGuidance,

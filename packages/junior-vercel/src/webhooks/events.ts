@@ -16,45 +16,26 @@ import {
 const deploymentIdSchema = z.string().regex(/^dpl_[A-Za-z0-9]+$/);
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 
-/**
- * Keep routing schemas strict while explicitly accepting documented Vercel
- * fields that this feature treats as opaque and does not persist.
- */
-const webhookEnvelopeSchema = z
-  .object({
-    createdAt: z.number().finite(),
-    id: z.string().min(1),
-    payload: z.unknown(),
-    region: z.unknown().optional(),
-    type: z.string().min(1),
-  })
-  .strict();
+// Read only the fields used for routing. Vercel sends more fields than its docs
+// list, so unknown fields must not reject the webhook.
+const webhookEnvelopeSchema = z.object({
+  createdAt: z.number().finite(),
+  id: z.string().min(1),
+  payload: z.unknown(),
+  type: z.string().min(1),
+});
 
 const deploymentPayloadSchema = z
   .object({
-    alias: z.unknown().optional(),
-    deployment: z
-      .object({
-        id: deploymentIdSchema,
-        meta: z.record(z.string(), z.unknown()),
-        name: z.unknown().optional(),
-        url: z.unknown().optional(),
-      })
-      .strict(),
-    links: z.unknown().optional(),
-    plan: z.unknown().optional(),
-    project: z
-      .object({
-        id: vercelProjectIdSchema,
-        name: z.unknown().optional(),
-      })
-      .strict(),
-    regions: z.unknown().optional(),
+    deployment: z.object({
+      id: deploymentIdSchema,
+      meta: z.record(z.string(), z.unknown()),
+    }),
+    project: z.object({
+      id: vercelProjectIdSchema,
+    }),
     target: z.string().nullable(),
-    team: z.unknown().optional(),
-    user: z.unknown().optional(),
   })
-  .strict()
   .transform((payload) => ({
     commitSha: commitSha(payload.deployment.meta),
     deploymentId: payload.deployment.id,

@@ -31,6 +31,7 @@ import {
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { startLocationThread } from "@/chat/conversations/sql/location";
 import {
   historyItemFromPiMessage,
   projectConversationEvents,
@@ -393,11 +394,10 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
-      for (const binding of args.providerConversationBindings ?? []) {
-        await bindProviderConversation(executor, {
-          conversationId: args.conversationId,
-          ...binding,
-        });
+      for (const reference of args.providerConversationBindings ?? []) {
+        const binding = { conversationId: args.conversationId, ...reference };
+        await bindProviderConversation(executor, binding);
+        await startLocationThread(executor, binding);
       }
     }),
   );
@@ -775,6 +775,24 @@ export async function recordSubscribedReplyRoute(args: {
       },
     },
   ]);
+}
+
+/**
+ * Load the profile of the newest Turn route or handoff.
+ *
+ * The projection profile is not enough: a Turn route does not replace history.
+ */
+export async function loadLastModelProfile(
+  args: ScopedConversation,
+): Promise<ModelProfile | undefined> {
+  const page = await getConversationEventStore().query(args.conversationId, {
+    limit: 1,
+    types: ["turn_routed", "handoff"],
+  });
+  const data = page.events[0]?.data;
+  return data?.type === "turn_routed" || data?.type === "handoff"
+    ? data.modelProfile
+    : undefined;
 }
 
 /** Load a previously selected model profile for a resumed turn. */

@@ -12,7 +12,7 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
       aria-live="polite"
       className={cn(
         dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
+        "grid h-full min-h-0 overflow-hidden md:grid-cols-[20rem_minmax(0,1fr)]",
       )}
       role="status"
     >
@@ -25,7 +25,7 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
 
 function ConversationSidebarLoading() {
   return (
-    <aside className="hidden h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02] md:grid">
+    <aside className="hidden h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-fill-faint md:grid">
       <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3">
         <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
           Conversations
@@ -60,7 +60,7 @@ function ConversationHomeLoading() {
       aria-live="polite"
       className={cn(
         dashboardContainerClass,
-        "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
+        "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
       )}
       role="status"
     >
@@ -89,7 +89,7 @@ function ConversationDetailLoading() {
   return (
     <section
       aria-label="Selected conversation"
-      className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+      className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-fill-faint"
     >
       <ChatLayout
         scrollAriaLabel="Conversation transcript"

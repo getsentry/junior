@@ -1,18 +1,18 @@
 import { getConversationStore } from "@/chat/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackScheduleCreateAutomationTool } from "@/chat/scheduled-automations/tools/create";
+import { createSlackScheduleDeleteAutomationTool } from "@/chat/scheduled-automations/tools/delete";
+import { createSlackScheduleListAutomationsTool } from "@/chat/scheduled-automations/tools/list";
+import { createSlackScheduleRunAutomationNowTool } from "@/chat/scheduled-automations/tools/run-now";
+import { createSlackScheduleUpdateAutomationTool } from "@/chat/scheduled-automations/tools/update";
+import type { SchedulerToolContext } from "@/chat/scheduled-automations/tool-support";
 import {
-  createSlackScheduleCreateAutomationTool,
-  createSlackScheduleDeleteAutomationTool,
-  createSlackScheduleListAutomationsTool,
-  createSlackScheduleRunAutomationNowTool,
-  createSlackScheduleUpdateAutomationTool,
-  type SchedulerToolContext,
-} from "@/chat/scheduled-automations";
-import { claimDueScheduledRun } from "@/chat/scheduled-automations/runs";
+  claimDueScheduledRun,
+  markScheduledRunFailed,
+} from "@/chat/scheduled-automations/runs";
 import {
   listScheduledAutomations as listStoredTasks,
   listScheduledAutomationsForTeam as listStoredTasksForTeam,
-  parseScheduledAutomationRow,
   readScheduledAutomation as readStoredTask,
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
@@ -24,7 +24,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorUsers } from "@/db/schema";
+import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { readUserTimezone } from "@/chat/identities/sql";
 import {
   createJuniorSqlFixture,
@@ -59,6 +59,23 @@ async function useSchedulerSqlPlugin() {
     });
   }
   return fixture;
+}
+
+/** Store the Slack identity that Slack turns store before tools run. */
+async function storeSlackIdentity(teamId: string, userId: string) {
+  const identity = {
+    id: `identity:${teamId}:${userId}`,
+    provider: "slack",
+    providerSubjectId: userId,
+    providerTenantId: teamId,
+  };
+  const now = new Date();
+  await dbModule
+    .getDb()
+    .insert(juniorIdentities)
+    .values({ ...identity, kind: "user", createdAt: now, updatedAt: now })
+    .onConflictDoNothing();
+  return identity;
 }
 
 function createContext(
@@ -108,7 +125,7 @@ function createContext(
     userText: "schedule this weekly",
     users: {
       resolveActor: async () => ({
-        identity,
+        identity: await storeSlackIdentity(actor.teamId, actor.userId),
         ...(user ? { user } : undefined),
       }),
     },
@@ -598,36 +615,6 @@ describe("Slack schedule tools", () => {
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),
     ).resolves.toEqual([]);
-  });
-
-  it("normalizes retained thread-bound tasks to their channel", async () => {
-    await createTask();
-    const task = (await listScheduledAutomations()).at(0);
-    if (!task) {
-      throw new Error("Expected scheduled automation to be created");
-    }
-    const { title: _title, ...record } = task;
-    const legacyDestination = {
-      ...task.destination,
-      threadTs: "1700000000.000100",
-    };
-
-    const parsed = parseScheduledAutomationRow({
-      creatorIdentityId: task.creatorIdentityId,
-      title: task.title ?? null,
-      record: {
-        ...record,
-        destination: legacyDestination,
-        outcomes: [{ action: "send_message", destination: legacyDestination }],
-      },
-    });
-
-    expect(parsed).toMatchObject({
-      destination: { channelId: "C123" },
-      outcomes: [{ destination: { channelId: "C123" } }],
-    });
-    expect(parsed).not.toHaveProperty("destination.threadTs");
-    expect(parsed).not.toHaveProperty("outcomes.0.destination.threadTs");
   });
 
   it("rejects invalid scheduled automation routing context at the store boundary", async () => {
@@ -1670,6 +1657,17 @@ describe("Slack schedule tools", () => {
       status: "pending",
     });
     expect(second).toBeUndefined();
+
+    // A finished run whose advance was not saved must not stop the task.
+    await markScheduledRunFailed(schedulerDb(), {
+      completedAtMs: 2000,
+      errorMessage: "Dispatch failed.",
+      runId: first!.id,
+    });
+    await claimDueScheduledRun(schedulerDb(), { nowMs: 3000 });
+    await expect(
+      readScheduledAutomation(created.automation.id),
+    ).resolves.toMatchObject({ lastRunAtMs: 1000, status: "active" });
   });
 
   it("lists the active conversation by default and requester tasks when filtered", async () => {
@@ -1951,7 +1949,10 @@ describe("Slack schedule tool wiring via createTools", () => {
         id: "user:alice",
         identities: [identity],
       };
-      const resolveActorIdentity = vi.fn(async () => ({ identity, user }));
+      const resolveActorIdentity = vi.fn(async () => {
+        await storeSlackIdentity(TEAM_ID, "U123");
+        return { identity, user };
+      });
       const tools = createTools(
         [],
         {},
@@ -1991,7 +1992,7 @@ describe("Slack schedule tool wiring via createTools", () => {
       // Create a task through the real wired tool.
       const result = await executeRegisteredTool<{
         automation: { id: string };
-      }>(tools.slackScheduleCreateAutomation, {
+      }>(tools.slackScheduleCreateAutomation!, {
         instruction: "Wiring test: post a weekly digest.",
         schedule: {
           kind: "recurring",
@@ -2017,6 +2018,90 @@ describe("Slack schedule tool wiring via createTools", () => {
       await fixture.close();
       vi.restoreAllMocks();
       setPlugins(previous);
+    }
+  });
+
+  it("rejects automation writes from a Turn not started by a Slack message", async () => {
+    // A child agent result has the person's Slack Actor but an Agent
+    // invocation Source. Call the tools directly to check that they refuse it
+    // even without the adapter's disabled check.
+    const fixture = await useSchedulerSqlPlugin();
+    try {
+      const TEAM_ID = `TORIGIN${Date.now()}`;
+      const resolveActorIdentity = vi.fn(async () => ({
+        identity: {
+          id: `identity:${TEAM_ID}:U123`,
+          provider: "slack",
+          providerSubjectId: "U123",
+          providerTenantId: TEAM_ID,
+        },
+      }));
+      const tools = createTools(
+        [],
+        {},
+        {
+          conversationId: "slack:C123:1700000000.100000",
+          location: {
+            id: `location:${TEAM_ID}:C123`,
+            provider: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+            threadTs: "1700000000.100000",
+          },
+          source: { kind: "agent_invocation" },
+          destination: {
+            platform: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+          },
+          actor: { platform: "slack", teamId: TEAM_ID, userId: "U123" },
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
+          },
+          resolveActorIdentity,
+          workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+        },
+      );
+
+      await expect(
+        executeRegisteredTool(tools.slackScheduleCreateAutomation!, {
+          instruction: "Post a weekly digest.",
+          schedule: {
+            kind: "recurring",
+            frequency: "weekly",
+            time: "09:00",
+            weekdays: ["monday"],
+            timezone: "America/Los_Angeles",
+          },
+        }),
+      ).rejects.toThrow("No active Slack conversation is available.");
+      await expect(
+        executeRegisteredTool(tools.slackScheduleDeleteAutomation!, {
+          automationId: "sched_missing",
+        }),
+      ).rejects.toThrow("No active Slack conversation is available.");
+      await expect(
+        executeRegisteredTool(tools.createEventAutomation!, {
+          instruction: "Summarize new channel messages.",
+          trigger: {
+            namespace: "slack",
+            identifier: "C123",
+            resourceType: "channel",
+            label: "#general",
+            events: ["message.posted"],
+          },
+        }),
+      ).rejects.toThrow(
+        "Event automations require an active Slack channel or DM and actor.",
+      );
+      expect(resolveActorIdentity).not.toHaveBeenCalled();
+      await expect(
+        listStoredTasksForTeam(fixture.sql.db(), TEAM_ID),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
     }
   });
 });

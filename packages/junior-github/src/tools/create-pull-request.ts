@@ -20,6 +20,7 @@ import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import {
+  gitHubPullRequestCreateWatch,
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
 } from "../events/pull-request.js";
@@ -438,17 +439,17 @@ async function gitHubPullRequestStructuredResult(
       ...base,
     };
   }
+  const watch = gitHubPullRequestCreateWatch(subscriptionConfig);
   try {
     const subscription = await ctx.events.subscribe({
-      events: subscriptionConfig.events,
-      intent: subscriptionConfig.intent,
+      ...watch,
       resource: base.subscribable,
     });
     const data = gitHubPullRequestToolResult(
       input,
       result,
       ctx.events.canSubscribe,
-      subscriptionConfig.events,
+      watch.events,
     );
     return {
       objectAnnotations,

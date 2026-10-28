@@ -36,7 +36,6 @@ import {
 } from "@/chat/agent/types";
 import {
   TurnSliceLimitExceededError,
-  assertTurnToolCallLimit,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -106,6 +105,7 @@ export function createResumeState(args: ResumeStateArgs) {
   // Durable across slices and history replacement; not derived from live messages.
   let cumulativeToolCallCount =
     args.checkpoint.record?.cumulativeToolCallCount ?? 0;
+  let turnLimitWrappedUp = args.checkpoint.record?.turnLimitWrappedUp ?? false;
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
@@ -127,6 +127,7 @@ export function createResumeState(args: ResumeStateArgs) {
     channelName: args.channelName,
     credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
+    ...(turnLimitWrappedUp ? { turnLimitWrappedUp } : undefined),
     destination: args.destination,
     dispatchId: args.dispatchId,
     source: args.runSource,
@@ -150,11 +151,22 @@ export function createResumeState(args: ResumeStateArgs) {
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
     },
-    /** Admit one tool call against the durable turn total, or throw the limit. */
-    admitToolCall(): void {
-      const next = cumulativeToolCallCount + 1;
-      assertTurnToolCallLimit(next, botConfig.maxToolCallsPerTurn);
-      cumulativeToolCallCount = next;
+    /** Usage that earlier slices of this turn saved. */
+    get priorSliceUsage(): AgentTurnUsage | undefined {
+      return args.checkpoint.record?.cumulativeUsage;
+    },
+    /** True once a step of this turn hit a limit and wrapped up. */
+    get turnLimitWrappedUp(): boolean {
+      return turnLimitWrappedUp;
+    },
+    /** Save the wrap-up so later slices stop instead of wrapping up again. */
+    markTurnLimitWrappedUp(): void {
+      turnLimitWrappedUp = true;
+    },
+    /** Charge one tool call to the durable turn total and return the total. */
+    countToolCall(): number {
+      cumulativeToolCallCount += 1;
+      return cumulativeToolCallCount;
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;

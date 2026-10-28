@@ -2,16 +2,17 @@ import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
 /**
- * Resolve the single-bot Slack team id for event-automation indexing.
+ * Resolve the single-bot Slack team id for event-automation indexing and
+ * Event people mentions.
  *
- * Watches do not use this. Event automations still key by destination team
- * until that store is conversation-owned. Event delivery itself is
- * not gated on Slack.
+ * Watch matching does not use this. Event automations still key by
+ * destination team until that store is conversation-owned. Event delivery
+ * itself is not gated on Slack.
  */
 export function createEventTeamIdResolver(): () => Promise<string | undefined> {
   let pending: Promise<string> | undefined;
   return async () => {
-    // Event automations still need a Slack team key. Watches do not.
+    // Event automations and Event people need a Slack team key.
     if (!getSlackBotToken()) return undefined;
     pending ??= getSlackClient()
       .auth.test()

@@ -9,6 +9,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import type {
   ActorIdentity,
+  ConversationReportMessageEvent,
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
@@ -38,14 +39,21 @@ export type TranscriptViewToolCallPart = {
 };
 
 export type TranscriptViewSubagentPart = {
+  agentName?: string;
   childConversationId: string;
+  /** When the child reached its current terminal status. */
+  finishedTimestamp?: number;
   id: string;
-  status: "aborted" | "completed" | "error" | "running";
+  status: "aborted" | "blocked" | "completed" | "error" | "running";
   subagentKind: string;
+  task?: string;
+  title?: string;
   type: "subagent";
 };
 
 export type TranscriptViewContextEventPart = {
+  /** People mentioned in the summary, resolved by the API. */
+  mentions?: ActorIdentity[];
   event:
     | {
         createdAt: string;
@@ -76,6 +84,8 @@ export type TranscriptViewContextEventPart = {
 };
 
 export type TranscriptViewStructuredEventPart = {
+  /** People mentioned in the preview and details, resolved by the API. */
+  mentions?: ActorIdentity[];
   name: string;
   namespace: string;
   presentation: ConversationEventPresentation;
@@ -115,8 +125,12 @@ export type TranscriptViewMessage = {
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
+  /** Every Event when several arrived together in one message. */
+  events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
+  /** People mentioned in the event text, resolved by the API. */
+  mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */
   context?: boolean;
   /** Stable history/message id used to drop pending rows after commit. */
@@ -153,6 +167,7 @@ export type Conversation = {
   channel?: string;
   channelName?: string;
   channelNameRedacted?: boolean;
+  childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   cumulativeDurationMs: number;
   cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
   displayTitle: string;
