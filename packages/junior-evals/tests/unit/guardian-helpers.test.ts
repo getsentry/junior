@@ -34,6 +34,11 @@ describe("guardian eval helpers", () => {
         userIntent: "Delete preview-18.",
       },
       input: { workspace: "preview-18" },
+      // Core persists the current message first, so it is the root's last line.
+      rootConversation: {
+        messages: [{ author: "user", text: "Delete preview-18." }],
+        truncated: false,
+      },
       tool: {
         description: "Delete a workspace.",
         name: "delete-eval-workspace",
@@ -43,7 +48,7 @@ describe("guardian eval helpers", () => {
     expect(snapshot).not.toHaveProperty("priorRejectedActions");
   });
 
-  it("includes evidence and prior rejections when provided", async () => {
+  it("copies a person's messages into the root and keeps the evidence", async () => {
     const tool = {
       description: "Delete a workspace.",
       name: "delete-eval-workspace",
@@ -51,7 +56,9 @@ describe("guardian eval helpers", () => {
     const snapshot = await proposal({
       context: slackContext("Clean up preview-42 if needed."),
       evidence: evidence([
-        { role: "user", text: "Clean up preview-42 if needed." },
+        { role: "user", text: "Check preview-42." },
+        { role: "assistant", text: "preview-42 is idle." },
+        { role: "tool listWorkspaces result", text: "preview-42: idle" },
       ]),
       input: { workspace: "preview-42" },
       priorRejectedActions: [
@@ -70,8 +77,20 @@ describe("guardian eval helpers", () => {
       teamId: "TGUARDIAN",
       userId: "UACTOR",
     });
+    expect(snapshot.rootConversation).toEqual({
+      messages: [
+        { author: "user", text: "Check preview-42." },
+        { author: "assistant", text: "preview-42 is idle." },
+        { author: "user", text: "Clean up preview-42 if needed." },
+      ],
+      truncated: false,
+    });
     expect(snapshot.evidence).toEqual({
-      entries: [{ role: "user", text: "Clean up preview-42 if needed." }],
+      entries: [
+        { role: "user", text: "Check preview-42." },
+        { role: "assistant", text: "preview-42 is idle." },
+        { role: "tool listWorkspaces result", text: "preview-42: idle" },
+      ],
       omittedEntries: 0,
     });
     expect(snapshot.priorRejectedActions).toEqual([

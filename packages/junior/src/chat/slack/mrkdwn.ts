@@ -259,10 +259,48 @@ function wrapBareReferences(text: string): string {
   return out.join("\n");
 }
 
+const LIST_ITEM_PATTERN = /^[-*•]\s|^\d+\.\s/;
+
+/**
+ * Turn a follow-up paragraph inside a list item into a bullet at the same
+ * indent.
+ *
+ * Slack's `markdown` block keeps only one paragraph per list item. It joins
+ * the other paragraphs to the top-level item's text with no space and renders
+ * nested lists after them. As a bullet, the paragraph keeps its place and
+ * nesting.
+ */
+function bulletListFollowUpParagraphs(text: string): string {
+  const lines = text.split("\n");
+  let inCodeBlock = false;
+  let inList = false;
+
+  for (const [i, line] of lines.entries()) {
+    const trimmed = line.trimStart();
+    const isFence = trimmed.startsWith("```");
+    if (!inCodeBlock && trimmed && trimmed.length === line.length) {
+      inList = LIST_ITEM_PATTERN.test(line);
+    } else if (
+      !inCodeBlock &&
+      inList &&
+      trimmed &&
+      !isFence &&
+      lines[i - 1]?.trim() === "" &&
+      !LIST_ITEM_PATTERN.test(trimmed)
+    ) {
+      lines[i] = `${line.slice(0, line.length - trimmed.length)}- ${trimmed}`;
+    }
+    if (isFence) {
+      inCodeBlock = !inCodeBlock;
+    }
+  }
+
+  return lines.join("\n");
+}
+
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
   const codeBlockPattern = /^```/;
-  const listItemPattern = /^[-*•]\s|^\d+\.\s/;
   const lines = text.split("\n");
   const result: string[] = [];
   let inCodeBlock = false;
@@ -288,14 +326,19 @@ export function ensureBlockSpacing(text: string): string {
     }
 
     const prev = result.length > 0 ? result[result.length - 1] : undefined;
+    const isListItem = LIST_ITEM_PATTERN.test(line.trimStart());
+    // An indented line under a list item continues that item's text.
+    const isListContinuation =
+      prev !== undefined &&
+      !isListItem &&
+      /^\s/.test(line) &&
+      (/^\s/.test(prev) || LIST_ITEM_PATTERN.test(prev));
     if (
       prev !== undefined &&
       prev.trim() !== "" &&
       line.trim() !== "" &&
-      !(
-        listItemPattern.test(prev.trimStart()) &&
-        listItemPattern.test(line.trimStart())
-      )
+      !isListContinuation &&
+      !(LIST_ITEM_PATTERN.test(prev.trimStart()) && isListItem)
     ) {
       result.push("");
     }
@@ -311,8 +354,9 @@ export function ensureBlockSpacing(text: string): string {
  * or `{ type: "markdown" }` blocks.
  *
  * Plugins may first rewrite ordinary Markdown. Core then applies Slack-only
- * delivery shaping: bare URL wrapping and block spacing. Slack reply delivery
- * owns chunking and continuation markers separately.
+ * delivery shaping: bare URL wrapping, block spacing, and list follow-up
+ * paragraph bullets. Slack reply delivery owns chunking and continuation
+ * markers separately.
  */
 export function normalizeSlackReplyMarkdown(text: string): string {
   let normalized = applyPluginFormatMarkdown(text)
@@ -320,6 +364,7 @@ export function normalizeSlackReplyMarkdown(text: string): string {
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareReferences(normalized);
   normalized = ensureBlockSpacing(normalized);
+  normalized = bulletListFollowUpParagraphs(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
 }
 

@@ -25,6 +25,7 @@ import {
   WINDOW_SEVEN_DAY_HOURS,
   sumUtcHoursIntoSixHours,
   startOfUtcHour,
+  trailingUtcHourWindow,
   utcHourKey,
 } from "../reporting-window";
 
@@ -406,6 +407,7 @@ function guardianStats(
 
 async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
   const where = statsWhere(start, end);
+  const hourStart = trailingUtcHourWindow(end.getTime(), WINDOW_HOURS).start;
   const activityDate = sql<string>`TO_CHAR(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
@@ -525,10 +527,14 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
           juniorConversations.conversationId,
         ),
       )
-      .where(where)
+      .where(statsWhere(hourStart, end))
       .groupBy(activityHour),
     readConversationMetricBuckets(db, { bucket: "day", start, end }),
-    readConversationMetricBuckets(db, { bucket: "hour", start, end }),
+    readConversationMetricBuckets(db, {
+      bucket: "hour",
+      start: hourStart,
+      end,
+    }),
   ]);
   return {
     actorRows,
@@ -544,6 +550,7 @@ async function aggregateGuardianStats(
   start: Date,
   end: Date,
 ) {
+  const hourStart = trailingUtcHourWindow(end.getTime(), WINDOW_HOURS).start;
   const day = sql<string>`TO_CHAR(
     ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
@@ -565,21 +572,22 @@ async function aggregateGuardianStats(
     deny: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'deny')::integer`,
     requests: sql<number>`COUNT(*)::integer`,
   };
-  const where = and(
-    eq(juniorConversationEvents.type, "guardian_action_reviewed"),
-    gte(juniorConversationEvents.createdAt, start),
-    lte(juniorConversationEvents.createdAt, end),
-  );
+  const where = (windowStart: Date) =>
+    and(
+      eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+      gte(juniorConversationEvents.createdAt, windowStart),
+      lte(juniorConversationEvents.createdAt, end),
+    );
   const [dayRows, hourRows] = await Promise.all([
     db
       .select({ ...selectColumns, date: day })
       .from(juniorConversationEvents)
-      .where(where)
+      .where(where(start))
       .groupBy(day),
     db
       .select({ ...selectColumns, date: hour })
       .from(juniorConversationEvents)
-      .where(where)
+      .where(where(hourStart))
       .groupBy(hour),
   ]);
   return { dayRows, hourRows };

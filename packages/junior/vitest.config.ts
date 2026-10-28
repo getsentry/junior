@@ -16,6 +16,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      // Restore a real module after tests remove a virtual config mock.
+      "#junior/config": path.resolve(
+        __dirname,
+        "tests/fixtures/virtual-config.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         __dirname,
         "../junior-plugin-api/src/index.ts",

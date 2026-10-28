@@ -1,4 +1,72 @@
 # Changelog
+## 0.261.0
+
+### New Features ✨
+
+- (slack) Let allowed bots start Turns with allowed domains by @billyvg with @sentry-junior in [#2279](https://github.com/getsentry/junior/pull/2279)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Expand home page scrolling to the page edge by @MathurAditya724 in [#2274](https://github.com/getsentry/junior/pull/2274)
+- Group conversation visibility options by @MathurAditya724 in [#2273](https://github.com/getsentry/junior/pull/2273)
+- Wait for a typing pause before searching conversations by @thomasjiangcy and @claude in [#2267](https://github.com/getsentry/junior/pull/2267)
+- Align select arrows across controls by @MathurAditya724 in [#2268](https://github.com/getsentry/junior/pull/2268)
+- Make conversation search read only the viewer's conversations by @thomasjiangcy and @claude in [#2266](https://github.com/getsentry/junior/pull/2266)
+
+#### Slack
+
+- Turn list follow-up paragraphs into bullets by @lcian with @sentry-junior in [#2271](https://github.com/getsentry/junior/pull/2271)
+- Render known channels as channel mentions by @MathurAditya724 with @sentry-junior in [#2270](https://github.com/getsentry/junior/pull/2270)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump MCP SDK to 1.32.0 by @MathurAditya724 with @dependabot in [#2204](https://github.com/getsentry/junior/pull/2204)
+- Bump hono from 4.12.27 to 4.13.11 by @MathurAditya724 with @dependabot in [#2196](https://github.com/getsentry/junior/pull/2196)
+- Bump Astro from 7.1.1 to 7.3.3 by @MathurAditya724 with @dependabot in [#1817](https://github.com/getsentry/junior/pull/1817)
+- Bump better-auth from 1.6.22 to 1.7.7 by @MathurAditya724 with @dependabot in [#2253](https://github.com/getsentry/junior/pull/2253)
+
+#### Deps Dev
+
+- Bump @hono/node-server from 1.19.14 to 1.19.15 in /packages/junior by @MathurAditya724 with @dependabot in [#1564](https://github.com/getsentry/junior/pull/1564)
+- Bump Vitest and coverage from 4.1.7 to 4.1.12 by @MathurAditya724 with @dependabot in [#1815](https://github.com/getsentry/junior/pull/1815)
+- Bump undici from 7.29.0 to 7.30.1 in /packages/junior-evals by @MathurAditya724 with @dependabot in [#2255](https://github.com/getsentry/junior/pull/2255)
+
+#### Other
+
+- (dashboard) Limit hourly stats reads to seven days by @MathurAditya724 in [#2272](https://github.com/getsentry/junior/pull/2272)
+
+## 0.260.0
+
+### New Features ✨
+
+- (conversations) Name conversations after linked issues by @BYK with @sentry-junior in [#2218](https://github.com/getsentry/junior/pull/2218)
+- (dashboard) Add a light theme that follows the system by @BYK with @sentry-junior in [#2261](https://github.com/getsentry/junior/pull/2261)
+- (events) Merge an Event batch into one task message by @dcramer with @sentry-junior in [#2259](https://github.com/getsentry/junior/pull/2259)
+- (github) Add trusted sender and mention data to issue comments by @BYK with @sentry-junior in [#2209](https://github.com/getsentry/junior/pull/2209)
+- (guardian) Let thread context authorize PR delivery by @sentry-junior in [#2256](https://github.com/getsentry/junior/pull/2256)
+- (workspaces) Add per-Workspace sandbox vCPUs by @dcramer with @sentry-junior in [#2262](https://github.com/getsentry/junior/pull/2262)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Use the same header on every page by @cleptric with @sentry-junior in [#2264](https://github.com/getsentry/junior/pull/2264)
+- Resolve mentions the same way in all display text by @dcramer with @sentry-junior in [#2257](https://github.com/getsentry/junior/pull/2257)
+
+#### Other
+
+- (events) Link the Event doer to their Slack mention by @BYK with @sentry-junior in [#2250](https://github.com/getsentry/junior/pull/2250)
+- (lint) Make lint failures steer toward the intended fix by @dcramer with @sentry-junior in [#2228](https://github.com/getsentry/junior/pull/2228)
+
+### Internal Changes 🔧
+
+- (guardian) Group Guardian code and build eval tool specs from real tools by @dcramer with @sentry-junior in [#2263](https://github.com/getsentry/junior/pull/2263)
+- (node) Bump Node to 24.22.1 by @geoffg-sentry with @sentry-junior in [#2247](https://github.com/getsentry/junior/pull/2247)
+
 ## 0.259.0
 
 ### New Features ✨

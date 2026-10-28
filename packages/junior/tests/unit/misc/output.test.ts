@@ -153,6 +153,55 @@ describe("normalizeSlackReplyMarkdown", () => {
       normalizeSlackReplyMarkdown("opened getsentry/junior#1509 for review"),
     ).toBe("opened getsentry/junior#1509 for review");
   });
+
+  it("turns follow-up paragraphs in list items into bullets at every level", () => {
+    const input = [
+      "1. I checked the side effects:",
+      "   - **Tag:** both change.",
+      "   ",
+      "   So you can have one or the other.",
+      "2. First paragraph.",
+      "",
+      "   Second paragraph.",
+      "3. Outer item:",
+      "   - Inner intro:",
+      "     - deep a",
+      "",
+      "     Inner follow-up.",
+      "   - Inner sibling that",
+      "     wraps onto two lines.",
+      "",
+      "Plain paragraph.",
+      "",
+      "    Indented text outside a list.",
+    ].join("\n");
+
+    expect(normalizeSlackReplyMarkdown(input)).toBe(
+      [
+        "1. I checked the side effects:",
+        "   - **Tag:** both change.",
+        "",
+        "   - So you can have one or the other.",
+        "",
+        "2. First paragraph.",
+        "",
+        "   - Second paragraph.",
+        "",
+        "3. Outer item:",
+        "   - Inner intro:",
+        "     - deep a",
+        "",
+        "     - Inner follow-up.",
+        "",
+        "   - Inner sibling that",
+        "     wraps onto two lines.",
+        "",
+        "Plain paragraph.",
+        "",
+        "    Indented text outside a list.",
+      ].join("\n"),
+    );
+  });
 });
 
 describe("buildSlackOutputMessage", () => {

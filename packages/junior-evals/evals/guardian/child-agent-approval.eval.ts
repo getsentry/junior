@@ -66,7 +66,7 @@ function childProposal(args: {
     evidence: evidence(args.entries),
     input: args.input,
     priorRejectedActions: args.priorRejectedActions,
-    rootConversation: { messages: args.root, truncated: false },
+    root: args.root,
     tool: args.tool,
   });
 }

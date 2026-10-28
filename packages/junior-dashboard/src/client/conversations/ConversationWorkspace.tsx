@@ -1,5 +1,5 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
@@ -17,8 +17,8 @@ import {
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, getDashboardTimeZone } from "../format";
+import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
-import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
@@ -28,7 +28,7 @@ const CONVERSATION_PAGE_SIZE = 20;
 export function ConversationWorkspace() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const search = useDeferredValue(query.trim());
+  const search = useDebouncedValue(query.trim());
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
@@ -90,12 +90,7 @@ export function ConversationWorkspace() {
 
   if (home) {
     return (
-      <main
-        className={cn(
-          dashboardContainerClass,
-          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
-        )}
-      >
+      <main className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6">
         <div className="mx-auto grid w-full max-w-6xl gap-8">
           {createView}
           <section aria-label="Conversations" className="grid gap-3">
@@ -192,25 +187,27 @@ function NewConversationView(props: {
         footerStart={
           <div
             aria-label="Conversation visibility"
-            className="inline-flex items-center gap-1"
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
             role="group"
           >
             <ToggleButton
+              className="min-w-20 gap-1.5"
               onClick={() => setVisibility("public")}
               pressed={isPublic}
               type="button"
               variant="segment"
             >
-              <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+              <Globe2 aria-hidden="true" className="size-3" />
               Public
             </ToggleButton>
             <ToggleButton
+              className="min-w-20 gap-1.5"
               onClick={() => setVisibility("private")}
               pressed={!isPublic}
               type="button"
               variant="segment"
             >
-              <LockKeyhole aria-hidden="true" className="mr-1 inline size-3" />
+              <LockKeyhole aria-hidden="true" className="size-3" />
               Private
             </ToggleButton>
           </div>

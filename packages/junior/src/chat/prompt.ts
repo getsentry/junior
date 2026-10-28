@@ -435,15 +435,22 @@ function buildBehaviorSection(
   ].join("\n\n");
 }
 
+const SLACK_MARKDOWN_RULES = [
+  "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables.",
+  "- Write a Slack channel as `<#C…>` when you already know its ID, so Slack renders a channel link. Do not look up an ID only for formatting. When the ID is unknown, write plain `#name` and never invent an ID.",
+];
+
 function buildAutomationOutputSection(platform: PromptPlatform): string {
   return [
     platform === "slack"
       ? `<output format="slack-markdown">`
       : `<output format="markdown">`,
     "- Follow any format in the instruction. Otherwise keep the message as short as the job allows, and do not describe the run.",
-    platform === "slack"
-      ? "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables."
-      : "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
+    ...(platform === "slack"
+      ? SLACK_MARKDOWN_RULES
+      : [
+          "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
+        ]),
     "</output>",
   ].join("\n");
 }
@@ -478,7 +485,7 @@ function buildOutputSection(
     `<output format="slack-markdown">`,
     "- Default to the shortest complete reply—usually 1–5 sentences and under 800 characters. Include only the outcome, decisive evidence, and any blocker or required next action. If useful detail would exceed that, put it in a Slack canvas and reply with the link. An explicit user request for detail overrides this target.",
     "- Start with the answer or result, not internal process narration.",
-    "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables.",
+    ...SLACK_MARKDOWN_RULES,
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
     "</output>",
   ].join("\n");

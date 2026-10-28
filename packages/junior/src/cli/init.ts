@@ -186,7 +186,7 @@ export async function runInit(
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
       "@sentry/nitro": "10.65.0",
-      hono: "^4.12.27",
+      hono: "^4.13.11",
     },
     devDependencies: {
       "@types/node": "^25.9.1",
