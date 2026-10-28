@@ -1,4 +1,6 @@
--- Busy databases can build this index concurrently first. See src/db/README.md.
+-- For a busy database, first run the index definition below with CONCURRENTLY,
+-- as one statement outside a transaction. Before junior upgrade, check its
+-- pg_get_indexdef, pg_index.indisvalid, and pg_index.indisready.
 DO $$
 BEGIN
   -- Even CREATE INDEX IF NOT EXISTS takes a write-blocking table lock.
