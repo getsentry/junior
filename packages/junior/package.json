@@ -97,7 +97,7 @@
     "commander": "^14.0.3",
     "diff": "^8.0.4",
     "drizzle-orm": "catalog:",
-    "hono": "^4.12.27",
+    "hono": "^4.13.11",
     "jiti": "^2.7.0",
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
@@ -118,7 +118,7 @@
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
     "@typescript/typescript6": "6.0.2",
-    "@vitest/coverage-v8": "4.1.7",
+    "@vitest/coverage-v8": "4.1.12",
     "dependency-cruiser": "^17.4.0",
     "drizzle-kit": "catalog:",
     "msw": "^2.14.6",
@@ -127,6 +127,6 @@
     "tsdown": "0.23.1",
     "typescript": "^7.0.2",
     "vercel": "^54.4.0",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.12"
   }
 }
