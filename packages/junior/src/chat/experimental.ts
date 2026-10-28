@@ -11,6 +11,7 @@ export const EXPERIMENTAL_FEATURES = [
 /**
  * Features that graduated to stable defaults. Existing app configs may still
  * name them, so they are accepted and ignored instead of rejected.
+ * TODO(dcramer): Remove `subagents` after deployed app configs stop setting it.
  */
 const GRADUATED_FEATURES = new Set<string>(["subagents"]);
 

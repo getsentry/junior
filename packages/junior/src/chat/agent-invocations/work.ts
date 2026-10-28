@@ -46,7 +46,10 @@ import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { agentTypeForksContext, agentTypeInstructions } from "./agent-types";
+import {
+  agentTypeInstructions,
+  agentTypeStartsWithParentHistory,
+} from "./agent-types";
 import { loadForkHistory } from "./fork-history";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
@@ -707,10 +710,10 @@ export function createAgentInvocationWorker(
         readChildDepthAndRootLocation(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
-      // A type with forkContext starts with its parent's history. Later
-      // agent invocations read it from the child's own Conversation.
+      // Some types start with the parent's history. Later agent invocations
+      // read it from the child's own Conversation.
       history =
-        agentTypeForksContext(invocation.agentType) &&
+        agentTypeStartsWithParentHistory(invocation.agentType) &&
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
