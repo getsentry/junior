@@ -13,7 +13,7 @@ import {
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
+    vi.setSystemTime(new Date("2026-06-15T12:37:00.000Z"));
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
@@ -196,6 +196,55 @@ describe("conversation stats API", () => {
         },
       ]);
 
+      for (const [name, at] of [
+        ["before-hour-window", "2026-06-08T12:59:59.999Z"],
+        ["first-hour", "2026-06-08T13:00:00.000Z"],
+        ["current-hour", "2026-06-15T12:15:00.000Z"],
+      ] as const) {
+        const conversationId = `local:test:${name}`;
+        const turnId = `turn-${name}`;
+        const atMs = Date.parse(at);
+        await store.recordActivity({
+          conversationId,
+          destination: { platform: "local", conversationId },
+          actor: {
+            fullName: "Boundary Actor",
+            platform: "slack",
+            slackUserId: "U4",
+            teamId: "T1",
+          },
+          source: "internal",
+          nowMs: atMs,
+        });
+        await store.recordExecution({
+          conversationId,
+          createdAtMs: atMs,
+          lastActivityAtMs: atMs,
+          updatedAtMs: atMs,
+          execution: { runId: turnId, status: "idle", updatedAtMs: atMs },
+          metrics: {
+            durationMs: 100,
+            usage: { totalTokens: 10, cost: { total: 0.001 } },
+          },
+          source: "internal",
+        });
+        await eventStore.append(conversationId, [
+          {
+            createdAtMs: atMs,
+            data: {
+              type: "guardian_action_reviewed",
+              turnId,
+              toolCallId: `tool-${name}`,
+              toolName: "publishReport",
+              costUsd: 0.004,
+              decision: "allow",
+              riskLevel: "low",
+              userAuthorization: "high",
+            },
+          },
+        ]);
+      }
+
       const response = await createJuniorApi().request(
         "http://localhost/api/conversations/stats",
       );
@@ -206,19 +255,19 @@ describe("conversation stats API", () => {
         active: 1,
         cachedInputTokens: 300,
         cacheCreationTokens: 7,
-        conversations: 3,
-        costUsd: 0.0045,
-        durationMs: 2_004,
+        conversations: 6,
+        costUsd: 0.0075,
+        durationMs: 2_304,
         failed: 1,
         inputTokens: 100,
         guardian: {
-          allow: 1,
+          allow: 4,
           ask: 1,
-          costUsd: 0.006,
+          costUsd: 0.018,
           deny: 1,
-          requests: 3,
+          requests: 6,
         },
-        tokens: 464,
+        tokens: 494,
         source: "conversation_index",
       });
       expect(report.actors).toEqual(
@@ -252,15 +301,41 @@ describe("conversation stats API", () => {
         ]),
       );
       expect(report.guardian.metricDays.at(-1)).toEqual({
-        allow: 1,
+        allow: 2,
         ask: 1,
-        costUsd: 0.006,
+        costUsd: 0.01,
         date: "2026-06-15",
         deny: 1,
-        requests: 3,
+        requests: 4,
       });
       expect(report.guardian.metricHours).toHaveLength(7 * 24);
       expect(report.guardian.metricSixHours).toHaveLength(7 * 4);
+      expect(
+        report.guardian.metricDays.find((day) => day.date === "2026-06-08"),
+      ).toEqual({
+        allow: 2,
+        ask: 0,
+        costUsd: 0.008,
+        date: "2026-06-08",
+        deny: 0,
+        requests: 2,
+      });
+      expect(report.guardian.metricHours?.at(0)).toEqual({
+        allow: 1,
+        ask: 0,
+        costUsd: 0.004,
+        date: "2026-06-08T13",
+        deny: 0,
+        requests: 1,
+      });
+      expect(report.guardian.metricSixHours?.at(-1)).toEqual({
+        allow: 1,
+        ask: 0,
+        costUsd: 0.004,
+        date: "2026-06-15T12",
+        deny: 0,
+        requests: 1,
+      });
       expect(
         report.guardian.metricHours?.find(
           (hour) => hour.date === "2026-06-15T11",
@@ -286,16 +361,38 @@ describe("conversation stats API", () => {
         expect.objectContaining({
           cachedInputTokens: 300,
           cacheCreationTokens: 7,
-          conversations: 3,
-          costUsd: 0.003,
+          conversations: 4,
+          costUsd: 0.004,
           date: "2026-06-15",
-          durationMs: 1_504,
+          durationMs: 1_604,
           inputTokens: 100,
-          tokens: 434,
+          tokens: 444,
         }),
       );
       expect(report.metricHours).toHaveLength(7 * 24);
       expect(report.metricSixHours).toHaveLength(7 * 4);
+      expect(
+        report.metricDays.find((day) => day.date === "2026-06-08"),
+      ).toMatchObject({
+        conversations: 2,
+        costUsd: 0.002,
+        durationMs: 200,
+        tokens: 20,
+      });
+      expect(report.metricHours?.at(0)).toMatchObject({
+        conversations: 1,
+        costUsd: 0.001,
+        date: "2026-06-08T13",
+        durationMs: 100,
+        tokens: 10,
+      });
+      expect(report.metricSixHours?.at(-1)).toMatchObject({
+        conversations: 1,
+        costUsd: 0.001,
+        date: "2026-06-15T12",
+        durationMs: 100,
+        tokens: 10,
+      });
       expect(report.metricHours?.at(-1)?.date).toBe("2026-06-15T12");
       expect(
         report.metricHours?.find((hour) => hour.date === "2026-06-14T23"),
@@ -326,7 +423,7 @@ describe("conversation stats API", () => {
         report.metricHours
           ?.filter((hour) => hour.conversations > 0)
           .reduce((sum, hour) => sum + hour.conversations, 0),
-      ).toBe(3);
+      ).toBe(5);
     } finally {
       vi.useRealTimers();
       await fixture.close();
