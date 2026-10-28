@@ -62,8 +62,8 @@ describe("Thread Continuity", () => {
   `agent({ plugins: defineJuniorPlugins([sentryPlugin()]) })`. Tests may
   import the public `@sentry/junior` API and plugin packages, but not runtime
   internals under `@/`.
-- The default agent has the experimental features that production turns on:
-  only `subagents`. A test that needs another turns it on. For example, Junior replies to a thread message
+- The default agent has no experimental feature, as in production. A test
+  that needs one turns it on. For example, Junior replies to a thread message
   without a mention only with `agent({ experimental: { "passive-routing": true } })`.
 - A suite is a Vitest project for one directory. It provides
   `agentOptionsModule`, a module whose default export is the default

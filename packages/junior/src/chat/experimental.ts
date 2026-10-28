@@ -6,15 +6,23 @@
 export const EXPERIMENTAL_FEATURES = [
   "operator-tools",
   "passive-routing",
-  "subagents",
 ] as const;
+
+/**
+ * Features that graduated to stable defaults. Existing app configs may still
+ * name them, so they are accepted and ignored instead of rejected.
+ */
+const GRADUATED_FEATURES = new Set<string>(["subagents"]);
 
 /** One known experimental feature name. */
 export type ExperimentalFeature = (typeof EXPERIMENTAL_FEATURES)[number];
 
 /** App-level opt-ins for unstable product features. */
 export type ExperimentalFeaturesConfig = Readonly<
-  Partial<Record<ExperimentalFeature, boolean>>
+  Partial<Record<ExperimentalFeature, boolean>> & {
+    /** @deprecated Child agents are always on; this key is ignored. */
+    subagents?: boolean;
+  }
 >;
 
 const EXPERIMENTAL_FEATURE_SET = new Set<string>(EXPERIMENTAL_FEATURES);
@@ -37,7 +45,7 @@ export function setExperimentalFeatures(
 
   const next: Partial<Record<ExperimentalFeature, boolean>> = {};
   for (const [rawName, enabled] of Object.entries(config)) {
-    if (enabled === undefined) {
+    if (enabled === undefined || GRADUATED_FEATURES.has(rawName)) {
       continue;
     }
     if (typeof enabled !== "boolean") {

@@ -293,11 +293,9 @@ question and then tells the child to try again.
 
 ## Current Boundary
 
-`spawnAgent` exposes durable creation to a parent agent when the experimental
-`subagents` feature is enabled via
-`createApp({ experimental: { subagents: true } })` (or automatically in
-`junior chat`, the local createApp-equivalent entrypoint). It is off by default
-so deployments can ship the runtime without advertising the model-facing tool.
+`spawnAgent` exposes durable creation to every parent agent whose app wires
+the child-agent worker. It is not an experimental feature; an app config that
+still sets `experimental.subagents` is accepted and the key is ignored.
 The tool receives the delegated task, optional child name, optional model
 profile, and optional per-task reasoning level. The parent should normally
 choose a profile that fits the task, using the configured profile descriptions.
