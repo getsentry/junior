@@ -306,8 +306,8 @@ importers:
         specifier: ^1.10.0
         version: 1.10.0
       '@hono/node-server':
-        specifier: 1.19.14
-        version: 1.19.14(hono@4.13.11)
+        specifier: 1.19.15
+        version: 1.19.15(hono@4.13.11)
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0
@@ -2376,8 +2376,8 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@hono/node-server@1.19.14':
-    resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
+  '@hono/node-server@1.19.15':
+    resolution: {integrity: sha512-Za2ai6TLdKjUvnur+eenO6nuYYipVAEhyCAdaV8IRvmU9kK8crOZUSYvIXn72E4f8fJqyAbpcJuTsYYmZp9Deg==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
@@ -10947,7 +10947,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@hono/node-server@1.19.14(hono@4.13.11)':
+  '@hono/node-server@1.19.15(hono@4.13.11)':
     dependencies:
       hono: 4.13.11
 
@@ -11340,7 +11340,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.31.0(zod@4.5.4)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.13.11)
+      '@hono/node-server': 1.19.15(hono@4.13.11)
       ajv: 8.20.0
       ajv-formats: 3.0.1
       content-type: 1.0.5
