@@ -3,12 +3,17 @@
  *
  * Cases feed exact ToolActionProposal objects to the real reviewer. Keep
  * proposals realistic and free of eval-shaped instructions in userIntent.
+ *
+ * A person's root Run gets the shape that core sends: the visible messages
+ * in an author-labeled root section, ending with the current message, and
+ * the full evidence, which keeps the order of messages and tool calls.
  */
-import type {
-  RootConversation,
-  ToolActionDecision,
-  ToolActionEvidence,
-  ToolActionProposal,
+import {
+  CHILD_AGENT_USER_INTENT,
+  type RootConversationMessage,
+  type ToolActionDecision,
+  type ToolActionEvidence,
+  type ToolActionProposal,
 } from "@/chat/guardian/proposal";
 import type { ToolActionPriorRejection } from "@/chat/guardian/history";
 import { agentToolSpec } from "../../src/guardian-tools";
@@ -83,6 +88,33 @@ export function slackContext(
 }
 
 /**
+ * Build the root section of a person's root Run from unlabeled evidence, as
+ * core reads it: each visible message in order. Core persists the current
+ * message before the Run, so it is added last when the snapshot lacks it.
+ */
+function personRoot(
+  evidence: ToolActionEvidence | undefined,
+  userIntent: string,
+): RootConversationMessage[] {
+  const messages: RootConversationMessage[] = (evidence?.entries ?? []).flatMap(
+    (entry) =>
+      entry.role === "user" || entry.role === "assistant"
+        ? [{ author: entry.role, text: entry.text }]
+        : [],
+  );
+  // A snapshot can already hold the current message, followed by steering
+  // that the user sent during the Turn. Core reads each message once.
+  if (
+    !messages.some(
+      (message) => message.author === "user" && message.text === userIntent,
+    )
+  ) {
+    messages.push({ author: "user", text: userIntent });
+  }
+  return messages;
+}
+
+/**
  * The tool of a snapshot. Name an agent tool, and the snapshot gets the
  * `tool` field that production sends for the input. Pass an object only for
  * a made-up tool that the agent does not have.
@@ -107,9 +139,20 @@ export async function proposal(input: {
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
   priorRejectedActions?: PriorRejectionSnapshot[];
-  rootConversation?: RootConversation;
+  /**
+   * Author-labeled root Conversation, as core reads it at review time. For a
+   * person's root Run, it is built from the evidence when not given.
+   */
+  root?: RootConversationMessage[];
   tool: SnapshotTool;
 }): Promise<ToolActionProposal> {
+  // Core reads the root section for a child and for a person's root Run. A
+  // system Actor's root Run, such as an Event Turn, keeps plain evidence.
+  const childAgent = input.context.userIntent === CHILD_AGENT_USER_INTENT;
+  const personRun = !childAgent && input.context.actor.platform !== "system";
+  const root = personRun
+    ? (input.root ?? personRoot(input.evidence, input.context.userIntent))
+    : input.root;
   const priorRejectedActions = await Promise.all(
     (input.priorRejectedActions ?? []).map(async (rejection) => ({
       ...rejection,
@@ -121,9 +164,7 @@ export async function proposal(input: {
     ...(input.evidence ? { evidence: input.evidence } : {}),
     input: input.input,
     ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : {}),
-    ...(input.rootConversation
-      ? { rootConversation: input.rootConversation }
-      : {}),
+    ...(root ? { rootConversation: { messages: root, truncated: false } } : {}),
     tool: await resolveTool(input.tool, input.input),
   };
 }
