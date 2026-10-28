@@ -566,14 +566,14 @@ export function createGitHubPullRequestTool(
           );
           // GitHub can deliver `opened` before the create call returns, so
           // the requester must be saved first.
-          const requester = await resolveGitHubPullRequestRequester(ctx);
+          const identityId = await resolveGitHubPullRequestRequester(ctx);
           const { headBranch, repositoryFullName } =
             requesterBranch(parsedInput);
-          if (requester && headBranch) {
+          if (identityId && headBranch) {
             await recordPendingGitHubPullRequestRequester(ctx.db as GitHubDb, {
               headBranch,
+              identityId,
               repositoryFullName,
-              requester,
             });
           }
           const pendingState: CreatePullRequestState = {
@@ -597,12 +597,12 @@ export function createGitHubPullRequestTool(
               await ctx.state.delete(key);
               // GitHub did not open a pull request, so this call's pending
               // requester must not remain for the branch.
-              if (requester && headBranch) {
+              if (identityId && headBranch) {
                 await removePendingGitHubPullRequestRequester(
                   ctx.db as GitHubDb,
                   {
                     headBranch,
-                    identityId: requester.identityId,
+                    identityId,
                     repositoryFullName,
                   },
                 );
@@ -632,9 +632,9 @@ export function createGitHubPullRequestTool(
           }
           await attachGitHubPullRequestRequester(ctx.db as GitHubDb, {
             headBranch,
+            identityId,
             number: result.number,
             repositoryFullName,
-            requester,
           });
           await assignPullRequestRequester(ctx, parsedInput, result);
           return await gitHubPullRequestStructuredResult(

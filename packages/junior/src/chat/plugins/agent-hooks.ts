@@ -55,7 +55,11 @@ import { createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  readActorIdentity,
+  readIdentityById,
+  resolveViewerUser,
+} from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -942,6 +946,7 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      users: { readIdentity: readIdentityById },
       events: {
         async hasMatch(event) {
           if (!options.events.hasMatch) return false;

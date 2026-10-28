@@ -1,5 +1,5 @@
 {
-  "id": "6032f054-1359-4d58-9736-a5a8db8f4896",
+  "id": "b890ce8c-3445-4526-8d74-2d59b35547c6",
   "prevId": "da9cceed-a211-4f1b-a5b8-ac4237b9caf5",
   "version": "7",
   "dialect": "postgresql",
@@ -206,18 +206,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "github_login": {
-          "name": "github_login",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "action": {
           "name": "action",

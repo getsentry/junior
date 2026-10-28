@@ -165,6 +165,8 @@ export function createGitHubWebhookRoute(args: {
   installationIdEnv: string;
   /** Load a repository role for `authorRole` and `requesterRole` filters. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
+  /** Linked GitHub login of the user of one Junior identity, if any. */
+  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
   /** Load the people involved in a pull request for approvals and merges. */
   loadPullRequestPeople?(
     target: GitHubPullRequestPeopleTarget,
@@ -359,6 +361,7 @@ export function createGitHubWebhookRoute(args: {
             eventName,
           }),
           load: args.loadRepositoryRole,
+          loadGitHubLogin: args.loadGitHubLogin,
           log: args.log,
           neededMatchKeys: args.events.neededMatchKeys,
         }),

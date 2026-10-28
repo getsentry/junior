@@ -2503,6 +2503,30 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       ),
     );
+    // Core identities: one Slack identity per person. A person with a linked
+    // GitHub account has a GitHub identity on the same user.
+    const linkedGitHub = new Set(["dcramer", "octocat"]);
+    const identityOf = (person: string) => ({
+      identity: {
+        id: `slack-identity-${person}`,
+        provider: "slack",
+        providerSubjectId: person,
+      },
+      user: {
+        email: `${person}@example.com`,
+        id: `user-${person}`,
+        identities: linkedGitHub.has(person)
+          ? [
+              {
+                id: `github-identity-${person}`,
+                provider: "github",
+                providerSubjectId: person,
+                handle: person,
+              },
+            ]
+          : [],
+      },
+    });
     const plugin = githubPlugin();
     const db = fixture.db();
     const pluginCtx = {
@@ -2534,6 +2558,11 @@ describe("GitHub-owned pull request outcomes", () => {
       codeChanges: {
         async associateConversations() {},
         async record() {},
+      },
+      users: {
+        async readIdentity(identityId: string) {
+          return identityOf(identityId.replace("slack-identity-", ""));
+        },
       },
       events: {
         hasMatch: async () => true,
@@ -2608,28 +2637,7 @@ describe("GitHub-owned pull request outcomes", () => {
       events: { canSubscribe: false },
       users: {
         async resolveActor() {
-          return {
-            identity: {
-              id: `slack-identity-${person}`,
-              provider: "slack",
-              providerSubjectId: person,
-            },
-            user: {
-              email: `${person}@example.com`,
-              id: `user-${person}`,
-              identities:
-                person === "burak"
-                  ? []
-                  : [
-                      {
-                        id: `github-identity-${person}`,
-                        provider: "github",
-                        providerSubjectId: person,
-                        handle: person,
-                      },
-                    ],
-            },
-          };
+          return identityOf(person);
         },
       },
       state: {
@@ -2659,13 +2667,7 @@ describe("GitHub-owned pull request outcomes", () => {
           .select()
           .from(juniorGitHubPullRequestRequesters)
           .orderBy(juniorGitHubPullRequestRequesters.createdAt)
-      ).map((row) => [
-        row.number,
-        row.action,
-        row.identityId,
-        row.userId,
-        row.githubLogin,
-      ]);
+      ).map((row) => [row.number, row.action, row.identityId]);
 
     try {
       // GitHub can deliver `opened` before the create call returns.
@@ -2766,9 +2768,9 @@ describe("GitHub-owned pull request outcomes", () => {
         ["dcramer", "admin"],
       ]);
       expect(await savedRequesters()).toEqual([
-        [946, "create", "slack-identity-dcramer", "user-dcramer", "dcramer"],
-        [948, "create", "slack-identity-dcramer", "user-dcramer", "dcramer"],
-        [946, "update", "slack-identity-octocat", "user-octocat", "octocat"],
+        [946, "create", "slack-identity-dcramer"],
+        [948, "create", "slack-identity-dcramer"],
+        [946, "update", "slack-identity-octocat"],
       ]);
 
       // An opener with no linked GitHub account falls back to the bot.
@@ -2796,6 +2798,15 @@ describe("GitHub-owned pull request outcomes", () => {
         ["sentry-junior[bot]", "none"],
       ]);
 
+      // The row keeps the identity, not a login. Once the opener links a
+      // GitHub account, events use it.
+      linkedGitHub.add("burak");
+      await route!.handler(signedRequest(reused));
+      expect(requesterFields()).toEqual([
+        ["burak", "none"],
+        ["burak", "none"],
+      ]);
+
       // A person's pull request uses its author.
       opened.pull_request.user = { login: "octocat" };
       await route!.handler(signedRequest(opened));
@@ -2809,6 +2820,7 @@ describe("GitHub-owned pull request outcomes", () => {
         "dcramer",
         "dcramer",
         "sentry-junior[bot]",
+        "burak",
         "octocat",
       ]);
     } finally {

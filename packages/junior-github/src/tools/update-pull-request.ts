@@ -283,12 +283,12 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       }
       // Like attribution, each person who asks Junior to change the pull
       // request becomes one of its requesters.
-      const requester = await resolveGitHubPullRequestRequester(ctx);
-      if (requester) {
+      const identityId = await resolveGitHubPullRequestRequester(ctx);
+      if (identityId) {
         await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
           number: providerResult.number,
           repositoryFullName: repo.ref,
-          requester,
+          identityId,
         });
       }
       const subscribable = ctx.events.canSubscribe

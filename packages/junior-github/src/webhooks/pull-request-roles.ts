@@ -53,11 +53,14 @@ function identifierNumber(identifier: string): number | undefined {
 async function pullRequestRequesters(args: {
   botEmail: string | undefined;
   db: GitHubDb;
+  deliveryId: string;
   events: EventInput[];
   /** Whether the pull request head is in the base repository, not a fork. */
   headInRepository: boolean;
+  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
+  log?: Pick<PluginLogger, "error">;
   repositoryFullName: string;
-}): Promise<Map<EventInput, string>> {
+}): Promise<Map<EventInput, string | undefined>> {
   // Repository watches get a copy of each pull request Event with the
   // repository identifier and the same key.
   const numberByEventKey = new Map<string, number>();
@@ -88,15 +91,34 @@ async function pullRequestRequesters(args: {
     pullRequests: botPullRequests,
     repositoryFullName: args.repositoryFullName,
   });
+  // The opener's GitHub login comes from their user's linked identities now,
+  // not from a copy saved when they asked.
+  const logins = new Map<string, string | undefined>();
+  const failed = new Set<string>();
+  for (const identityId of new Set(openers.values())) {
+    try {
+      logins.set(identityId, await args.loadGitHubLogin?.(identityId));
+    } catch (error) {
+      failed.add(identityId);
+      args.log?.error("GitHub pull request requester lookup failed", {
+        deliveryId: args.deliveryId,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        repository: args.repositoryFullName,
+      });
+    }
+  }
   return new Map(
     args.events.map((event) => {
       const number = numberByEventKey.get(event.eventKey);
       const author = event.data!.authorUsername as string;
-      const opener =
+      const identityId =
         number !== undefined && isBotLogin(author, args.botEmail)
-          ? openers.get(number)?.githubLogin
+          ? openers.get(number)
           : undefined;
-      return [event, opener ?? author];
+      // A failed lookup leaves the requester out, so filters on it do not
+      // match.
+      if (identityId && failed.has(identityId)) return [event, undefined];
+      return [event, (identityId && logins.get(identityId)) || author];
     }),
   );
 }
@@ -116,6 +138,8 @@ export async function withGitHubPullRequestRoles(args: {
   deliveryId: string;
   events: EventInput[];
   load?(target: GitHubRoleTarget): Promise<string>;
+  /** Linked GitHub login of the user of one Junior identity, if any. */
+  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
   log?: Pick<PluginLogger, "error">;
   neededMatchKeys: EventPublisher["neededMatchKeys"];
 }): Promise<EventInput[]> {
@@ -144,20 +168,25 @@ export async function withGitHubPullRequestRoles(args: {
     ? await pullRequestRequesters({
         botEmail: args.botEmail,
         db: args.db,
+        deliveryId: args.deliveryId,
         events: authored,
+        ...(args.loadGitHubLogin
+          ? { loadGitHubLogin: args.loadGitHubLogin }
+          : undefined),
+        ...(args.log ? { log: args.log } : undefined),
         headInRepository:
           parsed.data.pull_request?.head?.repo?.full_name?.toLowerCase() ===
           repositoryFullName.toLowerCase(),
         repositoryFullName,
       })
-    : new Map<EventInput, string>();
+    : new Map<EventInput, string | undefined>();
   const logins = new Set<string>();
   if (needsAuthorRole) {
     for (const event of authored)
       logins.add(event.data!.authorUsername as string);
   }
   if (needsRequesterRole) {
-    for (const login of requesters.values()) logins.add(login);
+    for (const login of requesters.values()) if (login) logins.add(login);
   }
   const roles = new Map<string, string>();
   for (const login of logins) {
