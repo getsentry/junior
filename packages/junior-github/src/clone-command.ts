@@ -61,9 +61,21 @@ function isGitHubClone(words: string[]): boolean {
   }
   // Only GitHub remotes. Local and other-host clones stay allowed.
   return (
-    args[argIndex] === "clone" &&
-    args.slice(argIndex + 1).some((arg) => arg.includes("github.com"))
+    args[argIndex] === "clone" && args.slice(argIndex + 1).some(isGitHubRemote)
   );
+}
+
+/** Match `git@github.com:owner/repo` and URLs whose host is `github.com`. */
+function isGitHubRemote(arg: string): boolean {
+  const scpHost = /^[^@/:]+@([^/:]+):/.exec(arg)?.[1];
+  if (scpHost) {
+    return scpHost.toLowerCase() === "github.com";
+  }
+  try {
+    return new URL(arg).hostname.toLowerCase() === "github.com";
+  } catch {
+    return false;
+  }
 }
 
 /**

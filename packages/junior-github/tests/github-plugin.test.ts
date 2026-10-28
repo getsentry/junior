@@ -3879,6 +3879,7 @@ Conversation: \`local:test:old-conversation\`
     ["GIT_TERMINAL_PROMPT=0 gh repo clone getsentry/junior", true],
     ["gh repo fork getsentry/junior --clone", true],
     ["git clone /vercel/sandbox/repos/junior /tmp/junior", false],
+    ["git clone https://example.com/github.com/getsentry/junior", false],
     ["git fetch origin main", false],
     [
       "git commit -m 'stop using gh repo clone; git clone github.com/x/y'",
