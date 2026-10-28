@@ -32,8 +32,14 @@ import {
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
+  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
 } from "./store";
-import type { AgentInvocation, TerminalAgentInvocation } from "./types";
+import { listChildAgents } from "./list";
+import type {
+  AgentInvocation,
+  ChildAgent,
+  TerminalAgentInvocation,
+} from "./types";
 import { enqueueAgentInvocation } from "./work";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
@@ -111,9 +117,16 @@ const OUTPUT_LABEL = {
   stopped: "Error",
 } as const satisfies Record<TerminalAgentInvocation["status"], string>;
 
+function siblingLabel(sibling: ChildAgent): string {
+  return sibling.agentName
+    ? `"${sibling.agentName}"`
+    : (sibling.title ?? sibling.childConversationId);
+}
+
 function renderResultInput(
   invocation: TerminalAgentInvocation,
   summary: string,
+  runningSiblings: readonly ChildAgent[],
 ): string {
   const output = (
     invocation.status === "completed"
@@ -136,6 +149,14 @@ function renderResultInput(
     output || "(empty)",
     "",
     RESULT_NEXT_STEP[invocation.status],
+    // Fan-out: one Turn per result would post partial findings. Name the open
+    // siblings so the parent can wait for them.
+    ...(runningSiblings.length > 0
+      ? [
+          "",
+          `Other child agents that you started are still running: ${runningSiblings.map(siblingLabel).join(", ")}. Their results arrive later. Unless this result is useful to the user alone, wait for them before you report.`,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -143,6 +164,7 @@ function renderResultInput(
 function buildResultInboundMessage(
   invocation: TerminalAgentInvocation,
   nowMs: number,
+  runningSiblings: readonly ChildAgent[],
 ): InboundMessage {
   const summary = trustedSummary(invocation, childAgentLabel(invocation));
   const metadata: EventMailboxMetadata = {
@@ -165,7 +187,7 @@ function buildResultInboundMessage(
     input: {
       authorId: resultAuthorId(invocation.actor),
       metadata,
-      text: renderResultInput(invocation, summary),
+      text: renderResultInput(invocation, summary, runningSiblings),
     },
     receivedAtMs: nowMs,
     source: "event",
@@ -193,8 +215,17 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
+  const runningSiblings = (
+    await listChildAgents(invocation.parentConversationId)
+  ).filter(
+    (child) =>
+      child.childConversationId !== invocation.childConversationId &&
+      (NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
+        child.status,
+      ),
+  );
   await appendAndEnqueueInboundMessage({
-    message: buildResultInboundMessage(invocation, nowMs),
+    message: buildResultInboundMessage(invocation, nowMs, runningSiblings),
     queue: options.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: options.state,

@@ -439,6 +439,15 @@ describe("agent invocation spawn and result delivery", () => {
         },
         2_000,
       );
+      // A sibling that the same parent started is still running.
+      await createAgentInvocation(
+        {
+          ...slackInvocationInput,
+          agentName: "scout",
+          idempotencyKey: "parent-result-repair-sibling",
+        },
+        2_500,
+      );
       // The worker stopped after the terminal write and before the parent append.
       await completeAgentInvocation({
         errorMessage: "GitHub authorization is required",
@@ -483,6 +492,8 @@ describe("agent invocation spawn and result delivery", () => {
       expect(parentWork?.messages[0]?.input.text).toContain(
         "GitHub authorization is required",
       );
+      // The parent can wait for the open sibling instead of reporting early.
+      expect(parentWork?.messages[0]?.input.text).toContain('"scout"');
       await expect(
         loadSubagentEvents(slackParentConversationId),
       ).resolves.toEqual([
