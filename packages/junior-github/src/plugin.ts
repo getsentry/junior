@@ -3,6 +3,7 @@
  *
  * This module composes GitHub hooks, events, and credentials.
  */
+import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import {
   defineJuniorPlugin,
   type PluginRegistration,
@@ -356,8 +357,12 @@ export function githubPlugin(
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
-            loadAuthorRole: async (target) =>
+            loadRepositoryRole: async (target) =>
               await loadRepositoryRole(installationEnv, ctx.cache, target),
+            loadGitHubLogin: async (identityId) =>
+              linkedGitHubLogin(
+                (await ctx.users.readIdentity(identityId))?.user,
+              ),
             loadPullRequestPeople: async (pullRequest) =>
               await loadGitHubPullRequestPeople({
                 logins: pullRequest.logins,

@@ -12,7 +12,11 @@ import {
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 
 const { span, startSpan } = vi.hoisted(() => {
-  const span = { setAttribute: vi.fn(), setStatus: vi.fn() };
+  const span = {
+    setAttribute: vi.fn(),
+    setAttributes: vi.fn(),
+    setStatus: vi.fn(),
+  };
   return {
     span,
     startSpan: vi.fn(
@@ -78,10 +82,9 @@ describe("Slack inbound telemetry", () => {
         }),
         expect.any(Function),
       );
-      expect(span.setAttribute).toHaveBeenCalledWith(
-        "app.slack.membership",
-        "unverified",
-      );
+      expect(span.setAttributes).toHaveBeenCalledWith({
+        "app.slack.membership": "unverified",
+      });
     } finally {
       await state.disconnect();
     }

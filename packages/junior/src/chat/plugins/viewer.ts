@@ -214,3 +214,37 @@ export async function readActorIdentity(
 ): Promise<{ identity: Identity; user?: User } | undefined> {
   return await readActorIdentityFromSql(getDb(), actor);
 }
+
+/** Read one stored identity and its linked user by identity id. */
+export async function readIdentityByIdFromSql(
+  db: JuniorDatabase,
+  identityId: string,
+): Promise<{ identity: Identity; user?: User } | undefined> {
+  const rows = await db
+    .select({
+      identity: juniorIdentities,
+      user: juniorUsers,
+    })
+    .from(juniorIdentities)
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        eq(juniorIdentities.id, identityId),
+        eq(juniorIdentities.kind, "user"),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return undefined;
+  return {
+    identity: identityFromRow(row.identity),
+    ...(row.user ? { user: await readUserById(db, row.user) } : undefined),
+  };
+}
+
+/** Read one stored identity and its linked user by identity id. */
+export async function readIdentityById(
+  identityId: string,
+): Promise<{ identity: Identity; user?: User } | undefined> {
+  return await readIdentityByIdFromSql(getDb(), identityId);
+}

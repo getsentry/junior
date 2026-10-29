@@ -10,7 +10,8 @@ const MEMORY_BASE_PATH = "/memories";
 const MEMORY_LIBRARY_PATH = `${MEMORY_BASE_PATH}/library`;
 const RESERVED_MEMORY_SEGMENTS = new Set(["library"]);
 
-function isMemoriesLibraryPath(pathname: string): boolean {
+/** Identify library and memory routes that keep the list beside its details. */
+export function isMemoryLibraryPath(pathname: string): boolean {
   if (
     pathname === MEMORY_LIBRARY_PATH ||
     pathname.startsWith(`${MEMORY_LIBRARY_PATH}/`)
@@ -21,21 +22,34 @@ function isMemoriesLibraryPath(pathname: string): boolean {
   return Boolean(match?.[1] && !RESERVED_MEMORY_SEGMENTS.has(match[1]));
 }
 
-/** Place the shared secondary navigation above one Memories page. */
+/**
+ * Place the shared secondary navigation above one Memories page. Library
+ * children fill the remaining height and own their scroll frames.
+ */
 export function MemoryPageLayout(props: { children: ReactNode }) {
+  const library = isMemoryLibraryPath(useLocation().pathname);
   return (
     <SecondaryNavigation
       ariaLabel="Memory navigation"
+      className={
+        library
+          ? "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
+          : undefined
+      }
       items={[
         { end: true, label: "Overview", to: MEMORY_BASE_PATH },
         {
-          isActive: isMemoriesLibraryPath,
+          isActive: isMemoryLibraryPath,
           label: "Memories",
           to: MEMORY_LIBRARY_PATH,
         },
       ]}
     >
-      <PageLayout className="gap-6 sm:gap-8">{props.children}</PageLayout>
+      {library ? (
+        <div className="min-h-0">{props.children}</div>
+      ) : (
+        <PageLayout className="gap-6 sm:gap-8">{props.children}</PageLayout>
+      )}
     </SecondaryNavigation>
   );
 }
@@ -46,10 +60,9 @@ export function MemoryRouteLoading(props: {
   label: string;
   title?: string;
 }) {
-  const location = useLocation();
-  const overview = location.pathname === MEMORY_BASE_PATH;
-  return (
-    <MemoryPageLayout>
+  const library = isMemoryLibraryPath(useLocation().pathname);
+  const content = (
+    <>
       <PageHeader
         description={
           props.description ??
@@ -59,8 +72,19 @@ export function MemoryRouteLoading(props: {
       />
       <PageContentSkeleton
         label={props.label}
-        variant={overview ? "overview" : "library"}
+        variant={library ? "library" : "overview"}
       />
+    </>
+  );
+  return (
+    <MemoryPageLayout>
+      {library ? (
+        <div className="h-full overflow-y-auto">
+          <PageLayout className="gap-6 sm:gap-8">{content}</PageLayout>
+        </div>
+      ) : (
+        content
+      )}
     </MemoryPageLayout>
   );
 }

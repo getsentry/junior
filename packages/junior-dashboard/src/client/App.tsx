@@ -31,7 +31,6 @@ import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
-import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
 import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
@@ -49,7 +48,10 @@ import {
 } from "./pages/system/SystemPageLayout";
 import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
-import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
+import {
+  isMemoryLibraryPath,
+  MemoryRouteLoading,
+} from "./pages/memory/MemoryPageLayout";
 import { AutomationExecutionsPage } from "./pages/automations/AutomationExecutionsPage";
 import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
 import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPage";
@@ -134,7 +136,11 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <VisualViewportShell
         className="bg-dashboard-bg"
-        enabled={workspace || hasAutomationDetailsFrame(location.pathname)}
+        enabled={
+          workspace ||
+          hasAutomationDetailsFrame(location.pathname) ||
+          isMemoryLibraryPath(location.pathname)
+        }
       >
         <DashboardChrome
           banner={
@@ -417,22 +423,6 @@ export function DashboardShell() {
             path="/conversations/:conversationId"
           />
           <Route element={<Navigate replace to="/" />} path="/conversations" />
-          <Route
-            element={
-              loading ? (
-                <LoadingView label="Loading components" />
-              ) : !data ? (
-                <LoadingView
-                  label={query.error?.message ?? "Dashboard unavailable"}
-                />
-              ) : data.config.componentGallery ? (
-                <ComponentsPage />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-            path="/dev/*"
-          />
           <Route
             element={<LegacySystemRedirect section="people" />}
             path="/people"

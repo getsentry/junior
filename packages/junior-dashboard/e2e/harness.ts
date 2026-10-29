@@ -64,7 +64,7 @@ async function writeResponse(res: ServerResponse, response: Response) {
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
 export async function startDashboardE2eServer(
-  options: { basePath?: string; componentGallery?: boolean } = {},
+  options: { basePath?: string } = {},
 ): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
@@ -88,7 +88,6 @@ export async function startDashboardE2eServer(
       },
     },
     basePath: options.basePath,
-    componentGallery: options.componentGallery === true,
     mockConversations: true,
   });
 
