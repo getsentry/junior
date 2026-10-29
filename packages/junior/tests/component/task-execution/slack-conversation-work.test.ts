@@ -37,7 +37,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import type { SlackTurnInput } from "@/chat/providers/slack/turn-input-timing";
+import type { SlackTurnInputTelemetry } from "@/chat/providers/slack/turn-input-telemetry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
@@ -447,7 +447,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      turnInput?: SlackTurnInput;
+      inputTelemetry?: SlackTurnInputTelemetry;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -488,7 +488,7 @@ describe("Slack conversation work execution", () => {
           thread,
           message,
           skipped: hooks.messageContext?.skipped ?? [],
-          turnInput: hooks.turnInput,
+          inputTelemetry: hooks.inputTelemetry,
         });
       },
       handleSubscribedMessage: async () => {
@@ -512,7 +512,7 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.turnInput).toEqual({
+    expect(calls[0]?.inputTelemetry).toEqual({
       count: 2,
       oldestCreatedAtMs: oldestInput?.createdAtMs,
       oldestReceivedAtMs: oldestInput?.receivedAtMs,

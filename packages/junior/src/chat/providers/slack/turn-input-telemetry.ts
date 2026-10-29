@@ -1,5 +1,5 @@
 /** Mailbox timing facts for the input messages that start a Slack turn. */
-export interface SlackTurnInput {
+export interface SlackTurnInputTelemetry {
   /** Input messages in the batch that starts the turn. */
   count: number;
   /** Slack send time of the oldest input message. */
@@ -15,7 +15,7 @@ export interface SlackTurnInput {
  * duration is clock skew, not latency, so it is left out.
  */
 export function getTurnInputSpanAttributes(
-  input: SlackTurnInput,
+  input: SlackTurnInputTelemetry,
   turnStartedAtMs: number,
 ): Record<string, number> {
   const attributes: Record<string, number> = {

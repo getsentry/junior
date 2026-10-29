@@ -28,7 +28,7 @@ import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
 } from "@/chat/providers/slack/runtime";
-import { getTurnInputSpanAttributes } from "@/chat/providers/slack/turn-input-timing";
+import { getTurnInputSpanAttributes } from "@/chat/providers/slack/turn-input-telemetry";
 import {
   createTestDestination,
   createTestMessage,
@@ -96,7 +96,7 @@ describe("Slack turn input timing", () => {
 
       await runtime[handler](thread, message, {
         destination: createTestDestination(thread),
-        turnInput: {
+        inputTelemetry: {
           count: 2,
           oldestCreatedAtMs: TURN_STARTED_AT_MS - 4_000,
           oldestReceivedAtMs: TURN_STARTED_AT_MS - 3_000,

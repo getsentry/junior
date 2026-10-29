@@ -674,7 +674,7 @@ export function createSlackConversationWorker(
     if (!oldestRecord || !latestRecord) {
       return { status: "completed" };
     }
-    const turnInput = {
+    const inputTelemetry = {
       count: records.length,
       oldestCreatedAtMs: oldestRecord.createdAtMs,
       oldestReceivedAtMs: oldestRecord.receivedAtMs,
@@ -778,7 +778,7 @@ export function createSlackConversationWorker(
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
               stopSignal: context.stopSignal?.(),
-              turnInput,
+              inputTelemetry,
               subscribeThread: async () =>
                 await subscribeSlackThreadForMessage({
                   messageCreatedAtMs: latestRecord.createdAtMs,
@@ -799,7 +799,7 @@ export function createSlackConversationWorker(
                 isFinalAttempt: context.attempt.isFinalAttempt,
                 shouldYield: context.shouldYield,
                 stopSignal: context.stopSignal?.(),
-                turnInput,
+                inputTelemetry,
               },
             );
           }
