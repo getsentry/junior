@@ -1,8 +1,9 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { AssistantMessageEvent } from "@earendil-works/pi-ai";
+import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import {
   type Api,
   type AssistantMessage,
-  type AssistantMessageEventStream,
   type Context,
   type Model,
   streamSimple,
@@ -146,43 +147,80 @@ function buildChatEndAttributes(
 // and a tool call start already carries the tool name.
 const NON_CONTENT_EVENT_TYPES = new Set(["start", "done", "error"]);
 
-// Observes response timing without a second stream consumer. The stream is
-// single-consumer, so this wraps the provider's `push` calls instead of reading
-// the stream. The agent loop gets the same object, events, and `result()`
-// promise. A terminal `error` event is not a response chunk, so a call that
-// fails or aborts before any event records `streaming: false` and no timing.
-function observeResponseStart(
-  stream: AssistantMessageEventStream,
-  requestStartedAtMs: number,
-): () => Record<string, TraceAttributeValue> {
+// Records when the first event and the first content event arrive. A terminal
+// `error` event is not a response chunk, so a call that fails or aborts before
+// any event records `streaming: false` and no timing.
+function createResponseTiming(requestStartedAtMs: number): {
+  observe: (event: AssistantMessageEvent) => void;
+  attributes: () => Record<string, TraceAttributeValue>;
+} {
   let firstByteAtMs: number | undefined;
   let firstToken: { type: string; receivedAtMs: number } | undefined;
-  const push = stream.push.bind(stream);
-  stream.push = (event) => {
-    if (firstByteAtMs === undefined && event.type !== "error") {
-      firstByteAtMs = Date.now();
-    }
-    if (!firstToken && !NON_CONTENT_EVENT_TYPES.has(event.type)) {
-      firstToken = { type: event.type, receivedAtMs: Date.now() };
-    }
-    push(event);
+  return {
+    observe: (event) => {
+      if (firstByteAtMs === undefined && event.type !== "error") {
+        firstByteAtMs = Date.now();
+      }
+      if (!firstToken && !NON_CONTENT_EVENT_TYPES.has(event.type)) {
+        firstToken = { type: event.type, receivedAtMs: Date.now() };
+      }
+    },
+    attributes: () => {
+      if (firstByteAtMs === undefined) {
+        return { "gen_ai.response.streaming": false };
+      }
+      return {
+        "gen_ai.response.streaming": true,
+        "app.ai.time_to_first_byte_ms": firstByteAtMs - requestStartedAtMs,
+        ...(firstToken
+          ? {
+              "gen_ai.response.time_to_first_chunk":
+                (firstToken.receivedAtMs - requestStartedAtMs) / 1000,
+              "app.ai.first_token_type": firstToken.type,
+            }
+          : undefined),
+      };
+    },
   };
-  return (): Record<string, TraceAttributeValue> => {
-    if (firstByteAtMs === undefined) {
-      return { "gen_ai.response.streaming": false };
+}
+
+// The stream that the agent loop reads in place of the provider stream.
+// `result()` returns the provider stream's own promise, so the final message,
+// and a rejection if one occurs, reach the agent loop unchanged.
+class RelayedAssistantMessageEventStream extends AssistantMessageEventStream {
+  readonly #source: AssistantMessageEventStream;
+
+  constructor(source: AssistantMessageEventStream) {
+    super();
+    this.#source = source;
+  }
+
+  override result(): Promise<AssistantMessage> {
+    return this.#source.result();
+  }
+}
+
+// A pi-ai event stream has one consumer. This relay is the consumer of the
+// provider stream: it shows each event to `onEvent` as the event arrives, then
+// pushes the same event object to the stream that the agent loop reads. The
+// relayed stream always ends when the provider stream ends. `finished`
+// settles after the relay has seen the last event.
+function relayStream(
+  source: AssistantMessageEventStream,
+  onEvent: (event: AssistantMessageEvent) => void,
+): { stream: AssistantMessageEventStream; finished: Promise<void> } {
+  const relayed = new RelayedAssistantMessageEventStream(source);
+  const finished = (async () => {
+    try {
+      for await (const event of source) {
+        onEvent(event);
+        relayed.push(event);
+      }
+    } finally {
+      relayed.end();
     }
-    return {
-      "gen_ai.response.streaming": true,
-      "app.ai.time_to_first_byte_ms": firstByteAtMs - requestStartedAtMs,
-      ...(firstToken
-        ? {
-            "gen_ai.response.time_to_first_chunk":
-              (firstToken.receivedAtMs - requestStartedAtMs) / 1000,
-            "app.ai.first_token_type": firstToken.type,
-          }
-        : undefined),
-    };
-  };
+  })();
+  return { stream: relayed, finished };
 }
 
 /**
@@ -235,19 +273,20 @@ export function createTracedStreamFn(
       const stream = await Sentry.withActiveSpan(span, () =>
         Promise.resolve(base(model, context, options)),
       );
-      const responseStartAttributes = observeResponseStart(
-        stream,
-        requestStartedAtMs,
-      );
+      const responseTiming = createResponseTiming(requestStartedAtMs);
+      const relay = relayStream(stream, responseTiming.observe);
 
-      stream
-        .result()
+      // End the span after the relay has seen every event, so the timing
+      // attributes are complete even when the provider pushes all events at
+      // once.
+      relay.finished
+        .then(() => stream.result())
         .then(
           (finalMessage: AssistantMessage) => {
             try {
               const endAttributes = {
                 ...buildChatEndAttributes(finalMessage, mode),
-                ...responseStartAttributes(),
+                ...responseTiming.attributes(),
               };
               for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);
@@ -265,7 +304,7 @@ export function createTracedStreamFn(
             }
           },
           (error: unknown) => {
-            span.setAttributes(responseStartAttributes());
+            span.setAttributes(responseTiming.attributes());
             span.setAttribute(
               "error.type",
               error instanceof Error ? error.name : typeof error,
@@ -279,7 +318,7 @@ export function createTracedStreamFn(
           // errors so they don't surface as unhandled promise rejections.
         });
 
-      return stream;
+      return relay.stream;
     } catch (error) {
       span.setAttribute(
         "error.type",

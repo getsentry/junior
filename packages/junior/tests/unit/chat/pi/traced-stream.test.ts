@@ -1,5 +1,6 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -69,6 +70,11 @@ type SpanMock = {
   end: ReturnType<typeof vi.fn>;
 };
 
+// Lets the relay read pushed events before the test continues.
+function flushEvents(): Promise<void> {
+  return new Promise((r) => setImmediate(r));
+}
+
 function getSpan(): SpanMock {
   return startInactiveSpan.mock.results[0]!.value as SpanMock;
 }
@@ -92,7 +98,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    expect(returned).toBe(stream);
+    expect(returned).toBeInstanceOf(AssistantMessageEventStream);
     expect(startInactiveSpan).toHaveBeenCalledTimes(1);
     const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.op).toBe("gen_ai.chat");
@@ -195,14 +201,15 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    expect(returned).toBe(stream);
-
     // Resolve the stream's terminal Promise to trigger end-attribute population.
     const finalMessage = fakeMessage();
     stream.end(finalMessage);
-    await stream.result();
+    for await (const _event of returned) {
+      // The relayed stream ends when the provider stream ends.
+    }
+    await expect(returned.result()).resolves.toBe(finalMessage);
     // Allow the .then callback to flush.
-    await new Promise((r) => setImmediate(r));
+    await flushEvents();
 
     const span = getSpan();
     const endAttributes = Object.fromEntries(
@@ -396,8 +403,10 @@ describe("createTracedStreamFn", () => {
     ];
     vi.setSystemTime(10_250);
     stream.push(events[0]!);
+    await flushEvents();
     vi.setSystemTime(10_900);
     stream.push(events[1]!);
+    await flushEvents();
     vi.setSystemTime(11_500);
     for (const event of events.slice(2)) {
       stream.push(event);
@@ -446,6 +455,7 @@ describe("createTracedStreamFn", () => {
     const errorMessage = { ...fakeMessage(), stopReason: "aborted" as const };
     vi.setSystemTime(10_300);
     stream.push({ type: "start", partial: errorMessage });
+    await flushEvents();
     vi.setSystemTime(10_800);
     stream.push({ type: "error", reason: "aborted", error: errorMessage });
     await stream.result();
@@ -526,21 +536,21 @@ describe("createTracedStreamFn", () => {
 
   it("sets error status and ends the span when stream.result() rejects", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
-    const fakeStream = {
-      push: vi.fn(),
-      result: () => Promise.reject(new Error("stream failure")),
-    };
-    const base = vi.fn(() => fakeStream);
+    const failure = new Error("stream failure");
+    const stream = createAssistantMessageEventStream();
+    stream.result = () => Promise.reject(failure);
+    const base = vi.fn(() => stream);
 
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const traced = createTracedStreamFn(base as StreamFn);
-    await traced(
+    const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
       undefined,
     );
 
-    await new Promise((r) => setImmediate(r));
+    stream.end();
+    await expect(returned.result()).rejects.toBe(failure);
+    await flushEvents();
 
     const span = getSpan();
     expect(span.setStatus).toHaveBeenCalledWith({
