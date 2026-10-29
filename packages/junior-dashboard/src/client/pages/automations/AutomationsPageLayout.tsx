@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useLocation } from "react-router";
+import { matchPath, useLocation } from "react-router";
 
 import {
   PageContentSkeleton,
@@ -9,19 +9,16 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 
-const RESERVED_AUTOMATION_SEGMENTS = new Set(["list", "runs"]);
-
 /** Identify list and detail routes that share the Automation list scroll frame. */
 export function isAutomationListPath(pathname: string): boolean {
-  if (pathname === "/automations/list") return true;
-  const match = pathname.match(/^\/automations\/([^/]+)$/);
-  return Boolean(match?.[1] && !RESERVED_AUTOMATION_SEGMENTS.has(match[1]));
+  const match = matchPath("/automations/:automationId", pathname);
+  return Boolean(match && match.params.automationId?.toLowerCase() !== "runs");
 }
 
 function isAutomationListTabPath(pathname: string): boolean {
   return (
     isAutomationListPath(pathname) ||
-    /^\/automations\/[^/]+\/edit$/.test(pathname)
+    Boolean(matchPath("/automations/:automationId/edit", pathname))
   );
 }
 

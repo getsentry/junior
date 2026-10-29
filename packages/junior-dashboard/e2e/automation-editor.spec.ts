@@ -167,7 +167,12 @@ test("public non-creators edit settings without creator-only controls", async ({
   dashboard,
 }) => {
   const state = await mockAutomationEditor(page, "event", "event-2");
-  await page.goto(`${dashboard.baseURL}/automations/event-2/edit`);
+  await page.goto(`${dashboard.baseURL}/automations/event-2/edit/`);
+  await expect(
+    page
+      .getByLabel("Automations navigation")
+      .getByRole("link", { name: "Automations", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(
     page.getByText(/You can edit it because it is in a public channel/),
   ).toBeVisible();

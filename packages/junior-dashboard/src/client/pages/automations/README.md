@@ -31,7 +31,8 @@ coverage lives in core's `tests/integration/api/automation-edits.test.ts`.
 
 ## Automation details
 
-The URL selects one Automation in the list. `AutomationDetails` uses the shared
+The URL selects one Automation in the list. Route matching follows React
+Router, including trailing slashes. `AutomationDetails` uses the shared
 `DetailsPanel`: a 400px panel at 1280px and above, and a Base UI bottom sheet on
 smaller screens. The list stays interactive beside the panel. Each pane scrolls
 on its own. `VisualViewportShell` owns the viewport height and mobile body lock;

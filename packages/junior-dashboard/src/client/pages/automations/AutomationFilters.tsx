@@ -18,6 +18,13 @@ import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
 
 const filterMediaQuery = "(min-width: 768px)";
+const stateOptions = [
+  { value: "active", label: "Active" },
+  { value: "blocked", label: "Blocked" },
+  { value: "paused", label: "Paused" },
+  { value: "unavailable", label: "Trigger unavailable" },
+  { value: "completed", label: "Completed" },
+];
 
 function subscribeToFilterLayout(onChange: () => void) {
   const media = window.matchMedia(filterMediaQuery);
@@ -72,8 +79,8 @@ export function AutomationFilters(props: {
       key: "state",
       label: "State",
       value: filters.state === "all" ? "" : filters.state,
-      text:
-        filters.state === "unavailable" ? "Trigger unavailable" : filters.state,
+      text: stateOptions.find((option) => option.value === filters.state)
+        ?.label,
     },
   ].filter((filter) => filter.value);
   const trigger = (
@@ -216,13 +223,7 @@ function AutomationFilterFields({
         label="State"
         emptyLabel="All"
         value={filters.state === "all" ? "" : filters.state}
-        options={[
-          { value: "active", label: "Active" },
-          { value: "blocked", label: "Blocked" },
-          { value: "paused", label: "Paused" },
-          { value: "unavailable", label: "Trigger unavailable" },
-          { value: "completed", label: "Completed" },
-        ]}
+        options={stateOptions}
         onChange={(value) => onChange("state", value)}
       />
     </div>

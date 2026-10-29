@@ -25,6 +25,20 @@ test("opens scheduled and event automations in the native Automations view", asy
     page.getByRole("complementary", { name: "Automation details" }),
   ).toBeVisible();
   expect(documentRequests).toEqual([]);
+  // Shared links can include a trailing slash, as accepted by the router.
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1/?scope=mine`);
+  await expect(
+    page.getByRole("complementary", { name: "Automation details" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Automations navigation" })
+      .getByRole("link", { name: "Automations", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: "Close automation details" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/list?scope=mine`,
+  );
 
   await page.goto(`${dashboard.baseURL}/tasks/list?range=7#history`);
   await expect(page).toHaveURL(
