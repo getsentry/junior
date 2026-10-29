@@ -235,19 +235,16 @@ function MenuActionButton(props: {
   pressed?: boolean;
 }) {
   return (
-    <button
+    <Button
       aria-label={props.label}
       aria-pressed={props.pressed}
-      className={cn(
-        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none",
-        props.pressed && "bg-dashboard-fill-strong",
-      )}
+      className={props.pressed ? "bg-dashboard-fill-strong" : undefined}
       onClick={props.onClick}
-      type="button"
+      size="menu"
     >
       {props.children}
       <span>{props.label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -262,16 +259,15 @@ function ArchiveConversationButton(
   const Icon = props.archived ? ArchiveRestore : Archive;
   if (props.layout === "menu") {
     return (
-      <button
+      <Button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={props.disabled}
         onClick={props.onClick}
-        type="button"
+        size="menu"
       >
         <Icon aria-hidden="true" size={16} strokeWidth={2} />
         <span>{label}</span>
-      </button>
+      </Button>
     );
   }
   return (

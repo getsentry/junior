@@ -44,16 +44,15 @@ export function CopyButton(props: {
 
   if (props.layout === "menu") {
     return (
-      <button
+      <Button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!props.getText || status === "copying"}
         onClick={() => void copyText()}
-        type="button"
+        size="menu"
       >
         <Icon aria-hidden="true" size={16} strokeWidth={2} />
         <span>{label}</span>
-      </button>
+      </Button>
     );
   }
 
