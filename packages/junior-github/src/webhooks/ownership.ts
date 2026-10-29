@@ -84,9 +84,8 @@ function ownCommentText(text: string): string {
   return ownTokenText(lexer(text, { gfm: true }), "\n");
 }
 
-// HTML quote tags. Their content is a quote, like a Markdown quote.
-const HTML_QUOTE_OPEN = /<\s*blockquote\b/gi;
-const HTML_QUOTE_CLOSE = /<\s*\/\s*blockquote\s*>/gi;
+// An HTML quote tag. Its content is a quote, like a Markdown quote.
+const HTML_QUOTE_OPEN = /<\s*blockquote\b/i;
 
 function childTokens(token: Token): readonly Token[] {
   // `Token` includes a generic token, so `type` does not narrow it.
@@ -108,59 +107,11 @@ function hasQuoteOrHtml(token: Token): boolean {
   );
 }
 
-/** Count the HTML quote tags in a token, and how many stay open after it. */
-function htmlQuoteTags(token: Token): { count: number; open: number } {
-  if (token.type === "html") {
-    const opens = token.raw.match(HTML_QUOTE_OPEN)?.length ?? 0;
-    const closes = token.raw.match(HTML_QUOTE_CLOSE)?.length ?? 0;
-    return { count: opens + closes, open: opens - closes };
-  }
-  return childTokens(token)
-    .map(htmlQuoteTags)
-    .reduce(
-      (sum, tags) => ({
-        count: sum.count + tags.count,
-        open: sum.open + tags.open,
-      }),
-      { count: 0, open: 0 },
-    );
-}
-
-/**
- * Collect the source of Markdown tokens outside quotes and HTML, at any
- * depth. A block with an HTML quote tag is left out as a whole. Blocks after
- * it are left out until the quote closes, because Markdown splits an HTML
- * quote at blank lines.
- */
-function unquotedTokenText(tokens: readonly Token[], separator = ""): string {
-  let openQuotes = 0;
-  return tokens
-    .map((token): string => {
-      const tags = htmlQuoteTags(token);
-      if (openQuotes > 0 || tags.count > 0) {
-        openQuotes = Math.max(0, openQuotes + tags.open);
-        return "\n";
-      }
-      if (token.type === "blockquote" || token.type === "html") return "\n";
-      if (!hasQuoteOrHtml(token)) return token.raw;
-      if (token.type === "list") {
-        return (token as Tokens.List).items
-          .map((item) => unquotedTokenText(item.tokens, "\n").trim())
-          .filter(Boolean)
-          .map((item) => `- ${item}`)
-          .join("\n");
-      }
-      if (token.type === "table") {
-        const table = token as Tokens.Table;
-        return [table.header, ...table.rows]
-          .map((row) =>
-            row.map((cell) => unquotedTokenText(cell.tokens)).join(" | "),
-          )
-          .join("\n");
-      }
-      return unquotedTokenText(childTokens(token));
-    })
-    .join(separator);
+function hasHtmlQuote(token: Token): boolean {
+  return (
+    (token.type === "html" && HTML_QUOTE_OPEN.test(token.raw)) ||
+    childTokens(token).some(hasHtmlQuote)
+  );
 }
 
 /**
@@ -168,13 +119,43 @@ function unquotedTokenText(tokens: readonly Token[], separator = ""): string {
  * nothing is left. A quote repeats text that someone else wrote, so it is
  * never the author's own words. This also removes quotes in lists and tables.
  * Code stays, because an instruction can name a command.
+ *
+ * An HTML quote has no reliable end: Markdown splits it at blank lines, and a
+ * closing tag can hide in an HTML comment or attribute. So the block with the
+ * first HTML quote tag and all text after it are removed.
  */
 export function unquotedCommentText(
   text: string | null | undefined,
 ): string | undefined {
   if (!text) return undefined;
+  let afterHtmlQuote = false;
+  const tokenText = (tokens: readonly Token[], separator = ""): string =>
+    tokens
+      .map((token): string => {
+        if (afterHtmlQuote || hasHtmlQuote(token)) {
+          afterHtmlQuote = true;
+          return "\n";
+        }
+        if (token.type === "blockquote" || token.type === "html") return "\n";
+        if (!hasQuoteOrHtml(token)) return token.raw;
+        if (token.type === "list") {
+          return (token as Tokens.List).items
+            .map((item) => tokenText(item.tokens, "\n").trim())
+            .filter(Boolean)
+            .map((item) => `- ${item}`)
+            .join("\n");
+        }
+        if (token.type === "table") {
+          const table = token as Tokens.Table;
+          return [table.header, ...table.rows]
+            .map((row) => row.map((cell) => tokenText(cell.tokens)).join(" | "))
+            .join("\n");
+        }
+        return tokenText(childTokens(token));
+      })
+      .join(separator);
   return (
-    unquotedTokenText(lexer(text, { gfm: true }))
+    tokenText(lexer(text, { gfm: true }))
       // Removed quotes leave blank lines.
       .replace(/\n{3,}/g, "\n\n")
       .trim() || undefined
