@@ -23,7 +23,7 @@ import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { mswServer } from "../../msw/server";
 
 const EMAIL = "alice@example.com";
-const PUSH_ORIGIN = "https://push.example.test";
+const PUSH_ORIGIN = "https://fcm.googleapis.com/fcm/send";
 const ENV_NAMES = [
   "JUNIOR_WEB_PUSH_PUBLIC_KEY",
   "JUNIOR_WEB_PUSH_PRIVATE_KEY",
@@ -53,7 +53,7 @@ async function viewerApi() {
     await next();
   });
   app.route("/", createJuniorApi());
-  return async (method: string, path: string, body?: unknown) => {
+  return async (method: string, path: string, body?: unknown, status = 200) => {
     const response = await app.request(`http://localhost${path}`, {
       method,
       ...(body === undefined
@@ -63,7 +63,8 @@ async function viewerApi() {
             headers: { "content-type": "application/json" },
           }),
     });
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(status);
+    if (status !== 200) return undefined;
     return notificationSettingsSchema.parse(await response.json());
   };
 }
@@ -168,7 +169,16 @@ describe("reply notification task", () => {
       "/api/notifications/subscriptions",
       browserSubscription("old-laptop"),
     );
-    expect(before.deviceCount).toBe(2);
+    expect(before?.deviceCount).toBe(2);
+    await api(
+      "POST",
+      "/api/notifications/subscriptions",
+      {
+        ...browserSubscription("phone"),
+        endpoint: "https://169.254.169.254/latest/meta-data",
+      },
+      400,
+    );
     await api("PUT", "/api/notifications/schedule", {
       workingHoursOnly: false,
       days: [],
@@ -185,7 +195,7 @@ describe("reply notification task", () => {
     expect(pushes[0]!.headers.get("ttl")).toBe("43200");
     expect(pushes[0]!.headers.get("authorization")).toMatch(/^vapid /);
     const after = await api("GET", "/api/notifications");
-    expect(after.deviceCount).toBe(1);
+    expect(after?.deviceCount).toBe(1);
   });
 
   it("does not push outside the user's working hours", async () => {
