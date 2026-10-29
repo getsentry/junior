@@ -17,15 +17,11 @@ const tsconfigPath = path.join(packageRoot, "tsconfig.json");
 loadEnvFiles([workspaceRoot, exampleRoot]);
 applyJuniorDevelopmentDefaults(process.env);
 
-const compose = spawnSync(
-  "docker",
-  ["compose", "up", "-d", "--wait", "postgres", "redis"],
-  {
-    cwd: workspaceRoot,
-    env: process.env,
-    stdio: "inherit",
-  },
-);
+const compose = spawnSync("docker", ["compose", "up", "-d", "--wait"], {
+  cwd: workspaceRoot,
+  env: process.env,
+  stdio: "inherit",
+});
 if (compose.error) {
   console.error(`Could not start local services: ${compose.error.message}`);
   process.exit(1);
