@@ -288,6 +288,7 @@ export async function wireAgentTools(
 
   const mcpAuth = createMcpAuthOrchestration({
     abortAgent: args.abortAgent,
+    actor: args.currentActor,
     conversationId: args.run.conversationId,
     sessionId: args.run.turnId,
     actorId: credentialUserId,

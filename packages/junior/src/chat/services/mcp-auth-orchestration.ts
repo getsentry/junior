@@ -7,7 +7,7 @@
  * the same session.
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { Actor, Destination, Source } from "@sentry/junior-plugin-api";
 import { serviceAccountOnly } from "@/chat/credentials/service-account";
 import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
@@ -56,6 +56,7 @@ export class McpAuthorizationPauseError extends AuthorizationPauseError {
 
 export interface McpAuthOrchestrationInput {
   abortAgent: () => void;
+  actor?: Actor;
   conversationId?: string;
   sessionId?: string;
   actorId?: string;
@@ -90,6 +91,15 @@ export interface McpAuthOrchestration {
   getPendingPause: () => McpAuthorizationPauseError | undefined;
 }
 
+function botAssertionSubject(input: McpAuthOrchestrationInput): string {
+  if (input.actor) {
+    return input.actor.platform === "system"
+      ? `system:${input.actor.name}`
+      : `user:${input.actor.userId}`;
+  }
+  return input.actorId ? `user:${input.actorId}` : "system:unknown";
+}
+
 /** Create MCP authorization orchestration for a single agent run. */
 export function createMcpAuthOrchestration(
   input: McpAuthOrchestrationInput,
@@ -104,11 +114,12 @@ export function createMcpAuthOrchestration(
     const mcp = plugin.manifest.mcp;
     if (mcp?.auth) {
       botAuthProviders.add(plugin.manifest.name);
-      return createJwtBearerMcpClientProvider(
-        plugin.manifest.name,
-        mcp.url,
-        mcp.auth,
-      );
+      return createJwtBearerMcpClientProvider({
+        clientName: plugin.manifest.name,
+        subject: botAssertionSubject(input),
+        mcpUrl: mcp.url,
+        auth: mcp.auth,
+      });
     }
     if (!input.conversationId || !input.sessionId || !input.actorId) {
       return undefined;
