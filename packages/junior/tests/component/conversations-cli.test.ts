@@ -4,6 +4,7 @@ import { runConversations } from "@/cli/conversations";
 import { CLI_USAGE } from "@/cli/run";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 
 describe("junior conversations CLI", () => {
@@ -12,8 +13,13 @@ describe("junior conversations CLI", () => {
     vi.restoreAllMocks();
   });
 
-  it("lists every active conversation with dashboard and Slack links", async () => {
+  it("lists every active conversation with its dashboard and location links", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
+    // The dashboard pages use a base path that the API URL does not have.
+    const previousDashboardLinkOptions = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+      basePath: "/dashboard",
+    });
     const store = createSqlStore(fixture.sql);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -72,19 +78,22 @@ describe("junior conversations CLI", () => {
       expect(lines[0]).toEqual({
         id: "slack:C123:thread",
         title: "Slack thread",
-        url: "http://localhost/conversations/slack%3AC123%3Athread",
-        slackUrl:
+        dashboardUrl:
+          "https://junior.example.com/dashboard/conversations/slack%3AC123%3Athread",
+        locationUrl:
           "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123",
       });
       expect(lines.at(-1)).toMatchObject({
         id: "slack:C456:00",
-        url: "http://localhost/conversations/slack%3AC456%3A00",
-        slackUrl: null,
+        dashboardUrl:
+          "https://junior.example.com/dashboard/conversations/slack%3AC456%3A00",
+        locationUrl: null,
       });
 
       await expect(runConversations(["list"])).resolves.toBe(1);
       expect(error).toHaveBeenLastCalledWith(CLI_USAGE);
     } finally {
+      setDashboardConversationLinkOptions(previousDashboardLinkOptions);
       await fixture.close();
     }
   });

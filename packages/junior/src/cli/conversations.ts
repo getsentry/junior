@@ -2,7 +2,7 @@
  * Conversation list CLI.
  *
  * Prints one JSON line for each active root Conversation of the token owner.
- * Each line has the dashboard link and, when one exists, the Slack link.
+ * The links come from the API, so the CLI never builds dashboard paths.
  */
 import { conversationFeedSchema } from "@/api/schema/conversation";
 import { apiUrl, fetchJson } from "./api-client";
@@ -45,11 +45,8 @@ async function listConversations(options: ListOptions): Promise<void> {
         JSON.stringify({
           id: conversation.conversationId,
           title: conversation.displayTitle,
-          url: apiUrl(
-            options.baseUrl,
-            `conversations/${encodeURIComponent(conversation.conversationId)}`,
-          ).href,
-          slackUrl: conversation.locationUrl ?? null,
+          dashboardUrl: conversation.dashboardUrl ?? null,
+          locationUrl: conversation.locationUrl ?? null,
         }),
       );
     }
