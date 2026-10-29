@@ -163,7 +163,7 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
       !(item.label === "Observed" && item.value === remembered),
   );
   return (
-    <dl className="m-0 grid gap-2 border-t border-dashboard-border-subtle pt-4 text-xs leading-relaxed">
+    <dl className="m-0 grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3 text-xs leading-snug">
       {origin ? <MemoryFact label="Learned">{origin}</MemoryFact> : null}
       {visibility ? (
         <MemoryFact label="Used in">
@@ -172,7 +172,7 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
       ) : null}
       {dates.map((item) => (
         <MemoryFact key={item.label} label={item.label}>
-          <span className="tabular-nums">{item.value}</span>
+          {item.value}
         </MemoryFact>
       ))}
     </dl>
@@ -181,9 +181,11 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
 
 function MemoryFact(props: { children: ReactNode; label: string }) {
   return (
-    <div className="grid min-w-0 grid-cols-[5.25rem_minmax(0,1fr)] gap-3">
-      <dt className="text-dashboard-text-muted">{props.label}</dt>
-      <dd className="m-0 min-w-0 text-dashboard-text">{props.children}</dd>
+    <div className="flex min-w-0 items-baseline justify-between gap-4">
+      <dt className="shrink-0 text-dashboard-text-muted">{props.label}</dt>
+      <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
+        {props.children}
+      </dd>
     </div>
   );
 }

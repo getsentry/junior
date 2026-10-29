@@ -18,9 +18,10 @@ details. The list stays usable beside the panel. Each pane scrolls on its own.
 `VisualViewportShell` owns the viewport height.
 
 The header names the memory by visibility and type, such as "Private
-preference". The body shows the memory text, then short fact rows: how Junior
-learned it, where Junior uses it, and its dates. Observed is hidden when it is
-the same as Remembered.
+preference". The body shows the memory text, then one card of fact rows: how
+Junior learned it, where Junior uses it, and its dates. Each row has the label
+on the left and the value on the right, like the stats in the Conversation
+details Summary tab. Observed is hidden when it is the same as Remembered.
 
 Forget is an icon button in the panel header. In the sheet, it is in the
 footer. It asks for confirmation with `ui/alert-dialog` before it runs. A
