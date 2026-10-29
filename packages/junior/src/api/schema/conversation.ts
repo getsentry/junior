@@ -290,6 +290,8 @@ export const conversationSummaryReportSchema = z
     channelNameRedacted: z.boolean().optional(),
     locationId: z.string().optional(),
     sentryTraceUrl: z.string().optional(),
+    /** Dashboard page for this conversation. Missing when the dashboard is off. */
+    dashboardUrl: z.string().url().optional(),
     locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     /**

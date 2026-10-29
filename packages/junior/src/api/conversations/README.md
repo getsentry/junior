@@ -22,6 +22,11 @@ the same order as the list. A conversation with new activity moves above the
 cursor, so later pages do not show it. The cursor holds only a position. Send
 the same filters with `cursor` as in the first request.
 
+Each conversation summary has `dashboardUrl` when the dashboard is on. The
+server builds it with the dashboard base path. Clients must use it and must
+not build dashboard paths from the API URL. `locationUrl` links to the outside
+location, such as a Slack thread, when one exists.
+
 All cursors are opaque and HMAC-signed. Callers must not derive or modify
 cursor positions.
 

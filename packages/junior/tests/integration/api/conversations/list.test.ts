@@ -14,6 +14,7 @@ import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
@@ -34,6 +35,10 @@ function dashboardAuthorIdFromEmail(email: string): string {
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
+    const previousDashboardLinkOptions = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+      basePath: "/dashboard",
+    });
     try {
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
@@ -143,6 +148,8 @@ describe("conversation list API", () => {
         expect.objectContaining({
           archivedAt: new Date(2_000).toISOString(),
           conversationId: archivedId,
+          dashboardUrl:
+            "https://junior.example.com/dashboard/conversations/slack%3AC123%3Aarchived",
         }),
       ]);
 
@@ -161,6 +168,7 @@ describe("conversation list API", () => {
         error: "Invalid conversation cursor.",
       });
     } finally {
+      setDashboardConversationLinkOptions(previousDashboardLinkOptions);
       await fixture.close();
     }
   });
