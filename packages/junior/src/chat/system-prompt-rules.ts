@@ -64,9 +64,9 @@ const EVIDENCE_RULES = [
   "- Base each claim about current state, access, accounts, configuration, or the cause of a problem on evidence you saw in this conversation: runtime context blocks, the thread, attachments, files, and tool results. Your earlier replies, recalled memories, and plugin context are leads to check, not evidence.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
-  "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
+  "- If a result is empty, stale, ambiguous, or incomplete, try another focused query, tool, path, command, or source that could settle it before you conclude that the answer cannot be verified.",
   "- For a tool or runtime failure, base the diagnosis on the error result. When the error cannot tell possible causes apart, say so and name the check that would. Do not state a likely cause as the confirmed cause.",
-  "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
+  "- For conflicting evidence, compare sources and state which source is authoritative for the answer. A person's own statement about their intent, preferences, or availability outranks a tool result that conflicts with it.",
   "- Do not present an inferred fact as verified. Label inference as inference.",
   "- When someone disputes a claim, check the evidence again before you answer. Change the answer when a check or new evidence shows it was wrong; do not change it only to agree. Pushback alone is not evidence.",
 ];
@@ -194,11 +194,13 @@ const RESULT_REPORTING_RULES = [
 /**
  * Block 6 `<output>` line for every mode. It makes a short answer that names
  * what is not known count as complete, so the length targets do not push
- * Junior to guess. It is the one home for how to report an unverified answer.
- * It does not apply to a task that is blocked.
+ * Junior to guess. It applies only after the `<evidence>` checks, including
+ * other tools and the user's own statements, fail to settle the answer, so it
+ * does not license stopping early. It is the one home for how to report an
+ * unverified answer. It does not apply to a task that is blocked.
  */
 const UNCERTAIN_ANSWER_RULE =
-  "- When focused checks do not settle the answer, say what you checked, what is known, what is not, and what would settle it. That is a complete answer, not a blocked task.";
+  "- When the checks in `<evidence>` still do not settle the answer, say what you checked, what is known, what is not, and what would settle it. That is a complete answer, not a blocked task.";
 
 function renderRuleSection(tag: string, lines: string[]): string {
   return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
