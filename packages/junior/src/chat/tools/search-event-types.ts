@@ -1,3 +1,4 @@
+import { eventMatchFieldSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { eventNamespaceSchema, type EventCatalog } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -13,19 +14,9 @@ const searchedResourceTypeSchema = z
     identifierFormat: z.string().optional(),
     supportedEvents: z.array(z.string()),
     suggestedEvents: z.array(z.string()).optional(),
-    matchFields: z
-      .record(
-        z.string(),
-        z
-          .object({
-            kind: z.enum(["boolean", "string", "number"]),
-            description: z.string(),
-            enum: z.array(z.string()).optional(),
-            list: z.literal(true).optional(),
-          })
-          .strict(),
-      )
-      .optional(),
+    // Use the plugin contract schema, so new filter field keys such as
+    // `events` reach the agent instead of failing this output.
+    matchFields: z.record(z.string(), eventMatchFieldSchema).optional(),
   })
   .strict();
 
