@@ -17,6 +17,7 @@ export function getEventCatalog(): EventCatalog {
   const snapshot = workspaceSnapshotEvents();
   const catalog: Record<string, EventCatalog[string]> = {
     [CORE_EVENT_NAMESPACE]: {
+      displayName: "Junior",
       resourceTypes: [
         ...snapshot.resourceTypes,
         {
@@ -34,7 +35,10 @@ export function getEventCatalog(): EventCatalog {
         },
       },
     },
-    [SLACK_EVENT_NAMESPACE]: slackChannelMessageEvents(),
+    [SLACK_EVENT_NAMESPACE]: {
+      ...slackChannelMessageEvents(),
+      displayName: "Slack",
+    },
   };
   for (const plugin of getPlugins()) {
     const registration = plugin.events;
@@ -49,7 +53,10 @@ export function getEventCatalog(): EventCatalog {
         `Plugin "${plugin.manifest.name}" cannot register events; that namespace is reserved for core events`,
       );
     }
-    catalog[plugin.manifest.name] = registration;
+    catalog[plugin.manifest.name] = {
+      ...registration,
+      displayName: plugin.manifest.displayName,
+    };
   }
   return catalog;
 }

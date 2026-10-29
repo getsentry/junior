@@ -23,6 +23,8 @@ import { gitHubPullRequestResource } from "../src/events/pull-request";
 import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
+import { normalizeGitHubEvents } from "../src/webhooks/events";
+import { withGitHubPullRequestMatchData } from "../src/webhooks/pull-request-match-data";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -624,62 +626,234 @@ describe("github plugin", () => {
         "github_resolvePullRequestReviewThread",
       ),
     });
-    // GitHub sends no head branch with pull request comments.
-    const allEvents = pullRequest?.supportedEvents;
-    const headBranchEvents = allEvents?.filter(
-      (eventType) => eventType !== "pull_request.comment.created",
-    );
-    expect(pullRequest?.matchFields).toEqual({
+    expect(pullRequest?.matchFields).toMatchObject({
       authors: {
         kind: "string",
         list: true,
         description:
           "GitHub logins of the commit authors and Co-authored-by people, including bots such as Junior's",
-        events: allEvents,
       },
       headBranch: {
         kind: "string",
         description: "head branch name from the webhook",
-        events: headBranchEvents,
       },
       isDraft: {
         kind: "boolean",
         description: "true when the pull request is a draft",
-        events: allEvents,
       },
       openerEmail: {
         kind: "string",
         description:
           "opener email when GitHub sends it; missing on Junior's pull requests",
-        events: allEvents,
       },
       openerRole: {
         kind: "string",
         description:
           "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
-        events: allEvents,
       },
       openerUsername: {
         kind: "string",
         description:
           "login of who opened the pull request; on Junior's, the person who asked Junior to open it, missing until Junior saves them",
-        events: allEvents,
       },
     });
-    // Repository watches get every kind of event, so each filter names the
-    // events that set it.
-    const repository = githubPlugin().events?.resourceTypes.find(
-      (resourceType) => resourceType.type === "repository",
-    );
-    expect(repository?.matchFields?.senderId?.events).toEqual([
-      "issue.comment.created",
-    ]);
-    expect(repository?.matchFields?.environment?.events).toContain(
-      "deployment.succeeded",
-    );
-    expect(repository?.matchFields?.headBranch?.events).toEqual(
-      headBranchEvents,
-    );
+  });
+
+  it("declares filter events that match the data the webhooks set", async () => {
+    const repository = { full_name: "getsentry/junior", id: 2001 };
+    const opener = { email: "dcramer@example.com", login: "dcramer" };
+    const pullRequest = {
+      draft: false,
+      head: { ref: "feat/filters" },
+      number: 946,
+      user: opener,
+    };
+    const deployment = {
+      created_at: "2026-07-01T12:00:00.000Z",
+      environment: "Production",
+      id: 3001,
+      sha: "a".repeat(40),
+    };
+    const workflow = {
+      workflow: { id: 7, path: ".github/workflows/deploy.yml" },
+      workflow_run: { id: 9 },
+    };
+    const comment = {
+      body: "Please fix this",
+      id: 4001,
+      user: { login: "jane" },
+    };
+    const checkSuite = (conclusion: string) => ({
+      action: "completed",
+      check_suite: {
+        conclusion,
+        head_branch: "feat/filters",
+        head_sha: "abcdef1234567890",
+        id: 5001,
+        pull_requests: [
+          {
+            base: { repo: { id: 2001, name: "junior", url: "u" } },
+            head: {
+              ref: "feat/filters",
+              repo: { id: 2001, name: "junior", url: "u" },
+            },
+            number: 946,
+          },
+        ],
+      },
+      repository: {
+        ...repository,
+        name: "junior",
+        owner: { login: "getsentry" },
+      },
+    });
+    // The fullest delivery of each webhook, so every optional value is set.
+    const deliveries: Array<{ eventName: string; body: unknown }> = [
+      {
+        eventName: "deployment",
+        body: { action: "created", deployment, repository, ...workflow },
+      },
+      ...[
+        "queued",
+        "pending",
+        "in_progress",
+        "success",
+        "failure",
+        "error",
+      ].map((state) => ({
+        eventName: "deployment_status",
+        body: {
+          action: "created",
+          deployment,
+          deployment_status: { state },
+          repository,
+          ...workflow,
+        },
+      })),
+      ...["opened", "closed", "reopened"].map((action) => ({
+        eventName: "issues",
+        body: { action, issue: { number: 12 }, repository },
+      })),
+      {
+        eventName: "issue_comment",
+        body: {
+          action: "created",
+          comment,
+          issue: { number: 12 },
+          repository,
+          sender: { id: 77, login: "jane" },
+        },
+      },
+      {
+        eventName: "issue_comment",
+        body: {
+          action: "created",
+          comment,
+          issue: {
+            draft: false,
+            number: 946,
+            pull_request: { url: "u" },
+            user: opener,
+          },
+          repository,
+          sender: { id: 77, login: "jane" },
+        },
+      },
+      ...[
+        { action: "opened" },
+        { action: "ready_for_review" },
+        { action: "closed", merged: true },
+        { action: "closed", merged: false },
+      ].map(({ action, merged }) => ({
+        eventName: "pull_request",
+        body: { action, pull_request: { ...pullRequest, merged }, repository },
+      })),
+      ...["APPROVED", "CHANGES_REQUESTED", "COMMENTED"].map((state) => ({
+        eventName: "pull_request_review",
+        body: {
+          action: "submitted",
+          pull_request: pullRequest,
+          repository,
+          review: { body: "Looks good", state, user: { login: "jane" } },
+        },
+      })),
+      {
+        eventName: "pull_request_review_comment",
+        body: {
+          action: "created",
+          comment,
+          pull_request: pullRequest,
+          repository,
+        },
+      },
+      { eventName: "check_suite", body: checkSuite("failure") },
+      { eventName: "check_suite", body: checkSuite("success") },
+    ];
+    const resourceTypes = githubPlugin().events?.resourceTypes ?? [];
+    const fieldNames = [
+      ...new Set(
+        resourceTypes.flatMap((resourceType) =>
+          Object.keys(resourceType.matchFields ?? {}),
+        ),
+      ),
+    ];
+    const setBy = new Map<string, Set<string>>();
+    for (const [index, delivery] of deliveries.entries()) {
+      const deliveryId = `delivery-${index}`;
+      const botEmail = "264270552+sentry-junior[bot]@users.noreply.github.com";
+      const events = await withGitHubPullRequestMatchData({
+        body: delivery.body,
+        botEmail,
+        db,
+        deliveryId,
+        events: normalizeGitHubEvents({
+          ...delivery,
+          botEmail,
+          checkSuiteFacts: {
+            pullRequestFactsByNumber: {
+              946: {
+                isDraft: false,
+                openerEmail: opener.email,
+                openerUsername: opener.login,
+              },
+            },
+          },
+          deliveryId,
+        }),
+        hasMatch: async () => true,
+        loadAuthors: async () => ["dcramer"],
+        loadRole: async () => "write",
+        neededMatchKeys: async () => fieldNames,
+      });
+      for (const event of events) {
+        const keys = setBy.get(event.eventType) ?? new Set<string>();
+        for (const key of Object.keys(event.data ?? {})) keys.add(key);
+        setBy.set(event.eventType, keys);
+      }
+    }
+
+    const mismatches: string[] = [];
+    for (const resourceType of resourceTypes) {
+      for (const eventType of resourceType.supportedEvents) {
+        if (resourceType.type === "release_source") continue;
+        const keys = setBy.get(eventType);
+        if (!keys) {
+          mismatches.push(`no fixture publishes ${eventType}`);
+          continue;
+        }
+        for (const [key, field] of Object.entries(
+          resourceType.matchFields ?? {},
+        )) {
+          const declared = field.events?.includes(eventType) ?? true;
+          if (declared !== keys.has(key)) {
+            mismatches.push(
+              `${resourceType.type} filter ${key} ${declared ? "lists" : "omits"} ${eventType}, which ${keys.has(key) ? "sets" : "never sets"} it`,
+            );
+          }
+        }
+      }
+    }
+    expect(mismatches).toEqual([]);
   });
 
   it("registers release source watches", () => {

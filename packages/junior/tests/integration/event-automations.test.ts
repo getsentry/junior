@@ -531,7 +531,7 @@ describe("event automations", () => {
         "unsupported-event",
       ),
     ).rejects.toThrow(
-      'This github issue trigger cannot be saved. There is no enabled "issue" resource type for "github".',
+      'This github issue trigger cannot be saved. "issue" is not an enabled resource type. Use one of: "pull_request", "review_target".',
     );
 
     const listed = (await execute(
@@ -788,7 +788,10 @@ describe("event automations", () => {
     expect(listed.automations).toEqual([
       expect.objectContaining({
         id: created.automation.id,
-        trigger: expect.objectContaining({ available: false }),
+        trigger: expect.objectContaining({
+          available: false,
+          problems: ["The plugin for this source is not enabled."],
+        }),
       }),
     ]);
   });

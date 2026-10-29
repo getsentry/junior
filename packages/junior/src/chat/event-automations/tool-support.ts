@@ -20,6 +20,7 @@ import {
   automationEventCatalog,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
+  registeredEventTriggerProblems,
   registeredResourceTypeSchema,
   requireValidEventTrigger,
   type EventCatalog,
@@ -46,6 +47,7 @@ const compactEventAutomationResultSchema = z
         events: z.array(z.string().min(1)).min(1),
         match: z.record(z.string(), z.unknown()).optional(),
         available: z.boolean(),
+        problems: z.array(z.string().min(1)).min(1).optional(),
       })
       .strict(),
     credentialMode: z.enum(["system", "creator"]),
@@ -119,7 +121,11 @@ export function requireSupportedEventAutomationTrigger(
     resourceType: string;
   },
 ): EventAutomation["trigger"]["match"] | undefined {
-  return requireValidEventTrigger(automationEventCatalog(catalog), trigger);
+  return requireValidEventTrigger(
+    automationEventCatalog(catalog),
+    trigger,
+    "event_automation",
+  );
 }
 
 /** Require the active Slack authority used for event-automation management. */
@@ -193,22 +199,28 @@ export async function writableEventAutomation(
   return task;
 }
 
+/**
+ * List why a saved trigger cannot work with the enabled plugins. A plugin can
+ * remove or rename a resource type, event, or filter after the trigger was
+ * saved. Resource types with `automation: false` never dispatch event
+ * automations.
+ */
+export function eventAutomationTriggerProblems(
+  task: EventAutomation,
+  catalog: EventCatalog,
+): string[] {
+  return registeredEventTriggerProblems(
+    automationEventCatalog(catalog),
+    task.trigger,
+  ).map((problem) => problem.message);
+}
+
+/** Return whether a saved trigger has no problems with the enabled plugins. */
 export function eventAutomationTriggerAvailable(
   task: EventAutomation,
   catalog: EventCatalog,
 ): boolean {
-  // resourceType is presentation metadata; runtime matching uses namespace,
-  // identifier, and event type. Resource types with `automation: false`
-  // never dispatch tasks.
-  const registration = automationEventCatalog(catalog)[task.trigger.namespace];
-  return Boolean(
-    registration &&
-    task.trigger.events.every((eventType) =>
-      registration.resourceTypes.some((resourceType) =>
-        resourceType.supportedEvents.includes(eventType),
-      ),
-    ),
-  );
+  return eventAutomationTriggerProblems(task, catalog).length === 0;
 }
 
 /** Project an event automation into the bounded tool-result shape. */
@@ -217,6 +229,7 @@ export function compactEventAutomation(
   catalog: EventCatalog,
   requesterSlackUserId?: string,
 ) {
+  const problems = eventAutomationTriggerProblems(task, catalog);
   return compactEventAutomationResultSchema.parse({
     id: task.id,
     status: task.status,
@@ -231,7 +244,8 @@ export function compactEventAutomation(
       label: task.trigger.label,
       events: task.trigger.events,
       ...(task.trigger.match ? { match: task.trigger.match } : undefined),
-      available: eventAutomationTriggerAvailable(task, catalog),
+      available: problems.length === 0,
+      ...(problems.length > 0 ? { problems } : undefined),
     },
     credentialMode: task.credentialMode,
     isCreator: task.createdBy.slackUserId === requesterSlackUserId,
@@ -285,8 +299,8 @@ export async function eventAutomationToolResult(
           task.trigger.events.join(", "),
           ...filters,
         ].join(" · "),
-        warning: !automation.trigger.available
-          ? "Trigger unavailable. This automation cannot receive events."
+        warning: automation.trigger.problems
+          ? ["Trigger unavailable.", ...automation.trigger.problems].join(" ")
           : undefined,
       } satisfies ObjectAnnotation,
     ]),

@@ -74,6 +74,8 @@ export const eventAutomationSummarySchema = automationSummaryBaseSchema
     resource: z.string().min(1),
     source: z.string().min(1),
     triggerAvailable: z.boolean(),
+    /** Why the trigger is unavailable, in plain words. */
+    triggerProblems: z.array(z.string().min(1)).min(1).optional(),
     statusReason: z.string().optional(),
     status: z.enum(["active", "blocked", "paused"]),
   })

@@ -421,7 +421,7 @@ describe("Slack Work Object details", () => {
             expect.objectContaining({
               key: "warning",
               value:
-                "Trigger unavailable. This automation cannot receive events.",
+                "Trigger unavailable. The plugin for this source is not enabled.",
             }),
           ]),
         },

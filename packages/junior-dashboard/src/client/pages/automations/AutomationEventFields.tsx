@@ -51,12 +51,15 @@ export function AutomationEventFields(props: {
       ),
     retry: false,
   });
-  const resource = catalog.data?.find(
-    (item) =>
-      item.namespace === props.value.namespace &&
-      item.type === props.value.resourceType,
+  const sourceResourceTypes =
+    catalog.data?.filter((item) => item.namespace === props.value.namespace) ??
+    [];
+  const resource = sourceResourceTypes.find(
+    (item) => item.type === props.value.resourceType,
   );
-  const problems = resource ? eventTriggerProblems(resource, props.value) : [];
+  const problems = catalog.data
+    ? eventTriggerProblems(sourceResourceTypes, props.value)
+    : [];
   // A filter that a selected event does not set is fixable here. Other
   // problems mean the catalog changed after the trigger was saved.
   const unsupported =
@@ -149,7 +152,7 @@ export function AutomationEventFields(props: {
         <AlertDialogContent>
           <AlertDialogTitle>Replace the saved trigger?</AlertDialogTitle>
           <AlertDialogDescription>
-            Its resource, events, and conditions will be cleared.
+            Its resource, events, and filters will be cleared.
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -231,10 +234,10 @@ export function AutomationEventFields(props: {
           </fieldset>
           {matchFields.length ? (
             <fieldset className="grid gap-4">
-              <legend className="mb-3 text-sm font-semibold">Only when</legend>
+              <legend className="mb-3 text-sm font-semibold">Filters</legend>
               <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
-                All conditions must match. Leave a field blank to match any
-                value. Existing lists match any one listed value.
+                All filters must match. Leave a filter blank to match any value.
+                Existing lists match any one listed value.
                 {shownMatchFields.length < matchFields.length
                   ? " Filters that a selected event does not set are hidden."
                   : null}
@@ -251,7 +254,7 @@ export function AutomationEventFields(props: {
                       <div className="text-sm">
                         <span className="break-all">{value.join(", ")}</span>{" "}
                         <Button onClick={() => setMatch(key, undefined)}>
-                          Remove condition
+                          Remove filter
                         </Button>
                       </div>
                     ) : field.kind === "boolean" || field.enum ? (

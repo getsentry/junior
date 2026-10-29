@@ -108,6 +108,9 @@ user clears it. Event execution remains a system actor, with creator
 credentials bound to the exact event automation.
 
 Management results include creator attribution and whether the registered
-trigger is currently available from the enabled plugin catalog. An unavailable
-trigger remains stored and may be deleted or edited, but it cannot receive
-events until its plugin registration is enabled again.
+trigger is currently available from the enabled plugin catalog. A trigger is
+unavailable when `eventTriggerProblems` finds a problem: its plugin is off, or
+its resource type, an event, or a filter changed after it was saved. Results
+list the problems. An unavailable trigger remains stored and may be deleted or
+edited. Until it is fixed, it does not receive the events that its problems
+name.

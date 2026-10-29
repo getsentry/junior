@@ -78,7 +78,7 @@ export function AutomationStatus({
             needsFix
               ? "Fix this before resuming"
               : unavailable
-                ? "Event source unavailable"
+                ? "Trigger unavailable"
                 : "Check the last run"
           }
         >
@@ -92,7 +92,20 @@ export function AutomationStatus({
             </p>
           ) : null}
           {unavailable ? (
-            <p className="m-0">Enable its plugin or choose another event.</p>
+            <>
+              {automation.triggerProblems?.length ? (
+                <ul className="my-1 list-disc pl-5">
+                  {automation.triggerProblems.map((problem) => (
+                    <li className="break-words" key={problem}>
+                      {problem}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="m-0">
+                Edit the trigger, or enable its plugin again.
+              </p>
+            </>
           ) : null}
           {failed && !needsFix && !unavailable ? (
             <p className="m-0">
@@ -138,7 +151,7 @@ function AutomationNextTrigger({
   else if (automation.kind === "event")
     description = automation.triggerAvailable
       ? "Waiting for a matching event"
-      : "Waiting for the event source";
+      : "Waiting for a trigger fix";
   else if (automation.nextRunAt) {
     const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const scheduleTime = formatAutomationRunTime(

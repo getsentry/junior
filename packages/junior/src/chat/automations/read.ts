@@ -49,7 +49,7 @@ import {
   parseEventAutomationRow,
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
-import { eventAutomationTriggerAvailable } from "@/chat/event-automations/tool-support";
+import { eventAutomationTriggerProblems } from "@/chat/event-automations/tool-support";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   deleteViewerScheduledAutomation,
@@ -299,6 +299,10 @@ function eventAutomationSummary(
   creator: CreatorProfile | undefined,
 ): AutomationSummary {
   const instruction = task.task.text;
+  const triggerProblems = eventAutomationTriggerProblems(
+    task,
+    getEventCatalog(),
+  );
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
@@ -328,7 +332,8 @@ function eventAutomationSummary(
     ),
     status: task.status === "deleted" ? "active" : task.status,
     statusReason: task.statusReason,
-    triggerAvailable: eventAutomationTriggerAvailable(task, getEventCatalog()),
+    triggerAvailable: triggerProblems.length === 0,
+    ...(triggerProblems.length > 0 ? { triggerProblems } : undefined),
   };
 }
 

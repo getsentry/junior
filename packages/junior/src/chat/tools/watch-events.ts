@@ -134,12 +134,16 @@ export function createWatchEventsTool(
       const events = cleanStrings(input.events);
       const intent = input.intent.trim();
       if (!intent) throw new ToolInputError("intent is required");
-      const match = requireValidEventTrigger(catalog, {
-        events,
-        match: input.match,
-        namespace: input.namespace,
-        resourceType: input.resourceType,
-      });
+      const match = requireValidEventTrigger(
+        catalog,
+        {
+          events,
+          match: input.match,
+          namespace: input.namespace,
+          resourceType: input.resourceType,
+        },
+        "watch",
+      );
       const nowMs = Date.now();
       const subscription = await createWatch({
         conversationId: context.conversationId,

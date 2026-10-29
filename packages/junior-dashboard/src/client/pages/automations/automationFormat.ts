@@ -24,8 +24,8 @@ export function automationEventNames(automation: EventAutomation): string {
     .join(", ");
 }
 
-/** Summarize event match conditions as one readable line. */
-export function automationEventConditions(automation: EventAutomation): string {
+/** Summarize event filters as one readable line. */
+export function automationEventFilters(automation: EventAutomation): string {
   return Object.entries(automation.match ?? {})
     .map(
       ([field, value]) =>
