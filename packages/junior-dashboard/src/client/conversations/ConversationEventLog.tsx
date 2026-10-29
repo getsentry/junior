@@ -1,4 +1,3 @@
-import { ChevronRight } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -15,7 +14,7 @@ import { ConversationEventDetails } from "./ConversationEventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 const rowClass =
-  "grid grid-cols-[12ch_minmax(0,1fr)_1rem] items-baseline gap-x-3 px-4 @min-[32rem]:grid-cols-[12ch_17ch_minmax(0,1fr)_1rem]";
+  "grid grid-cols-[12ch_minmax(0,1fr)] items-baseline gap-x-3 px-4 @min-[32rem]:grid-cols-[12ch_17ch_minmax(0,1fr)]";
 
 /**
  * Show every reporting event in sequence order, outside the transcript reducer.
@@ -36,7 +35,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     : localSelectedSeq;
   const setSelectedSeq = props.onSelectedSeqChange ?? setLocalSelectedSeq;
   const listRef = useRef<HTMLOListElement>(null);
-  // Rows opened by a click are already visible. Scroll only for a linked entry.
+  // Clicked rows are visible. Reveal links and keyboard selections after layout.
   const revealedSeqRef = useRef<number>(undefined);
   const events = conversation.events;
   const rows = useMemo(
@@ -83,7 +82,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     );
     if (!row) return;
     revealedSeqRef.current = selectedSeq;
-    row.scrollIntoView({ block: "center" });
+    row.scrollIntoView({ block: "nearest" });
   }, [selectedSeq, visibleRows]);
 
   if (conversation.eventHistory.status === "expired") {
@@ -125,7 +124,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
           <span>Time</span>
           <span>Event</span>
           <span className="hidden @min-[32rem]:block">Summary</span>
-          <span />
         </div>
       </div>
       <div className="font-mono text-xs">
@@ -134,19 +132,46 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
           className="m-0 list-none divide-y divide-dashboard-border-subtle p-0"
           ref={listRef}
         >
-          {visibleRows.map(({ event, summary, metadata }) => (
-            <li data-event-seq={event.seq} key={event.seq}>
+          {visibleRows.map(({ event, summary, metadata }, index) => (
+            <li
+              className="scroll-mt-28 scroll-mb-2"
+              data-event-seq={event.seq}
+              key={event.seq}
+            >
               <button
                 aria-expanded={selectedSeq === event.seq}
                 aria-label={`Event ${event.seq}: ${event.data.type}`}
                 className={cn(
                   rowClass,
-                  "min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
-                  selectedSeq === event.seq && "bg-dashboard-fill-strong",
+                  "relative min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
+                  selectedSeq === event.seq &&
+                    "bg-dashboard-fill-strong before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-dashboard-accent before:content-['']",
                 )}
                 onClick={() => {
                   revealedSeqRef.current = event.seq;
                   setSelectedSeq(event.seq);
+                }}
+                onKeyDown={(keyEvent) => {
+                  if (
+                    keyEvent.altKey ||
+                    keyEvent.ctrlKey ||
+                    keyEvent.metaKey ||
+                    keyEvent.shiftKey ||
+                    (keyEvent.key !== "ArrowUp" && keyEvent.key !== "ArrowDown")
+                  )
+                    return;
+                  keyEvent.preventDefault();
+                  const next =
+                    visibleRows[
+                      index + (keyEvent.key === "ArrowDown" ? 1 : -1)
+                    ];
+                  if (!next) return;
+                  setSelectedSeq(next.event.seq);
+                  listRef.current
+                    ?.querySelector<HTMLButtonElement>(
+                      `[data-event-seq="${next.event.seq}"] button`,
+                    )
+                    ?.focus({ preventScroll: true });
                 }}
                 type="button"
               >
@@ -176,11 +201,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                     </span>
                   ) : null}
                 </span>
-                <ChevronRight
-                  aria-hidden="true"
-                  className="col-start-3 row-start-1 text-dashboard-text-muted @min-[32rem]:col-start-4"
-                  size={14}
-                />
               </button>
             </li>
           ))}

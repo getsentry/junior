@@ -95,7 +95,25 @@ test("inspects all reporting events and searches full event data", async ({
     name: "Event 1: turn_lifecycle",
     exact: true,
   });
-  await otherEntry.click();
+  // Keyboard selection follows the filtered rows and keeps details open.
+  const eventSearch = log.getByRole("searchbox", { name: "Search events" });
+  await eventSearch.fill("turn_lifecycle");
+  await otherEntry.focus();
+  await otherEntry.press("ArrowDown");
+  const laterEntry = log.getByRole("button", {
+    name: "Event 8: turn_lifecycle",
+    exact: true,
+  });
+  await expect(laterEntry).toBeFocused();
+  await expect(laterEntry).toHaveAttribute("aria-expanded", "true");
+  await expect(otherEntry).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
+  await laterEntry.press("ArrowDown");
+  await expect(laterEntry).toBeFocused();
+  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
+  await laterEntry.press("ArrowUp");
+  await expect(otherEntry).toBeFocused();
+  await eventSearch.fill("");
   await expect(
     panel.getByRole("heading", { name: "turn_lifecycle", exact: true }),
   ).toBeVisible();

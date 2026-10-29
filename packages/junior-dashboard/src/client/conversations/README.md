@@ -77,6 +77,9 @@ the Conversation view.
 Rows keep time, event type, and summary in columns when the pane is at least
 512px wide. Smaller panes put the summary below time and type. Model and usage
 metadata share one optional line. Missing model metadata is omitted from rows.
+Selected rows have a background and an accent edge. Up and Down select the
+previous or next visible row while a row has focus. Selection stops at the
+ends of the filtered list. The selected row stays clear of the fixed toolbar.
 
 ## Event details
 
