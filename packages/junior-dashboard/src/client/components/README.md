@@ -42,6 +42,9 @@ file when every caller needs the same style or variant. App components compose
 | `charts/ActivityChartTooltip`  | `ui/tooltip`      |
 | `conversations/ToolFrame`      | `ui/trace`        |
 | `TranscriptReasoningView`      | `ui/trace`        |
+| `ImageAttachment` (preview)    | `ui/dialog`       |
+| `Notice`, `InlineError`        | `ui/alert`        |
+| App banners                    | `ui/alert`        |
 | Recharts activity charts       | `ui/chart`        |
 
 Rules for adopted components:
@@ -54,6 +57,11 @@ Rules for adopted components:
 - Use `ui/alert-dialog` for every confirmation. Do not use `window.confirm`.
   Keep the confirmed item in state after close, so the closing dialog keeps its
   text.
+- Use `useSheet` for each app `ui/dialog`, as for sheets. It shares the
+  document scroll lock. Only the front modal closes on Escape or a backdrop
+  tap. Mount the dialog only while it is open.
+- `ui/alert` sets `role="alert"`. Pass `role="status"` for a message that is
+  not an error.
 - `ui/toast` has no global notification manager. Features call
   `useToastManager` inside the mounted `Toaster` provider.
 - Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an

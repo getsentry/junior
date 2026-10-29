@@ -1,8 +1,9 @@
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
 import { MentionText } from "./transcriptMentions";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
-import { TranscriptSummary } from "./TranscriptSummary";
+import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 type TranscriptPresentationEventPart = TranscriptViewStructuredEventPart;
 
@@ -58,24 +59,25 @@ export function TranscriptStructuredEventView(props: {
         ))}
       </div>
     ) : null;
+  // The header can sit inside the row button, so it uses only inline elements.
   const header = (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
-      <div className="min-w-0">
-        <div className="text-sm font-medium leading-6 text-dashboard-text">
+    <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium leading-6 text-dashboard-text">
           <HighlightText text={presentation.title} />
-        </div>
+        </span>
         {presentation.preview ? (
-          <div className="mt-0.5 truncate text-xs text-dashboard-text-muted">
+          <span className="mt-0.5 block truncate text-xs text-dashboard-text-muted">
             <MentionText mentions={mentions} text={presentation.preview} />
-          </div>
+          </span>
         ) : null}
-      </div>
+      </span>
       {timestamp ? (
         <span className="text-xs leading-6 tabular-nums text-dashboard-text-muted max-md:hidden">
           {timestamp}
         </span>
       ) : null}
-    </div>
+    </span>
   );
 
   if (details.length === 0 || search.active) {
@@ -87,9 +89,11 @@ export function TranscriptStructuredEventView(props: {
     );
   }
   return (
-    <details className={`group/plugin-event ${surfaceClass}`}>
-      <TranscriptSummary flush>{header}</TranscriptSummary>
-      {body}
-    </details>
+    <Collapsible className={surfaceClass}>
+      <TranscriptSummaryTrigger flush className="block">
+        {header}
+      </TranscriptSummaryTrigger>
+      <CollapsibleContent hiddenUntilFound>{body}</CollapsibleContent>
+    </Collapsible>
   );
 }

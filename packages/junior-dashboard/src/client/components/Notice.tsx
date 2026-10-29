@@ -1,7 +1,9 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "../styles";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { Button } from "./ui/button";
 
 type NoticeTone = "default" | "error";
 
@@ -14,7 +16,7 @@ type NoticeProps = {
   tone?: NoticeTone;
 };
 
-type NoticeActionProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+type NoticeActionProps = ComponentProps<typeof Button> & {
   tone?: NoticeTone;
 };
 
@@ -29,11 +31,10 @@ export function Notice({
 }: NoticeProps) {
   const isError = tone === "error";
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-xl border bg-dashboard-surface-raised shadow-[0_16px_40px_rgba(0,0,0,0.5)]",
-        isError ? "border-rose-300/25" : "border-dashboard-border-strong",
-      )}
+    <Alert
+      className="block gap-0 overflow-hidden rounded-xl p-0 shadow-[0_16px_40px_rgba(0,0,0,0.5)]"
+      role={isError ? "alert" : "status"}
+      variant={isError ? "destructive" : "default"}
     >
       <div className="flex min-w-0 items-center gap-3 px-3 py-3">
         {Icon ? (
@@ -48,31 +49,26 @@ export function Notice({
             <Icon aria-hidden="true" size={16} />
           </div>
         ) : null}
-        <div className="min-w-0 flex-1" role={isError ? "alert" : "status"}>
-          <div
-            className={cn(
-              "font-display text-sm font-medium leading-snug",
-              isError ? "text-rose-50" : "text-dashboard-text",
-            )}
-          >
+        <div className="min-w-0 flex-1">
+          <AlertTitle className="font-display text-sm leading-snug">
             {title}
             {detail ? " " : null}
-          </div>
+          </AlertTitle>
           {detail ? (
-            <div
+            <AlertDescription
               className={cn(
                 "mt-0.5 truncate font-sans text-xs",
-                isError ? "text-rose-100/70" : "text-dashboard-text-muted",
+                isError && "text-rose-100/70",
               )}
             >
               {detail}
-            </div>
+            </AlertDescription>
           ) : null}
         </div>
         {action}
       </div>
       {children}
-    </div>
+    </Alert>
   );
 }
 
@@ -80,22 +76,19 @@ export function Notice({
 export function NoticeAction({
   className,
   tone = "default",
-  type = "button",
   ...props
 }: NoticeActionProps) {
   const isError = tone === "error";
   return (
-    <button
+    <Button
       {...props}
       className={cn(
-        "shrink-0 cursor-pointer px-3 py-1.5 text-xs transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
-        isError ? "focus:ring-rose-300/40" : "focus:ring-dashboard-focus/35",
+        "h-auto shrink-0 rounded-lg border-0 px-3 py-1.5 text-xs leading-normal",
         isError
-          ? "rounded-lg bg-rose-200/15 font-sans font-medium text-rose-50 hover:bg-rose-200/25"
-          : "rounded-lg bg-dashboard-accent/10 font-sans font-medium text-dashboard-accent-text hover:bg-dashboard-accent/20",
+          ? "bg-rose-200/15 text-rose-50 hover:bg-rose-200/25 hover:text-rose-50 focus-visible:outline-rose-300/55 data-disabled:hover:bg-rose-200/15 data-disabled:hover:text-rose-50"
+          : "bg-dashboard-accent/10 text-dashboard-accent-text hover:bg-dashboard-accent/20 hover:text-dashboard-accent-text data-disabled:hover:bg-dashboard-accent/10 data-disabled:hover:text-dashboard-accent-text",
         className,
       )}
-      type={type}
     />
   );
 }
