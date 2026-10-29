@@ -33,10 +33,19 @@ export function readS3StorageConfig(env: NodeJS.ProcessEnv): S3StorageConfig {
   };
 }
 
-/** Path-style object URL. Local S3 servers and AWS S3 both accept it. */
+/**
+ * Path-style object URL. Local S3 servers and AWS S3 both accept it.
+ *
+ * URL parsing removes `.` and `..` segments, also in `%2e` form. A key with
+ * such a segment would address a different object, so reject it.
+ */
 function objectUrl(config: S3StorageConfig, key: string): string {
   const endpoint = config.endpoint.replace(/\/+$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const segments = key.split("/");
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    throw new Error("S3 object keys cannot contain . or .. path segments");
+  }
+  const path = segments.map(encodeURIComponent).join("/");
   return `${endpoint}/${encodeURIComponent(config.bucket)}/${path}`;
 }
 

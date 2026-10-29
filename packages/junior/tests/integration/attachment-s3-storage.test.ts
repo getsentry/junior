@@ -119,6 +119,37 @@ describe("S3 attachment storage", () => {
     await expect(storage.get(record!.storageKey)).resolves.toBeNull();
   });
 
+  it("rejects filenames that would leave the attachment key prefix", async () => {
+    const conversationId = "slack:CS3:traversal";
+    await recordPublicConversation(conversationId);
+    const storage = s3Storage();
+    const artifactKey = "artifacts/existing.png";
+    await storage.put({
+      body: Buffer.from("artifact"),
+      contentType: "image/png",
+      key: artifactKey,
+    });
+
+    await expect(
+      storeAttachment({
+        conversationId,
+        db: getSqlExecutor(),
+        file: {
+          bytes: 4,
+          data: Buffer.from("evil"),
+          filename: "../../../../../artifacts/existing.png",
+          mimeType: "image/png",
+          path: "/tmp/evil.png",
+        },
+        storage,
+      }),
+    ).rejects.toThrow("S3 object keys cannot contain . or .. path segments");
+
+    const artifact = await storage.get(artifactKey);
+    expect(await new Response(artifact).text()).toBe("artifact");
+    await storage.delete([artifactKey]);
+  });
+
   it("fails writes with rejected credentials without exposing the key", async () => {
     const conversationId = "slack:CS3:bad-credentials";
     await recordPublicConversation(conversationId);
