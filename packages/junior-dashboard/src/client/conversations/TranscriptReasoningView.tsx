@@ -28,12 +28,10 @@ export function TranscriptReasoningView(props: {
   return (
     <TraceCollapsible
       className="text-xs leading-tight"
+      // Search holds rows open, so the row button is off until search ends.
+      disabled={searchActive}
       open={expanded}
-      // Search holds rows open. Keep clicks during search from changing the
-      // state that returns when search ends.
-      onOpenChange={(next) => {
-        if (!searchActive) setOpen(next);
-      }}
+      onOpenChange={setOpen}
     >
       <TraceCollapsibleTrigger className="-mx-2 w-auto">
         <span className="grid min-w-0 flex-1 grid-cols-[1rem_minmax(0,1fr)] items-center gap-2">
@@ -67,7 +65,8 @@ export function TranscriptReasoningView(props: {
           />
         </span>
       </TraceCollapsibleTrigger>
-      <TraceCollapsibleContent className="px-3 py-2.5">
+      {/* Keep closed reasoning in the page, so browser find can reach it. */}
+      <TraceCollapsibleContent className="px-3 py-2.5" hiddenUntilFound>
         <div className="min-w-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-subtle">
           <HighlightText text={rendered} />
         </div>

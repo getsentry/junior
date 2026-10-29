@@ -64,14 +64,14 @@ export function ToolFrame(props: {
     />
   );
   const header = Icon ? (
-    <div className="grid min-w-0 flex-1 grid-cols-[1rem_minmax(0,1fr)] items-center gap-2">
+    <span className="grid min-w-0 flex-1 grid-cols-[1rem_minmax(0,1fr)] items-center gap-2">
       <Icon
         aria-hidden="true"
         className={cn("size-3.5 justify-self-center", props.iconClassName)}
         strokeWidth={2}
       />
       {row}
-    </div>
+    </span>
   ) : (
     row
   );
@@ -87,12 +87,10 @@ export function ToolFrame(props: {
   return (
     <TraceCollapsible
       className="max-w-full"
+      // Search holds rows open, so the row button is off until search ends.
+      disabled={searchActive}
       open={expanded}
-      // Search holds rows open. Keep clicks during search from changing the
-      // state that returns when search ends.
-      onOpenChange={(next) => {
-        if (!searchActive) setOpen(next);
-      }}
+      onOpenChange={setOpen}
     >
       <TraceCollapsibleTrigger className="-mx-2 w-auto font-mono text-xs leading-tight">
         {header}

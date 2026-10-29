@@ -47,7 +47,10 @@ file when every caller needs the same style or variant. App components compose
 Rules for adopted components:
 
 - Use `ui/trace` for transcript activity rows. It composes `ui/collapsible`.
-  Its closed panel unmounts, so closed rows do not render their content.
+  A closed tool row unmounts its panel, so it does not run Shiki. Reasoning
+  sets `hiddenUntilFound`, so browser find reaches closed text. Transcript
+  search holds rows open and turns off the row button. Put only inline
+  elements, such as `span`, inside the row button.
 - Use `ui/alert-dialog` for every confirmation. Do not use `window.confirm`.
   Keep the confirmed item in state after close, so the closing dialog keeps its
   text.
