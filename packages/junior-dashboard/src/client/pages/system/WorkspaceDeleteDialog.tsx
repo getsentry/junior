@@ -17,7 +17,11 @@ import {
 import { useToastManager } from "../../components/ui/toast";
 import { FormNotice } from "../../components/FormNotice";
 import { deleteDashboardResource } from "../../http";
-import { readWorkspaceApiError, workspacesQueryKey } from "./workspaceQueries";
+import {
+  readWorkspaceApiError,
+  workspaceQueryKey,
+  workspacesQueryKey,
+} from "./workspaceQueries";
 
 /** Confirm Workspace deletion by name and keep a failed request open for retry. */
 export function WorkspaceDeleteDialog(props: {
@@ -47,6 +51,10 @@ export function WorkspaceDeleteDialog(props: {
           },
       );
       props.onDeleted();
+      // Drop the detail read too, so a later visit shows the not-found state.
+      queryClient.removeQueries({
+        queryKey: workspaceQueryKey(props.workspace.id),
+      });
       toast.add({
         title: "Workspace deleted",
         description: props.workspace.name,
