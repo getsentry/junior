@@ -20,17 +20,13 @@ export interface AttachmentStorage {
   delete(keys: string[]): Promise<void>;
 }
 
-let current: AttachmentStorage | undefined;
-
 /**
- * Return the process attachment storage for the configured provider.
+ * Return attachment storage for the configured provider.
  *
- * Callers get one shared handle and do not choose a provider. Memory storage
- * depends on this, because every caller must see the same objects.
+ * Callers do not choose a provider. Chat config decides it.
  */
 export function getAttachmentStorage(): AttachmentStorage {
-  current ??= createAttachmentStorage(getChatConfig().attachmentStorage);
-  return current;
+  return createAttachmentStorage(getChatConfig().attachmentStorage);
 }
 
 /**
@@ -49,5 +45,9 @@ export function createAttachmentStorage(
       return createS3AttachmentStorage(config.s3);
     case "memory":
       return createMemoryAttachmentStorage();
+    default:
+      throw new Error(
+        `Unsupported attachment storage provider: ${String((config as { provider: unknown }).provider)}`,
+      );
   }
 }
