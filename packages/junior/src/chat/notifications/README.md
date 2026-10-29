@@ -21,6 +21,10 @@ Slack thread, already notifies people there.
 
 - The task never throws for a failed browser. A retry would send duplicates to
   the browsers that already got the push.
+- Junior sends a POST request to each stored endpoint. The API accepts only
+  endpoints on known browser push service hosts (`push-endpoint.ts`). This
+  stops a user from making Junior call other servers. Add a host there when a
+  new browser uses another push service.
 - The push payload holds a short plain-text preview of the reply. Logs hold
   only counts.
 - The timezone order is: the timezone saved in the schedule, the linked Slack

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isPushServiceEndpoint } from "../../chat/notifications/push-endpoint";
 import { notificationScheduleSchema } from "../../chat/notifications/schedule";
 
 export { notificationScheduleSchema };
@@ -34,7 +35,10 @@ export type NotificationSettings = z.output<typeof notificationSettingsSchema>;
 /** `PushSubscription#toJSON()` from the browser. */
 export const pushSubscriptionBodySchema = z
   .object({
-    endpoint: z.string().url().startsWith("https://").max(2048),
+    endpoint: z
+      .string()
+      .max(2048)
+      .refine(isPushServiceEndpoint, "Unknown push service."),
     expirationTime: z.number().nullable().optional(),
     keys: z
       .object({
