@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { createAttachmentStorage } from "./chat/attachments/storage";
-import { getChatConfig } from "./chat/config";
+import { getAttachmentStorage } from "./chat/attachments/storage";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
@@ -80,9 +79,7 @@ export function createJuniorApi(
   app.route(
     "/api/conversations",
     createConversationRoutes({
-      attachmentStorage: createAttachmentStorage(
-        getChatConfig().attachmentStorage,
-      ),
+      attachmentStorage: getAttachmentStorage(),
       queue: options.conversationWorkQueue ?? getVercelConversationWorkQueue(),
     }),
   );

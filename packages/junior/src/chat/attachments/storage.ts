@@ -1,3 +1,4 @@
+import { getChatConfig } from "@/chat/config";
 import type { AttachmentStorageConfig } from "./config";
 import { createMemoryAttachmentStorage } from "./memory";
 import { createS3AttachmentStorage } from "./s3";
@@ -20,10 +21,19 @@ export interface AttachmentStorage {
 }
 
 /**
- * Create attachment storage for the configured provider.
+ * Return attachment storage for the configured provider.
  *
- * Runtime entry points pass `attachmentStorage` from chat config instead of
- * calling a provider adapter, so adding a provider only changes this switch.
+ * Callers do not choose a provider. Chat config decides it.
+ */
+export function getAttachmentStorage(): AttachmentStorage {
+  return createAttachmentStorage(getChatConfig().attachmentStorage);
+}
+
+/**
+ * Create attachment storage for one provider config.
+ *
+ * Runtime code uses `getAttachmentStorage()`. Call this only to test a
+ * provider adapter with its own config.
  */
 export function createAttachmentStorage(
   config: AttachmentStorageConfig,
@@ -35,5 +45,9 @@ export function createAttachmentStorage(
       return createS3AttachmentStorage(config.s3);
     case "memory":
       return createMemoryAttachmentStorage();
+    default:
+      throw new Error(
+        `Unsupported attachment storage provider: ${String((config as { provider: unknown }).provider)}`,
+      );
   }
 }

@@ -7,7 +7,6 @@ import {
 } from "@/chat/configuration/defaults";
 import {
   botConfig,
-  getChatConfig,
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
@@ -104,7 +103,7 @@ import {
 } from "@/chat/app/production";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
-import { createAttachmentStorage } from "@/chat/attachments/storage";
+import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
@@ -526,9 +525,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
-  const attachmentStorage = createAttachmentStorage(
-    getChatConfig().attachmentStorage,
-  );
+  const attachmentStorage = getAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
     bindMessageAgent: (request) =>
