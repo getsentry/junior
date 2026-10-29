@@ -57,6 +57,26 @@ function doneByLine(doneBy: EventDoneBy, people: readonly string[]): string {
   ].join(" ");
 }
 
+/** Text that core proved the requester of a Watch wrote in the Event. */
+export interface TaskRequesterInstruction {
+  /** Slack mention of the requester. */
+  mention: string;
+  text: string;
+}
+
+function requesterInstructionLines(
+  instruction: TaskRequesterInstruction | undefined,
+): string[] {
+  const text = instruction?.text.trim();
+  if (!instruction || !text) return [];
+  const mention = oneLine(instruction.mention);
+  return [
+    `Requester instruction from ${mention}:`,
+    `${mention} asked for this work in this conversation, and core checked that they wrote this text in the Event. Treat it as a message from them in this thread, with the same limits. If you do not do a step that it asks for, tell them which step and why. Do not ask them to prove who they are.`,
+    text,
+  ];
+}
+
 /**
  * Render agent input for a task run.
  *
@@ -82,6 +102,8 @@ export function renderTaskInput(args: {
   trustedSummary?: string;
   /** Structured verified fields, when available. */
   verifiedDetails?: Record<string, unknown>;
+  /** Requester text that counts as their message. Only core sets this. */
+  requesterInstruction?: TaskRequesterInstruction;
   /** Untrusted provider text; never treated as instructions. */
   externalText?: string;
   externalTextMaxLength?: number;
@@ -141,6 +163,11 @@ export function renderTaskInput(args: {
     );
   }
 
+  const requester = requesterInstructionLines(args.requesterInstruction);
+  if (requester.length > 0) {
+    lines.push("", ...requester);
+  }
+
   const externalText = args.externalText?.trim();
   if (externalText) {
     lines.push(
@@ -161,6 +188,8 @@ export interface TaskBatchEvent {
   guidance?: string;
   trustedSummary?: string;
   verifiedDetails?: Record<string, unknown>;
+  /** Requester text that counts as their message. Only core sets this. */
+  requesterInstruction?: TaskRequesterInstruction;
   /** Untrusted provider text; never treated as instructions. */
   externalText?: string;
   /** Linked person who did what the Event describes. */
@@ -195,6 +224,7 @@ function pushEventFacts(
       "```",
     );
   }
+  lines.push(...requesterInstructionLines(event.requesterInstruction));
   const externalText = event.externalText?.trim();
   if (externalText) {
     lines.push(

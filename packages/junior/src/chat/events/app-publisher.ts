@@ -27,6 +27,8 @@ export type EventAppPublisher = {
 
 /** Build the core event publisher used by plugin routes. */
 export function createEventAppPublisher(args: {
+  /** Allowed Slack email domains, read when an Event is published. */
+  allowedDomains: () => readonly string[];
   conversationWork: () => {
     queue?: ConversationWorkQueue;
     state?: StateAdapter;
@@ -80,6 +82,7 @@ export function createEventAppPublisher(args: {
       const eventAutomationTeamId = await resolveEventAutomationTeamId();
       await Promise.all([
         ingestEvent(event, {
+          allowedDomains: args.allowedDomains(),
           queue,
           // Junior runs one Slack bot, so every Watch is in this workspace.
           slackTeamId: eventAutomationTeamId,

@@ -84,6 +84,84 @@ function ownCommentText(text: string): string {
   return ownTokenText(lexer(text, { gfm: true }), "\n");
 }
 
+// An HTML quote tag. Its content is a quote, like a Markdown quote.
+const HTML_QUOTE_OPEN = /<\s*blockquote\b/i;
+
+function childTokens(token: Token): readonly Token[] {
+  // `Token` includes a generic token, so `type` does not narrow it.
+  if (token.type === "list") {
+    return (token as Tokens.List).items.flatMap((item) => item.tokens);
+  }
+  if (token.type === "table") {
+    const table = token as Tokens.Table;
+    return [table.header, ...table.rows].flat().flatMap((cell) => cell.tokens);
+  }
+  return "tokens" in token && token.tokens ? token.tokens : [];
+}
+
+function hasQuoteOrHtml(token: Token): boolean {
+  return (
+    token.type === "blockquote" ||
+    token.type === "html" ||
+    childTokens(token).some(hasQuoteOrHtml)
+  );
+}
+
+function hasHtmlQuote(token: Token): boolean {
+  return (
+    (token.type === "html" && HTML_QUOTE_OPEN.test(token.raw)) ||
+    childTokens(token).some(hasHtmlQuote)
+  );
+}
+
+/**
+ * Return the comment text without Markdown or HTML quotes, or undefined when
+ * nothing is left. A quote repeats text that someone else wrote, so it is
+ * never the author's own words. This also removes quotes in lists and tables.
+ * Code stays, because an instruction can name a command.
+ *
+ * An HTML quote has no reliable end: Markdown splits it at blank lines, and a
+ * closing tag can hide in an HTML comment or attribute. So the block with the
+ * first HTML quote tag and all text after it are removed.
+ */
+export function unquotedCommentText(
+  text: string | null | undefined,
+): string | undefined {
+  if (!text) return undefined;
+  let afterHtmlQuote = false;
+  const tokenText = (tokens: readonly Token[], separator = ""): string =>
+    tokens
+      .map((token): string => {
+        if (afterHtmlQuote || hasHtmlQuote(token)) {
+          afterHtmlQuote = true;
+          return "\n";
+        }
+        if (token.type === "blockquote" || token.type === "html") return "\n";
+        if (!hasQuoteOrHtml(token)) return token.raw;
+        if (token.type === "list") {
+          return (token as Tokens.List).items
+            .map((item) => tokenText(item.tokens, "\n").trim())
+            .filter(Boolean)
+            .map((item) => `- ${item}`)
+            .join("\n");
+        }
+        if (token.type === "table") {
+          const table = token as Tokens.Table;
+          return [table.header, ...table.rows]
+            .map((row) => row.map((cell) => tokenText(cell.tokens)).join(" | "))
+            .join("\n");
+        }
+        return tokenText(childTokens(token));
+      })
+      .join(separator);
+  return (
+    tokenText(lexer(text, { gfm: true }))
+      // Removed quotes leave blank lines.
+      .replace(/\n{3,}/g, "\n\n")
+      .trim() || undefined
+  );
+}
+
 /**
  * Check whether the author's own text mentions the bot encoded in the
  * configured bot email. GitHub sends mentions only as comment text, with no

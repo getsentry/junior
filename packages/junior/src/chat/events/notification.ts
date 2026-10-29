@@ -23,6 +23,11 @@ import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 import {
+  requesterInstructionSchema,
+  type RequesterInstruction,
+} from "@/chat/events/requester";
+import { slackMention } from "@/chat/slack/mrkdwn";
+import {
   credentialSubjectSchema,
   type CredentialSubject,
 } from "@/chat/credentials/context";
@@ -54,6 +59,9 @@ const eventTaskFactsSchema = z.object({
   doneBy: z
     .object({ mention: z.string(), handle: z.string().optional() })
     .optional(),
+  requesterInstruction: z
+    .object({ mention: z.string(), text: z.string() })
+    .optional(),
 });
 
 /** Facts for one Watch Event, saved so several Events can share one message. */
@@ -75,6 +83,8 @@ export function eventTaskFacts(
   people: readonly string[] = [],
   /** Resolved person who did what the Event describes. */
   doneBy?: EventDoneBy,
+  /** Text that core proved the requester of this Watch wrote. */
+  requesterInstruction?: RequesterInstruction,
 ): EventTaskFacts {
   // Resource type guidance applies to every Watch. Watch guidance comes from
   // the tool that created this Watch and applies only here.
@@ -96,6 +106,14 @@ export function eventTaskFacts(
     ...(people.length > 0 ? { people: [...people] } : undefined),
     trustedSummary: event.trustedSummary,
     ...(event.data ? { verifiedDetails: event.data } : undefined),
+    ...(requesterInstruction
+      ? {
+          requesterInstruction: {
+            mention: slackMention(requesterInstruction.actor.userId),
+            text: requesterInstruction.text,
+          },
+        }
+      : undefined),
     ...(event.untrustedText
       ? { externalText: event.untrustedText }
       : undefined),
@@ -119,6 +137,8 @@ export type EventMailboxMetadata = {
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
+  /** Text that core proved the requester of the Watch wrote. */
+  requesterInstruction?: RequesterInstruction;
   /**
    * Watch task facts. A batch of several Events uses them to write one
    * message. Input without them keeps its own text.
@@ -189,6 +209,25 @@ export function timerWatchCredentialSubject(
 }
 
 /**
+ * Return the requester instructions of an Event batch, in batch order. Only
+ * core writes Event mailbox input, so these values come from ingestion.
+ */
+export function eventRequesterInstructions(
+  messages: readonly InboundMessage[],
+): RequesterInstruction[] {
+  return messages.flatMap((message) => {
+    const metadata = message.input.metadata;
+    if (message.source !== "event" || !isEventMailboxMetadata(metadata)) {
+      return [];
+    }
+    const parsed = requesterInstructionSchema.safeParse(
+      metadata.requesterInstruction,
+    );
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+/**
  * Read the saved Watch task facts from one Event mailbox entry. Entries
  * without a Watch or saved facts, such as child agent results and input queued
  * before facts were saved, return undefined and keep their own text.
@@ -252,6 +291,7 @@ export function renderEventBatchText(
       guidance: facts.guidance,
       trustedSummary: facts.trustedSummary,
       verifiedDetails: facts.verifiedDetails,
+      requesterInstruction: facts.requesterInstruction,
       externalText: facts.externalText,
       doneBy: facts.doneBy,
     });
@@ -299,6 +339,7 @@ export function eventBatchMessageEvents(
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
   event: EventNotification;
+  requesterInstruction?: RequesterInstruction;
   subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
   text: string;
   /** Facts behind `text`, used when several Events share one message. */
@@ -310,6 +351,9 @@ export function createEventInboundMessage(input: {
     ...(input.task ? { task: input.task } : undefined),
     ...(input.subscription.credentialSubject
       ? { credentialSubject: input.subscription.credentialSubject }
+      : undefined),
+    ...(input.requesterInstruction
+      ? { requesterInstruction: input.requesterInstruction }
       : undefined),
     event: {
       eventKey: input.event.eventKey,
@@ -350,6 +394,8 @@ export async function enqueueEventNotification(args: {
   /** Mentions resolved from the Event people. */
   people?: readonly string[];
   queue: ConversationWorkQueue;
+  /** Text that core proved the requester of this Watch wrote. */
+  requesterInstruction?: RequesterInstruction;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
 }): Promise<AppendAndEnqueueInboundMessageResult> {
@@ -386,10 +432,12 @@ export async function enqueueEventNotification(args: {
     args.event,
     args.people,
     args.doneBy,
+    args.requesterInstruction,
   );
   return await appendAndEnqueueInboundMessage({
     message: createEventInboundMessage({
       event: args.event,
+      requesterInstruction: args.requesterInstruction,
       subscription: {
         conversationId: args.subscription.conversationId,
         credentialSubject: args.subscription.credentialSubject,

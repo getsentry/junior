@@ -24,6 +24,7 @@ import {
   projectToolActionRejection,
 } from "@/chat/guardian/history";
 import type {
+  RequesterInstructionProposal,
   RootConversation,
   ToolActionDecision,
   ToolActionEvidence,
@@ -45,6 +46,11 @@ export interface ToolActionReviewContext {
   conversationId: string;
   credentialContext?: CredentialContext;
   destination: Destination;
+  /**
+   * Text in this Event Turn's input that core proved the requester of the
+   * Watch wrote. Core sends it only for an Event Source.
+   */
+  requesterInstructions?: readonly RequesterInstructionProposal[];
   source: Source;
   userIntent?: () => string;
   evidence?: () => ToolActionEvidence;
@@ -307,6 +313,19 @@ function buildProposal(
   rootConversation: RootConversation | undefined,
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
+  // Only an Event Turn has a requester. Other Sources have the person's own
+  // messages as user intent.
+  const requesterInstructions =
+    context.source.kind === "event"
+      ? (context.requesterInstructions ?? []).map((instruction) => ({
+          actor: {
+            platform: "slack" as const,
+            teamId: instruction.actor.teamId,
+            userId: instruction.actor.userId,
+          },
+          text: instruction.text,
+        }))
+      : [];
   return {
     context: {
       actor: actionActor(context.actor),
@@ -324,6 +343,9 @@ function buildProposal(
             ...rejection,
           })),
         }
+      : undefined),
+    ...(requesterInstructions.length > 0
+      ? { requesterInstructions }
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     tool: proposalTool(toolName, tool, input, resolved),

@@ -442,6 +442,9 @@ export async function wireAgentTools(
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
+      ...(args.run.requesterInstructions
+        ? { requesterInstructions: args.run.requesterInstructions }
+        : undefined),
       source: runSource,
       userIntent: args.currentUserIntent,
       evidence: () =>

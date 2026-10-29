@@ -4,11 +4,15 @@ import {
   eventMatchSchema,
   eventMatches,
   eventTypeSchema,
+  slackActorSchema,
   stableEventMatchKey,
   type EventData,
   type EventMatch,
+  type SlackActor,
+  type Source,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import type { Actor } from "@/chat/actor";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
@@ -45,6 +49,12 @@ const subscriptionSchema = z
     match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
     identifier: z.string().min(1),
+    /**
+     * Slack user whose own message started the Turn that created this Watch.
+     * Core can treat text that this user wrote in an Event as their
+     * instruction. See "Requester instructions" in `README.md`.
+     */
+    requester: slackActorSchema.optional(),
     resourceType: z.string().min(1),
     status: subscriptionStatusSchema,
     updatedAtMs: z.number().finite(),
@@ -63,7 +73,32 @@ export interface CreateWatchInput {
   match?: EventMatch;
   namespace: string;
   identifier: string;
+  requester?: SlackActor;
   resourceType: string;
+}
+
+/**
+ * Return the requester of a Watch that a Turn creates: the Slack user whose
+ * own message started a root Turn. Event Turns, Automation runs, and child
+ * agents have no requester, because no person wrote their input.
+ */
+export function watchRequester(turn: {
+  actor?: Actor;
+  parentConversationId?: string;
+  source: Source;
+}): SlackActor | undefined {
+  if (
+    turn.parentConversationId ||
+    turn.source.kind !== "slack" ||
+    turn.actor?.platform !== "slack"
+  ) {
+    return undefined;
+  }
+  return {
+    platform: "slack",
+    teamId: turn.actor.teamId,
+    userId: turn.actor.userId,
+  };
 }
 
 function digest(value: string): string {
@@ -354,6 +389,7 @@ export async function createWatch(
     ...(match ? { match } : undefined),
     namespace: input.namespace,
     identifier: input.identifier,
+    ...(input.requester ? { requester: input.requester } : undefined),
     resourceType: input.resourceType,
     status: "active",
     updatedAtMs: nowMs,

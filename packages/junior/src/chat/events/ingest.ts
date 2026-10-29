@@ -4,12 +4,21 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { resolveEventMentions, type EventMentions } from "@/chat/events/people";
+import {
+  requesterInstructionFor,
+  resolveEventDoerSlackUserId,
+} from "@/chat/events/requester";
 import { deliverWatch, findMatchingWatches } from "@/chat/events/store";
 
 /** Match a normalized event and enqueue notifications into conversations. */
 export async function ingestEvent(
   input: unknown,
   options: {
+    /**
+     * Allowed Slack email domains. Without them, core treats no Event text
+     * as a requester instruction.
+     */
+    allowedDomains?: readonly string[];
     nowMs?: number;
     queue: ConversationWorkQueue;
     /** Slack workspace whose users Event people resolve to. */
@@ -40,6 +49,27 @@ export async function ingestEvent(
       });
     }
   }
+  // Only a Watch with a requester can receive a requester instruction.
+  let doerSlackUserId: string | undefined;
+  if (
+    options.allowedDomains &&
+    options.slackTeamId &&
+    subscriptions.some((subscription) => subscription.requester)
+  ) {
+    try {
+      doerSlackUserId = await resolveEventDoerSlackUserId(event, {
+        allowedDomains: options.allowedDomains,
+        slackTeamId: options.slackTeamId,
+      });
+    } catch (error) {
+      // Deliver the Event. Its text then stays untrusted, as for an unlinked
+      // doer.
+      logException(error, "event.doer.resolve.failed", {
+        "app.event.event_type": event.eventType,
+        "app.event.namespace": event.namespace,
+      });
+    }
+  }
   let enqueued = 0;
   const errors: unknown[] = [];
   const waitDeadlineMs = Date.now() + 10_000;
@@ -61,6 +91,12 @@ export async function ingestEvent(
             event,
             people: mentions.people,
             queue: options.queue,
+            requesterInstruction: requesterInstructionFor({
+              doerSlackUserId,
+              event,
+              slackTeamId: options.slackTeamId,
+              subscription: current,
+            }),
             state: options.state,
             subscription: current,
           });

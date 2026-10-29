@@ -64,6 +64,11 @@ child agent. See "User Approval" in `agent-invocations/README.md`.
   `CHILD_AGENT_USER_INTENT`. Its authority is the root user instructions
   section, which the reviewer renders outside the proposal JSON with a new
   random key for each request.
+- An Event Turn has no message from a person. Its only person authority is
+  its requester instructions: text that core proved the requester of the Watch
+  wrote. The gate sends them only for an Event Source. The reviewer renders
+  them outside the proposal JSON, with a new random key for each request. See
+  "Requester Instructions" in `events/README.md`.
 - Prior rejections are context, not binding decisions. Each attempt that
   enters review goes to Guardian again.
 - After three rejections in a row, the rejection tells the agent to stop and

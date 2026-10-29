@@ -93,6 +93,15 @@ export interface RootConversation {
   truncated: boolean;
 }
 
+/**
+ * Text that core proved the requester of a Watch wrote in the Event that
+ * started this Turn. Guardian treats it as that person's message.
+ */
+export interface RequesterInstructionProposal {
+  actor: { platform: "slack"; teamId: string; userId: string };
+  text: string;
+}
+
 /** Exact model-review request; only core-supplied context carries authority. */
 export interface ToolActionProposal {
   context: {
@@ -123,6 +132,8 @@ export interface ToolActionProposal {
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;
   priorRejectedActions?: ToolActionPriorRejection[];
+  /** Requester instructions of an Event Turn. Only core sets them. */
+  requesterInstructions?: RequesterInstructionProposal[];
   /** The root Conversation, with each message labeled by its real author. */
   rootConversation?: RootConversation;
   tool: {

@@ -10,6 +10,7 @@ import type {
 import type { Location } from "@/chat/conversations/location";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
+import type { RequesterInstruction } from "@/chat/events/requester";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -259,6 +260,11 @@ export type AgentRun = {
   actor?: Actor;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
+  /**
+   * Text in this Event Turn's input that core proved the requester of the
+   * Watch wrote. Action review treats it as that person's instruction.
+   */
+  requesterInstructions?: readonly RequesterInstruction[];
   source: Source;
   /** Conversation Location available to this Run. */
   location?: Location;

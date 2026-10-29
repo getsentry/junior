@@ -67,6 +67,9 @@ Canonical words used across Junior's code and documentation.
 - **Watch**: a temporary association between an Event and a Conversation. It
   delivers matching Events to that Conversation and expires. It is not an
   Automation.
+- **Requester instruction**: text in an Event that core proved the requester
+  of a Watch wrote, through their linked provider account. It counts as a
+  message from that person for one Event Turn.
 - **Automation run**: one dispatch of an Automation, from claim or dispatch to
   its outcome. It is not a Run.
 - **Scheduled automation**: an Automation that has a Schedule trigger.

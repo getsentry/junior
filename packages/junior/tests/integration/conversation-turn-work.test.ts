@@ -37,6 +37,7 @@ import {
   closeConversationFixture,
   createConversationFixture,
   emptyConversationTurnAttempt,
+  eventRequesterInstruction,
 } from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -548,6 +549,7 @@ describe("Conversation mailbox Turn work", () => {
         trustedSummary: "Code change checks failed",
       },
       receivedAtMs: 2,
+      requesterInstruction: eventRequesterInstruction,
       subscription: {
         conversationId,
         credentialSubject,
@@ -627,6 +629,7 @@ describe("Conversation mailbox Turn work", () => {
           },
           destination,
           disabledFeatures: ["interactive-auth"],
+          requesterInstructions: [eventRequesterInstruction],
           source,
           turnId,
         }),

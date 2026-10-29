@@ -7,7 +7,8 @@ const { createSubscription } = vi.hoisted(() => ({
   createSubscription: vi.fn(),
 }));
 
-vi.mock("@/chat/events/store", () => ({
+vi.mock("@/chat/events/store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/events/store")>()),
   createWatch: createSubscription,
 }));
 

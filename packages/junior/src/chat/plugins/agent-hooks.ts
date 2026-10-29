@@ -55,7 +55,7 @@ import {
   getDashboardConversationLink,
   getDashboardTaskLink,
 } from "@/chat/dashboard-link";
-import { createWatch } from "@/chat/events/store";
+import { createWatch, watchRequester } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -699,6 +699,7 @@ export function getPluginTools(
             registration,
             input.resource.identifier,
           ),
+          requester: watchRequester(context),
           resourceType: input.resource.type,
         });
         return {
