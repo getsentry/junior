@@ -20,6 +20,10 @@ import {
   ConversationMemories,
   useConversationMemories,
 } from "./ConversationMemories";
+import {
+  ConversationWatches,
+  useConversationWatches,
+} from "./ConversationWatches";
 import { ShareConversationButton } from "./ShareConversationButton";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
@@ -51,9 +55,20 @@ export function ConversationDetails(props: {
   // Load both lists with details so each tab can show its count.
   const memories = useConversationMemories(props.conversationId);
   const agents = useConversationChildAgents(props.conversationId);
+  const watches = useConversationWatches(props.conversationId).data?.watches;
 
+  // Watches sit right after the overview: they say what can wake this agent
+  // later, so readers see them without opening another tab.
   const sections = [
     { content: props.overview, key: "overview", title: undefined },
+    {
+      content: watches?.length ? (
+        <ConversationWatches watches={watches} />
+      ) : null,
+      count: watches?.length,
+      key: "watching",
+      title: "Watching",
+    },
     { content: props.identity, key: "participants", title: "Participants" },
     { content: props.annotations, key: "linked-work", title: "Linked work" },
     { content: props.usage, key: "usage", title: "Usage" },
@@ -132,7 +147,11 @@ export function ConversationDetails(props: {
                 </div>
               ) : null}
               {sections.map((section) => (
-                <DetailsSection key={section.key} title={section.title}>
+                <DetailsSection
+                  count={section.count}
+                  key={section.key}
+                  title={section.title}
+                >
                   {section.content}
                 </DetailsSection>
               ))}
@@ -172,12 +191,21 @@ function TabCount(props: { count: number | undefined }) {
 }
 
 /** Group one kind of conversation detail in a compact card. */
-function DetailsSection(props: { children: ReactNode; title?: string }) {
+function DetailsSection(props: {
+  children: ReactNode;
+  count?: number;
+  title?: string;
+}) {
   return (
     <section className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3">
       {props.title ? (
-        <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
+        <h3 className="m-0 flex items-center gap-1.5 font-sans text-xs font-medium text-dashboard-text-muted">
           {props.title}
+          {props.count ? (
+            <span className="tabular-nums text-dashboard-text-faint">
+              {props.count.toLocaleString("en-US")}
+            </span>
+          ) : null}
         </h3>
       ) : null}
       <div className="min-w-0 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">
