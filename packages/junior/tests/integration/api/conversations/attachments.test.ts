@@ -1,4 +1,4 @@
-import { memoryAttachmentStorage } from "../../../fixtures/attachment-storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
@@ -56,7 +56,7 @@ describe("conversation attachment API", () => {
       title: "Public attachment conversation",
       visibility: "public",
     });
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     const stored = await storeAttachment({
       conversationId,
       db: getSqlExecutor(),
@@ -102,7 +102,7 @@ describe("conversation attachment API", () => {
       title: "Private attachment conversation",
       visibility: "private",
     });
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     const stored = await storeAttachment({
       conversationId,
       db: getSqlExecutor(),
@@ -192,7 +192,7 @@ describe("conversation attachment API", () => {
   });
 
   it("rejects unauthenticated, unsupported, and oversized image input before storage", async () => {
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     const body = {
       message: "",
       idempotencyKey: "upload",
@@ -259,7 +259,7 @@ describe("conversation attachment API", () => {
       title: "Purged attachment conversation",
       visibility: "public",
     });
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     const stored = await storeAttachment({
       conversationId,
       db: getSqlExecutor(),

@@ -12,7 +12,7 @@ import {
   createConversationFixture,
   closeConversationFixture,
 } from "../../fixtures/conversation";
-import { memoryAttachmentStorage } from "../../fixtures/attachment-storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { testViewer } from "../../fixtures/user";
 
 const png =
@@ -23,7 +23,7 @@ describe("web image input", () => {
 
   it("stores image-only input once and shows it only to participants", async () => {
     const fixture = await createConversationFixture();
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     const body = createConversationBodySchema.parse({
       message: "",
       idempotencyKey: "image-create",
@@ -99,7 +99,7 @@ describe("web image input", () => {
   });
   it("does not enqueue an image when storage fails", async () => {
     const fixture = await createConversationFixture();
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     storage.put = async () => {
       throw new Error("Storage unavailable");
     };

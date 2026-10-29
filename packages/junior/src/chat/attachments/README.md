@@ -13,6 +13,9 @@ This module owns durable files linked to a conversation.
   objects in Vercel Blob. The Blob SDK reads its own env. `s3.ts` reads
   `JUNIOR_S3_*` settings and stores objects in an S3-compatible bucket with
   path-style URLs.
+- `memory.ts` keeps objects in process memory. Tests use it, and the Junior
+  Vitest config selects it. `tests/integration/attachment-s3-storage.test.ts`
+  checks that it matches S3 for put, get, missing keys, and delete.
 - Provider adapters keep their SDK types private.
 - `store.ts` writes object storage first, then creates the SQL row. A row means
   the attachment is durable.

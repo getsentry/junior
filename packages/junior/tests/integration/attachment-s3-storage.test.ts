@@ -73,6 +73,30 @@ describe("S3 attachment storage", () => {
     await sendBucketRequest("DELETE");
   });
 
+  // Higher-level tests use memory storage. Keep it in step with a real
+  // S3-compatible server for the behavior those tests depend on.
+  it.each([
+    ["memory", () => createAttachmentStorage({ provider: "memory" })],
+    ["s3", () => s3Storage()],
+  ])(
+    "%s storage round trips bytes and treats missing keys as absent",
+    async (_provider, create) => {
+      const storage = create();
+      const key = `contract/${Date.now()}/file.bin`;
+      const body = Buffer.from([0, 1, 2, 255]);
+
+      await storage.put({ body, contentType: "application/octet-stream", key });
+      const stored = await storage.get(key);
+      expect(Buffer.from(await new Response(stored).arrayBuffer())).toEqual(
+        body,
+      );
+
+      await storage.delete([key, `${key}.missing`]);
+      await expect(storage.get(key)).resolves.toBeNull();
+      await expect(storage.delete([])).resolves.toBeUndefined();
+    },
+  );
+
   it("serves stored attachments and deletes them during garbage collection", async () => {
     const conversationId = "slack:CS3:attachment";
     await recordPublicConversation(conversationId);

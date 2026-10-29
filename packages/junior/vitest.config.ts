@@ -10,6 +10,7 @@ loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_STATE_ADAPTER = "memory";
+process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "memory";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:test:${process.pid}`;
 
 export default defineConfig({

@@ -1,4 +1,5 @@
 import type { AttachmentStorageConfig } from "./config";
+import { createMemoryAttachmentStorage } from "./memory";
 import { createS3AttachmentStorage } from "./s3";
 import { createVercelAttachmentStorage } from "./vercel";
 
@@ -32,5 +33,7 @@ export function createAttachmentStorage(
       return createVercelAttachmentStorage();
     case "s3":
       return createS3AttachmentStorage(config.s3);
+    case "memory":
+      return createMemoryAttachmentStorage();
   }
 }

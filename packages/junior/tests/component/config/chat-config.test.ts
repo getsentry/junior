@@ -405,7 +405,7 @@ describe("chat config", () => {
     process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "gcs";
 
     await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_ATTACHMENT_STORAGE_PROVIDER must be vercel-blob or s3",
+      "JUNIOR_ATTACHMENT_STORAGE_PROVIDER must be vercel-blob, s3, or memory",
     );
   });
 
