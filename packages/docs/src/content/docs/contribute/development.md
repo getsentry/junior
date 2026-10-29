@@ -55,6 +55,33 @@ JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
 
 The fixtures are read-only dashboard data; mock mode does not query or merge real conversation records.
 
+## Run sandboxes in local Docker
+
+By default, Junior runs agent sandboxes in Vercel Sandbox. To run them in a local Docker daemon instead, set the provider in `.env`:
+
+```bash
+JUNIOR_SANDBOX_PROVIDER=docker
+```
+
+The Docker provider needs a Linux Docker daemon on a unix socket. It uses `/var/run/docker.sock`, or the unix socket in `DOCKER_HOST`. Each sandbox is a privileged container, so do not run untrusted workloads with it.
+
+The first sandbox builds the `junior-sandbox-runtime` image. This takes a few minutes. Later sandboxes start in seconds. `pnpm dev` and `pnpm cli -- chat ...` both use the provider. Each process runs its own egress proxy, and the process that last acquired a sandbox carries its web traffic.
+
+Optional settings:
+
+- `JUNIOR_DOCKER_SANDBOX_DIR` sets the directory of the local egress CA. The default is `~/.cache/junior/docker-sandbox`.
+- `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` names a PEM file that each sandbox also trusts. Set it when your machine is behind a TLS proxy.
+
+To remove all Docker sandboxes and snapshots:
+
+```bash
+docker rm -f -v $(docker ps -aq --filter label=dev.junior.sandbox)
+docker network prune -f --filter label=dev.junior.sandbox
+docker image prune -a -f --filter label=dev.junior.sandbox=snapshot
+```
+
+Docker Desktop on macOS is not verified. The limits of this provider are in `packages/junior/src/chat/sandbox/README.md`.
+
 ## Work in isolated branches
 
 Worktrees are development-only contributor tooling. Use them when you want to keep your main checkout stable while reviewing a PR, testing a fix, or running a coding agent such as Codex on a task. The repo helper creates the Git worktree, copies local development files, and installs dependencies in the new checkout.

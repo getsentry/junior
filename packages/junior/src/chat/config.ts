@@ -148,6 +148,10 @@ export interface ChatConfig {
     signingSecret?: string;
     slashCommand: string;
   };
+  sandbox: {
+    /** Sandbox provider for this deployment. `docker` is for local development. */
+    provider: "vercel" | "docker";
+  };
   state: {
     adapter: "memory" | "redis";
     keyPrefix?: string;
@@ -630,6 +634,12 @@ export function readChatConfig(
       processingReactionEmoji: DEFAULT_PROCESSING_REACTION_EMOJI,
       signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
       slashCommand: parseSlashCommand(env.JUNIOR_SLASH_COMMAND),
+    },
+    sandbox: {
+      provider:
+        env.JUNIOR_SANDBOX_PROVIDER?.trim().toLowerCase() === "docker"
+          ? "docker"
+          : "vercel",
     },
     state: {
       adapter:
