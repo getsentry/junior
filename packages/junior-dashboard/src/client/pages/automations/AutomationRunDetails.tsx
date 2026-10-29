@@ -188,8 +188,8 @@ function AutomationRunContent(props: {
   const { run } = props;
   const versionsPath = `${automationPath(run.automationId)}/versions`;
   return (
-    <div className="grid min-w-0 gap-4">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="grid min-w-0 gap-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
         <StatusChip tone={automationRunStatusTone(run.status)}>
           {run.status}
         </StatusChip>
@@ -202,78 +202,78 @@ function AutomationRunContent(props: {
         </time>
       </div>
       {run.error ? (
-        <p className="m-0 whitespace-pre-wrap rounded-md border border-rose-300/25 bg-rose-300/5 px-3 py-2 font-mono text-xs leading-relaxed text-rose-300">
-          <span className="sr-only">Error: </span>
-          {run.error}
-        </p>
+        <RunSection title="Error">
+          <p className="m-0 whitespace-pre-wrap font-mono text-xs leading-relaxed text-rose-300">
+            {run.error}
+          </p>
+        </RunSection>
       ) : null}
-      <dl className="m-0 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
-        <RunMetric label="Duration" value={formatRuntime(run.durationMs)} />
-        <RunMetric
-          label="Tokens"
-          value={
-            run.totalTokens === undefined
-              ? undefined
-              : formatCompactNumber(run.totalTokens)
-          }
-        />
-        <RunMetric
-          label="Cost"
-          value={
-            run.costUsd === undefined
-              ? undefined
-              : formatCostSummary({ total: run.costUsd })
-          }
-        />
-      </dl>
-      <dl className="m-0 grid gap-2.5 text-xs leading-relaxed">
-        {props.showAutomation ? (
-          <RunFact label="Automation">
-            <Link
-              className={dashboardInlineLinkClass}
-              to={automationPath(run.automationId)}
-            >
-              {run.automationTitle}
-            </Link>
+      <RunSection title="Run">
+        <dl className={runFactsClass}>
+          <RunFact label="Trigger">
+            {run.kind === "scheduled" ? "Schedule" : "Event"}
           </RunFact>
-        ) : null}
-        <RunFact label="Trigger">
-          {run.kind === "scheduled"
-            ? run.scheduledFor
-              ? `Schedule · ${formatAutomationRunTime(run.scheduledFor)}`
-              : "Schedule"
-            : "Event"}
-        </RunFact>
-        {run.startedAt ? (
-          <RunFact label="Started">
-            {formatAutomationRunTime(run.startedAt)}
+          {run.scheduledFor ? (
+            <RunFact label="Scheduled for">
+              {formatAutomationRunTime(run.scheduledFor)}
+            </RunFact>
+          ) : null}
+          {run.startedAt ? (
+            <RunFact label="Started">
+              {formatAutomationRunTime(run.startedAt)}
+            </RunFact>
+          ) : null}
+          <RunFact label="Finished">
+            {formatAutomationRunTime(run.executedAt)}
           </RunFact>
-        ) : null}
-        <RunFact label="Finished">
-          {formatAutomationRunTime(run.executedAt)}
-        </RunFact>
-        {run.credentialMode ? (
-          <RunFact label="Accounts">
-            {run.credentialMode === "creator"
-              ? "Creator’s connected accounts"
-              : "Junior’s accounts only"}
+          <RunFact label="Duration">
+            {formatRuntime(run.durationMs) || "—"}
           </RunFact>
-        ) : null}
-        {run.automationVersion ? (
-          <RunFact label="Version">
-            <Link className={dashboardInlineLinkClass} to={versionsPath}>
-              Version {run.automationVersion}
-            </Link>
+          <RunFact label="Tokens">
+            {run.totalTokens === undefined
+              ? "—"
+              : formatCompactNumber(run.totalTokens)}
           </RunFact>
-        ) : null}
-        <RunFact label="Run ID">
-          <span className="font-mono text-dashboard-text-muted">
-            {run.executionId}
-          </span>
-        </RunFact>
-      </dl>
+          <RunFact label="Cost">
+            {run.costUsd === undefined
+              ? "—"
+              : formatCostSummary({ total: run.costUsd })}
+          </RunFact>
+        </dl>
+      </RunSection>
+      <RunSection title="Setup">
+        <dl className={runFactsClass}>
+          {props.showAutomation ? (
+            <RunFact label="Automation">
+              <Link
+                className={dashboardInlineLinkClass}
+                to={automationPath(run.automationId)}
+              >
+                {run.automationTitle}
+              </Link>
+            </RunFact>
+          ) : null}
+          {run.automationVersion ? (
+            <RunFact label="Version">
+              <Link className={dashboardInlineLinkClass} to={versionsPath}>
+                Version {run.automationVersion}
+              </Link>
+            </RunFact>
+          ) : null}
+          {run.credentialMode ? (
+            <RunFact label="Accounts">
+              {run.credentialMode === "creator"
+                ? "Creator’s connected accounts"
+                : "Junior’s accounts only"}
+            </RunFact>
+          ) : null}
+          <RunFact label="Run ID">
+            <span className="font-mono">{run.executionId}</span>
+          </RunFact>
+        </dl>
+      </RunSection>
       {run.conversationId ? null : (
-        <p className="m-0 text-xs text-dashboard-text-muted">
+        <p className="m-0 px-1 text-xs text-dashboard-text-muted">
           No Conversation was recorded for this run.
         </p>
       )}
@@ -281,24 +281,27 @@ function AutomationRunContent(props: {
   );
 }
 
-function RunMetric(props: { label: string; value: string | undefined }) {
+// Match the Summary tab cards in conversation details.
+const runFactsClass = "m-0 grid min-w-0 gap-2 text-xs leading-snug";
+
+function RunSection(props: { children: ReactNode; title: string }) {
   return (
-    <div className="min-w-0 bg-dashboard-bg-elevated px-3 py-2">
-      <dt className="text-xs font-medium text-dashboard-text-muted">
-        {props.label}
-      </dt>
-      <dd className="m-0 mt-0.5 truncate font-sans text-sm tabular-nums text-dashboard-text">
-        {props.value || "—"}
-      </dd>
-    </div>
+    <section className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3">
+      <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
+        {props.title}
+      </h3>
+      {props.children}
+    </section>
   );
 }
 
 function RunFact(props: { label: string; children: ReactNode }) {
   return (
-    <div className="grid min-w-0 grid-cols-[5.25rem_minmax(0,1fr)] gap-3">
-      <dt className="text-dashboard-text-muted">{props.label}</dt>
-      <dd className="m-0 min-w-0">{props.children}</dd>
+    <div className="flex min-w-0 items-baseline justify-between gap-4">
+      <dt className="shrink-0 text-dashboard-text-muted">{props.label}</dt>
+      <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
+        {props.children}
+      </dd>
     </div>
   );
 }
