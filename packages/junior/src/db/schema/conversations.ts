@@ -15,6 +15,7 @@ import type { StoredSlackActor } from "@/chat/actor";
 import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationSource,
   ConversationStatus,
@@ -52,6 +53,11 @@ export const juniorConversations = pgTable(
     actor: jsonb("actor_json").$type<StoredSlackActor>(),
     channelName: text("channel_name"),
     title: text("title"),
+    /**
+     * Root Conversation visibility. Null means unknown and reads as private.
+     * `SqlStore.upsertConversation` owns the write rule.
+     */
+    visibility: text("visibility").$type<ConversationPrivacy>(),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),

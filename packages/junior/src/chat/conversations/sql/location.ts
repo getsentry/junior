@@ -1,6 +1,5 @@
 import type { Destination } from "@sentry/junior-plugin-api";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -105,19 +104,6 @@ export function locationFromRow(
     channelId: row.providerDestinationId,
     ...(slackSource?.threadTs ? { threadTs: slackSource.threadTs } : undefined),
   });
-}
-
-/** Read confirmed visibility from one linked Location row. */
-export function visibilityFromLocationRow(
-  row: LocationRow | null,
-): ConversationPrivacy | undefined {
-  if (!row) {
-    return undefined;
-  }
-  if (row.visibility === "public" || row.visibility === "private") {
-    return row.visibility;
-  }
-  return undefined;
 }
 
 /** Store a channel-level Location's first bound post as its thread. */

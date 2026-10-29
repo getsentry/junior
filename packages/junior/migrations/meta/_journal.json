@@ -449,6 +449,13 @@
       "when": 1793202150781,
       "tag": "0063_agent_invocation_type",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793300308795,
+      "tag": "0064_conversation_visibility",
+      "breakpoints": true
     }
   ]
 }

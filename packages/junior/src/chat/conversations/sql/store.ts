@@ -43,11 +43,7 @@ import {
   actorIdentityForConversation,
   mergeActor,
 } from "./actor-identity";
-import {
-  locationForWrite,
-  locationFromRow,
-  visibilityFromLocationRow,
-} from "./location";
+import { locationForWrite, locationFromRow } from "./location";
 type ConversationRow = Omit<
   typeof juniorConversations.$inferSelect,
   "legacyArchivedAt"
@@ -112,6 +108,13 @@ function requiredMsFromDate(value: Date | string): number {
 
 function tenantId(value: string | undefined): string {
   return value ?? "";
+}
+
+/** Accept only confirmed visibility; other stored values read as unknown. */
+function knownVisibility(
+  value: string | null | undefined,
+): ConversationPrivacy | undefined {
+  return value === "public" || value === "private" ? value : undefined;
 }
 
 function sourceFromValue(value: unknown): ConversationSource | undefined {
@@ -222,7 +225,7 @@ function destinationFromRow(
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = visibilityFromLocationRow(readRow.destination);
+  const visibility = knownVisibility(row.visibility);
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -616,14 +619,7 @@ export class SqlStore implements ConversationStore {
           ),
         ),
       );
-    const row = rows[0];
-    if (!row) {
-      return undefined;
-    }
-    if (row.visibility === "public" || row.visibility === "private") {
-      return row.visibility;
-    }
-    return undefined;
+    return knownVisibility(rows[0]?.visibility);
   }
 
   async findSlackDestinationByName(args: {
@@ -724,7 +720,7 @@ export class SqlStore implements ConversationStore {
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
-    const destinationId = await this.upsertDestination(
+    const destinationRow = await this.upsertDestination(
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
         conversationId: conversation.conversationId,
@@ -735,6 +731,13 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
+    const destinationId = destinationRow?.id;
+    // Only roots store visibility. Children read the visibility of their root.
+    const isRoot = !conversation.parentConversationId;
+    const visibilitySignal = isRoot ? conversation.visibility : undefined;
+    const initialVisibility = isRoot
+      ? (visibilitySignal ?? knownVisibility(destinationRow?.visibility))
+      : undefined;
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
@@ -773,6 +776,7 @@ export class SqlStore implements ConversationStore {
         actor: null,
         channelName: conversation.channelName ?? null,
         title: conversation.title ?? null,
+        visibility: initialVisibility ?? null,
         createdAt: dateFromMs(conversation.createdAtMs),
         lastActivityAt: dateFromMs(conversation.lastActivityAtMs),
         updatedAt: dateFromMs(conversation.updatedAtMs),
@@ -806,6 +810,14 @@ export class SqlStore implements ConversationStore {
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
           title: sql`coalesce(excluded.title, ${juniorConversations.title})`,
+          // Unknown takes the first known value. After that, a Conversation
+          // can only become private. A shared Destination value never makes
+          // a Conversation public again.
+          visibility: sql`case
+            when ${juniorConversations.visibility} is null then excluded.visibility
+            when ${visibilitySignal ?? null}::text = 'private' then 'private'
+            else ${juniorConversations.visibility}
+          end`,
           createdAt: sql`least(${juniorConversations.createdAt}, excluded.created_at)`,
           lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
           updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
@@ -839,7 +851,7 @@ export class SqlStore implements ConversationStore {
   private async upsertDestination(
     destination: DestinationUpsert | undefined,
     nowMs: number,
-  ): Promise<string | undefined> {
+  ): Promise<{ id: string; visibility: string } | undefined> {
     if (!destination) {
       return undefined;
     }
@@ -879,8 +891,11 @@ export class SqlStore implements ConversationStore {
           updatedAt: sql`excluded.updated_at`,
         },
       })
-      .returning({ id: juniorDestinations.id });
-    return rows[0]?.id;
+      .returning({
+        id: juniorDestinations.id,
+        visibility: juniorDestinations.visibility,
+      });
+    return rows[0];
   }
 }
 
