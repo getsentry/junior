@@ -179,6 +179,10 @@ token so each theme can redefine it.
   `src/client.tsx` opens tooltips at once and keeps them open for 150ms, so the
   pointer can reach selectable text. Tooltips open on mouse hover and keyboard
   focus only. Touch does not open them, so a tap still runs the control.
+  When a `ui/button` trigger can be disabled, set `focusableWhenDisabled`.
+  A native disabled button can drop hover and focus, so Firefox closes the
+  tooltip and hides pending or result labels. `ui/button` styles
+  `data-disabled`, so both disabled modes look the same.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original

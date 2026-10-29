@@ -80,6 +80,7 @@ export function ShareConversationButton(props: {
         <TooltipTrigger
           render={
             <Button
+              focusableWhenDisabled
               aria-label={label}
               className="text-dashboard-text-muted"
               disabled={status === "sharing"}

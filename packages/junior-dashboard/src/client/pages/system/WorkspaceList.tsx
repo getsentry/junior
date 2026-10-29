@@ -103,6 +103,7 @@ function WorkspaceListItem(props: {
           <TooltipTrigger
             render={
               <Button
+                focusableWhenDisabled
                 aria-label={`Delete ${workspace.name}`}
                 disabled={props.busy}
                 onClick={() => props.onDelete(workspace)}
