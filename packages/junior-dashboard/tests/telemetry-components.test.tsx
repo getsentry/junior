@@ -34,7 +34,6 @@ import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 import { ConversationPage } from "../src/client/conversations/ConversationPage";
-import { ToolCallGallery } from "../src/client/pages/dev/TranscriptActivityFixtures";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
@@ -116,7 +115,6 @@ function systemData(): SystemData {
       authPath: "/api/auth",
       authRequired: false,
       basePath: "/",
-      componentGallery: false,
       sentryConversationLinks: false,
       timeZone: "UTC",
       version: "0.0.0-test",
@@ -306,22 +304,6 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain("•");
     expect(slackHtml).toContain('<ol class="');
     expect(slackHtml).toContain('start="2"');
-  });
-
-  it("renders typed tool states in the component gallery", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ToolCallGallery />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("webSearch");
-    expect(html).toContain(
-      "github_search, query: &quot;is:pr is:open&quot;, limit: 25",
-    );
-    expect(html).toContain("jr-rpc config get github.repo");
-    expect(html).toContain("junior-qa");
-    expect(html).toContain('aria-label="bash (failed)"');
   });
 
   it("keeps a running tool name searchable and accessible", () => {

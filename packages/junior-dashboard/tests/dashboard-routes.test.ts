@@ -557,29 +557,6 @@ describe("dashboard routes", () => {
     });
   });
 
-  it("preserves the enabled component gallery path through login", async () => {
-    let callbackURL: string | undefined;
-    const app = createDashboardApp({
-      allowedDomains: ["sentry.io"],
-      auth: auth(null, (value) => {
-        callbackURL = value;
-      }),
-      componentGallery: true,
-    });
-
-    const unauthenticated = await app.fetch(
-      new Request("http://localhost/dev?fixture=charts"),
-    );
-    const loginUrl = unauthenticated.headers.get("location");
-    expect(loginUrl).toBeTruthy();
-    expect(new URL(loginUrl!).searchParams.get("next")).toBe(
-      "/dev?fixture=charts",
-    );
-
-    await app.fetch(new Request(loginUrl!));
-    expect(callbackURL).toBe("http://localhost/dev?fixture=charts");
-  });
-
   it("returns safe dashboard config signals", async () => {
     process.env.SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
     process.env.SENTRY_ORG_SLUG = "sentry";
@@ -601,7 +578,6 @@ describe("dashboard routes", () => {
       authRequired: true,
       authPath: "/api/auth",
       basePath: "/",
-      componentGallery: false,
       sentryConversationLinks: true,
       version: expect.stringMatching(/\S+/),
     });

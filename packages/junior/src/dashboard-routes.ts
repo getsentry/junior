@@ -20,8 +20,6 @@ export interface JuniorDashboardOptions {
   basePath?: string;
   /** Public deployment origin used for auth callbacks and external links. */
   baseURL?: string;
-  /** Expose the config-gated component gallery for local visual QA. */
-  componentGallery?: boolean;
   /** Disable dashboard route mounting while preserving serializable config shape. */
   disabled?: boolean;
   /** Replace Conversation route responses with dashboard visual-QA fixtures. */
@@ -187,9 +185,6 @@ function dashboardHostRoutePaths(
     pagePath("settings"),
     `${pagePath("settings")}/*`,
   ];
-  if (dashboard.componentGallery) {
-    pagePaths.push(pagePath("dev"), `${pagePath("dev")}/*`);
-  }
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 
   return [

@@ -34,5 +34,5 @@ This report has no per-call model, release, environment, trace, or write-cost
 fields. Add a reporting contract before adding those filters or drilldowns.
 A large write alone cannot identify cache expiry, a cold start, or prefix loss.
 
-The chart gallery includes a reuse drop and a missing counter. The System
-browser scenario covers display modes and verifies that the page time control also filters the list.
+The System browser scenario covers display modes and verifies that the page
+time control also filters the list.

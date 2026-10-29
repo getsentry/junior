@@ -23,8 +23,7 @@ The shadcn color tokens in `src/tailwind.css` use the dashboard tokens in both
 themes. Primary actions use `text-solid` with inverse text. Danger uses the
 same theme-aware rose shade as existing danger controls. The `dark:` variant
 follows `data-theme`. Keep the existing Tailwind radius scale. Do not apply the CLI's global border or body resets to existing
-components. Check each added component against the rules below and add its
-gallery fixture before use.
+components. Check each added component against the rules below before use.
 
 `ui/sheet.tsx` is the shadcn Base UI Dialog Sheet. It supports all four edges,
 uses the dashboard overlay and close button, and stops motion when reduced
@@ -152,8 +151,8 @@ token so each theme can redefine it.
   `ui/textarea` `Textarea`. Use `Input size="comfortable"` for larger mobile
   controls. Add `leading-relaxed` to a `Textarea` for instructions and
   `font-mono` for code. Use `ui/checkbox` and `ui/radio-group` for choices.
-  `Select` owns the native control and its inset arrow. Use its `filter` and
-  `sort` variants for compact controls.
+  `ui/native-select` `NativeSelect` owns the native control and its inset
+  arrow. Use its `filter` and `sort` variants for compact controls.
 - **Status.** Use `StatusDot` for dense table or list markers. Use `StatusChip`
   when the label must stay visible. `StatusChip` is a small dot and
   sentence-case text, with no border or fill. It is not a control.
@@ -242,6 +241,6 @@ share them. Transcript layout stays in `conversations/`. See
 
 - Prefer a named component on the second real use.
 - Keep Tailwind classes on the owning component.
-- Add gallery fixtures under `/dev/<section>` for new or changed shared
-  components. Keep the `/dev` index as the catalog only.
+- Check new or changed shared components on a real page with mock data and in
+  the dashboard E2E screenshots.
 - One-off page glue may stay inline when extraction only adds indirection.
