@@ -14,9 +14,12 @@ function defaultQueueClientOptions(): QueueClientOptions {
   return { deploymentId: null };
 }
 
-/** Create a Vercel Queue client that also works in local and eval runtimes. */
-function createVercelQueueClient(): QueueClient {
-  return new QueueClient(defaultQueueClientOptions());
+let client: QueueClient | undefined;
+
+// Build on first use, not at import, so env is read when the app runs.
+function getVercelQueueClient(): QueueClient {
+  client ??= new QueueClient(defaultQueueClientOptions());
+  return client;
 }
 
 function visibility(consumer: QueueConsumer) {
@@ -30,7 +33,7 @@ export const vercelQueueProvider: QueueProvider = {
   // OpenTelemetry has no well-known `messaging.system` value for Vercel Queues.
   messagingSystem: "vercel_queue",
   send: async (topic, payload, options) => {
-    const { messageId } = await createVercelQueueClient().send(
+    const { messageId } = await getVercelQueueClient().send(
       topic,
       payload,
       options,
@@ -44,7 +47,7 @@ export const vercelQueueProvider: QueueProvider = {
     }),
   registerDevConsumer: (consumer) =>
     registerDevConsumer({
-      client: createVercelQueueClient(),
+      client: getVercelQueueClient(),
       consumerGroup: consumer.consumerGroup,
       handler: consumer.handler,
       retry: consumer.retry,
