@@ -59,9 +59,6 @@ interface SandboxCredentials {
   projectId?: string;
 }
 
-/** Path that `sandbox.acquire` took to return a sandbox. */
-type SandboxAcquireOutcome = "memory" | "resumed" | "created";
-
 interface SandboxAcquisition {
   controller: AbortController;
   promise: Promise<SandboxSession>;
@@ -660,11 +657,9 @@ export function createSandboxRuntime(
         "app.sandbox.skills_count": availableSkills.length,
       },
       async (setSpanAttributes) => {
-        const setOutcome = (outcome: SandboxAcquireOutcome) =>
-          setSpanAttributes({ "app.sandbox.acquire.outcome": outcome });
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
-          setOutcome("memory");
+          setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
           return cachedSandbox;
         }
 
@@ -672,12 +667,12 @@ export function createSandboxRuntime(
         // Reopen the current sandbox before starting a new one.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
-          setOutcome("resumed");
+          setSpanAttributes({ "app.sandbox.acquire.outcome": "resumed" });
           return hintedSandbox;
         }
 
         const createdSandbox = await createFreshSandbox(signal);
-        setOutcome("created");
+        setSpanAttributes({ "app.sandbox.acquire.outcome": "created" });
         return createdSandbox;
       },
     );
