@@ -18,7 +18,7 @@ vi.mock("@vercel/sandbox", () => ({
 import { closeDb, getDb } from "@/chat/db";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/vercel";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -439,7 +439,7 @@ describe("Workspace snapshot completion", () => {
     }));
 
     await expect(
-      deleteWorkspaceSnapshotBuilders([
+      getSandboxProvider().deleteWorkspaceSnapshotBuilders([
         "builder-one",
         "builder-two",
         "builder-three",

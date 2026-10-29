@@ -4,6 +4,7 @@ import {
   isSandboxMissingError,
   isSandboxUnavailableError,
 } from "@/chat/sandbox/errors";
+import type { SandboxProvider } from "@/chat/sandbox/provider";
 import type {
   CreateWorkspaceSnapshotBuilderInput,
   WorkspaceSnapshotBuilder,
@@ -17,11 +18,12 @@ import type {
 
 // Module overview: the only module that calls the Vercel Sandbox SDK.
 //
-// Callers use provider-neutral inputs and `SandboxSession`. Vercel names,
-// credentials, request options, and SDK objects stay in this file. Shared
-// contracts live with their consumers: session types in `workspace.ts` and
-// the Workspace builder type in `snapshot/workspace.ts`. Keep only
-// Vercel-specific declarations and logic here.
+// This module implements `SandboxProvider` for Vercel Sandbox. Sandbox code
+// reaches it only through `getSandboxProvider()` in `provider.ts`. Vercel
+// names, credentials, request options, and SDK objects stay in this file.
+// Shared contracts live outside it: `provider.ts`, `workspace.ts`, and
+// `snapshot/workspace.ts`. Keep only Vercel-specific declarations and logic
+// here.
 
 function credentialOptions() {
   return getVercelSandboxCredentials() ?? {};
@@ -122,7 +124,7 @@ function adaptSession(
 }
 
 /** Create a Sandbox and return a session pinned to its first VM session. */
-export async function createSandboxSession(
+async function createSandboxSession(
   input: CreateSandboxSessionInput,
 ): Promise<SandboxSession> {
   const shared = {
@@ -154,7 +156,7 @@ export async function createSandboxSession(
 }
 
 /** Resume a named Sandbox and return a session pinned to its VM session. */
-export async function getSandboxSession(
+async function getSandboxSession(
   input: { name: string } & SandboxSessionOptions,
 ): Promise<SandboxSession> {
   const sandbox = await Sandbox.get({
@@ -167,7 +169,7 @@ export async function getSandboxSession(
 }
 
 /** Create the named, persistent Sandbox that owns one Workspace snapshot build. */
-export async function createWorkspaceSnapshotBuilder(
+async function createWorkspaceSnapshotBuilder(
   input: CreateWorkspaceSnapshotBuilderInput,
 ): Promise<void> {
   await Sandbox.create({
@@ -182,7 +184,7 @@ export async function createWorkspaceSnapshotBuilder(
 }
 
 /** Resume the named Sandbox that owns one Workspace snapshot build. */
-export async function getWorkspaceSnapshotBuilder(
+async function getWorkspaceSnapshotBuilder(
   name: string,
   signal?: AbortSignal,
 ): Promise<WorkspaceSnapshotBuilder> {
@@ -222,7 +224,7 @@ export async function getWorkspaceSnapshotBuilder(
 }
 
 /** Permanently delete named Workspace snapshot builders without resuming them. */
-export async function deleteWorkspaceSnapshotBuilders(
+async function deleteWorkspaceSnapshotBuilders(
   names: Iterable<string>,
 ): Promise<void> {
   let hasError = false;
@@ -244,3 +246,12 @@ export async function deleteWorkspaceSnapshotBuilders(
   }
   if (hasError) throw firstError;
 }
+
+/** Vercel Sandbox implementation of the sandbox provider contract. */
+export const vercelSandboxProvider: SandboxProvider = {
+  createSession: createSandboxSession,
+  getSession: getSandboxSession,
+  createWorkspaceSnapshotBuilder,
+  getWorkspaceSnapshotBuilder,
+  deleteWorkspaceSnapshotBuilders,
+};

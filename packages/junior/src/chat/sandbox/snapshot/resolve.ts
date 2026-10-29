@@ -3,7 +3,7 @@ import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { trace } from "@/chat/sandbox/snapshot/span";
-import { createSandboxSession } from "@/chat/sandbox/vercel";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 import { sleep } from "@/chat/sleep";
@@ -130,7 +130,7 @@ async function build(
     async () => {
       const startedAtMs = Date.now();
       const resources = getSandboxResources();
-      const sandbox = await createSandboxSession({
+      const sandbox = await getSandboxProvider().createSession({
         timeoutMs,
         runtime,
         signal,

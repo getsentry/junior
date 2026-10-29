@@ -176,7 +176,7 @@ import {
   isWorkspaceSnapshotNotReadyError,
   WorkspaceSnapshotNotReadyError,
 } from "@/chat/sandbox/snapshot/not-ready-error";
-import { getSandboxSession } from "@/chat/sandbox/vercel";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -587,7 +587,9 @@ describe("createTestSandbox", () => {
       ...sandbox,
       runCommand: resumingRunCommand,
     });
-    const workspace = await getSandboxSession({ name: "sbx_pinned_session" });
+    const workspace = await getSandboxProvider().getSession({
+      name: "sbx_pinned_session",
+    });
 
     await workspace.runCommand({ cmd: "gh", args: ["pr", "create"] });
 

@@ -37,7 +37,7 @@ import {
   type SandboxNetworkPolicy,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
-import { createSandboxSession, getSandboxSession } from "@/chat/sandbox/vercel";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -194,7 +194,10 @@ export function createSandboxRuntime(
   const createSession = (
     input: Omit<CreateSandboxSessionInput, "onUnavailable">,
   ): Promise<SandboxSession> =>
-    createSandboxSession({ ...input, onUnavailable: invalidateSession });
+    getSandboxProvider().createSession({
+      ...input,
+      onUnavailable: invalidateSession,
+    });
 
   const createSandboxName = (): string =>
     `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
@@ -566,7 +569,7 @@ export function createSandboxRuntime(
           "app.sandbox.source": "id_hint",
         },
         async () =>
-          await getSandboxSession({
+          await getSandboxProvider().getSession({
             name: ref.id,
             onUnavailable: invalidateSession,
             scopeSignal: signal,

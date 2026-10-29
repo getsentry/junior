@@ -23,11 +23,7 @@ import {
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
 import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
-import {
-  createWorkspaceSnapshotBuilder,
-  deleteWorkspaceSnapshotBuilders,
-  getWorkspaceSnapshotBuilder,
-} from "@/chat/sandbox/vercel";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import type {
   SandboxCommandInput,
   SandboxSession,
@@ -150,7 +146,7 @@ async function deleteBuilder(
   sandboxName: string | null | undefined,
 ): Promise<void> {
   if (!sandboxName) return;
-  await deleteWorkspaceSnapshotBuilders([sandboxName]);
+  await getSandboxProvider().deleteWorkspaceSnapshotBuilders([sandboxName]);
 }
 
 function workspaceDeletedError(workspace: Workspace): Error {
@@ -236,7 +232,7 @@ async function finishBuild(
 
   try {
     await requireRemainingBuildTime(workspace, build, beforeWrite);
-    const builder = await getWorkspaceSnapshotBuilder(
+    const builder = await getSandboxProvider().getWorkspaceSnapshotBuilder(
       build.sandboxName,
       signal,
     );
@@ -297,7 +293,9 @@ async function finishBuild(
     );
     requireBuildWrite(result.written, workspace);
     try {
-      await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
+      await getSandboxProvider().deleteWorkspaceSnapshotBuilders(
+        result.replacedBuilderNames,
+      );
     } catch (error) {
       logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
         "app.workspace.id": workspace.id,
@@ -339,7 +337,7 @@ async function startBuild(params: {
   const buildId = randomUUID();
   const startedAt = new Date();
   try {
-    await createWorkspaceSnapshotBuilder({
+    await getSandboxProvider().createWorkspaceSnapshotBuilder({
       name,
       runtime: params.runtime,
       timeoutMs: BUILD_TIMEOUT_MS,
@@ -445,7 +443,7 @@ async function continueBuild(params: {
     ? AbortSignal.any([params.signal, phaseTimeoutSignal])
     : phaseTimeoutSignal;
   try {
-    const builder = await getWorkspaceSnapshotBuilder(
+    const builder = await getSandboxProvider().getWorkspaceSnapshotBuilder(
       build.sandboxName,
       phaseSignal,
     );
