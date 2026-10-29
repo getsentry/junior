@@ -480,7 +480,7 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
       .object({
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
-        state: z.enum(["succeeded", "no_reply"]),
+        state: z.enum(["succeeded", "no_reply", "blocked"]),
       })
       .strict(),
     z

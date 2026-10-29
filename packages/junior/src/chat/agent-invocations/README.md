@@ -140,6 +140,9 @@ tool ends the run, like `finishAutomationRun` ends an Automation run. The
 agent invocation then ends as `blocked`, and the parent result shows what is
 missing. A child that cannot get authorization also ends as `blocked`.
 
+A blocked child Turn is not a failure. It records `turn_completed` with the
+`blocked` outcome, so the dashboard does not show it as a model failure.
+
 The worker and the recovery of a completed child Turn read the report only
 from the messages of that Turn. A named child keeps its history, so a report
 from an earlier agent invocation does not end a later one.

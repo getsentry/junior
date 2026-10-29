@@ -437,7 +437,12 @@ function reportEventData(args: {
       return {
         type: "turn_lifecycle",
         turnId: data.turnId,
-        state: data.outcome === "success" ? "succeeded" : "no_reply",
+        state:
+          data.outcome === "success"
+            ? "succeeded"
+            : data.outcome === "blocked"
+              ? "blocked"
+              : "no_reply",
       };
     case "turn_failed": {
       const eventId = data.eventId;

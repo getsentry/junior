@@ -384,10 +384,9 @@ async function persistTerminalLifecycle(
       turnId: common.turnId,
     });
     await lifecycle.complete({ ...common, outcome: "cancelled" });
-  } else if (
-    invocation.status === "blocked" ||
-    invocation.status === "failed"
-  ) {
+  } else if (invocation.status === "blocked") {
+    await lifecycle.complete({ ...common, outcome: "blocked" });
+  } else if (invocation.status === "failed") {
     await lifecycle.fail({
       ...common,
       failureCode: "model_execution_failed",
@@ -552,6 +551,12 @@ async function saveAgentInvocationResult(args: {
     return {
       finishedAtMs: terminal.terminalAtMs,
       outcome: "cancelled" as const,
+    };
+  }
+  if (terminal.status === "blocked") {
+    return {
+      finishedAtMs: terminal.terminalAtMs,
+      outcome: "blocked" as const,
     };
   }
   return {
