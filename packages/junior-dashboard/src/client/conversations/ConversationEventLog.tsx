@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { ToggleButton } from "../components/Button";
+import { ToggleButton } from "../components/ToggleButton";
 import { useEventTime } from "./eventTime";
 import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";

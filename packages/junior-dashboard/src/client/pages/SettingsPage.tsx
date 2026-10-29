@@ -5,11 +5,11 @@ import {
   dashboardIdentitySchema,
   type DashboardIdentity,
 } from "../../api/schema";
-import { Button } from "../components/Button";
-import { Field } from "../components/Field";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
-import { TextInput } from "../components/TextInput";
 import { useDocumentTitle } from "../documentTitle";
 import { patch } from "../http";
 import { dashboardContainerClass } from "../styles";
@@ -64,13 +64,9 @@ export function SettingsPage({ identity }: SettingsPageProps) {
         <form className="mt-6" onSubmit={submit}>
           <Card className="mb-0" padding="md" variant="raised">
             <h2 className="m-0 text-lg font-bold">Profile</h2>
-            <Field
-              className="mt-5"
-              help="Your display name is shown with your conversations and activity."
-              htmlFor="display-name"
-              label="Display name"
-            >
-              <TextInput
+            <Field className="mt-5">
+              <FieldLabel htmlFor="display-name">Display name</FieldLabel>
+              <Input
                 autoComplete="name"
                 id="display-name"
                 maxLength={80}
@@ -82,6 +78,9 @@ export function SettingsPage({ identity }: SettingsPageProps) {
                 }}
                 value={displayName}
               />
+              <FieldDescription id="display-name-help">
+                Your display name is shown with your conversations and activity.
+              </FieldDescription>
             </Field>
             <div className="mt-5 flex items-center gap-3">
               <Button disabled={!canSave} type="submit">

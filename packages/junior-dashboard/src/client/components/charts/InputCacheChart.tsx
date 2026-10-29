@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
-import { ToggleButton } from "../Button";
+import { ToggleButton } from "../ToggleButton";
 import { Card } from "../layout/Card";
 import { formatCompactNumber } from "../../format";
 import {

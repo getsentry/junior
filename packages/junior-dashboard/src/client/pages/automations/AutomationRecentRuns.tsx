@@ -2,9 +2,9 @@ import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { Link } from "react-router";
 
 import { useAutomationExecutionsData } from "../../api";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
-import { Skeleton } from "../../components/Skeleton";
+import { Skeleton } from "../../components/ui/skeleton";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import {

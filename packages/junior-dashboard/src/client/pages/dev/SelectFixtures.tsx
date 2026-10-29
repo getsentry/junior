@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
-import { Field } from "../../components/Field";
+import { Field, FieldError, FieldLabel } from "../../components/ui/field";
 import { FilterGroup } from "../../components/FilterBar";
 import { Select } from "../../components/Select";
 
@@ -10,7 +10,8 @@ export function SelectFixtures() {
 
   return (
     <div className="grid min-w-0 gap-4">
-      <Field label="Schedule" htmlFor="gallery-select-form">
+      <Field>
+        <FieldLabel htmlFor="gallery-select-form">Schedule</FieldLabel>
         <Select id="gallery-select-form" defaultValue="weekly">
           <option value="daily">Every day</option>
           <option value="weekly">Every week</option>
@@ -38,16 +39,14 @@ export function SelectFixtures() {
           <option>Any time</option>
         </Select>
       </FilterGroup>
-      <Field label="Disabled" htmlFor="gallery-select-disabled">
+      <Field>
+        <FieldLabel htmlFor="gallery-select-disabled">Disabled</FieldLabel>
         <Select id="gallery-select-disabled" disabled>
           <option>Every week</option>
         </Select>
       </Field>
-      <Field
-        label="Destination"
-        htmlFor="gallery-select-invalid"
-        error="Choose a destination."
-      >
+      <Field>
+        <FieldLabel htmlFor="gallery-select-invalid">Destination</FieldLabel>
         <Select
           id="gallery-select-invalid"
           aria-invalid
@@ -56,6 +55,9 @@ export function SelectFixtures() {
           <option value="">Choose a destination</option>
           <option value="conversation">This Conversation</option>
         </Select>
+        <FieldError id="gallery-select-invalid-error">
+          Choose a destination.
+        </FieldError>
       </Field>
     </div>
   );

@@ -44,6 +44,24 @@ Dialog roots. A newly mounted sheet must not take focus from the open child
 above it. Conversation browser scenarios cover dismissal, nested focus, and
 layout changes.
 
+### Adopted shadcn components
+
+Each `ui/` file is shadcn source that uses dashboard tokens. Its first line
+names the source. The copied license is in `ui/shadcn.LICENSE`. Remove exports
+that no app code uses. Use `ui/` components directly. Do not add an app
+component that only renames a `ui/` component or its props. Change the `ui/`
+file when every caller needs the same style or variant. App components compose
+`ui/` source only when they add structure or behavior:
+
+| App component                  | shadcn source |
+| ------------------------------ | ------------- |
+| `Drawer`, `BottomSheet`        | `ui/sheet`    |
+| `layout/DashboardHeader` (nav) | `ui/sheet`    |
+
+Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
+`aria-label`. The `ui/` files join classes with the merging `cn` from
+`src/client/lib/utils.ts`, so a caller's `className` wins over a base class.
+
 ## Foundations
 
 Tokens live in the `@theme` block of `src/tailwind.css`. Keep every color in a
@@ -105,18 +123,24 @@ token so each theme can redefine it.
 
 ### Primitives
 
-- **Actions.** `Button` (`default`, `primary`, `danger`, and `size="icon"`) and
-  `ButtonLink`. Form pages use `Button tone="primary"` for their one main save
-  action. Use `ToggleButton` variants (`pill`, `segment`, `text`) for pressed
-  states, not one-off styles. `CopyButton` copies plain text or an async text
-  export. It shares clipboard success, pending, and failure feedback across
-  Markdown exports and event JSON. A failed write allows another attempt.
-- **Forms.** `Field` (`default`, `compact`), `TextInput`, `TextArea`, `Select`,
-  and `SearchInput`. Use `TextInput size="comfortable"` for larger mobile
-  controls. Use `TextArea prose` for instructions, not code. `Field error`
-  renders an error at `<htmlFor>-error`. The owning control must set
-  `aria-invalid` and `aria-describedby`. `Select` owns the native control and its
-  inset arrow. Use its `filter` and `sort` variants for compact controls.
+- **Actions.** `ui/button` `Button` (`variant`: `default`, `primary`,
+  `danger`; `size="icon"`). Form pages use `Button variant="primary"` for their
+  one main save action. For a link that looks like a button, put
+  `buttonVariants()` on the router `Link`. Use `ToggleButton` variants (`pill`,
+  `segment`, `text`) for pressed states, not one-off styles. `CopyButton`
+  copies plain text or an async text export. It shares clipboard success,
+  pending, and failure feedback across Markdown exports and event JSON. A
+  failed write allows another attempt.
+- **Forms.** Build a field from `ui/field`: `Field`, `FieldLabel`, the control,
+  then `FieldError` and `FieldDescription`. `FieldError` renders nothing when it
+  has no message. Give `FieldError` the id `<control id>-error` and
+  `FieldDescription` the id `<control id>-help`. The control must set
+  `aria-invalid` and `aria-describedby`. Use `ui/input` `Input` and
+  `ui/textarea` `Textarea`. Use `Input size="comfortable"` for larger mobile
+  controls. Add `leading-relaxed` to a `Textarea` for instructions and
+  `font-mono` for code. Use `ui/checkbox` and `ui/radio-group` for choices.
+  `Select` owns the native control and its inset arrow. Use its `filter` and
+  `sort` variants for compact controls.
 - **Status.** Use `StatusDot` for dense table or list markers. Use `StatusChip`
   when the label must stay visible. `StatusChip` is a small dot and
   sentence-case text, with no border or fill. It is not a control.
@@ -140,7 +164,7 @@ token so each theme can redefine it.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original
   Octicons paths. Do not replace it with a provider logo or a status-only icon.
-- **Loading.** Use `Skeleton` for placeholder leaves and `PageContentSkeleton`
+- **Loading.** Use `ui/skeleton` for placeholder leaves and `PageContentSkeleton`
   variants for page bodies. Use `PageRouteLoading` when a page keeps its real
   header above a body skeleton. Use a feature-owned loading component for
   distinct geometry, such as conversations.

@@ -5,7 +5,7 @@ import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {

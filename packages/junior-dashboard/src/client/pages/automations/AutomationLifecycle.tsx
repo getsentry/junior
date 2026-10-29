@@ -13,7 +13,7 @@ import {
   automationEditSchema,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 
@@ -103,7 +103,7 @@ export function AutomationLifecycle({
                 aria-label="Delete automation"
                 className="min-h-11 min-w-11"
                 size="icon"
-                tone="danger"
+                variant="danger"
                 onClick={(event) => onDelete(event.currentTarget)}
                 disabled={mutation.isPending}
               >

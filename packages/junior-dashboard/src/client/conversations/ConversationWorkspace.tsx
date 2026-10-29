@@ -5,7 +5,7 @@ import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
-import { ToggleButton } from "../components/Button";
+import { ToggleButton } from "../components/ToggleButton";
 import { SearchInput } from "../components/SearchInput";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";

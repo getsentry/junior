@@ -7,7 +7,7 @@ import {
   useCodeRepositoryConversationsData,
   useCodeRepositoryData,
 } from "../../api";
-import { ButtonLink } from "../../components/Button";
+import { buttonVariants } from "../../components/ui/button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageRouteLoading } from "../../components/PageRouteLoading";
 import {
@@ -98,7 +98,8 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
             <div className="flex flex-wrap items-center gap-2">
               <TimeRangeSelector onChange={setRange} value={range} />
               {repository.url ? (
-                <ButtonLink
+                <Link
+                  className={buttonVariants()}
                   rel="noopener noreferrer"
                   target="_blank"
                   to={repository.url}
@@ -108,7 +109,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
                     aria-hidden="true"
                     className="size-3.5 shrink-0"
                   />
-                </ButtonLink>
+                </Link>
               ) : null}
             </div>
           }

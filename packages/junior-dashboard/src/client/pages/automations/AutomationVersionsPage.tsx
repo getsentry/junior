@@ -10,7 +10,7 @@ import {
   type AutomationVersionList,
 } from "@sentry/junior/api/schema";
 import { useAutomationData, useAutomationVersionsData } from "../../api";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { Detail, DetailList } from "../../components/DetailList";
 import { FormNotice } from "../../components/FormNotice";
 import { InlineError } from "../../components/InlineError";

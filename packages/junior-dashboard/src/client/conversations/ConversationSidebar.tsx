@@ -19,7 +19,7 @@ import {
 } from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
-import { Skeleton } from "../components/Skeleton";
+import { Skeleton } from "../components/ui/skeleton";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 

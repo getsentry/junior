@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, CircleAlert, Copy } from "lucide-react";
 
-import { Button } from "./Button";
+import { Button } from "./ui/button";
 import { IconButtonTooltip } from "./Tooltip";
 
 /** Copy available text and show whether the clipboard write succeeded. */

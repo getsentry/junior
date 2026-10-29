@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { cn } from "@dashboard/lib/utils";
-import { Button, type ButtonProps } from "../Button";
+import { Button } from "./button";
 
 /** Require an explicit response before a destructive action. */
 export function AlertDialog(props: AlertDialogPrimitive.Root.Props) {
@@ -72,7 +72,7 @@ export function AlertDialogFooter({
 }
 
 /** Run the confirmed action; its owner decides when the dialog can close. */
-export function AlertDialogAction(props: ButtonProps) {
+export function AlertDialogAction(props: ComponentProps<typeof Button>) {
   return (
     <Button data-slot="alert-dialog-action" className="min-h-11" {...props} />
   );

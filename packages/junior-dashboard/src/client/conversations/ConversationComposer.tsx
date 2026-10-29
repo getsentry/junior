@@ -12,7 +12,7 @@ import {
 } from "react";
 import { ImagePlus, Send, Square } from "lucide-react";
 
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 
@@ -488,7 +488,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 readingImages
               }
               title={sendLocked ? "Sending message" : props.submitLabel}
-              tone="primary"
+              variant="primary"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />

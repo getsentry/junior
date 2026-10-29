@@ -11,7 +11,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { Globe2, ListChecks, LockKeyhole, UserRound } from "lucide-react";
 import { useAutomationsData, useAutomationData } from "../../api";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { AutomationFilters, AutomationSort } from "./AutomationFilters";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";

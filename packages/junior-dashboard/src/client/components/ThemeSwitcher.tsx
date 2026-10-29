@@ -3,7 +3,7 @@ import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import type { DashboardThemeChoice } from "../../theme";
 import { cn } from "../styles";
 import { useDashboardThemeChoice } from "../theme";
-import { ToggleButton } from "./Button";
+import { ToggleButton } from "./ToggleButton";
 
 const themeChoices = [
   { Icon: Monitor, label: "System", value: "system" },
