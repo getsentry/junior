@@ -8,6 +8,7 @@ import { Select } from "../../components/Select";
 import { TextInput } from "../../components/TextInput";
 import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
+import { Checkbox } from "../../components/ui/checkbox";
 import { fetchDashboardJson } from "../../http";
 
 type Trigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
@@ -155,11 +156,10 @@ export function AutomationEventFields(props: {
                   key={event}
                   className="flex min-h-11 cursor-pointer items-start gap-3 px-3 py-3 text-sm"
                 >
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 size-4 shrink-0 accent-dashboard-focus"
+                  <Checkbox
+                    className="mt-0.5"
                     checked={props.value.events.includes(event)}
-                    onChange={() =>
+                    onCheckedChange={() =>
                       props.onChange({
                         ...props.value,
                         events: props.value.events.includes(event)

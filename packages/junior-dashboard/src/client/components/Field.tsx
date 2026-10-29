@@ -1,18 +1,14 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../styles";
+import {
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  Field as ShadcnField,
+} from "./ui/field";
 
 export type FieldSize = "compact" | "default";
-
-const labelClass: Record<FieldSize, string> = {
-  compact: "font-sans font-medium text-xs text-dashboard-text-muted",
-  default: "text-sm font-semibold text-dashboard-text",
-};
-
-const stackClass: Record<FieldSize, string> = {
-  compact: "grid gap-1.5",
-  default: "grid gap-2",
-};
 
 /** Label a control with optional help text using the shared form stack. */
 export function Field(props: {
@@ -24,30 +20,32 @@ export function Field(props: {
   label: ReactNode;
   size?: FieldSize;
 }) {
-  const size = props.size ?? "default";
+  const compact = props.size === "compact";
   return (
-    <div className={cn(stackClass[size], props.className)}>
-      <label className={labelClass[size]} htmlFor={props.htmlFor}>
+    <ShadcnField className={cn(compact && "gap-1.5", props.className)}>
+      <FieldLabel
+        className={
+          compact
+            ? "font-sans text-xs font-medium text-dashboard-text-muted"
+            : undefined
+        }
+        htmlFor={props.htmlFor}
+      >
         {props.label}
-      </label>
+      </FieldLabel>
       {props.children}
       {props.error ? (
-        <p
-          id={props.htmlFor ? `${props.htmlFor}-error` : undefined}
-          role="alert"
-          className="m-0 text-xs leading-relaxed text-rose-300"
-        >
+        <FieldError id={props.htmlFor ? `${props.htmlFor}-error` : undefined}>
           {props.error}
-        </p>
+        </FieldError>
       ) : null}
       {props.help ? (
-        <p
+        <FieldDescription
           id={props.htmlFor ? `${props.htmlFor}-help` : undefined}
-          className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm"
         >
           {props.help}
-        </p>
+        </FieldDescription>
       ) : null}
-    </div>
+    </ShadcnField>
   );
 }

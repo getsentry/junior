@@ -1,4 +1,4 @@
-import { Skeleton } from "../../components/Skeleton";
+import { Skeleton } from "../../components/ui/skeleton";
 import { AutomationFormSection } from "./AutomationFormSection";
 
 /** Keep the editor's field columns stable while exact values load. */

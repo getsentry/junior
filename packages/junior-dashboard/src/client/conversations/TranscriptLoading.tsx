@@ -1,5 +1,5 @@
 import { TranscriptRow, TranscriptRows } from "./TranscriptRows";
-import { Skeleton } from "../components/Skeleton";
+import { Skeleton } from "../components/ui/skeleton";
 
 /** Match the usual transcript rhythm while the selected conversation loads. */
 export function TranscriptLoading() {

@@ -1,9 +1,8 @@
 import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 import { cn } from "../styles";
-
-const textControlClassName =
-  "block w-full rounded-md border border-dashboard-border-emphasis bg-dashboard-ink px-3 py-2 font-sans text-sm text-dashboard-text placeholder:text-dashboard-text-muted/70 focus:border-dashboard-focus focus:outline-none focus:ring-1 focus:ring-dashboard-focus/25 aria-invalid:border-rose-300 disabled:cursor-not-allowed disabled:opacity-50";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 
 export type TextInputProps = Omit<
   InputHTMLAttributes<HTMLInputElement>,
@@ -21,10 +20,9 @@ export function TextInput({
   ...props
 }: TextInputProps) {
   return (
-    <input
+    <Input
       {...props}
       className={cn(
-        textControlClassName,
         size === "comfortable" && "min-h-11 text-base sm:min-h-10 sm:text-sm",
         className,
       )}
@@ -45,13 +43,12 @@ export function TextArea({
   ...props
 }: TextAreaProps) {
   return (
-    <textarea
+    <Textarea
       {...props}
+      // Keep prose leading after caller text sizes so class merging keeps it.
       className={cn(
-        textControlClassName,
-        "min-h-36",
-        prose ? "font-sans leading-relaxed" : "font-mono",
         className,
+        prose ? "font-sans leading-relaxed" : "font-mono",
       )}
     />
   );

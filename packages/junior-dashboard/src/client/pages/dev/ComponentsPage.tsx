@@ -2,6 +2,7 @@ import { FormNotice } from "../../components/FormNotice";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
 import { SelectFixtures } from "./SelectFixtures";
+import { ChoiceFixtures } from "./ChoiceFixtures";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
@@ -243,6 +244,9 @@ function FoundationsGalleryPage() {
       </Fixture>
       <Fixture title="Select controls">
         <SelectFixtures />
+      </Fixture>
+      <Fixture title="Checkboxes and radios">
+        <ChoiceFixtures />
       </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>

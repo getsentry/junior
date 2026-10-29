@@ -12,6 +12,7 @@ import { Field } from "../../components/Field";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
+import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
@@ -341,8 +342,14 @@ export function AutomationEditor(props: {
           title="Credentials"
           detail="Choose which connected accounts Junior can use."
         >
-          <fieldset className="divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-emphasis">
-            <legend className="sr-only">Credential mode</legend>
+          <RadioGroup
+            aria-label="Credential mode"
+            className="divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-emphasis"
+            onValueChange={(credentialMode: "creator" | "system") =>
+              change({ credentialMode })
+            }
+            value={dropsCreatorCredentials ? "system" : draft.credentialMode}
+          >
             {(
               [
                 [
@@ -365,24 +372,17 @@ export function AutomationEditor(props: {
             ).map(([value, label, detail]) => (
               <label
                 key={value}
-                className="flex cursor-pointer items-start gap-3 px-4 py-4 has-checked:bg-dashboard-fill-soft has-disabled:cursor-not-allowed has-disabled:opacity-60"
+                className="flex cursor-pointer items-start gap-3 px-4 py-4 has-data-checked:bg-dashboard-fill-soft has-data-disabled:cursor-not-allowed has-data-disabled:opacity-60"
               >
-                <input
-                  type="radio"
-                  name="credentials"
-                  className="mt-0.5 size-4 shrink-0 accent-dashboard-focus"
-                  checked={
-                    dropsCreatorCredentials
-                      ? value === "system"
-                      : draft.credentialMode === value
-                  }
+                <RadioGroupItem
+                  className="mt-0.5"
+                  value={value}
                   disabled={
                     value === "creator" &&
                     !owned &&
                     (original.credentialMode !== "creator" ||
                       dropsCreatorCredentials)
                   }
-                  onChange={() => change({ credentialMode: value })}
                 />
                 <span>
                   <span className="block text-sm font-medium">{label}</span>
@@ -392,7 +392,7 @@ export function AutomationEditor(props: {
                 </span>
               </label>
             ))}
-          </fieldset>
+          </RadioGroup>
           {dropsCreatorCredentials ? (
             <FormNotice title="Saving switches this automation to system credentials.">
               Only {creator} can let a changed instruction

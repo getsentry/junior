@@ -28,13 +28,33 @@ gallery fixture before use.
 
 `ui/sheet.tsx` is the shadcn Base UI Dialog Sheet. It supports all four edges,
 uses the dashboard overlay and close button, and stops motion when reduced
-motion is set. The copied source license is in `ui/sheet.LICENSE`.
+motion is set.
 `Drawer` and `BottomSheet` compose this component for app details.
 `ui/useSheet.ts` owns their close lifecycle, shared document scroll lock, and
 focus rules when a resize puts one modal below another. These are separate
 Dialog roots. A newly mounted sheet must not take focus from the open child
 above it. Conversation browser scenarios cover dismissal, nested focus, and
 layout changes.
+
+### Adopted shadcn components
+
+Each `ui/` file is shadcn source that uses dashboard tokens. Its first line
+names the source. The copied license is in `ui/shadcn.LICENSE`. Remove exports
+that no app code uses. App components keep their names and props, and compose
+the `ui/` source:
+
+| App component                  | shadcn source             |
+| ------------------------------ | ------------------------- |
+| `Button`, `ButtonLink`         | `ui/button`               |
+| `TextInput`, `TextArea`        | `ui/input`, `ui/textarea` |
+| `Field`                        | `ui/field`                |
+| `Drawer`, `BottomSheet`        | `ui/sheet`                |
+| `layout/DashboardHeader` (nav) | `ui/sheet`                |
+
+Use `ui/skeleton`, `ui/checkbox`, and `ui/radio-group` directly. Put a
+checkbox or radio inside its `<label>`. Give each `RadioGroup` an
+`aria-label`. The `ui/` files join classes with the merging `cn` from
+`src/client/lib/utils.ts`, so a caller's `className` wins over a base class.
 
 ## Foundations
 
@@ -129,7 +149,7 @@ token so each theme can redefine it.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original
   Octicons paths. Do not replace it with a provider logo or a status-only icon.
-- **Loading.** Use `Skeleton` for placeholder leaves and `PageContentSkeleton`
+- **Loading.** Use `ui/skeleton` for placeholder leaves and `PageContentSkeleton`
   variants for page bodies. Use `PageRouteLoading` when a page keeps its real
   header above a body skeleton. Use a feature-owned loading component for
   distinct geometry, such as conversations.

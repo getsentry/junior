@@ -1,4 +1,4 @@
-import { Skeleton } from "../components/Skeleton";
+import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";

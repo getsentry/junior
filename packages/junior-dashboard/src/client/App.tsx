@@ -121,17 +121,6 @@ export function DashboardShell() {
     setMobileNavigationOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    if (!mobileNavigationOpen) return;
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileNavigationOpen(false);
-    }
-
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [mobileNavigationOpen]);
-
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
       credentials: "same-origin",

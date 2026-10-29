@@ -2,6 +2,7 @@ import type { ButtonHTMLAttributes, Ref } from "react";
 import { Link, type LinkProps } from "react-router";
 
 import { cn } from "../styles";
+import { Button as ShadcnButton, buttonVariants } from "./ui/button";
 
 type ButtonSize = "default" | "icon";
 type ButtonTone = "default" | "danger" | "primary";
@@ -18,50 +19,9 @@ export type ToggleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant: ToggleButtonVariant;
 };
 
-const buttonClassName =
-  "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 font-sans text-sm font-medium leading-none text-dashboard-text transition-colors hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus";
-
-const dangerButtonClassName =
-  "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border border-dashboard-border-strong bg-transparent px-3 font-sans text-sm font-medium leading-none text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300/55";
-
 /** Render the dashboard's standard bordered command button surface. */
-export function Button({
-  className,
-  size = "default",
-  tone = "default",
-  type = "button",
-  ...props
-}: ButtonProps) {
-  const isDanger = tone === "danger";
-  return (
-    <button
-      {...props}
-      className={cn(
-        "font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        size === "icon"
-          ? cn(
-              "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-1 disabled:hover:!bg-transparent",
-              isDanger
-                ? "text-dashboard-text-muted hover:!bg-rose-300/10 hover:!text-rose-300 focus-visible:outline-rose-300/55 disabled:hover:!text-dashboard-text-muted"
-                : "text-dashboard-text-muted hover:!bg-dashboard-fill-strong hover:!text-dashboard-text focus-visible:outline-dashboard-focus disabled:hover:!text-dashboard-text-muted",
-            )
-          : tone === "primary"
-            ? "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-dashboard-text-solid bg-dashboard-text-solid px-3 font-sans text-sm font-medium leading-none text-dashboard-text-inverse hover:border-dashboard-text-subtle hover:bg-dashboard-text-subtle disabled:hover:border-dashboard-text-solid disabled:hover:bg-dashboard-text-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-            : isDanger
-              ? cn(
-                  dangerButtonClassName,
-                  "disabled:hover:border-dashboard-border-strong disabled:hover:text-dashboard-text-muted",
-                )
-              : cn(
-                  buttonClassName,
-                  "disabled:hover:border-dashboard-border-emphasis disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
-                ),
-        props.disabled ? "" : "cursor-pointer",
-        className,
-      )}
-      type={type}
-    />
-  );
+export function Button({ tone, type = "button", ...props }: ButtonProps) {
+  return <ShadcnButton {...props} type={type} variant={tone} />;
 }
 
 /** Render a dashboard navigation link with the standard button surface. */
@@ -69,7 +29,7 @@ export function ButtonLink({ className, ...props }: LinkProps) {
   return (
     <Link
       {...props}
-      className={cn(buttonClassName, "no-underline", className)}
+      className={cn(buttonVariants(), "no-underline", className)}
     />
   );
 }

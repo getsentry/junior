@@ -1,13 +1,11 @@
 import { ArrowLeft, Menu, X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
-import {
-  acquireBodyScrollLock,
-  releaseBodyScrollLock,
-} from "../../bodyScrollLock";
 import { JuniorLogo } from "../JuniorLogo";
+import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
+import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
   MobileHeaderLiveSlot,
@@ -21,15 +19,6 @@ export type DashboardHeaderNavItem = {
   label: string;
   to: string;
 };
-
-const focusableSelector = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled]):not([type='hidden'])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
 
 /** Render the primary dashboard shell header and optional mobile nav sheet. */
 export function DashboardHeader(props: {
@@ -50,9 +39,7 @@ export function DashboardHeader(props: {
   version?: string;
   workspaceActive: boolean;
 }) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const openButtonRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | undefined>(undefined);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const onOpenChangeRef = useRef(props.onMobileNavigationOpenChange);
   onOpenChangeRef.current = props.onMobileNavigationOpenChange;
   // Conversation chrome is path-driven. Undefined title keeps the loading
@@ -90,56 +77,7 @@ export function DashboardHeader(props: {
     };
     closeWhenDesktop();
     mobile.addEventListener("change", closeWhenDesktop);
-
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : (openButtonRef.current ?? undefined);
-    acquireBodyScrollLock();
-    const focusFrame = requestAnimationFrame(() => {
-      sheetRef.current
-        ?.querySelector<HTMLElement>("[data-mobile-nav-close]")
-        ?.focus();
-    });
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const sheet = sheetRef.current;
-      const focusable = Array.from(
-        sheet?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
-      ).filter(
-        (element) =>
-          element.tabIndex >= 0 && element.getClientRects().length > 0,
-      );
-      const first = focusable.at(0);
-      const last = focusable.at(-1);
-      if (!sheet || !first || !last) {
-        event.preventDefault();
-        return;
-      }
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !sheet.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (
-        !event.shiftKey &&
-        (active === last || !sheet.contains(active))
-      ) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      mobile.removeEventListener("change", closeWhenDesktop);
-      window.removeEventListener("keydown", onKeyDown);
-      releaseBodyScrollLock();
-      const previousFocus = previousFocusRef.current;
-      previousFocusRef.current = undefined;
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
+    return () => mobile.removeEventListener("change", closeWhenDesktop);
   }, [props.mobileNavigationOpen]);
 
   return (
@@ -168,7 +106,6 @@ export function DashboardHeader(props: {
             aria-label="Open navigation"
             className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
             onClick={() => props.onMobileNavigationOpenChange(true)}
-            ref={openButtonRef}
             tabIndex={props.mobileNavigationOpen ? -1 : undefined}
             type="button"
           >
@@ -225,22 +162,9 @@ export function DashboardHeader(props: {
         ) : null}
       </div>
       {props.mobileNavigationOpen ? (
-        <div
-          aria-label="Navigation"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex flex-col bg-dashboard-bg-elevated md:hidden"
-          id="mobile-navigation"
-          onClick={(event) => {
-            // Close on route taps and sheet actions such as Log out.
-            if (
-              event.target instanceof Element &&
-              event.target.closest("a[href], [data-mobile-nav-dismiss]")
-            ) {
-              onOpenChangeRef.current(false);
-            }
-          }}
-          ref={sheetRef}
-          role="dialog"
+        <MobileNavigationSheet
+          closeRef={closeRef}
+          onClose={() => onOpenChangeRef.current(false)}
         >
           <div className="flex items-center justify-between gap-3 border-b border-dashboard-border-subtle bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <Link
@@ -250,15 +174,13 @@ export function DashboardHeader(props: {
             >
               {getDashboardAgentName()}
             </Link>
-            <button
+            <SheetClose
               aria-label="Close navigation"
               className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
-              data-mobile-nav-close
-              onClick={() => props.onMobileNavigationOpenChange(false)}
-              type="button"
+              ref={closeRef}
             >
               <X aria-hidden="true" size={20} strokeWidth={2} />
-            </button>
+            </SheetClose>
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
@@ -307,8 +229,40 @@ export function DashboardHeader(props: {
               </div>
             ) : null}
           </div>
-        </div>
+        </MobileNavigationSheet>
       ) : null}
     </header>
+  );
+}
+
+/** Show the mobile navigation in a full-screen shared sheet. */
+function MobileNavigationSheet(props: {
+  children: ReactNode;
+  closeRef: RefObject<HTMLButtonElement | null>;
+  onClose(): void;
+}) {
+  const sheet = useSheet(props.onClose, props.closeRef);
+  return (
+    <Sheet {...sheet.rootProps}>
+      <SheetContent
+        {...sheet.contentProps}
+        aria-label="Navigation"
+        className="inset-0 gap-0 bg-dashboard-bg-elevated outline-none data-[side=left]:w-full data-[side=left]:border-r-0 data-[side=left]:sm:max-w-none md:hidden"
+        id="mobile-navigation"
+        onClick={(event) => {
+          // Close on route taps and sheet actions such as Log out.
+          if (
+            event.target instanceof Element &&
+            event.target.closest("a[href], [data-mobile-nav-dismiss]")
+          ) {
+            props.onClose();
+          }
+        }}
+        showCloseButton={false}
+        side="left"
+      >
+        {props.children}
+      </SheetContent>
+    </Sheet>
   );
 }
