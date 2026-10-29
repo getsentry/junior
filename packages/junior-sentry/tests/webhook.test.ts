@@ -178,8 +178,6 @@ describe("Sentry webhook events", () => {
           issueType: "error",
           level: "error",
           priority: "high",
-          status: "unresolved",
-          substatus: "new",
           url: "https://sentry.sentry.io/issues/7513266773/",
         },
         eventKey: "sentry:sentry/junior#7513266773:issue.created",

@@ -36,8 +36,6 @@ const issueWebhookSchema = z
           level: issueLevelSchema,
           priority: issuePrioritySchema,
           project: z.object({ slug: z.string().min(1) }).passthrough(),
-          status: z.string().optional(),
-          substatus: z.string().optional().nullable(),
           title: z.string().optional(),
           url: z.string().url(),
           web_url: z.string().url().optional(),
@@ -121,8 +119,6 @@ function issueData(
       ? { issueCategory: issue.issueCategory }
       : undefined),
     ...(issue.issueType ? { issueType: issue.issueType } : undefined),
-    ...(issue.status ? { status: issue.status } : undefined),
-    ...(issue.substatus ? { substatus: issue.substatus } : undefined),
     ...(issue.web_url ? { url: issue.web_url } : undefined),
   };
 }
