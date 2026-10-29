@@ -59,7 +59,9 @@ export function TranscriptStructuredEventView(props: {
         ))}
       </div>
     ) : null;
-  // The header can sit inside the row button, so it uses only inline elements.
+  const collapsible = details.length > 0 && !search.active;
+  // The header can sit inside the row button, so it uses only inline elements
+  // and no links.
   const header = (
     <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
       <span className="min-w-0">
@@ -68,7 +70,11 @@ export function TranscriptStructuredEventView(props: {
         </span>
         {presentation.preview ? (
           <span className="mt-0.5 block truncate text-xs text-dashboard-text-muted">
-            <MentionText mentions={mentions} text={presentation.preview} />
+            <MentionText
+              links={!collapsible}
+              mentions={mentions}
+              text={presentation.preview}
+            />
           </span>
         ) : null}
       </span>
@@ -80,7 +86,7 @@ export function TranscriptStructuredEventView(props: {
     </span>
   );
 
-  if (details.length === 0 || search.active) {
+  if (!collapsible) {
     return (
       <div className={surfaceClass}>
         {header}

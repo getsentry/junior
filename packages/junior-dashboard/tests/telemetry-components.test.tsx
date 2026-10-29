@@ -510,16 +510,28 @@ describe("dashboard canonical-event components", () => {
             messageId: "event-1",
             role: "user",
             eventType: "pull_request.merged",
-            trustedSummary: "<@U456> merged PR #42.",
+            trustedSummary: "<@U456> merged PR #42 for <@U123>.",
             text: "PR merged.",
           },
           undefined,
-          [{ fullName: "Riley Park", slackUserId: "U456" }],
+          [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
         ),
       ]),
     );
 
-    expect(html).toContain("@Riley Park</span> merged PR #42.");
+    expect(html).toContain("@Riley Park</span> merged PR #42 for");
+    // The Event heading is a disclosure button, which cannot hold a link.
+    expect(html).toContain("@Taylor Chen</span>.");
+    expect(html.match(/href="\/people\/taylor%40example.com"/g)).toHaveLength(
+      1,
+    );
     expect(html).not.toContain("&lt;@");
     expect(html).not.toContain("&lt;#");
     expect(html).toMatch(

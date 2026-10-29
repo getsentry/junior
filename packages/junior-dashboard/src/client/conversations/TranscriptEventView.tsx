@@ -40,11 +40,14 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
   const summary = isBatch
     ? batchSummary(events)
     : (props.message.trustedSummary ?? props.message.eventType ?? "");
+  // With text, the heading sits in the disclosure button, which cannot hold
+  // links.
+  const links = !text;
   const heading = (
     <span className="flex min-w-0 flex-col gap-1">
       <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
-          <MentionText mentions={mentions} text={summary} />
+          <MentionText links={links} mentions={mentions} text={summary} />
         </span>
         {!isBatch && props.message.eventType ? (
           <EventTypeChip eventType={props.message.eventType} />
@@ -60,6 +63,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
             >
               <span className="min-w-0 break-words">
                 <MentionText
+                  links={links}
                   mentions={mentions}
                   text={event.trustedSummary ?? event.eventType}
                 />
