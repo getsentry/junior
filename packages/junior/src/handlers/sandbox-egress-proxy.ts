@@ -1,8 +1,8 @@
+import type { SandboxEgressHttpInterceptor } from "@/chat/sandbox/egress/proxy";
 import {
-  isSandboxEgressForwardedRequest,
-  proxySandboxEgressRequest,
-  type SandboxEgressHttpInterceptor,
-} from "@/chat/sandbox/egress/proxy";
+  isVercelSandboxEgressRequest,
+  proxyVercelSandboxEgressRequest,
+} from "@/chat/sandbox/egress/vercel";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { JWTPayload } from "jose";
 
@@ -19,7 +19,7 @@ export async function ALL(
   request: Request,
   options: SandboxEgressProxyOptions = {},
 ): Promise<Response> {
-  return await proxySandboxEgressRequest(request, {
+  return await proxyVercelSandboxEgressRequest(request, {
     interceptHttp: options.interceptHttp,
     tracePropagation: options.tracePropagation,
     verifyOidc: options.verifyOidc,
@@ -28,5 +28,5 @@ export async function ALL(
 
 /** Return whether a request should be routed through sandbox egress proxying. */
 export function isSandboxEgressRequest(request: Request): boolean {
-  return isSandboxEgressForwardedRequest(request);
+  return isVercelSandboxEgressRequest(request);
 }

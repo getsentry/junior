@@ -1,5 +1,6 @@
 import { FileSystem, Sandbox } from "@vercel/sandbox";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import { toVercelNetworkPolicy } from "@/chat/sandbox/egress/vercel";
 import {
   isSandboxMissingError,
   isSandboxUnavailableError,
@@ -106,7 +107,14 @@ function adaptSession(
       return run(async () => await session.stop());
     },
     update(params) {
-      return run(async () => await session.update(params));
+      return run(
+        async () =>
+          await session.update(
+            params.networkPolicy
+              ? { networkPolicy: toVercelNetworkPolicy(params.networkPolicy) }
+              : {},
+          ),
+      );
     },
     writeFiles(files) {
       return run(async () => await session.writeFiles(files));
@@ -125,7 +133,7 @@ async function createSandboxSession(
       ? { persistent: input.persistent }
       : undefined),
     ...(input.networkPolicy
-      ? { networkPolicy: input.networkPolicy }
+      ? { networkPolicy: toVercelNetworkPolicy(input.networkPolicy) }
       : undefined),
     ...(input.resources ? { resources: input.resources } : undefined),
     ...(input.signal ? { signal: input.signal } : undefined),
