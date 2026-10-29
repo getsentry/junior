@@ -142,7 +142,8 @@ The deployment completed successfully.
 <details class="event">
 <summary><code>deployment.error</code></summary>
 
-The deployment failed.
+The deployment failed. This is the same as GitHub `deployment.failed`, not
+GitHub `deployment.error`.
 
 </details>
 

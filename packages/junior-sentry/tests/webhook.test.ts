@@ -104,6 +104,31 @@ afterEach(() => {
 });
 
 describe("Sentry webhook events", () => {
+  it("declares identifier patterns that fit normalized events", () => {
+    const resourceTypes = sentryPlugin().events?.resourceTypes ?? [];
+    const pattern = (type: string) =>
+      new RegExp(
+        resourceTypes.find((resourceType) => resourceType.type === type)
+          ?.identifier?.pattern ?? "(?!)",
+      );
+    const [issue, issueProject] = normalizeSentryEvents({
+      body: issueBody(),
+      hookResource: "issue",
+      webhookOrg: "sentry",
+    });
+    const [alert, alertProject] = normalizeSentryEvents({
+      body: metricAlertBody(),
+      hookResource: "metric_alert",
+      webhookOrg: "sentry",
+    });
+
+    expect(issue?.identifier).toMatch(pattern("issue"));
+    expect(issueProject?.identifier).toMatch(pattern("project"));
+    expect(alertProject?.identifier).toMatch(pattern("project"));
+    expect(alert?.identifier).toMatch(pattern("metric_alert"));
+    expect(alert?.identifier).not.toMatch(pattern("project"));
+  });
+
   it("normalizes a created issue for the issue and project", () => {
     expect(
       normalizeSentryEvents({

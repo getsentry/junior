@@ -20,6 +20,8 @@ export function getEventCatalog(): EventCatalog {
         ...workspaceSnapshotEvents().resourceTypes,
         {
           type: "timer",
+          automation: false,
+          watchUnavailable: "Use watchTimer to create a timer Watch.",
           supportedEvents: ["timer.fired"],
           suggestedEvents: [],
         },

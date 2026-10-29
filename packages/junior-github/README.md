@@ -64,6 +64,27 @@ event matches, so the agent sees all of them. A failed load leaves the value
 out. `authors` and the people involved in approvals and merges share one read of
 the commits per delivery.
 
+Deployment events come from GitHub `deployment` and `deployment_status`
+webhooks:
+
+| Event                    | GitHub source               |
+| ------------------------ | --------------------------- |
+| `deployment.created`     | `deployment` with `created` |
+| `deployment.queued`      | status `queued`             |
+| `deployment.pending`     | status `pending`            |
+| `deployment.in_progress` | status `in_progress`        |
+| `deployment.succeeded`   | status `success`            |
+| `deployment.failed`      | status `failure`            |
+| `deployment.error`       | status `error`              |
+
+GitHub has two failure states. `failure` means that the deployment ran and
+failed. `error` means that the deploy tool reported an error. The deploy tool
+sets the status, so the difference depends on that tool. Vercel
+`deployment.error` is a failed deployment, so it is the same as GitHub
+`deployment.failed`, not GitHub `deployment.error`. `succeeded`, `failed`, and
+`error` end a watch on one commit and environment. Watches on a commit or a
+repository stay active.
+
 The plugin owns its signed webhook route, deployment, pull request, and release
 events, and normalized pull request and issue outcome projections.
 Those projections also feed native code-change records used by the dashboard

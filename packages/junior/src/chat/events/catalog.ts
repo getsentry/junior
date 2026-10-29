@@ -2,16 +2,27 @@ import {
   normalizeEventIdentifier,
   eventMatchSchema,
   type PluginEvents,
+  type PluginEventType,
   type EventMatch,
   type EventMatchFields,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-type EventRegistration = Pick<
-  PluginEvents,
-  "resourceTypes" | "normalizeIdentifier"
->;
+/**
+ * One resource type in the event catalog. Core resource types can limit how
+ * they are used. These limits are core only, so plugins cannot set them.
+ */
+export type EventCatalogResourceType = PluginEventType & {
+  /** False when event automations cannot use this resource type. */
+  automation?: false;
+  /** Why watchEvents cannot watch this resource type, and what to use instead. */
+  watchUnavailable?: string;
+};
+
+type EventRegistration = Pick<PluginEvents, "normalizeIdentifier"> & {
+  resourceTypes: readonly EventCatalogResourceType[];
+};
 
 export type EventCatalog = Readonly<Record<string, EventRegistration>>;
 
@@ -26,17 +37,32 @@ export function hasEventCatalogEntries(catalog: EventCatalog): boolean {
 /**
  * Catalog entries that durable event automations may select.
  *
- * Core Workspace snapshot events only wake temporary watches. Snapshot finish
- * does not run event-automation ingest, so those namespaces stay out of create/update
- * schemas and trigger availability. The core `slack` namespace stays in: Slack
- * ingress runs event-automation ingest for channel messages.
+ * Resource types with `automation: false` stay out of create/update schemas
+ * and trigger availability. A namespace with no such resource type left is
+ * removed.
  */
 export function automationEventCatalog(catalog: EventCatalog): EventCatalog {
   return Object.fromEntries(
-    Object.entries(catalog).filter(
-      ([namespace]) => namespace !== CORE_EVENT_NAMESPACE,
-    ),
+    Object.entries(catalog).flatMap(([namespace, registration]) => {
+      const resourceTypes = registration.resourceTypes.filter(
+        (resourceType) => resourceType.automation !== false,
+      );
+      return resourceTypes.length > 0
+        ? [[namespace, { ...registration, resourceTypes }]]
+        : [];
+    }),
   );
+}
+
+/** Return why watchEvents cannot watch one resource type, if it cannot. */
+export function eventWatchUnavailable(
+  catalog: EventCatalog,
+  namespace: string,
+  resourceType: string,
+): string | undefined {
+  return catalog[namespace]?.resourceTypes.find(
+    (candidate) => candidate.type === resourceType,
+  )?.watchUnavailable;
 }
 
 function enumSchema(values: string[], unavailableMessage: string) {
