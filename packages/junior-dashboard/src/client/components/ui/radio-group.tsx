@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Radio Group. See shadcn.LICENSE.
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
 import { cn } from "@dashboard/lib/utils";

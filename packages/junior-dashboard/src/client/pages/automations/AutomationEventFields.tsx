@@ -1,8 +1,18 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   automationEventCatalogSchema,
   type AutomationEdit,
 } from "@sentry/junior/api/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
@@ -21,6 +31,7 @@ export function AutomationEventFields(props: {
   disabled?: boolean;
   onChange(value: Trigger): void;
 }) {
+  const [replacement, setReplacement] = useState<Trigger>();
   const catalog = useQuery({
     queryKey: ["dashboard", "automation-event-catalog"],
     queryFn: ({ signal }) =>
@@ -94,13 +105,7 @@ export function AutomationEventFields(props: {
               (item) => `${item.namespace}:${item.type}` === e.target.value,
             );
             if (!next) return;
-            if (
-              !window.confirm(
-                "Replace the saved trigger? Its resource, events, and conditions will be cleared.",
-              )
-            )
-              return;
-            props.onChange({
+            setReplacement({
               namespace: next.namespace,
               resourceType: next.type,
               identifier: "",
@@ -122,6 +127,31 @@ export function AutomationEventFields(props: {
           ))}
         </Select>
       </Field>
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setReplacement(undefined);
+        }}
+        open={replacement !== undefined}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>Replace the saved trigger?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Its resource, events, and conditions will be cleared.
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (replacement) props.onChange(replacement);
+                setReplacement(undefined);
+              }}
+              variant="primary"
+            >
+              Replace trigger
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {!unsupported && resource ? (
         <>
           <Field>

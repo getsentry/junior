@@ -12,7 +12,7 @@ import { SelectFixtures } from "./SelectFixtures";
 import { ChoiceFixtures } from "./ChoiceFixtures";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
-import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
+import { SegmentedNavFixture, TabsFixture } from "./SegmentedFixtures";
 import {
   ConversationFixture,
   MessageAttachmentsFixture,
@@ -299,8 +299,8 @@ function FoundationsGalleryPage() {
           />
         </DashboardChromeProvider>
       </Fixture>
-      <Fixture title="Segmented tabs">
-        <SegmentedTabsFixture />
+      <Fixture title="Tabs">
+        <TabsFixture />
       </Fixture>
       <Fixture title="Segmented page links">
         <SegmentedNavFixture />

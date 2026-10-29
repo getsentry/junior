@@ -1,4 +1,4 @@
-import { ToggleButton } from "../ToggleButton";
+import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 
 /**
  * Fixed dashboard reporting window.
@@ -153,21 +153,18 @@ export function TimeRangeSelector(props: {
   value: TimeRangeDays;
 }) {
   return (
-    <div
+    <ToggleGroup
       aria-label="Reporting period"
-      className="flex items-center gap-1"
-      role="group"
+      onValueChange={([next]) => {
+        if (next) props.onChange(Number(next) as TimeRangeDays);
+      }}
+      value={[String(props.value)]}
     >
       {(props.options ?? DEFAULT_OPTIONS).map((days) => (
-        <ToggleButton
-          key={days}
-          onClick={() => props.onChange(days)}
-          pressed={props.value === days}
-          variant="segment"
-        >
+        <ToggleGroupItem key={days} value={String(days)}>
           {timeRangeLabel(days)}
-        </ToggleButton>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }

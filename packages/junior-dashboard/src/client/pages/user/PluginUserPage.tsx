@@ -1,8 +1,18 @@
 import { Boxes, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Navigate, useLocation, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { InlineError } from "../../components/InlineError";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { LoadingView } from "../../components/LoadingView";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
@@ -11,7 +21,11 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { MemoryPage } from "../memory/MemoryPage";
 import { pathWithSearch } from "../../searchParams";
 import { dashboardContainerClass } from "../../styles";
-import { usePluginUserPageData } from "./pluginUserPageData";
+import {
+  usePluginUserPageData,
+  type PluginUserPageRecord,
+  type PluginUserPageRecordAction,
+} from "./pluginUserPageData";
 
 /** Build the canonical dashboard path for a plugin-owned page. */
 export function pluginUserPagePath(pluginName: string, pageId: string): string {
@@ -68,6 +82,12 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
     searchText,
     setSearchText,
   } = usePluginUserPageData(props.page);
+  // Keep the action after close so the closing dialog keeps its text.
+  const [confirming, setConfirming] = useState<{
+    action: PluginUserPageRecordAction;
+    record: PluginUserPageRecord;
+  }>();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (!query.data && !query.error) {
     return <LoadingView label={`Loading ${props.page.label}`} />;
@@ -158,7 +178,14 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                         }`}
                         disabled={action.isPending}
                         key={`${recordAction.method}:${recordAction.href}`}
-                        onClick={() => runAction(recordAction)}
+                        onClick={() => {
+                          if (!recordAction.confirmation) {
+                            runAction(recordAction);
+                            return;
+                          }
+                          setConfirming({ action: recordAction, record });
+                          setConfirmOpen(true);
+                        }}
                         title={recordAction.label}
                         type="button"
                       >
@@ -205,6 +232,28 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
           </div>
         )}
       </section>
+      <AlertDialog onOpenChange={setConfirmOpen} open={confirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogTitle>{confirming?.action.confirmation}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirming?.record.title}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirming) runAction(confirming.action);
+                setConfirmOpen(false);
+              }}
+              variant={
+                confirming?.action.tone === "danger" ? "danger" : "primary"
+              }
+            >
+              {confirming?.action.label}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
