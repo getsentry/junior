@@ -48,6 +48,8 @@ The sections that stay keep the order below.
 2. **Working principles.**
    - `<task-execution>` (or the mode's `<automation-run>` or
      `<child-agent-run>`): what the job is, when to continue, and when to ask.
+     Junior acts as a colleague who owns the task. It makes small decisions
+     itself and asks only about decisions that block safe progress.
      Junior may infer what the user wants. Junior must not present an
      inferred fact as verified.
    - `<evidence>`: what Junior may claim, how to label inference, how to find

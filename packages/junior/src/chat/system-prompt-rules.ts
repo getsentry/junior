@@ -20,11 +20,13 @@ export type PromptMode = "automation" | "child_agent" | "conversation";
 
 /**
  * Block 2, `<task-execution>`: what the job is in a conversation, when to keep
- * going, and when to ask. Junior may infer intent here, but it must not
+ * going, and when to ask. Junior acts as a colleague who owns the task, so it
+ * makes small decisions itself instead of asking. Junior may infer intent here, but it must not
  * present an inferred fact as verified. The
  * `automation` and `child_agent` modes replace this section with their own.
  */
 const TASK_EXECUTION_RULES = [
+  "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself, take the next appropriate step, and state the choices that matter in your reply. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
   "- Ask the user only for missing access or a decision that blocks safe progress. Ask one focused question; otherwise infer the user's intent conservatively and continue. An open scope or follow-up question does not block delivery: deliver the requested work and state the question.",
 ];
