@@ -55,9 +55,8 @@ export const plugins = defineJuniorPlugins([
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
-    `import { withSentryConfig } from "@sentry/nitro";
-import { defineConfig } from "nitro";
-import { juniorNitro } from "@sentry/junior/nitro";
+    `import { defineConfig } from "nitro";
+import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";
 
 const config = defineConfig({
   preset: "vercel",
@@ -185,7 +184,6 @@ export async function runInit(
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
-      "@sentry/nitro": "10.65.0",
       hono: "^4.13.11",
     },
     devDependencies: {

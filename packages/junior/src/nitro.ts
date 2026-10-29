@@ -30,6 +30,15 @@ import {
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
 import type { JuniorDashboardOptions } from "./app";
 
+/**
+ * Sentry's Nitro config wrapper: source map upload and Nitro request hooks.
+ * Junior pins `@sentry/nitro` to the same version as its `@sentry/node`. The
+ * SDK keeps one client for each version, so this lets the Nitro hooks use the
+ * client that `initSentry()` creates. Apps import it from here, not from
+ * `@sentry/nitro`.
+ */
+export { withSentryConfig } from "@sentry/nitro";
+
 export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
 
 export interface JuniorPluginModuleReference {

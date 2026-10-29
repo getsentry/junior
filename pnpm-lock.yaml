@@ -19,6 +19,9 @@ catalogs:
     '@opentelemetry/core':
       specifier: 2.9.0
       version: 2.9.0
+    '@sentry/nitro':
+      specifier: 10.65.0
+      version: 10.65.0
     '@sentry/node':
       specifier: 10.65.0
       version: 10.65.0
@@ -104,7 +107,7 @@ importers:
         version: 2.9.0(@opentelemetry/api@1.9.1)
       '@sentry/junior':
         specifier: workspace:*
-        version: file:packages/junior(@types/node@25.9.1)
+        version: file:packages/junior(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/junior-agent-browser':
         specifier: workspace:*
         version: link:../../packages/junior-agent-browser
@@ -141,9 +144,6 @@ importers:
       '@sentry/junior-vercel':
         specifier: workspace:*
         version: link:../../packages/junior-vercel
-      '@sentry/nitro':
-        specifier: 10.65.0
-        version: 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta(jiti@2.7.0))
       hono:
         specifier: ^4.13.11
         version: 4.13.11
@@ -226,6 +226,9 @@ importers:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
+      '@sentry/nitro':
+        specifier: 'catalog:'
+        version: 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))
       '@sentry/node':
         specifier: 'catalog:'
         version: 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
@@ -376,7 +379,7 @@ importers:
         version: 1.9.0(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@sentry/junior':
         specifier: workspace:*
-        version: file:packages/junior(@types/node@25.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.12)
+        version: file:packages/junior(@types/node@25.9.1)(nitro@3.0.260522-beta)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.12)
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -858,6 +861,7 @@ packages:
 
   '@apm-js-collab/code-transformer@0.15.0':
     resolution: {integrity: sha512-XmXYVs8CzJ1Aj79noVbn2weUO/XWtRyURpGqx7aU7DOXlUQhR0WKOQNF0okh7PCeY37vxf7kU3v57OAkEPm3ww==}
+    hasBin: true
 
   '@apm-js-collab/tracing-hooks@0.10.1':
     resolution: {integrity: sha512-w2OWXR7FWrKqSziuE9+QclaZrStxO/8+OwbXM635s/zs0Eez1Qo3ivSPdB2WsaPY/iznKTytONPx/PitD7IXcA==}
@@ -5056,6 +5060,7 @@ packages:
 
   astring@1.9.0:
     resolution: {integrity: sha512-LElXdjswlqjWrPpJFg1Fx4wpkOCxj1TDHlSV4PlaRxHGWko024xICaa97ZkMfs6DRKlCguiAI+rbXv5GWwXIkg==}
+    hasBin: true
 
   astro-expressive-code@0.44.1:
     resolution: {integrity: sha512-DT1LnCqbHasBKlvzJ3m6LR4VI94wwx3W9EV/YbP1te4rqjOHsvsezHYuqb5MeLWLftXms/1FA9QBbwCo43DnJQ==}
@@ -12539,7 +12544,7 @@ snapshots:
   '@sentry/junior-dashboard@file:packages/junior-dashboard(@types/node@25.9.1)(jiti@2.7.0)':
     dependencies:
       '@base-ui/react': 1.9.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@sentry/junior': file:packages/junior(@types/node@25.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@sentry/junior': file:packages/junior(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@tanstack/react-query': 5.100.14(react@19.2.6)
       '@uidotdev/usehooks': 2.4.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -12606,6 +12611,7 @@ snapshots:
       - dotenv
       - drizzle-kit
       - drizzle-orm
+      - encoding
       - expo-sqlite
       - gel
       - giget
@@ -12980,7 +12986,7 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@sentry/junior@file:packages/junior(@types/node@25.9.1)':
+  '@sentry/junior@file:packages/junior(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0))':
     dependencies:
       '@agentclientprotocol/sdk': 1.3.0(zod@4.5.4)
       '@ai-sdk/gateway': 4.0.126(zod@4.5.4)
@@ -12996,6 +13002,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sentry/nitro': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sinclair/typebox': 0.34.49
       '@slack/types': 2.21.1
@@ -13052,6 +13059,7 @@ snapshots:
       - bun-types
       - debug
       - drizzle-kit
+      - encoding
       - expo-sqlite
       - gel
       - knex
@@ -13059,6 +13067,7 @@ snapshots:
       - mongodb
       - mysql2
       - next
+      - nitro
       - pg-native
       - postgres
       - prisma
@@ -13075,7 +13084,7 @@ snapshots:
       - vue
       - ws
 
-  '@sentry/junior@file:packages/junior(@types/node@25.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@sentry/junior@file:packages/junior(@types/node@25.9.1)(nitro@3.0.260522-beta(jiti@2.7.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@agentclientprotocol/sdk': 1.3.0(zod@4.5.4)
       '@ai-sdk/gateway': 4.0.126(zod@4.5.4)
@@ -13091,6 +13100,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sentry/nitro': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sinclair/typebox': 0.34.49
       '@slack/types': 2.21.1
@@ -13147,6 +13157,7 @@ snapshots:
       - bun-types
       - debug
       - drizzle-kit
+      - encoding
       - expo-sqlite
       - gel
       - knex
@@ -13154,6 +13165,7 @@ snapshots:
       - mongodb
       - mysql2
       - next
+      - nitro
       - pg-native
       - postgres
       - prisma
@@ -13170,7 +13182,7 @@ snapshots:
       - vue
       - ws
 
-  '@sentry/junior@file:packages/junior(@types/node@25.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.12)':
+  '@sentry/junior@file:packages/junior(@types/node@25.9.1)(nitro@3.0.260522-beta)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.12)':
     dependencies:
       '@agentclientprotocol/sdk': 1.3.0(zod@4.5.4)
       '@ai-sdk/gateway': 4.0.126(zod@4.5.4)
@@ -13186,6 +13198,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sentry/nitro': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta)
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sinclair/typebox': 0.34.49
       '@slack/types': 2.21.1
@@ -13242,6 +13255,7 @@ snapshots:
       - bun-types
       - debug
       - drizzle-kit
+      - encoding
       - expo-sqlite
       - gel
       - knex
@@ -13249,6 +13263,7 @@ snapshots:
       - mongodb
       - mysql2
       - next
+      - nitro
       - pg-native
       - postgres
       - prisma
@@ -13281,6 +13296,7 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sentry/nitro': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sinclair/typebox': 0.34.49
       '@slack/types': 2.21.1
@@ -13337,6 +13353,7 @@ snapshots:
       - bun-types
       - debug
       - drizzle-kit
+      - encoding
       - expo-sqlite
       - gel
       - knex
@@ -13344,6 +13361,7 @@ snapshots:
       - mongodb
       - mysql2
       - next
+      - nitro
       - pg-native
       - postgres
       - prisma
@@ -13360,6 +13378,31 @@ snapshots:
       - vue
       - ws
 
+  '@sentry/nitro@10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))':
+    dependencies:
+      '@sentry/bundler-plugin-core': 5.3.0
+      '@sentry/core': 10.65.0
+      '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
+      '@sentry/server-utils': 10.65.0
+    transitivePeerDependencies:
+      - '@opentelemetry/core'
+      - '@opentelemetry/exporter-trace-otlp-http'
+      - encoding
+      - supports-color
+
+  '@sentry/nitro@10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0))':
+    dependencies:
+      '@sentry/bundler-plugin-core': 5.3.0
+      '@sentry/core': 10.65.0
+      '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
+      '@sentry/server-utils': 10.65.0
+      nitro: 3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0)
+    transitivePeerDependencies:
+      - '@opentelemetry/core'
+      - '@opentelemetry/exporter-trace-otlp-http'
+      - encoding
+      - supports-color
+
   '@sentry/nitro@10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta(jiti@2.7.0))':
     dependencies:
       '@sentry/bundler-plugin-core': 5.3.0
@@ -13367,6 +13410,19 @@ snapshots:
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sentry/server-utils': 10.65.0
       nitro: 3.0.260522-beta(jiti@2.7.0)
+    transitivePeerDependencies:
+      - '@opentelemetry/core'
+      - '@opentelemetry/exporter-trace-otlp-http'
+      - encoding
+      - supports-color
+
+  '@sentry/nitro@10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))(nitro@3.0.260522-beta)':
+    dependencies:
+      '@sentry/bundler-plugin-core': 5.3.0
+      '@sentry/core': 10.65.0
+      '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
+      '@sentry/server-utils': 10.65.0
+      nitro: 3.0.260522-beta
     transitivePeerDependencies:
       - '@opentelemetry/core'
       - '@opentelemetry/exporter-trace-otlp-http'
