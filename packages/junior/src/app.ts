@@ -7,6 +7,7 @@ import {
 } from "@/chat/configuration/defaults";
 import {
   botConfig,
+  getChatConfig,
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
@@ -525,7 +526,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
-  const attachmentStorage = createAttachmentStorage();
+  const attachmentStorage = createAttachmentStorage(
+    getChatConfig().attachmentStorage.provider,
+  );
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
     bindMessageAgent: (request) =>

@@ -7,6 +7,7 @@ import {
   readPublicArtifact,
   unpublishedArtifactHeaders,
 } from "@/chat/artifacts/store";
+import { getChatConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -21,7 +22,9 @@ export async function publicArtifactGET(args: {
     const artifact = await readPublicArtifact({
       db: args.db ?? getSqlExecutor(),
       filename: args.filename,
-      storage: args.storage ?? createAttachmentStorage(),
+      storage:
+        args.storage ??
+        createAttachmentStorage(getChatConfig().attachmentStorage.provider),
     });
     if (!artifact) {
       return new Response("Not Found", {

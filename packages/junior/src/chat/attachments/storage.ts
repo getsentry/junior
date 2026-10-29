@@ -1,3 +1,4 @@
+import type { AttachmentStorageProvider } from "@/chat/config";
 import { createVercelAttachmentStorage } from "./vercel";
 
 /** Bytes and metadata written to attachment object storage. */
@@ -17,11 +18,16 @@ export interface AttachmentStorage {
 }
 
 /**
- * Create the attachment storage for this deployment.
+ * Create attachment storage for a configured provider.
  *
- * Runtime entry points call this instead of a provider adapter, so the
- * provider choice stays in one place.
+ * Runtime entry points pass the provider from chat config instead of calling
+ * a provider adapter, so adding a provider only changes this switch.
  */
-export function createAttachmentStorage(): AttachmentStorage {
-  return createVercelAttachmentStorage();
+export function createAttachmentStorage(
+  provider: AttachmentStorageProvider,
+): AttachmentStorage {
+  switch (provider) {
+    case "vercel-blob":
+      return createVercelAttachmentStorage();
+  }
 }

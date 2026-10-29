@@ -4,6 +4,7 @@ import {
   createAttachmentStorage,
   type AttachmentStorage,
 } from "@/chat/attachments/storage";
+import { getChatConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 
@@ -44,7 +45,9 @@ export async function GET(
 
   try {
     const result = await runRetentionPurge(getSqlExecutor(), {
-      attachmentStorage: options.attachmentStorage ?? createAttachmentStorage(),
+      attachmentStorage:
+        options.attachmentStorage ??
+        createAttachmentStorage(getChatConfig().attachmentStorage.provider),
       nowMs: Date.now(),
     });
     return Response.json(result, { status: 200 });
