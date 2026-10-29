@@ -36,6 +36,7 @@ import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationEventDetails } from "./ConversationEventDetails";
+import { ConversationEventLogLoading } from "./ConversationEventLog";
 import {
   adjacentEventLogSeqs,
   eventLogRows,
@@ -407,7 +408,11 @@ export function ConversationPage(props: {
               }
             >
               {detail.isPending ? (
-                <TranscriptLoading />
+                view === "raw" ? (
+                  <ConversationEventLogLoading />
+                ) : (
+                  <TranscriptLoading />
+                )
               ) : detail.error && !detail.data ? (
                 <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
                   {detail.error.message}

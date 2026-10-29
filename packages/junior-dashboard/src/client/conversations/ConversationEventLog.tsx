@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { Skeleton } from "../components/ui/skeleton";
 import { Toggle } from "../components/ui/toggle";
 import { useEventTime } from "./eventTime";
 import { SearchInput } from "../components/SearchInput";
@@ -97,17 +98,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
             </Toggle>
           </div>
         </div>
-        <div
-          aria-hidden="true"
-          className={cn(
-            rowClass,
-            "border-b border-dashboard-border py-2 font-mono text-xs text-dashboard-text-muted",
-          )}
-        >
-          <span>Time</span>
-          <span>Event</span>
-          <span className="hidden @min-[32rem]:block">Summary</span>
-        </div>
+        <EventLogColumns />
       </div>
       <div className="font-mono text-xs">
         <ol
@@ -212,3 +203,59 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     </section>
   );
 });
+
+const loadingRowWidths = ["w-3/5", "w-2/5", "w-4/5", "w-1/2", "w-2/3", "w-1/3"];
+
+/** Match the event log toolbar, columns, and rows while the transcript loads. */
+export function ConversationEventLogLoading() {
+  return (
+    <section aria-busy="true" className="@container min-w-0">
+      <span className="sr-only" role="status">
+        Loading events
+      </span>
+      <div className="sticky top-0 z-10 bg-dashboard-bg">
+        <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border px-4 py-2">
+          <Skeleton className="h-9 min-w-32 flex-1 @max-[28rem]:basis-full" />
+          <Skeleton className="ml-auto h-3 w-24" />
+        </div>
+        <EventLogColumns />
+      </div>
+      <ol className="m-0 list-none divide-y divide-dashboard-border-subtle p-0">
+        {loadingRowWidths.map((width, index) => (
+          <li
+            className={cn(
+              rowClass,
+              "min-h-11 items-center gap-y-2 py-2 @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
+            )}
+            key={index}
+          >
+            <Skeleton className="h-3 w-[10ch]" />
+            <Skeleton className="h-3 w-[12ch]" />
+            <Skeleton
+              className={cn(
+                "col-span-2 row-start-2 h-3 @min-[32rem]:col-span-1 @min-[32rem]:row-auto",
+                width,
+              )}
+            />
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function EventLogColumns() {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        rowClass,
+        "border-b border-dashboard-border py-2 font-mono text-xs text-dashboard-text-muted",
+      )}
+    >
+      <span>Time</span>
+      <span>Event</span>
+      <span className="hidden @min-[32rem]:block">Summary</span>
+    </div>
+  );
+}

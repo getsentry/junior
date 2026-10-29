@@ -49,7 +49,7 @@ export function ConversationEventDetails(props: {
   ) : (
     <div className="grid gap-2 py-0.5">
       <Skeleton className="h-3.5 w-28" />
-      <Skeleton className="h-3 w-40 opacity-70" />
+      <Skeleton className="h-3 w-40" />
     </div>
   );
   const actions =
@@ -127,16 +127,15 @@ export function ConversationEventDetails(props: {
   );
 }
 
-/** Match the event detail sections while a linked event loads. */
+/**
+ * Keep the body quiet while the event loads. The header placeholders carry the
+ * state, so the panel does not compete with the log skeleton.
+ */
 function EventDetailsLoading() {
   return (
-    <div aria-busy="true" className="grid gap-3" role="status">
+    <div aria-busy="true" role="status">
       <span className="sr-only">Loading event</span>
-      <Skeleton className="h-3 w-24 opacity-70" />
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-4 w-1/2" />
-      <Skeleton className="mt-3 h-3 w-20 opacity-70" />
-      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-3 w-40 xl:hidden" />
     </div>
   );
 }

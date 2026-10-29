@@ -126,8 +126,10 @@ the event search, like Up and Down. They are necessary below 1280px, where the
 sheet covers the log. At the ends of the list, the control is disabled but
 keeps focus. The sheet title is the event type.
 
-A linked event can be older than the loaded pages. While earlier pages load,
-the panel shows a skeleton. It does not close the column.
+A linked event can be older than the loaded pages. While the event loads, the
+panel stays open. Only its header shows placeholders, so it does not compete
+with the log. While the transcript loads, `ConversationEventLogLoading` shows
+the log toolbar, columns, and row skeletons in the event log view.
 
 Standalone transcripts, such as a subagent drawer, keep selection in
 `ConversationEventLog`. Their event details use a nested drawer on desktop and
