@@ -1,33 +1,40 @@
-import { useState } from "react";
-
 import { SegmentedNav } from "../../components/SegmentedNav";
-import { SegmentedTabs } from "../../components/SegmentedTabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../components/ui/tabs";
 
-/** Show panel tabs switching the panel below them. */
-export function SegmentedTabsFixture() {
-  const [tab, setTab] = useState<"summary" | "memories" | "agents">("summary");
+/** Show `ui/tabs` switching the panel below them. */
+export function TabsFixture() {
   return (
-    <div className="h-64 max-w-xs">
-      <SegmentedTabs
-        scroll
-        items={[
-          { label: "Summary", value: "summary" },
-          { count: 3, label: "Memories", value: "memories" },
-          { count: 2, label: "Subagents", value: "agents" },
-        ]}
-        label="Conversation panels"
-        onChange={setTab}
-        value={tab}
+    <Tabs className="max-w-xs" defaultValue="summary">
+      <TabsList activateOnFocus aria-label="Conversation panels">
+        <TabsTrigger value="summary">Summary</TabsTrigger>
+        <TabsTrigger value="memories">Memories</TabsTrigger>
+        <TabsTrigger value="agents">Subagents</TabsTrigger>
+      </TabsList>
+      <TabsContent
+        className="text-sm leading-relaxed text-dashboard-text-muted"
+        value="summary"
       >
-        <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-          {tab === "summary"
-            ? "Checkout latency increased after the latest release. Compare traces from before and after the deployment, then inspect the slow serialization span. The public brief links the affected repository, the release, and the open code change. Keep the rollout paused until the comparison confirms the cause. The next check is to run the same request against the previous release and compare its timings. Use the linked work to record the result and any rollback decision. The participants can continue this investigation in the conversation while keeping these details open. Model usage and related child conversations remain available in their own sections."
-            : tab === "memories"
-              ? "What Junior learned from this conversation."
-              : "Child conversations and their current work."}
-        </p>
-      </SegmentedTabs>
-    </div>
+        Checkout latency increased after the latest release. Compare traces from
+        before and after the deployment.
+      </TabsContent>
+      <TabsContent
+        className="text-sm leading-relaxed text-dashboard-text-muted"
+        value="memories"
+      >
+        What Junior learned from this conversation.
+      </TabsContent>
+      <TabsContent
+        className="text-sm leading-relaxed text-dashboard-text-muted"
+        value="agents"
+      >
+        Child conversations and their current work.
+      </TabsContent>
+    </Tabs>
   );
 }
 

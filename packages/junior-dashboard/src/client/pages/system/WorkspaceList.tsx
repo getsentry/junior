@@ -3,6 +3,11 @@ import { useNavigate } from "react-router";
 import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
 import { Button } from "../../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
@@ -94,15 +99,21 @@ function WorkspaceListItem(props: {
             size={16}
           />
         </button>
-        <Button
-          aria-label={`Delete ${workspace.name}`}
-          disabled={props.busy}
-          onClick={() => props.onDelete(workspace)}
-          size="icon"
-          title={`Delete ${workspace.name}`}
-        >
-          <Trash2 aria-hidden="true" size={15} />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                aria-label={`Delete ${workspace.name}`}
+                disabled={props.busy}
+                onClick={() => props.onDelete(workspace)}
+                size="icon"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+              </Button>
+            }
+          />
+          <TooltipContent size="compact">Delete Workspace</TooltipContent>
+        </Tooltip>
       </SelectableRow>
     </li>
   );

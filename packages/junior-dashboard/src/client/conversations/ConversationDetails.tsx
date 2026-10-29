@@ -1,8 +1,17 @@
 import { useState, type ReactNode } from "react";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import { IconButtonTooltip } from "../components/Tooltip";
-import { SegmentedTabs } from "../components/SegmentedTabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../components/ui/tabs";
 import {
   ConversationChildAgents,
   useConversationChildAgents,
@@ -15,6 +24,10 @@ import { ShareConversationButton } from "./ShareConversationButton";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
 type DetailsTab = "agents" | "summary" | "memories";
+
+/** Keep the tabs fixed while each panel scrolls to the frame edge. */
+const detailsPanelClass =
+  "min-h-0 overflow-y-auto overscroll-contain rounded-none px-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus-visible:-outline-offset-2";
 
 /**
  * Show conversation details: the brief and facts first, then linked work,
@@ -38,15 +51,6 @@ export function ConversationDetails(props: {
   // Load both lists with details so each tab can show its count.
   const memories = useConversationMemories(props.conversationId);
   const agents = useConversationChildAgents(props.conversationId);
-  const tabs = [
-    { label: "Summary", value: "summary" },
-    {
-      count: memories.data?.memories.length,
-      label: "Memories",
-      value: "memories",
-    },
-    { count: agents.data?.agents.length, label: "Subagents", value: "agents" },
-  ] as const;
 
   const sections = [
     { content: props.overview, key: "overview", title: undefined },
@@ -74,32 +78,75 @@ export function ConversationDetails(props: {
             layout="icon"
           />
           {props.sentryConversationUrl ? (
-            <IconButtonTooltip label="Open in Sentry" placement="below">
-              <a
-                aria-label="Open in Sentry"
-                className="grid size-9 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-                href={props.sentryConversationUrl}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                <SentryGlyph />
-              </a>
-            </IconButtonTooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <a
+                    aria-label="Open in Sentry"
+                    className="grid size-9 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                    href={props.sentryConversationUrl}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    <SentryGlyph />
+                  </a>
+                }
+              />
+              <TooltipContent size="compact" side="bottom">
+                Open in Sentry
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </>
       }
       onClose={props.onClose}
     >
-      <SegmentedTabs
-        scroll
-        items={tabs}
-        label="Conversation details"
-        onChange={setTab}
+      <Tabs
+        className="h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0"
+        onValueChange={(value: DetailsTab) => setTab(value)}
         value={tab}
       >
-        {tab === "memories" ? (
+        <TabsList
+          activateOnFocus
+          aria-label="Conversation details"
+          className="m-4"
+        >
+          <TabsTrigger value="summary">
+            <span className="truncate">Summary</span>
+          </TabsTrigger>
+          <TabsTrigger value="memories">
+            <span className="truncate">Memories</span>
+            <TabCount count={memories.data?.memories.length} />
+          </TabsTrigger>
+          <TabsTrigger value="agents">
+            <span className="truncate">Subagents</span>
+            <TabCount count={agents.data?.agents.length} />
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent className={detailsPanelClass} value="summary">
+          {props.brief != null || sections.length > 0 ? (
+            <div className="grid min-w-0 gap-3">
+              {props.brief != null ? (
+                <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+                  {props.brief}
+                </div>
+              ) : null}
+              {sections.map((section) => (
+                <DetailsSection key={section.key} title={section.title}>
+                  {section.content}
+                </DetailsSection>
+              ))}
+            </div>
+          ) : (
+            <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+              No additional conversation details.
+            </p>
+          )}
+        </TabsContent>
+        <TabsContent className={detailsPanelClass} value="memories">
           <ConversationMemories conversationId={props.conversationId} />
-        ) : tab === "agents" ? (
+        </TabsContent>
+        <TabsContent className={detailsPanelClass} value="agents">
           <ConversationChildAgents
             conversationId={props.conversationId}
             onOpenAgent={(target) => {
@@ -108,26 +155,19 @@ export function ConversationDetails(props: {
               props.onOpenSubagent(target);
             }}
           />
-        ) : props.brief != null || sections.length > 0 ? (
-          <div className="grid min-w-0 gap-3">
-            {props.brief != null ? (
-              <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-                {props.brief}
-              </div>
-            ) : null}
-            {sections.map((section) => (
-              <DetailsSection key={section.key} title={section.title}>
-                {section.content}
-              </DetailsSection>
-            ))}
-          </div>
-        ) : (
-          <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-            No additional conversation details.
-          </p>
-        )}
-      </SegmentedTabs>
+        </TabsContent>
+      </Tabs>
     </DetailsPanel>
+  );
+}
+
+/** Show a panel's entry count. Zero and unknown counts are hidden. */
+function TabCount(props: { count: number | undefined }) {
+  if (!props.count) return null;
+  return (
+    <span className="min-w-5 shrink-0 rounded-full bg-dashboard-fill-strong px-1.5 text-center text-xs font-semibold leading-5 tabular-nums">
+      {props.count.toLocaleString("en-US")}
+    </span>
   );
 }
 

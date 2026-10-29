@@ -3,7 +3,8 @@ import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import type { DashboardThemeChoice } from "../../theme";
 import { cn } from "../styles";
 import { useDashboardThemeChoice } from "../theme";
-import { ToggleButton } from "./ToggleButton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 
 const themeChoices = [
   { Icon: Monitor, label: "System", value: "system" },
@@ -25,24 +26,27 @@ export function ThemeSwitcher(props: { className?: string }) {
       <span className="font-sans text-sm font-semibold text-dashboard-text">
         Theme
       </span>
-      <div
+      <ToggleGroup
         aria-label="Theme"
-        className="flex gap-0.5 rounded-lg border border-dashboard-border p-0.5"
-        role="group"
+        className="gap-0.5 rounded-lg border border-dashboard-border p-0.5"
+        onValueChange={([next]) => {
+          if (next) setChoice(next);
+        }}
+        value={[choice]}
       >
         {themeChoices.map(({ Icon, label, value }) => (
-          <ToggleButton
-            aria-label={`${label} theme`}
-            key={value}
-            onClick={() => setChoice(value)}
-            pressed={choice === value}
-            title={label}
-            variant="segment"
-          >
-            <Icon aria-hidden="true" size={14} strokeWidth={2} />
-          </ToggleButton>
+          <Tooltip key={value}>
+            <TooltipTrigger
+              render={
+                <ToggleGroupItem aria-label={`${label} theme`} value={value}>
+                  <Icon aria-hidden="true" size={14} strokeWidth={2} />
+                </ToggleGroupItem>
+              }
+            />
+            <TooltipContent size="compact">{label}</TooltipContent>
+          </Tooltip>
         ))}
-      </div>
+      </ToggleGroup>
     </div>
   );
 }

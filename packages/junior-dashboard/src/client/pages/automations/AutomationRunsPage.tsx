@@ -4,7 +4,6 @@ import { useNavigate } from "react-router";
 import type { AutomationRun } from "@sentry/junior/api/schema";
 
 import { useAutomationRunsData } from "../../api";
-import { ToggleButton } from "../../components/ToggleButton";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -15,6 +14,7 @@ import {
 } from "../../components/Pagination";
 import type { StatusChipTone } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
@@ -105,28 +105,34 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
             }}
           >
             <FilterGroup label="Type">
-              {RUN_KINDS.map((value) => (
-                <ToggleButton
-                  key={value}
-                  onClick={() => setKind(value)}
-                  pressed={kind === value}
-                  variant="pill"
-                >
-                  {value}
-                </ToggleButton>
-              ))}
+              <ToggleGroup
+                className="flex-wrap gap-2"
+                onValueChange={([next]) => {
+                  if (next) setKind(next);
+                }}
+                value={[kind]}
+              >
+                {RUN_KINDS.map((value) => (
+                  <ToggleGroupItem key={value} value={value} variant="pill">
+                    {value}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </FilterGroup>
             <FilterGroup label="Status">
-              {RUN_STATUSES.map((value) => (
-                <ToggleButton
-                  key={value}
-                  onClick={() => setStatus(value)}
-                  pressed={status === value}
-                  variant="pill"
-                >
-                  {value}
-                </ToggleButton>
-              ))}
+              <ToggleGroup
+                className="flex-wrap gap-2"
+                onValueChange={([next]) => {
+                  if (next) setStatus(next);
+                }}
+                value={[status]}
+              >
+                {RUN_STATUSES.map((value) => (
+                  <ToggleGroupItem key={value} value={value} variant="pill">
+                    {value}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </FilterGroup>
           </FilterBar>
           <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border-subtle pb-3">

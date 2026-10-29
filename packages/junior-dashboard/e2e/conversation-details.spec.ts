@@ -56,8 +56,10 @@ test("opens conversation details beside the chat", async ({
     .locator('span[tabindex="0"]')
     .filter({ hasText: /^\$0\.03$/ });
   await expect(costMetric).toHaveCount(1);
+  // Tooltips open on keyboard focus, not on focus after a mouse click. A key
+  // press first makes this a keyboard focus.
+  await page.keyboard.press("Shift");
   await costMetric.focus();
-  // Scope past sidebar linked-work tooltips that can stay open on the selected row.
   const costTooltip = page.getByRole("tooltip").filter({ hasText: /\$/ });
   await expect(costTooltip).toBeVisible();
   const tooltipId = await costTooltip.getAttribute("id");

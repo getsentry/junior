@@ -1,9 +1,18 @@
 import type { UseMutationResult } from "@tanstack/react-query";
 import { BrainCircuit, Trash2 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { Detail, DetailList } from "../../components/DetailList";
 import { Drawer } from "../../components/Drawer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { TranscriptText } from "../../conversations/TranscriptText";
 import type {
   PluginUserPageRecord,
@@ -28,6 +37,7 @@ export function MemoryDetailsDrawer(props: {
   record: PluginUserPageRecord | undefined;
 }) {
   const openRecordId = props.record?.id;
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     // Forget leaves the shared mutation in success/error until the next open.
@@ -135,23 +145,39 @@ export function MemoryDetailsDrawer(props: {
             className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-sans font-medium text-xs text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
             disabled={props.action.isPending}
             onClick={() => {
-              if (
-                forgetAction.confirmation &&
-                !window.confirm(forgetAction.confirmation)
-              ) {
+              if (forgetAction.confirmation) {
+                setConfirmOpen(true);
                 return;
               }
               props.onClose();
-              props.onAction({
-                ...forgetAction,
-                confirmation: undefined,
-              });
+              props.onAction(forgetAction);
             }}
             type="button"
           >
             <Trash2 aria-hidden="true" size={13} />
             Forget this memory
           </button>
+        ) : null}
+        {forgetAction?.confirmation ? (
+          <AlertDialog onOpenChange={setConfirmOpen} open={confirmOpen}>
+            <AlertDialogContent>
+              <AlertDialogTitle>{forgetAction.confirmation}</AlertDialogTitle>
+              <AlertDialogDescription>{record.title}</AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setConfirmOpen(false);
+                    props.onClose();
+                    props.onAction(forgetAction);
+                  }}
+                  variant="danger"
+                >
+                  {forgetAction.label}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         ) : null}
       </section>
     </Drawer>

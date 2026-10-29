@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import {
@@ -7,6 +8,15 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { getDashboardAgentName } from "../../agentName";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { buttonVariants } from "../../components/ui/button";
 import { Link } from "react-router";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -41,6 +51,9 @@ export function readWorkspaceApiError(
 /** Manage install-wide repository Workspace recipes. */
 export function WorkspacesPage() {
   const queryClient = useQueryClient();
+  // Keep the Workspace after close so the closing dialog keeps its name.
+  const [deleting, setDeleting] = useState<WorkspaceReport>();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const workspacesQuery = useQuery({
     queryKey: workspacesQueryKey,
     queryFn: ({ signal }) =>
@@ -124,16 +137,36 @@ export function WorkspacesPage() {
         busy={deleteMutation.isPending}
         defaultVcpus={defaultVcpus}
         onDelete={(workspace) => {
-          if (
-            window.confirm(
-              `Delete Workspace “${workspace.name}”? Active conversations keep their current Sandbox until the next switch.`,
-            )
-          ) {
-            deleteMutation.mutate(workspace);
-          }
+          setDeleting(workspace);
+          setConfirmOpen(true);
         }}
         workspaces={workspaces}
       />
+      <AlertDialog onOpenChange={setConfirmOpen} open={confirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogTitle>Delete Workspace?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Delete{" "}
+            <strong className="font-medium text-dashboard-text">
+              {deleting?.name}
+            </strong>
+            ? Active conversations keep their current Sandbox until the next
+            switch.
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleting) deleteMutation.mutate(deleting);
+                setConfirmOpen(false);
+              }}
+              variant="danger"
+            >
+              Delete Workspace
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SystemPageLayout>
   );
 }

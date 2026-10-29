@@ -3,7 +3,11 @@ import { useHref } from "react-router";
 import { Check, Share2 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
-import { IconButtonTooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { conversationPath } from "./conversationRoutes";
 
 /** Share a conversation link without changing who can access it. */
@@ -72,17 +76,24 @@ export function ShareConversationButton(props: {
   );
   const button =
     props.layout === "icon" ? (
-      <IconButtonTooltip label={label} placement="below">
-        <Button
-          aria-label={label}
-          className="text-dashboard-text-muted"
-          disabled={status === "sharing"}
-          onClick={() => void shareLink()}
-          size="icon"
-        >
-          <Icon aria-hidden="true" size={15} />
-        </Button>
-      </IconButtonTooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-label={label}
+              className="text-dashboard-text-muted"
+              disabled={status === "sharing"}
+              onClick={() => void shareLink()}
+              size="icon"
+            >
+              <Icon aria-hidden="true" size={15} />
+            </Button>
+          }
+        />
+        <TooltipContent size="compact" side="bottom">
+          {label}
+        </TooltipContent>
+      </Tooltip>
     ) : props.layout === "menu" ? (
       <button
         aria-label={label}

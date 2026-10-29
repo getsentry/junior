@@ -23,7 +23,6 @@ export default defineConfig({
   },
   noExternal: [
     "@base-ui/react",
-    "@radix-ui/react-hover-card",
     "@sentry/junior/api/schema",
     "@sentry/junior/version",
     "@sentry/junior-plugin-api",

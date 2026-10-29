@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Button. See shadcn.LICENSE.
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@dashboard/lib/utils";

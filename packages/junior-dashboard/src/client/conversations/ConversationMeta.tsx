@@ -24,7 +24,12 @@ import {
   summarizeUsage,
   automationPath,
 } from "../format";
-import { Tooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn, dashboardInlineLinkClass } from "../styles";
 import {
@@ -136,9 +141,36 @@ export function ConversationSidebarAnnotations(props: {
     : [];
 
   return (
-    <Tooltip
-      align="left"
-      content={
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={`Linked work, newest first: ${details.join(", ")}`}
+            className="inline-flex min-w-0 max-w-full items-center"
+          >
+            {useMobileFacepile ? (
+              <SidebarAnnotationIconFacepile
+                annotations={mobileFacepileAnnotations}
+                // Discs sit on the sidebar panel / row surface.
+                cutoutColor="var(--color-dashboard-surface-panel)"
+              />
+            ) : (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                {badges.labeledGroups.map((group) => (
+                  <SidebarAnnotationGroupChip group={group} key={group.label} />
+                ))}
+                {badges.overflowGroupCount > 0 ? (
+                  <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
+                    +{badges.overflowGroupCount}
+                  </span>
+                ) : null}
+              </span>
+            )}
+          </span>
+        }
+      />
+      <TooltipContent align="start">
+        <TooltipTitle>Linked work</TooltipTitle>
         <ul className="m-0 list-none space-y-1 p-0">
           {annotations.map((annotation, index) => (
             <li
@@ -158,33 +190,7 @@ export function ConversationSidebarAnnotations(props: {
             </li>
           ))}
         </ul>
-      }
-      label="Linked work"
-      triggerClassName="min-w-0"
-    >
-      <span
-        aria-label={`Linked work, newest first: ${details.join(", ")}`}
-        className="inline-flex min-w-0 max-w-full items-center"
-      >
-        {useMobileFacepile ? (
-          <SidebarAnnotationIconFacepile
-            annotations={mobileFacepileAnnotations}
-            // Discs sit on the sidebar panel / row surface.
-            cutoutColor="var(--color-dashboard-surface-panel)"
-          />
-        ) : (
-          <span className="inline-flex min-w-0 items-center gap-1">
-            {badges.labeledGroups.map((group) => (
-              <SidebarAnnotationGroupChip group={group} key={group.label} />
-            ))}
-            {badges.overflowGroupCount > 0 ? (
-              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
-                +{badges.overflowGroupCount}
-              </span>
-            ) : null}
-          </span>
-        )}
-      </span>
+      </TooltipContent>
     </Tooltip>
   );
 }

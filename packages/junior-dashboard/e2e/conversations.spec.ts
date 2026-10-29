@@ -426,6 +426,23 @@ test("groups the signed-in profile and session actions in the header", async ({
   await signOutRequest;
 });
 
+test.describe("keeps a hover-opened profile menu open on click", () => {
+  test.use({ controlTimers: true });
+
+  test("after the hover pause", async ({ page, dashboard }) => {
+    await page.goto(dashboard.baseURL);
+    const trigger = page.getByRole("button", {
+      name: /^(Open|Close) profile menu for Dashboard User/,
+    });
+    await trigger.hover();
+    await expect(page.locator("#profile-popover")).toBeVisible();
+    // Pass Base UI's 500ms window that keeps a hover-opened popover open.
+    await page.clock.fastForward(600);
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
 test("inspects and copies a child agent transcript", async ({
   context,
   page,

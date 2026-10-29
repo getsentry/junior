@@ -12,7 +12,7 @@ import { SelectFixtures } from "./SelectFixtures";
 import { ChoiceFixtures } from "./ChoiceFixtures";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
-import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
+import { SegmentedNavFixture, TabsFixture } from "./SegmentedFixtures";
 import {
   ConversationFixture,
   MessageAttachmentsFixture,
@@ -39,7 +39,7 @@ import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
 
 import { Button } from "../../components/ui/button";
-import { ToggleButton } from "../../components/ToggleButton";
+import { Toggle } from "../../components/ui/toggle";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import {
@@ -271,7 +271,7 @@ function FoundationsGalleryPage() {
           </AccordionItem>
         </Accordion>
       </Fixture>
-      <Fixture title="Popover, confirmation, and toast">
+      <Fixture title="Popover, tooltip, confirmation, and toast">
         <OverlayFixtures />
       </Fixture>
       <Fixture title="Copy text">
@@ -299,8 +299,8 @@ function FoundationsGalleryPage() {
           />
         </DashboardChromeProvider>
       </Fixture>
-      <Fixture title="Segmented tabs">
-        <SegmentedTabsFixture />
+      <Fixture title="Tabs">
+        <TabsFixture />
       </Fixture>
       <Fixture title="Segmented page links">
         <SegmentedNavFixture />
@@ -504,26 +504,14 @@ function FoundationsGalleryPage() {
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <ToggleButton
+            <Toggle
+              onPressedChange={setPressed}
               pressed={pressed}
               variant="pill"
-              onClick={() => setPressed((value) => !value)}
             >
               Toggle
-            </ToggleButton>
-            <ToggleButton
-              pressed={!pressed}
-              variant="text"
-              onClick={() => setPressed((value) => !value)}
-            >
-              Alternate
-            </ToggleButton>
-            <ToggleButton pressed variant="segment">
-              30d
-            </ToggleButton>
-            <ToggleButton pressed={false} variant="segment">
-              90d
-            </ToggleButton>
+            </Toggle>
+            <Toggle>Local time</Toggle>
             <TimeRangeSelector onChange={setRange} value={range} />
           </div>
         </div>
