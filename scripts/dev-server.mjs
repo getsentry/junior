@@ -112,7 +112,11 @@ function syncInjectedPackageDist(packageName, packageDir, options = {}) {
   // `node_modules/.pnpm/...`, not directly from `packages/*`.
   // Point the injected package `dist` at the live workspace build output so
   // `pnpm dev` executes the latest local build without recursive copy races.
-  const injectedPackageDirs = [workspaceRoot, exampleDir]
+  // Node resolves the linked dashboard `dist` to `packages/junior-dashboard`,
+  // so the dashboard imports `@sentry/junior` from its own injected copy.
+  // Link that copy too. Otherwise the app and the dashboard load two module
+  // instances, and in-memory state that one writes is not visible to the other.
+  const injectedPackageDirs = [workspaceRoot, exampleDir, dashboardPackageDir]
     .map((consumerDir) => resolveInjectedPackageDir(packageName, consumerDir))
     .filter((value, index, values) => value && values.indexOf(value) === index);
   if (injectedPackageDirs.length === 0) {
