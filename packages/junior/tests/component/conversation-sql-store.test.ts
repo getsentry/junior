@@ -756,13 +756,22 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("persists visibility from source signals and converges on newer signals", async () => {
+  it("stores visibility on each Conversation and only makes it more private", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
       const destination = inboundMessage("visibility").destination;
+      const laterConversationId = "slack:C123:1712345.0002";
+      const readVisibility = async (conversationId: string) =>
+        (await store.get({ conversationId }))?.visibility;
+      const readDestinationVisibility = async () =>
+        await store.getDestinationVisibility({
+          provider: "slack",
+          providerTenantId: "T123",
+          providerDestinationId: "C123",
+        });
 
       // Slack reports this C-prefixed channel private (channel_type: group).
       await store.recordActivity({
@@ -771,53 +780,52 @@ describe("conversation SQL store", () => {
         visibility: "private",
         nowMs: 1_000,
       });
-      await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "private" });
-      await expect(
-        store.getDestinationVisibility({
-          provider: "slack",
-          providerTenantId: "T123",
-          providerDestinationId: "C123",
-        }),
-      ).resolves.toBe("private");
+      await expect(readVisibility(CONVERSATION_ID)).resolves.toBe("private");
+      await expect(readDestinationVisibility()).resolves.toBe("private");
 
-      // A signal-less write must not clobber the stored value.
-      await store.recordActivity({
-        conversationId: CONVERSATION_ID,
-        destination,
-        nowMs: 2_000,
-      });
-      await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "private" });
-
-      // A channel converted private -> public converges on the next signal.
+      // The channel becomes public. Its Destination follows the new signal,
+      // but the existing Conversation keeps its private visibility.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination,
         visibility: "public",
+        nowMs: 2_000,
+      });
+      await expect(readVisibility(CONVERSATION_ID)).resolves.toBe("private");
+      await expect(readDestinationVisibility()).resolves.toBe("public");
+
+      // A new Conversation without a signal starts with the known
+      // Destination value. A later write without a signal keeps it.
+      await store.recordActivity({
+        conversationId: laterConversationId,
+        destination,
         nowMs: 3_000,
       });
-      await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "public" });
-      await expect(
-        store.getDestinationVisibility({
-          provider: "slack",
-          providerTenantId: "T123",
-          providerDestinationId: "C123",
-        }),
-      ).resolves.toBe("public");
-
       await store.recordActivity({
-        conversationId: CONVERSATION_ID,
+        conversationId: laterConversationId,
         destination,
         nowMs: 4_000,
       });
-      await expect(
-        store.get({ conversationId: CONVERSATION_ID }),
-      ).resolves.toMatchObject({ visibility: "public" });
+      await expect(readVisibility(laterConversationId)).resolves.toBe("public");
+
+      // A private signal makes only that Conversation private, and a later
+      // public signal does not make it public again.
+      await store.recordActivity({
+        conversationId: laterConversationId,
+        destination,
+        visibility: "private",
+        nowMs: 5_000,
+      });
+      await store.recordActivity({
+        conversationId: laterConversationId,
+        destination,
+        visibility: "public",
+        nowMs: 6_000,
+      });
+      await expect(readVisibility(laterConversationId)).resolves.toBe(
+        "private",
+      );
+      await expect(readVisibility(CONVERSATION_ID)).resolves.toBe("private");
     } finally {
       await fixture.close();
     }

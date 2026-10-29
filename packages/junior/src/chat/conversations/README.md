@@ -215,9 +215,22 @@ to `unknown`.
 
 ## Visibility And Retention
 
-Destination visibility is the privacy authority. Messages, agent-history
-items, child conversations, agent invocations, and plugin projections inherit
-it. Retention
+Each root Conversation stores its own `visibility`. `Conversation.visibility`
+reads it. Child Conversations read the value of their root. The write rule in
+`SqlStore.upsertConversation`:
+
+- An unknown value takes the first signal. Without a signal, it takes the
+  known Destination value.
+- After that, a signal can make the Conversation private. No signal makes it
+  public again.
+
+The Destination row keeps the visibility of the Slack channel.
+
+TODO: Move the dashboard, search, Brief, and retention SQL readers from
+Destination visibility to Conversation visibility (#2380).
+
+Messages, agent-history items, child conversations, agent invocations, and
+plugin projections inherit the root visibility. Retention
 distinguishes expired content from redacted content and purges the complete
 child tree, including delegated input and terminal results.
 
