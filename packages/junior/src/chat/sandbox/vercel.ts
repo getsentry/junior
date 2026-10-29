@@ -16,15 +16,6 @@ import type {
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
 
-// Module overview: the only module that calls the Vercel Sandbox SDK.
-//
-// This module implements `SandboxProvider` for Vercel Sandbox. Sandbox code
-// reaches it only through `getSandboxProvider()` in `provider.ts`. Vercel
-// names, credentials, request options, and SDK objects stay in this file.
-// Shared contracts live outside it: `provider.ts`, `workspace.ts`, and
-// `snapshot/workspace.ts`. Keep only Vercel-specific declarations and logic
-// here.
-
 function credentialOptions() {
   return getVercelSandboxCredentials() ?? {};
 }
