@@ -59,6 +59,8 @@ Each event has the name of the Vercel webhook that it comes from:
 
 All three events end a commit-scoped watch. Project and target watches stay active.
 
+Each deployment event has trusted data: `deploymentId`, `target`, and `commitSha` when the deployment came from a Git commit. Watches and event automations can filter on `target` (`preview`, `production`, or `staging`) and `commitSha`.
+
 Create the conversation watch or event automation before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
 
 ## Auth model

@@ -1,4 +1,7 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  eventMatchFieldsSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
 
 export const VERCEL_DEPLOYMENT_EVENTS = [
   "deployment.succeeded",
@@ -12,7 +15,31 @@ export const VERCEL_DEPLOYMENT_SUGGESTED_EVENTS = [
   "deployment.canceled",
 ];
 
-export type VercelDeploymentTarget = "preview" | "production" | "staging";
+/** The deployment targets that Vercel webhooks report. */
+export const VERCEL_DEPLOYMENT_TARGETS = [
+  "preview",
+  "production",
+  "staging",
+] as const;
+
+export type VercelDeploymentTarget = (typeof VERCEL_DEPLOYMENT_TARGETS)[number];
+
+/**
+ * Trusted values that every Vercel deployment event sets. `commitSha` is left
+ * out when the deployment has no Git commit, so a filter on it does not match.
+ */
+export const VERCEL_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  target: {
+    kind: "string",
+    description: "where Vercel deployed: preview, production, or staging",
+    enum: [...VERCEL_DEPLOYMENT_TARGETS],
+  },
+  commitSha: {
+    kind: "string",
+    description:
+      "full lowercase Git commit SHA of the deployment, when it came from a Git commit",
+  },
+});
 
 /** Build the stable deployment identity shared by tools and webhooks. */
 export function vercelDeploymentResource(input: {

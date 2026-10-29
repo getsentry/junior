@@ -1,4 +1,7 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  eventMatchFieldsSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
 
 /** Metric alert states, named after Sentry's `metric_alert.<action>` webhooks. */
 export const SENTRY_METRIC_ALERT_EVENTS = [
@@ -11,6 +14,15 @@ export const SENTRY_METRIC_ALERT_SUGGESTED_EVENTS = [
   "metric_alert.critical",
   "metric_alert.warning",
 ];
+
+/** Trusted values that every Sentry metric alert event sets. */
+export const SENTRY_METRIC_ALERT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  alertRuleId: {
+    kind: "string",
+    description: "id of the Sentry metric alert rule, such as 7",
+    events: [...SENTRY_METRIC_ALERT_EVENTS],
+  },
+});
 
 /** The identifier shape that `sentryMetricAlertResource` builds. */
 export const SENTRY_METRIC_ALERT_IDENTIFIER = {

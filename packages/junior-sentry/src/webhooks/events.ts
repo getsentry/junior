@@ -1,4 +1,4 @@
-import type { EventInput } from "@sentry/junior-plugin-api";
+import type { EventData, EventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { sentryIssueResource, sentryProjectResource } from "../events/issue.js";
 import {
@@ -78,29 +78,44 @@ function providerTime(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/**
+ * Title and culprit come from the monitored app's code and error messages, so
+ * they stay untrusted text.
+ */
 function issueText(issue: {
   culprit?: string;
+  title?: string;
+}): string | undefined {
+  const parts = [
+    issue.title ? `Title: ${issue.title}` : undefined,
+    issue.culprit ? `Culprit: ${issue.culprit}` : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+/** Sentry's own values for the issue. Sentry sets them, so they are trusted. */
+function issueData(issue: {
+  id: string;
   issueCategory?: string;
   issueType?: string;
   level?: string;
   priority?: string;
   status?: string;
   substatus?: string | null;
-  title?: string;
   web_url?: string;
-}): string | undefined {
-  const parts = [
-    issue.title ? `Title: ${issue.title}` : undefined,
-    issue.culprit ? `Culprit: ${issue.culprit}` : undefined,
-    issue.level ? `Level: ${issue.level}` : undefined,
-    issue.priority ? `Priority: ${issue.priority}` : undefined,
-    issue.issueCategory ? `Category: ${issue.issueCategory}` : undefined,
-    issue.issueType ? `Type: ${issue.issueType}` : undefined,
-    issue.status ? `Status: ${issue.status}` : undefined,
-    issue.substatus ? `Substatus: ${issue.substatus}` : undefined,
-    issue.web_url ? `URL: ${issue.web_url}` : undefined,
-  ].filter((part): part is string => part !== undefined);
-  return parts.length > 0 ? parts.join("\n") : undefined;
+}): EventData {
+  return {
+    issueId: issue.id,
+    ...(issue.level ? { level: issue.level } : undefined),
+    ...(issue.priority ? { priority: issue.priority } : undefined),
+    ...(issue.issueCategory
+      ? { issueCategory: issue.issueCategory }
+      : undefined),
+    ...(issue.issueType ? { issueType: issue.issueType } : undefined),
+    ...(issue.status ? { status: issue.status } : undefined),
+    ...(issue.substatus ? { substatus: issue.substatus } : undefined),
+    ...(issue.web_url ? { url: issue.web_url } : undefined),
+  };
 }
 
 /**
@@ -147,8 +162,10 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
     // idempotency across repeated deliveries of the same lifecycle event.
     eventKey: `sentry:${issueResource.identifier}:${eventType}`,
     eventType,
+    objectType: "task",
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,
+    data: issueData(issue),
     ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
 
@@ -172,11 +189,8 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const alertRuleId = data.metric_alert.alert_rule.id;
   const incidentId = data.metric_alert.id;
   const resource = sentryMetricAlertResource({ alertRuleId, org });
-  const untrustedText = [
-    data.description_title,
-    data.description_text,
-    `URL: ${data.web_url}`,
-  ]
+  // Alert titles and descriptions come from user-written rules.
+  const untrustedText = [data.description_title, data.description_text]
     .filter((part): part is string => Boolean(part))
     .join("\n");
 
@@ -184,10 +198,11 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     // One event per incident state. Sentry retries get new Request-IDs.
     eventKey: `sentry:${resource.identifier}:${incidentId}:${eventType}`,
     eventType,
+    objectType: "item",
     occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
     trustedSummary: `${resource.label} is ${parsed.data.action}.`,
     data: { alertRuleId, incidentId, url: data.web_url },
-    untrustedText,
+    ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
   // Also publish to each project of the alert rule, so one project
   // subscription receives its new issues and its metric alerts.
