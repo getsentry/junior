@@ -27,9 +27,15 @@ services:
     volumes:
       - junior-redis:/data
 
-  # S3-compatible server for S3 attachment storage tests.
+  # S3-compatible server for local attachment storage and S3 storage tests.
   s3:
     image: versity/versitygw:v1.10.0
+    # With the posix backend, a folder in VGW_BACKEND_ARG is a bucket. Create the
+    # local dev bucket, then run the image's normal entrypoint.
+    entrypoint:
+      - sh
+      - -c
+      - mkdir -p "$$VGW_BACKEND_ARG/junior-attachments" && exec /usr/local/bin/docker-entrypoint.sh
     environment:
       ROOT_ACCESS_KEY: junior
       ROOT_SECRET_KEY: junior-secret
