@@ -277,8 +277,7 @@ A Slack `chat.turn` span records mailbox timing for its input messages:
   of the `chat.turn` span. It includes queue wait and worker setup.
 
 For the oldest input message, delivery lag, wait, and the `chat.turn` duration
-are contiguous. `app.turn.wait_ms` ends at the same turn start that
-`app.turn.first_feedback_ms` measures from.
+are contiguous.
 
 The timing attributes are absent when the value is negative. A negative value
 is clock skew between Slack and Junior hosts, not latency. Resumed `chat.turn`
@@ -292,8 +291,8 @@ sort=-app.turn.wait_ms
 
 First feedback is the earliest `http.client` span for
 `POST slack.com/api/reactions.add` or
-`POST slack.com/api/assistant.threads.setStatus` under `chat.turn`. For a
-mention, ingress adds the processing reaction before the turn starts. Use the
+`POST slack.com/api/assistant.threads.setStatus` in the turn's trace. For a
+mention, ingress adds the processing reaction before the worker runs. Use the
 ingress `reactions.add` span for a mention. It is in the same trace after
 #2269 PR 5b joins the ingress and turn traces.
 
