@@ -124,7 +124,13 @@ export type CrossActorMidRunMode = "follow_up" | "steer";
 
 export type SqlDriver = "neon" | "postgres";
 
+/** Object storage service for attachments and public artifacts. */
+export type AttachmentStorageProvider = "vercel-blob";
+
 export interface ChatConfig {
+  attachmentStorage: {
+    provider: AttachmentStorageProvider;
+  };
   bot: BotConfig;
   functionMaxDurationSeconds: number;
   conversationWorkEnabled: boolean;
@@ -601,6 +607,9 @@ export function readChatConfig(
     functionMaxDurationSeconds,
   );
   return {
+    attachmentStorage: {
+      provider: "vercel-blob",
+    },
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
     conversationWorkEnabled: parseConversationWorkEnabled(
