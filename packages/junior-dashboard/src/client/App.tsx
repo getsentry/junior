@@ -49,7 +49,10 @@ import {
 } from "./pages/system/SystemPageLayout";
 import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
-import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
+import {
+  isMemoryLibraryPath,
+  MemoryRouteLoading,
+} from "./pages/memory/MemoryPageLayout";
 import { AutomationExecutionsPage } from "./pages/automations/AutomationExecutionsPage";
 import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
 import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPage";
@@ -134,7 +137,11 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <VisualViewportShell
         className="bg-dashboard-bg"
-        enabled={workspace || isAutomationListPath(location.pathname)}
+        enabled={
+          workspace ||
+          isAutomationListPath(location.pathname) ||
+          isMemoryLibraryPath(location.pathname)
+        }
       >
         <DashboardChrome
           banner={
