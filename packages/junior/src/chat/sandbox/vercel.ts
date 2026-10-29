@@ -5,58 +5,23 @@ import {
   isSandboxUnavailableError,
 } from "@/chat/sandbox/errors";
 import type {
-  SandboxCommandInput,
+  CreateWorkspaceSnapshotBuilderInput,
+  WorkspaceSnapshotBuilder,
+} from "@/chat/sandbox/snapshot/workspace";
+import type {
+  CreateSandboxSessionInput,
   SandboxFileSystem,
-  SandboxNetworkPolicy,
   SandboxSession,
+  SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
 
 // Module overview: the only module that calls the Vercel Sandbox SDK.
 //
 // Callers use provider-neutral inputs and `SandboxSession`. Vercel names,
-// credentials, request options, and SDK objects stay in this file.
-
-interface SessionOptions {
-  /** Called when a session operation finds that the VM session is gone. */
-  onUnavailable?: (sessionId: string) => void;
-  /** Abort every provider request made through the returned session. */
-  scopeSignal?: AbortSignal;
-}
-
-/** Input for one new Sandbox. */
-export interface CreateSandboxSessionInput extends SessionOptions {
-  name?: string;
-  persistent?: boolean;
-  /** Runtime image for a new Sandbox. Unused when `snapshotId` is set. */
-  runtime?: string;
-  /** Boot from this snapshot instead of an empty runtime image. */
-  snapshotId?: string;
-  timeoutMs: number;
-  networkPolicy?: SandboxNetworkPolicy;
-  resources?: { vcpus: number };
-  /** Abort only the create request. */
-  signal?: AbortSignal;
-}
-
-/** Saved Workspace snapshot builder Sandbox that one build job can continue. */
-export interface WorkspaceSnapshotBuilder {
-  /** Session pinned to the current VM session, without SDK replay. */
-  session(): SandboxSession;
-  /** Start a command that keeps running after this request ends. */
-  startDetachedCommand(input: SandboxCommandInput): Promise<string>;
-  /** Wait for a detached command that an earlier job started. */
-  waitForCommand(
-    commandId: string,
-    options: { signal?: AbortSignal; waitSignal: AbortSignal },
-  ): Promise<{
-    exitCode: number;
-    stdout(): Promise<string>;
-    stderr(): Promise<string>;
-  }>;
-  snapshot(options?: {
-    signal?: AbortSignal;
-  }): Promise<{ snapshotId: string; sizeBytes?: number }>;
-}
+// credentials, request options, and SDK objects stay in this file. Shared
+// contracts live with their consumers: session types in `workspace.ts` and
+// the Workspace builder type in `snapshot/workspace.ts`. Keep only
+// Vercel-specific declarations and logic here.
 
 function credentialOptions() {
   return getVercelSandboxCredentials() ?? {};
@@ -84,7 +49,7 @@ function scopedFetchOptions(
 /** Pin Junior's sandbox contract to one Vercel session without SDK replay. */
 function adaptSession(
   sandbox: Sandbox,
-  options?: SessionOptions,
+  options?: SandboxSessionOptions,
 ): SandboxSession {
   // Pin operations to the acquired VM session. The Sandbox convenience methods
   // may resume and replay an operation after a lifecycle failure.
@@ -190,7 +155,7 @@ export async function createSandboxSession(
 
 /** Resume a named Sandbox and return a session pinned to its VM session. */
 export async function getSandboxSession(
-  input: { name: string } & SessionOptions,
+  input: { name: string } & SandboxSessionOptions,
 ): Promise<SandboxSession> {
   const sandbox = await Sandbox.get({
     name: input.name,
@@ -202,13 +167,9 @@ export async function getSandboxSession(
 }
 
 /** Create the named, persistent Sandbox that owns one Workspace snapshot build. */
-export async function createWorkspaceSnapshotBuilder(input: {
-  name: string;
-  runtime: string;
-  timeoutMs: number;
-  resources?: { vcpus: number };
-  signal?: AbortSignal;
-}): Promise<void> {
+export async function createWorkspaceSnapshotBuilder(
+  input: CreateWorkspaceSnapshotBuilderInput,
+): Promise<void> {
   await Sandbox.create({
     name: input.name,
     persistent: true,

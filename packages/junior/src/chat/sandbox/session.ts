@@ -31,16 +31,13 @@ import { requireReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   stopSession,
+  type CreateSandboxSessionInput,
   type SandboxCommandResult,
   type SandboxFileSystem,
   type SandboxNetworkPolicy,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
-import {
-  createSandboxSession,
-  getSandboxSession,
-  type CreateSandboxSessionInput,
-} from "@/chat/sandbox/vercel";
+import { createSandboxSession, getSandboxSession } from "@/chat/sandbox/vercel";
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";

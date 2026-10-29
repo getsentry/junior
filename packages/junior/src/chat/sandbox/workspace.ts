@@ -108,6 +108,29 @@ export interface SandboxSession extends SandboxWorkspace {
   update(params: { networkPolicy?: SandboxNetworkPolicy }): Promise<void>;
 }
 
+/** Options shared by every provider call that returns a `SandboxSession`. */
+export interface SandboxSessionOptions {
+  /** Called when a session operation finds that the VM session is gone. */
+  onUnavailable?: (sessionId: string) => void;
+  /** Abort every provider request made through the returned session. */
+  scopeSignal?: AbortSignal;
+}
+
+/** Input for one new Sandbox. */
+export interface CreateSandboxSessionInput extends SandboxSessionOptions {
+  name?: string;
+  persistent?: boolean;
+  /** Runtime image for a new Sandbox. Unused when `snapshotId` is set. */
+  runtime?: string;
+  /** Boot from this snapshot instead of an empty runtime image. */
+  snapshotId?: string;
+  timeoutMs: number;
+  networkPolicy?: SandboxNetworkPolicy;
+  resources?: { vcpus: number };
+  /** Abort only the create request. */
+  signal?: AbortSignal;
+}
+
 /** Best-effort stop; ignore secondary stop failures during cleanup. */
 export async function stopSession(
   session: { stop: () => Promise<unknown> } | null | undefined,

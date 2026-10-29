@@ -28,7 +28,10 @@ import {
   deleteWorkspaceSnapshotBuilders,
   getWorkspaceSnapshotBuilder,
 } from "@/chat/sandbox/vercel";
-import type { SandboxSession } from "@/chat/sandbox/workspace";
+import type {
+  SandboxCommandInput,
+  SandboxSession,
+} from "@/chat/sandbox/workspace";
 import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, withLock } from "@/chat/state/locks";
@@ -37,6 +40,35 @@ import type {
   Workspace,
   WorkspaceSnapshotBuild,
 } from "@/chat/workspaces/types";
+
+/** Input for the named, persistent Sandbox that owns one Workspace build. */
+export interface CreateWorkspaceSnapshotBuilderInput {
+  name: string;
+  runtime: string;
+  timeoutMs: number;
+  resources?: { vcpus: number };
+  signal?: AbortSignal;
+}
+
+/** Saved Workspace snapshot builder Sandbox that one build job can continue. */
+export interface WorkspaceSnapshotBuilder {
+  /** Session pinned to the current VM session, without SDK replay. */
+  session(): SandboxSession;
+  /** Start a command that keeps running after this request ends. */
+  startDetachedCommand(input: SandboxCommandInput): Promise<string>;
+  /** Wait for a detached command that an earlier job started. */
+  waitForCommand(
+    commandId: string,
+    options: { signal?: AbortSignal; waitSignal: AbortSignal },
+  ): Promise<{
+    exitCode: number;
+    stdout(): Promise<string>;
+    stderr(): Promise<string>;
+  }>;
+  snapshot(options?: {
+    signal?: AbortSignal;
+  }): Promise<{ snapshotId: string; sizeBytes?: number }>;
+}
 
 // This module saves build progress and owns the Sandbox that runs the build.
 // Each call completes at most one saved step.
