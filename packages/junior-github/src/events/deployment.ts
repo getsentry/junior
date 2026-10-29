@@ -19,21 +19,28 @@ export const GITHUB_DEPLOYMENT_SUGGESTED_EVENTS = [
   "deployment.error",
 ];
 
-/** Trusted deployment values that watches and event automations can match. */
+/**
+ * Trusted deployment values that watches and event automations can match.
+ * Every deployment event sets them; the repository resource type also has
+ * events that do not.
+ */
 export const GITHUB_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   environment: {
     kind: "string",
     description: "lowercase deployment environment name, such as production",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
   },
   workflowId: {
     kind: "number",
     description:
       "numeric GitHub Actions workflow id when a workflow created the deployment",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
   },
   workflowPath: {
     kind: "string",
     description:
       "GitHub Actions workflow file, such as .github/workflows/deploy.yml, when a workflow created the deployment",
+    events: [...GITHUB_DEPLOYMENT_EVENTS],
   },
 });
 

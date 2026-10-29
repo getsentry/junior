@@ -78,7 +78,9 @@ function renderAutomationDetails(
         ...textField(
           "warning",
           "Needs attention",
-          "Trigger unavailable. This automation cannot receive events.",
+          ["Trigger unavailable.", ...(automation.triggerProblems ?? [])].join(
+            " ",
+          ),
         ),
         long: true,
       });
