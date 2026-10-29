@@ -41,6 +41,7 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
+import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
 
@@ -364,6 +365,7 @@ export async function readConversationFeedFromSql(
     lastUserMessageAtByConversation,
     activityPreviewByConversation,
     automationTitleByConversation,
+    firstHumanMessageTextByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationArchiveTimes(
@@ -390,6 +392,12 @@ export async function readConversationFeedFromSql(
     readLastUserMessageAtByConversation(db, conversationIds),
     readConversationActivityPreviews(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
+    readFirstHumanMessageTexts(
+      db,
+      conversations
+        .filter((conversation) => !conversation.title)
+        .map((conversation) => conversation.conversationId),
+    ),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
@@ -437,6 +445,9 @@ export async function readConversationFeedFromSql(
         auxiliaryCosts: auxiliaryCosts?.total,
         ...(childAgentTotals ? { childAgentTotals } : undefined),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
+        firstHumanMessageText: firstHumanMessageTextByConversation.get(
+          conversation.conversationId,
+        ),
         teamDomainByTeamId,
         ...(row.location?.visibility === "public"
           ? { locationId: row.location.id }

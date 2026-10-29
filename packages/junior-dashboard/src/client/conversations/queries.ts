@@ -663,6 +663,35 @@ export function useConversationData(conversationId: string | undefined) {
       },
     );
   }, [conversationId, detailData, mailbox, outbox.data, queryClient]);
+  // The title is generated after the first message, and only the open
+  // Conversation polls. Copy a newer title into loaded feeds, such as the
+  // sidebar and the home list, so they do not keep the old one.
+  const displayTitle = detail.data?.displayTitle;
+  const detailUpdatedAt = detail.dataUpdatedAt;
+  useEffect(() => {
+    if (!conversationId || !displayTitle) return;
+    const feeds = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: ["dashboard", "conversations"] });
+    for (const query of feeds) {
+      const feed = query.state.data as ConversationFeed | undefined;
+      if (!feed || query.state.dataUpdatedAt > detailUpdatedAt) continue;
+      const stale = feed.conversations.some(
+        (conversation) =>
+          conversation.conversationId === conversationId &&
+          conversation.displayTitle !== displayTitle,
+      );
+      if (!stale) continue;
+      queryClient.setQueryData<ConversationFeed>(query.queryKey, {
+        ...feed,
+        conversations: feed.conversations.map((conversation) =>
+          conversation.conversationId === conversationId
+            ? { ...conversation, displayTitle }
+            : conversation,
+        ),
+      });
+    }
+  }, [conversationId, detailUpdatedAt, displayTitle, queryClient]);
   const historyStatus = detailData?.eventHistory.status;
   const historyQueryKey = useMemo(
     () => ["conversation", conversationId, "history", historyStatus] as const,
