@@ -11,7 +11,12 @@ import {
   useState,
 } from "react";
 
-import { Tooltip } from "../Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../ui/tooltip";
 import { getDashboardTimeZone } from "../../format";
 import { cn } from "../../styles";
 
@@ -439,7 +444,6 @@ export function ActivityChartTooltip(props: {
   content: ReactNode;
   date: string;
   summary?: string;
-  triggerClassName?: string;
 }) {
   const dateLabel = formatActivityTooltipDate(props.date);
   const child = props.summary
@@ -449,12 +453,12 @@ export function ActivityChartTooltip(props: {
     : props.children;
 
   return (
-    <Tooltip
-      content={props.content}
-      label={dateLabel}
-      triggerClassName={props.triggerClassName}
-    >
-      {child}
+    <Tooltip>
+      <TooltipTrigger render={child} />
+      <TooltipContent>
+        <TooltipTitle>{dateLabel}</TooltipTitle>
+        {props.content}
+      </TooltipContent>
     </Tooltip>
   );
 }

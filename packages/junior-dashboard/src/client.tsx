@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 
 import { Toaster } from "./client/components/ui/toast";
+import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
 
@@ -89,7 +90,9 @@ createRoot(root).render(
   <DashboardErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <Toaster>
-        <RouterProvider router={router} />
+        <TooltipProvider>
+          <RouterProvider router={router} />
+        </TooltipProvider>
       </Toaster>
     </QueryClientProvider>
   </DashboardErrorBoundary>,

@@ -272,7 +272,7 @@ function FoundationsGalleryPage() {
           </AccordionItem>
         </Accordion>
       </Fixture>
-      <Fixture title="Popover, confirmation, and toast">
+      <Fixture title="Popover, tooltip, confirmation, and toast">
         <OverlayFixtures />
       </Fixture>
       <Fixture title="Copy text">

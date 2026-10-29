@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
-import { Tooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import {
   formatMessageTimestamp,
   formatRelativeMessageTimestamp,
@@ -51,18 +55,16 @@ export function TranscriptTimestamp(props: { value: number | undefined }) {
 
   const details = formatTranscriptTimestampDetails(props.value!);
   return (
-    <Tooltip
-      content={
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent>
         <span className="grid grid-cols-[auto_auto] gap-x-3">
           <span>Local</span>
           <span>{details.local}</span>
           <span>UTC</span>
           <span>{details.utc}</span>
         </span>
-      }
-      placement="above"
-    >
-      {button}
+      </TooltipContent>
     </Tooltip>
   );
 }

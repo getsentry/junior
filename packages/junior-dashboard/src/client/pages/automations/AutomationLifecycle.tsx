@@ -6,7 +6,11 @@ import {
   PopoverDescription,
 } from "../../components/ui/popover";
 import { useToastManager } from "../../components/ui/toast";
-import { IconButtonTooltip } from "../../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { Link } from "react-router";
 import { CircleHelp, Pencil, Settings2, Trash2 } from "lucide-react";
 import {
@@ -82,34 +86,44 @@ export function AutomationLifecycle({
     >
       <div className="flex items-center gap-2">
         <div className="mr-auto flex items-center gap-1">
-          <IconButtonTooltip
-            label={canEdit ? "Edit automation" : "View settings"}
-          >
-            <Link
-              aria-label={canEdit ? "Edit automation" : "View settings"}
-              className="grid size-11 place-items-center rounded-md text-dashboard-text-muted no-underline hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-              to={editPath}
-            >
-              {canEdit ? (
-                <Pencil aria-hidden="true" size={16} />
-              ) : (
-                <Settings2 aria-hidden="true" size={16} />
-              )}
-            </Link>
-          </IconButtonTooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Link
+                  aria-label={canEdit ? "Edit automation" : "View settings"}
+                  className="grid size-11 place-items-center rounded-md text-dashboard-text-muted no-underline hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+                  to={editPath}
+                >
+                  {canEdit ? (
+                    <Pencil aria-hidden="true" size={16} />
+                  ) : (
+                    <Settings2 aria-hidden="true" size={16} />
+                  )}
+                </Link>
+              }
+            />
+            <TooltipContent size="compact">
+              {canEdit ? "Edit automation" : "View settings"}
+            </TooltipContent>
+          </Tooltip>
           {automation.ownedByViewer ? (
-            <IconButtonTooltip label="Delete automation">
-              <Button
-                aria-label="Delete automation"
-                className="min-h-11 min-w-11"
-                size="icon"
-                variant="danger"
-                onClick={(event) => onDelete(event.currentTarget)}
-                disabled={mutation.isPending}
-              >
-                <Trash2 aria-hidden="true" size={16} />
-              </Button>
-            </IconButtonTooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label="Delete automation"
+                    className="min-h-11 min-w-11"
+                    size="icon"
+                    variant="danger"
+                    onClick={(event) => onDelete(event.currentTarget)}
+                    disabled={mutation.isPending}
+                  >
+                    <Trash2 aria-hidden="true" size={16} />
+                  </Button>
+                }
+              />
+              <TooltipContent size="compact">Delete automation</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
         {canPause ? (

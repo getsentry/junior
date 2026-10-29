@@ -64,6 +64,7 @@ file when every caller needs the same style or variant. App components compose
 | `ProfileMenu` (desktop)        | `ui/popover`      |
 | `TimeRangeSelector`            | `ui/toggle-group` |
 | `ThemeSwitcher`                | `ui/toggle-group` |
+| `charts/ActivityChartTooltip`  | `ui/tooltip`      |
 
 Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
 `aria-label`. The `ui/` files join classes with the merging `cn` from
@@ -167,7 +168,14 @@ token so each theme can redefine it.
   `overlay` to retain a desktop drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
   in `SheetContent`; it only adds app actions, widths, and body padding.
   `DetailsPanel` owns Escape for docked panels and their scroll frame.
-  `Tooltip` and `IconButtonTooltip` own hover text.
+  `ui/tooltip` owns hover text. Compose `Tooltip`, `TooltipTrigger` with
+  `render` set to the control, and `TooltipContent`. Use
+  `TooltipContent size="compact"` for the label of an icon-only control. Use
+  `TooltipTitle` to name a chart bucket or detail card. An SVG mark can be the
+  trigger, for example `render={<rect … />}`. `TooltipProvider` in
+  `src/client.tsx` opens tooltips at once and keeps them open for 150ms, so the
+  pointer can reach selectable text. Tooltips open on mouse hover and keyboard
+  focus only. Touch does not open them, so a tap still runs the control.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original

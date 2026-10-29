@@ -12,7 +12,11 @@ import {
 
 import { Button } from "../components/ui/button";
 import { ToggleButton } from "../components/ToggleButton";
-import { IconButtonTooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
@@ -180,7 +184,10 @@ function ViewModeButton(props: {
   return props.labelled ? (
     button
   ) : (
-    <IconButtonTooltip label={props.label}>{button}</IconButtonTooltip>
+    <Tooltip>
+      <TooltipTrigger render={button} />
+      <TooltipContent size="compact">{props.label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -193,21 +200,26 @@ export function HeaderIconButton(props: {
   pressed?: boolean;
 }) {
   return (
-    <IconButtonTooltip label={props.label}>
-      <Button
-        ref={props.ref}
-        aria-label={props.label}
-        aria-pressed={props.pressed}
-        className={cn(
-          "text-dashboard-text-muted",
-          props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
-        )}
-        onClick={props.onClick}
-        size="icon"
-      >
-        {props.children}
-      </Button>
-    </IconButtonTooltip>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            ref={props.ref}
+            aria-label={props.label}
+            aria-pressed={props.pressed}
+            className={cn(
+              "text-dashboard-text-muted",
+              props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
+            )}
+            onClick={props.onClick}
+            size="icon"
+          >
+            {props.children}
+          </Button>
+        }
+      />
+      <TooltipContent size="compact">{props.label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -278,16 +290,21 @@ function ArchiveConversationButton(
     );
   }
   return (
-    <IconButtonTooltip label={label}>
-      <Button
-        aria-label={label}
-        className="hidden shrink-0 text-dashboard-text-muted md:grid"
-        disabled={props.disabled}
-        onClick={props.onClick}
-        size="icon"
-      >
-        <Icon aria-hidden="true" size={15} strokeWidth={2} />
-      </Button>
-    </IconButtonTooltip>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={label}
+            className="hidden shrink-0 text-dashboard-text-muted md:grid"
+            disabled={props.disabled}
+            onClick={props.onClick}
+            size="icon"
+          >
+            <Icon aria-hidden="true" size={15} strokeWidth={2} />
+          </Button>
+        }
+      />
+      <TooltipContent size="compact">{label}</TooltipContent>
+    </Tooltip>
   );
 }
