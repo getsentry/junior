@@ -39,6 +39,10 @@ if (!process.env.NO_COLOR && !process.env.FORCE_COLOR) {
 
 loadEnvFiles([workspaceRoot, exampleDir]);
 
+// `OPEN_SPOTLIGHT_WEB=1` opens the Sentry Local UI. Read it after the env
+// files load, so that `.env.local` can set it.
+const openLocalUi = process.env.OPEN_SPOTLIGHT_WEB?.trim() === "1";
+
 const children = new Set();
 const stoppedChildren = new WeakSet();
 
@@ -196,12 +200,15 @@ function clearExampleVercelOutput() {
   });
 }
 
-function startNitroDev() {
+// Restarts reuse this function. Open the Sentry Local UI only on the first
+// start, so that each rebuild does not open a new browser tab.
+function startNitroDev({ openLocalUi = false } = {}) {
   const child = spawnChild("pnpm", [
     "exec",
     "sentry",
     "local",
     "run",
+    ...(openLocalUi ? ["--open"] : []),
     "--port",
     "8969",
     "--",
@@ -286,9 +293,11 @@ syncInjectedPackageDist("@sentry/junior-dashboard", dashboardPackageDir, {
 });
 clearExampleVercelOutput();
 
-spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
-  cwd: juniorPackageDir,
-});
+spawnChild(
+  "pnpm",
+  ["exec", "tsdown", "--watch", "--logLevel", "warn", "--no-clean"],
+  { cwd: juniorPackageDir },
+);
 spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
   cwd: dashboardPackageDir,
 });
@@ -310,7 +319,7 @@ if (tunnelToken) {
 }
 
 watchDistForNitroRestart();
-startNitroDev();
+startNitroDev({ openLocalUi });
 startLocalHeartbeat();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
