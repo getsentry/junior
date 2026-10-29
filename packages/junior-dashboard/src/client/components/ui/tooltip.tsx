@@ -132,7 +132,7 @@ function TooltipContent({
         collisionPadding={8}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50 data-anchor-hidden:hidden"
+        className="isolate z-50 data-anchor-hidden:invisible"
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
