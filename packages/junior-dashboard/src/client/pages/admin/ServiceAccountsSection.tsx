@@ -13,7 +13,7 @@ import {
   type serviceAccountSchema,
 } from "@sentry/junior/api/schema";
 import { getDashboardAgentName } from "../../agentName";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
 import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
@@ -192,7 +192,7 @@ export function ServiceAccountsSection(props: {
                     connectMutation.reset();
                     disconnectMutation.mutate(account);
                   }}
-                  tone="danger"
+                  variant="danger"
                 >
                   Disconnect
                 </Button>

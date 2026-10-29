@@ -1,33 +1,37 @@
-import { ChevronRight } from "lucide-react";
-import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { Drawer } from "../components/Drawer";
+import { Skeleton } from "../components/ui/skeleton";
+import { Toggle } from "../components/ui/toggle";
+import { useEventTime } from "./eventTime";
+import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
 import {
-  eventLogModel,
-  eventLogSummary,
+  adjacentEventLogSeqs,
+  eventLogRows,
   eventLogTone,
-  eventLogUsage,
+  filterEventLogRows,
 } from "./eventLog";
-import { EventDetails } from "./EventDetails";
-import { ForkConversationButton } from "./ForkConversationButton";
+import { ConversationEventDetails } from "./ConversationEventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 const rowClass =
-  "grid grid-cols-[12ch_minmax(0,1fr)_1rem] items-center gap-x-3 px-3 @min-[48rem]:grid-cols-[12ch_19ch_minmax(0,1fr)_1rem]";
+  "grid grid-cols-[12ch_minmax(0,1fr)] items-baseline gap-x-3 px-4 @min-[32rem]:grid-cols-[12ch_17ch_minmax(0,1fr)]";
 
 /**
  * Show every reporting event in sequence order, outside the transcript reducer.
- * Pass `onSelectedSeqChange` to own the open entry, for example in the URL.
+ * Pass `onSelectedSeqChange` to own selection and render details beside the log.
+ * Standalone transcripts keep a local selection and show an overlay.
  */
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
+  onSearchChange(value: string): void;
   onSelectedSeqChange?(seq: number | undefined): void;
   selectedSeq?: number;
 }) {
   const { conversation } = props;
+  const time = useEventTime();
   const search = useTranscriptSearch();
   const [localSelectedSeq, setLocalSelectedSeq] = useState<number>();
   const selectedSeq = props.onSelectedSeqChange
@@ -35,31 +39,14 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     : localSelectedSeq;
   const setSelectedSeq = props.onSelectedSeqChange ?? setLocalSelectedSeq;
   const listRef = useRef<HTMLOListElement>(null);
-  // Rows opened by a click are already visible. Scroll only for a linked entry.
+  // Clicked rows are visible. Reveal links and keyboard selections after layout.
   const revealedSeqRef = useRef<number>(undefined);
-  const titleId = useId();
   const events = conversation.events;
-  const rows = useMemo(
-    () =>
-      events.map((event) => ({
-        event,
-        model: eventLogModel(event),
-        usage: eventLogUsage(event),
-        summary: eventLogSummary(event.data).replace(/\s+/g, " ").slice(0, 300),
-      })),
-    [events],
-  );
+  const rows = useMemo(() => eventLogRows(events), [events]);
   // Large payloads are serialized only for an active search or the open entry.
   const visibleRows = useMemo(
-    () =>
-      search.active
-        ? rows.filter(({ event, summary, usage }) =>
-            `${summary} ${usage} ${JSON.stringify(event)}`
-              .toLowerCase()
-              .includes(search.normalizedQuery),
-          )
-        : rows,
-    [rows, search.active, search.normalizedQuery],
+    () => filterEventLogRows(rows, search.normalizedQuery),
+    [rows, search.normalizedQuery],
   );
   // Resolve the selection from current data so polling cannot leave stale details.
   const selected = events.find((event) => event.seq === selectedSeq);
@@ -72,7 +59,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     );
     if (!row) return;
     revealedSeqRef.current = selectedSeq;
-    row.scrollIntoView({ block: "center" });
+    row.scrollIntoView({ block: "nearest" });
   }, [selectedSeq, visibleRows]);
 
   if (conversation.eventHistory.status === "expired") {
@@ -85,54 +72,89 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
 
   return (
     <section aria-label="Conversation event log" className="@container min-w-0">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-dashboard-text-muted">
-        <span role="status">
-          {search.active
-            ? `${visibleRows.length} of ${events.length} loaded events`
-            : `${events.length} loaded events`}
-        </span>
-        <span>Times in UTC · Select a row for details</span>
-      </div>
-      <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel font-mono text-xs">
-        <div
-          aria-hidden="true"
-          className={cn(
-            rowClass,
-            "border-b border-dashboard-border bg-dashboard-surface-raised py-2 text-dashboard-text-muted",
-          )}
-        >
-          <span>Time (UTC)</span>
-          <span>Event</span>
-          <span className="hidden @min-[48rem]:block">Summary</span>
-          <span />
+      <div className="sticky top-0 z-10 bg-dashboard-bg">
+        <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border px-4 py-2">
+          <SearchInput
+            className="min-w-32 flex-1 @max-[28rem]:basis-full"
+            label="Search events"
+            onChange={props.onSearchChange}
+            placeholder="Search events…"
+            size="compact"
+            value={search.query}
+          />
+          <div className="ml-auto flex items-center gap-3 whitespace-nowrap text-xs text-dashboard-text-muted @max-[28rem]:w-full @max-[28rem]:justify-between">
+            <span role="status">
+              {search.active
+                ? `${visibleRows.length} of ${events.length} loaded events`
+                : `${events.length} loaded events`}
+            </span>
+            <Toggle
+              aria-label="Use local time"
+              onPressedChange={time.toggle}
+              pressed={time.local}
+              title={time.title}
+            >
+              <span className="max-w-32 truncate">{time.label}</span>
+            </Toggle>
+          </div>
         </div>
+        <EventLogColumns />
+      </div>
+      <div className="font-mono text-xs">
         <ol
           aria-label="Events"
           className="m-0 list-none divide-y divide-dashboard-border-subtle p-0"
           ref={listRef}
         >
-          {visibleRows.map(({ event, summary, model, usage }) => (
-            <li data-event-seq={event.seq} key={event.seq}>
+          {visibleRows.map(({ event, summary, metadata }, index) => (
+            <li
+              className="scroll-mt-32 scroll-mb-2"
+              data-event-seq={event.seq}
+              key={event.seq}
+            >
               <button
-                aria-haspopup="dialog"
+                aria-expanded={selectedSeq === event.seq}
                 aria-label={`Event ${event.seq}: ${event.data.type}`}
                 className={cn(
                   rowClass,
-                  "min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[48rem]:min-h-8 @min-[48rem]:py-1",
-                  selectedSeq === event.seq && "bg-dashboard-fill-strong",
+                  "relative min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
+                  selectedSeq === event.seq &&
+                    "bg-dashboard-fill-strong before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-dashboard-accent before:content-['']",
                 )}
                 onClick={() => {
                   revealedSeqRef.current = event.seq;
                   setSelectedSeq(event.seq);
+                }}
+                onKeyDown={(keyEvent) => {
+                  if (
+                    keyEvent.altKey ||
+                    keyEvent.ctrlKey ||
+                    keyEvent.metaKey ||
+                    keyEvent.shiftKey ||
+                    (keyEvent.key !== "ArrowUp" && keyEvent.key !== "ArrowDown")
+                  )
+                    return;
+                  keyEvent.preventDefault();
+                  const next =
+                    visibleRows[
+                      index + (keyEvent.key === "ArrowDown" ? 1 : -1)
+                    ];
+                  if (!next) return;
+                  setSelectedSeq(next.event.seq);
+                  listRef.current
+                    ?.querySelector<HTMLButtonElement>(
+                      `[data-event-seq="${next.event.seq}"] button`,
+                    )
+                    ?.focus({ preventScroll: true });
                 }}
                 type="button"
               >
                 <time
                   className="tabular-nums text-dashboard-text-muted"
                   dateTime={event.createdAt}
-                  title={event.createdAt}
+                  title={time.formatTimestamp(event.createdAt)}
                 >
-                  {event.createdAt.slice(11, 23)}
+                  {time.formatClock(event.createdAt)}
                 </time>
                 <span
                   className={cn("truncate", eventLogTone(event.data))}
@@ -140,50 +162,19 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                 >
                   <HighlightText text={event.data.type} />
                 </span>
-                <span className="col-span-2 row-start-2 grid min-w-0 gap-1 text-dashboard-text @min-[48rem]:col-span-1 @min-[48rem]:row-auto">
-                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                    <span
-                      className={cn(
-                        "break-all",
-                        model
-                          ? "font-semibold text-violet-300"
-                          : "text-dashboard-text-muted",
-                      )}
-                    >
-                      <HighlightText
-                        text={model?.modelId ?? "Model not recorded"}
-                      />
-                    </span>
-                    {model?.modelProfile ? (
-                      <span className="text-dashboard-text-muted">
-                        <HighlightText text={model.modelProfile} />
-                      </span>
-                    ) : null}
-                    {model?.reasoningLevel ? (
-                      <span className="text-dashboard-text-muted">
-                        <HighlightText
-                          text={`${model.reasoningLevel} reasoning`}
-                        />
-                      </span>
-                    ) : null}
-                  </span>
+                <span className="col-span-2 row-start-2 grid min-w-0 gap-0.5 text-dashboard-text @min-[32rem]:col-span-1 @min-[32rem]:row-auto">
                   <span className="truncate" title={summary}>
                     <HighlightText text={summary} />
                   </span>
-                  {usage ? (
+                  {metadata ? (
                     <span
-                      className="text-dashboard-text-muted"
-                      title="Usage for this event only; costs are estimated USD"
+                      className="truncate text-dashboard-text-muted"
+                      title={metadata}
                     >
-                      <HighlightText text={usage} />
+                      <HighlightText text={metadata} />
                     </span>
                   ) : null}
                 </span>
-                <ChevronRight
-                  aria-hidden="true"
-                  className="col-start-3 row-start-1 text-dashboard-text-muted @min-[48rem]:col-start-4"
-                  size={14}
-                />
               </button>
             </li>
           ))}
@@ -196,46 +187,75 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
           </p>
         ) : null}
       </div>
-      {selected
+      {selected && !props.onSelectedSeqChange
         ? createPortal(
-            <Drawer
-              closeLabel="Close event details"
-              dismissLabel="Dismiss event details"
-              header={
-                <>
-                  <h2
-                    className="m-0 break-words font-mono text-sm font-semibold text-dashboard-text"
-                    id={titleId}
-                  >
-                    {selected.data.type}
-                  </h2>
-                  <p className="mb-0 mt-1 font-mono text-xs text-dashboard-text-muted">
-                    {selected.createdAt}
-                  </p>
-                </>
-              }
+            <ConversationEventDetails
+              overlay
+              conversation={conversation}
+              event={selected}
               onClose={() => setSelectedSeq(undefined)}
-              openKey={`${conversation.conversationId}:${selected.seq}`}
-              titleId={titleId}
-              width="wide"
-            >
-              {conversation.canFork &&
-              selected.data.type === "message" &&
-              selected.data.role === "assistant" &&
-              !selected.data.redacted ? (
-                <div className="mb-3 flex items-center gap-2 text-sm">
-                  <ForkConversationButton
-                    conversationId={conversation.conversationId}
-                    messageId={selected.data.messageId}
-                  />
-                  <span>Fork after this reply</span>
-                </div>
-              ) : null}
-              <EventDetails key={selected.seq} event={selected} />
-            </Drawer>,
+              onSelect={setSelectedSeq}
+              {...adjacentEventLogSeqs(visibleRows, selected.seq)}
+            />,
             document.body,
           )
         : null}
     </section>
   );
 });
+
+const loadingRowWidths = ["w-3/5", "w-2/5", "w-4/5", "w-1/2", "w-2/3", "w-1/3"];
+
+/** Match the event log toolbar, columns, and rows while the transcript loads. */
+export function ConversationEventLogLoading() {
+  return (
+    <section aria-busy="true" className="@container min-w-0">
+      <span className="sr-only" role="status">
+        Loading events
+      </span>
+      <div className="sticky top-0 z-10 bg-dashboard-bg">
+        <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border px-4 py-2">
+          <Skeleton className="h-9 min-w-32 flex-1 @max-[28rem]:basis-full" />
+          <Skeleton className="ml-auto h-3 w-24" />
+        </div>
+        <EventLogColumns />
+      </div>
+      <ol className="m-0 list-none divide-y divide-dashboard-border-subtle p-0">
+        {loadingRowWidths.map((width, index) => (
+          <li
+            className={cn(
+              rowClass,
+              "min-h-11 items-center gap-y-2 py-2 @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
+            )}
+            key={index}
+          >
+            <Skeleton className="h-3 w-[10ch]" />
+            <Skeleton className="h-3 w-[12ch]" />
+            <Skeleton
+              className={cn(
+                "col-span-2 row-start-2 h-3 @min-[32rem]:col-span-1 @min-[32rem]:row-auto",
+                width,
+              )}
+            />
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function EventLogColumns() {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        rowClass,
+        "border-b border-dashboard-border py-2 font-mono text-xs text-dashboard-text-muted",
+      )}
+    >
+      <span>Time</span>
+      <span>Event</span>
+      <span className="hidden @min-[32rem]:block">Summary</span>
+    </div>
+  );
+}

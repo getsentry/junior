@@ -5,16 +5,18 @@
  * send path, and HTTP/local callback. Core keeps one topic and one runner.
  */
 import { createHash } from "node:crypto";
-import type { MessageMetadata } from "@vercel/queue";
 import { z } from "zod";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
+import {
+  getQueueProvider,
+  type QueueMessageMetadata,
+} from "@/chat/queue/provider";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 
 /** Deploy topic name. Keep stable for Vercel queue wiring. */
 export const PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
@@ -90,7 +92,7 @@ function verifyPluginTaskQueueMessage(value: unknown, nowMs = Date.now()) {
 
 function logPluginTaskQueueMessageRejected(
   reason: string,
-  metadata: MessageMetadata,
+  metadata: QueueMessageMetadata,
 ): void {
   logWarn("plugin.task.queue_message.rejected", {
     "app.queue.consumer_group": metadata.consumerGroup,
@@ -120,7 +122,7 @@ function pluginTaskCallback() {
 export async function sendVercelPluginTask(
   message: PluginTaskQueueMessage,
 ): Promise<void> {
-  await createVercelQueueClient().send(
+  await getQueueProvider().send(
     PLUGIN_TASK_QUEUE_TOPIC,
     signPluginTaskQueueMessage(message),
     {

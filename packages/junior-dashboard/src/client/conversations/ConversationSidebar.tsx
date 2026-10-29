@@ -19,7 +19,12 @@ import {
 } from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
-import { Skeleton } from "../components/Skeleton";
+import { Skeleton } from "../components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 
@@ -104,15 +109,21 @@ export function ConversationSidebar(props: {
           </h2>
           <div className="flex items-center gap-0.5">
             {isLanding ? null : (
-              <button
-                aria-label="New conversation"
-                className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-                onClick={props.onNewConversation}
-                title="New conversation"
-                type="button"
-              >
-                <SquarePen aria-hidden="true" size={15} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      aria-label="New conversation"
+                      className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                      onClick={props.onNewConversation}
+                      type="button"
+                    >
+                      <SquarePen aria-hidden="true" size={15} />
+                    </button>
+                  }
+                />
+                <TooltipContent size="compact">New conversation</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -321,25 +332,33 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
           ) : null}
         </div>
       </Link>
-      <button
-        aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-        className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
-        disabled={archive.isPending}
-        onClick={() =>
-          archive.mutate({
-            archived: !props.conversation.archivedAt,
-            lastSeenAt: props.conversation.lastSeenAt,
-          })
-        }
-        title={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-        type="button"
-      >
-        {props.conversation.archivedAt ? (
-          <ArchiveRestore aria-hidden="true" size={14} />
-        ) : (
-          <Archive aria-hidden="true" size={14} />
-        )}
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
+              className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
+              disabled={archive.isPending}
+              onClick={() =>
+                archive.mutate({
+                  archived: !props.conversation.archivedAt,
+                  lastSeenAt: props.conversation.lastSeenAt,
+                })
+              }
+              type="button"
+            >
+              {props.conversation.archivedAt ? (
+                <ArchiveRestore aria-hidden="true" size={14} />
+              ) : (
+                <Archive aria-hidden="true" size={14} />
+              )}
+            </button>
+          }
+        />
+        <TooltipContent size="compact">
+          {props.conversation.archivedAt ? "Restore" : "Archive"}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 });

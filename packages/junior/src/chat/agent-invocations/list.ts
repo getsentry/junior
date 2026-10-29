@@ -1,4 +1,4 @@
-import { desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -14,6 +14,7 @@ import {
   getAgentInvocationIdForResult,
   invocationFromRow,
   isTerminalAgentInvocation,
+  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
 } from "./store";
 import {
   CHILD_AGENT_RESULTS,
@@ -165,6 +166,43 @@ export async function listChildAgents(
       ),
     )
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+/**
+ * List the other child agents of one parent whose results have not reached
+ * the parent yet. A child counts while it runs and after it finishes until its
+ * result is appended to the parent mailbox.
+ */
+export async function listUnreportedSiblingAgents(
+  parentConversationId: string,
+  childConversationId: string,
+): Promise<ChildAgent[]> {
+  const [children, pendingResults] = await Promise.all([
+    listChildAgents(parentConversationId),
+    getSqlExecutor()
+      .db()
+      .selectDistinct({
+        childConversationId: juniorAgentInvocations.childConversationId,
+      })
+      .from(juniorAgentInvocations)
+      .where(
+        and(
+          eq(juniorAgentInvocations.parentConversationId, parentConversationId),
+          eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
+        ),
+      ),
+  ]);
+  const withPendingResult = new Set(
+    pendingResults.map((row) => row.childConversationId),
+  );
+  return children.filter(
+    (child) =>
+      child.childConversationId !== childConversationId &&
+      ((NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
+        child.status,
+      ) ||
+        withPendingResult.has(child.childConversationId)),
+  );
 }
 
 /** One child agent below a Conversation, at any depth. */

@@ -6,6 +6,7 @@ export * from "./annotations";
 export * from "./code";
 export * from "./conversation-events";
 export * from "./schemas";
+export * from "./cache";
 export * from "./context";
 export * from "./state";
 export {
@@ -26,6 +27,7 @@ export * from "./tools";
 export * from "./operations";
 export * from "./credentials";
 export * from "./egress-policy";
+export * from "./shell-command";
 export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";

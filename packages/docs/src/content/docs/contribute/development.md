@@ -41,6 +41,12 @@ pnpm dev
 
 This starts the example app on `http://localhost:3000` by default. It also rebuilds and watches the workspace packages that the example app consumes, so dashboard and runtime package edits are reflected without manually rebuilding first.
 
+To also open the Sentry Local UI in your browser, set `OPEN_SPOTLIGHT_WEB=1`:
+
+```bash
+OPEN_SPOTLIGHT_WEB=1 pnpm dev
+```
+
 For dashboard visual QA without generating real Slack traffic, replace conversation API responses with sample fixtures:
 
 ```bash

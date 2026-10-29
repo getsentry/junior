@@ -21,6 +21,7 @@ const searchedResourceTypeSchema = z
             kind: z.enum(["boolean", "string", "number"]),
             description: z.string(),
             enum: z.array(z.string()).optional(),
+            list: z.literal(true).optional(),
           })
           .strict(),
       )
@@ -79,7 +80,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
       readOnlyHint: true,
     },
     description:
-      "Search the event types currently enabled without creating anything. Includes plugin resources and core Workspace snapshot events. Use watchEvents for temporary updates in the current conversation; use createEventAutomation for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.",
+      "Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. Use watchEvents for temporary updates in the current conversation; use createEventAutomation for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.",
     inputSchema: z
       .object({
         query: z

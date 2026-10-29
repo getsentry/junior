@@ -1,9 +1,7 @@
-import { withSentryConfig } from "@sentry/nitro";
 import { defineConfig } from "nitro";
-import { juniorNitro } from "@sentry/junior/nitro";
+import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";
 import {
   exampleDashboardAuthRequired,
-  exampleDashboardComponentGallery,
   exampleDashboardMockConversations,
 } from "./dashboard.ts";
 
@@ -13,7 +11,6 @@ const config = defineConfig({
     juniorNitro({
       dashboard: {
         authRequired: exampleDashboardAuthRequired(),
-        componentGallery: exampleDashboardComponentGallery(),
         mockConversations: exampleDashboardMockConversations(),
       },
       plugins: "./plugins",

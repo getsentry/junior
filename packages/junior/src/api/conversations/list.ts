@@ -1,6 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
@@ -22,8 +22,8 @@ import {
   conversationArchivedForEmail,
   conversationArchivedForUser,
   conversationArchiveTimes,
-  conversationHasParticipantEmail,
   conversationHasParticipantUser,
+  conversationIsMemberRoot,
   conversationNotArchivedForEmail,
   conversationNotArchivedForUser,
   viewerConversationMembership,
@@ -41,6 +41,8 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
+import { readFirstHumanMessageTexts } from "./first-message";
+import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
 
 const CONVERSATION_FEED_LIMIT = 50;
@@ -56,10 +58,7 @@ function conversationFeedMembershipFilter(
   if (!filter) return status === "archived" ? sql`false` : undefined;
   if (filter.kind === "viewer") {
     return and(
-      viewerConversationMembership({
-        actorMatch: eq(juniorIdentities.userId, filter.userId),
-        participantMatch: conversationHasParticipantUser(filter.userId),
-      }),
+      conversationIsMemberRoot({ userId: filter.userId }),
       status === "archived"
         ? conversationArchivedForUser(filter.userId)
         : status === "all"
@@ -68,10 +67,7 @@ function conversationFeedMembershipFilter(
     );
   }
   return and(
-    viewerConversationMembership({
-      actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
-      participantMatch: conversationHasParticipantEmail(filter.email),
-    }),
+    conversationIsMemberRoot({ email: filter.email }),
     status === "archived"
       ? conversationArchivedForEmail(filter.email)
       : status === "all"
@@ -369,6 +365,7 @@ export async function readConversationFeedFromSql(
     lastUserMessageAtByConversation,
     activityPreviewByConversation,
     automationTitleByConversation,
+    firstHumanMessageTextByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationArchiveTimes(
@@ -395,7 +392,17 @@ export async function readConversationFeedFromSql(
     readLastUserMessageAtByConversation(db, conversationIds),
     readConversationActivityPreviews(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
+    readFirstHumanMessageTexts(db, conversations),
   ]);
+  const visibleActivityPreviews = await attachActivityPreviewMentions(
+    getSqlExecutor(),
+    new Map(
+      [...activityPreviewByConversation].filter(
+        ([conversationId]) =>
+          accessByConversation.get(conversationId)?.canViewPrivateContent,
+      ),
+    ),
+  );
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
       conversationId,
@@ -433,6 +440,9 @@ export async function readConversationFeedFromSql(
         auxiliaryCosts: auxiliaryCosts?.total,
         ...(childAgentTotals ? { childAgentTotals } : undefined),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
+        firstHumanMessageText: firstHumanMessageTextByConversation.get(
+          conversation.conversationId,
+        ),
         teamDomainByTeamId,
         ...(row.location?.visibility === "public"
           ? { locationId: row.location.id }
@@ -456,9 +466,9 @@ export async function readConversationFeedFromSql(
       const annotations = access?.canViewPrivateContent
         ? (annotationsByConversation.get(conversation.conversationId) ?? [])
         : [];
-      const activityPreview = access?.canViewPrivateContent
-        ? activityPreviewByConversation.get(conversation.conversationId)
-        : undefined;
+      const activityPreview = visibleActivityPreviews.get(
+        conversation.conversationId,
+      );
       const participants = access?.canViewPrivateContent
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;

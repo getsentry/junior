@@ -25,6 +25,7 @@ fixed behavior that code must control.
 | [Amplitude](/extend/amplitude-plugin/)         | Product analytics queries                     |
 | [Cloudflare](/extend/cloudflare-plugin/)       | Cloudflare resources and APIs                 |
 | [Datadog](/extend/datadog-plugin/)             | Logs, metrics, and incidents                  |
+| [Figma](/extend/figma-plugin/)                 | Figma frames and design details (read-only)   |
 | [TTS](/extend/tts-plugin/)                     | Gemini narration through Vercel AI Gateway    |
 | [GitHub](/extend/github-plugin/)               | Repository, issue, and pull-request workflows |
 | [Hex](/extend/hex-plugin/)                     | Hex projects and runs                         |
@@ -33,7 +34,6 @@ fixed behavior that code must control.
 | [Memory](/extend/memory-plugin/)               | Long-term scoped memory                       |
 | [Notion](/extend/notion-plugin/)               | Notion content                                |
 | [PagerDuty](/extend/pagerduty-plugin/)         | On-call, schedules, and incidents (read-only) |
-| [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled automations                 |
 | [Sentry](/extend/sentry-plugin/)               | Sentry issues, telemetry, and issue webhooks  |
 | [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
 

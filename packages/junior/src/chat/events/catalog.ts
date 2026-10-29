@@ -126,7 +126,7 @@ export function registeredEventMatchSchema() {
   return eventMatchSchema
     .optional()
     .describe(
-      "Optional exact values from the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
+      "Optional exact values from the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
     );
 }
 
@@ -214,7 +214,7 @@ export function requireEventIdentifier(
   const resourceTypes = registration?.resourceTypes ?? [];
   const fits = (resourceType: (typeof resourceTypes)[number]) =>
     resourceType.identifier !== undefined &&
-    identifier.search(resourceType.identifier.pattern) !== -1;
+    new RegExp(resourceType.identifier.pattern).test(identifier);
   const resourceType = resourceTypes.find(
     (candidate) => candidate.type === input.resourceType,
   );

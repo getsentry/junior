@@ -368,6 +368,9 @@ export function transcriptMessageActorLabel(
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user") {
+    // The conversation actor started the child agent but did not write its
+    // input, so do not fall back to that actor here.
+    if (message.agentInvocationId) return "Agent invocation";
     return (
       actorLabel(message.actorIdentity) ??
       actorLabel(conversation.actorIdentity) ??
@@ -786,6 +789,11 @@ export function peoplePath(email: string): string {
 /** Build the canonical detail route for a persisted public location. */
 export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
+}
+
+/** Build the Workspace list route that opens one Workspace's details. */
+export function workspacePath(workspaceId: string): string {
+  return `/system/workspaces/${encodeURIComponent(workspaceId)}`;
 }
 
 /** Build the canonical automation detail route for an automation id. */

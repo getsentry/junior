@@ -38,13 +38,6 @@ async function loadInstrumentationModule() {
     getClient: () => undefined,
     init,
     getGlobalScope: () => globalScope,
-    vercelAIIntegration: vi.fn((options) => ({
-      name: "vercel-ai",
-      options,
-    })),
-    withStreamedSpan: vi.fn((callback) =>
-      Object.assign(callback, { _streamed: true }),
-    ),
   }));
   const instrumentation = await import("@/instrumentation");
   return { init, globalScope, instrumentation };
@@ -71,26 +64,21 @@ describe("initSentry", () => {
     expect(init).toHaveBeenCalledTimes(1);
     const options = init.mock.calls[0]?.[0];
     expect(options?.release).toBe(`${JUNIOR_VERSION}+git-sha`);
-    expect(options).toMatchObject({
-      sendDefaultPii: true,
-      streamGenAiSpans: true,
+    expect(options?.dataCollection).toEqual({
+      httpBodies: ["incomingRequest"],
+      databaseQueryData: false,
     });
     expect(options?.beforeSend).toEqual(expect.any(Function));
     expect(options?.beforeSendLog).toEqual(expect.any(Function));
     expect(options?.beforeSendSpan).toEqual(expect.any(Function));
-    expect(options?.beforeSendSpan?._streamed).toBe(true);
-    expect(options?.beforeSendTransaction).toEqual(expect.any(Function));
-    expect(options?.integrations).toEqual(expect.any(Function));
-    const defaultIntegration = { name: "default" };
-    expect(options?.integrations?.([defaultIntegration])).toEqual([
-      defaultIntegration,
-      expect.objectContaining({
-        options: {
-          recordInputs: true,
-          recordOutputs: true,
-        },
-      }),
-    ]);
+    const http = { name: "Http", setupOnce: () => {} };
+    expect(
+      options?.integrations?.([
+        http,
+        { name: "Anthropic_AI", setupOnce: () => {} },
+        { name: "VercelAI", setupOnce: () => {} },
+      ]),
+    ).toEqual([http]);
     const span: {
       attributes: Record<string, unknown>;
       end_timestamp: number;

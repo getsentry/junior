@@ -2,7 +2,11 @@ import { Fragment, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
-import { Tooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
@@ -180,8 +184,12 @@ export function TranscriptActivityGroup(props: {
           setUserOpen(!open);
         }}
       >
-        <Tooltip content={summary} placement="above">
-          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1" />
+            }
+          >
             <span className="min-w-0 truncate group-open/activity-run:hidden">
               <ShimmerText active={live}>{label}</ShimmerText>
             </span>
@@ -193,7 +201,8 @@ export function TranscriptActivityGroup(props: {
               className="size-3 shrink-0 opacity-55 transition-transform group-open/activity-run:rotate-90"
               strokeWidth={2.2}
             />
-          </span>
+          </TooltipTrigger>
+          <TooltipContent>{summary}</TooltipContent>
         </Tooltip>
       </TranscriptSummary>
       <TranscriptActivityNesting.Provider value>

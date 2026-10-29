@@ -1,3 +1,7 @@
+import {
+  readAttachmentStorageConfig,
+  type AttachmentStorageConfig,
+} from "@/chat/attachments/config";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
@@ -125,6 +129,7 @@ export type CrossActorMidRunMode = "follow_up" | "steer";
 export type SqlDriver = "neon" | "postgres";
 
 export interface ChatConfig {
+  attachmentStorage: AttachmentStorageConfig;
   bot: BotConfig;
   functionMaxDurationSeconds: number;
   conversationWorkEnabled: boolean;
@@ -601,6 +606,7 @@ export function readChatConfig(
     functionMaxDurationSeconds,
   );
   return {
+    attachmentStorage: readAttachmentStorageConfig(env),
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
     conversationWorkEnabled: parseConversationWorkEnabled(

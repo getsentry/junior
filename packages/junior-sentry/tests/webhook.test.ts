@@ -40,7 +40,7 @@ function metricAlertBody(action = "critical") {
         "1000 events in the last 10 minutes\nFilter: level:error",
       description_title: "Critical: Too many errors",
       metric_alert: {
-        alert_rule: { id: "7", name: "Too many errors" },
+        alert_rule: { id: "7", name: "Too many errors", projects: ["junior"] },
         id: "4",
       },
       web_url:
@@ -142,7 +142,7 @@ describe("Sentry webhook events", () => {
     ]);
   });
 
-  it("normalizes a metric alert state change for the alert rule", () => {
+  it("normalizes a metric alert state change for the alert rule and project", () => {
     expect(
       normalizeSentryEvents({
         body: metricAlertBody(),
@@ -168,6 +168,15 @@ describe("Sentry webhook events", () => {
           "Filter: level:error",
           "URL: https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
         ].join("\n"),
+      },
+      {
+        data: expect.any(Object),
+        eventKey: "sentry:metric-alert:sentry/7:4:metric_alert.critical",
+        eventType: "metric_alert.critical",
+        identifier: "sentry/junior",
+        occurredAtMs: 1_785_976_800_000,
+        trustedSummary: "Sentry metric alert sentry/7 is critical.",
+        untrustedText: expect.any(String),
       },
     ]);
   });

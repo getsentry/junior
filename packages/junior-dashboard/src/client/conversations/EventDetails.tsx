@@ -1,5 +1,15 @@
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
-import type { ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
+import { useState, type ReactNode } from "react";
+
+import { HighlightedCode } from "../code";
+import { CopyButton } from "../components/CopyButton";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../styles";
 
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptText } from "./TranscriptText";
@@ -10,6 +20,7 @@ import { EventUsage } from "./EventUsage";
 /** Present event content as readable sections, with the exact report available on demand. */
 export function EventDetails({ event }: { event: ConversationReportEvent }) {
   const data = event.data;
+  const mentions = event.mentions ?? [];
   const model = eventLogModel(event);
   const { usage, ...callAttributes } = event.modelCall ?? {};
   let content: ReactNode;
@@ -54,7 +65,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           ) : null}
           {summary ? (
             <DetailSection title="Continuation summary">
-              <TranscriptText text={summary} />
+              <TranscriptText mentions={mentions} text={summary} />
             </DetailSection>
           ) : null}
         </>
@@ -70,7 +81,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
             {redacted ? (
               <RedactedMarker />
             ) : (
-              <TranscriptText text={text ?? ""} />
+              <TranscriptText mentions={mentions} text={text ?? ""} />
             )}
           </DetailSection>
         </>
@@ -112,7 +123,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           {part.redacted ? (
             <RedactedMarker />
           ) : (
-            <TranscriptText text={part.text ?? ""} />
+            <TranscriptText mentions={mentions} text={part.text ?? ""} />
           )}
         </DetailSection>
       ));
@@ -124,12 +135,15 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           <DetailValue value={metadata} />
           <DetailSection title={presentation.title}>
             {presentation.preview ? (
-              <TranscriptText text={presentation.preview} />
+              <TranscriptText mentions={mentions} text={presentation.preview} />
             ) : null}
             {presentation.details?.map((detail, index) => (
               <DetailSection key={index} title={detail.title}>
                 {detail.description ? (
-                  <TranscriptText text={detail.description} />
+                  <TranscriptText
+                    mentions={mentions}
+                    text={detail.description}
+                  />
                 ) : null}
                 {detail.content ? <DetailValue value={detail.content} /> : null}
                 {detail.metadata ? (
@@ -174,14 +188,38 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
         </DetailSection>
       ) : null}
       {content}
-      <details className="border-t border-dashboard-border pt-4">
-        <summary className="cursor-pointer text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+      <RawEventJson event={event} />
+    </div>
+  );
+}
+
+function RawEventJson({ event }: { event: ConversationReportEvent }) {
+  const [open, setOpen] = useState(false);
+  const json = open ? JSON.stringify(event, null, 2) : "";
+  return (
+    <div className="relative min-w-0 border-t border-dashboard-border pt-4">
+      <Collapsible onOpenChange={setOpen} open={open}>
+        <CollapsibleTrigger className="group flex min-h-9 cursor-pointer items-center gap-1 pr-12 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
           Raw JSON
-        </summary>
-        <pre className="mb-0 mt-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-dashboard-text">
-          {JSON.stringify(event, null, 2)}
-        </pre>
-      </details>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="absolute right-0 top-4">
+            <CopyButton getText={() => json} label="Copy JSON" />
+          </div>
+          <div
+            aria-label="Raw event JSON"
+            className="mt-3 max-h-80 min-w-0 overflow-auto overscroll-contain rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            role="region"
+            tabIndex={0}
+          >
+            <HighlightedCode code={json} language="json" />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

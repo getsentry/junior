@@ -96,7 +96,7 @@ function ToolSignature(props: {
         <HighlightText text={props.name} />
       </ShimmerText>
       {props.preview && !searchActive ? (
-        <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-open:hidden">
+        <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-aria-expanded/trace-collapsible-trigger:hidden">
           (<HighlightText text={props.preview} />)
         </code>
       ) : null}

@@ -28,6 +28,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   };
 });
 vi.mock("@/chat/plugins/viewer", () => ({
+  readIdentityById: vi.fn(),
   resolveViewerUser: resolveViewerUserMock,
 }));
 import {
@@ -44,6 +45,8 @@ import {
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -1747,9 +1750,17 @@ describe("agent plugin hooks", () => {
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
               "command" in ctx.tool.input &&
-              ctx.tool.input.command === "blocked"
+              ctx.tool.input.command === "denied"
             ) {
               ctx.decision.deny("blocked by plugin");
+            }
+            if (
+              typeof ctx.tool.input === "object" &&
+              ctx.tool.input &&
+              "command" in ctx.tool.input &&
+              ctx.tool.input.command === "redirected"
+            ) {
+              ctx.decision.redirect("use otherTool instead");
             }
           },
         },
@@ -1771,9 +1782,15 @@ describe("agent plugin hooks", () => {
       await expect(
         runner.beforeToolExecute({
           name: "bash",
-          input: { command: "blocked" },
+          input: { command: "denied" },
         }),
-      ).rejects.toThrow("blocked by plugin");
+      ).rejects.toEqual(new PluginToolDeniedError("blocked by plugin"));
+      await expect(
+        runner.beforeToolExecute({
+          name: "bash",
+          input: { command: "redirected" },
+        }),
+      ).rejects.toEqual(new ToolInputError("use otherTool instead"));
 
       const before = await runner.beforeToolExecute({
         name: "bash",

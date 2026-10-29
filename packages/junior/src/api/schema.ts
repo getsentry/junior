@@ -60,11 +60,18 @@ export {
   conversationReportEventSchema,
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
-  conversationStatsReportSchema,
   conversationSummaryReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { conversationStatsReportSchema } from "./schema/conversation-stats";
+export type {
+  ConversationMetricDay,
+  ConversationStatsItem,
+  ConversationStatsReport,
+  GuardianMetricDay,
+  GuardianStats,
+} from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export type {
@@ -87,22 +94,18 @@ export type {
   ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
+  ConversationReportMessageEvent,
   ConversationReportStatus,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
-  ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
   ConversationSourceTask,
-  ConversationStatsItem,
-  ConversationStatsReport,
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
   CreateConversationBody,
   CreateConversationMessageBody,
-  GuardianMetricDay,
-  GuardianStats,
 } from "./schema/conversation";
 export {
   conversationChildAgentSchema,
@@ -180,6 +183,7 @@ export {
 } from "./schema/workspace";
 export type {
   BaselineSnapshotReport,
+  WorkspaceListReport,
   WorkspaceReport,
 } from "./schema/workspace";
 export {

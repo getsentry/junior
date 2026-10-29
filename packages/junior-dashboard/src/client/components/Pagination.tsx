@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "../styles";
-import { Button } from "./Button";
+import { Button } from "./ui/button";
 
 /** Render a centered load-more control for cursor or progressive lists. */
 export function LoadMorePagination(props: {

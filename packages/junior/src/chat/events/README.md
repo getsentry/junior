@@ -71,6 +71,10 @@ Watches route events back into an existing conversation.
   external text. When the agent replies, it should summarize what it was acting
   on and what it did or needs next. Stable handling rules live in runtime and
   docs, not a long per-event prompt (`notification.ts`).
+- Events that arrive in one wait window run in one Turn. Several Watch Events
+  become one task input that states each Watch's instructions once
+  (`renderEventBatchText`). The conversation message lists every Event, so the
+  dashboard can show them all. See "Event batch" in `../README.md`.
 - A subscription selector is one conversation, one namespace, one identifier,
   and one or more event types. Optional `match` requires exact trusted values
   from the resource type `matchFields`. Core drops events that do not match

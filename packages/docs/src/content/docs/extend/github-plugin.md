@@ -315,7 +315,16 @@ Set `GITHUB_WEBHOOK_SECRET` to enable events. See
 automations.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
-every item of that kind in a repository with `owner/repo`.
+every item of that kind in a repository with `owner/repo`. Deployment events can
+target one commit with `deployment_source`, or every deployment in a repository
+with `owner/repo`.
+
+Deployment events carry `environment` and, when GitHub Actions made the
+deployment for a job with `environment:`, `workflowId`, `workflowPath`, and
+`workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
+repository automation to one environment or one workflow. For example, an
+automation on `getsentry/toolkit` for `deployment.failed` can match
+`environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.
 
 To always watch selected events after Junior creates a pull request in this
 app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
@@ -384,7 +393,7 @@ One issue: `owner/repo#number`.
 <details class="event">
 <summary><code>issue.comment.created</code></summary>
 
-A comment was added.
+A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines and code do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
 
 </details>
 
@@ -418,14 +427,14 @@ Comment and review text is untrusted, with one exception. A person asks Junior i
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
@@ -506,8 +515,8 @@ A release was published.
 
 #### `repository`
 
-Every issue and pull request in `owner/repo`. Supports the same `issue` and
-`pull_request` events listed above. Check suites with no pull request also
+Every deployment, issue, and pull request in `owner/repo`. Supports the same
+`deployment`, `issue`, and `pull_request` events listed above. Check suites with no pull request also
 publish here, so you can match branch builds with `headBranch`.
 
 ## Verify

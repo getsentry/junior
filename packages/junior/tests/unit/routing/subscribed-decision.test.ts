@@ -32,10 +32,7 @@ function routeAnswer(choice: string, probability: number) {
 
 describe("subscribed reply decision", () => {
   afterEach(() => {
-    setExperimentalFeatures({
-      "passive-routing": true,
-      subagents: true,
-    });
+    setExperimentalFeatures({ "passive-routing": true });
   });
 
   it("skips non-mention replies when passive-routing is off", async () => {

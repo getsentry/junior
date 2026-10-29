@@ -145,6 +145,11 @@ Canonical words used across Junior's code and documentation.
   message as a steering message. A message to the parent is an Event Inbound
   message, the same as a child result. An agent message is not from a person,
   so it does not give user approval.
+- **Agent type**: a named preset that a parent picks for a child agent with
+  `spawnAgent`. It says when to pick it, whether the child starts with a copy
+  of the parent's agent history (a fork), and what instructions the child reads
+  with each task. A type does not limit tools. A child keeps its type for later
+  agent invocations.
 - **Reasoning level**: the configured or selected amount of model reasoning for
   a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Reply**: a destination-visible message owned by delivery or reply-policy

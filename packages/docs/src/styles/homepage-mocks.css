@@ -46,6 +46,7 @@
   line-height: 0.86;
   margin: 0;
   text-transform: uppercase;
+  text-wrap: balance;
 }
 
 .jr-real-work-heading span {
@@ -143,7 +144,7 @@
   padding-inline: 0.25rem;
 }
 
-.jr-incident-window {
+.jr-chat-window {
   background: #181a1f;
   color: #fff;
 }

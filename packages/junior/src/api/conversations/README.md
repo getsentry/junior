@@ -55,6 +55,14 @@ root label is its display title. Each Conversation has its own access check, so
 a viewer who cannot see private content gets a generic child label. A root
 Conversation has no `agentTree`.
 
+Title generation runs after the first human message is stored. Until a title
+is stored, a non-Slack Conversation that a person started uses the first line
+of its first human message as its display title. Nothing is stored for this
+title. Every summary projection reads the same message with
+`readFirstHumanMessageTexts`, so lists, detail, profiles, and agent trees show
+the same title. A viewer who cannot see private content still gets the private
+label.
+
 Message attachments can appear after the source file finishes storing. Clients
 must compare attachment metadata as well as event sequence on refresh.
 

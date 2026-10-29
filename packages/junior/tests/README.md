@@ -62,6 +62,12 @@ Agent integration tests use `fixtures/model-stream.ts` to set fixed model
 output. Use it with the real agent. Do not replace the agent runner only to
 control model output.
 
+## S3 Storage
+
+`integration/attachment-s3-storage.test.ts` uses a real S3-compatible server.
+Start it with `docker compose up -d s3` from the repository root. CI starts the
+same versitygw server as a service.
+
 ## Postgres Harness
 
 When `JUNIOR_TEST_DATABASE_URL` is configured, global setup creates a migrated

@@ -85,11 +85,14 @@ import {
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
+  eventBatchMessageEvents,
   eventRequesterInstructions,
   isEventMailboxMetadata,
+  renderEventBatchText,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
+import type { ConversationMessageEvent } from "@/chat/state/conversation";
 import { isEventConversationMessage } from "@/chat/events/actor";
 import {
   parseRequesterInstructions,
@@ -226,6 +229,7 @@ export function createConversationTurnWorker(
     let inputMessageIds: string[] = [];
     let event: EventMailboxMetadata["event"] | undefined;
     let requesterInstructions: RequesterInstruction[] = [];
+    let batchEvents: ConversationMessageEvent[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -243,7 +247,16 @@ export function createConversationTurnWorker(
     });
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
-      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
+      const messages = resolved.batch.map((entry) => entry.message);
+      const firstMetadata = first.message.input.metadata;
+      if (isEventMailboxMetadata(firstMetadata)) {
+        text = renderEventBatchText(messages);
+        event = firstMetadata.event;
+        batchEvents = eventBatchMessageEvents(messages);
+        requesterInstructions = eventRequesterInstructions(messages);
+      } else {
+        text = joinMailboxText(messages);
+      }
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
       );
@@ -254,12 +267,6 @@ export function createConversationTurnWorker(
         (entry) => entry.message.inboundMessageId,
       );
       turnInputFacts = first;
-      if (isEventMailboxMetadata(first.message.input.metadata)) {
-        event = first.message.input.metadata.event;
-        requesterInstructions = eventRequesterInstructions(
-          resolved.batch.map((entry) => entry.message),
-        );
-      }
     } else {
       turnId = resolved.turnId;
     }
@@ -420,6 +427,9 @@ export function createConversationTurnWorker(
                       : undefined),
                     ...(requesterInstructions.length > 0
                       ? { requesterInstructions }
+                      : undefined),
+                    ...(batchEvents.length > 1
+                      ? { events: batchEvents }
                       : undefined),
                   }
                 : undefined),

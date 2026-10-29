@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-pnpm add @sentry/junior hono @sentry/node
+pnpm add @sentry/junior hono
 ```
 
 ## Quick usage

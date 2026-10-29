@@ -103,7 +103,7 @@ import {
 } from "@/chat/app/production";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
-import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
+import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
@@ -189,6 +189,11 @@ export interface JuniorAppOptions extends BotModelConfig {
      * `JUNIOR_CROSS_ACTOR_MID_RUN_MODE` or `follow_up`.
      */
     crossActorMidRunMode?: CrossActorMidRunMode;
+    /**
+     * Slack user IDs of bots that may start a Turn from a mention or DM. Bots
+     * have no profile email, so `allowedDomains` blocks them otherwise.
+     */
+    allowedBotUserIds?: string[];
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
@@ -528,7 +533,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
-  const attachmentStorage = createVercelAttachmentStorage();
+  const attachmentStorage = getAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
     bindMessageAgent: (request) =>
@@ -623,6 +628,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       queue: conversationWorkQueue,
       services: runtimeServiceOverrides,
     }),
+    allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
     allowedDomains,
   };
 

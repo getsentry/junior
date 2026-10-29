@@ -1,10 +1,9 @@
+import { Bar, BarChart, CartesianGrid } from "recharts";
 import {
-  ActivityChartDateLabels,
-  ActivityChartGrid,
-  ActivityChartTooltip,
-  ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  activityChartMargin,
+  ActivityChartTooltipContent,
+  ActivityChartXAxis,
+  ActivityChartYAxis,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import {
@@ -12,12 +11,17 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
 import type { MemoryDay } from "./memoryDashboard";
 
 const series = [
-  { color: "#67e8f9", key: "personal", label: "Personal" },
-  { color: "#6ee7b7", key: "public", label: "Public" },
+  { color: "var(--color-cyan-300)", key: "personal", label: "Personal" },
+  { color: "var(--color-emerald-300)", key: "public", label: "Public" },
 ] as const;
+
+const chartConfig = Object.fromEntries(
+  series.map((item) => [item.key, { color: item.color, label: item.label }]),
+);
 
 /** Render viewer memory creation as a stacked personal/public timeline. */
 export function MemoryTimeline(props: {
@@ -29,10 +33,6 @@ export function MemoryTimeline(props: {
   const bucketUnit = props.bucketUnit ?? "day";
 
   const days = props.days;
-  const layout = createActivityChartLayout(200);
-  const step =
-    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
-  const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const totals = days.map((day) => day.personal + day.public);
   const maximum = Math.max(1, ...totals);
   const hasMemories = totals.some((total) => total > 0);
@@ -55,66 +55,43 @@ export function MemoryTimeline(props: {
       <ChartLegend ariaLabel="Memory visibility legend" items={series} />
 
       <div className="relative mt-3 overflow-hidden">
-        <ChartSvg
-          aria-label={`Memories learned during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
-          className="min-h-40"
-          layout={layout}
+        <ChartContainer
+          className="aspect-auto h-50 w-full"
+          config={chartConfig}
         >
-          <ActivityChartGrid layout={layout} maximum={maximum} />
-          {days.map((day, dayIndex) => {
-            let stackedHeight = 0;
-            const x = layout.left + dayIndex * step + (step - barWidth) / 2;
-            const total = totals[dayIndex] ?? 0;
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={
-                  <ActivityTooltipRows
-                    rows={[
-                      ["personal", day.personal],
-                      ["public", day.public],
-                      ["total", total],
-                    ]}
-                  />
-                }
-                date={day.date}
-                summary={`${day.personal} personal, ${day.public} public, ${total} total memories`}
-              >
-                <g tabIndex={0}>
-                  {series.map((item) => {
-                    const value = day[item.key];
-                    const segmentHeight = (value / maximum) * layout.plotHeight;
-                    stackedHeight += segmentHeight;
-                    return (
-                      <rect
-                        fill={item.color}
-                        height={segmentHeight}
-                        key={item.key}
-                        opacity={0.82}
-                        rx="1"
-                        width={barWidth}
-                        x={x}
-                        y={layout.top + layout.plotHeight - stackedHeight}
-                      />
-                    );
-                  })}
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={Math.max(barWidth, 8)}
-                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
+          <BarChart
+            aria-label={`Memories learned during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
+            data={days}
+            margin={activityChartMargin}
+            role="img"
+          >
+            <CartesianGrid strokeDasharray="3 5" vertical={false} />
+            <ActivityChartYAxis maximum={maximum} />
+            <ActivityChartXAxis keys={days.map((day) => day.date)} />
+            <ChartTooltip
+              content={
+                <ActivityChartTooltipContent
+                  rows={(day: MemoryDay) => [
+                    ["personal", day.personal],
+                    ["public", day.public],
+                    ["total", day.personal + day.public],
+                  ]}
+                />
+              }
+            />
+            {series.map((item) => (
+              <Bar
+                dataKey={item.key}
+                fill={`var(--color-${item.key})`}
+                fillOpacity={0.82}
+                isAnimationActive={false}
+                key={item.key}
+                maxBarSize={13}
+                stackId="visibility"
+              />
+            ))}
+          </BarChart>
+        </ChartContainer>
         {!hasMemories ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No memories were learned in this period.

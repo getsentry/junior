@@ -45,6 +45,10 @@ import {
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
 import {
+  getTurnInputSpanAttributes,
+  type SlackTurnInputTelemetry,
+} from "@/chat/providers/slack/turn-input-telemetry";
+import {
   getChannelId,
   getMessageTs,
   getRunId,
@@ -105,6 +109,7 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
+  telemetry?: SlackTurnInputTelemetry;
 }
 
 /** Sent when a stop decision unsubscribes a thread. */
@@ -731,7 +736,11 @@ export function createSlackTurnRuntime<
           hooks,
         );
 
-        await withSpan("chat.turn", "chat.turn", context, async () => {
+        await withSpan("chat.turn", "chat.turn", context, async (set) => {
+          const turnStartedAtMs = deps.now();
+          if (hooks.telemetry) {
+            set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));
+          }
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             botUserId: deps.getBotUserId(),
             explicitMention: true,
@@ -911,7 +920,11 @@ export function createSlackTurnRuntime<
           channelId,
           runId,
         });
-        await withSpan("chat.turn", "chat.turn", turnContext, async () => {
+        await withSpan("chat.turn", "chat.turn", turnContext, async (set) => {
+          const turnStartedAtMs = deps.now();
+          if (hooks.telemetry) {
+            set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));
+          }
           // This path can compact context and run router/vision model calls
           // before executeSlackTurn() opens the main reply span.
           const content = parseContent(message);

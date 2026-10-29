@@ -128,10 +128,9 @@ export function GuardianActivity(props: {
                 }
                 date={day.date}
                 summary={`${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
-                triggerClassName="h-full min-w-0 flex-1 items-end"
               >
                 <button
-                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-dashboard-fill-soft focus-visible:outline-1 focus-visible:outline-dashboard-focus"
+                  className="flex min-w-0 flex-1 flex-col justify-end overflow-hidden rounded-t-sm bg-dashboard-fill-soft focus-visible:outline-1 focus-visible:outline-dashboard-focus"
                   style={{ height: `${height}%` }}
                   type="button"
                 >

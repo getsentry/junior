@@ -12,6 +12,7 @@ import {
   logWarn,
   withLogContext,
 } from "@/chat/logging";
+import { botConfig } from "@/chat/config";
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -20,6 +21,7 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { getTurnAuthorization } from "./authorized-turn";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   completeTurnRecord,
   abandonTurnRecord,
@@ -30,7 +32,10 @@ import {
   type TurnRecord,
   type TurnSummary,
 } from "./turn-cursor";
-import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import {
+  loadTurnCheckpoint,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -699,6 +704,14 @@ async function failStrandedTurnWithFallback(args: {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": failed.turnId,
   });
+  // Record the failure in history so the next turn knows about it.
+  await getTurnLifecycle().fail({
+    conversationId: args.conversationId,
+    createdAtMs: Date.now(),
+    ...(eventId ? { eventId } : undefined),
+    failureCode: "agent_run_failed",
+    turnId: failed.turnId,
+  });
   let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
@@ -739,6 +752,57 @@ async function failStrandedTurnWithFallback(args: {
   return true;
 }
 
+/** Recovery resumes a turn at most once after its worker stops checking in. */
+const MAX_LOST_WORKER_RESUMES = 1;
+const LOST_WORKER_FAILURE =
+  "Turn lost its worker before reaching a safe boundary";
+/**
+ * Saved on the paused turn when recovery resumes it. The resumed run replaces
+ * it at its first save.
+ */
+export const LOST_WORKER_RESUME_MESSAGE =
+  "Turn lost its worker; resuming from its last boundary";
+
+/** True when a resumed turn lost its worker again before it saved anything. */
+function lostWorkerBeforeFirstSave(turn: TurnRecord): boolean {
+  return (
+    turn.errorMessage === LOST_WORKER_RESUME_MESSAGE &&
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES
+  );
+}
+
+/**
+ * Pause a turn whose worker stopped checking in, so it resumes from its last
+ * save. Returns false when the turn already used its resume or has no slice
+ * left.
+ */
+async function pauseLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
+  if (
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES ||
+    // Past the slice limit, the save fails the turn without a reply.
+    turn.sliceId + 1 > botConfig.maxSlicesPerTurn
+  ) {
+    return false;
+  }
+  const paused = await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "retry",
+    conversationId: turn.conversationId,
+    turnId: turn.turnId,
+    sliceId: turn.sliceId,
+    messages: turn.piMessages,
+    lostWorkerResumeCount: (turn.lostWorkerResumeCount ?? 0) + 1,
+    errorMessage: LOST_WORKER_RESUME_MESSAGE,
+  });
+  if (!paused) return false;
+  logWarn("agent.turn.lost_worker.resumed", {
+    "app.ai.conversation_id": turn.conversationId,
+    "app.ai.session_id": turn.turnId,
+    "app.ai.resume_slice_id": paused.sliceId,
+  });
+  return true;
+}
+
 /** Resume the first valid paused Slack session for an idle conversation. */
 export async function runNextPausedTurn(
   conversationId: string,
@@ -755,7 +819,7 @@ async function runNextPausedTurnInContext(
   options: PausedTurnOptions,
   runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
-  const summaries = await listTurnSummaries(conversationId);
+  let summaries = await listTurnSummaries(conversationId);
   const persisted = await getPersistedThreadState(conversationId);
   const conversation = coerceThreadConversationState(persisted);
   await hydrateConversationMessages({ conversation, conversationId });
@@ -766,6 +830,7 @@ async function runNextPausedTurnInContext(
   const running = newest
     ? await getTurnRecord(conversationId, newest.turnId)
     : undefined;
+  let resumedTurnId: string | undefined;
   if (running?.state === "running") {
     if (turnHasReply(conversation, running.turnId)) {
       const acceptedReply = [...conversation.messages]
@@ -791,17 +856,38 @@ async function runNextPausedTurnInContext(
       return false;
     }
 
-    await failStrandedTurnWithFallback({
-      conversationId,
-      errorMessage: "Turn lost its worker before reaching a safe boundary",
-      turn: running,
-    });
-    return false;
+    // An expired lease means the worker stopped checking in. Its process may
+    // be dead or blocked, and recovery cannot tell which. Resume the turn once
+    // from its last save. A second loss fails the turn, so one bad turn cannot
+    // block one instance after another.
+    if (!(await pauseLostWorkerTurn(running))) {
+      await failStrandedTurnWithFallback({
+        conversationId,
+        errorMessage: LOST_WORKER_FAILURE,
+        turn: running,
+      });
+      return false;
+    }
+    resumedTurnId = running.turnId;
+    summaries = await listTurnSummaries(conversationId);
   }
 
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
+    }
+    // Recovery runs the resumed turn right away. If a later wake still finds
+    // the resume message, the resumed run lost its worker before it saved.
+    if (summary.turnId !== resumedTurnId && summary.resumeReason === "retry") {
+      const turn = await getTurnRecord(conversationId, summary.turnId);
+      if (turn && lostWorkerBeforeFirstSave(turn)) {
+        await failStrandedTurnWithFallback({
+          conversationId,
+          errorMessage: LOST_WORKER_FAILURE,
+          turn,
+        });
+        continue;
+      }
     }
 
     const request = await getPausedTurnRequest({

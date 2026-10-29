@@ -1,12 +1,12 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
-import { ToggleButton } from "../components/Button";
 import { SearchInput } from "../components/SearchInput";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { ConversationComposer } from "./ConversationComposer";
@@ -17,8 +17,8 @@ import {
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, getDashboardTimeZone } from "../format";
+import { useDebouncedValue } from "../debouncedValue";
 import type { Conversation } from "../types";
-import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
@@ -28,7 +28,7 @@ const CONVERSATION_PAGE_SIZE = 20;
 export function ConversationWorkspace() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const search = useDeferredValue(query.trim());
+  const search = useDebouncedValue(query.trim());
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
@@ -90,12 +90,7 @@ export function ConversationWorkspace() {
 
   if (home) {
     return (
-      <main
-        className={cn(
-          dashboardContainerClass,
-          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
-        )}
-      >
+      <main className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6">
         <div className="mx-auto grid w-full max-w-6xl gap-8">
           {createView}
           <section aria-label="Conversations" className="grid gap-3">
@@ -176,7 +171,6 @@ function NewConversationView(props: {
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
-  const isPublic = visibility === "public";
 
   return (
     <section
@@ -190,30 +184,23 @@ function NewConversationView(props: {
         draftId="new"
         error={props.error}
         footerStart={
-          <div
+          <ToggleGroup
             aria-label="Conversation visibility"
-            className="inline-flex items-center gap-1"
-            role="group"
+            className="inline-flex shrink-0 gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
+            onValueChange={([next]) => {
+              if (next) setVisibility(next);
+            }}
+            value={[visibility]}
           >
-            <ToggleButton
-              onClick={() => setVisibility("public")}
-              pressed={isPublic}
-              type="button"
-              variant="segment"
-            >
-              <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+            <ToggleGroupItem className="min-w-20 gap-1.5" value="public">
+              <Globe2 aria-hidden="true" className="size-3" />
               Public
-            </ToggleButton>
-            <ToggleButton
-              onClick={() => setVisibility("private")}
-              pressed={!isPublic}
-              type="button"
-              variant="segment"
-            >
-              <LockKeyhole aria-hidden="true" className="mr-1 inline size-3" />
+            </ToggleGroupItem>
+            <ToggleGroupItem className="min-w-20 gap-1.5" value="private">
+              <LockKeyhole aria-hidden="true" className="size-3" />
               Private
-            </ToggleButton>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
         }
         label="Start a conversation"
         restoreDraftOnError

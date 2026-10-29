@@ -199,12 +199,19 @@ The issue was created.
 
 ### `project`
 
-Subscribe to all new issues in a project with `org/project`.
+Subscribe to all new issues and metric alerts in a project with `org/project`.
 
 <details class="event">
 <summary><code>issue.created</code></summary>
 
 An issue was created in the project.
+
+</details>
+
+<details class="event">
+<summary><code>metric_alert.critical</code>, <code>metric_alert.warning</code>, <code>metric_alert.resolved</code></summary>
+
+A metric alert on the project changed state. Junior uses the projects on the alert rule. The alert must still have Junior as a trigger action.
 
 </details>
 

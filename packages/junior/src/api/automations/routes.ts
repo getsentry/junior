@@ -35,6 +35,8 @@ import {
 } from "@/api/schema/automation";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
+import { getSqlExecutor } from "@/chat/db";
+import { attachAutomationMentions } from "./mentions";
 import {
   deleteViewerTask,
   readViewerAutomationExecutions,
@@ -91,10 +93,14 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const user = context.get("viewer");
       const query = context.req.valid("query");
-      return jsonResponse(
-        automationListSchema,
-        await readViewerAutomations(user, query),
-      );
+      const list = await readViewerAutomations(user, query);
+      return jsonResponse(automationListSchema, {
+        ...list,
+        automations: await attachAutomationMentions(
+          getSqlExecutor(),
+          list.automations,
+        ),
+      });
     },
   );
   app.get("/event-catalog", requireViewer, () => {
@@ -141,10 +147,14 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       const user = context.get("viewer");
       const params = context.req.valid("param");
       try {
-        return jsonResponse(
-          automationExecutionListSchema,
-          await readViewerAutomationExecutions(user, params.id),
-        );
+        const list = await readViewerAutomationExecutions(user, params.id);
+        const [automation] = await attachAutomationMentions(getSqlExecutor(), [
+          list.automation,
+        ]);
+        return jsonResponse(automationExecutionListSchema, {
+          ...list,
+          automation: automation!,
+        });
       } catch (error) {
         if (error instanceof ViewerTaskNotFoundError) {
           return jsonResponse(
@@ -287,7 +297,10 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       context.req.param("id"),
     );
     return automation
-      ? jsonResponse(automationSummarySchema, automation)
+      ? jsonResponse(
+          automationSummarySchema,
+          (await attachAutomationMentions(getSqlExecutor(), [automation]))[0]!,
+        )
       : jsonResponse(
           apiErrorSchema,
           { error: "Automation was not found." },

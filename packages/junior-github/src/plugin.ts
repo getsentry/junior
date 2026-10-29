@@ -3,6 +3,7 @@
  *
  * This module composes GitHub hooks, events, and credentials.
  */
+import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import {
   defineJuniorPlugin,
   type PluginRegistration,
@@ -16,14 +17,17 @@ import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import {
   loadPullRequestCommitPages,
+  loadRepositoryRole,
   markPullRequestFeedbackReviewing,
 } from "./webhooks/installation-requests.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
+  GITHUB_DEPLOYMENT_MATCH_FIELDS,
   GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import {
+  GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
   GITHUB_ISSUE_EVENTS,
   GITHUB_ISSUE_IDENTIFIER,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
@@ -44,7 +48,6 @@ import {
 import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
-import { loadGitHubPullRequestPeople } from "./webhooks/pull-request-people.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
   listGitHubAssignedWork,
@@ -59,17 +62,16 @@ import {
 import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
+import { githubCloneCommandRedirect } from "./clone-command.js";
 import {
   githubGrantForEgress,
-  githubGraphqlPermissionDeniedMessage,
-  shouldInspectGitHubGraphqlResponse,
+  githubPermissionDeniedMessage,
 } from "./egress-policy.js";
 import {
   GITHUB_APP_ID_ENV,
   GITHUB_APP_PRIVATE_KEY_ENV,
   GITHUB_AUTH_TOKEN_ENV,
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
-  GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   GITHUB_INSTALLATION_ID_ENV,
   createPermissionCache,
   issueGitHubCredential,
@@ -154,12 +156,14 @@ export function githubPlugin(
           identifier: GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
           suggestedEvents: [...GITHUB_DEPLOYMENT_SUGGESTED_EVENTS],
+          matchFields: GITHUB_DEPLOYMENT_MATCH_FIELDS,
         },
         {
           type: "issue",
           identifier: GITHUB_ISSUE_IDENTIFIER,
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
+          matchFields: GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
         },
         {
           type: "pull_request",
@@ -181,6 +185,7 @@ export function githubPlugin(
           type: "repository",
           identifier: GITHUB_REPOSITORY_IDENTIFIER,
           supportedEvents: [
+            ...GITHUB_DEPLOYMENT_EVENTS,
             ...GITHUB_ISSUE_EVENTS,
             ...GITHUB_PULL_REQUEST_EVENTS,
           ],
@@ -190,7 +195,11 @@ export function githubPlugin(
             ...GITHUB_ISSUE_SUGGESTED_EVENTS,
             ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
           ],
-          matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          matchFields: {
+            ...GITHUB_DEPLOYMENT_MATCH_FIELDS,
+            ...GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+            ...GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          },
           guidance: gitHubPullRequestEventGuidance(
             options.pullRequestEvents?.guidance,
           ),
@@ -347,14 +356,14 @@ export function githubPlugin(
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
-            loadPullRequestPeople: async (pullRequest) =>
-              await loadGitHubPullRequestPeople({
-                logins: pullRequest.logins,
-                loadPage: await loadPullRequestCommitPages(
-                  installationEnv,
-                  pullRequest,
-                ),
-              }),
+            loadRepositoryRole: async (target) =>
+              await loadRepositoryRole(installationEnv, ctx.cache, target),
+            loadGitHubLogin: async (identityId) =>
+              linkedGitHubLogin(
+                (await ctx.users.readIdentity(identityId))?.user,
+              ),
+            loadPullRequestCommitPages: async (pullRequest) =>
+              await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
               await markPullRequestFeedbackReviewing(installationEnv, target),
@@ -388,6 +397,14 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
+        const cloneRedirect =
+          typeof ctx.tool.input.command === "string"
+            ? githubCloneCommandRedirect(ctx.tool.input.command)
+            : undefined;
+        if (cloneRedirect) {
+          ctx.decision.redirect(cloneRedirect);
+          return;
+        }
         const botName = requireEnv(botNameEnv);
         const botEmail = requireEnv(botEmailEnv);
         ctx.env.set("GIT_AUTHOR_NAME", botName);
@@ -418,16 +435,16 @@ export function githubPlugin(
         return githubGrantForEgress(ctx);
       },
       async onEgressResponse(ctx) {
-        if (!shouldInspectGitHubGraphqlResponse(ctx)) {
-          return;
+        if (ctx.response.status === 403) {
+          ctx.log.warn("github.egress.upstream_forbidden", {
+            "app.github.accepted_permissions":
+              ctx.response.headers.get("x-accepted-github-permissions") ??
+              undefined,
+            "app.github.sso":
+              ctx.response.headers.get("x-github-sso") ?? undefined,
+          });
         }
-        const bodyText = await ctx.response.readText(
-          GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
-        );
-        if (!bodyText) {
-          return;
-        }
-        const message = githubGraphqlPermissionDeniedMessage(bodyText);
+        const message = await githubPermissionDeniedMessage(ctx);
         if (message) {
           ctx.permissionDenied(message);
         }

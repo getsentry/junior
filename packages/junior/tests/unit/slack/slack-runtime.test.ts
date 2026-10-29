@@ -209,10 +209,7 @@ describe("createSlackTurnRuntime", () => {
         );
         expect(deps.executeSlackTurn).not.toHaveBeenCalled();
       } finally {
-        setExperimentalFeatures({
-          "passive-routing": true,
-          subagents: true,
-        });
+        setExperimentalFeatures({ "passive-routing": true });
       }
     });
 

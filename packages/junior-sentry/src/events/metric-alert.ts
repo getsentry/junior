@@ -15,7 +15,7 @@ export const SENTRY_METRIC_ALERT_SUGGESTED_EVENTS = [
 /** The identifier shape that `sentryMetricAlertResource` builds. */
 export const SENTRY_METRIC_ALERT_IDENTIFIER = {
   format: "metric-alert:org/alertRuleId",
-  pattern: /^metric-alert:[^\s/:#]+\/\d+$/,
+  pattern: String.raw`^metric-alert:[^\s/:#]+\/\d+$`,
 };
 
 /** Build the stable Sentry metric alert identity shared by tools and webhooks. */

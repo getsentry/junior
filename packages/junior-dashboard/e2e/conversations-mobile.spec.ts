@@ -254,7 +254,42 @@ test("opens and closes a conversation on mobile", async ({
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
   await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Close conversation menu" }).click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("dialog", { name: "Conversation details" });
+  await expect(details).toHaveAttribute("aria-modal", "true");
+  await expect(
+    details.getByRole("tab", { name: "Summary", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(details.locator(":focus")).toHaveCount(1);
+  await screenshot(page, "conversation-details-sheet", {
+    lightTheme: true,
+    view: "mobile",
+  });
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await menu.click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  await details.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  await expect(
+    details.getByRole("tab", { name: "Summary", exact: true }),
+  ).toBeFocused();
+  await page.mouse.click(8, 8);
+  await expect(details).toBeHidden();
+  await expect(menu).toBeFocused();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();
@@ -542,8 +577,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Event log" }).click();
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Hide search" }).click();
+  await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 
   await page.getByRole("link", { name: "Back to conversations" }).click();

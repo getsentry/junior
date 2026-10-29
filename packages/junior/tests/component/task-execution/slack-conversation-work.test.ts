@@ -37,6 +37,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
+import type { SlackTurnInputTelemetry } from "@/chat/providers/slack/turn-input-telemetry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
@@ -446,6 +447,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
+      telemetry?: SlackTurnInputTelemetry;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -486,12 +488,20 @@ describe("Slack conversation work execution", () => {
           thread,
           message,
           skipped: hooks.messageContext?.skipped ?? [],
+          telemetry: hooks.telemetry,
         });
       },
       handleSubscribedMessage: async () => {
         throw new Error("unexpected subscribed route");
       },
     };
+    const pendingWork = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    const oldestInput = pendingWork?.execution.pendingMessages.find((record) =>
+      record.inboundMessageId.endsWith(":1712345.0001"),
+    );
     await expect(
       processNextQueuedSlackWork({
         getSlackAdapter: () => slackAdapter,
@@ -502,6 +512,11 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(calls).toHaveLength(1);
+    expect(calls[0]?.telemetry).toEqual({
+      count: 2,
+      oldestCreatedAtMs: oldestInput?.createdAtMs,
+      oldestReceivedAtMs: oldestInput?.receivedAtMs,
+    });
     expect(calls[0]?.destination).toEqual(SLACK_DESTINATION);
     expect(calls[0]?.thread.id).toBe(CONVERSATION_ID);
     expect(calls[0]?.message.id).toBe("1712345.0002");

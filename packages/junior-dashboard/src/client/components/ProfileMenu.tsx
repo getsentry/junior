@@ -8,12 +8,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
@@ -22,6 +17,8 @@ import { formatCostSummary, peoplePath } from "../format";
 import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import { ThemeSwitcher } from "./ThemeSwitcher";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -64,14 +61,6 @@ export function ProfileMenu({
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const openTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
   const sevenDaySpend = spend
@@ -83,54 +72,6 @@ export function ProfileMenu({
   const profilePages = userPages.filter(
     (page) => page.navigation === "profile",
   );
-
-  function clearHoverTimers() {
-    if (openTimerRef.current) clearTimeout(openTimerRef.current);
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    openTimerRef.current = undefined;
-    closeTimerRef.current = undefined;
-  }
-
-  function openOnHover(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.pointerType !== "mouse") return;
-    clearHoverTimers();
-    openTimerRef.current = setTimeout(() => setOpen(true), HOVER_OPEN_DELAY_MS);
-  }
-
-  function closeOnHover(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.pointerType !== "mouse") return;
-    clearHoverTimers();
-    closeTimerRef.current = setTimeout(
-      () => setOpen(false),
-      HOVER_CLOSE_DELAY_MS,
-    );
-  }
-
-  useEffect(() => clearHoverTimers, []);
-
-  useEffect(() => {
-    if (variant !== "popover" || !open) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open, variant]);
 
   const avatar = (
     <span
@@ -302,6 +243,7 @@ export function ProfileMenu({
         >
           Log out
         </button>
+        <ThemeSwitcher className="px-3 py-2" />
       </nav>
     );
   }
@@ -333,32 +275,28 @@ export function ProfileMenu({
   }
 
   return (
-    <div
-      className="relative"
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setOpen(false);
+    <Popover
+      onOpenChange={(nextOpen, details) => {
+        // A mouse click always keeps the menu open, also after hover opened it.
+        // A keyboard press (detail 0) still toggles it.
+        const mouseClick =
+          details.event instanceof MouseEvent && details.event.detail > 0;
+        if (!nextOpen && details.reason === "trigger-press" && mouseClick) {
+          return;
         }
+        setOpen(nextOpen);
       }}
-      onPointerEnter={openOnHover}
-      onPointerLeave={closeOnHover}
-      ref={rootRef}
+      open={open}
     >
-      <button
-        aria-controls="profile-popover"
-        aria-expanded={open}
-        aria-haspopup="true"
+      <PopoverTrigger
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(
           "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
-        onClick={(event) => {
-          clearHoverTimers();
-          setOpen(event.detail === 0 ? (value) => !value : true);
-        }}
-        ref={triggerRef}
-        type="button"
+        closeDelay={HOVER_CLOSE_DELAY_MS}
+        delay={HOVER_OPEN_DELAY_MS}
+        openOnHover
       >
         <span className="hidden items-center gap-2 md:flex">
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
@@ -397,17 +335,16 @@ export function ProfileMenu({
           size={14}
           strokeWidth={2}
         />
-      </button>
-
-      {open ? (
-        <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
-          id="profile-popover"
-        >
-          {identityBlock}
-          {menuLinks(() => setOpen(false))}
-        </div>
-      ) : null}
-    </div>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-64 rounded-xl border-0 bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
+        id="profile-popover"
+      >
+        {identityBlock}
+        <ThemeSwitcher className="border-b border-dashboard-border-strong px-2.5 py-2" />
+        {menuLinks(() => setOpen(false))}
+      </PopoverContent>
+    </Popover>
   );
 }

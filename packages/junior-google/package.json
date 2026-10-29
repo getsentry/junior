@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-google",
-  "version": "0.259.0",
+  "version": "0.264.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -44,6 +44,6 @@
     "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.12"
   }
 }

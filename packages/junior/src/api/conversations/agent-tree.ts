@@ -6,6 +6,7 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationAgentTreeNode } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
+import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
 
 /** Bound the parent chain that one agent tree reads. */
@@ -52,9 +53,14 @@ export async function readConversationAgentTree(
     ? undefined
     : await getConversationStore().get({ conversationId: ids[0]! });
 
-  const [access, automationTitleByConversation] = await Promise.all([
+  const [
+    access,
+    automationTitleByConversation,
+    firstHumanMessageTextByConversation,
+  ] = await Promise.all([
     readConversationAccessFromSql(getDb(), ids, viewer),
     readAutomationTitlesByConversationId(root ? [root] : []),
+    readFirstHumanMessageTexts(getDb(), root ? [root] : []),
   ]);
   return await Promise.all(
     ids.map(async (id) => {
@@ -66,6 +72,7 @@ export async function readConversationAgentTree(
           automationTitle: automationTitleByConversation.get(id),
           conversation: root,
           durationMs: 0,
+          firstHumanMessageText: firstHumanMessageTextByConversation.get(id),
         });
         return { conversationId: id, label: summary.displayTitle };
       }

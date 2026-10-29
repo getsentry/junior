@@ -1,20 +1,31 @@
+import { useState } from "react";
 import { ArrowDownToLine } from "lucide-react";
 
 import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
+  useAutoLoadPreviousPage,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TurnContextPanelProvider,
+  type TurnContextPanel,
+} from "./TranscriptTurnContextView";
 
 /** Render one conversation transcript as ordered message and tool events. */
 export function Transcript(props: {
@@ -28,16 +39,20 @@ export function Transcript(props: {
   onSelectedEventSeqChange?(seq: number | undefined): void;
   responding?: boolean;
   search?: string;
+  onSearchChange?(value: string): void;
   selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
   }) => void;
   transcript?: ConversationTranscript;
+  /** Show turn context in the owner's panel. Without it, a drawer opens. */
+  turnContextPanel?: TurnContextPanel;
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
-  const search = props.search ?? "";
+  const [localSearch, setLocalSearch] = useState("");
+  const search = props.search ?? localSearch;
   const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
@@ -52,6 +67,21 @@ export function Transcript(props: {
       rich: transcriptBottomVersion(props.transcript, "rich"),
       raw: transcriptBottomVersion(props.transcript, "raw"),
     },
+  });
+
+  const loadPreviousPage = () => {
+    bottomPinning.preserveViewportForPrepend();
+    props.onLoadPreviousPage?.();
+  };
+  const previousPageRef = useAutoLoadPreviousPage({
+    enabled: Boolean(
+      props.onLoadPreviousPage &&
+      props.hasPreviousPage &&
+      !props.loadingPreviousPage &&
+      !props.historyError,
+    ),
+    historyVersion: props.historyVersion ?? "empty",
+    onLoad: loadPreviousPage,
   });
 
   if (!props.transcript) {
@@ -71,16 +101,13 @@ export function Transcript(props: {
           </div>
         ) : null}
         {props.hasPreviousPage || props.loadingPreviousPage ? (
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex items-center gap-3" ref={previousPageRef}>
             <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
             <button
               aria-label="Load earlier events"
               className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={props.loadingPreviousPage}
-              onClick={() => {
-                bottomPinning.preserveViewportForPrepend();
-                props.onLoadPreviousPage?.();
-              }}
+              onClick={loadPreviousPage}
               title="Load earlier events"
               type="button"
             >
@@ -103,15 +130,18 @@ export function Transcript(props: {
           <ConversationEventLog
             key={props.transcript.conversationId}
             conversation={props.transcript}
+            onSearchChange={props.onSearchChange ?? setLocalSearch}
             onSelectedSeqChange={props.onSelectedEventSeqChange}
             selectedSeq={props.selectedEventSeq}
           />
         ) : (
-          <ConversationTranscriptView
-            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-            conversation={props.transcript}
-            responding={props.responding ?? props.live ?? false}
-          />
+          <TurnContextPanelProvider panel={props.turnContextPanel}>
+            <ConversationTranscriptView
+              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+              conversation={props.transcript}
+              responding={props.responding ?? props.live ?? false}
+            />
+          </TurnContextPanelProvider>
         )}
         <div
           aria-hidden="true"
@@ -141,21 +171,27 @@ function JumpToLatestButton(props: {
 
   return (
     <div className="pointer-events-none sticky bottom-3 z-20 flex h-0 justify-center px-3 md:fixed md:inset-x-auto md:bottom-6 md:right-8 md:h-auto md:justify-end md:px-0">
-      <Button
-        aria-label={label}
-        className="pointer-events-auto relative -translate-y-full rounded-lg !border !border-dashboard-border-emphasis !bg-dashboard-surface-active text-dashboard-text shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:!border-dashboard-border-interactive hover:!bg-dashboard-surface-hover hover:!text-dashboard-text md:translate-y-0"
-        onClick={props.onClick}
-        size="icon"
-        title={label}
-      >
-        <ArrowDownToLine aria-hidden="true" size={16} strokeWidth={2} />
-        {props.hasPendingUpdate ? (
-          <span
-            aria-hidden="true"
-            className="absolute right-1.5 top-1.5 size-2 bg-emerald-300"
-          />
-        ) : null}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-label={label}
+              className="pointer-events-auto relative -translate-y-full rounded-lg !border !border-dashboard-border-emphasis !bg-dashboard-surface-active text-dashboard-text shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:!border-dashboard-border-interactive hover:!bg-dashboard-surface-hover hover:!text-dashboard-text md:translate-y-0"
+              onClick={props.onClick}
+              size="icon"
+            >
+              <ArrowDownToLine aria-hidden="true" size={16} strokeWidth={2} />
+              {props.hasPendingUpdate ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-1.5 top-1.5 size-2 bg-emerald-300"
+                />
+              ) : null}
+            </Button>
+          }
+        />
+        <TooltipContent size="compact">{label}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

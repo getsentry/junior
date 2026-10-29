@@ -45,12 +45,28 @@ related:
 | `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                    |
 | `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments and published public artifacts. Vercel sets this when an OIDC-enabled Blob store is connected to the project.        |
 | `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static Vercel Blob credential when OIDC is unavailable. Vercel sets this for a token-connected store.                                                                       |
+| `JUNIOR_ATTACHMENT_STORAGE_PROVIDER`        | No          | Object storage for attachments and public artifacts: `vercel-blob`, `s3`, or `memory`. Defaults to `vercel-blob`. Use `memory` only for tests.                              |
+| `JUNIOR_S3_ENDPOINT`                        | Conditional | Base URL of an S3-compatible API, such as `http://localhost:7070`. Required when the provider is `s3`.                                                                      |
+| `JUNIOR_S3_BUCKET`                          | Conditional | Private bucket for attachment objects. Required when the provider is `s3`.                                                                                                  |
+| `JUNIOR_S3_ACCESS_KEY_ID`                   | Conditional | S3 access key ID. Required when the provider is `s3`.                                                                                                                       |
+| `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
+| `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
 
 For Vercel deployments, create a private Blob store and connect it to the
 project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
 It supplies `BLOB_STORE_ID` and uses Vercel's short-lived OIDC credential. Use
 `BLOB_READ_WRITE_TOKEN` for local development, CI, non-Vercel hosts, or as a
 fallback. See [Deploy to Vercel](/start-here/deploy-to-vercel/#configure-attachment-storage).
+
+Set `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=s3` to store attachments in an
+S3-compatible service instead of Vercel Blob. Junior uses path-style URLs, such
+as `<endpoint>/<bucket>/<key>`. Keep the bucket private. Junior serves public
+artifacts through its own route. Attachments stored with one provider are not
+visible after you change to another provider.
+
+`JUNIOR_ATTACHMENT_STORAGE_PROVIDER=memory` keeps objects in process memory.
+Junior loses them when the process stops, and each process has its own copy.
+Do not use it for a deployed app.
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
@@ -158,11 +174,6 @@ const app = await createApp({
     // Off by default. Without this, Junior only replies to explicit @mentions
     // and event notifications in those threads.
     "passive-routing": true,
-    // Model-facing spawnAgent, messageAgent, listAgents, and stopAgent for
-    // durable child agent work. Child agents get messageAgent, listAgents,
-    // and reportBlocked.
-    // Incomplete; keep off unless you are testing the #879 runtime.
-    subagents: true,
     // Operator tools such as runOperatorSql. They read and write the app
     // database directly and skip Conversation privacy checks. Enable them only
     // on isolated deployments, such as Previews behind deployment protection.
@@ -171,8 +182,10 @@ const app = await createApp({
 });
 ```
 
-`junior chat` enables experimental `subagents` automatically because it is the
-local createApp-equivalent entrypoint and already wires the child-worker path.
+Child agents are always on: every app gives the model `spawnAgent`,
+`messageAgent`, `listAgents`, and `stopAgent`. `experimental.subagents` was
+removed; remove it from your config, because Junior rejects unknown
+experimental keys.
 
 By default, only the root Conversation can start child agents. Set
 `limits.maxAgentDepth` to let child agents start their own child agents. For
@@ -229,7 +242,9 @@ export default await createApp({
 - **Slack:** Junior starts work from a mention or DM only when the email of the
   author's Slack profile is on an allowed domain. Slack verifies that email.
   Junior drops other messages and does not reply. Passive thread replies, slash
-  commands, and Slack actions are not checked yet.
+  commands, and Slack actions are not checked yet. Bots have no profile email.
+  To let a bot start work, add its Slack user ID to
+  `slack.allowedBotUserIds`.
 - **Dashboard:** Google sign-in accepts only Google Workspace accounts on an
   allowed domain. Junior checks the verified `hd` claim of the Google ID token,
   not the email. With one domain, Junior also sends it to Google as the `hd`
@@ -331,7 +346,7 @@ const app = await createApp({
 });
 ```
 
-The app setting takes precedence over `SANDBOX_VCPUS`. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
+The app setting takes precedence over `SANDBOX_VCPUS`. A Workspace recipe vCPU count takes precedence over both for sandboxes of that Workspace. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
 
 Pass `sandbox.egressTracePropagationDomains` when sandboxed commands should keep Sentry trace context across sandbox network egress:
 

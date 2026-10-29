@@ -7,7 +7,7 @@ import {
   useCodeRepositoryConversationsData,
   useCodeRepositoryData,
 } from "../../api";
-import { ButtonLink } from "../../components/Button";
+import { buttonVariants } from "../../components/ui/button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageRouteLoading } from "../../components/PageRouteLoading";
 import {
@@ -18,7 +18,7 @@ import {
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
-import { buildConversations } from "../../format";
+import { buildConversations, workspacePath } from "../../format";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { CodeSummaryCards } from "./CodeSummaryCards";
@@ -98,7 +98,8 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
             <div className="flex flex-wrap items-center gap-2">
               <TimeRangeSelector onChange={setRange} value={range} />
               {repository.url ? (
-                <ButtonLink
+                <Link
+                  className={buttonVariants()}
                   rel="noopener noreferrer"
                   target="_blank"
                   to={repository.url}
@@ -108,7 +109,7 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
                     aria-hidden="true"
                     className="size-3.5 shrink-0"
                   />
-                </ButtonLink>
+                </Link>
               ) : null}
             </div>
           }
@@ -156,10 +157,7 @@ function RepositoryDescription(props: { data: CodeRepositoryReport }) {
       {workspaces.map((workspace, index) => (
         <span key={workspace.id}>
           {index > 0 ? ", " : null}
-          <Link
-            className={inlineLinkClass}
-            to={`/system/workspaces/${encodeURIComponent(workspace.id)}`}
-          >
+          <Link className={inlineLinkClass} to={workspacePath(workspace.id)}>
             {workspace.name}
           </Link>
         </span>

@@ -5,7 +5,6 @@ import {
   type MessageAgent,
   type SpawnAgent,
 } from "@/chat/agent/types";
-import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -31,13 +30,10 @@ export function createAgentRunner(
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
   const bindMessageAgent = options?.bindMessageAgent;
-  const canBindSpawn =
-    Boolean(bindSpawnAgent) && isExperimentalFeatureEnabled("subagents");
   return {
     run: async (run) => {
       const spawnAgent =
         bindSpawnAgent &&
-        canBindSpawn &&
         !isAgentRunFeatureDisabled(run.disabledFeatures, "subagents")
           ? bindSpawnAgent(run)
           : undefined;
@@ -45,7 +41,7 @@ export function createAgentRunner(
       // to start child agents of its own.
       const messageAgent =
         bindMessageAgent &&
-        canBindSpawn &&
+        bindSpawnAgent &&
         (spawnAgent || run.parentConversationId)
           ? bindMessageAgent(run)
           : undefined;

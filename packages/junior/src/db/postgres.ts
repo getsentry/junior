@@ -9,7 +9,6 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
-import { traceQueries } from "./tracing";
 import { logException } from "@/chat/logging";
 
 const { Pool } = pg;
@@ -22,11 +21,9 @@ class PostgresExecutor implements JuniorSqlExecutor {
   private isolatedQueryId = 0;
 
   private readonly pool: PgPool;
-  private readonly connectionString: string;
 
-  constructor(pool: PgPool, connectionString: string) {
+  constructor(pool: PgPool) {
     this.pool = pool;
-    this.connectionString = connectionString;
   }
 
   db(): JuniorDatabase {
@@ -56,10 +53,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
     statement: string,
     params: readonly unknown[] = [],
   ): Promise<T[]> {
-    const client = traceQueries(await this.pool.connect(), {
-      connectionString: this.connectionString,
-      driver: "postgres",
-    });
+    const client = await this.pool.connect();
     try {
       // A named statement uses the extended protocol, which accepts one statement only.
       const result = await client.query<QueryResultRow>({
@@ -163,10 +157,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
-      connectionString: this.connectionString,
-      driver: "postgres",
-    });
+    return this.transactionClient.getStore() ?? this.pool;
   }
 }
 
@@ -189,5 +180,5 @@ export function createPostgresJuniorSqlExecutor(args: {
       "app.db.driver": "postgres",
     });
   });
-  return new PostgresExecutor(pool, args.connectionString);
+  return new PostgresExecutor(pool);
 }

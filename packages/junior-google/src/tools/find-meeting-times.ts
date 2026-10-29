@@ -28,12 +28,12 @@ const inputSchema = z
     attendees: emailListSchema(20)
       .min(1)
       .describe(
-        "Work emails of the people who must attend. Resolve names with userLookup. Junior adds the requester automatically when it knows their email.",
+        "Work emails of the people who must attend. Resolve names with userLookup. The runtime adds the requester as required when it knows their email. To make the requester optional, put their email in optionalAttendees.",
       ),
     optionalAttendees: emailListSchema(20)
       .default([])
       .describe(
-        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first.',
+        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first. Put the requester here when their own calendar must not block a slot, such as when they say some events are only holds.',
       ),
     durationMinutes: z.number().int().min(15).max(480).default(30),
     timeMin: z.iso
@@ -378,9 +378,14 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           "workdayEnd must be after workdayStart.",
         );
       }
-      const attendees = await withRequester(ctx, input.attendees);
+      // An explicit optional entry for the requester wins over the automatic add.
+      const optionalEmails = new Set(input.optionalAttendees);
+      const attendees = (await withRequester(ctx, input.attendees)).filter(
+        (email) =>
+          input.attendees.includes(email) || !optionalEmails.has(email),
+      );
       const required = new Set(attendees);
-      const optionalAttendees = [...new Set(input.optionalAttendees)].filter(
+      const optionalAttendees = [...optionalEmails].filter(
         (email) => !required.has(email),
       );
       const everyone = [...attendees, ...optionalAttendees];

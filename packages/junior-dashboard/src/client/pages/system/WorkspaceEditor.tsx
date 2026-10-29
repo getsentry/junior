@@ -1,11 +1,14 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { FormEvent } from "react";
+import { Link } from "react-router";
 
-import { Button } from "../../components/Button";
-import { Field } from "../../components/Field";
+import { Button, buttonVariants } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
+import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { InlineError } from "../../components/InlineError";
-import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
+import { formatSandboxSize } from "./sandboxSize";
 import {
   createRepoDraft,
   type RepoDraft,
@@ -15,6 +18,8 @@ import {
 type WorkspaceEditorProps = {
   busy: boolean;
   canSave: boolean;
+  cancelPath: string;
+  defaultVcpus: number | null;
   draft: WorkspaceDraft;
   error?: string;
   editing: boolean;
@@ -49,24 +54,9 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   return (
     <Card className="mb-0" padding="md" variant="section">
       <form className="grid gap-6" onSubmit={submit}>
-        {props.editing ? (
-          <div className="grid gap-1">
-            <h2 className="m-0 text-base font-semibold text-dashboard-text">
-              Configuration
-            </h2>
-            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-              Change the recipe Junior uses the next time this Workspace is
-              prepared.
-            </p>
-          </div>
-        ) : null}
-
-        <Field
-          help="Lowercase name used when agents switch into this Workspace."
-          htmlFor="workspace-name"
-          label="Name"
-        >
-          <TextInput
+        <Field>
+          <FieldLabel htmlFor="workspace-name">Name</FieldLabel>
+          <Input
             autoComplete="off"
             id="workspace-name"
             maxLength={64}
@@ -76,6 +66,9 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
             placeholder="sentry"
             value={props.draft.name}
           />
+          <FieldDescription id="workspace-name-help">
+            Lowercase name used when agents switch into this Workspace.
+          </FieldDescription>
         </Field>
 
         <section className="grid gap-3" aria-labelledby="workspace-repos-title">
@@ -118,12 +111,14 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                 key={repo.key}
               >
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_auto] sm:items-end">
-                  <Field
-                    htmlFor={`workspace-repo-provider-${repo.key}`}
-                    label="Provider"
-                    size="compact"
-                  >
-                    <TextInput
+                  <Field className="gap-1.5">
+                    <FieldLabel
+                      htmlFor={`workspace-repo-provider-${repo.key}`}
+                      className="font-sans text-xs font-medium text-dashboard-text-muted"
+                    >
+                      Provider
+                    </FieldLabel>
+                    <Input
                       aria-label={`Provider ${index + 1}`}
                       id={`workspace-repo-provider-${repo.key}`}
                       onChange={(event) =>
@@ -133,12 +128,14 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                       value={repo.provider}
                     />
                   </Field>
-                  <Field
-                    htmlFor={`workspace-repo-name-${repo.key}`}
-                    label="Repository"
-                    size="compact"
-                  >
-                    <TextInput
+                  <Field className="gap-1.5">
+                    <FieldLabel
+                      htmlFor={`workspace-repo-name-${repo.key}`}
+                      className="font-sans text-xs font-medium text-dashboard-text-muted"
+                    >
+                      Repository
+                    </FieldLabel>
+                    <Input
                       aria-label={`Repository ${index + 1}`}
                       id={`workspace-repo-name-${repo.key}`}
                       onChange={(event) =>
@@ -152,7 +149,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                     aria-label={`Remove repository ${index + 1}`}
                     className="w-full sm:w-auto"
                     onClick={() => removeRepo(repo.key)}
-                    tone="danger"
+                    variant="danger"
                     type="button"
                   >
                     <Trash2 aria-hidden="true" size={14} />
@@ -164,8 +161,23 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           </div>
         </section>
 
-        <Field
-          help={
+        <Field>
+          <FieldLabel htmlFor="workspace-setup">Setup script</FieldLabel>
+          <Textarea
+            className="font-mono"
+            id="workspace-setup"
+            onChange={(event) =>
+              props.onChange({
+                ...props.draft,
+                setupScript: event.target.value,
+              })
+            }
+            placeholder={
+              'pnpm install --dir "$JUNIOR_REPOS_ROOT/sentry"\n# cwd is $JUNIOR_WORKSPACE_ROOT'
+            }
+            value={props.draft.setupScript}
+          />
+          <FieldDescription id="workspace-setup-help">
             <>
               Runs once while Junior builds the reusable snapshot. Current
               working directory is{" "}
@@ -181,35 +193,40 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               </code>
               ). Use those variables instead of hard-coded absolute paths.
             </>
-          }
-          htmlFor="workspace-setup"
-          label="Setup script"
-        >
-          <TextArea
-            id="workspace-setup"
+          </FieldDescription>
+        </Field>
+
+        <Field>
+          <FieldLabel htmlFor="workspace-vcpus">vCPUs</FieldLabel>
+          <Input
+            autoComplete="off"
+            id="workspace-vcpus"
+            inputMode="numeric"
             onChange={(event) =>
-              props.onChange({
-                ...props.draft,
-                setupScript: event.target.value,
-              })
+              props.onChange({ ...props.draft, vcpus: event.target.value })
             }
-            placeholder={
-              'pnpm install --dir "$JUNIOR_REPOS_ROOT/sentry"\n# cwd is $JUNIOR_WORKSPACE_ROOT'
-            }
-            value={props.draft.setupScript}
+            placeholder={formatSandboxSize(props.defaultVcpus)}
+            value={props.draft.vcpus}
           />
+          <FieldDescription id="workspace-vcpus-help">
+            Sandbox vCPUs for this Workspace. Each vCPU adds 2 GB of memory.
+            Leave empty to use the app default.
+          </FieldDescription>
         </Field>
 
         {props.error ? <InlineError>{props.error}</InlineError> : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-dashboard-border-subtle pt-5">
-          <Button disabled={!props.canSave} type="submit">
+          <Button disabled={!props.canSave} type="submit" variant="primary">
             {props.busy
               ? "Saving…"
               : props.editing
                 ? "Save changes"
                 : "Create Workspace"}
           </Button>
+          <Link className={buttonVariants()} to={props.cancelPath}>
+            Cancel
+          </Link>
           <p className="m-0 text-xs text-dashboard-text-muted">
             {props.editing
               ? "Saved changes apply the next time this Workspace is prepared."

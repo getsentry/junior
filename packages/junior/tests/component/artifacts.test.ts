@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { publishImage, unpublishArtifact } from "@/chat/artifacts/store";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import { juniorArtifacts } from "@/db/schema";
@@ -15,32 +15,6 @@ const PNG_BYTES = Buffer.from([
 ]);
 const OWNER_CONVERSATION_ID = "slack:C123:1718123456.000000";
 const OTHER_CONVERSATION_ID = "slack:C999:1718123999.000000";
-
-function storage(): AttachmentStorage & {
-  objects: Map<string, Buffer>;
-} {
-  const objects = new Map<string, Buffer>();
-  return {
-    objects,
-    provider: "test",
-    async put(input) {
-      objects.set(input.key, Buffer.from(input.body));
-    },
-    async get(key) {
-      const body = objects.get(key);
-      if (!body) return null;
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(body);
-          controller.close();
-        },
-      });
-    },
-    async delete(keys) {
-      for (const key of keys) objects.delete(key);
-    },
-  };
-}
 
 function filenameFromUrl(url: string): string {
   return url.split("/").at(-1)!;
@@ -62,7 +36,7 @@ describe("public artifact route", () => {
 
   it("serves a published artifact only when the sql row allows it", async () => {
     const sql = await setup();
-    const imageStorage = storage();
+    const imageStorage = createMemoryAttachmentStorage();
     const published = await publishImage({
       body: PNG_BYTES,
       conversationId: OWNER_CONVERSATION_ID,
@@ -104,7 +78,7 @@ describe("public artifact route", () => {
 
   it("returns no-store 404 after unpublish and restores on republish", async () => {
     const sql = await setup();
-    const imageStorage = storage();
+    const imageStorage = createMemoryAttachmentStorage();
 
     const first = await publishImage({
       body: PNG_BYTES,
@@ -148,7 +122,7 @@ describe("public artifact route", () => {
 
   it("rejects unpublish from a different conversation", async () => {
     const sql = await setup();
-    const imageStorage = storage();
+    const imageStorage = createMemoryAttachmentStorage();
     const published = await publishImage({
       body: PNG_BYTES,
       conversationId: OWNER_CONVERSATION_ID,
@@ -179,7 +153,7 @@ describe("public artifact route", () => {
 
   it("gives each conversation its own artifact for the same bytes", async () => {
     const sql = await setup();
-    const imageStorage = storage();
+    const imageStorage = createMemoryAttachmentStorage();
 
     const owner = await publishImage({
       body: PNG_BYTES,
@@ -225,7 +199,7 @@ describe("public artifact route", () => {
     const response = await publicArtifactGET({
       db: sql.sql,
       filename: "missing.png",
-      storage: storage(),
+      storage: createMemoryAttachmentStorage(),
     });
     expect(response.status).toBe(404);
     expect(response.headers.get("cache-control")).toBe("private, no-store");

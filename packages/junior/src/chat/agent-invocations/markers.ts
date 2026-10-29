@@ -16,7 +16,8 @@ const SUBAGENT_KIND = "agent";
  * record its input as a user message in the child Conversation. The dashboard
  * pairs the parent event with `subagent_ended` to show the child and its
  * status. It must be written before the child mailbox append, so the child
- * cannot end first.
+ * cannot end first. An agent wrote the input, not a person, so the message
+ * names its agent invocation instead of an author.
  */
 export async function recordSubagentStarted(
   invocation: AgentInvocation,
@@ -32,6 +33,7 @@ export async function recordSubagentStarted(
         messageId,
         role: "user",
         text: invocation.input,
+        meta: { agentInvocationId: invocation.invocationId },
       },
       createdAtMs: invocation.createdAtMs,
     },

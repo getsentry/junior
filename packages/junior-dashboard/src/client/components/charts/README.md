@@ -27,12 +27,12 @@ or a cache failure rate.
 The list and chart consume the same selected buckets. There is no local time
 selector or comparison window. The list is collapsed until needed.
 
-`useChartLayout` measures the available width. Charts keep a fixed, compact
-height rather than growing taller on wide screens.
+The chart fills the available width. It keeps a fixed, compact height rather
+than growing taller on wide screens.
 
 This report has no per-call model, release, environment, trace, or write-cost
 fields. Add a reporting contract before adding those filters or drilldowns.
 A large write alone cannot identify cache expiry, a cold start, or prefix loss.
 
-The chart gallery includes a reuse drop and a missing counter. The System
-browser scenario covers display modes and verifies that the page time control also filters the list.
+The System browser scenario covers display modes and verifies that the page
+time control also filters the list.

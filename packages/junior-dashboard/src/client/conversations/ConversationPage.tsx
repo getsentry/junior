@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
@@ -18,7 +26,7 @@ import {
 import { conversationIsResponding } from "./transcript";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
-import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import { CopyButton } from "../components/CopyButton";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   CONVERSATION_EVENT_PARAM,
@@ -26,6 +34,21 @@ import {
 } from "./conversationRoutes";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationDetails } from "./ConversationDetails";
+import { ConversationEventDetails } from "./ConversationEventDetails";
+import { ConversationEventLogLoading } from "./ConversationEventLog";
+import {
+  adjacentEventLogSeqs,
+  eventLogRows,
+  filterEventLogRows,
+} from "./eventLog";
+import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TurnContextDetails,
+  type TurnContextPanel,
+  type TurnContextSelection,
+} from "./TranscriptTurnContextView";
+import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
@@ -37,7 +60,10 @@ import {
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
-import { ConversationUsageBreakdown } from "./ConversationUsageBreakdown";
+import {
+  ConversationUsageBreakdown,
+  hasConversationUsageBreakdown,
+} from "./ConversationUsageBreakdown";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
@@ -69,6 +95,14 @@ import type {
 
 export { liveModelId } from "./ConversationMeta";
 
+const detailsDefaultOpenQuery = "(min-width: 1440px)";
+
+function subscribeToDetailsLayout(onChange: () => void) {
+  const media = window.matchMedia(detailsDefaultOpenQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
@@ -76,6 +110,12 @@ export function ConversationPage(props: {
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
+  const detailsDefaultOpen = useSyncExternalStore(
+    subscribeToDetailsLayout,
+    () => window.matchMedia(detailsDefaultOpenQuery).matches,
+    () => false,
+  );
+  const pageRef = useRef<HTMLDivElement>(null);
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -83,6 +123,16 @@ export function ConversationPage(props: {
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
   );
+  // Event details and turn context show over Conversation details. Closing
+  // them shows details again when details are open. A linked event starts
+  // with details closed, so closing it does not open a panel nobody chose.
+  const [detailsChoice, setDetailsChoice] = useState<boolean | undefined>(() =>
+    selectedEventSeq === undefined ? undefined : false,
+  );
+  const detailsOpen = detailsChoice ?? detailsDefaultOpen;
+  const [turnContext, setTurnContext] = useState<TurnContextSelection>();
+  const eventOpen = selectedEventSeq !== undefined;
+  const showDetails = detailsOpen && !eventOpen && !turnContext;
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     selectedEventSeq === undefined ? "rich" : "raw",
   );
@@ -118,6 +168,10 @@ export function ConversationPage(props: {
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
   const transcript = detail.data;
+  const selectedEvent =
+    transcript?.eventHistory.status === "expired"
+      ? undefined
+      : transcript?.events.find((event) => event.seq === selectedEventSeq);
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
@@ -154,6 +208,8 @@ export function ConversationPage(props: {
       if (value !== "raw" && selectedEventSeq !== undefined) {
         setSelectedEventSeq(undefined);
       }
+      // Turn context belongs to a message in the Conversation view.
+      setTurnContext(undefined);
       setView(value);
     },
     [selectedEventSeq, setSelectedEventSeq],
@@ -175,6 +231,35 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (loadLinkedEvent) loadPreviousPageRef.current();
   }, [loadLinkedEvent, oldestLoadedSeq]);
+  // Keep the panel while the transcript or a linked event loads.
+  const eventLoading =
+    eventOpen &&
+    !selectedEvent &&
+    (detail.isPending ||
+      (linkedEventMissing &&
+        (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
+        !detail.historyError));
+  const showEvent = Boolean(selectedEvent) || eventLoading;
+  // Step through the same filtered rows that the event log shows.
+  const events = transcript?.events;
+  const normalizedSearch = search.trim().toLowerCase();
+  const eventRows = useMemo(
+    () =>
+      eventOpen && events
+        ? filterEventLogRows(eventLogRows(events), normalizedSearch)
+        : [],
+    [eventOpen, events, normalizedSearch],
+  );
+  const turnContextPanel = useMemo<TurnContextPanel>(
+    () => ({
+      openId: turnContext?.id,
+      onToggle: (selection) =>
+        setTurnContext((current) =>
+          current?.id === selection.id ? undefined : selection,
+        ),
+    }),
+    [turnContext?.id],
+  );
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -195,138 +280,139 @@ export function ConversationPage(props: {
     [],
   );
 
+  const closeEventDetails = () => {
+    const trigger = pageRef.current?.querySelector<HTMLButtonElement>(
+      `[data-event-seq="${selectedEventSeq}"] button`,
+    );
+    setSelectedEventSeq(undefined);
+    trigger?.focus({ preventScroll: true });
+  };
+  const closeTurnContext = () => {
+    // A message can have one context control per layout. Focus the visible one.
+    const trigger = [
+      ...(pageRef.current?.querySelectorAll<HTMLButtonElement>(
+        `[data-turn-context-id="${CSS.escape(turnContext?.id ?? "")}"]`,
+      ) ?? []),
+    ].find((button) => button.getClientRects().length > 0);
+    setTurnContext(undefined);
+    trigger?.focus({ preventScroll: true });
+  };
+
   return (
-    <>
+    <div
+      ref={pageRef}
+      className={cn(
+        "grid h-full min-h-0 min-w-0",
+        (showDetails || showEvent || turnContext) &&
+          "xl:grid-cols-[minmax(0,1fr)_25rem]",
+      )}
+    >
       <ChatLayout
-        scrollMinTall
-        scrollAriaLabel="Conversation transcript"
-        scrollClassName="px-4 pb-4 md:px-7 md:pb-6"
-        scroll={
-          <section className="min-w-0">
-            <ConversationHeader
-              agentTree={
-                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
-              }
-              conversationId={conversationId}
-              forks={
-                detail.data?.forkedFromConversationId ||
-                detail.data?.forks?.length ? (
-                  <ConversationForkLinks
-                    forkedFromConversationId={
-                      detail.data.forkedFromConversationId
-                    }
-                    forkedFromTitle={detail.data.forkedFromTitle}
-                    forks={detail.data.forks}
-                  />
-                ) : null
-              }
-              lastActivityAt={conversation?.lastSeenAt}
-              sentryConversationUrl={detail.data?.sentryConversationUrl}
-              copyAction={
-                <CopyMarkdownButton
-                  key={conversationDetail?.conversationId ?? "loading"}
-                  getMarkdown={
-                    conversationDetail
-                      ? async () =>
-                          buildConversationMarkdown(
-                            await detail.loadCompleteTranscript(),
-                            conversation,
-                          )
-                      : undefined
+        header={
+          <ConversationHeader
+            agentTree={
+              agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+            }
+            conversationId={conversationId}
+            detailsOpen={showDetails}
+            onDetailsClick={() => {
+              if (eventOpen) setSelectedEventSeq(undefined);
+              setTurnContext(undefined);
+              setDetailsChoice(!showDetails);
+            }}
+            forks={
+              detail.data?.forkedFromConversationId ||
+              detail.data?.forks?.length ? (
+                <ConversationForkLinks
+                  forkedFromConversationId={
+                    detail.data.forkedFromConversationId
                   }
+                  forkedFromTitle={detail.data.forkedFromTitle}
+                  forks={detail.data.forks}
                 />
-              }
-              annotations={
-                hasConversationAnnotations(detail.data?.annotations) ? (
-                  <ConversationAnnotations detail={detail.data} />
-                ) : null
-              }
-              linkedWork={
-                hasConversationAnnotations(detail.data?.annotations) ? (
-                  <ConversationAnnotations
-                    detail={detail.data}
-                    layout="strip"
-                  />
-                ) : null
-              }
-              archive={{
-                archived: Boolean(conversation?.archivedAt),
-                disabled: !conversation || archive.isPending,
-                error: Boolean(archive.error),
-                onClick: () =>
-                  archive.mutate({
-                    archived: !conversation?.archivedAt,
-                    lastSeenAt: conversation!.lastSeenAt,
-                  }),
-                pending: archive.isPending,
-              }}
-              brief={
-                detail.data?.brief ? (
-                  <ConversationBrief
-                    brief={detail.data.brief}
-                    variant="summary"
-                  />
-                ) : null
-              }
-              identity={identity}
-              live={live}
-              meta={
-                <ConversationHeaderMeta
-                  identity={identity}
-                  stats={
-                    hasConversationStats({
-                      conversation,
-                      detail: detail.data,
-                      variant: "compact",
-                    }) ? (
-                      <ConversationStats
-                        conversation={conversation}
-                        detail={detail.data}
-                        variant="compact"
-                      />
-                    ) : null
-                  }
-                />
-              }
-              onOpenSubagent={setSubagentTarget}
-              onSearchChange={setSearch}
-              onViewChange={onViewChange}
-              privacy={
-                <ConversationPrivacyChip
-                  visibility={conversation?.visibility}
-                />
-              }
-              search={search}
-              stats={
-                hasConversationStats({
-                  conversation,
-                  detail: detail.data,
-                }) ? (
-                  <div className="grid min-w-0 gap-5">
+              ) : null
+            }
+            copyAction={
+              <CopyButton
+                label="Copy as Markdown"
+                copyingLabel="Preparing Markdown"
+                key={conversationDetail?.conversationId ?? "loading"}
+                getText={
+                  conversationDetail
+                    ? async () =>
+                        buildConversationMarkdown(
+                          await detail.loadCompleteTranscript(),
+                          conversation,
+                        )
+                    : undefined
+                }
+              />
+            }
+            linkedWork={
+              hasConversationAnnotations(detail.data?.annotations) ? (
+                <ConversationAnnotations detail={detail.data} layout="strip" />
+              ) : null
+            }
+            archive={{
+              archived: Boolean(conversation?.archivedAt),
+              disabled: !conversation || archive.isPending,
+              error: Boolean(archive.error),
+              onClick: () =>
+                archive.mutate({
+                  archived: !conversation?.archivedAt,
+                  lastSeenAt: conversation!.lastSeenAt,
+                }),
+              pending: archive.isPending,
+            }}
+            live={live}
+            meta={
+              <ConversationHeaderMeta
+                identity={identity}
+                stats={
+                  hasConversationStats({
+                    conversation,
+                    detail: detail.data,
+                    variant: "compact",
+                  }) ? (
                     <ConversationStats
                       conversation={conversation}
                       detail={detail.data}
+                      variant="compact"
                     />
-                    <ConversationUsageBreakdown
-                      conversation={conversation}
-                      detail={detail.data}
-                    />
-                  </div>
-                ) : null
-              }
-              title={title}
-              view={view}
-            />
-
+                  ) : null
+                }
+              />
+            }
+            onSearchChange={setSearch}
+            onViewChange={onViewChange}
+            privacy={
+              <ConversationPrivacyChip visibility={conversation?.visibility} />
+            }
+            search={search}
+            title={title}
+            view={view}
+          />
+        }
+        scrollMinTall
+        scrollAriaLabel="Conversation transcript"
+        scrollClassName={
+          view === "raw" ? undefined : "px-4 pb-4 md:px-7 md:pb-6"
+        }
+        scroll={
+          <section className="min-w-0">
             <div
               className={
                 view === "raw"
-                  ? "w-full pt-5 md:pt-7"
+                  ? "w-full"
                   : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
               }
             >
               {detail.isPending ? (
-                <TranscriptLoading />
+                view === "raw" ? (
+                  <ConversationEventLogLoading />
+                ) : (
+                  <TranscriptLoading />
+                )
               ) : detail.error && !detail.data ? (
                 <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
                   {detail.error.message}
@@ -353,8 +439,10 @@ export function ConversationPage(props: {
                     }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
+                    onSearchChange={setSearch}
                     selectedEventSeq={selectedEventSeq}
                     transcript={transcript}
+                    turnContextPanel={turnContextPanel}
                     view={view}
                   />
                 </>
@@ -382,11 +470,70 @@ export function ConversationPage(props: {
           ) : undefined
         }
       />
+      {showDetails ? (
+        <ConversationDetails
+          conversationId={conversationId}
+          identity={identity}
+          sentryConversationUrl={detail.data?.sentryConversationUrl}
+          onClose={() => setDetailsChoice(false)}
+          onOpenSubagent={setSubagentTarget}
+          annotations={
+            hasConversationAnnotations(detail.data?.annotations) ? (
+              <ConversationAnnotations detail={detail.data} />
+            ) : null
+          }
+          brief={
+            detail.data?.brief ? (
+              <ConversationBrief brief={detail.data.brief} variant="summary" />
+            ) : null
+          }
+          overview={
+            hasConversationStats({
+              conversation,
+              detail: detail.data,
+            }) ? (
+              <ConversationStats
+                conversation={conversation}
+                detail={detail.data}
+              />
+            ) : null
+          }
+          usage={
+            hasConversationUsageBreakdown({
+              conversation,
+              detail: detail.data,
+            }) ? (
+              <ConversationUsageBreakdown
+                conversation={conversation}
+                detail={detail.data}
+              />
+            ) : null
+          }
+        />
+      ) : null}
+      {showEvent ? (
+        <ConversationEventDetails
+          conversation={transcript}
+          event={selectedEvent}
+          onClose={closeEventDetails}
+          onSelect={setSelectedEventSeq}
+          {...adjacentEventLogSeqs(eventRows, selectedEventSeq)}
+        />
+      ) : null}
+      {turnContext ? (
+        <TranscriptSearchProvider query={search}>
+          <TurnContextDetails
+            contexts={turnContext.contexts}
+            key={turnContext.id}
+            onClose={closeTurnContext}
+          />
+        </TranscriptSearchProvider>
+      ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-    </>
+    </div>
   );
 }
 

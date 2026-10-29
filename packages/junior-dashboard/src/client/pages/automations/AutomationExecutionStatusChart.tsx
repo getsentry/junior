@@ -1,11 +1,10 @@
 import type { AutomationExecutionStatusDay } from "@sentry/junior/api/schema";
+import { Bar, BarChart, CartesianGrid } from "recharts";
 import {
-  ActivityChartDateLabels,
-  ActivityChartGrid,
-  ActivityChartTooltip,
-  ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  activityChartMargin,
+  ActivityChartTooltipContent,
+  ActivityChartXAxis,
+  ActivityChartYAxis,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import {
@@ -13,12 +12,17 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
 
 const series = [
-  { color: "#6ee7b7", key: "completed", label: "Completed" },
-  { color: "#fda4af", key: "failed", label: "Failed" },
-  { color: "#fcd34d", key: "blocked", label: "Blocked" },
+  { color: "var(--color-emerald-300)", key: "completed", label: "Completed" },
+  { color: "var(--color-rose-300)", key: "failed", label: "Failed" },
+  { color: "var(--color-amber-300)", key: "blocked", label: "Blocked" },
 ] as const;
+
+const chartConfig = Object.fromEntries(
+  series.map((item) => [item.key, { color: item.color, label: item.label }]),
+);
 
 /** Render one automation's terminal executions by status over a trailing window. */
 export function AutomationExecutionStatusChart(props: {
@@ -30,12 +34,8 @@ export function AutomationExecutionStatusChart(props: {
   const bucketUnit = props.bucketUnit ?? "day";
 
   const days = props.days;
-  const layout = createActivityChartLayout(220);
   const totals = days.map((day) => day.completed + day.failed + day.blocked);
   const maximum = Math.max(1, ...totals);
-  const step =
-    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
-  const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const hasExecutions = totals.some((total) => total > 0);
 
   return (
@@ -59,67 +59,44 @@ export function AutomationExecutionStatusChart(props: {
       />
 
       <div className="relative mt-3 overflow-hidden">
-        <ChartSvg
-          aria-label={`Automation executions during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
-          className="min-h-40"
-          layout={layout}
+        <ChartContainer
+          className="aspect-auto h-55 w-full"
+          config={chartConfig}
         >
-          <ActivityChartGrid layout={layout} maximum={maximum} />
-          {days.map((day, dayIndex) => {
-            let stackedHeight = 0;
-            const x = layout.left + dayIndex * step + (step - barWidth) / 2;
-            const total = totals[dayIndex] ?? 0;
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={
-                  <ActivityTooltipRows
-                    rows={[
-                      ["completed", day.completed],
-                      ["failed", day.failed],
-                      ["blocked", day.blocked],
-                      ["total", total],
-                    ]}
-                  />
-                }
-                date={day.date}
-                summary={`${day.completed} completed, ${day.failed} failed, ${day.blocked} blocked, ${total} total`}
-              >
-                <g tabIndex={0}>
-                  {series.map((item) => {
-                    const value = day[item.key];
-                    const segmentHeight = (value / maximum) * layout.plotHeight;
-                    stackedHeight += segmentHeight;
-                    return (
-                      <rect
-                        fill={item.color}
-                        height={segmentHeight}
-                        key={item.key}
-                        opacity={0.82}
-                        rx="1"
-                        width={barWidth}
-                        x={x}
-                        y={layout.top + layout.plotHeight - stackedHeight}
-                      />
-                    );
-                  })}
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={Math.max(barWidth, 8)}
-                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
+          <BarChart
+            aria-label={`Automation executions during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
+            data={days}
+            margin={activityChartMargin}
+            role="img"
+          >
+            <CartesianGrid strokeDasharray="3 5" vertical={false} />
+            <ActivityChartYAxis maximum={maximum} />
+            <ActivityChartXAxis keys={days.map((day) => day.date)} />
+            <ChartTooltip
+              content={
+                <ActivityChartTooltipContent
+                  rows={(day: AutomationExecutionStatusDay) => [
+                    ["completed", day.completed],
+                    ["failed", day.failed],
+                    ["blocked", day.blocked],
+                    ["total", day.completed + day.failed + day.blocked],
+                  ]}
+                />
+              }
+            />
+            {series.map((item) => (
+              <Bar
+                dataKey={item.key}
+                fill={`var(--color-${item.key})`}
+                fillOpacity={0.82}
+                isAnimationActive={false}
+                key={item.key}
+                maxBarSize={13}
+                stackId="status"
+              />
+            ))}
+          </BarChart>
+        </ChartContainer>
         {!hasExecutions ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No automation executions in this period.

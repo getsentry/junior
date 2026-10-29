@@ -11,7 +11,7 @@ import { del, fetchDashboardJson, post } from "../http";
 import { dashboardContainerClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
 import { useDocumentTitle } from "../documentTitle";
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 
@@ -168,7 +168,7 @@ export function ConnectionsPage() {
                           connectMutation.reset();
                           disconnectMutation.mutate(connection);
                         }}
-                        tone="danger"
+                        variant="danger"
                       >
                         {pendingProvider === connection.provider
                           ? "Disconnecting…"

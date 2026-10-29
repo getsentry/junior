@@ -22,6 +22,14 @@ describe("chat config", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_DRIVER;
     delete process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS;
+    for (const name of Object.keys(process.env)) {
+      if (
+        name === "JUNIOR_ATTACHMENT_STORAGE_PROVIDER" ||
+        name.startsWith("JUNIOR_S3_")
+      ) {
+        delete process.env[name];
+      }
+    }
   });
 
   afterEach(() => {
@@ -352,6 +360,52 @@ describe("chat config", () => {
 
     await expect(loadConfig()).rejects.toThrow(
       "JUNIOR_DATABASE_DRIVER must be postgres or neon",
+    );
+  });
+
+  it("uses Vercel Blob attachment storage by default", async () => {
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().attachmentStorage).toEqual({
+      provider: "vercel-blob",
+    });
+  });
+
+  it("reads S3 attachment storage settings", async () => {
+    process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = " s3 ";
+    process.env.JUNIOR_S3_ENDPOINT = "http://localhost:7070";
+    process.env.JUNIOR_S3_BUCKET = "junior-attachments";
+    process.env.JUNIOR_S3_ACCESS_KEY_ID = "junior";
+    process.env.JUNIOR_S3_SECRET_ACCESS_KEY = "secret";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().attachmentStorage).toEqual({
+      provider: "s3",
+      s3: {
+        accessKeyId: "junior",
+        bucket: "junior-attachments",
+        endpoint: "http://localhost:7070",
+        region: "us-east-1",
+        secretAccessKey: "secret",
+      },
+    });
+  });
+
+  it("throws when S3 attachment storage is missing a setting", async () => {
+    process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "s3";
+    process.env.JUNIOR_S3_ENDPOINT = "http://localhost:7070";
+    process.env.JUNIOR_S3_ACCESS_KEY_ID = "junior";
+    process.env.JUNIOR_S3_SECRET_ACCESS_KEY = "secret";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_S3_BUCKET is required when JUNIOR_ATTACHMENT_STORAGE_PROVIDER is s3",
+    );
+  });
+
+  it("throws when the attachment storage provider is invalid", async () => {
+    process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "gcs";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_ATTACHMENT_STORAGE_PROVIDER must be vercel-blob, s3, or memory",
     );
   });
 

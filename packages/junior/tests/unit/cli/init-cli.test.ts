@@ -32,7 +32,7 @@ function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
+        /  \{ exampleDashboardAuthRequired, exampleDashboardMockConversations \},\n/,
         "",
       )
       .replace('  import("./dashboard.ts"),\n', "")
@@ -50,7 +50,7 @@ function removeExampleDashboardNitroConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardComponentGallery,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
+        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
         "",
       )
       .replace(
@@ -74,7 +74,7 @@ describe("init cli", () => {
 
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "instrument.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "instrument.mjs"))).toBe(false);
     expect(fs.existsSync(path.join(target, "api"))).toBe(false);
     expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
@@ -117,26 +117,12 @@ describe("init cli", () => {
     expect(serverEntry).toContain("createApp({");
     expect(serverEntry).toContain("plugins,");
 
-    const instrumentFile = fs.readFileSync(
-      path.join(target, "instrument.mjs"),
-      "utf8",
-    );
-    expect(instrumentFile).toBe(
-      fs.readFileSync(
-        path.join(repoRoot, "apps", "example", "instrument.mjs"),
-        "utf8",
-      ),
-    );
-
     const nitroConfig = fs.readFileSync(
       path.join(target, "nitro.config.ts"),
       "utf8",
     );
     expect(nitroConfig).toContain(
-      'import { juniorNitro } from "@sentry/junior/nitro";',
-    );
-    expect(nitroConfig).toContain(
-      'import { withSentryConfig } from "@sentry/nitro";',
+      'import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";',
     );
     expect(nitroConfig).toContain('preset: "vercel"');
     expect(nitroConfig).toContain("juniorNitro({");
@@ -171,18 +157,14 @@ describe("init cli", () => {
     expect(pkg.dependencies["@sentry/junior"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-memory"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
-    expect(pkg.dependencies["@sentry/nitro"]).toBe("10.65.0");
+    expect(pkg.dependencies["@sentry/nitro"]).toBeUndefined();
     expect(pkg.devDependencies.nitro).toBeDefined();
     expect(pkg.devDependencies.vite).toBeUndefined();
     expect(pkg.devDependencies.vercel).toBeUndefined();
-    expect(pkg.scripts.dev).toBe(
-      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
-    );
+    expect(pkg.scripts.dev).toBe("nitro dev");
     expect(pkg.scripts.check).toBe("junior check");
     expect(pkg.scripts.build).toBe("junior snapshot create && nitro build");
-    expect(pkg.scripts.preview).toBe(
-      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
-    );
+    expect(pkg.scripts.preview).toBe("nitro preview");
     expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
 
     const pnpmWorkspace = fs.readFileSync(
@@ -192,8 +174,6 @@ describe("init cli", () => {
     expect(pnpmWorkspace).toBe(`minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
-allowBuilds:
-  "@sentry/cli": true
 `);
 
     const envExample = fs.readFileSync(

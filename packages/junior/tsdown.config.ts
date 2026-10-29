@@ -33,6 +33,7 @@ export default defineConfig({
       "#junior/config",
       "hono",
       "@sentry/node",
+      "@sentry/server-utils",
       "@agentclientprotocol/sdk",
       "@ai-sdk/gateway",
       "@chat-adapter/slack",

@@ -1,4 +1,4 @@
-import { setSpanAttributes, setSpanStatus } from "@/chat/logging";
+import { setSpanAttributes } from "@/chat/logging";
 import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
 import { getWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 
@@ -10,14 +10,16 @@ const SANDBOX_ERROR_FIELDS = [
   },
 ] as const;
 
-function getSandboxErrorDetails(error: unknown) {
+/** Extract HTTP error details from a sandbox error for span data and checks. */
+export function getSandboxErrorDetails(error: unknown) {
   return extractHttpErrorDetails(error, {
     attributePrefix: "app.sandbox.api_error",
     extraFields: [...SANDBOX_ERROR_FIELDS],
   });
 }
 
-function findInErrorChain(
+/** Return true when any error in the `cause` chain matches the predicate. */
+export function findInErrorChain(
   error: unknown,
   predicate: (candidate: unknown) => boolean,
 ): boolean {
@@ -34,28 +36,6 @@ function findInErrorChain(
         : undefined;
   }
   return false;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isInvalidSandboxSessionError(error: unknown): boolean {
-  if (!isRecord(error)) {
-    return false;
-  }
-
-  if (isRecord(error.json) && error.json.invalidToken === true) {
-    return true;
-  }
-
-  const response = error.response;
-  return (
-    isRecord(response) &&
-    response.status === 403 &&
-    typeof response.url === "string" &&
-    response.url.includes("/sandboxes/sessions")
-  );
 }
 
 function getFirstErrorMessage(error: unknown): string | undefined {
@@ -89,54 +69,6 @@ export function isAlreadyExistsError(error: unknown): boolean {
   );
 }
 
-/** Detect when the current sandbox session is unavailable and must be reacquired. */
-export function isSandboxUnavailableError(error: unknown): boolean {
-  return findInErrorChain(error, (candidate) => {
-    if (isInvalidSandboxSessionError(candidate)) {
-      return true;
-    }
-
-    const details = getSandboxErrorDetails(candidate);
-    const searchable =
-      `${details.searchableText} ${details.summary}`.toLowerCase();
-    return (
-      searchable.includes("sandbox_stopped") ||
-      searchable.includes("status=410") ||
-      searchable.includes("status code 410") ||
-      searchable.includes("no longer available") ||
-      searchable.includes("stream was closed and is not accepting commands")
-    );
-  });
-}
-
-/** Detect a durable sandbox reference that can no longer be restored. */
-export function isSandboxMissingError(error: unknown): boolean {
-  return findInErrorChain(error, (candidate) => {
-    const details = getSandboxErrorDetails(candidate);
-    const searchable =
-      `${details.searchableText} ${details.summary}`.toLowerCase();
-    return (
-      searchable.includes("status=404") ||
-      searchable.includes("status code 404") ||
-      searchable.includes("snapshot_not_found")
-    );
-  });
-}
-
-/** Detect transient snapshot boot races so sandbox creation can retry. */
-export function isSnapshottingError(error: unknown): boolean {
-  return findInErrorChain(error, (candidate) => {
-    const details = getSandboxErrorDetails(candidate);
-    const searchable =
-      `${details.searchableText} ${details.summary}`.toLowerCase();
-    return (
-      searchable.includes("sandbox_snapshotting") ||
-      searchable.includes("creating a snapshot") ||
-      searchable.includes("stopped shortly")
-    );
-  });
-}
-
 /** Detect cancellation so a durable builder stays available for check-in. */
 export function isAbortError(error: unknown): boolean {
   return findInErrorChain(error, (candidate) => {
@@ -147,55 +79,6 @@ export function isAbortError(error: unknown): boolean {
       return candidate.name === "AbortError";
     }
     return candidate instanceof Error && candidate.name === "AbortError";
-  });
-}
-
-/** Detect transient Vercel Sandbox API failures that keep a job resumable. */
-export function isSandboxApiTransientError(error: unknown): boolean {
-  return findInErrorChain(error, (candidate) => {
-    const details = getSandboxErrorDetails(candidate);
-    const searchable =
-      `${details.searchableText} ${details.summary}`.toLowerCase();
-    if (
-      searchable.includes("internal_server_error") ||
-      searchable.includes("status=500") ||
-      searchable.includes("status code 500") ||
-      searchable.includes("status=502") ||
-      searchable.includes("status code 502") ||
-      searchable.includes("status=503") ||
-      searchable.includes("status code 503") ||
-      searchable.includes("status=504") ||
-      searchable.includes("status code 504")
-    ) {
-      return true;
-    }
-
-    if (!isRecord(candidate)) return false;
-    const response = candidate.response;
-    return (
-      isRecord(response) &&
-      typeof response.status === "number" &&
-      response.status >= 500 &&
-      response.status < 600
-    );
-  });
-}
-
-/** Detect interrupted command streams where no reliable exit status is available. */
-export function isSandboxCommandStreamInterruptedError(
-  error: unknown,
-): boolean {
-  return findInErrorChain(error, (candidate) => {
-    if (!(candidate instanceof Error)) {
-      return false;
-    }
-
-    return (
-      candidate.name === "StreamError" &&
-      candidate.message
-        .toLowerCase()
-        .includes("stream ended before command finished")
-    );
   });
 }
 
@@ -254,7 +137,6 @@ export function throwSandboxOperationError(
       : undefined),
     "app.sandbox.success": false,
   });
-  setSpanStatus("error");
   throw new Error(
     details.summary
       ? `${action} failed (${details.summary})`

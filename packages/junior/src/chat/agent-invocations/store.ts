@@ -125,11 +125,31 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
+const RESULT_MESSAGE_PREFIX = "agent-invocation:";
+const RESULT_MESSAGE_SUFFIX = ":result";
+
 /** Return the stable parent mailbox identity for one terminal result. */
 export function getAgentInvocationResultMessageId(
   invocationId: string,
 ): string {
-  return `agent-invocation:${invocationId}:result`;
+  return `${RESULT_MESSAGE_PREFIX}${invocationId}${RESULT_MESSAGE_SUFFIX}`;
+}
+
+/** Read the invocation identity from one parent result mailbox identity. */
+export function parseAgentInvocationResultMessageId(
+  messageId: string,
+): string | undefined {
+  if (
+    !messageId.startsWith(RESULT_MESSAGE_PREFIX) ||
+    !messageId.endsWith(RESULT_MESSAGE_SUFFIX)
+  ) {
+    return undefined;
+  }
+  const invocationId = messageId.slice(
+    RESULT_MESSAGE_PREFIX.length,
+    -RESULT_MESSAGE_SUFFIX.length,
+  );
+  return invocationId || undefined;
 }
 
 function bindingFromRow(
@@ -168,6 +188,7 @@ export function invocationFromRow(
     ...(row.parentToolCallId
       ? { parentToolCallId: row.parentToolCallId }
       : undefined),
+    ...(row.agentType ? { agentType: row.agentType } : undefined),
     ...(row.modelProfile ? { modelProfile: row.modelProfile } : undefined),
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
@@ -196,6 +217,7 @@ function sameCreateInput(
     invocation.parentConversationId === input.parentConversationId &&
     invocation.agentName === input.agentName &&
     invocation.input === input.input &&
+    invocation.agentType === input.agentType &&
     invocation.modelProfile === input.modelProfile &&
     invocation.reasoningLevel === input.reasoningLevel &&
     JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
@@ -462,6 +484,7 @@ export async function createAgentInvocation(
         credentialContext: input.credentialContext ?? null,
         source: { kind: "agent_invocation" },
         destination: input.destination,
+        agentType: input.agentType ?? null,
         modelProfile: input.modelProfile ?? null,
         reasoningLevel: input.reasoningLevel ?? null,
         parentToolCallId: input.parentToolCallId ?? null,
@@ -512,6 +535,7 @@ export async function createAgentInvocationFromLatest(
       credentialContext: (args.runAs ?? args.latest).credentialContext ?? null,
       source: args.runAs?.source ?? { kind: "agent_invocation" },
       destination: args.latest.destination,
+      agentType: args.latest.agentType ?? null,
       modelProfile: args.latest.modelProfile ?? null,
       reasoningLevel: args.latest.reasoningLevel ?? null,
       status: "pending",
@@ -676,6 +700,7 @@ export async function createAgentInvocationForMessage(
           credentialContext: input.credentialContext ?? null,
           source: { kind: "agent_invocation" },
           destination: input.destination,
+          agentType: latest.agentType ?? null,
           modelProfile: latest.modelProfile ?? null,
           reasoningLevel: latest.reasoningLevel ?? null,
           parentToolCallId: input.parentToolCallId,
