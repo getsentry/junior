@@ -85,30 +85,3 @@ and retry inside the dialog and blocks dismissal while the request is pending.
 Cancel returns focus to Delete. Successful deletion closes the selected details
 and returns focus to the list. Success toasts confirm Save, Pause, Resume, and
 Delete. Their state belongs to the mounted dashboard's Toaster provider.
-
-## Run details
-
-The Runs list and the executions list of one Automation open run details in
-the shared `DetailsPanel`. A row does not open the Conversation. The `run`
-search parameter selects the run, so a run link can be shared. Filters and the
-query string stay when the selection changes. Each row also has an icon link
-that opens the Conversation directly.
-
-`AutomationRunDetails` owns the selection hook, the list frame, and the panel.
-Both lists use it. `AutomationsPageLayout` gives both routes the same
-independent list scroll as the Automation list. Closing returns focus to the
-selected row. While details are open, Up and Down move the selection to the
-next or previous visible row.
-
-Details lead with the outcome. The facts are in cards that match the Summary
-tab of conversation details. An Error card shows the recorded error. The Run
-card shows the trigger, the schedule, start and finish times, duration, tokens,
-and cost. The Setup card shows the Automation on the Runs list, the dispatched
-version, the accounts of that version, and the run id. "Open conversation" is
-the header action when a Conversation was recorded. Core reads these fields
-from the run record and the dispatched Automation version. A dash replaces a
-missing duration, token count, or cost. Other fields that core did not record
-are left out.
-
-The executions and Runs browser journeys in `e2e/automations.spec.ts` cover
-selection, the shared URL, keyboard movement, focus on close, and the row link.
