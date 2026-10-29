@@ -44,6 +44,9 @@ table is wider than its box. Callers set column widths and cell padding.
 `ui/toast.tsx` owns short success notifications in a mounted `Toaster`
 provider. Features call `useToastManager` inside that provider. It has no
 global notification manager.
+`ui/chart.tsx` is the shadcn Recharts chart. It keeps `ChartContainer` and
+`ChartTooltip`. Its axis, grid, cursor, focus, and series colors use dashboard
+tokens, so they follow `data-theme`.
 `ui/useSheet.ts` owns the sheet close lifecycle, shared document scroll lock, and
 focus rules when a resize puts one modal below another. These are separate
 Dialog roots. A newly mounted sheet must not take focus from the open child
@@ -68,6 +71,7 @@ file when every caller needs the same style or variant. App components compose
 | `TranscriptViewToggle`         | `ui/toggle-group` |
 | `FilterTabList`                | `ui/tabs`         |
 | `charts/ActivityChartTooltip`  | `ui/tooltip`      |
+| Recharts activity charts       | `ui/chart`        |
 
 Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
 `aria-label`. The `ui/` files join classes with the merging `cn` from
@@ -85,8 +89,9 @@ token so each theme can redefine it.
   paint from the saved choice or the system color scheme. `ThemeSwitcher` saves
   the choice for this browser. Use the `light:` variant only for one-off values
   that no token covers, such as provider brand colors.
-- **Charts.** Use `var(--color-*)` for series colors in SVG attributes, not hex
-  values, so they follow the theme.
+- **Charts.** Use `var(--color-*)` for series colors, not hex values, so they
+  follow the theme. Name series colors in the `ChartContainer` config and fill
+  each series with `var(--color-<key>)`.
 
 - **Surfaces.** Use the surface ladder, darkest to lightest: `bg`,
   `bg-elevated` (drawers), `surface-panel` (sidebar, cards, bubbles),
@@ -215,11 +220,16 @@ and adds the count badges.
   section titles. `DashboardChrome` owns the sticky header block and its one
   bottom border.
 - **Directory tables and metrics.** `directory/` and `metrics/`.
-- **Charts.** Activity time-series charts own bucket labels in
-  `charts/ActivityChart` (`formatActivityDate` for axes,
-  `ActivityChartTooltip` and `formatActivityTooltipDate` for hover labels). New
-  day or hour charts compose those helpers. They do not format UTC bucket keys
-  inline.
+- **Charts.** Charts use Recharts inside `ui/chart` `ChartContainer` and
+  `ChartTooltip`. Put `role="img"` and the chart `aria-label` on the Recharts
+  chart, so the tooltip live region stays outside the image. Activity
+  time-series charts own bucket labels in `charts/ActivityChart`:
+  `ActivityChartXAxis` shows the first, middle, and last bucket,
+  `ActivityChartYAxis` shows three guide values, `ActivityChartAverageLine`
+  draws the opt-in average, and `ActivityChartTooltipContent` titles the hovered
+  bucket. New day or hour charts compose those helpers. They do not format UTC
+  bucket keys inline. HTML charts, such as Guardian activity, use
+  `ActivityChartTooltip` and `ChartAxisHtmlLabel`.
 - **Conversation mobile geometry** is a hard ownership edge:
   - `layout/VisualViewportShell` owns the fixed shell, visualViewport CSS
     variables, and body lock.

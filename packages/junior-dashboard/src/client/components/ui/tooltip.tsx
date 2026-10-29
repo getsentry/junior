@@ -164,4 +164,5 @@ export {
   TooltipContent,
   TooltipTitle,
   TooltipProvider,
+  tooltipContentVariants,
 };
