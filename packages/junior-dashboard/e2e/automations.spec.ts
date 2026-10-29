@@ -623,6 +623,35 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(
     page.getByText("completed", { exact: true }).first(),
   ).toBeVisible();
+
+  // Rows open run details. The row link still opens the Conversation.
+  const firstRow = page.getByRole("listitem").first();
+  const runId = await firstRow.getAttribute("data-run-id");
+  await expect(
+    firstRow.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute("href", /^\/conversations\//);
+  const firstRun = firstRow.getByRole("button");
+  await firstRun.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/runs?run=${encodeURIComponent(runId!)}`,
+  );
+  const details = page.getByRole("complementary", { name: "Run details" });
+  // The Runs list spans Automations, so details name the Automation.
+  await expect(details.getByText("Automation", { exact: true })).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: "Open conversation" }),
+  ).toBeVisible();
+  await page
+    .getByRole("group", { name: "Status" })
+    .getByRole("button", { name: "failed" })
+    .click();
+  await expect(page).toHaveURL(/status=failed/);
+  // A filter keeps the selected run open.
+  await expect(details).toBeVisible();
+  await page.getByRole("button", { name: "Close run details" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/runs?status=failed`,
+  );
 });
 
 test("opens one automation's execution history", async ({
@@ -645,9 +674,6 @@ test("opens one automation's execution history", async ({
     page.getByLabel("Automation executions during the last 90 days"),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Weekly project summary/ }),
-  ).toBeVisible();
-  await expect(
     page.locator('[title="completed"]:visible').first(),
   ).toBeVisible();
   await expect(page.getByText("$0.42").first()).toBeVisible();
@@ -656,6 +682,67 @@ test("opens one automation's execution history", async ({
   await expect(
     page.getByText("No conversation", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-run-id="scheduled-1-run-1"]')
+      .getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("scheduler:daily-ops-digest")}`,
+  );
+
+  // A row opens run details instead of the Conversation.
+  const failedRun = page.getByRole("button", {
+    name: /Ship notes for the release train/,
+  });
+  await failedRun.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/scheduled-1/executions?run=scheduled-1-run-2`,
+  );
+  await expect(failedRun).toHaveAttribute("aria-expanded", "true");
+  const details = page.getByRole("complementary", { name: "Run details" });
+  await expect(
+    details.getByRole("heading", { name: "Ship notes for the release train" }),
+  ).toBeVisible();
+  await expect(details.getByText("Automation", { exact: true })).toHaveCount(0);
+  await expect(
+    details.getByText("Slack rejected the result message: channel_not_found."),
+  ).toBeVisible();
+  await expect(
+    details.getByText("Creator’s connected accounts", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: "Version 3" }),
+  ).toHaveAttribute("href", "/automations/scheduled-1/versions");
+  await expect(
+    details.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+  );
+  await screenshot(page, "automation-run-details", { lightTheme: true });
+
+  // Up and Down move the selection while details are open.
+  await failedRun.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page).toHaveURL(/run=scheduled-1-run-3$/);
+  await expect(
+    details.getByText("No Conversation was recorded for this run."),
+  ).toBeVisible();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(page).toHaveURL(/run=scheduled-1-run-1$/);
+  const firstRun = page.getByRole("button", {
+    name: /Weekly project summary/,
+  });
+  await expect(firstRun).toBeFocused();
+
+  await page.getByRole("button", { name: "Close run details" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/scheduled-1/executions`,
+  );
+  await expect(details).toBeHidden();
+  await expect(firstRun).toBeFocused();
 });
 
 test("pauses and resumes from details, keeps failures visible, and limits actions to creators", async ({
