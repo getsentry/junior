@@ -37,6 +37,19 @@ export function applyJuniorDevelopmentDefaults(env, options = {}) {
   if (!hasValue(env.JUNIOR_BASE_URL) && hasValue(options.baseUrl)) {
     env.JUNIOR_BASE_URL = options.baseUrl.trim();
   }
+  // Only the dev server starts queue workers, so only it passes this option.
+  // Other local commands keep the Vercel queue.
+  if (hasValue(options.queueRedisUrl)) {
+    if (!hasValue(env.JUNIOR_QUEUE_PROVIDER)) {
+      env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+    }
+    if (
+      env.JUNIOR_QUEUE_PROVIDER.trim() === "bullmq" &&
+      !hasValue(env.JUNIOR_QUEUE_REDIS_URL)
+    ) {
+      env.JUNIOR_QUEUE_REDIS_URL = options.queueRedisUrl.trim();
+    }
+  }
 }
 
 /** Load env files so app-local defaults override repo defaults without replacing shell env. */

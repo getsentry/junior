@@ -41,6 +41,8 @@ pnpm dev
 
 This starts the example app on `http://localhost:3000` by default. It also rebuilds and watches the workspace packages that the example app consumes, so dashboard and runtime package edits are reflected without manually rebuilding first.
 
+`pnpm dev` delivers background work through BullMQ on the Redis in `compose.yaml` (`redis://localhost:6382`). Start it with `docker compose up -d redis`. Local work then needs no Vercel Queues access. To use Vercel Queues, set `JUNIOR_QUEUE_PROVIDER=vercel` and run `pnpm dev:env` for the Vercel token. To use another Redis, set `JUNIOR_QUEUE_REDIS_URL`.
+
 To also open the Sentry Local UI in your browser, set `OPEN_SPOTLIGHT_WEB=1`:
 
 ```bash

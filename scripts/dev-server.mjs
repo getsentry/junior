@@ -143,6 +143,8 @@ const tunnelUrl =
   process.env.CLOUDFLARE_TUNNEL_URL?.trim() || `http://localhost:${devPort}`;
 applyJuniorDevelopmentDefaults(process.env, {
   baseUrl: `http://localhost:${devPort}`,
+  // The Redis service in `compose.yaml`.
+  queueRedisUrl: "redis://localhost:6382",
 });
 if (
   !process.env.JUNIOR_SCHEDULER_SECRET?.trim() &&

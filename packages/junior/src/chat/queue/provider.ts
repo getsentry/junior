@@ -1,9 +1,11 @@
+import { getChatConfig } from "@/chat/config";
+import { bullmqQueueProvider } from "@/chat/queue/bullmq";
 import { vercelQueueProvider } from "@/chat/queue/vercel";
 
 // Module overview: the one place that chooses a queue provider.
 //
 // Queue code calls `getQueueProvider()` and uses only this contract.
-// Provider modules, such as `vercel.ts`, implement it. Only this module
+// Provider modules, such as `vercel.ts` and `bullmq.ts`, implement it. Only this module
 // imports a provider module.
 
 /** Delivery facts that a queue provider passes with each message. */
@@ -69,5 +71,7 @@ export interface QueueProvider {
 
 /** Return the queue provider for this deployment. */
 export function getQueueProvider(): QueueProvider {
-  return vercelQueueProvider;
+  return getChatConfig().queue.provider === "bullmq"
+    ? bullmqQueueProvider
+    : vercelQueueProvider;
 }

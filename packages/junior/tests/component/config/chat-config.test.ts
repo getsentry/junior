@@ -25,7 +25,8 @@ describe("chat config", () => {
     for (const name of Object.keys(process.env)) {
       if (
         name === "JUNIOR_ATTACHMENT_STORAGE_PROVIDER" ||
-        name.startsWith("JUNIOR_S3_")
+        name.startsWith("JUNIOR_S3_") ||
+        name.startsWith("JUNIOR_QUEUE_")
       ) {
         delete process.env[name];
       }
@@ -406,6 +407,27 @@ describe("chat config", () => {
 
     await expect(loadConfig()).rejects.toThrow(
       "JUNIOR_ATTACHMENT_STORAGE_PROVIDER must be vercel-blob, s3, or memory",
+    );
+  });
+
+  it("uses Vercel Queues by default and reads BullMQ settings", async () => {
+    expect((await loadConfig()).getChatConfig().queue).toEqual({
+      provider: "vercel",
+    });
+
+    process.env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+    process.env.JUNIOR_QUEUE_REDIS_URL = "redis://localhost:6382";
+    expect((await loadConfig()).getChatConfig().queue).toEqual({
+      provider: "bullmq",
+      redisUrl: "redis://localhost:6382",
+    });
+  });
+
+  it("throws when the BullMQ queue has no Redis URL", async () => {
+    process.env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_QUEUE_REDIS_URL is required when JUNIOR_QUEUE_PROVIDER is bullmq",
     );
   });
 

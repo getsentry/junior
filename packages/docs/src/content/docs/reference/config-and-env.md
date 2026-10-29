@@ -51,6 +51,8 @@ related:
 | `JUNIOR_S3_ACCESS_KEY_ID`                   | Conditional | S3 access key ID. Required when the provider is `s3`.                                                                                                                       |
 | `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
 | `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
+| `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel` or `bullmq`. Defaults to `vercel`. Use `bullmq` only for local development.                                                   |
+| `JUNIOR_QUEUE_REDIS_URL`                    | Conditional | Redis for the BullMQ queue, such as `redis://localhost:6382`. Required when the provider is `bullmq`.                                                                       |
 
 For Vercel deployments, create a private Blob store and connect it to the
 project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
@@ -67,6 +69,13 @@ visible after you change to another provider.
 `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=memory` keeps objects in process memory.
 Junior loses them when the process stops, and each process has its own copy.
 Do not use it for a deployed app.
+
+`JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
+Redis, with workers in the dev server process. Local development then needs no
+Vercel Queues access. Install the optional `bullmq` and `redis` packages to use
+it. Junior loads them only when this provider is selected, so they never enter a
+deployed bundle. Give the queue its own Redis URL. If two dev servers share one
+Redis, each one can take the other's jobs.
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
