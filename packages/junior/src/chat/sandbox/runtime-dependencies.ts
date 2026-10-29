@@ -7,7 +7,7 @@ import {
   DOCKER_COMPOSE_CLI_WRAPPER_SCRIPT,
   DOCKER_DAEMON_JSON,
   DOCKER_ENSURE_SCRIPT,
-} from "@/chat/sandbox/docker";
+} from "@/chat/sandbox/guest-docker";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 
 // Verify additions by installing them in a stock Vercel node22 sandbox. Package

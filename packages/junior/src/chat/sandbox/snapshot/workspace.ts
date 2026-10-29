@@ -2,10 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import {
-  isAbortError,
-  isSandboxApiTransientError,
-} from "@/chat/sandbox/errors";
+import { isAbortError } from "@/chat/sandbox/errors";
 import type { WorkspaceFinalize } from "@sentry/junior-plugin-api";
 import {
   prepareWorkspaceRepositories,
@@ -89,7 +86,7 @@ const STOP_BUFFER_MS = 40_000;
 
 /** Keep the build open when a request stops or the provider has a short failure. */
 function isCancelOrTransient(error: unknown): boolean {
-  return isAbortError(error) || isSandboxApiTransientError(error);
+  return isAbortError(error) || getSandboxProvider().errors.isTransient(error);
 }
 
 function buildLockKey(profileHash: string): string {
@@ -700,7 +697,7 @@ export async function resolveWorkspaceSnapshot(params: {
     try {
       snapshot = await advanceWorkspaceSnapshot(current);
     } catch (error) {
-      if (!isSandboxApiTransientError(error)) throw error;
+      if (!getSandboxProvider().errors.isTransient(error)) throw error;
       advanced = true;
       if (shouldStopForTimeLimit(current.shouldStop)) {
         throw new WorkspaceSnapshotNotReadyError(workspace.name);

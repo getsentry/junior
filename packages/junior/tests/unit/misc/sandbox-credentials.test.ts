@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/vercel/credentials";
 
 const TEST_ENV_KEYS = [
   "VERCEL_TOKEN",

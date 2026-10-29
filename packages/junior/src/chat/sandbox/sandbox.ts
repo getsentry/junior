@@ -22,11 +22,8 @@ import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals
 import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { CredentialContext } from "@/chat/credentials/context";
-import {
-  isSandboxCommandStreamInterruptedError,
-  isSandboxUnavailableError,
-  throwSandboxOperationError,
-} from "@/chat/sandbox/errors";
+import { throwSandboxOperationError } from "@/chat/sandbox/errors";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import {
   getWorkspaceSnapshotNotReadyError,
   workspaceSnapshotNotReadyUserMessage,
@@ -780,11 +777,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       if (getWorkspaceSnapshotNotReadyError(error)) {
         return createWorkspaceSnapshotNotReadyToolResult(error) as T;
       }
-      if (isSandboxUnavailableError(error)) {
+      if (getSandboxProvider().errors.isUnavailable(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
       }
-      if (isSandboxCommandStreamInterruptedError(error)) {
+      if (getSandboxProvider().errors.isCommandStreamInterrupted(error)) {
         throw new ToolInputError(
           `The sandbox command stream was interrupted during ${params.toolName}, so the operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
           { cause: error },
@@ -812,7 +809,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           },
         );
       }
-      if (isSandboxUnavailableError(error)) {
+      if (getSandboxProvider().errors.isUnavailable(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }
       throw error;
