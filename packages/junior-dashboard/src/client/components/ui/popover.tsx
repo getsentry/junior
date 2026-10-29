@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Popover. See shadcn.LICENSE.
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "@dashboard/lib/utils";
 
