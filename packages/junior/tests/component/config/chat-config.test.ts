@@ -283,7 +283,7 @@ describe("chat config", () => {
     process.env.AI_IMAGE_MODEL = "   ";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.imageGenerationModelId).toBe("google/gemini-3-pro-image");
+    expect(botConfig.imageGenerationModelId).toBe("openai/gpt-image-2");
   });
 
   it("uses AI_IMAGE_MODEL when configured", async () => {

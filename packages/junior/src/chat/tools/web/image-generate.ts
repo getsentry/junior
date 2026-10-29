@@ -2,17 +2,18 @@ import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
+import { createGatewayProvider } from "@ai-sdk/gateway";
+import { generateImage, NoImageGeneratedError, type GeneratedFile } from "ai";
 import { botConfig } from "@/chat/config";
 import {
   completeText,
-  getGatewayApiKey,
   MISSING_GATEWAY_CREDENTIALS_ERROR,
 } from "@/chat/pi/client";
+import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
 import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
-import type { InputImageType } from "@/chat/attachments/media";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
@@ -25,7 +26,8 @@ const MAX_SOURCE_IMAGE_BYTES = 25 * 1024 * 1024;
 // Longest edges to try when an image must be resized, largest first.
 const RESIZE_LONGEST_EDGES = [2048, 1536, 1024, 768];
 
-type InputImage = { path: string; data: Buffer; mimeType: InputImageType };
+// The AI SDK reads the media type from the image bytes.
+type InputImage = { path: string; data: Buffer };
 
 const resizedImageSchema = z
   .object({
@@ -91,7 +93,6 @@ async function shrinkImage(
   const { default: sharp } = await import("sharp");
   const { hasAlpha } = await sharp(image.data).metadata();
   // JPEG is smallest for photos. WebP keeps transparency.
-  const mimeType = hasAlpha ? "image/webp" : "image/jpeg";
   for (const edge of RESIZE_LONGEST_EDGES) {
     const resized = sharp(image.data).rotate().resize({
       width: edge,
@@ -104,7 +105,7 @@ async function shrinkImage(
     ).toBuffer({ resolveWithObject: true });
     if (data.byteLength <= maxBytes) {
       return {
-        image: { path: image.path, data, mimeType },
+        image: { path: image.path, data },
         width: info.width,
         height: info.height,
       };
@@ -163,26 +164,6 @@ function extensionForMediaType(mediaType: string): string {
   return "bin";
 }
 
-function parseImageGenerationError(
-  status: number,
-  body: string,
-  model: string,
-): string {
-  if (!body) return `image generation failed: ${status}`;
-
-  try {
-    const payload = JSON.parse(body) as { error?: { message?: string } };
-    const message = payload.error?.message?.trim();
-    if (!message) return `image generation failed: ${status} ${body}`;
-    if (message.includes("not an image model")) {
-      return `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to a compatible image model.`;
-    }
-    return `image generation failed: ${status} ${message}`;
-  } catch {
-    return `image generation failed: ${status} ${body}`;
-  }
-}
-
 /** Create the image tool with sandbox artifact guidance matched to file-send capability. */
 export function createImageGenerateTool(
   hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
@@ -220,13 +201,15 @@ export function createImageGenerateTool(
     }),
     outputSchema: imageGenerateOutputSchema,
     execute: async ({ prompt, images = [] }) => {
-      const fetchImpl = deps.fetch ?? fetch;
-      // Raw fetch does not resolve AI Gateway auth on its own, so this path
-      // has to turn the shared gateway credential into a bearer token.
-      const apiKey = await getGatewayApiKey();
-      if (!apiKey) {
+      // Use the shared resolver so OIDC wins over a leftover team API key.
+      const credential = await resolveGatewayCredential();
+      if (!credential) {
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
+      const gateway = createGatewayProvider({
+        apiKey: credential.token,
+        ...(deps.fetch ? { fetch: deps.fetch } : undefined),
+      });
       const model = options.modelId;
       const sourceImages = await Promise.all(
         images.map(async (path) => ({
@@ -252,83 +235,40 @@ export function createImageGenerateTool(
       // Enrichment restyles the whole image, so it would undo an edit.
       const enrichedPrompt =
         inputImages.length > 0 ? prompt : await enrichImagePrompt(prompt);
-      const content =
-        inputImages.length > 0
-          ? [
-              { type: "text", text: enrichedPrompt },
-              ...inputImages.map((image) => ({
-                type: "image_url",
-                image_url: {
-                  url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
-                },
-              })),
-            ]
-          : enrichedPrompt;
-      const response = await fetchImpl(
-        "https://ai-gateway.vercel.sh/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content }],
-            modalities: ["image"],
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(
-          parseImageGenerationError(response.status, text, model),
-        );
-      }
-
-      const payload = (await response.json()) as {
-        choices?: Array<{
-          message?: {
-            images?: Array<{
-              image_url?: {
-                url?: string;
-              };
-            }>;
-          };
-        }>;
-      };
-      const uploads: Array<{
-        data: Buffer;
-        filename: string;
-        mimeType: string;
-      }> = [];
-      const generatedImages = payload.choices?.[0]?.message?.images ?? [];
-      for (const [index, image] of generatedImages.entries()) {
-        let bytes: Buffer | null = null;
-        let mimeType = "image/png";
-        const url = image.image_url?.url;
-
-        if (typeof url === "string" && url.startsWith("data:")) {
-          const match = url.match(/^data:([^;,]+);base64,(.+)$/);
-          if (!match) continue;
-          mimeType = match[1] ?? mimeType;
-          bytes = Buffer.from(match[2] ?? "", "base64");
-        } else if (typeof url === "string" && url.length > 0) {
-          const fetched = await fetchImpl(url);
-          if (!fetched.ok) continue;
-          mimeType = fetched.headers.get("content-type") ?? mimeType;
-          bytes = Buffer.from(await fetched.arrayBuffer());
+      let generatedImages: GeneratedFile[];
+      try {
+        ({ images: generatedImages } = await generateImage({
+          model: gateway.imageModel(model),
+          // Input images make this an edit of those images.
+          prompt:
+            inputImages.length > 0
+              ? {
+                  text: enrichedPrompt,
+                  images: inputImages.map((image) => image.data),
+                }
+              : enrichedPrompt,
+          n: 1,
+        }));
+      } catch (error) {
+        if (NoImageGeneratedError.isInstance(error)) {
+          generatedImages = [];
+        } else if (
+          error instanceof Error &&
+          error.message.includes("not an image model")
+        ) {
+          // The model id comes from app config, so the agent cannot fix it.
+          throw new Error(
+            `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`,
+          );
+        } else {
+          throw error;
         }
-
-        if (!bytes) continue;
-        const extension = extensionForMediaType(mimeType);
-        uploads.push({
-          data: bytes,
-          filename: `generated-image-${Date.now()}-${index + 1}.${extension}`,
-          mimeType,
-        });
       }
+      const uploads = generatedImages.map((image, index) => ({
+        data: Buffer.from(image.uint8Array),
+        filename: `generated-image-${Date.now()}-${index + 1}.${extensionForMediaType(image.mediaType)}`,
+        mimeType: image.mediaType,
+      }));
 
       if (uploads.length > 0) {
         const artifactRefs = await hooks.writeGeneratedArtifacts(uploads);

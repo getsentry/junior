@@ -4,12 +4,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/pi/client", () => ({
   completeText: vi.fn(),
-  getGatewayApiKey: vi.fn(
-    async () => process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
-  ),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
   MISSING_GATEWAY_CREDENTIALS_ERROR:
     "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)",
+}));
+
+vi.mock("@/chat/pi/gateway-auth", () => ({
+  resolveGatewayCredential: vi.fn(async () =>
+    process.env.AI_GATEWAY_API_KEY
+      ? { mode: "api_key", token: process.env.AI_GATEWAY_API_KEY }
+      : undefined,
+  ),
 }));
 
 vi.mock("@/chat/prompt", () => ({
@@ -32,49 +37,30 @@ function sandbox(files: Record<string, Buffer> = {}): SandboxWorkspace {
 }
 
 const defaultImageOptions = {
-  modelId: "google/gemini-3-pro-image",
+  modelId: "openai/gpt-image-2",
   sandbox: sandbox(),
 };
 
-function getRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
-  const request = fetchMock.mock.calls[0]!;
-  expect(request).toBeDefined();
-  expect(request[1]).toBeDefined();
-  return JSON.parse((request[1] as RequestInit).body as string);
+const IMAGE_MODEL_URL = "https://ai-gateway.vercel.sh/v4/ai/image-model";
+
+function imageResponse(images = [PNG_BYTES]) {
+  return Response.json({
+    images: images.map((image) => image.toString("base64")),
+  });
 }
 
-function createJsonResponse(payload: unknown) {
-  return {
-    ok: true,
-    status: 200,
-    json: async () => payload,
-  } as Response;
+/** Fake AI Gateway that answers each image request in order. */
+function gatewayFetch(responses: Response[]) {
+  const queue = [...responses];
+  return vi.fn(
+    async (_url: string | URL | Request, _init?: RequestInit) => queue.shift()!,
+  );
 }
 
-function createErrorResponse(status: number, body: string) {
-  return {
-    ok: false,
-    status,
-    text: async () => body,
-  } as Response;
-}
-
-function imagePayload() {
-  return {
-    choices: [
-      {
-        message: {
-          images: [
-            {
-              image_url: {
-                url: `data:image/png;base64,${Buffer.from("img").toString("base64")}`,
-              },
-            },
-          ],
-        },
-      },
-    ],
-  };
+function requestBody(fetchMock: ReturnType<typeof gatewayFetch>, index = 0) {
+  const request = fetchMock.mock.calls[index]!;
+  expect(String(request[0])).toBe(IMAGE_MODEL_URL);
+  return JSON.parse(request[1]!.body as string);
 }
 
 function writeGeneratedArtifacts(files: FileUpload[]) {
@@ -90,17 +76,13 @@ describe("createImageGenerateTool", () => {
   afterEach(() => {
     delete process.env.AI_GATEWAY_API_KEY;
     delete process.env.VERCEL_OIDC_TOKEN;
-    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
   it("uses the configured image generation model", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = gatewayFetch([imageResponse()]);
     vi.spyOn(Date, "now").mockReturnValue(1_737_000_000_000);
 
     const uploads: FileUpload[] = [];
@@ -110,71 +92,46 @@ describe("createImageGenerateTool", () => {
           uploads.push(...files);
           return writeGeneratedArtifacts(files);
         },
-      } as any,
-      { modelId: "openai/dall-e-3", sandbox: sandbox() },
+      },
+      { modelId: "openai/gpt-image-1.5", sandbox: sandbox() },
+      { fetch: fetchMock },
     );
-    if (typeof tool.execute !== "function") {
-      throw new Error("imageGenerate execute function missing");
-    }
 
-    const result = await tool.execute({ prompt: "test prompt" }, {} as any);
+    const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const request = fetchMock.mock.calls[0]!;
-    expect(request).toBeDefined();
-    expect(request[0]).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
-    expect(getRequestBody(fetchMock)).toMatchObject({
-      model: "openai/dall-e-3",
-      messages: [{ role: "user", content: "enriched prompt" }],
-      modalities: ["image"],
+    expect(requestBody(fetchMock)).toMatchObject({
+      prompt: "enriched prompt",
+      n: 1,
     });
+    const headers = new Headers(fetchMock.mock.calls[0]![1]!.headers);
+    expect(headers.get("ai-model-id")).toBe("openai/gpt-image-1.5");
+    expect(headers.get("authorization")).toBe("Bearer test-key");
     expect(result).toMatchObject({
-      model: "openai/dall-e-3",
+      model: "openai/gpt-image-1.5",
       image_count: 1,
-      delivery: expect.stringContaining("no file-send tool"),
-    });
-    expect(JSON.stringify(result)).not.toContain("sendFiles");
-    const generated = result as {
-      images: Array<{
-        bytes: number;
-        filename: string;
-        mimeType: string;
-        path: string;
-      }>;
-    };
-    expect(generated).toMatchObject({
       images: [
         {
-          bytes: 3,
+          bytes: PNG_BYTES.byteLength,
           filename: "generated-image-1737000000000-1.png",
           mimeType: "image/png",
           path: "/tmp/junior/artifacts/generated-image-1737000000000-1.png",
         },
       ],
+      delivery: expect.stringContaining("no file-send tool"),
     });
-    expect(JSON.stringify(generated)).not.toContain("attachment_path");
-    expect(JSON.stringify(generated)).not.toContain("media_type");
-    expect(uploads[0]?.filename).toContain("generated-image-1737000000000-1");
-    expect(uploads[0]?.data).toEqual(Buffer.from("img"));
+    expect(JSON.stringify(result)).not.toContain("sendFiles");
+    expect(uploads[0]?.data).toEqual(PNG_BYTES);
   });
 
   it("recommends sendFiles when active file-send support is available", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(Date, "now").mockReturnValue(1_737_000_000_000);
 
     const tool = createImageGenerateTool(
-      {
-        writeGeneratedArtifacts,
-      },
-      {
-        ...defaultImageOptions,
-        canSendFilesToActiveConversation: true,
-      },
+      { writeGeneratedArtifacts },
+      { ...defaultImageOptions, canSendFilesToActiveConversation: true },
+      { fetch: gatewayFetch([imageResponse()]) },
     );
     const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
 
@@ -189,28 +146,26 @@ describe("createImageGenerateTool", () => {
   it("returns an actionable error when model is not image-capable", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      createErrorResponse(
-        400,
-        JSON.stringify({
+    const fetchMock = gatewayFetch([
+      Response.json(
+        {
           error: {
+            type: "invalid_request_error",
             message:
               "Model 'google/gemini-3-pro-image' is a language model, not an image model. Use the language generation API instead.",
           },
-        }),
+        },
+        { status: 400 },
       ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    ]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts } as any,
-      defaultImageOptions,
+      { writeGeneratedArtifacts },
+      { modelId: "google/gemini-3-pro-image", sandbox: sandbox() },
+      { fetch: fetchMock },
     );
-    if (typeof tool.execute !== "function") {
-      throw new Error("imageGenerate execute function missing");
-    }
     await expect(
-      tool.execute({ prompt: "person in a forest" }, {} as any),
+      tool.execute!({ prompt: "person in a forest" }, {} as any),
     ).rejects.toThrow(
       'configured model "google/gemini-3-pro-image" is not an image generation model',
     );
@@ -221,19 +176,16 @@ describe("createImageGenerateTool", () => {
     mockCompleteText.mockResolvedValueOnce({
       text: "a dark, high-contrast dog with glowing eyes",
     } as any);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts } as any,
+      { writeGeneratedArtifacts },
       defaultImageOptions,
+      { fetch: fetchMock },
     );
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
-    const body = getRequestBody(fetchMock);
-    expect(body.messages[0].content).toBe(
+    expect(requestBody(fetchMock).prompt).toBe(
       "a dark, high-contrast dog with glowing eyes",
     );
     expect(result).toMatchObject({
@@ -245,53 +197,38 @@ describe("createImageGenerateTool", () => {
   it("falls back to raw prompt when enrichment returns empty text", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "   " } as any);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts } as any,
+      { writeGeneratedArtifacts },
       defaultImageOptions,
+      { fetch: fetchMock },
     );
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
-    const body = getRequestBody(fetchMock);
-    expect(body.messages[0].content).toBe("draw a dog");
-    expect(result).toMatchObject({
-      prompt: "draw a dog",
-      enrichedPrompt: "draw a dog",
-    });
+    expect(requestBody(fetchMock).prompt).toBe("draw a dog");
+    expect(result).toMatchObject({ enrichedPrompt: "draw a dog" });
   });
 
   it("falls back to raw prompt when enrichment fails", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockRejectedValueOnce(new Error("LLM unavailable"));
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
-      { writeGeneratedArtifacts } as any,
+      { writeGeneratedArtifacts },
       defaultImageOptions,
+      { fetch: fetchMock },
     );
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
-    const body = getRequestBody(fetchMock);
-    expect(body.messages[0].content).toBe("draw a dog");
-    expect(result).toMatchObject({
-      prompt: "draw a dog",
-      enrichedPrompt: "draw a dog",
-    });
+    expect(requestBody(fetchMock).prompt).toBe("draw a dog");
+    expect(result).toMatchObject({ enrichedPrompt: "draw a dog" });
   });
 
   it("sends input images with the unchanged prompt", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = gatewayFetch([imageResponse()]);
 
     const tool = createImageGenerateTool(
       { writeGeneratedArtifacts },
@@ -299,6 +236,7 @@ describe("createImageGenerateTool", () => {
         ...defaultImageOptions,
         sandbox: sandbox({ "/vercel/sandbox/photo.png": PNG_BYTES }),
       },
+      { fetch: fetchMock },
     );
     const result = await tool.execute!(
       { prompt: "change the sign text", images: ["photo.png"] },
@@ -306,19 +244,10 @@ describe("createImageGenerateTool", () => {
     );
 
     expect(mockCompleteText).not.toHaveBeenCalled();
-    expect(getRequestBody(fetchMock).messages).toEqual([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "change the sign text" },
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
-            },
-          },
-        ],
-      },
+    const body = requestBody(fetchMock);
+    expect(body.prompt).toBe("change the sign text");
+    expect(body.files).toEqual([
+      expect.objectContaining({ data: PNG_BYTES.toString("base64") }),
     ]);
     expect(result).toMatchObject({
       enrichedPrompt: "change the sign text",
@@ -326,12 +255,31 @@ describe("createImageGenerateTool", () => {
     });
   });
 
+  it("returns no images when the model generates none", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
+
+    const tool = createImageGenerateTool(
+      { writeGeneratedArtifacts },
+      defaultImageOptions,
+      {
+        fetch: gatewayFetch([
+          Response.json({ images: [], isRetryable: false }),
+        ]),
+      },
+    );
+    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+
+    expect(result).toMatchObject({
+      image_count: 0,
+      images: [],
+      delivery: "No images were generated.",
+    });
+  });
+
   it("resizes input images over the request size limit", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = gatewayFetch([imageResponse()]);
     // Random pixels do not compress, so this PNG is about 9 MB.
     const largePng = await sharp({
       create: {
@@ -357,6 +305,7 @@ describe("createImageGenerateTool", () => {
           "/vercel/sandbox/badge.png": PNG_BYTES,
         }),
       },
+      { fetch: fetchMock },
     );
     const result = await tool.execute!(
       {
@@ -366,21 +315,16 @@ describe("createImageGenerateTool", () => {
       {} as any,
     );
 
-    const [, sentPhoto, sentLogo] =
-      getRequestBody(fetchMock).messages[0].content;
-    const photoBytes = Buffer.from(
-      sentPhoto.image_url.url.replace("data:image/jpeg;base64,", ""),
-      "base64",
-    );
+    const [sentPhoto, sentLogo] = requestBody(fetchMock).files;
+    expect(sentPhoto.mediaType).toBe("image/jpeg");
+    const photoBytes = Buffer.from(sentPhoto.data, "base64");
     // The small images leave their unused bytes to the photo, so it keeps
     // the largest size. An equal share would shrink it further.
     expect(await sharp(photoBytes).metadata()).toMatchObject({
       format: "jpeg",
       width: 2048,
     });
-    expect(sentLogo.image_url.url).toBe(
-      `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
-    );
+    expect(sentLogo.data).toBe(PNG_BYTES.toString("base64"));
     expect(result).toMatchObject({
       resized_images: [
         {
@@ -395,8 +339,7 @@ describe("createImageGenerateTool", () => {
 
   it("rejects input images too large to read before calling the gateway", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = gatewayFetch([]);
 
     const tool = createImageGenerateTool(
       { writeGeneratedArtifacts },
@@ -409,6 +352,7 @@ describe("createImageGenerateTool", () => {
           ]),
         }),
       },
+      { fetch: fetchMock },
     );
 
     await expect(
