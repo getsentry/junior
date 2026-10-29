@@ -1,4 +1,5 @@
 import type { SendOptions, SendResult } from "@vercel/queue";
+import { withSpan } from "@/chat/logging";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import type {
   ConversationQueueMessage,
@@ -14,6 +15,11 @@ import {
 export const DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC = "junior_conversation_work";
 export const CONVERSATION_WORK_QUEUE_RETENTION_SECONDS =
   CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
+/**
+ * `messaging.system` value on conversation work queue spans. OpenTelemetry
+ * has no well-known value for Vercel Queues.
+ */
+export const CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM = "vercel_queue";
 
 interface QueueSender {
   send<T = unknown>(
@@ -64,18 +70,34 @@ export function createVercelConversationWorkQueue(
       message: ConversationQueueMessage,
       sendOptions?: ConversationQueueSendOptions,
     ): Promise<ConversationQueueSendResult> {
-      const result = await client.send(
-        topic,
-        signConversationQueueMessage(message),
+      const payload = signConversationQueueMessage(message);
+      return await withSpan(
+        "conversation.work.publish",
+        "queue.publish",
+        { conversationId: message.conversationId },
+        async (setSpanAttributes) => {
+          const result = await client.send(topic, payload, {
+            idempotencyKey: sendOptions?.idempotencyKey,
+            delaySeconds: toDelaySeconds(sendOptions),
+            retentionSeconds:
+              options.retentionSeconds ??
+              CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
+          });
+          if (!result.messageId) {
+            return {};
+          }
+          setSpanAttributes({ "messaging.message.id": result.messageId });
+          return { messageId: result.messageId };
+        },
         {
-          idempotencyKey: sendOptions?.idempotencyKey,
-          delaySeconds: toDelaySeconds(sendOptions),
-          retentionSeconds:
-            options.retentionSeconds ??
-            CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
+          "messaging.destination.name": topic,
+          // @vercel/queue's default JSON transport sends these UTF-8 bytes.
+          "messaging.message.body.size": Buffer.byteLength(
+            JSON.stringify(payload),
+          ),
+          "messaging.system": CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM,
         },
       );
-      return result.messageId ? { messageId: result.messageId } : {};
     },
   };
 }
