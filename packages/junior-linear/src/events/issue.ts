@@ -13,21 +13,6 @@ export const LINEAR_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
 });
 
-/**
- * The identifier shape that `linearIssueResource` builds, such as SRE-123.
- * Core checks it after `normalizeIdentifier` makes the value uppercase.
- */
-export const LINEAR_ISSUE_IDENTIFIER = {
-  format: "TEAM-123",
-  pattern: String.raw`^[A-Z][A-Z0-9]*-\d+$`,
-};
-
-/** The identifier shape that `linearTeamResource` builds, such as SRE. */
-export const LINEAR_TEAM_IDENTIFIER = {
-  format: "TEAM",
-  pattern: String.raw`^[A-Z][A-Z0-9]*$`,
-};
-
 /** Build the stable Linear issue identity shared by tools and webhooks. */
 export function linearIssueResource(input: {
   identifier: string;

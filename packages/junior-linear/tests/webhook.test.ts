@@ -111,23 +111,6 @@ describe("Linear webhook events", () => {
     );
   });
 
-  it("declares identifier patterns that fit normalized events", () => {
-    const resourceTypes = linearPlugin().events?.resourceTypes ?? [];
-    const pattern = (type: string) =>
-      new RegExp(
-        resourceTypes.find((resourceType) => resourceType.type === type)
-          ?.identifier?.pattern ?? "(?!)",
-      );
-    const [issue, team] = normalizeLinearEvents({
-      body: issueBody(),
-      linearEvent: "Issue",
-    });
-
-    expect(issue?.identifier).toMatch(pattern("issue"));
-    expect(team?.identifier).toMatch(pattern("team"));
-    expect(team?.identifier).not.toMatch(pattern("issue"));
-  });
-
   it("normalizes a created issue for the issue and team", () => {
     expect(
       normalizeLinearEvents({

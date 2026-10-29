@@ -140,8 +140,9 @@ Watches route events back into an existing conversation.
 
 1. Add the event type to `supportedEvents` of each resource type that receives
    it. Add it to `suggestedEvents` when the agent should watch it by default.
-2. Give the resource type an `identifier` format and pattern that fit the
-   identifiers the normalizer makes.
+2. Build identifiers in one function that tools and the normalizer share. The
+   way a resource type declares its identifier shape is moving from regex
+   patterns to structured parts (#2362, item 6).
 3. In the normalizer, parse the webhook with Zod. Return one `EventInput` for
    each identifier that should receive the event, such as the exact resource
    and its broader scopes.
