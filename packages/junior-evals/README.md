@@ -99,6 +99,8 @@ describe("Thread Continuity", () => {
   Conversation again after 15 seconds. The fixture starts a delayed delivery
   at once when nothing else runs. The 60 seconds start when the last delivery
   is due.
+- A failed call keeps its partial transcript and original error in the eval
+  report. This includes calls that exceed the idle limit.
 - A channel `slackMention()` arrives as Slack sends it: an `app_mention` event
   without a channel type, then a `message` event with the same `ts` and the
   channel type. Slack does not fix the order, and Junior stores the first
@@ -281,6 +283,12 @@ Not in scope:
 - Agent test fixture: `src/fixture/`
 - Guardian harness: `src/guardian-harness.ts`
 - Router harness: `src/router-harness.ts`
+
+`src/fixture/docs.ts` defines an `eval-docs` plugin for the eval MCP server.
+Its file comment describes the pages. Cases in `evals/skills/providers.eval.ts`
+and `evals/memory/user.eval.ts` use it. They check that a reply bases a failure
+cause on the error, keeps its answer when a person disagrees without new
+evidence, prefers a tool result to an old memory, and treats page text as data.
 
 The ticket lookup in `evals/conversation/actors.eval.ts` defines an
 `eval-tracker` plugin for the eval MCP server. The server supplies two tickets
@@ -501,6 +509,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Adding a trigger label fires immediately; unrelated labels do not.
 - Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,memory,scheduler,sentry,skills}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
+- Behavioral and integration path triggers also cover the system prompt (`packages/junior/src/chat/prompt.ts` and `packages/junior/src/chat/system-prompt-rules.ts`) and the file that loads `SOUL.md` and `WORLD.md` (`packages/junior/src/chat/discovery.ts`).
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/guardian/**`.
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.

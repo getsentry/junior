@@ -30,7 +30,7 @@ function render(props: {
       defaultVcpus={4}
       error={props.error ?? false}
       loading={props.loading ?? false}
-      range={30}
+      snapshot="ready"
       stats={props.stats}
       workspace={workspace}
     />,

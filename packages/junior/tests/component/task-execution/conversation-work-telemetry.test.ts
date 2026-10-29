@@ -38,7 +38,8 @@ describe("conversation work telemetry", () => {
     });
     client?.on("spanEnd", (span) => {
       const json = Sentry.spanToJSON(span);
-      if (json.op === "queue.publish" || json.op === "queue.process") {
+      const op = json.attributes?.["sentry.op"];
+      if (op === "queue.publish" || op === "queue.process") {
         spans.push(json);
       }
     });
@@ -86,9 +87,9 @@ describe("conversation work telemetry", () => {
 
     expect(spans).toEqual([
       expect.objectContaining({
-        description: "conversation.work.publish",
-        op: "queue.publish",
-        data: expect.objectContaining({
+        name: "conversation.work.publish",
+        attributes: expect.objectContaining({
+          "sentry.op": "queue.publish",
           "gen_ai.conversation.id": CONVERSATION_ID,
           "messaging.destination.name": "junior_test_work",
           "messaging.message.body.size": expect.any(Number),
@@ -97,9 +98,9 @@ describe("conversation work telemetry", () => {
         }),
       }),
       expect.objectContaining({
-        description: "conversation.work.process",
-        op: "queue.process",
-        data: expect.objectContaining({
+        name: "conversation.work.process",
+        attributes: expect.objectContaining({
+          "sentry.op": "queue.process",
           "gen_ai.conversation.id": CONVERSATION_ID,
           "messaging.destination.name": "junior_test_work",
           "messaging.message.id": "msg_1",

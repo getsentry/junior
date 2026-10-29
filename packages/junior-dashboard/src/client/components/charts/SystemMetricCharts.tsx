@@ -11,16 +11,17 @@ import {
   formatCompactNumber,
   formatCostSummary,
 } from "../../format";
+import { Area, Bar, CartesianGrid, ComposedChart, Scatter } from "recharts";
+import { ChartContainer, ChartTooltip } from "../ui/chart";
 import {
   ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
-  ActivityChartTooltip,
   activityChartAverage,
-  ChartSvg,
+  activityChartMargin,
+  ActivityChartTooltipContent,
+  ActivityChartXAxis,
+  ActivityChartYAxis,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
-import { useChartLayout } from "./useChartLayout";
 import { InputCacheChart } from "./InputCacheChart";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
@@ -123,108 +124,80 @@ function MetricChart(props: {
   days: ConversationMetricDay[];
 }) {
   const { chart, days } = props;
-  const { ref, layout } = useChartLayout(
-    150,
-    chart.metric === "costUsd" ? 72 : 64,
-  );
   const values = days.map((day) => metricValue(day, chart.metric));
-  const maximum = Math.max(Number.EPSILON, ...values);
-  const step = layout.plotWidth / Math.max(1, days.length);
-  const points = values.map((value, index) => ({
-    x: layout.left + step * index + step / 2,
-    y: layout.top + layout.plotHeight - (value / maximum) * layout.plotHeight,
+  const data = days.map((day, index) => ({
+    date: day.date,
+    value: values[index]!,
   }));
-  const area = points.length
-    ? `M ${points[0]!.x} ${layout.top + layout.plotHeight} L ${points
-        .map((point) => `${point.x} ${point.y}`)
-        .join(" L ")} L ${points.at(-1)!.x} ${layout.top + layout.plotHeight} Z`
-    : "";
+  const maximum = Math.max(Number.EPSILON, ...values);
   const total = values.reduce((sum, value) => sum + value, 0);
   const average = activityChartAverage(values);
-  const barWidth = Math.max(1.5, Math.min(8, step * 0.65));
+  const series = {
+    dataKey: "value",
+    fill: "var(--color-value)",
+    isAnimationActive: false,
+  } as const;
 
   return (
     <Card>
       <ChartHeader title={chart.title} total={chart.format(total)} />
-      <div className="px-2 py-2" ref={ref}>
-        <ChartSvg
-          aria-label={`${chart.title} per ${props.bucketUnit === "6hour" ? "6 hours" : props.bucketUnit}`}
-          layout={layout}
+      <div className="px-2 py-2">
+        <ChartContainer
+          className="aspect-auto h-38 w-full"
+          config={{ value: { color: chart.color, label: chart.title } }}
         >
-          <ActivityChartGrid
-            format={chart.axisFormat}
-            layout={layout}
-            maximum={maximum}
-          />
-          {chart.type === "area" && area ? (
-            <>
-              <path d={area} fill={chart.color} fillOpacity={0.08} />
-              <polyline
-                fill="none"
-                points={points
-                  .map((point) => `${point.x},${point.y}`)
-                  .join(" ")}
-                stroke={chart.color}
+          <ComposedChart
+            aria-label={`${chart.title} per ${props.bucketUnit === "6hour" ? "6 hours" : props.bucketUnit}`}
+            data={data}
+            margin={activityChartMargin}
+            role="img"
+          >
+            <CartesianGrid strokeDasharray="3 5" vertical={false} />
+            <ActivityChartYAxis format={chart.axisFormat} maximum={maximum} />
+            <ActivityChartXAxis keys={data.map((day) => day.date)} />
+            <ChartTooltip
+              content={
+                <ActivityChartTooltipContent
+                  rows={(day: (typeof data)[number]) => [
+                    [chart.title, chart.format(day.value)],
+                  ]}
+                />
+              }
+            />
+            {chart.type === "bar" ? (
+              <Bar
+                {...series}
+                fillOpacity={0.8}
+                maxBarSize={8}
+                minPointSize={(value) => (value ? 2 : 0)}
+                radius={1.5}
+              />
+            ) : chart.type === "area" ? (
+              <Area
+                {...series}
+                dot={{ fillOpacity: 0.45, r: 2.5, stroke: "none" }}
+                fillOpacity={0.08}
+                stroke="var(--color-value)"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="2"
+                strokeWidth={2}
+                type="linear"
               />
-            </>
-          ) : null}
-          {days.map((day, index) => {
-            const value = values[index]!;
-            const point = points[index]!;
-            const barHeight = (value / maximum) * layout.plotHeight;
-            const renderedBarHeight = Math.max(value ? 2 : 0, barHeight);
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={chart.format(value)}
-                date={day.date}
-                summary={chart.format(value)}
-              >
-                {chart.type === "bar" ? (
-                  <rect
-                    fill={chart.color}
-                    height={renderedBarHeight}
-                    opacity={value ? 0.8 : 0.1}
-                    rx="1.5"
-                    tabIndex={0}
-                    width={barWidth}
-                    x={point.x - barWidth / 2}
-                    y={layout.top + layout.plotHeight - renderedBarHeight}
-                  />
-                ) : (
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
-                    fill={chart.color}
-                    opacity={chart.type === "scatter" ? 0.75 : 0.45}
-                    r={chart.type === "scatter" ? 3.5 : 2.5}
-                    tabIndex={0}
-                  />
-                )}
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartAverageLine
-            average={average}
-            format={
-              chart.metric === "tokens"
-                ? formatActivityChartAverage
-                : chart.format
-            }
-            layout={layout}
-            maximum={maximum}
-            stroke={chart.color}
-            unit={timeRangeBucketAverageUnit(props.bucketUnit)}
-          />
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => points[index]?.x ?? layout.left}
-          />
-        </ChartSvg>
+            ) : (
+              <Scatter {...series} fillOpacity={0.75} />
+            )}
+            <ActivityChartAverageLine
+              average={average}
+              format={
+                chart.metric === "tokens"
+                  ? formatActivityChartAverage
+                  : chart.format
+              }
+              stroke={chart.color}
+              unit={timeRangeBucketAverageUnit(props.bucketUnit)}
+            />
+          </ComposedChart>
+        </ChartContainer>
       </div>
     </Card>
   );

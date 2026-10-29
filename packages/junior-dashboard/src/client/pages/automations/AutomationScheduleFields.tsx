@@ -9,7 +9,7 @@ import {
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
-import { Select } from "../../components/Select";
+import { NativeSelect } from "../../components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { post, DashboardApiError } from "../../http";
 import {
@@ -66,7 +66,7 @@ export function AutomationScheduleFields(props: {
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <Field>
           <FieldLabel htmlFor="schedule-frequency">Repeat</FieldLabel>
-          <Select
+          <NativeSelect
             id="schedule-frequency"
             value={frequency}
             onChange={(e) => {
@@ -107,7 +107,7 @@ export function AutomationScheduleFields(props: {
             <option value="weekly">Every week</option>
             <option value="monthly">Every month</option>
             <option value="yearly">Every year</option>
-          </Select>
+          </NativeSelect>
         </Field>
         <Field>
           <FieldLabel htmlFor="schedule-time">Time</FieldLabel>
@@ -215,7 +215,7 @@ export function AutomationScheduleFields(props: {
               {value.frequency === "yearly" ? (
                 <Field>
                   <FieldLabel htmlFor="schedule-month">Month</FieldLabel>
-                  <Select
+                  <NativeSelect
                     id="schedule-month"
                     value={value.month ?? 1}
                     onChange={(e) =>
@@ -233,7 +233,7 @@ export function AutomationScheduleFields(props: {
                         }).format(new Date(Date.UTC(2026, index, 1)))}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </Field>
               ) : null}
             </div>

@@ -8,14 +8,11 @@ import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
 /**
  * Shared closing lines. Automations pass outcomes and end with a declared
- * result. Watches pass no outcomes and reply in the Conversation.
+ * result. Watches follow the Conversation's reply rules.
  */
 function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
   if (!outcomes) {
-    return [
-      "When you reply, follow any reply format in the instructions.",
-      "Briefly report what you did or what is needed next.",
-    ];
+    return ["When you reply, follow any reply format in the instructions."];
   }
   return [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
 }

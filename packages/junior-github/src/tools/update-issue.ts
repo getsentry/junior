@@ -16,7 +16,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import {
+  appendGitHubRequesterAttribution,
+  resolveGitHubRequester,
+} from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
 
 const inputSchema = z
@@ -137,7 +140,11 @@ export function createGitHubUpdateIssueTool(ctx: {
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                await appendGitHubRequesterAttribution(update.body, ctx),
+                appendGitHubRequesterAttribution(
+                  update.body,
+                  ctx,
+                  await resolveGitHubRequester(ctx),
+                ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),

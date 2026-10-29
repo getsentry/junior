@@ -275,26 +275,6 @@ describe("dashboard shell routes", () => {
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
   });
 
-  it("serves the component gallery only when enabled", async () => {
-    const disabled = createDashboardApp({ authRequired: false });
-    const enabled = createDashboardApp({
-      authRequired: false,
-      componentGallery: true,
-    });
-
-    expect(
-      (await disabled.fetch(new Request("http://localhost/dev"))).status,
-    ).toBe(404);
-    expect(
-      (await enabled.fetch(new Request("http://localhost/dev"))).status,
-    ).toBe(200);
-    expect(
-      await (
-        await enabled.fetch(new Request("http://localhost/api/config"))
-      ).json(),
-    ).toMatchObject({ componentGallery: true });
-  });
-
   it("renders a browser-readable forbidden page for denied dashboard routes", async () => {
     const app = dashboard({
       user: {

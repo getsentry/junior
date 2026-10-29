@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
 import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
+  scrubPrivateSentryEvent,
   scrubPrivateSentryLog,
   scrubPrivateSentrySpan,
-  scrubPrivateSentryTransaction,
 } from "@/chat/sentry-payload-filter";
 
 type SentrySpan = Parameters<typeof scrubPrivateSentrySpan>[0];
 type SentryLog = Parameters<typeof scrubPrivateSentryLog>[0];
-type SentryTransaction = Parameters<typeof scrubPrivateSentryTransaction>[0];
+type SentryEvent = Parameters<typeof scrubPrivateSentryEvent>[0];
 
 function messageAttribute(text: string): string {
   return JSON.stringify([{ role: "user", content: text }]);
@@ -43,9 +43,49 @@ describe("Sentry private payload filtering", () => {
     expect(span.attributes?.["url.query"]).toBeUndefined();
   });
 
+  it("keeps only the host of private Slack file URLs", () => {
+    const fileUrl =
+      "https://files.slack.com/files-pri/T123-F456/private-plan.pdf";
+    const span = {
+      attributes: {
+        "server.address": "files.slack.com",
+        "url.full": `${fileUrl}?pub_secret=abc`,
+        "url.path": "/files-pri/T123-F456/private-plan.pdf",
+        "url.query": "pub_secret=abc",
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "GET files.slack.com",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+    const event = {
+      type: undefined,
+      breadcrumbs: [
+        {
+          category: "http",
+          data: { url: fileUrl, "url.query": "pub_secret=abc" },
+        },
+      ],
+    } as SentryEvent;
+
+    scrubPrivateSentrySpan(span);
+    scrubPrivateSentryEvent(event);
+
+    expect(span.attributes).toEqual({
+      "server.address": "files.slack.com",
+      "url.full": "https://files.slack.com",
+    });
+    expect(event.breadcrumbs?.[0]?.data).toEqual({
+      url: "https://files.slack.com",
+    });
+  });
+
   it("removes OAuth secrets from captured request data", () => {
     const event = {
-      type: "transaction",
+      type: undefined,
       request: {
         data: "credential-body",
         headers: {
@@ -55,9 +95,9 @@ describe("Sentry private payload filtering", () => {
         query_string: "code=secret&state=signed-state",
         url: "https://junior.example/api/oauth/callback/github?code=secret&state=signed-state",
       },
-    } as SentryTransaction;
+    } as SentryEvent;
 
-    scrubPrivateSentryTransaction(event);
+    scrubPrivateSentryEvent(event);
 
     expect(event.request?.url).toBe(
       "https://junior.example/api/oauth/callback/github",
@@ -68,7 +108,7 @@ describe("Sentry private payload filtering", () => {
 
   it("removes local credential bodies and normalized secret header spans", () => {
     const event = {
-      type: "transaction",
+      type: undefined,
       request: {
         data: '{"tokens":{"accessToken":"secret"}}',
         headers: {
@@ -76,7 +116,7 @@ describe("Sentry private payload filtering", () => {
         },
         url: "http://127.0.0.1/api/internal/local-oauth-credentials",
       },
-    } as SentryTransaction;
+    } as SentryEvent;
     const span = {
       attributes: {
         "http.request.body.data": '{"tokens":{"accessToken":"span-secret"}}',
@@ -92,7 +132,7 @@ describe("Sentry private payload filtering", () => {
       trace_id: "trace",
     } as SentrySpan;
 
-    scrubPrivateSentryTransaction(event);
+    scrubPrivateSentryEvent(event);
     scrubPrivateSentrySpan(span);
 
     expect(event.request?.data).toBeUndefined();
@@ -239,30 +279,5 @@ describe("Sentry private payload filtering", () => {
 
     expect(span.attributes?.["gen_ai.tool.call.result"]).toBeUndefined();
     expect(span.attributes?.["app.conversation.payload_redacted"]).toBe(true);
-  });
-
-  it("uses the current conversation privacy for transaction child spans", () => {
-    const payload = messageAttribute("public answer");
-    const transaction = {
-      type: "transaction",
-      spans: [
-        {
-          data: {
-            "gen_ai.output.messages": payload,
-          },
-          span_id: "child",
-          start_timestamp: 1,
-          trace_id: "trace",
-        },
-      ],
-    } as SentryTransaction;
-
-    runWithConversationPrivacy("public", () =>
-      scrubPrivateSentryTransaction(transaction),
-    );
-
-    expect(transaction.spans?.[0]?.data["gen_ai.output.messages"]).toBe(
-      payload,
-    );
   });
 });

@@ -1,7 +1,7 @@
-/** Receive Vercel Queue messages for Workspace snapshot builds. */
-import type { MessageMetadata } from "@vercel/queue";
+/** Receive queue messages for Workspace snapshot builds. */
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
+import type { QueueMessageMetadata } from "@/chat/queue/provider";
 import { processWorkspaceSnapshotJob } from "./job-runner";
 import {
   verifyWorkspaceSnapshotJobMessage,
@@ -12,7 +12,7 @@ export const WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP =
   "junior_workspace_snapshots_dev";
 function logWorkspaceSnapshotJobRejected(
   reason: string,
-  metadata: MessageMetadata,
+  metadata: QueueMessageMetadata,
 ): void {
   logWarn("workspace.snapshot.job.queue_message.rejected", {
     "app.queue.consumer_group": metadata.consumerGroup,

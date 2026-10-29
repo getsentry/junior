@@ -31,7 +31,6 @@ import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
-import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
 import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
@@ -418,22 +417,6 @@ export function DashboardShell() {
           />
           <Route element={<Navigate replace to="/" />} path="/conversations" />
           <Route
-            element={
-              loading ? (
-                <LoadingView label="Loading components" />
-              ) : !data ? (
-                <LoadingView
-                  label={query.error?.message ?? "Dashboard unavailable"}
-                />
-              ) : data.config.componentGallery ? (
-                <ComponentsPage />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-            path="/dev/*"
-          />
-          <Route
             element={<LegacySystemRedirect section="people" />}
             path="/people"
           />
@@ -492,6 +475,21 @@ export function DashboardShell() {
           <Route
             element={
               loading ? (
+                <SystemRouteLoading
+                  description="Repository recipes Junior can switch into."
+                  label="Loading Workspaces"
+                  title="Workspaces"
+                  variant="list"
+                />
+              ) : (
+                <WorkspacesPage />
+              )
+            }
+            path="/system/workspaces/:workspaceId"
+          />
+          <Route
+            element={
+              loading ? (
                 <SystemPageLayout>
                   <LoadingView label="Loading Workspace" />
                 </SystemPageLayout>
@@ -499,7 +497,7 @@ export function DashboardShell() {
                 <WorkspaceFormPage />
               )
             }
-            path="/system/workspaces/:workspaceId"
+            path="/system/workspaces/:workspaceId/edit"
           />
           <Route
             element={

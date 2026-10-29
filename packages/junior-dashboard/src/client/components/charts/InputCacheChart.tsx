@@ -1,23 +1,30 @@
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import { Card } from "../layout/Card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../../styles";
 import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import { formatCompactNumber } from "../../format";
 import {
   type TimeRangeBucketUnit,
   timeRangeBucketPerLabel,
 } from "../controls/TimeRangeSelector";
+import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
+import { ChartContainer, ChartTooltip } from "../ui/chart";
 import {
-  ActivityChartDateLabels,
-  ActivityChartGrid,
-  ActivityChartTooltip,
-  ActivityTooltipRows,
-  ChartSvg,
+  activityChartMargin,
+  ActivityChartTooltipContent,
+  ActivityChartXAxis,
+  ActivityChartYAxis,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import { CacheWrites } from "./CacheWrites";
-import { useChartLayout } from "./useChartLayout";
 import {
   CACHE_INPUT_SERIES,
   cacheInputTotal,
@@ -26,6 +33,13 @@ import {
   summarizeCacheInput,
 } from "./cache-input";
 
+const chartConfig = {
+  ...Object.fromEntries(
+    CACHE_INPUT_SERIES.map(({ color, key, label }) => [key, { color, label }]),
+  ),
+  missing: { color: "var(--color-slate-400)", label: "Missing data" },
+};
+
 /** Show cache reuse and write volume without treating missing counters as zero. */
 export function InputCacheChart(props: {
   bucketUnit: TimeRangeBucketUnit;
@@ -33,14 +47,37 @@ export function InputCacheChart(props: {
 }) {
   const [mode, setMode] = useState<"share" | "tokens">("share");
   const summary = summarizeCacheInput(props.days);
-  const { ref, layout } = useChartLayout(160);
-  const reportedTotals = props.days.map((day) =>
-    CACHE_INPUT_SERIES.reduce((sum, { key }) => sum + (day[key] ?? 0), 0),
-  );
-  const maximum = mode === "share" ? 100 : Math.max(1, ...reportedTotals);
-  const step = layout.plotWidth / Math.max(1, props.days.length);
-  const barWidth = Math.min(32, step * 0.7);
-  const x = (index: number) => layout.left + step * (index + 0.5);
+  const data = props.days.map((day) => {
+    const total = cacheInputTotal(day);
+    const plotted = Object.fromEntries(
+      CACHE_INPUT_SERIES.map(({ key }) => {
+        const value = day[key] ?? 0;
+        return [
+          key,
+          mode === "share" ? (total ? (value / total) * 100 : 0) : value,
+        ];
+      }),
+    );
+    return {
+      ...plotted,
+      date: day.date,
+      day,
+      // A zero-height bar that `minPointSize` draws as a gray mark.
+      missing: total === undefined && hasCacheActivity(day) ? 0 : undefined,
+    };
+  });
+  const maximum =
+    mode === "share"
+      ? 100
+      : Math.max(
+          1,
+          ...props.days.map((day) =>
+            CACHE_INPUT_SERIES.reduce(
+              (sum, { key }) => sum + (day[key] ?? 0),
+              0,
+            ),
+          ),
+        );
 
   return (
     <Card>
@@ -87,112 +124,91 @@ export function InputCacheChart(props: {
           reported values.
         </p>
       ) : null}
-      <div className="px-2 pb-2" ref={ref}>
-        <ChartSvg
-          aria-label={`Input cache ${mode} per ${timeRangeBucketPerLabel(props.bucketUnit)}`}
-          layout={layout}
+      <div className="px-2 pb-2">
+        <ChartContainer
+          className="aspect-auto h-40 w-full"
+          config={chartConfig}
         >
-          <ActivityChartGrid
-            format={
-              mode === "share" ? (value) => `${value}%` : formatCompactNumber
-            }
-            layout={layout}
-            maximum={maximum}
-          />
-          {props.days.map((day, index) => {
-            const total = cacheInputTotal(day);
-            const incomplete = total === undefined && hasCacheActivity(day);
-            let offset = 0;
-            const bars = CACHE_INPUT_SERIES.map(({ key, color }) => {
-              const value = day[key] ?? 0;
-              const plotted =
-                mode === "share" ? (total ? (value / total) * 100 : 0) : value;
-              const height = (plotted / maximum) * layout.plotHeight;
-              offset += height;
-              return (
-                <rect
-                  key={key}
-                  fill={color}
-                  opacity={0.85}
-                  height={height}
-                  width={barWidth}
-                  x={x(index) - barWidth / 2}
-                  y={layout.top + layout.plotHeight - offset}
-                />
-              );
-            });
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                date={day.date}
-                summary={
-                  incomplete
-                    ? "Missing cache data"
-                    : total === undefined
-                      ? "No input reported"
-                      : `${formatCacheShare(day.cachedInputTokens, total)} cached · ${formatCompactNumber(total)} input tokens`
-                }
-                content={
-                  <ActivityTooltipRows
-                    rows={CACHE_INPUT_SERIES.map(({ key, label }) => [
+          <BarChart
+            aria-label={`Input cache ${mode} per ${timeRangeBucketPerLabel(props.bucketUnit)}`}
+            data={data}
+            margin={activityChartMargin}
+            role="img"
+          >
+            <CartesianGrid strokeDasharray="3 5" vertical={false} />
+            <ActivityChartYAxis
+              format={
+                mode === "share" ? (value) => `${value}%` : formatCompactNumber
+              }
+              maximum={maximum}
+            />
+            <ActivityChartXAxis keys={data.map((day) => day.date)} />
+            {/* A hidden second axis lets the missing mark overlay the stack. */}
+            <XAxis dataKey="date" hide xAxisId="missing" />
+            <ChartTooltip
+              content={
+                <ActivityChartTooltipContent
+                  rows={({ day }: (typeof data)[number]) => {
+                    const total = cacheInputTotal(day);
+                    return CACHE_INPUT_SERIES.map(({ key, label }) => [
                       label,
                       day[key] === undefined
                         ? "Not reported"
                         : `${formatCompactNumber(day[key])} · ${formatCacheShare(day[key], total)}`,
-                    ])}
-                  />
-                }
-              >
-                <g tabIndex={0}>
-                  <rect
-                    fill="transparent"
-                    x={x(index) - step / 2}
-                    y={layout.top}
-                    width={step}
-                    height={layout.plotHeight}
-                  />
-                  {bars}
-                  {incomplete ? (
-                    <rect
-                      fill="var(--color-slate-400)"
-                      x={x(index) - barWidth / 2}
-                      y={layout.top + layout.plotHeight - 3}
-                      width={barWidth}
-                      height={3}
-                    />
-                  ) : null}
-                </g>
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartDateLabels
-            dates={props.days.map((day) => day.date)}
-            layout={layout}
-            xPosition={x}
-          />
-        </ChartSvg>
+                    ]);
+                  }}
+                />
+              }
+            />
+            {CACHE_INPUT_SERIES.map(({ key }) => (
+              <Bar
+                dataKey={key}
+                fill={`var(--color-${key})`}
+                fillOpacity={0.85}
+                isAnimationActive={false}
+                key={key}
+                maxBarSize={32}
+                stackId="input"
+              />
+            ))}
+            <Bar
+              dataKey="missing"
+              fill="var(--color-missing)"
+              isAnimationActive={false}
+              maxBarSize={32}
+              minPointSize={3}
+              xAxisId="missing"
+            />
+          </BarChart>
+        </ChartContainer>
       </div>
       <CacheWrites days={props.days} bucketUnit={props.bucketUnit} />
-      <details className="border-t border-dashboard-border-subtle px-4 py-3 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">
-        <summary className="cursor-pointer text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
+      <Collapsible className="border-t border-dashboard-border-subtle px-4 py-3 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">
+        <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
           How to read this
-        </summary>
-        <div className="mt-3 grid gap-2 leading-relaxed">
-          <p className="m-0">
-            From cache is input reused. Written to cache is input saved for
-            reuse. Uncached is the remaining input.
-          </p>
-          <p className="m-0">
-            Percentages use total input tokens, not call counts. Gray marks and
-            — mean missing data; zero means a reported zero. The latest interval
-            may be incomplete.
-          </p>
-          <p className="m-0">
-            These totals can show when reuse changes, but not why. They do not
-            show individual calls or prove that every call reported cache use.
-          </p>
-        </div>
-      </details>
+        </CollapsibleTrigger>
+        <CollapsibleContent hiddenUntilFound>
+          <div className="mt-3 grid gap-2 leading-relaxed">
+            <p className="m-0">
+              From cache is input reused. Written to cache is input saved for
+              reuse. Uncached is the remaining input.
+            </p>
+            <p className="m-0">
+              Percentages use total input tokens, not call counts. Gray marks
+              and — mean missing data; zero means a reported zero. The latest
+              interval may be incomplete.
+            </p>
+            <p className="m-0">
+              These totals can show when reuse changes, but not why. They do not
+              show individual calls or prove that every call reported cache use.
+            </p>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }

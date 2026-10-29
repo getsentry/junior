@@ -6,12 +6,9 @@ import {
   type SetSpanAttributes,
   type TracePropagationHeaders,
 } from "@/chat/logging";
-import { ensureDockerDaemon } from "@/chat/sandbox/docker";
+import { ensureDockerDaemon } from "@/chat/sandbox/guest-docker";
 import {
   isAlreadyExistsError,
-  isSandboxMissingError,
-  isSandboxUnavailableError,
-  isSnapshottingError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
@@ -24,7 +21,6 @@ import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { setSnapshotSpanAttributes } from "@/chat/sandbox/snapshot/span";
 import {
-  isMissingError,
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
@@ -344,7 +340,7 @@ export function createSandboxRuntime(
         });
       } catch (error) {
         if (
-          !isSnapshottingError(error) ||
+          !getSandboxProvider().errors.isSnapshotting(error) ||
           attempt === SNAPSHOT_BOOT_RETRY_COUNT - 1
         ) {
           throw error;
@@ -404,7 +400,7 @@ export function createSandboxRuntime(
       );
       return { session, snapshot };
     } catch (error) {
-      if (!isMissingError(error)) throw error;
+      if (!getSandboxProvider().errors.isSnapshotMissing(error)) throw error;
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
       let rebuilt: Snapshot;
       if (params.workspace) {
@@ -578,11 +574,11 @@ export function createSandboxRuntime(
           }),
       );
     } catch (error) {
-      if (isSandboxMissingError(error)) {
+      if (getSandboxProvider().errors.isMissing(error)) {
         sandboxRef = undefined;
         return null;
       }
-      if (isSandboxUnavailableError(error)) {
+      if (getSandboxProvider().errors.isUnavailable(error)) {
         invalidateSession();
         throw error;
       }
@@ -598,7 +594,7 @@ export function createSandboxRuntime(
       return rememberSandbox(hintedSandbox, networkPolicyKey);
     } catch (error) {
       // Keep the durable VM alive so a later reacquire can reuse it.
-      if (isSandboxUnavailableError(error)) {
+      if (getSandboxProvider().errors.isUnavailable(error)) {
         throw error;
       }
       return failSetup(error);
@@ -741,7 +737,7 @@ export function createSandboxRuntime(
         },
       );
     } catch (error) {
-      if (isSandboxUnavailableError(error)) throw error;
+      if (getSandboxProvider().errors.isUnavailable(error)) throw error;
       // Non-lifecycle keepalive failures are best effort.
     }
   };

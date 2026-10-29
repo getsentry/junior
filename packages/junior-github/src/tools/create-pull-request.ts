@@ -27,7 +27,11 @@ import {
 import {
   appendGitHubRequesterAttribution,
   linkedGitHubLogin,
+  resolveGitHubRequester,
+  type GitHubRequester,
 } from "../tool-support/attribution.js";
+import type { GitHubDb } from "../db/database.js";
+import { recordGitHubPullRequestOpener } from "../pull-request-requesters/store.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -267,19 +271,20 @@ function isDefinitiveGitHubPullRequestCreateRejection(
 }
 
 /** Build the GitHub REST create-PR request after the runtime owns body/footer shaping. */
-async function createGitHubPullRequestRequest(
+function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
   ctx: ToolRegistrationHookContext,
+  requester: GitHubRequester | undefined,
   dashboardUrl?: string,
-): Promise<Request> {
+): Request {
   const repo = parseRepo(input.repo);
   const payload = {
     title: nonEmptyString(input.title, "title"),
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      await appendGitHubRequesterAttribution(input.body ?? "", ctx),
+      appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
       conversationId,
       dashboardUrl,
     ),
@@ -340,17 +345,36 @@ async function createGitHubPullRequest(
   };
 }
 
-/** Assignment is optional: lookup or provider failures must not fail PR creation. */
+/**
+ * Save the opener of a pull request GitHub opened. A create with no Junior
+ * identity has no opener.
+ */
+async function recordOpener(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+  state: { createdAtMs: number; number: number },
+  identityId: string | undefined,
+): Promise<void> {
+  if (!identityId) return;
+  const repo = parseRepo(input.repo);
+  await recordGitHubPullRequestOpener(ctx.db as GitHubDb, {
+    createdAt: new Date(state.createdAtMs),
+    identityId,
+    number: state.number,
+    repositoryFullName: `${repo.owner}/${repo.name}`,
+  });
+}
+
+/** Assignment is optional: provider failures must not fail PR creation. */
 async function assignPullRequestRequester(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
+  requester: GitHubRequester | undefined,
 ): Promise<void> {
-  if (!ctx.actor || ctx.actor.platform === "system") return;
+  const assignee = linkedGitHubLogin(requester?.user);
+  if (!assignee) return;
   try {
-    const requester = await ctx.users.resolveActor();
-    const assignee = linkedGitHubLogin(requester?.user);
-    if (!assignee) return;
     const repo = parseRepo(input.repo);
     const response = await ctx.egress.fetch({
       provider: "github",
@@ -506,6 +530,14 @@ export function createGitHubPullRequestTool(
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
+            // The call can stop after it saves this state but before it saves
+            // the opener, so a retry saves the opener again.
+            await recordOpener(
+              ctx,
+              completedInput,
+              state,
+              (await resolveGitHubRequester(ctx))?.identity?.id,
+            );
             const completedResult = {
               facts:
                 state.facts === undefined
@@ -528,10 +560,13 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          const request = await createGitHubPullRequestRequest(
+          const requester = await resolveGitHubRequester(ctx);
+          const identityId = requester?.identity?.id;
+          const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
             ctx,
+            requester,
             ctx.slack?.conversationLink?.url,
           );
           const pendingState: CreatePullRequestState = {
@@ -576,7 +611,8 @@ export function createGitHubPullRequestTool(
               { cause: error },
             );
           }
-          await assignPullRequestRequester(ctx, parsedInput, result);
+          await recordOpener(ctx, parsedInput, completedState, identityId);
+          await assignPullRequestRequester(ctx, parsedInput, result, requester);
           return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,

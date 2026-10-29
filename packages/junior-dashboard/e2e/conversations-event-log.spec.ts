@@ -117,6 +117,12 @@ test("inspects all reporting events and searches full event data", async ({
   await laterEntry.press("ArrowDown");
   await expect(laterEntry).toBeFocused();
   await expect(page).toHaveURL(/[?&]event=8(&|$)/);
+  // The step buttons follow the same filtered rows.
+  await expect(
+    panel.getByRole("button", { name: "Next event" }),
+  ).toBeDisabled();
+  await panel.getByRole("button", { name: "Previous event" }).click();
+  await expect(page).toHaveURL(/[?&]event=1(&|$)/);
   await laterEntry.press("ArrowUp");
   await expect(otherEntry).toBeFocused();
   await eventSearch.fill("");
@@ -128,6 +134,12 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(
     panel.getByRole("heading", { name: "turn_routed", exact: true }),
   ).toBeVisible();
+  // Conversation details were open before the event, so they come back.
+  await close.click();
+  await expect(conversationDetails).toBeVisible();
+  await expect(entry).toBeFocused();
+  await entry.click();
+  await expect(conversationDetails).toBeHidden();
   await screenshot(page, "conversation-event-details");
   const localTime = log.getByRole("button", {
     name: "Use local time",
@@ -216,10 +228,8 @@ test("inspects all reporting events and searches full event data", async ({
   // A resize keeps the selected event in a dismissable mobile sheet.
   await entry.click();
   await page.setViewportSize({ width: 390, height: 844 });
-  const sheet = page.getByRole("dialog", {
-    name: "Event details",
-    exact: true,
-  });
+  // The sheet title names the event, so find the sheet by its label.
+  const sheet = page.locator('[role="dialog"][aria-label="Event details"]');
   await expect(
     sheet.getByRole("heading", { name: "turn_routed", exact: true }),
   ).toBeVisible();
@@ -227,6 +237,18 @@ test("inspects all reporting events and searches full event data", async ({
     sheet.getByRole("button", { name: "Close", exact: true }),
   ).toBeVisible();
   await screenshot(page, "conversation-event-details-mobile");
+  // The sheet covers the log, so it steps through the rows itself.
+  const nextSeq =
+    report.events[
+      report.events.findIndex((event: { seq: number }) => event.seq === 3) + 1
+    ];
+  await sheet.getByRole("button", { name: "Next event" }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]event=${nextSeq.seq}(&|$)`));
+  await expect(
+    sheet.getByRole("heading", { name: nextSeq.data.type, exact: true }),
+  ).toBeVisible();
+  await sheet.getByRole("button", { name: "Previous event" }).click();
+  await expect(page).toHaveURL(/[?&]event=3(&|$)/);
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await expect(entry).toBeFocused();
