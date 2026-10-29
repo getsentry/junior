@@ -279,6 +279,7 @@ function ArchiveConversationButton(
       <TooltipTrigger
         render={
           <Button
+            focusableWhenDisabled
             aria-label={label}
             className="hidden shrink-0 text-dashboard-text-muted md:grid"
             disabled={props.disabled}

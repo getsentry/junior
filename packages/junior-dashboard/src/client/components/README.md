@@ -54,6 +54,10 @@ Rules for adopted components:
 - Give an icon-only control its label with `TooltipContent size="compact"`.
   Do not use the native `title` attribute. Tooltips open on mouse hover and
   keyboard focus only, so a tap still runs the control.
+- When a `ui/button` tooltip trigger can be disabled, set
+  `focusableWhenDisabled`. A native disabled button can drop hover and focus,
+  so Firefox closes the tooltip and hides pending or result labels.
+  `ui/button` styles `data-disabled`, so both disabled modes look the same.
 - Build a form field from `ui/field`. Give `FieldError` the id
   `<control id>-error` and `FieldDescription` the id `<control id>-help`. The
   control sets `aria-invalid` and `aria-describedby`.

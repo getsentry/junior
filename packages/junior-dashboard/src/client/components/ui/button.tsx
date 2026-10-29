@@ -7,7 +7,7 @@ const commandButtonClass =
 
 /** Style the dashboard command, primary, danger, and icon button surfaces. Links use it with `className`. */
 const buttonVariants = cva(
-  "cursor-pointer font-sans no-underline transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+  "cursor-pointer font-sans no-underline transition-colors data-disabled:cursor-not-allowed data-disabled:opacity-50",
   {
     variants: {
       variant: {
@@ -17,7 +17,7 @@ const buttonVariants = cva(
       },
       size: {
         default: "",
-        icon: "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted focus-visible:outline-2 focus-visible:outline-offset-1 disabled:hover:!bg-transparent disabled:hover:!text-dashboard-text-muted",
+        icon: "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted focus-visible:outline-2 focus-visible:outline-offset-1 data-disabled:hover:!bg-transparent data-disabled:hover:!text-dashboard-text-muted",
       },
     },
     compoundVariants: [
@@ -26,7 +26,7 @@ const buttonVariants = cva(
         variant: "default",
         className: cn(
           commandButtonClass,
-          "border-dashboard-border-emphasis bg-dashboard-surface-raised text-dashboard-text hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-dashboard-focus disabled:hover:border-dashboard-border-emphasis disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
+          "border-dashboard-border-emphasis bg-dashboard-surface-raised text-dashboard-text hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-dashboard-focus data-disabled:hover:border-dashboard-border-emphasis data-disabled:hover:bg-dashboard-surface-raised data-disabled:hover:text-dashboard-text",
         ),
       },
       {
@@ -34,7 +34,7 @@ const buttonVariants = cva(
         variant: "primary",
         className: cn(
           commandButtonClass,
-          "border-dashboard-text-solid bg-dashboard-text-solid text-dashboard-text-inverse hover:border-dashboard-text-subtle hover:bg-dashboard-text-subtle focus-visible:outline-dashboard-focus disabled:hover:border-dashboard-text-solid disabled:hover:bg-dashboard-text-solid",
+          "border-dashboard-text-solid bg-dashboard-text-solid text-dashboard-text-inverse hover:border-dashboard-text-subtle hover:bg-dashboard-text-subtle focus-visible:outline-dashboard-focus data-disabled:hover:border-dashboard-text-solid data-disabled:hover:bg-dashboard-text-solid",
         ),
       },
       {
@@ -42,7 +42,7 @@ const buttonVariants = cva(
         variant: "danger",
         className: cn(
           commandButtonClass,
-          "border-dashboard-border-strong bg-transparent text-dashboard-text-muted hover:border-rose-300/40 hover:text-rose-300 focus-visible:outline-rose-300/55 disabled:hover:border-dashboard-border-strong disabled:hover:text-dashboard-text-muted",
+          "border-dashboard-border-strong bg-transparent text-dashboard-text-muted hover:border-rose-300/40 hover:text-rose-300 focus-visible:outline-rose-300/55 data-disabled:hover:border-dashboard-border-strong data-disabled:hover:text-dashboard-text-muted",
         ),
       },
       {
