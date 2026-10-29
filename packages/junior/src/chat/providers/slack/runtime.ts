@@ -730,17 +730,20 @@ export function createSlackTurnRuntime<
           await hooks.ack?.();
           return;
         }
-        processingReaction = await processingReactions.start(context, message);
-        const toolInvocationHook = createToolInvocationHook(
-          processingReaction,
-          hooks,
-        );
-
         await withSpan("chat.turn", "chat.turn", context, async (set) => {
           const turnStartedAtMs = deps.now();
           if (hooks.telemetry) {
             set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));
           }
+          // Start the reaction inside the turn so its Slack call joins the trace.
+          processingReaction = await processingReactions.start(
+            context,
+            message,
+          );
+          const toolInvocationHook = createToolInvocationHook(
+            processingReaction,
+            hooks,
+          );
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             botUserId: deps.getBotUserId(),
             explicitMention: true,

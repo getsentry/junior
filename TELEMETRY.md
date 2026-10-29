@@ -290,6 +290,20 @@ fields=timestamp,trace,span.duration,app.turn.input_count,app.turn.delivery_lag_
 sort=-app.turn.wait_ms
 ```
 
+First feedback is the earliest `http.client` span for
+`POST slack.com/api/reactions.add` or
+`POST slack.com/api/assistant.threads.setStatus` under `chat.turn`. For a
+mention, ingress adds the processing reaction before the turn starts. Use the
+ingress `reactions.add` span for a mention. It is in the same trace after
+#2269 PR 5b joins the ingress and turn traces.
+
+A mention turn also calls `reactions.add` again, and Slack returns an
+`already_reacted` error. This is a known double reaction. #2318 tracks it.
+
+Each reply post attempt has an `http.client` span named
+`POST slack.com/api/chat.postMessage` under `chat.turn`. It carries
+`messaging.message.id` when Slack accepts the post.
+
 ### Agent And Model
 
 The turn timed out, returned no useful answer, or used unexpected reasoning.
