@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
-import { Button } from "./Button";
+import { Button } from "./ui/button";
 import { BottomSheet } from "./BottomSheet";
 import { Drawer } from "./Drawer";
 

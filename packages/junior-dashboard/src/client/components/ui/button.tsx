@@ -6,9 +6,9 @@ import { cn } from "@dashboard/lib/utils";
 const commandButtonClass =
   "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium leading-none focus-visible:outline-2 focus-visible:outline-offset-2";
 
-/** Style the dashboard command, primary, danger, and icon button surfaces. */
+/** Style the dashboard command, primary, danger, and icon button surfaces. Links use it with `className`. */
 const buttonVariants = cva(
-  "cursor-pointer font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+  "cursor-pointer font-sans no-underline transition-colors disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       variant: {

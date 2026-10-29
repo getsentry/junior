@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import type { AutomationRun } from "@sentry/junior/api/schema";
 
 import { useAutomationRunsData } from "../../api";
-import { ToggleButton } from "../../components/Button";
+import { ToggleButton } from "../../components/ToggleButton";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";

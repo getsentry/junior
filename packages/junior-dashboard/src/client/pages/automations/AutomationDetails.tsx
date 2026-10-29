@@ -8,7 +8,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "../../components/ui/accordion";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { DetailsPanel } from "../../components/DetailsPanel";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";

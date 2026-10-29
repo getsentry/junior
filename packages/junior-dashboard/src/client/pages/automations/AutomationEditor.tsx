@@ -8,10 +8,11 @@ import {
   type AutomationEdit,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { Field } from "../../components/Field";
-import { TextArea, TextInput } from "../../components/TextInput";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
+import { Field, FieldError, FieldLabel } from "../../components/ui/field";
 import { useToastManager } from "../../components/ui/toast";
-import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
@@ -254,8 +255,9 @@ export function AutomationEditor(props: {
           title="What to do"
           detail="Give Junior a clear instruction and a name you can find later."
         >
-          <Field label="Title" htmlFor="title" error={fieldError("title")}>
-            <TextInput
+          <Field>
+            <FieldLabel htmlFor="title">Title</FieldLabel>
+            <Input
               size="comfortable"
               id="title"
               value={draft.title}
@@ -263,24 +265,24 @@ export function AutomationEditor(props: {
               onChange={(e) => change({ title: e.target.value })}
               {...inputState("title")}
             />
+            <FieldError id="title-error">{fieldError("title")}</FieldError>
           </Field>
-          <Field
-            label="Instruction"
-            htmlFor="instruction"
-            error={fieldError("instruction")}
-          >
-            <TextArea
-              prose
+          <Field>
+            <FieldLabel htmlFor="instruction">Instruction</FieldLabel>
+            <Textarea
               id="instruction"
               rows={8}
               value={draft.instruction}
               onChange={(e) => change({ instruction: e.target.value })}
               {...inputState("instruction")}
-              className="resize-y text-base sm:text-sm"
+              className="resize-y text-base leading-relaxed sm:text-sm"
             />
             <p className="m-0 text-right text-xs text-dashboard-text-muted">
               {draft.instruction.length.toLocaleString()} / 4,000
             </p>
+            <FieldError id="instruction-error">
+              {fieldError("instruction")}
+            </FieldError>
           </Field>
         </AutomationFormSection>
         <AutomationFormSection
@@ -441,7 +443,7 @@ export function AutomationEditor(props: {
             </Link>
             <Button
               type="submit"
-              tone="primary"
+              variant="primary"
               className="min-h-11 sm:min-h-9"
               disabled={!dirty || save.isPending || conflict}
             >

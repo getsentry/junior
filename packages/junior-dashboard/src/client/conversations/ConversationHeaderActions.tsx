@@ -10,7 +10,8 @@ import {
   X,
 } from "lucide-react";
 
-import { Button, ToggleButton } from "../components/Button";
+import { Button } from "../components/ui/button";
+import { ToggleButton } from "../components/ToggleButton";
 import { IconButtonTooltip } from "../components/Tooltip";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";

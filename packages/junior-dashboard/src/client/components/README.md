@@ -49,19 +49,17 @@ layout changes.
 
 Each `ui/` file is shadcn source that uses dashboard tokens. Its first line
 names the source. The copied license is in `ui/shadcn.LICENSE`. Remove exports
-that no app code uses. App components keep their names and props, and compose
-the `ui/` source:
+that no app code uses. Use `ui/` components directly. Do not add an app
+component that only renames a `ui/` component or its props. Change the `ui/`
+file when every caller needs the same style or variant. App components compose
+`ui/` source only when they add structure or behavior:
 
-| App component                  | shadcn source             |
-| ------------------------------ | ------------------------- |
-| `Button`, `ButtonLink`         | `ui/button`               |
-| `TextInput`, `TextArea`        | `ui/input`, `ui/textarea` |
-| `Field`                        | `ui/field`                |
-| `Drawer`, `BottomSheet`        | `ui/sheet`                |
-| `layout/DashboardHeader` (nav) | `ui/sheet`                |
+| App component                  | shadcn source |
+| ------------------------------ | ------------- |
+| `Drawer`, `BottomSheet`        | `ui/sheet`    |
+| `layout/DashboardHeader` (nav) | `ui/sheet`    |
 
-Use `ui/skeleton`, `ui/checkbox`, and `ui/radio-group` directly. Put a
-checkbox or radio inside its `<label>`. Give each `RadioGroup` an
+Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
 `aria-label`. The `ui/` files join classes with the merging `cn` from
 `src/client/lib/utils.ts`, so a caller's `className` wins over a base class.
 
@@ -126,18 +124,24 @@ token so each theme can redefine it.
 
 ### Primitives
 
-- **Actions.** `Button` (`default`, `primary`, `danger`, and `size="icon"`) and
-  `ButtonLink`. Form pages use `Button tone="primary"` for their one main save
-  action. Use `ToggleButton` variants (`pill`, `segment`, `text`) for pressed
-  states, not one-off styles. `CopyButton` copies plain text or an async text
-  export. It shares clipboard success, pending, and failure feedback across
-  Markdown exports and event JSON. A failed write allows another attempt.
-- **Forms.** `Field` (`default`, `compact`), `TextInput`, `TextArea`, `Select`,
-  and `SearchInput`. Use `TextInput size="comfortable"` for larger mobile
-  controls. Use `TextArea prose` for instructions, not code. `Field error`
-  renders an error at `<htmlFor>-error`. The owning control must set
-  `aria-invalid` and `aria-describedby`. `Select` owns the native control and its
-  inset arrow. Use its `filter` and `sort` variants for compact controls.
+- **Actions.** `ui/button` `Button` (`variant`: `default`, `primary`,
+  `danger`; `size="icon"`). Form pages use `Button variant="primary"` for their
+  one main save action. For a link that looks like a button, put
+  `buttonVariants()` on the router `Link`. Use `ToggleButton` variants (`pill`,
+  `segment`, `text`) for pressed states, not one-off styles. `CopyButton`
+  copies plain text or an async text export. It shares clipboard success,
+  pending, and failure feedback across Markdown exports and event JSON. A
+  failed write allows another attempt.
+- **Forms.** Build a field from `ui/field`: `Field`, `FieldLabel`, the control,
+  then `FieldError` and `FieldDescription`. `FieldError` renders nothing when it
+  has no message. Give `FieldError` the id `<control id>-error` and
+  `FieldDescription` the id `<control id>-help`. The control must set
+  `aria-invalid` and `aria-describedby`. Use `ui/input` `Input` and
+  `ui/textarea` `Textarea`. Use `Input size="comfortable"` for larger mobile
+  controls. Add `leading-relaxed` to a `Textarea` for instructions and
+  `font-mono` for code. Use `ui/checkbox` and `ui/radio-group` for choices.
+  `Select` owns the native control and its inset arrow. Use its `filter` and
+  `sort` variants for compact controls.
 - **Status.** Use `StatusDot` for dense table or list markers. Use `StatusChip`
   when the label must stay visible. `StatusChip` is a small dot and
   sentence-case text, with no border or fill. It is not a control.

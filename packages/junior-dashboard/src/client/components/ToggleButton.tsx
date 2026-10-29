@@ -1,38 +1,13 @@
-import type { ButtonHTMLAttributes, Ref } from "react";
-import { Link, type LinkProps } from "react-router";
+import type { ButtonHTMLAttributes } from "react";
 
 import { cn } from "../styles";
-import { Button as ShadcnButton, buttonVariants } from "./ui/button";
 
-type ButtonSize = "default" | "icon";
-type ButtonTone = "default" | "danger" | "primary";
 type ToggleButtonVariant = "pill" | "segment" | "text";
-
-export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  ref?: Ref<HTMLButtonElement>;
-  size?: ButtonSize;
-  tone?: ButtonTone;
-};
 
 export type ToggleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   pressed: boolean;
   variant: ToggleButtonVariant;
 };
-
-/** Render the dashboard's standard bordered command button surface. */
-export function Button({ tone, type = "button", ...props }: ButtonProps) {
-  return <ShadcnButton {...props} type={type} variant={tone} />;
-}
-
-/** Render a dashboard navigation link with the standard button surface. */
-export function ButtonLink({ className, ...props }: LinkProps) {
-  return (
-    <Link
-      {...props}
-      className={cn(buttonVariants(), "no-underline", className)}
-    />
-  );
-}
 
 /** Render a dashboard toggle button with a consistent pressed-state contract. */
 export function ToggleButton({

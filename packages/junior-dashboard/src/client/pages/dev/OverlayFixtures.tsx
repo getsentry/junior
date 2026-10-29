@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -52,7 +52,7 @@ export function OverlayFixtures() {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                tone="danger"
+                variant="danger"
                 onClick={() => setConfirmationOpen(false)}
               >
                 Delete automation

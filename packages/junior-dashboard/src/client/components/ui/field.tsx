@@ -34,8 +34,9 @@ function FieldDescription({ className, ...props }: ComponentProps<"p">) {
   );
 }
 
-/** Announce a field validation error. */
+/** Announce a field validation error. Render nothing when there is no error. */
 function FieldError({ className, ...props }: ComponentProps<"p">) {
+  if (!props.children) return null;
   return (
     <p
       role="alert"

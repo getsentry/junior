@@ -7,7 +7,8 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { getDashboardAgentName } from "../../agentName";
-import { ButtonLink } from "../../components/Button";
+import { buttonVariants } from "../../components/ui/button";
+import { Link } from "react-router";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
@@ -86,10 +87,10 @@ export function WorkspacesPage() {
     <SystemPageLayout>
       <PageHeader
         actions={
-          <ButtonLink to="/system/workspaces/new">
+          <Link className={buttonVariants()} to="/system/workspaces/new">
             <Plus aria-hidden="true" size={14} />
             New Workspace
-          </ButtonLink>
+          </Link>
         }
         description={`Named repository recipes ${getDashboardAgentName()} can switch into without cloning each turn.`}
         title="Workspaces"

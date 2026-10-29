@@ -3,10 +3,10 @@ import {
   automationEventCatalogSchema,
   type AutomationEdit,
 } from "@sentry/junior/api/schema";
-import { Field } from "../../components/Field";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { Select } from "../../components/Select";
-import { TextInput } from "../../components/TextInput";
-import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
 import { Checkbox } from "../../components/ui/checkbox";
 import { fetchDashboardJson } from "../../http";
@@ -78,10 +78,10 @@ export function AutomationEventFields(props: {
           </pre>
         </FormNotice>
       ) : null}
-      <Field
-        label={unsupported ? "Replace trigger" : "Resource type"}
-        htmlFor="trigger-resource"
-      >
+      <Field>
+        <FieldLabel htmlFor="trigger-resource">
+          {unsupported ? "Replace trigger" : "Resource type"}
+        </FieldLabel>
         <Select
           id="trigger-resource"
           value={
@@ -124,8 +124,9 @@ export function AutomationEventFields(props: {
       </Field>
       {!unsupported && resource ? (
         <>
-          <Field label="Resource name" htmlFor="trigger-label">
-            <TextInput
+          <Field>
+            <FieldLabel htmlFor="trigger-label">Resource name</FieldLabel>
+            <Input
               size="comfortable"
               id="trigger-label"
               value={props.value.label}
@@ -134,12 +135,11 @@ export function AutomationEventFields(props: {
               }
             />
           </Field>
-          <Field
-            label="Resource identifier"
-            htmlFor="trigger-identifier"
-            help="Use the exact provider resource identifier, not its display name."
-          >
-            <TextInput
+          <Field>
+            <FieldLabel htmlFor="trigger-identifier">
+              Resource identifier
+            </FieldLabel>
+            <Input
               size="comfortable"
               id="trigger-identifier"
               value={props.value.identifier}
@@ -147,6 +147,9 @@ export function AutomationEventFields(props: {
                 props.onChange({ ...props.value, identifier: e.target.value })
               }
             />
+            <FieldDescription id="trigger-identifier-help">
+              Use the exact provider resource identifier, not its display name.
+            </FieldDescription>
           </Field>
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">
@@ -194,12 +197,8 @@ export function AutomationEventFields(props: {
                 ([key, field]) => {
                   const value = props.value.match?.[key];
                   return (
-                    <Field
-                      key={key}
-                      label={key}
-                      htmlFor={`match-${key}`}
-                      help={field.description}
-                    >
+                    <Field key={key}>
+                      <FieldLabel htmlFor={`match-${key}`}>{key}</FieldLabel>
                       {Array.isArray(value) ? (
                         <div className="text-sm">
                           <span className="break-all">{value.join(", ")}</span>{" "}
@@ -228,7 +227,7 @@ export function AutomationEventFields(props: {
                           ))}
                         </Select>
                       ) : (
-                        <TextInput
+                        <Input
                           size="comfortable"
                           id={`match-${key}`}
                           type={field.kind === "number" ? "number" : "text"}
@@ -246,6 +245,11 @@ export function AutomationEventFields(props: {
                           }
                         />
                       )}
+                      {field.description ? (
+                        <FieldDescription id={`match-${key}-help`}>
+                          {field.description}
+                        </FieldDescription>
+                      ) : null}
                     </Field>
                   );
                 },

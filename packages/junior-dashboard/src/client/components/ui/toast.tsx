@@ -3,7 +3,7 @@ import * as React from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { cn } from "@dashboard/lib/utils";
 
-import { Button } from "../Button";
+import { Button } from "./button";
 import {
   XIcon,
   CircleCheckIcon,

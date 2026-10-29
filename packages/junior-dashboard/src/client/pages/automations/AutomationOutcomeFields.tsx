@@ -3,7 +3,7 @@ import type {
   AutomationEdit,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { Select } from "../../components/Select";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { cn } from "../../styles";
