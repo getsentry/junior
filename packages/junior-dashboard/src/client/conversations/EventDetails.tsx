@@ -1,8 +1,15 @@
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { HighlightedCode } from "../code";
 import { CopyButton } from "../components/CopyButton";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../styles";
 
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptText } from "./TranscriptText";
@@ -191,26 +198,28 @@ function RawEventJson({ event }: { event: ConversationReportEvent }) {
   const json = open ? JSON.stringify(event, null, 2) : "";
   return (
     <div className="relative min-w-0 border-t border-dashboard-border pt-4">
-      <details onToggle={(event) => setOpen(event.currentTarget.open)}>
-        <summary className="min-h-9 cursor-pointer pr-12 text-xs leading-9 text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+      <Collapsible onOpenChange={setOpen} open={open}>
+        <CollapsibleTrigger className="group flex min-h-9 cursor-pointer items-center gap-1 pr-12 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
           Raw JSON
-        </summary>
-        {open ? (
-          <>
-            <div className="absolute right-0 top-4">
-              <CopyButton getText={() => json} label="Copy JSON" />
-            </div>
-            <div
-              aria-label="Raw event JSON"
-              className="mt-3 max-h-80 min-w-0 overflow-auto overscroll-contain rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-              role="region"
-              tabIndex={0}
-            >
-              <HighlightedCode code={json} language="json" />
-            </div>
-          </>
-        ) : null}
-      </details>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="absolute right-0 top-4">
+            <CopyButton getText={() => json} label="Copy JSON" />
+          </div>
+          <div
+            aria-label="Raw event JSON"
+            className="mt-3 max-h-80 min-w-0 overflow-auto overscroll-contain rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            role="region"
+            tabIndex={0}
+          >
+            <HighlightedCode code={json} language="json" />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
