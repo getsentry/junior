@@ -17,9 +17,17 @@ import {
   useConversationChildAgents,
 } from "./ConversationChildAgents";
 import {
+  ConversationLinkedWork,
+  type ConversationLink,
+} from "./ConversationLinkedWork";
+import {
   ConversationMemories,
   useConversationMemories,
 } from "./ConversationMemories";
+import {
+  ConversationWatches,
+  useConversationWatches,
+} from "./ConversationWatches";
 import { ShareConversationButton } from "./ShareConversationButton";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
@@ -30,15 +38,15 @@ const detailsPanelClass =
   "min-h-0 overflow-y-auto overscroll-contain rounded-none px-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus-visible:-outline-offset-2";
 
 /**
- * Show conversation details: the brief and facts first, then linked work,
- * participants, and the usage breakdown. Share and Sentry links stay in the
- * header so every tab can reach them.
+ * Show conversation details: the brief, participants, and run facts first,
+ * then watches, linked work, and the usage breakdown. Share and Sentry links
+ * stay in the header so every tab can reach them.
  */
 export function ConversationDetails(props: {
-  annotations: ReactNode;
   brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
+  links: ConversationLink[];
   onClose(): void;
   /** Open one child agent transcript. A details sheet closes first. */
   onOpenSubagent(target: SubagentTranscriptTarget): void;
@@ -51,11 +59,29 @@ export function ConversationDetails(props: {
   // Load both lists with details so each tab can show its count.
   const memories = useConversationMemories(props.conversationId);
   const agents = useConversationChildAgents(props.conversationId);
+  const watches = useConversationWatches(props.conversationId).data?.watches;
 
+  // People first, then run facts. Watches come before linked work: they say
+  // what can wake this agent later, so readers see them without another tab.
   const sections = [
-    { content: props.overview, key: "overview", title: undefined },
     { content: props.identity, key: "participants", title: "Participants" },
-    { content: props.annotations, key: "linked-work", title: "Linked work" },
+    { content: props.overview, key: "overview", title: undefined },
+    {
+      content: watches?.length ? (
+        <ConversationWatches watches={watches} />
+      ) : null,
+      count: watches?.length,
+      key: "watching",
+      title: "Watching",
+    },
+    {
+      content: props.links.length ? (
+        <ConversationLinkedWork links={props.links} />
+      ) : null,
+      count: props.links.length,
+      key: "linked-work",
+      title: "Linked work",
+    },
     { content: props.usage, key: "usage", title: "Usage" },
   ].filter((section) => section.content != null);
 
@@ -132,7 +158,11 @@ export function ConversationDetails(props: {
                 </div>
               ) : null}
               {sections.map((section) => (
-                <DetailsSection key={section.key} title={section.title}>
+                <DetailsSection
+                  count={section.count}
+                  key={section.key}
+                  title={section.title}
+                >
                   {section.content}
                 </DetailsSection>
               ))}
@@ -172,12 +202,21 @@ function TabCount(props: { count: number | undefined }) {
 }
 
 /** Group one kind of conversation detail in a compact card. */
-function DetailsSection(props: { children: ReactNode; title?: string }) {
+function DetailsSection(props: {
+  children: ReactNode;
+  count?: number;
+  title?: string;
+}) {
   return (
     <section className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3">
       {props.title ? (
-        <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
+        <h3 className="m-0 flex items-center gap-1.5 font-sans text-xs font-medium text-dashboard-text-muted">
           {props.title}
+          {props.count ? (
+            <span className="tabular-nums text-dashboard-text-faint">
+              {props.count.toLocaleString("en-US")}
+            </span>
+          ) : null}
         </h3>
       ) : null}
       <div className="min-w-0 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">

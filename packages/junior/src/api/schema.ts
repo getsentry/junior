@@ -116,6 +116,14 @@ export type {
   ConversationChildAgentsReport,
 } from "./schema/child-agent";
 export {
+  conversationWatchSchema,
+  conversationWatchesReportSchema,
+} from "./schema/watch";
+export type {
+  ConversationWatch,
+  ConversationWatchesReport,
+} from "./schema/watch";
+export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   personalSpendReportSchema,
