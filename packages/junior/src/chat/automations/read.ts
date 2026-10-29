@@ -49,7 +49,7 @@ import {
   parseEventAutomationRow,
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
-import { eventAutomationTriggerProblems } from "@/chat/event-automations/tool-support";
+import { describeEventAutomationTrigger } from "@/chat/event-automations/tool-support";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   deleteViewerScheduledAutomation,
@@ -299,10 +299,7 @@ function eventAutomationSummary(
   creator: CreatorProfile | undefined,
 ): AutomationSummary {
   const instruction = task.task.text;
-  const triggerProblems = eventAutomationTriggerProblems(
-    task,
-    getEventCatalog(),
-  );
+  const catalog = getEventCatalog();
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
@@ -314,8 +311,6 @@ function eventAutomationSummary(
       teamId: task.destination.teamId,
       visibility: destination.visibility,
     },
-    events: task.trigger.events,
-    match: task.trigger.match,
     id: task.id,
     instruction,
     kind: "event",
@@ -332,8 +327,7 @@ function eventAutomationSummary(
     ),
     status: task.status === "deleted" ? "active" : task.status,
     statusReason: task.statusReason,
-    triggerAvailable: triggerProblems.length === 0,
-    ...(triggerProblems.length > 0 ? { triggerProblems } : undefined),
+    trigger: describeEventAutomationTrigger(task.trigger, catalog),
   };
 }
 
@@ -754,8 +748,19 @@ export async function readViewerAutomationVersions(
   );
   const current = automationDefinition(candidate.task);
   const listed = versions.slice(0, AUTOMATION_VERSION_LIST_LIMIT);
+  const catalog = getEventCatalog();
   return {
-    versions: listed,
+    versions: listed.map((version) =>
+      version.kind === "event"
+        ? {
+            ...version,
+            trigger: describeEventAutomationTrigger(
+              version.definition.trigger,
+              catalog,
+            ),
+          }
+        : version,
+    ),
     activeVersion:
       listed.find(({ definition }) => sameDefinitionValue(definition, current))
         ?.version ?? null,

@@ -841,7 +841,7 @@ describe("Automation edit API", () => {
   test("validates replacement event selectors through the registered plugin", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     setPlugins([githubPlugin()]);
-    const { app, fixture, id, read, patch } = await setup("event");
+    const { app, fixture, id, read, patch, url } = await setup("event");
     try {
       const initial = await read();
       if (initial.kind !== "event")
@@ -905,8 +905,29 @@ describe("Automation edit API", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
         trigger: { ...trigger, identifier: "getsentry/junior#42" },
-        triggerAvailable: true,
       });
+      // Version history shows each saved trigger in the shared words.
+      const { versions } = automationVersionListSchema.parse(
+        await (await app.request(`${url}/versions`)).json(),
+      );
+      const saved = {
+        events: ["issue closed"],
+        filters: ["retainedCondition is one or two"],
+        problems: ["The plugin for this source is not enabled."],
+      };
+      expect(
+        versions.map((version) =>
+          version.kind === "event" ? version.trigger : undefined,
+        ),
+      ).toEqual([
+        {
+          events: ["pull request merged"],
+          filters: ["headBranch is main"],
+          problems: [],
+        },
+        saved,
+        saved,
+      ]);
       const unavailableIds = async () =>
         automationListSchema
           .parse(
@@ -927,10 +948,12 @@ describe("Automation edit API", () => {
       const summary = await app.request(`/api/automations/${id}`);
       expect(summary.status).toBe(200);
       expect(await summary.json()).toMatchObject({
-        triggerAvailable: false,
-        triggerProblems: [
-          expect.stringContaining('Filter "authorUsername" does not exist'),
-        ],
+        trigger: {
+          filters: ["authorUsername is dcramer"],
+          problems: [
+            expect.stringContaining('Filter "authorUsername" does not exist'),
+          ],
+        },
       });
       expect(await unavailableIds()).toEqual([id]);
     } finally {

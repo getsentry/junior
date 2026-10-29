@@ -23,8 +23,9 @@ export function AutomationStatus({
   const paused = automation.status === "paused";
   const blocked = automation.status === "blocked";
   const completed = automation.status === "completed";
-  const unavailable =
-    automation.kind === "event" && !automation.triggerAvailable;
+  const triggerProblems =
+    automation.kind === "event" ? automation.trigger.problems : [];
+  const unavailable = triggerProblems.length > 0;
   const failed =
     automation.lastRunStatus === "failed" ||
     automation.lastRunStatus === "blocked";
@@ -93,15 +94,13 @@ export function AutomationStatus({
           ) : null}
           {unavailable ? (
             <>
-              {automation.triggerProblems?.length ? (
-                <ul className="my-1 list-disc pl-5">
-                  {automation.triggerProblems.map((problem) => (
-                    <li className="break-words" key={problem}>
-                      {problem}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <ul className="my-1 list-disc pl-5">
+                {triggerProblems.map((problem) => (
+                  <li className="break-words" key={problem}>
+                    {problem}
+                  </li>
+                ))}
+              </ul>
               <p className="m-0">
                 Edit the trigger, or enable its plugin again.
               </p>
@@ -149,9 +148,10 @@ function AutomationNextTrigger({
   else if (automation.status === "blocked")
     description = "New runs are blocked until this is fixed";
   else if (automation.kind === "event")
-    description = automation.triggerAvailable
-      ? "Waiting for a matching event"
-      : "Waiting for a trigger fix";
+    description =
+      automation.trigger.problems.length === 0
+        ? "Waiting for a matching event"
+        : "Waiting for a trigger fix";
   else if (automation.nextRunAt) {
     const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const scheduleTime = formatAutomationRunTime(

@@ -166,7 +166,7 @@ describe("event automations", () => {
           key: created.automation.id,
           label: "Review fixes.",
           title: "Review fixes.",
-          trigger: "Review feedback · pull_request.review.commented",
+          trigger: "Review feedback · pull request review commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
       ]);
@@ -182,7 +182,7 @@ describe("event automations", () => {
       const posted =
         getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
       expect(posted?.text).toContain(
-        "Review feedback · pull_request.review.commented",
+        "Review feedback · pull request review commented",
       );
       expect(posted?.attachments).toBeUndefined();
       expect(posted?.metadata).toMatchObject({
@@ -201,7 +201,7 @@ describe("event automations", () => {
                   key: "trigger",
                   label: "When",
                   type: "string",
-                  value: "Review feedback · pull_request.review.commented",
+                  value: "Review feedback · pull request review commented",
                   long: true,
                 },
               ],
@@ -719,7 +719,6 @@ describe("event automations", () => {
       automations: Array<{
         createdBy: { slackUserId: string };
         id: string;
-        triggerAvailable: boolean;
       }>;
     };
     expect(listed).not.toHaveProperty("data");

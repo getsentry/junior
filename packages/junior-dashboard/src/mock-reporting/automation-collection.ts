@@ -33,13 +33,15 @@ export function mockAutomationCollection(
           (automation.status !== "paused" &&
             automation.status !== "completed" &&
             (automation.status === "blocked" ||
-              (automation.kind === "event" && !automation.triggerAvailable) ||
+              (automation.kind === "event" &&
+                automation.trigger.problems.length > 0) ||
               automation.lastRunStatus === "failed" ||
               automation.lastRunStatus === "blocked"))) &&
         (input.type === "all" || automation.kind === input.type) &&
         (input.state === "all" ||
           (input.state === "unavailable"
-            ? automation.kind === "event" && !automation.triggerAvailable
+            ? automation.kind === "event" &&
+              automation.trigger.problems.length > 0
             : automation.status === input.state)) &&
         (!input.creator || creator(automation) === input.creator) &&
         (!input.destination || destination(automation) === input.destination) &&

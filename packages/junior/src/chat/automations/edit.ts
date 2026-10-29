@@ -14,7 +14,6 @@ import {
   setEventAutomationStatus,
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
-import { eventAutomationTriggerAvailable } from "@/chat/event-automations/tool-support";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -119,10 +118,6 @@ function editView(
     status:
       automation.task.status === "deleted" ? "active" : automation.task.status,
     trigger: automation.task.trigger,
-    triggerAvailable: eventAutomationTriggerAvailable(
-      automation.task,
-      getEventCatalog(),
-    ),
   };
 }
 

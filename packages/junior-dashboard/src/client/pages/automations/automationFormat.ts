@@ -6,7 +6,6 @@ import type { StatusChipTone } from "../../components/StatusChip";
 import { formatTime } from "../../format";
 
 type ScheduledAutomation = Extract<AutomationSummary, { kind: "scheduled" }>;
-type EventAutomation = Extract<AutomationSummary, { kind: "event" }>;
 
 /** Show the schedule with its timezone unless the schedule text already names it. */
 export function automationScheduleLabel(
@@ -15,23 +14,6 @@ export function automationScheduleLabel(
   return automation.schedule.includes(automation.timezone)
     ? automation.schedule
     : `${automation.schedule} (${automation.timezone})`;
-}
-
-/** Name event triggers in readable words. */
-export function automationEventNames(automation: EventAutomation): string {
-  return automation.events
-    .map((event) => event.replaceAll(/[._]/g, " "))
-    .join(", ");
-}
-
-/** Summarize event filters as one readable line. */
-export function automationEventFilters(automation: EventAutomation): string {
-  return Object.entries(automation.match ?? {})
-    .map(
-      ([field, value]) =>
-        `${field}: ${Array.isArray(value) ? value.join(" or ") : String(value)}`,
-    )
-    .join(" · ");
 }
 
 /** Format a run in an explicit timezone, or the dashboard timezone by default. */

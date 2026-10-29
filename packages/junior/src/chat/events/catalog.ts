@@ -1,7 +1,9 @@
 import {
+  describeEventTrigger,
   eventTriggerProblems,
   normalizeEventIdentifier,
   eventMatchSchema,
+  type EventTriggerDescription,
   type EventTriggerProblem,
   type EventTriggerSelection,
   type PluginEvents,
@@ -164,6 +166,20 @@ export function registeredEventTriggerProblems(
     catalog[selection.namespace]?.resourceTypes ?? [],
     selection,
     options,
+  );
+}
+
+/**
+ * Describe a selection with the enabled plugins, for the dashboard and Slack.
+ * Its problems are the same as `registeredEventTriggerProblems`.
+ */
+export function describeRegisteredEventTrigger(
+  catalog: EventCatalog,
+  selection: RegisteredEventSelection,
+): EventTriggerDescription {
+  return describeEventTrigger(
+    catalog[selection.namespace]?.resourceTypes ?? [],
+    selection,
   );
 }
 

@@ -19,12 +19,11 @@ import {
 import { TranscriptText } from "../../conversations/TranscriptText";
 import { peoplePath } from "../../format";
 import { dashboardInlineLinkClass } from "../../styles";
+import { TriggerFilters } from "./TriggerFilters";
 import { AutomationLifecycle } from "./AutomationLifecycle";
 import { AutomationRecentRuns } from "./AutomationRecentRuns";
 import { AutomationStatus } from "./AutomationStatus";
 import {
-  automationEventFilters,
-  automationEventNames,
   automationScheduleLabel,
   formatAutomationRunTime,
 } from "./automationFormat";
@@ -98,8 +97,6 @@ function AutomationDetailsContent({
   range: TimeRangeDays;
 }) {
   const location = useLocation();
-  const filters =
-    automation.kind === "event" ? automationEventFilters(automation) : "";
   return (
     <div className="grid min-w-0 gap-5">
       <AutomationStatus automation={automation} />
@@ -117,13 +114,9 @@ function AutomationDetailsContent({
             <>
               <p className="m-0 break-words">{automation.resource}</p>
               <p className="m-0 mt-1 text-dashboard-text-muted">
-                {automationEventNames(automation)}
+                {automation.trigger.events.join(", ")}
               </p>
-              {filters ? (
-                <p className="m-0 mt-1 break-words text-xs text-dashboard-text-muted">
-                  {filters}
-                </p>
-              ) : null}
+              <TriggerFilters filters={automation.trigger.filters} />
             </>
           )}
         </AutomationFact>

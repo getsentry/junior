@@ -7,7 +7,7 @@ import {
   type EventCatalog,
 } from "@/chat/events/catalog";
 import {
-  eventAutomationTriggerAvailable,
+  describeEventAutomationTrigger,
   registeredEventAutomationTriggerSchema,
   requireSupportedEventAutomationTrigger,
 } from "@/chat/event-automations/tool-support";
@@ -129,34 +129,18 @@ describe("event catalog", () => {
       }),
     ).toThrow(ToolInputError);
 
+    // Snapshot events never dispatch event automations.
     expect(
-      eventAutomationTriggerAvailable(
+      describeEventAutomationTrigger(
         {
-          id: "task-1",
-          createdAtMs: 1,
-          createdBy: {
-            slackUserId: "U1",
-          },
-          creatorIdentityId: "identity-U1",
-          credentialMode: "system",
-          destination: {
-            platform: "slack",
-            teamId: "T1",
-            channelId: "C1",
-          },
-          destinationVisibility: "public",
-          outcomes: [],
-          task: { text: "Switch when ready." },
-          trigger: {
-            namespace: CORE_EVENT_NAMESPACE,
-            identifier: "11111111-1111-4111-8111-111111111111",
-            resourceType: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
-            label: "Workspace sentry snapshot",
-            events: [WORKSPACE_SNAPSHOT_READY_EVENT],
-          },
+          namespace: CORE_EVENT_NAMESPACE,
+          identifier: "11111111-1111-4111-8111-111111111111",
+          resourceType: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+          label: "Workspace sentry snapshot",
+          events: [WORKSPACE_SNAPSHOT_READY_EVENT],
         },
         catalog,
-      ),
-    ).toBe(false);
+      ).problems,
+    ).toEqual(["The plugin for this source is not enabled."]);
   });
 });

@@ -868,6 +868,10 @@ test("pauses and resumes from details, keeps failures visible, and limits action
       { exact: true },
     ),
   ).toBeVisible();
+  // The details list why the saved trigger cannot work.
+  await expect(
+    page.getByText("The plugin for this source is not enabled."),
+  ).toBeVisible();
   await expect(
     page.getByText("Edit the trigger, or enable its plugin again."),
   ).toBeVisible();
