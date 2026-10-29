@@ -218,7 +218,8 @@ export function eventAutomationTriggerAvailable(
   catalog: EventCatalog,
 ): boolean {
   // resourceType is presentation metadata; runtime matching uses namespace,
-  // identifier, and event type. Core snapshot events never dispatch tasks.
+  // identifier, and event type. Resource types with `automation: false`
+  // never dispatch tasks.
   const registration = automationEventCatalog(catalog)[task.trigger.namespace];
   return Boolean(
     registration &&

@@ -382,7 +382,9 @@ The deployment failed.
 <details class="event">
 <summary><code>deployment.error</code></summary>
 
-The deployment reported an error.
+The deploy tool set the GitHub status to `error`. For a deployment that ran
+and failed, use `deployment.failed`. Vercel `deployment.error` is the same as
+GitHub `deployment.failed`.
 
 </details>
 

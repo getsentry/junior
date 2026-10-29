@@ -14,16 +14,25 @@ import {
  * registration. Plugins may not use the `junior` or `slack` namespaces.
  */
 export function getEventCatalog(): EventCatalog {
+  const snapshot = workspaceSnapshotEvents();
   const catalog: Record<string, EventCatalog[string]> = {
     [CORE_EVENT_NAMESPACE]: {
       resourceTypes: [
-        ...workspaceSnapshotEvents().resourceTypes,
+        ...snapshot.resourceTypes,
         {
           type: "timer",
           supportedEvents: ["timer.fired"],
           suggestedEvents: [],
         },
       ],
+      limits: {
+        ...snapshot.limits,
+        timer: {
+          automation: false,
+          watch: false,
+          watchUnavailableMessage: "Use watchTimer to create a timer Watch.",
+        },
+      },
     },
     [SLACK_EVENT_NAMESPACE]: slackChannelMessageEvents(),
   };

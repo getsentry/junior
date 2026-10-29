@@ -51,6 +51,14 @@ Supported scopes (`deployment` resource type):
 - `<project-id>:production` for every production deployment
 - `<project-id>:production:<sha>` for one commit-scoped deployment
 
+Each event has the name of the Vercel webhook that it comes from:
+
+- `deployment.succeeded`: the deployment is ready.
+- `deployment.error`: the deployment failed. This is the same as GitHub `deployment.failed`, not GitHub `deployment.error`.
+- `deployment.canceled`: the deployment was canceled.
+
+All three events end a commit-scoped watch. Project and target watches stay active.
+
 Create the conversation watch or event automation before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
 
 ## Auth model
