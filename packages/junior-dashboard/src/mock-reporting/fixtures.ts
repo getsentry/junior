@@ -2972,7 +2972,6 @@ function mockTasks(): AutomationSummary[] {
         teamId: "T123",
         visibility: "public",
       },
-      events: ["issue.closed"],
       id: "event-1",
       instruction: "Summarize the closed issue",
       kind: "event",
@@ -2986,7 +2985,11 @@ function mockTasks(): AutomationSummary[] {
       outcomes: [],
       title: "Closed issue summary",
       totalRuns: 7,
-      triggerAvailable: true,
+      trigger: {
+        events: ["issue closed"],
+        filters: ["labels includes bug", "repository is api or web"],
+        problems: [],
+      },
       status: "active",
     },
     {
@@ -2999,7 +3002,6 @@ function mockTasks(): AutomationSummary[] {
         teamId: "T123",
         visibility: "public",
       },
-      events: ["incident.updated"],
       id: "event-2",
       instruction: "Notify responders when the incident changes",
       kind: "event",
@@ -3016,7 +3018,11 @@ function mockTasks(): AutomationSummary[] {
       ],
       title: "Incident change alerts",
       totalRuns: 0,
-      triggerAvailable: false,
+      trigger: {
+        events: ["incident updated"],
+        filters: [],
+        problems: ["The plugin for this source is not enabled."],
+      },
       status: "active",
     },
   ];

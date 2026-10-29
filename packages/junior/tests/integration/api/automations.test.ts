@@ -395,7 +395,6 @@ describe("Automations API", () => {
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
             id: "event_automations_api",
-            match: { action: ["closed", "resolved"] },
             kind: "event",
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
@@ -403,7 +402,12 @@ describe("Automations API", () => {
             runs: runWindows(eventRunAtMs),
             source: "linear",
             totalRuns: 1,
-            triggerAvailable: false,
+            // Linear is not enabled here, so the saved trigger has a problem.
+            trigger: {
+              events: ["issue closed"],
+              filters: ["action is closed or resolved"],
+              problems: ["The plugin for this source is not enabled."],
+            },
           }),
           expect.objectContaining({
             createdByEmail: "viewer@example.com",

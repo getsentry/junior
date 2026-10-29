@@ -361,10 +361,13 @@ export async function mockDashboardApis(
             status: "active" as const,
           }
         : {
-            events: ["issue.closed"],
             resource: "Issue · ACME-42",
             source: "github",
-            triggerAvailable: true,
+            trigger: {
+              events: ["issue closed"],
+              filters: [],
+              problems: [],
+            },
             status: "active",
           }),
     };

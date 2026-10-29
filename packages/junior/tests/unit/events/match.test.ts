@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   eventMatches,
+  eventTriggerText,
   mergeEventMatchFields,
   stableEventMatchKey,
   type EventMatchFields,
 } from "@sentry/junior-plugin-api";
 import {
+  describeRegisteredEventTrigger,
   registeredEventTriggerProblems,
   requireValidEventTrigger,
   type EventCatalog,
@@ -202,5 +204,54 @@ describe("mergeEventMatchFields", () => {
         pullRequestFields,
       ),
     ).toThrow('Match field "senderId" is in two maps');
+  });
+});
+
+describe("describeRegisteredEventTrigger", () => {
+  const trigger = {
+    namespace: "github",
+    resourceType: "pull_request",
+    events: ["pull_request.opened"],
+  };
+
+  it("writes list fields as includes and other lists as or", () => {
+    const description = describeRegisteredEventTrigger(catalog, {
+      ...trigger,
+      match: { authors: "alice", base: ["main", "release"], isDraft: false },
+    });
+    expect(description).toEqual({
+      events: ["pull request opened"],
+      filters: [
+        "authors includes alice",
+        "base is main or release",
+        "isDraft is false",
+      ],
+      problems: [],
+    });
+    expect(eventTriggerText("Pull request", description)).toBe(
+      "Pull request · pull request opened · filters: authors includes alice and base is main or release and isDraft is false",
+    );
+  });
+
+  it("keeps the filters of a saved trigger that can no longer match", () => {
+    expect(
+      describeRegisteredEventTrigger(catalog, {
+        ...trigger,
+        match: { authorUsername: "dcramer" },
+      }),
+    ).toMatchObject({
+      filters: ["authorUsername is dcramer"],
+      problems: [
+        expect.stringContaining('Filter "authorUsername" does not exist'),
+      ],
+    });
+    expect(
+      describeRegisteredEventTrigger(catalog, {
+        ...trigger,
+        resourceType: "team",
+      }).problems,
+    ).toEqual([
+      '"team" is not an enabled resource type. Use one of: "pull_request", "issue".',
+    ]);
   });
 });

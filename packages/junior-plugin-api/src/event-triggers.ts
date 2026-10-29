@@ -157,3 +157,81 @@ export function eventTriggerProblems(
   }
   return problems;
 }
+
+/** How people see one Event trigger. Each entry is one line of plain text. */
+export interface EventTriggerDescription {
+  /** Each selected event in plain words, such as "pull request opened". */
+  events: string[];
+  /** Each filter in plain words. Every filter must match. */
+  filters: string[];
+  /** Why the trigger cannot work as saved. Empty when it can. */
+  problems: string[];
+}
+
+/** Write one event type in plain words: `pull_request.opened` is "pull request opened". */
+export function eventTypeText(eventType: string): string {
+  return eventType.replaceAll(/[._]/g, " ");
+}
+
+/**
+ * Write one filter in plain words. A list field (`list: true`) reads
+ * "authors includes alice"; other fields read "repo is api or web".
+ */
+export function eventMatchFilterText(
+  key: string,
+  field: EventMatchField | undefined,
+  value: EventMatch[string],
+): string {
+  const values = (Array.isArray(value) ? value : [value]).map(String);
+  // A list field holds many values, so it "includes" one. Other fields "are" one.
+  const verb = field?.list ? "includes" : "is";
+  return `${key} ${verb} ${values.join(" or ")}`;
+}
+
+/**
+ * Describe a selection for the dashboard and Slack, so both show the same
+ * words. Pass the resource types of the selection's source, as for
+ * `eventTriggerProblems`. Its problems are the messages of that check.
+ */
+export function describeEventTrigger(
+  resourceTypes: readonly Pick<
+    PluginEventType,
+    "type" | "matchFields" | "supportedEvents"
+  >[],
+  selection: EventTriggerSelection,
+): EventTriggerDescription {
+  const fields =
+    resourceTypes.find((candidate) => candidate.type === selection.resourceType)
+      ?.matchFields ?? {};
+  return {
+    events: selection.events.map(eventTypeText),
+    filters: Object.entries(selection.match ?? {}).map(([key, value]) =>
+      eventMatchFilterText(key, fields[key], value),
+    ),
+    problems: eventTriggerProblems(resourceTypes, selection).map(
+      (problem) => problem.message,
+    ),
+  };
+}
+
+/** Join filters into one line. Every filter must match, so join with "and". */
+export function eventTriggerFiltersText(filters: readonly string[]): string {
+  return filters.join(" and ");
+}
+
+/**
+ * Write a whole trigger as one line, for cards and lists:
+ * "Pull request · pull request opened · filters: isDraft is false".
+ */
+export function eventTriggerText(
+  resource: string,
+  description: Pick<EventTriggerDescription, "events" | "filters">,
+): string {
+  return [
+    resource,
+    description.events.join(", "),
+    ...(description.filters.length > 0
+      ? [`filters: ${eventTriggerFiltersText(description.filters)}`]
+      : []),
+  ].join(" · ");
+}

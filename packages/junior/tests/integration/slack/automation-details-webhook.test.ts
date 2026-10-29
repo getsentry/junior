@@ -389,6 +389,7 @@ describe("Slack Work Object details", () => {
         identifier: "ACME-42",
         label: "Issue",
         events: ["issue.closed"],
+        match: { action: ["closed", "resolved"] },
       },
     });
     expect(await requestDetails("event_public")).toMatchObject({
@@ -413,13 +414,18 @@ describe("Slack Work Object details", () => {
               key: "resource",
               value: "Issue · ACME-42",
             }),
-            expect.objectContaining({ key: "events", value: "issue.closed" }),
+            expect.objectContaining({ key: "events", value: "issue closed" }),
+            expect.objectContaining({
+              key: "filters",
+              value: "action is closed or resolved",
+            }),
             expect.objectContaining({
               key: "destination",
               value: "#project · public",
             }),
             expect.objectContaining({
               key: "warning",
+              // Linear is not enabled here, so the saved trigger has a problem.
               value:
                 "Trigger unavailable. The plugin for this source is not enabled.",
             }),

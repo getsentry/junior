@@ -115,7 +115,7 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
   // Only issue.closed sets closedBy, so the filter hides for issue.opened.
   await expect(page.getByLabel("closedBy", { exact: true })).toBeVisible();
   await page
-    .getByRole("checkbox", { name: "issue · opened", exact: true })
+    .getByRole("checkbox", { name: "issue opened", exact: true })
     .check();
   await expect(page.getByLabel("closedBy", { exact: true })).toHaveCount(0);
   await page.getByLabel("state", { exact: true }).selectOption("closed");

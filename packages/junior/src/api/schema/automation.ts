@@ -1,5 +1,4 @@
 import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
-import { pluginEventTypeSchema } from "@sentry/junior-plugin-api";
 import { scheduledAutomationSchema } from "@/chat/scheduled-automations/types";
 import {
   eventAutomationPrincipalSchema,
@@ -10,7 +9,11 @@ import {
   scheduledAutomationEditSchema,
   eventAutomationEditSchema,
 } from "@/chat/automations/edit-schema";
-import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
+import {
+  pluginEventTypeSchema,
+  taskOutcomeSchema,
+  type EventTriggerDescription,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { actorIdentitySchema } from "./conversation";
 
@@ -66,16 +69,22 @@ export const scheduledAutomationSummarySchema = automationSummaryBaseSchema
   })
   .strict();
 
+/** An Event trigger in plain words, the same in the dashboard and Slack. */
+export const eventTriggerDescriptionSchema = z
+  .object({
+    events: z.array(z.string().min(1)).min(1),
+    filters: z.array(z.string().min(1)),
+    /** Why the trigger cannot work. The trigger is available when empty. */
+    problems: z.array(z.string().min(1)),
+  })
+  .strict() satisfies z.ZodType<EventTriggerDescription>;
+
 export const eventAutomationSummarySchema = automationSummaryBaseSchema
   .extend({
-    events: z.array(z.string().min(1)).min(1),
-    match: eventMatchSchema.optional(),
+    trigger: eventTriggerDescriptionSchema,
     kind: z.literal("event"),
     resource: z.string().min(1),
     source: z.string().min(1),
-    triggerAvailable: z.boolean(),
-    /** Why the trigger is unavailable, in plain words. */
-    triggerProblems: z.array(z.string().min(1)).min(1).optional(),
     statusReason: z.string().optional(),
     status: z.enum(["active", "blocked", "paused"]),
   })
@@ -232,44 +241,60 @@ const automationVersionFields = {
   editedBy: eventAutomationPrincipalSchema.nullable(),
 };
 
+const scheduledAutomationVersionSchema = z
+  .object({
+    ...automationVersionFields,
+    kind: z.literal("scheduled"),
+    definition: scheduledAutomationSchema
+      .pick({
+        credentialMode: true,
+        destination: true,
+        outcomes: true,
+        schedule: true,
+      })
+      .extend(automationDefinitionFields)
+      .strict(),
+  })
+  .strict();
+
+const eventAutomationVersionSchema = z
+  .object({
+    ...automationVersionFields,
+    kind: z.literal("event"),
+    definition: eventAutomationSchema
+      .pick({
+        credentialMode: true,
+        destination: true,
+        outcomes: true,
+        trigger: true,
+      })
+      .extend(automationDefinitionFields)
+      .strict(),
+  })
+  .strict();
+
 /** One saved Automation definition. Newer versions have larger numbers. */
 export const automationVersionSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      ...automationVersionFields,
-      kind: z.literal("scheduled"),
-      definition: scheduledAutomationSchema
-        .pick({
-          credentialMode: true,
-          destination: true,
-          outcomes: true,
-          schedule: true,
-        })
-        .extend(automationDefinitionFields)
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      ...automationVersionFields,
-      kind: z.literal("event"),
-      definition: eventAutomationSchema
-        .pick({
-          credentialMode: true,
-          destination: true,
-          outcomes: true,
-          trigger: true,
-        })
-        .extend(automationDefinitionFields)
-        .strict(),
-    })
+  scheduledAutomationVersionSchema,
+  eventAutomationVersionSchema,
+]);
+
+/**
+ * One version in the version history. An Event version also has its saved
+ * trigger in plain words. The definition stays as saved, so it can be made
+ * active again.
+ */
+export const listedAutomationVersionSchema = z.discriminatedUnion("kind", [
+  scheduledAutomationVersionSchema,
+  eventAutomationVersionSchema
+    .extend({ trigger: eventTriggerDescriptionSchema })
     .strict(),
 ]);
 
 /** Newest versions first. */
 export const automationVersionListSchema = z
   .object({
-    versions: z.array(automationVersionSchema),
+    versions: z.array(listedAutomationVersionSchema),
     /** Newest version that matches the current definition. Null when none match. */
     activeVersion: z.number().int().positive().nullable(),
     truncated: z.boolean(),
@@ -281,6 +306,9 @@ export const automationVersionParamsSchema = automationParamsSchema
   .strict();
 
 export type AutomationVersion = z.output<typeof automationVersionSchema>;
+export type ListedAutomationVersion = z.output<
+  typeof listedAutomationVersionSchema
+>;
 export type AutomationVersionList = z.output<
   typeof automationVersionListSchema
 >;
@@ -345,7 +373,6 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
     .extend({
       kind: z.literal("event"),
       trigger: eventAutomationTriggerSchema,
-      triggerAvailable: z.boolean(),
       status: z.enum(["active", "blocked", "paused"]),
     })
     .strict(),

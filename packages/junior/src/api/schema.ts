@@ -233,8 +233,8 @@ export type {
   AutomationRunList,
   AutomationRunWindows,
   AutomationSummary,
-  AutomationVersion,
   AutomationVersionList,
+  ListedAutomationVersion,
 } from "./schema/automation";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
