@@ -34,7 +34,7 @@ services:
       ROOT_ACCESS_KEY: junior
       ROOT_SECRET_KEY: junior-secret
       VGW_BACKEND: posix
-      VGW_BACKEND_ARG: /tmp
+      VGW_BACKEND_ARG: /data
       VGW_HEALTH: /health
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:7070/health"]
@@ -43,7 +43,10 @@ services:
       retries: 12
     ports:
       - "7072:7070"
+    volumes:
+      - junior-s3:/data
 
 volumes:
   junior-postgres:
   junior-redis:
+  junior-s3:
