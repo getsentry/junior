@@ -114,7 +114,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(
     details.getByRole("heading", { name: "Closed issue summary", exact: true }),
   ).toBeVisible();
-  await details.getByText("More details", { exact: true }).click();
+  await details.getByText("About this Automation", { exact: true }).click();
   await automationDetailsTrigger.click();
   await expect(
     details.locator("details").filter({ hasText: "Connected accounts" }),
@@ -124,10 +124,32 @@ test("opens scheduled and event automations in the native Automations view", asy
     view: "desktop",
     lightTheme: true,
   });
-  await expect(details.getByText("What to do")).toBeVisible();
+  await expect(
+    details.getByRole("heading", { name: "Instructions", exact: true }),
+  ).toBeVisible();
   await expect(
     details.getByText("Send the weekly project summary"),
   ).toBeVisible();
+  const recentRuns = details.getByRole("region", {
+    name: "Recent runs",
+    exact: true,
+  });
+  await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
+  await expect(
+    recentRuns.getByRole("link", { name: /^Open completed run/ }),
+  ).toHaveAttribute("href", "/conversations/scheduler%3Adaily-ops-digest");
+  await expect(
+    recentRuns.getByText("42s · $0.42", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    details.getByText("Connected accounts", { exact: true }),
+  ).toBeHidden();
+  await details
+    .locator("summary")
+    .filter({ hasText: /^Next run/ })
+    .click();
+  await expect(details.getByText("Your time", { exact: true })).toBeVisible();
+  await details.getByText("About this Automation", { exact: true }).click();
   await expect(details.getByRole("link", { name: "you" })).toHaveAttribute(
     "href",
     "/people/dev%40example.com",
@@ -144,6 +166,17 @@ test("opens scheduled and event automations in the native Automations view", asy
     name: "Automation details",
     exact: true,
   });
+  await expect(sheet).toBeVisible();
+  await sheet
+    .getByRole("button", { name: "About pausing", exact: true })
+    .click();
+  const pausePopover = page.getByRole("dialog", {
+    name: "About pausing",
+    exact: true,
+  });
+  await expect(pausePopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(pausePopover).toBeHidden();
   await expect(sheet).toBeVisible();
   const closeSheet = sheet.getByRole("button", { name: "Close", exact: true });
   await closeSheet.focus();
@@ -213,6 +246,9 @@ test("opens scheduled and event automations in the native Automations view", asy
     name: "Automation details",
   });
   await expect(publicDetails).toBeVisible();
+  await publicDetails
+    .getByText("About this Automation", { exact: true })
+    .click();
   const creatorLink = publicDetails.getByRole("link", { name: "Avery Chen" });
   await expect(creatorLink).toHaveAttribute(
     "href",
@@ -287,6 +323,15 @@ test("opens scheduled and event automations in the native Automations view", asy
     }
     return route.fallback();
   });
+  let failRuns = true;
+  await page.route("**/api/automations/scheduled-1/executions", (route) => {
+    if (!failRuns) return route.fallback();
+    failRuns = false;
+    return route.fulfill({
+      status: 503,
+      json: { error: "History unavailable" },
+    });
+  });
   await page.goto(listUrl.replace("/list?", "/scheduled-1?"));
   await expect(details.getByRole("status")).toHaveText(
     "Loading automation details",
@@ -302,6 +347,13 @@ test("opens scheduled and event automations in the native Automations view", asy
       exact: true,
     }),
   ).toBeVisible();
+  await expect(recentRuns.getByRole("alert")).toContainText(
+    "Recent runs could not be loaded.",
+  );
+  await recentRuns
+    .getByRole("button", { name: "Try again", exact: true })
+    .click();
+  await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
   await page.getByRole("button", { name: "Close automation details" }).click();
   await expect(page).toHaveURL(listUrl);
   await expect(
@@ -499,16 +551,22 @@ test("pauses and resumes from details, keeps failures visible, and limits action
   await expect(
     page
       .getByRole("complementary", { name: "Automation details" })
-      .getByRole("status"),
+      .getByRole("status", { name: "Automation state" }),
   ).toHaveText("paused");
+  await expect(
+    page.getByText("No new runs while paused", { exact: true }),
+  ).toBeVisible();
   await screenshot(page, "automation-paused");
-  const pauseHelp = page.getByText("About pausing", { exact: true });
+  const pauseHelp = page.getByRole("button", {
+    name: "About pausing",
+    exact: true,
+  });
   await pauseHelp.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Pausing stops new runs/)).toBeVisible();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
   await expect(page.getByText(/Pausing stops new runs/)).not.toBeVisible();
-  const moreDetails = page.getByText("More details", { exact: true });
+  const moreDetails = page.getByText("About this Automation", { exact: true });
   await moreDetails.click();
   await expect(
     page.getByText("Connected accounts", { exact: true }),
@@ -519,10 +577,20 @@ test("pauses and resumes from details, keeps failures visible, and limits action
     page.getByRole("button", { name: "Pause", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "View run history" }),
+    page.getByRole("link", { name: "Open last run", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close automation details" }).click();
   await expect(page).toHaveURL(/list\?scope=attention/);
+  await page.route("**/api/automations/event-2/executions", (route) =>
+    route.fulfill({
+      json: {
+        automation: report.automations.find((item) => item.id === "event-2"),
+        executions: [],
+        executionDays: [],
+        truncated: false,
+      },
+    }),
+  );
   await page
     .getByRole("button", {
       name: "View automation details: Incident change alerts",
@@ -533,7 +601,11 @@ test("pauses and resumes from details, keeps failures visible, and limits action
   ).toHaveCount(0);
   await expect(
     page.getByText(
-      "This event source is unavailable. Enable its plugin or choose another event.",
+      "No runs yet. Results will appear here after the first run.",
+      { exact: true },
     ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Enable its plugin or choose another event."),
   ).toBeVisible();
 });

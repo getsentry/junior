@@ -47,3 +47,23 @@ The existing Automation browser journeys cover selection, loading and retry,
 focus, mobile dismissal, deletion, and lifecycle actions. Use mock reporting to
 review scheduled and event Automations in both themes at desktop and mobile
 widths. Keep layout and scrollbar checks in manual QA.
+
+Details lead with lifecycle, the next trigger, and the last execution result.
+Trigger, Instructions, and Outcome follow in that order. `AutomationStatus`
+keeps a failed execution distinct from whether future runs remain enabled. It
+shows block reasons and links to the last Conversation when attention is needed.
+Scheduled times can expand to show both the schedule timezone and browser time.
+Paused, blocked, completed, and unavailable Automations explain why there is no
+next run instead of showing "None".
+
+`AutomationRecentRuns` uses the existing execution-history query and cache. It
+shows up to three newest terminal runs, links to their Conversations when one
+was recorded, and displays recorded runtime and estimated cost. Its loading,
+empty, and retry states do not replace Automation settings. It does not infer
+queued or running work from terminal records.
+
+`AutomationLifecycle` owns revision-checked actions in a fixed footer. Base UI
+Popover provides pause help beside those controls on desktop and mobile. The
+scroll region above it owns the summary and settings. Creator, creation date,
+connected accounts, run counts, and version history stay under About this
+Automation. Selection changes remount the content and actions together.

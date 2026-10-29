@@ -246,6 +246,7 @@ test("makes an earlier version active from version history", async ({
     },
   );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
+  await page.getByText("About this Automation", { exact: true }).click();
   await page.getByRole("link", { name: "Version history" }).click();
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);
   await expect(page.getByText("Changed instruction")).toBeVisible();
