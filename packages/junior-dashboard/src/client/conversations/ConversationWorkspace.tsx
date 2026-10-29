@@ -5,8 +5,8 @@ import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
-import { ToggleButton } from "../components/ToggleButton";
 import { SearchInput } from "../components/SearchInput";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { ConversationComposer } from "./ConversationComposer";
@@ -171,7 +171,6 @@ function NewConversationView(props: {
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
-  const isPublic = visibility === "public";
 
   return (
     <section
@@ -185,32 +184,23 @@ function NewConversationView(props: {
         draftId="new"
         error={props.error}
         footerStart={
-          <div
+          <ToggleGroup
             aria-label="Conversation visibility"
-            className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
-            role="group"
+            className="inline-flex shrink-0 gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
+            onValueChange={([next]) => {
+              if (next) setVisibility(next);
+            }}
+            value={[visibility]}
           >
-            <ToggleButton
-              className="min-w-20 gap-1.5"
-              onClick={() => setVisibility("public")}
-              pressed={isPublic}
-              type="button"
-              variant="segment"
-            >
+            <ToggleGroupItem className="min-w-20 gap-1.5" value="public">
               <Globe2 aria-hidden="true" className="size-3" />
               Public
-            </ToggleButton>
-            <ToggleButton
-              className="min-w-20 gap-1.5"
-              onClick={() => setVisibility("private")}
-              pressed={!isPublic}
-              type="button"
-              variant="segment"
-            >
+            </ToggleGroupItem>
+            <ToggleGroupItem className="min-w-20 gap-1.5" value="private">
               <LockKeyhole aria-hidden="true" className="size-3" />
               Private
-            </ToggleButton>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
         }
         label="Start a conversation"
         restoreDraftOnError
