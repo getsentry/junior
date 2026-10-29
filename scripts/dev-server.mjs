@@ -286,9 +286,11 @@ syncInjectedPackageDist("@sentry/junior-dashboard", dashboardPackageDir, {
 });
 clearExampleVercelOutput();
 
-spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
-  cwd: juniorPackageDir,
-});
+spawnChild(
+  "pnpm",
+  ["exec", "tsdown", "--watch", "--logLevel", "error", "--no-clean"],
+  { cwd: juniorPackageDir },
+);
 spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
   cwd: dashboardPackageDir,
 });
