@@ -1,11 +1,12 @@
 export const CLI_USAGE =
-  "usage: junior init <dir>\n       junior admin list|grant <email>|revoke <email>\n       junior service-account connect|status|disconnect <plugin>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat\n       junior chat -p <message>\n       junior briefs pull <conversationId...> --base-url <url> [--token <token>] --out <dir>\n       junior briefs run <snapshot...> [--model <id>] [--prompt <file>] [--turn-by-turn] [--out <dir>]";
+  "usage: junior init <dir>\n       junior admin list|grant <email>|revoke <email>\n       junior service-account connect|status|disconnect <plugin>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat\n       junior chat -p <message>\n       junior briefs pull <conversationId...> --base-url <url> [--token <token>] --out <dir>\n       junior briefs run <snapshot...> [--model <id>] [--prompt <file>] [--turn-by-turn] [--out <dir>]\n       junior conversations list --base-url <url> [--token <token>]";
 
 interface CliHandlers {
   runAdmin: (argv: string[]) => Promise<number>;
   runBriefs: (argv: string[]) => Promise<number>;
   runServiceAccount: (argv: string[]) => Promise<number>;
   runChat: (argv: string[]) => Promise<number>;
+  runConversations: (argv: string[]) => Promise<number>;
   runInit: (dir: string) => Promise<void>;
   runSnapshotCreate: () => Promise<void>;
   runCheck: (dir?: string) => Promise<void>;
@@ -23,6 +24,19 @@ interface CliIo {
 const DEFAULT_IO: CliIo = {
   error: console.error,
 };
+
+/** Read the value after a command option, or throw when it is missing. */
+export function optionValue(
+  argv: string[],
+  index: number,
+  option: string,
+): string {
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${option} requires a value`);
+  }
+  return value;
+}
 
 /** Strip Node's leading argv separator while preserving command-level flags. */
 function normalizeCliArgv(argv: string[]): string[] {
@@ -57,6 +71,12 @@ export async function runCli(
 
   if (command === "briefs") {
     return await handlers.runBriefs(
+      subcommand === undefined ? [] : [subcommand, ...rest],
+    );
+  }
+
+  if (command === "conversations") {
+    return await handlers.runConversations(
       subcommand === undefined ? [] : [subcommand, ...rest],
     );
   }
