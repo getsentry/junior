@@ -1,5 +1,5 @@
 {
-  "id": "38b4a923-9d53-4a1a-b09b-de7d3f32f4a1",
+  "id": "6b12b332-4224-4e69-9ab7-51df6a4dd91c",
   "prevId": "da9cceed-a211-4f1b-a5b8-ac4237b9caf5",
   "version": "7",
   "dialect": "postgresql",
@@ -193,13 +193,7 @@
           "name": "number",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
-        },
-        "head_branch": {
-          "name": "head_branch",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "identity_id": {
           "name": "identity_id",
@@ -220,66 +214,18 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "junior_github_pull_request_requesters_number_uidx": {
-          "name": "junior_github_pull_request_requesters_number_uidx",
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "junior_github_pull_request_requesters_repository_full_name_number_identity_id_pk": {
+          "name": "junior_github_pull_request_requesters_repository_full_name_number_identity_id_pk",
           "columns": [
-            {
-              "expression": "repository_full_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_github_pull_request_requesters\".\"number\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_github_pull_request_requesters_pending_uidx": {
-          "name": "junior_github_pull_request_requesters_pending_uidx",
-          "columns": [
-            {
-              "expression": "repository_full_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "head_branch",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_github_pull_request_requesters\".\"number\" IS NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
+            "repository_full_name",
+            "number",
+            "identity_id"
+          ]
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

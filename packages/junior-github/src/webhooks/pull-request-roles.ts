@@ -16,19 +16,6 @@ const REQUESTER_USERNAME_MATCH_KEY = "requesterUsername";
 const REQUESTER_ROLE_MATCH_KEY = "requesterRole";
 
 const webhookSchema = z.object({
-  pull_request: z
-    .object({
-      head: z
-        .object({
-          repo: z
-            .object({ full_name: z.string().optional() })
-            .nullable()
-            .optional(),
-        })
-        .nullable()
-        .optional(),
-    })
-    .optional(),
   repository: z.object({ full_name: z.string().min(1) }),
 });
 
@@ -47,16 +34,16 @@ function identifierNumber(identifier: string): number | undefined {
 /**
  * Find the person who asked for each pull request in a delivery. On a pull
  * request that Junior's bot opened, this is the person who asked Junior to
- * open it, from the saved requester rows. Otherwise, and when that person has
- * no linked GitHub login, it is the author.
+ * open it, from the saved requester rows. When that person has no linked
+ * GitHub login, it is the author. A bot pull request with no saved row has
+ * no requester: the `opened` webhook can arrive before the create tool saves
+ * the row. Other pull requests use the author.
  */
 async function pullRequestRequesters(args: {
   botEmail: string | undefined;
   db: GitHubDb;
   deliveryId: string;
   events: EventInput[];
-  /** Whether the pull request head is in the base repository, not a fork. */
-  headInRepository: boolean;
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
   log?: Pick<PluginLogger, "error">;
   repositoryFullName: string;
@@ -68,27 +55,15 @@ async function pullRequestRequesters(args: {
     const number = identifierNumber(event.identifier);
     if (number !== undefined) numberByEventKey.set(event.eventKey, number);
   }
-  const botPullRequests = args.events.flatMap((event) => {
+  const botNumber = (event: EventInput) => {
     const number = numberByEventKey.get(event.eventKey);
-    const headBranch = event.data?.headBranch;
-    // Only `opened` can arrive before the create tool saves its row. The
-    // create tool saves pending rows only for heads in the repository.
-    const pendingHeadBranch =
-      event.eventType === "pull_request.opened" &&
-      args.headInRepository &&
-      typeof headBranch === "string"
-        ? headBranch
-        : undefined;
-    if (
-      number === undefined ||
-      !isBotLogin(event.data!.authorUsername as string, args.botEmail)
-    ) {
-      return [];
-    }
-    return [{ number, pendingHeadBranch }];
-  });
+    return number !== undefined &&
+      isBotLogin(event.data!.authorUsername as string, args.botEmail)
+      ? number
+      : undefined;
+  };
   const openers = await listGitHubPullRequestOpeners(args.db, {
-    pullRequests: botPullRequests,
+    numbers: args.events.flatMap((event) => botNumber(event) ?? []),
     repositoryFullName: args.repositoryFullName,
   });
   // The opener's GitHub login comes from their user's linked identities now,
@@ -109,16 +84,14 @@ async function pullRequestRequesters(args: {
   }
   return new Map(
     args.events.map((event) => {
-      const number = numberByEventKey.get(event.eventKey);
       const author = event.data!.authorUsername as string;
-      const identityId =
-        number !== undefined && isBotLogin(author, args.botEmail)
-          ? openers.get(number)
-          : undefined;
-      // A failed lookup leaves the requester out, so filters on it do not
-      // match.
-      if (identityId && failed.has(identityId)) return [event, undefined];
-      return [event, (identityId && logins.get(identityId)) || author];
+      const number = botNumber(event);
+      if (number === undefined) return [event, author];
+      const identityId = openers.get(number);
+      // A missing row or a failed lookup leaves the requester out, so
+      // filters on it do not match.
+      if (!identityId || failed.has(identityId)) return [event, undefined];
+      return [event, logins.get(identityId) || author];
     }),
   );
 }
@@ -174,9 +147,6 @@ export async function withGitHubPullRequestRoles(args: {
           ? { loadGitHubLogin: args.loadGitHubLogin }
           : undefined),
         ...(args.log ? { log: args.log } : undefined),
-        headInRepository:
-          parsed.data.pull_request?.head?.repo?.full_name?.toLowerCase() ===
-          repositoryFullName.toLowerCase(),
         repositoryFullName,
       })
     : new Map<EventInput, string | undefined>();

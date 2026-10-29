@@ -6,7 +6,6 @@ import {
   primaryKey,
   text,
   timestamp,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -132,35 +131,24 @@ export const juniorGitHubPullRequestIssues = pgTable(
  * the pull request to the Junior identity that acted. The user and any linked
  * GitHub account come from that identity in core when a webhook needs them,
  * so they stay correct when the person links an account later. The first row
- * for a number is the person who asked Junior to open it.
- *
- * The create tool writes a pending row with no `number` before GitHub opens
- * the pull request, so the `opened` webhook can read it. GitHub has not given
- * a number yet, so the pending row names the head branch. After GitHub opens
- * the pull request, the tool replaces it with a row that has the number and
- * no head branch. A failed create removes the pending row.
+ * for a number is the person who asked Junior to open it. The create tool
+ * saves that row after GitHub opens the pull request.
  */
 export const juniorGitHubPullRequestRequesters = pgTable(
   "junior_github_pull_request_requesters",
   {
     /** Lowercase `owner/name`. */
     repositoryFullName: text("repository_full_name").notNull(),
-    /** Null only while the create call waits for GitHub. */
-    number: integer("number"),
-    /** Set only on pending rows, which are found by it. */
-    headBranch: text("head_branch"),
+    number: integer("number").notNull(),
     /** Core `junior_identities.id` of the person who acted. */
     identityId: text("identity_id").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => [
-    uniqueIndex("junior_github_pull_request_requesters_number_uidx")
-      .on(table.repositoryFullName, table.number, table.identityId)
-      .where(sql`${table.number} IS NOT NULL`),
-    uniqueIndex("junior_github_pull_request_requesters_pending_uidx")
-      .on(table.repositoryFullName, table.headBranch, table.identityId)
-      .where(sql`${table.number} IS NULL`),
+    primaryKey({
+      columns: [table.repositoryFullName, table.number, table.identityId],
+    }),
   ],
 );
 

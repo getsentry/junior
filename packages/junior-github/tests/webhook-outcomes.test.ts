@@ -2667,10 +2667,12 @@ describe("GitHub-owned pull request outcomes", () => {
           .select()
           .from(juniorGitHubPullRequestRequesters)
           .orderBy(juniorGitHubPullRequestRequesters.createdAt)
-      ).map((row) => [row.number, row.headBranch, row.identityId]);
+      ).map((row) => [row.number, row.identityId]);
 
     try {
-      // GitHub can deliver `opened` before the create call returns.
+      // GitHub can deliver `opened` before the create call returns. The
+      // opener is not saved yet, so the event has no requester and filters
+      // on it do not match.
       createResponse = () => {
         const response = Response.json(
           {
@@ -2685,6 +2687,11 @@ describe("GitHub-owned pull request outcomes", () => {
         toolCallId: "call-create",
       });
       expect(requesterFields()).toEqual([
+        [undefined, undefined],
+        [undefined, undefined],
+      ]);
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
         ["dcramer", "admin"],
         ["dcramer", "admin"],
       ]);
@@ -2696,76 +2703,24 @@ describe("GitHub-owned pull request outcomes", () => {
         toolCallId: "call-create",
       });
       expect(await savedRequesters()).toEqual([
-        [946, null, "slack-identity-dcramer"],
+        [946, "slack-identity-dcramer"],
       ]);
 
-      // Two create calls on one branch at once are ambiguous, so `opened`
-      // gives no opener until the create tool saves the one GitHub opened.
-      const concurrent = pullRequestPayload();
-      Object.assign(concurrent.pull_request, {
-        head: {
-          ref: "fix/concurrent",
-          repo: { full_name: "getsentry/junior" },
-        },
-        id: 1003,
-        number: 948,
-      });
-      const concurrentInput = { ...createInput, head: "fix/concurrent" };
-      createResponse = () => {
-        person = "octocat";
-        createResponse = () =>
-          route!
-            .handler(signedRequest(concurrent))
-            .then(() =>
-              Response.json(
-                { message: "A pull request already exists" },
-                { status: 422 },
-              ),
-            );
-        return expect(
-          tools.createPullRequest!.execute!(concurrentInput, {
-            toolCallId: "call-concurrent-rejected",
-          }),
-        )
-          .rejects.toThrow("HTTP 422")
-          .then(() =>
-            Response.json(
-              {
-                html_url: "https://github.com/getsentry/junior/pull/948",
-                number: 948,
-              },
-              { status: 201 },
-            ),
-          );
-      };
-      await tools.createPullRequest!.execute!(concurrentInput, {
-        toolCallId: "call-concurrent",
-      });
-      expect(requesterFields()).toEqual([
-        ["sentry-junior[bot]", "none"],
-        ["sentry-junior[bot]", "none"],
-      ]);
-      await route!.handler(signedRequest(concurrent));
-      expect(requesterFields()).toEqual([
-        ["dcramer", "admin"],
-        ["dcramer", "admin"],
-      ]);
-
-      // A create that GitHub rejects cannot change the requesters of an
-      // open pull request on the branch.
+      // A create that GitHub rejects saves no requester.
       person = "octocat";
       createResponse = () =>
         Response.json(
           { message: "A pull request already exists" },
-          {
-            status: 422,
-          },
+          { status: 422 },
         );
       await expect(
         tools.createPullRequest!.execute!(createInput, {
           toolCallId: "call-rejected",
         }),
       ).rejects.toThrow("HTTP 422");
+      expect(await savedRequesters()).toEqual([
+        [946, "slack-identity-dcramer"],
+      ]);
 
       // An update adds a requester. The opener does not change.
       await tools.updatePullRequest!.execute!(
@@ -2778,9 +2733,8 @@ describe("GitHub-owned pull request outcomes", () => {
         ["dcramer", "admin"],
       ]);
       expect(await savedRequesters()).toEqual([
-        [946, null, "slack-identity-dcramer"],
-        [948, null, "slack-identity-dcramer"],
-        [946, null, "slack-identity-octocat"],
+        [946, "slack-identity-dcramer"],
+        [946, "slack-identity-octocat"],
       ]);
 
       // An opener with no linked GitHub account falls back to the bot.
@@ -2825,8 +2779,6 @@ describe("GitHub-owned pull request outcomes", () => {
         ["octocat", "none"],
       ]);
       expect(roleLogins).toEqual([
-        "dcramer",
-        "sentry-junior[bot]",
         "dcramer",
         "dcramer",
         "sentry-junior[bot]",

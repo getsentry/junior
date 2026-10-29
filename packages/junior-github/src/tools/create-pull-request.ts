@@ -31,11 +31,7 @@ import {
   type GitHubRequester,
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
-import {
-  attachGitHubPullRequestRequester,
-  recordPendingGitHubPullRequestRequester,
-  removePendingGitHubPullRequestRequester,
-} from "../pull-request-requesters/store.js";
+import { recordGitHubPullRequestOpener } from "../pull-request-requesters/store.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -350,26 +346,23 @@ async function createGitHubPullRequest(
 }
 
 /**
- * The repository and head branch that a create call names. A head in another
- * repository (`owner:branch` for a fork) has no `headBranch`, because the
- * webhook sends only the branch name and the pending row cannot tell the two
- * apart.
+ * Save the opener of a pull request GitHub opened. A create with no Junior
+ * identity has no opener.
  */
-function requesterBranch(input: CreateGitHubPullRequestInput): {
-  headBranch?: string;
-  repositoryFullName: string;
-} {
+async function recordOpener(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+  state: { createdAtMs: number; number: number },
+  identityId: string | undefined,
+): Promise<void> {
+  if (!identityId) return;
   const repo = parseRepo(input.repo);
-  const repositoryFullName = `${repo.owner}/${repo.name}`;
-  const head = nonEmptyString(input.head, "head");
-  const separator = head.indexOf(":");
-  if (
-    separator !== -1 &&
-    head.slice(0, separator).toLowerCase() !== repo.owner.toLowerCase()
-  ) {
-    return { repositoryFullName };
-  }
-  return { headBranch: head.slice(separator + 1), repositoryFullName };
+  await recordGitHubPullRequestOpener(ctx.db as GitHubDb, {
+    createdAt: new Date(state.createdAtMs),
+    identityId,
+    number: state.number,
+    repositoryFullName: `${repo.owner}/${repo.name}`,
+  });
 }
 
 /** Assignment is optional: provider failures must not fail PR creation. */
@@ -539,12 +532,12 @@ export function createGitHubPullRequestTool(
             const completedInput = state.input ?? parsedInput;
             // The call can stop after it saves this state but before it saves
             // the opener, so a retry saves the opener again.
-            await attachGitHubPullRequestRequester(ctx.db as GitHubDb, {
-              ...requesterBranch(completedInput),
-              createdAt: new Date(state.createdAtMs),
-              identityId: (await resolveGitHubRequester(ctx))?.identity?.id,
-              number: state.number,
-            });
+            await recordOpener(
+              ctx,
+              completedInput,
+              state,
+              (await resolveGitHubRequester(ctx))?.identity?.id,
+            );
             const completedResult = {
               facts:
                 state.facts === undefined
@@ -576,17 +569,6 @@ export function createGitHubPullRequestTool(
             requester,
             ctx.slack?.conversationLink?.url,
           );
-          // GitHub can deliver `opened` before the create call returns, so
-          // the requester must be saved first.
-          const { headBranch, repositoryFullName } =
-            requesterBranch(parsedInput);
-          if (identityId && headBranch) {
-            await recordPendingGitHubPullRequestRequester(ctx.db as GitHubDb, {
-              headBranch,
-              identityId,
-              repositoryFullName,
-            });
-          }
           const pendingState: CreatePullRequestState = {
             status: "pending",
             createdAtMs: Date.now(),
@@ -606,18 +588,6 @@ export function createGitHubPullRequestTool(
               isDefinitiveGitHubPullRequestCreateRejection(error)
             ) {
               await ctx.state.delete(key);
-              // GitHub did not open a pull request, so this call's pending
-              // requester must not remain for the branch.
-              if (identityId && headBranch) {
-                await removePendingGitHubPullRequestRequester(
-                  ctx.db as GitHubDb,
-                  {
-                    headBranch,
-                    identityId,
-                    repositoryFullName,
-                  },
-                );
-              }
             }
             throw error;
           }
@@ -641,13 +611,7 @@ export function createGitHubPullRequestTool(
               { cause: error },
             );
           }
-          await attachGitHubPullRequestRequester(ctx.db as GitHubDb, {
-            createdAt: new Date(completedState.createdAtMs),
-            headBranch,
-            identityId,
-            number: result.number,
-            repositoryFullName,
-          });
+          await recordOpener(ctx, parsedInput, completedState, identityId);
           await assignPullRequestRequester(ctx, parsedInput, result, requester);
           return await gitHubPullRequestStructuredResult(
             ctx,
