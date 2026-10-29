@@ -1,13 +1,14 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { FormEvent } from "react";
+import { Link } from "react-router";
 
-import { Button } from "../../components/ui/button";
+import { Button, buttonVariants } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
-import { formatSandboxSize } from "./SandboxSizeSummary";
+import { formatSandboxSize } from "./sandboxSize";
 import {
   createRepoDraft,
   type RepoDraft,
@@ -17,6 +18,7 @@ import {
 type WorkspaceEditorProps = {
   busy: boolean;
   canSave: boolean;
+  cancelPath: string;
   defaultVcpus: number | null;
   draft: WorkspaceDraft;
   error?: string;
@@ -52,18 +54,6 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   return (
     <Card className="mb-0" padding="md" variant="section">
       <form className="grid gap-6" onSubmit={submit}>
-        {props.editing ? (
-          <div className="grid gap-1">
-            <h2 className="m-0 text-base font-semibold text-dashboard-text">
-              Configuration
-            </h2>
-            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-              Change the recipe Junior uses the next time this Workspace is
-              prepared.
-            </p>
-          </div>
-        ) : null}
-
         <Field>
           <FieldLabel htmlFor="workspace-name">Name</FieldLabel>
           <Input
@@ -227,13 +217,16 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
         {props.error ? <InlineError>{props.error}</InlineError> : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-dashboard-border-subtle pt-5">
-          <Button disabled={!props.canSave} type="submit">
+          <Button disabled={!props.canSave} type="submit" variant="primary">
             {props.busy
               ? "Saving…"
               : props.editing
                 ? "Save changes"
                 : "Create Workspace"}
           </Button>
+          <Link className={buttonVariants()} to={props.cancelPath}>
+            Cancel
+          </Link>
           <p className="m-0 text-xs text-dashboard-text-muted">
             {props.editing
               ? "Saved changes apply the next time this Workspace is prepared."

@@ -492,6 +492,21 @@ export function DashboardShell() {
           <Route
             element={
               loading ? (
+                <SystemRouteLoading
+                  description="Repository recipes Junior can switch into."
+                  label="Loading Workspaces"
+                  title="Workspaces"
+                  variant="list"
+                />
+              ) : (
+                <WorkspacesPage />
+              )
+            }
+            path="/system/workspaces/:workspaceId"
+          />
+          <Route
+            element={
+              loading ? (
                 <SystemPageLayout>
                   <LoadingView label="Loading Workspace" />
                 </SystemPageLayout>
@@ -499,7 +514,7 @@ export function DashboardShell() {
                 <WorkspaceFormPage />
               )
             }
-            path="/system/workspaces/:workspaceId"
+            path="/system/workspaces/:workspaceId/edit"
           />
           <Route
             element={

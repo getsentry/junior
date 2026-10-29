@@ -18,7 +18,7 @@ import {
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
-import { buildConversations } from "../../format";
+import { buildConversations, workspacePath } from "../../format";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { CodeSummaryCards } from "./CodeSummaryCards";
@@ -157,10 +157,7 @@ function RepositoryDescription(props: { data: CodeRepositoryReport }) {
       {workspaces.map((workspace, index) => (
         <span key={workspace.id}>
           {index > 0 ? ", " : null}
-          <Link
-            className={inlineLinkClass}
-            to={`/system/workspaces/${encodeURIComponent(workspace.id)}`}
-          >
+          <Link className={inlineLinkClass} to={workspacePath(workspace.id)}>
             {workspace.name}
           </Link>
         </span>

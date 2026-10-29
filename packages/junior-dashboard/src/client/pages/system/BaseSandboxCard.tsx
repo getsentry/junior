@@ -3,7 +3,7 @@ import type { BaselineSnapshotReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
 import { formatMs, formatRelativeTime, formatTime } from "../../format";
-import { formatSandboxSize } from "./SandboxSizeSummary";
+import { formatSandboxSize } from "./sandboxSize";
 
 /**
  * Show the base Sandbox: the default size and the baseline snapshot.
