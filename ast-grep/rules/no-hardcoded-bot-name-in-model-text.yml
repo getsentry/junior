@@ -1,0 +1,29 @@
+id: no-hardcoded-bot-name-in-model-text
+language: TypeScript
+severity: error
+message: Do not write "Junior" in a description that the model reads. Each install configures the bot name. Use "you", "the runtime", or the configured name (botConfig.userName).
+note: This rule checks tool, schema, and event descriptions. Pages and sign-in labels that people read are ignored.
+files:
+  - packages/*/src/**/*.ts
+ignores:
+  - packages/junior/src/api/acp/**
+  - packages/junior-google/src/setup-routes.ts
+  - packages/junior-memory/src/user-pages.ts
+  - packages/junior-testing/**
+rule:
+  kind: string_fragment
+  regex: '\bJunior\b'
+  inside:
+    stopBy: end
+    any:
+      - kind: pair
+        has:
+          field: key
+          regex: "^(description|instructions)$"
+      - kind: call_expression
+        has:
+          field: function
+          kind: member_expression
+          has:
+            field: property
+            regex: "^describe$"
