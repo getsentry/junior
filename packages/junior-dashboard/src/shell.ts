@@ -286,6 +286,9 @@ export function renderDashboard(basePath: string, agentName: string): Response {
           "</pre></section></main>";
       };
       window.addEventListener("error", function (event) {
+        // Browsers report a ResizeObserver loop as an error event with no
+        // error object. Layout continues, so it must not replace the page.
+        if (!event.error && /^ResizeObserver loop/.test(event.message)) return;
         window.__JUNIOR_DASHBOARD_SHOW_ERROR__(event.error || event.message);
       });
       window.addEventListener("unhandledrejection", function (event) {

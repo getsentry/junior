@@ -99,6 +99,8 @@ describe("Thread Continuity", () => {
   Conversation again after 15 seconds. The fixture starts a delayed delivery
   at once when nothing else runs. The 60 seconds start when the last delivery
   is due.
+- A failed call keeps its partial transcript and original error in the eval
+  report. This includes calls that exceed the idle limit.
 - A channel `slackMention()` arrives as Slack sends it: an `app_mention` event
   without a channel type, then a `message` event with the same `ts` and the
   channel type. Slack does not fix the order, and Junior stores the first

@@ -14,8 +14,7 @@ describe("renderTaskInput", () => {
 
       Instructions: Post a digest. Summarize the latest state.
 
-      When you reply, follow any reply format in the instructions.
-      Briefly report what you did or what is needed next."
+      When you reply, follow any reply format in the instructions."
     `);
   });
 
@@ -55,8 +54,7 @@ describe("renderTaskInput", () => {
       Failed checks:
       - test
 
-      When you reply, follow any reply format in the instructions.
-      Briefly report what you did or what is needed next."
+      When you reply, follow any reply format in the instructions."
     `);
   });
 
@@ -87,7 +85,6 @@ describe("renderTaskInput", () => {
         "abc",
         "",
         "When you reply, follow any reply format in the instructions.",
-        "Briefly report what you did or what is needed next.",
       ].join("\n"),
     );
   });
@@ -168,8 +165,7 @@ describe("renderTaskBatchInput", () => {
 
       Event 4: deployment.failed
 
-      When you reply, follow any reply format in the instructions.
-      Briefly report what you did or what is needed next."
+      When you reply, follow any reply format in the instructions."
     `);
   });
 });

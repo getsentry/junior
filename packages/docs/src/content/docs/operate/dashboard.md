@@ -89,6 +89,8 @@ The dashboard package owns these routes:
 | `/system/locations`             | Public location activity directory.               |
 | `/system/locations/:location`   | Public location activity detail.                  |
 | `/system/workspaces`            | Install-wide repository Workspace recipes.        |
+| `/system/workspaces/:id`        | Workspace list with one Workspace's details.      |
+| `/system/workspaces/:id/edit`   | Full-page Workspace editor.                       |
 | `/system/plugins`               | Loaded plugin and skill inventory.                |
 | `/system/plugins/:plugin`       | Plugin details and operational reports.           |
 | `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.           |

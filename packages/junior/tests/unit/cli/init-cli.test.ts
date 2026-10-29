@@ -133,10 +133,7 @@ describe("init cli", () => {
       "utf8",
     );
     expect(nitroConfig).toContain(
-      'import { juniorNitro } from "@sentry/junior/nitro";',
-    );
-    expect(nitroConfig).toContain(
-      'import { withSentryConfig } from "@sentry/nitro";',
+      'import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";',
     );
     expect(nitroConfig).toContain('preset: "vercel"');
     expect(nitroConfig).toContain("juniorNitro({");
@@ -171,7 +168,7 @@ describe("init cli", () => {
     expect(pkg.dependencies["@sentry/junior"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-memory"]).toBe("latest");
     expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
-    expect(pkg.dependencies["@sentry/nitro"]).toBe("10.65.0");
+    expect(pkg.dependencies["@sentry/nitro"]).toBeUndefined();
     expect(pkg.devDependencies.nitro).toBeDefined();
     expect(pkg.devDependencies.vite).toBeUndefined();
     expect(pkg.devDependencies.vercel).toBeUndefined();

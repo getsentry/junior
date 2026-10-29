@@ -309,6 +309,33 @@ test("opens scheduled and event automations in the native Automations view", asy
   await creatorLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
+});
+
+test("restores shared Automation list and details URLs, recovers failed loads, and deletes the selected Automation", async ({
+  page,
+  dashboard,
+}) => {
+  const details = page.getByRole("complementary", {
+    name: "Automation details",
+  });
+  const recentRuns = details.getByRole("region", {
+    name: "Recent runs",
+    exact: true,
+  });
+  const weeklySummary = page.getByText("Weekly project summary", {
+    exact: true,
+  });
+  const automationDetailsTrigger = page.getByRole("button", {
+    name: "View automation details: Weekly project summary",
+  });
+  const deleteButton = details.getByRole("button", {
+    name: "Delete automation",
+    exact: true,
+  });
+  const confirmation = page.getByRole("alertdialog", {
+    name: "Delete automation?",
+    exact: true,
+  });
 
   // A shared, paged URL and direct details must not depend on the current page.
   const collection = {
