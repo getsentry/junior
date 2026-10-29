@@ -164,16 +164,6 @@ function extensionForMediaType(mediaType: string): string {
   return "bin";
 }
 
-/** Turn a gateway error for a non-image model into a config hint. */
-function imageGenerationError(error: unknown, model: string): unknown {
-  if (error instanceof Error && error.message.includes("not an image model")) {
-    return new Error(
-      `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`,
-    );
-  }
-  return error;
-}
-
 /** Create the image tool with sandbox artifact guidance matched to file-send capability. */
 export function createImageGenerateTool(
   hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
@@ -260,10 +250,19 @@ export function createImageGenerateTool(
           n: 1,
         }));
       } catch (error) {
-        if (!NoImageGeneratedError.isInstance(error)) {
-          throw imageGenerationError(error, model);
+        if (NoImageGeneratedError.isInstance(error)) {
+          generatedImages = [];
+        } else if (
+          error instanceof Error &&
+          error.message.includes("not an image model")
+        ) {
+          // The model id comes from app config, so the agent cannot fix it.
+          throw new Error(
+            `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`,
+          );
+        } else {
+          throw error;
         }
-        generatedImages = [];
       }
       const uploads = generatedImages.map((image, index) => ({
         data: Buffer.from(image.uint8Array),
