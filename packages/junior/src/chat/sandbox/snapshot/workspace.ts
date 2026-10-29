@@ -522,7 +522,7 @@ async function advanceWorkspaceSnapshot(params: {
     signal?: AbortSignal,
   ): Promise<WorkspaceFinalize | void>;
   removeCredentialRoute: boolean;
-}): Promise<Snapshot | null> {
+}): Promise<{ snapshot: Snapshot | null; workspace: Workspace }> {
   const value = profile.create(params.runtime, params.workspace);
   if (!value) {
     throw new Error(
@@ -534,16 +534,18 @@ async function advanceWorkspaceSnapshot(params: {
     value,
     params.staleSnapshotId,
   );
-  if (sqlCached) return sqlCached;
+  if (sqlCached) return { snapshot: sqlCached, workspace: params.workspace };
 
   const state = getStateAdapter();
   await state.connect();
+  let lockedWorkspace: Workspace | undefined;
   const locked = await withLock(
     state,
     buildLockKey(value.hash),
     async (lock) => {
       const workspace = await getWorkspace(getDb(), params.workspace.id);
       if (!workspace) throw workspaceDeletedError(params.workspace);
+      lockedWorkspace = workspace;
       const lockedValue = profile.create(params.runtime, workspace) ?? value;
       if (lockedValue.hash !== value.hash) return null;
       const beforeWrite = async () => {
@@ -603,7 +605,10 @@ async function advanceWorkspaceSnapshot(params: {
     { ttlMs: BUILD_LOCK_TTL_MS, keepAlive: true },
   );
 
-  return locked.acquired ? (locked.value ?? null) : null;
+  return {
+    snapshot: locked.acquired ? (locked.value ?? null) : null,
+    workspace: lockedWorkspace ?? params.workspace,
+  };
 }
 
 /** Check whether this request must stop soon. */
@@ -658,10 +663,11 @@ export async function resolveWorkspaceSnapshot(params: {
 }): Promise<Snapshot> {
   // Do some work before the first time check. This prevents empty job runs.
   let advanced = false;
+  // Track the latest workspace without re-fetching on every iteration.
+  // Deletion is detected inside advanceWorkspaceSnapshot's withLock callback.
+  let workspace = params.workspace;
   for (;;) {
     params.signal?.throwIfAborted();
-    const workspace = await getWorkspace(getDb(), params.workspace.id);
-    if (!workspace) throw workspaceDeletedError(params.workspace);
     const current = { ...params, workspace };
     if (advanced && shouldStopForTimeLimit(current.shouldStop)) {
       throw new WorkspaceSnapshotNotReadyError(workspace.name);
@@ -669,7 +675,9 @@ export async function resolveWorkspaceSnapshot(params: {
 
     let snapshot: Snapshot | null;
     try {
-      snapshot = await advanceWorkspaceSnapshot(current);
+      const result = await advanceWorkspaceSnapshot(current);
+      snapshot = result.snapshot;
+      workspace = result.workspace;
     } catch (error) {
       if (!isSandboxApiTransientError(error)) throw error;
       advanced = true;
