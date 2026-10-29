@@ -122,7 +122,12 @@ function messageAction(
   conversation: ConversationTranscript,
 ): ReactNode {
   if (message.role === "user" && message.contexts?.length) {
-    return <TranscriptTurnContextView contexts={message.contexts} />;
+    return (
+      <TranscriptTurnContextView
+        contexts={message.contexts}
+        messageId={message.messageId}
+      />
+    );
   }
   if (
     conversation.canFork &&

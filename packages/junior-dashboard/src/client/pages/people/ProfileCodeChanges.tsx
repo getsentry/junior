@@ -3,7 +3,7 @@ import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { FilterGroup } from "../../components/FilterBar";
-import { Select } from "../../components/Select";
+import { NativeSelect } from "../../components/ui/native-select";
 import { Card } from "../../components/layout/Card";
 import { CodeChangeRow } from "../code/CodeChangeRow";
 
@@ -57,7 +57,7 @@ export function ProfileCodeChanges(props: {
         </div>
         <div className="flex flex-wrap gap-3">
           <FilterGroup className="w-36" label="State">
-            <Select
+            <NativeSelect
               aria-label="Filter changes by state"
               onChange={(event) => setState(event.currentTarget.value)}
               value={state}
@@ -67,10 +67,10 @@ export function ProfileCodeChanges(props: {
                   {option.label} ({count(option.value)})
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </FilterGroup>
           <FilterGroup className="w-36" label="Opened">
-            <Select
+            <NativeSelect
               aria-label="Filter changes by opened date"
               onChange={(event) => setOpenedDays(event.currentTarget.value)}
               value={openedDays}
@@ -80,7 +80,7 @@ export function ProfileCodeChanges(props: {
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </FilterGroup>
         </div>
       </div>

@@ -392,5 +392,6 @@ a successful post does not prove that its client rendered a Work Object.
 Run `node scripts/generate-object-icons.mjs` to rebuild SVG paths and PNGs from
 the pinned Octicons package. It needs the Playwright Chromium browser. Format
 the generated TypeScript files after generation. Keep the Octicons license with
-the paths. Change the asset path version if an existing image changes. Review
-`/dev/transcripts` at desktop and mobile widths after icon changes.
+the paths. Change the asset path version if an existing image changes. After
+icon changes, review Conversations with Work Object cards at desktop and mobile
+widths. Use `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` for mock data.

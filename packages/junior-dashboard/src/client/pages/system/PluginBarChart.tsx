@@ -1,21 +1,18 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
+import { Bar, BarChart, CartesianGrid } from "recharts";
 import {
-  ChartAxisLabel,
-  ChartCategoryLabels,
-  ChartSvg,
-  createActivityChartLayout,
+  activityChartMargin,
+  ActivityChartTooltipContent,
+  ActivityChartXAxis,
+  ActivityChartYAxis,
+  formatActivityCategoryLabel,
   formatActivityCategoryTooltipLabel,
   isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTitle,
-  TooltipTrigger,
-} from "../../components/ui/tooltip";
+import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
 import { formatCostSummary } from "../../format";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
@@ -40,34 +37,54 @@ function seriesColor(series: Widget["series"][number], index: number): string {
     : (colors[index % colors.length] ?? colors[0]);
 }
 
-/** Render a validated plugin-owned categorical bar chart. */
-export function PluginBarChart(props: {
-  range?: TimeRangeDays;
-  widget: Widget;
-}) {
-  const { widget } = props;
+/**
+ * Pick the categories a plugin chart shows for the page range and the value
+ * scale they need. The scale always includes zero and is never empty.
+ */
+export function pluginChartScale(widget: Widget, range?: TimeRangeDays) {
   const categories = widget.timeRangeDays
-    ? widget.categories.slice(-visibleCategoryCount(widget, props.range))
+    ? widget.categories.slice(-visibleCategoryCount(widget, range))
     : widget.categories;
-  const seriesFormat = commonSeriesFormat(widget);
-  const layout = createActivityChartLayout(250, {
-    bottom: 36,
-    left: seriesFormat === "usd" ? 104 : 56,
-    right: 12,
-    top: 16,
-    width: 520,
-  });
-  const step = layout.plotWidth / Math.max(1, categories.length);
-  const groupWidth = Math.min(72, step * 0.72);
-  const barWidth = groupWidth / Math.max(1, widget.series.length);
   const values = categories.flatMap((category) =>
     widget.series.map((series) => category.values[series.key] ?? 0),
   );
   const minimum = Math.min(0, ...values);
   const dataMaximum = Math.max(0, ...values);
   const maximum = dataMaximum === minimum ? minimum + 1 : dataMaximum;
-  const span = maximum - minimum;
-  const zeroY = layout.top + (maximum / span) * layout.plotHeight;
+  return { categories, maximum, minimum };
+}
+
+/** Render a validated plugin-owned categorical bar chart. */
+export function PluginBarChart(props: {
+  range?: TimeRangeDays;
+  widget: Widget;
+}) {
+  const { widget } = props;
+  const { categories, maximum, minimum } = pluginChartScale(
+    widget,
+    props.range,
+  );
+  const seriesFormat = commonSeriesFormat(widget);
+  // Series keys come from plugins, so chart keys use the series index.
+  const data = categories.map((category) => ({
+    category,
+    id: category.id,
+    ...Object.fromEntries(
+      widget.series.map((series, index) => [
+        `series-${index}`,
+        category.values[series.key] ?? 0,
+      ]),
+    ),
+  }));
+  const labels = new Map(
+    categories.map((category) => [category.id, category.label]),
+  );
+  const chartConfig = Object.fromEntries(
+    widget.series.map((series, index) => [
+      `series-${index}`,
+      { color: seriesColor(series, index), label: series.label },
+    ]),
+  );
 
   return (
     <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel">
@@ -98,75 +115,62 @@ export function PluginBarChart(props: {
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (
-        <ChartSvg
-          aria-label={widget.title}
-          className="min-h-48"
-          layout={layout}
+        <ChartContainer
+          className="aspect-auto h-60 w-full"
+          config={chartConfig}
         >
-          {[maximum, maximum - span / 2, minimum].map((tickValue, index) => {
-            const y = layout.top + index * (layout.plotHeight / 2);
-            return (
-              <g key={index}>
-                <line
-                  stroke="var(--color-dashboard-border-subtle)"
-                  strokeDasharray="3 5"
-                  x1={layout.left}
-                  x2={layout.width - layout.right}
-                  y1={y}
-                  y2={y}
+          <BarChart
+            aria-label={widget.title}
+            data={data}
+            margin={activityChartMargin}
+            role="img"
+          >
+            <CartesianGrid strokeDasharray="3 5" vertical={false} />
+            <ActivityChartYAxis
+              format={(value) => formatChartValue(value, seriesFormat)}
+              maximum={maximum}
+              minimum={minimum}
+            />
+            <ActivityChartXAxis
+              centered
+              dataKey="id"
+              formatLabel={(id) =>
+                formatActivityCategoryLabel(labels.get(id) ?? id)
+              }
+              keys={categories.map((category) => category.id)}
+            />
+            <ChartTooltip
+              content={
+                <ActivityChartTooltipContent
+                  formatLabel={(id) =>
+                    formatActivityCategoryTooltipLabel(labels.get(id) ?? id)
+                  }
+                  rows={({ category }: (typeof data)[number]) =>
+                    widget.series.map((series) => [
+                      series.label,
+                      formatChartValue(
+                        category.values[series.key] ?? 0,
+                        series.format,
+                      ),
+                    ])
+                  }
                 />
-                <ChartAxisLabel textAnchor="end" x={layout.left - 6} y={y + 3}>
-                  {formatChartValue(tickValue, seriesFormat)}
-                </ChartAxisLabel>
-              </g>
-            );
-          })}
-          {categories.flatMap((category, categoryIndex) =>
-            widget.series.map((series, seriesIndex) => {
-              const value = category.values[series.key] ?? 0;
-              const renderedHeight = Math.max(
-                value ? 2 : 0,
-                (Math.abs(value) / span) * layout.plotHeight,
-              );
-              const formatted = formatChartValue(value, series.format);
-              return (
-                <Tooltip key={`${category.id}:${series.key}`}>
-                  <TooltipTrigger
-                    render={
-                      <rect
-                        aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
-                        fill={seriesColor(series, seriesIndex)}
-                        height={renderedHeight}
-                        opacity={value ? 0.82 : 0.1}
-                        rx="1.5"
-                        tabIndex={value ? 0 : -1}
-                        width={barWidth * 0.75}
-                        x={
-                          layout.left +
-                          categoryIndex * step +
-                          (step - groupWidth) / 2 +
-                          seriesIndex * barWidth
-                        }
-                        y={value >= 0 ? zeroY - renderedHeight : zeroY}
-                      />
-                    }
-                  />
-                  <TooltipContent>
-                    <TooltipTitle>
-                      {formatActivityCategoryTooltipLabel(category.label)}
-                    </TooltipTitle>
-                    {`${series.label}: ${formatted}`}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }),
-          )}
-          <ChartCategoryLabels
-            categories={categories}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
+              }
+            />
+            {widget.series.map((series, index) => (
+              <Bar
+                dataKey={`series-${index}`}
+                fill={`var(--color-series-${index})`}
+                fillOpacity={0.82}
+                isAnimationActive={false}
+                key={series.key}
+                maxBarSize={54 / widget.series.length}
+                minPointSize={(value) => (value ? 2 : 0)}
+                radius={1.5}
+              />
+            ))}
+          </BarChart>
+        </ChartContainer>
       )}
     </div>
   );
@@ -210,7 +214,11 @@ function commonSeriesFormat(widget: Widget): "usd" | undefined {
   return formats.size === 1 ? widget.series[0]?.format : undefined;
 }
 
-function formatChartValue(value: number, format: "usd" | undefined): string {
+/** Format a plugin chart value as USD or as a number without float noise. */
+export function formatChartValue(
+  value: number,
+  format: "usd" | undefined,
+): string {
   return format === "usd"
     ? formatCostSummary({ total: value })
     : formatChartNumber(value);

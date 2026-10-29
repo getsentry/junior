@@ -1,4 +1,6 @@
 import path from "node:path";
+import { withSentryConfig as withSentryNitroConfig } from "@sentry/nitro";
+import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
@@ -21,6 +23,7 @@ import {
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+  getDeploymentServiceVersion,
 } from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
@@ -29,6 +32,31 @@ import {
 } from "./plugins";
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
 import type { JuniorDashboardOptions } from "./app";
+
+type SentryNitroConfig = Parameters<typeof withSentryNitroConfig>[0];
+type SentryNitroOptions = NonNullable<
+  Parameters<typeof withSentryNitroConfig>[1]
+>;
+
+/**
+ * Sentry's Nitro config wrapper: source map upload and Nitro request hooks.
+ * Junior pins `@sentry/nitro` to the same version as its `@sentry/node`. The
+ * SDK keeps one client for each version, so this lets the Nitro hooks use the
+ * client that `initSentry()` creates. Apps import it from here, not from
+ * `@sentry/nitro`.
+ *
+ * The build release defaults to the release that `initSentry()` reports, so
+ * the uploaded source maps and the runtime events use the same release.
+ */
+export function withSentryConfig(
+  config: SentryNitroConfig,
+  options: SentryNitroOptions = {},
+): SentryNitroConfig {
+  return withSentryNitroConfig(config, {
+    ...options,
+    release: { name: getDeploymentServiceVersion(), ...options.release },
+  });
+}
 
 export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
 
@@ -114,35 +142,6 @@ function runtimeModuleForResolvedPluginModule(
         ? moduleRef.importPath.split(path.sep).join("/")
         : moduleRef.sourceSpecifier,
   };
-}
-
-/**
- * Prevent import-in-the-middle and require-in-the-middle from being
- * externalized so Rolldown bundles them inline.
- *
- * @sentry/node (via @opentelemetry/instrumentation) statically imports these
- * packages. Nitro already lists them in nf3's NonBundleablePackages, which
- * means it externalizes them and relies on traceNodeModules to copy the
- * package directories into the Vercel function output. In practice that trace
- * step fails to materialize the packages at runtime, causing an
- * ERR_MODULE_NOT_FOUND startup crash.
- *
- * Adding them to noExternals overrides the NonBundleablePackages default and
- * forces Rolldown to bundle their CJS code inline. The trade-off is that
- * Node.js ESM loader hooks (hook.mjs) are not active, which limits OTEL
- * auto-instrumentation of modules loaded after initialization. That is an
- * acceptable cost compared to a fatal startup failure.
- */
-function bundleOpenTelemetryLoaderHooks(nitro: Nitro): void {
-  const existing = Array.isArray(nitro.options.noExternals)
-    ? nitro.options.noExternals
-    : [];
-  const additions = ["import-in-the-middle", "require-in-the-middle"].filter(
-    (pkg) => !existing.includes(pkg),
-  );
-  if (additions.length > 0) {
-    nitro.options.noExternals = [...existing, ...additions];
-  }
 }
 
 function configureVercelDeployment(
@@ -275,7 +274,6 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           nitro,
           options,
         );
-        bundleOpenTelemetryLoaderHooks(nitro);
 
         applyRolldownTreeshakeWorkaround(nitro);
         const pluginSource = options.plugins;
@@ -337,6 +335,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         nitro.hooks.hook("rollup:before", (_nitro, config) => {
           const buildConfig = config as RollupLikeConfig;
           buildConfig.plugins ??= [];
+          buildConfig.plugins.push(sentryOrchestrionPlugin());
           buildConfig.plugins.push({
             name: "junior:copy-build-content",
             async writeBundle() {

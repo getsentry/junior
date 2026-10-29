@@ -66,8 +66,8 @@ Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
 stubs. Keep one Playwright spec per user-facing route. Split by journey when the file
 length limit requires it. After the page has loaded,
 call `screenshot(page, name)` from `e2e/screenshot.ts` so visual review has a
-desktop and mobile image. Browser tests run in the dark theme. Component gallery
-specs pass `lightTheme: true` so component review also gets light theme images.
+desktop and mobile image. Browser tests run in the dark theme. Pass
+`lightTheme: true` when a page also needs light theme images.
 Page behavior does not belong in a cross-page aggregate spec. Tests under
 `tests/` cover modules and component integration without standing in for
 browser E2E.
@@ -75,9 +75,6 @@ browser E2E.
 Mock reports and browser tests use one fixed current time: `NOW`
 (`2026-08-07T12:00:00.000Z`). History in the mocks is relative to that time, so
 labels like "5 minutes ago" stay stable.
-
-Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
-and open `/dev` to inspect the typed component fixtures.
 
 Dashboard E2E writes screenshots to
 `.playwright/junior-dashboard/screenshots/`. Frameshift saves this complete set

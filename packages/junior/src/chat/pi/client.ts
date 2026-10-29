@@ -487,11 +487,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
-  /**
-   * `false` retains telemetry spans and metrics while omitting model inputs and
-   * outputs. Omission preserves the existing payload-recording behavior.
-   */
-  recordTelemetryPayloads?: boolean;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
   promptName?: string;
@@ -519,15 +514,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
             : undefined),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
-            : undefined),
-          ...(params.recordTelemetryPayloads === false
-            ? {
-                experimental_telemetry: {
-                  isEnabled: true,
-                  recordInputs: false,
-                  recordOutputs: false,
-                },
-              }
             : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }

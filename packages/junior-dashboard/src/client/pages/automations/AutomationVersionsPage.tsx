@@ -1,6 +1,6 @@
 /** Version history for one Automation. Making a version active saves it again. */
 import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,6 +20,12 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../components/ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../../styles";
 import { Detail, DetailList } from "../../components/DetailList";
 import { FormNotice } from "../../components/FormNotice";
 import { InlineError } from "../../components/InlineError";
@@ -283,12 +289,18 @@ function VersionRow(props: {
             : "Try again."}
         </FormNotice>
       ) : null}
-      <details>
-        <summary className="w-fit cursor-pointer py-1 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
+      <Collapsible>
+        <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 py-1 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
           Show settings
-        </summary>
-        <VersionSettings automation={automation} version={version} />
-      </details>
+        </CollapsibleTrigger>
+        <CollapsibleContent hiddenUntilFound>
+          <VersionSettings automation={automation} version={version} />
+        </CollapsibleContent>
+      </Collapsible>
     </li>
   );
 }

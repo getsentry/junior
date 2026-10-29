@@ -3,6 +3,12 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { extractGenAiUsageAttributes, withSpan } from "@/chat/logging";
+import {
+  GEN_AI_PROVIDER_NAME,
+  GEN_AI_SERVER_ADDRESS,
+  GEN_AI_SERVER_PORT,
+} from "@/chat/pi/client";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 import { withTimeout } from "@/chat/tools/web/network";
 import type { WebSearchToolDeps } from "@/chat/tools/types";
@@ -101,22 +107,42 @@ export function createWebSearchTool(
       const provider = createGatewayProvider(
         credential ? { apiKey: credential.token } : {},
       );
-      const response = await withTimeout(
-        generateText({
-          model: provider.chat(modelId),
-          prompt: query,
-          tools: {
-            [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
-              mode: "agentic",
-              maxResults,
+      const response = await withSpan(
+        `chat ${modelId}`,
+        "gen_ai.chat",
+        {},
+        async (setSpanAttributes) => {
+          const response = await withTimeout(
+            generateText({
+              model: provider.chat(modelId),
+              prompt: query,
+              tools: {
+                [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+                  mode: "agentic",
+                  maxResults,
+                }),
+              },
+              toolChoice: { type: "tool", toolName: SEARCH_TOOL_NAME },
+              abortSignal: controller.signal,
             }),
-          },
-          toolChoice: { type: "tool", toolName: SEARCH_TOOL_NAME },
-          abortSignal: controller.signal,
-        }),
-        SEARCH_TIMEOUT_MS,
-        "webSearch",
-        { onTimeout: () => controller.abort() },
+            SEARCH_TIMEOUT_MS,
+            "webSearch",
+            { onTimeout: () => controller.abort() },
+          );
+          setSpanAttributes({
+            "gen_ai.response.finish_reasons": [response.finishReason],
+            ...extractGenAiUsageAttributes(response.usage),
+          });
+          return response;
+        },
+        {
+          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+          "gen_ai.operation.name": "chat",
+          "gen_ai.request.model": modelId,
+          "server.address": GEN_AI_SERVER_ADDRESS,
+          "server.port": GEN_AI_SERVER_PORT,
+          "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        },
       );
 
       const results = parseSearchResults(response.toolResults, maxResults);

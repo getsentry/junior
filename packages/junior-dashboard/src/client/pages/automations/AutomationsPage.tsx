@@ -354,7 +354,11 @@ export function AutomationsPage(props: {
           automation={deleteTarget}
           onClose={() => setDeleteTarget(undefined)}
           onDeleted={() => {
-            if (automationId === deleteTarget.id) navigate(tasksPath(listPath));
+            if (automationId !== deleteTarget.id) return;
+            // The details unmount after the route change, which can finish
+            // after the dialog closes. Do not return focus to their button.
+            deleteSource.current = null;
+            navigate(tasksPath(listPath));
           }}
           returnFocus={() =>
             deleteSource.current?.isConnected

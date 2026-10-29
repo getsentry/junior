@@ -4,7 +4,7 @@ import type {
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
-import { Select } from "../../components/Select";
+import { NativeSelect } from "../../components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { cn } from "../../styles";
 import type { AutomationDraft } from "./automationDraft";
@@ -108,7 +108,7 @@ export function AutomationOutcomeFields(props: {
                       "order-last basis-full sm:order-none sm:basis-auto",
                   )}
                 >
-                  <Select
+                  <NativeSelect
                     aria-label={`Message ${index + 1} destination`}
                     value={
                       typeof outcome.destination === "string"
@@ -132,7 +132,7 @@ export function AutomationOutcomeFields(props: {
                         {option.label}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </div>
                 {props.value.length > 1 ? (
                   <>

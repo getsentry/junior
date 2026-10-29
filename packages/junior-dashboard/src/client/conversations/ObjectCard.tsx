@@ -3,10 +3,16 @@ import {
   objectFactFields,
   objectPresentation,
 } from "@sentry/junior-plugin-api";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { StatusChip } from "../components/StatusChip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../styles";
 
 /** Show the latest saved annotation. Opening a source is always explicit. */
 export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
@@ -78,14 +84,20 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
         )}
         {fields.length > 0 && facts(fields)}
         {card.description && (
-          <details className="min-w-0 border-t border-dashboard-border pt-3">
-            <summary className="cursor-pointer text-xs font-medium text-dashboard-text-muted focus-visible:outline-dashboard-focus">
+          <Collapsible className="min-w-0 border-t border-dashboard-border pt-3">
+            <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 text-xs font-medium text-dashboard-text-muted focus-visible:outline-dashboard-focus">
+              <ChevronRight
+                aria-hidden="true"
+                className={dashboardDisclosureChevronClass}
+              />
               More details
-            </summary>
-            <p className="mb-0 mt-3 whitespace-pre-wrap break-words text-sm text-dashboard-text-muted">
-              {card.description}
-            </p>
-          </details>
+            </CollapsibleTrigger>
+            <CollapsibleContent hiddenUntilFound>
+              <p className="mb-0 mt-3 whitespace-pre-wrap break-words text-sm text-dashboard-text-muted">
+                {card.description}
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
         )}
         {card.warning && (
           <p className="m-0 break-words text-xs text-amber-500">

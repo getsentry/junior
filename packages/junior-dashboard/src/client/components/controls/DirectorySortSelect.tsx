@@ -1,4 +1,4 @@
-import { Select } from "../Select";
+import { NativeSelect } from "../ui/native-select";
 
 export type DirectorySortOption = {
   label: string;
@@ -17,7 +17,7 @@ export function DirectorySortSelect(props: {
       <span className="flex h-full items-center border-r border-dashboard-border-subtle px-2 font-sans font-medium text-xs text-dashboard-text-muted">
         Sort
       </span>
-      <Select
+      <NativeSelect
         aria-label={props.ariaLabel}
         variant="sort"
         value={props.value}
@@ -32,7 +32,7 @@ export function DirectorySortSelect(props: {
             {option.label}
           </option>
         ))}
-      </Select>
+      </NativeSelect>
     </label>
   );
 }

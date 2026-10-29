@@ -15,7 +15,7 @@ import { Button } from "../../components/ui/button";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { FilterGroup } from "../../components/FilterBar";
 import { SearchInput } from "../../components/SearchInput";
-import { Select } from "../../components/Select";
+import { NativeSelect } from "../../components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 
 const filterMediaQuery = "(min-width: 768px)";
@@ -273,7 +273,7 @@ function AutomationFilterSelect(props: {
 }) {
   return (
     <FilterGroup label={props.label}>
-      <Select
+      <NativeSelect
         aria-label={props.ariaLabel ?? `Filter by ${props.label.toLowerCase()}`}
         variant="filter"
         value={props.value}
@@ -289,7 +289,7 @@ function AutomationFilterSelect(props: {
             {option.label}
           </option>
         ))}
-      </Select>
+      </NativeSelect>
     </FilterGroup>
   );
 }
