@@ -138,12 +138,12 @@ describe("normalizeToolResult", () => {
     expect(result.content[0]).toMatchObject({
       type: "text",
       text: expect.stringContaining(
-        "Junior had a credential lease for this grant and forwarded the request.",
+        "The runtime had a credential lease for this grant and forwarded the request.",
       ),
     });
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(
-        "Do not diagnose this as a missing user token or a local Junior runtime block",
+        "Do not diagnose this as a missing user token or a local runtime block",
       ),
     });
     expect(result.content[0]).toMatchObject({
@@ -204,7 +204,7 @@ describe("normalizeToolResult", () => {
     });
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(
-        "Do not diagnose this as a missing user token or a local Junior runtime block",
+        "Do not diagnose this as a missing user token or a local runtime block",
       ),
     });
   });

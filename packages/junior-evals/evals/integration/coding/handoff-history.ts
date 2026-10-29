@@ -109,7 +109,7 @@ const completedImplementation: HistoryToolCall[] = [
   },
 ];
 
-const eventAuthor = { userId: "UJRNEVENT", fullName: "Junior event" };
+const eventAuthor = { userId: "UJRNEVENT", fullName: "System event" };
 
 const maintenance = [
   "[task]",

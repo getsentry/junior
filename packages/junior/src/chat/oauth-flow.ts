@@ -318,7 +318,7 @@ export async function startOAuthFlow(
     authorizationUrl,
     label: `Connect your ${formatProviderLabel(provider)} account`,
     completionText: input.resumeSessionId
-      ? "Once you've authorized, Junior will continue automatically."
+      ? "Once you've authorized, I'll continue automatically."
       : "Once you've authorized, you'll see a confirmation in Slack.",
   };
   return {

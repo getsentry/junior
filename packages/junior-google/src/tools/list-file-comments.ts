@@ -103,7 +103,7 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as Junior's own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass nextPageToken as pageToken to read more. Comments can be private: share only what the requester needs.",
+      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass nextPageToken as pageToken to read more. Comments can be private: share only what the requester needs.",
     inputSchema,
     outputSchema,
     async execute(input) {

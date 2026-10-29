@@ -49,7 +49,7 @@ const inputSchema = z
         "End of the search window, RFC 3339 with offset. Defaults to 7 days after timeMin. At most 14 days after timeMin.",
       ),
     timeZone: timeZoneSchema.describe(
-      "IANA time zone for slot labels, such as America/Los_Angeles. Omit to use the requester's time zone. It is also the working-hours zone for anyone whose calendar time zone Junior cannot read.",
+      "IANA time zone for slot labels, such as America/Los_Angeles. Omit to use the requester's time zone. It is also the working-hours zone for anyone whose calendar time zone you cannot read.",
     ),
     workdayStart: clockTimeSchema
       .default("09:00")
@@ -90,7 +90,7 @@ const outputSchema = pluginToolOutputSchema.extend({
         .string()
         .optional()
         .describe(
-          "Time zone of the person's calendar. Missing when Junior cannot read it; their hours then use the requester's time zone.",
+          "Time zone of the person's calendar. Missing when you cannot read it; their hours then use the requester's time zone.",
         ),
     }),
   ),
@@ -353,7 +353,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from your own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
     inputSchema,
     outputSchema,
     async execute(input) {

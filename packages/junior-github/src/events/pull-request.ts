@@ -108,7 +108,7 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
     kind: "string",
     list: true,
     description:
-      "GitHub logins of the commit authors and Co-authored-by people, including bots such as Junior's",
+      "GitHub logins of the commit authors and Co-authored-by people, including bots such as this GitHub App",
     events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   headBranch: {
@@ -126,13 +126,13 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   openerEmail: {
     kind: "string",
     description:
-      "opener email when GitHub sends it; missing on Junior's pull requests",
+      "opener email when GitHub sends it; missing on pull requests that this GitHub App opened",
     events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   openerUsername: {
     kind: "string",
     description:
-      "login of who opened the pull request; on Junior's, the person who asked Junior to open it, missing until Junior saves them",
+      "login of who opened the pull request; on pull requests that this GitHub App opened, the person who asked for it, missing until that person is saved",
     events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   openerRole: {

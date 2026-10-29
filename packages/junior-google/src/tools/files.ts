@@ -113,7 +113,7 @@ export async function googleFileRequest(
   // Google returns 404 for a file that Junior's account cannot open.
   if (response.status === 404) {
     throw new PluginToolInputError(
-      `Junior's Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
+      `Your Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
     );
   }
   if (response.status !== 200) {

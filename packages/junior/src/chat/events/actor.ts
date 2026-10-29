@@ -20,7 +20,7 @@ export const EVENT_AUTHOR_ID = "UJRNEVENT";
 
 /** System Message author for event input. */
 export const EVENT_MESSAGE_AUTHOR = {
-  fullName: "Junior event",
+  fullName: "System event",
   isBot: true,
   userId: EVENT_AUTHOR_ID,
   userName: "junior-event",

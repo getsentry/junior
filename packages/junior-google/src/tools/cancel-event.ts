@@ -50,10 +50,10 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
       readOnlyHint: false,
     },
     describeProposal(input) {
-      return `Cancel Google Calendar event ${input.eventId} organized by Junior. Google emails every attendee a cancellation.`;
+      return `Cancel Google Calendar event ${input.eventId} organized by the connected Google account. Google emails every attendee a cancellation.`;
     },
     description:
-      "Cancel a Google Calendar event organized by Junior's own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. Junior cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its seriesEventId cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
+      "Cancel a Google Calendar event organized by your own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. You cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its seriesEventId cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
     inputSchema,
     outputSchema,
     async execute(input) {
