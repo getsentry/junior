@@ -44,6 +44,7 @@ import {
   type SidebarAnnotation,
   type SidebarAnnotationBadgeGroup,
 } from "./sidebarAnnotationBadges";
+import { conversationLinks, linkStatusLabel } from "./ConversationLinkedWork";
 
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 
@@ -104,13 +105,6 @@ export function ConversationPrivacyChip(props: {
     </span>
   );
 }
-
-type ResourceLinkStatus = NonNullable<
-  Extract<
-    NonNullable<ConversationDetailReport["annotations"]>[number],
-    { kind: "resource_link" }
-  >["status"]
->;
 
 /** True when the conversation has at least one resource-link annotation. */
 export function hasConversationAnnotations(
@@ -418,74 +412,41 @@ function SidebarAnnotationIcon(props: {
   );
 }
 
-/** Render resource-link annotations under the conversation title. */
+/** Render linked work as a compact strip under the conversation title. */
 export function ConversationAnnotations(props: {
   detail: ConversationDetailReport | undefined;
-  layout?: "list" | "strip";
 }) {
-  const links =
-    props.detail?.annotations?.filter(
-      (annotation) => annotation.url !== null,
-    ) ?? [];
+  const links = conversationLinks(props.detail);
   if (links.length === 0) return null;
   return (
-    <div
-      className={cn(
-        "flex gap-x-4 gap-y-2",
-        props.layout === "strip" ? "overflow-x-auto" : "flex-col",
-      )}
-    >
+    <div className="flex gap-x-4 gap-y-2 overflow-x-auto">
       {links.map((link) => (
         <a
-          className={cn(
-            "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
-            props.layout === "strip"
-              ? "px-1 py-0.5 text-xs hover:text-dashboard-accent-text"
-              : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
-          )}
-          href={link.url ?? undefined}
-          key={`${link.plugin}:${link.key}`}
+          className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline transition-colors hover:text-dashboard-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          href={link.url}
+          key={link.key}
           rel="noreferrer"
           target="_blank"
-          title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
+          title={[
+            link.label,
+            link.plugin,
+            linkStatusLabel(link.status),
+            link.description,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         >
           <ObjectIcon
-            objectType={
-              link.objectType ??
-              props.detail?.sidebarAnnotations?.find(
-                (annotation) => annotation.key === link.key,
-              )?.objectType ??
-              "item"
-            }
-            status={link.status}
-            facts={link.kind === "object" ? link.facts : undefined}
+            facts={link.facts}
+            objectType={link.objectType}
             size={16}
+            status={link.status}
           />
           <span className="min-w-0 break-words">{link.label}</span>
         </a>
       ))}
     </div>
   );
-}
-
-function resourceLinkTitle(link: {
-  description?: string;
-  label: string;
-  plugin: string;
-  status?: ResourceLinkStatus;
-}): string {
-  const statusLabel = link.status
-    ? {
-        open: "Open",
-        draft: "Draft",
-        closed: "Closed",
-        merged: "Merged",
-        warning: "Needs attention",
-      }[link.status]
-    : undefined;
-  return [link.label, link.plugin, statusLabel, link.description]
-    .filter(Boolean)
-    .join(" · ");
 }
 
 function LocationLink(props: { label: string; locationUrl?: string }) {

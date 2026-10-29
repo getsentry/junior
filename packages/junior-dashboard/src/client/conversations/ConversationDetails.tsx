@@ -17,6 +17,10 @@ import {
   useConversationChildAgents,
 } from "./ConversationChildAgents";
 import {
+  ConversationLinkedWork,
+  type ConversationLink,
+} from "./ConversationLinkedWork";
+import {
   ConversationMemories,
   useConversationMemories,
 } from "./ConversationMemories";
@@ -34,15 +38,15 @@ const detailsPanelClass =
   "min-h-0 overflow-y-auto overscroll-contain rounded-none px-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus-visible:-outline-offset-2";
 
 /**
- * Show conversation details: the brief and facts first, then linked work,
- * participants, and the usage breakdown. Share and Sentry links stay in the
- * header so every tab can reach them.
+ * Show conversation details: the brief, participants, and run facts first,
+ * then watches, linked work, and the usage breakdown. Share and Sentry links
+ * stay in the header so every tab can reach them.
  */
 export function ConversationDetails(props: {
-  annotations: ReactNode;
   brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
+  links: ConversationLink[];
   onClose(): void;
   /** Open one child agent transcript. A details sheet closes first. */
   onOpenSubagent(target: SubagentTranscriptTarget): void;
@@ -57,9 +61,10 @@ export function ConversationDetails(props: {
   const agents = useConversationChildAgents(props.conversationId);
   const watches = useConversationWatches(props.conversationId).data?.watches;
 
-  // Watches sit right after the overview: they say what can wake this agent
-  // later, so readers see them without opening another tab.
+  // People first, then run facts. Watches come before linked work: they say
+  // what can wake this agent later, so readers see them without another tab.
   const sections = [
+    { content: props.identity, key: "participants", title: "Participants" },
     { content: props.overview, key: "overview", title: undefined },
     {
       content: watches?.length ? (
@@ -69,8 +74,14 @@ export function ConversationDetails(props: {
       key: "watching",
       title: "Watching",
     },
-    { content: props.identity, key: "participants", title: "Participants" },
-    { content: props.annotations, key: "linked-work", title: "Linked work" },
+    {
+      content: props.links.length ? (
+        <ConversationLinkedWork links={props.links} />
+      ) : null,
+      count: props.links.length,
+      key: "linked-work",
+      title: "Linked work",
+    },
     { content: props.usage, key: "usage", title: "Usage" },
   ].filter((section) => section.content != null);
 

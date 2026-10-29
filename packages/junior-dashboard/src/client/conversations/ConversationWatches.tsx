@@ -14,7 +14,7 @@ import {
   Timer,
   Users,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   conversationWatchesReportSchema,
   type ConversationWatch,
@@ -22,9 +22,7 @@ import {
 
 import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
-
-/** Rows shown before the list asks to show the rest. */
-const COLLAPSED_WATCH_COUNT = 3;
+import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
 
 /** Load the active Watches that one Conversation owns. */
 export function useConversationWatches(conversationId: string) {
@@ -42,40 +40,15 @@ export function useConversationWatches(conversationId: string) {
 
 /**
  * Show what can wake this Conversation: each active Watch with the resource,
- * the reason, and the event types that deliver to it. Long lists show the
- * first rows and let the reader show the rest.
+ * the reason, and the event types that deliver to it.
  */
 export function ConversationWatches(props: { watches: ConversationWatch[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const hidden = props.watches.length - COLLAPSED_WATCH_COUNT;
-  const visible =
-    expanded || hidden <= 0
-      ? props.watches
-      : props.watches.slice(0, COLLAPSED_WATCH_COUNT);
-
   return (
-    <div className="grid min-w-0 gap-2">
-      <ul aria-label="Active watches" className="m-0 grid list-none p-0">
-        {visible.map((watch) => (
-          <li
-            className="border-t border-dashboard-border-subtle py-2.5 first:border-t-0 first:pt-0 last:pb-0"
-            key={watch.id}
-          >
-            <WatchRow watch={watch} />
-          </li>
-        ))}
-      </ul>
-      {hidden > 0 ? (
-        <button
-          aria-expanded={expanded}
-          className="ml-5.5 justify-self-start rounded-md px-1 py-0.5 text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-          onClick={() => setExpanded((value) => !value)}
-          type="button"
-        >
-          {expanded ? "Show fewer" : `Show ${hidden} more`}
-        </button>
-      ) : null}
-    </div>
+    <DetailsList
+      itemKey={(watch) => watch.id}
+      items={props.watches}
+      renderItem={(watch) => <WatchRow watch={watch} />}
+    />
   );
 }
 
@@ -93,8 +66,8 @@ const resourceIcons: Partial<Record<string, LucideIcon>> = {
 };
 
 /**
- * Show one Watch in three short lines: the resource and time left, the reason
- * it exists, then the event types that wake the Conversation.
+ * Show one Watch in up to three short lines: the resource and time left, the
+ * reason it exists, then the event types that wake the Conversation.
  */
 function WatchRow(props: { watch: ConversationWatch }) {
   const { watch } = props;
@@ -104,58 +77,54 @@ function WatchRow(props: { watch: ConversationWatch }) {
   const isTimer = watch.firesAt !== undefined;
   const until = watch.firesAt ?? watch.expiresAt;
   const resource = `${watch.namespace} ${watch.resourceType.replaceAll("_", " ")}`;
+  // A timer has one event, and the time already says when it fires.
+  const events = isTimer ? [] : watch.events;
+  const filters = Object.entries(watch.match ?? {});
 
   return (
-    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1">
-      <span className="mt-0.5 grid size-4 shrink-0 place-items-center text-dashboard-text-muted">
-        <Icon aria-hidden="true" className="size-3.5" />
-      </span>
-      <span className="min-w-0 truncate text-sm font-medium leading-5 text-dashboard-text">
-        {watch.label ?? `Private ${resource}`}
-      </span>
-      <time
-        className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted"
-        dateTime={until}
-        title={`${isTimer ? "Fires" : "Expires"} ${formatTime(until, {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })}`}
-      >
-        {isTimer
-          ? `in ${formatRemaining(until)}`
-          : `${formatRemaining(until)} left`}
-      </time>
-      {watch.intent ? (
-        <p className="col-start-2 col-end-4 m-0 line-clamp-2 min-w-0 break-words text-xs leading-4 text-dashboard-text-muted">
-          {watch.intent}
-        </p>
-      ) : null}
-      {/* A timer has one event, and the time already says when it fires. */}
-      {!isTimer || watch.match || watch.childAgent ? (
-        <div className="col-start-2 col-end-4 flex min-w-0 flex-wrap items-center gap-1">
+    <DetailsRow
+      icon={<Icon aria-hidden="true" className="size-3.5" />}
+      meta={
+        <time dateTime={until}>
           {isTimer
-            ? null
-            : watch.events.map((event) => (
-                <WatchChip key={event}>
-                  {watchEventLabel(event, watch.resourceType)}
-                </WatchChip>
-              ))}
-          {Object.entries(watch.match ?? {}).map(([key, value]) => (
+            ? `in ${formatRemaining(until)}`
+            : `${formatRemaining(until)} left`}
+        </time>
+      }
+      title={watch.label ?? `Private ${resource}`}
+      tooltip={`${isTimer ? "Fires" : "Expires"} ${formatTime(until, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}`}
+    >
+      {watch.intent ? (
+        <DetailsRowLine className="line-clamp-2 break-words">
+          {watch.intent}
+        </DetailsRowLine>
+      ) : null}
+      {events.length > 0 || filters.length > 0 || watch.childAgent ? (
+        <DetailsRowLine className="flex flex-wrap items-center gap-1 pt-0.5">
+          {events.map((event) => (
+            <WatchChip key={event}>
+              {watchEventLabel(event, watch.resourceType)}
+            </WatchChip>
+          ))}
+          {filters.map(([key, value]) => (
             <WatchChip filter key={`match:${key}`}>
               {key.replaceAll("_", " ")}: {[value].flat().join(", ")}
             </WatchChip>
           ))}
           {watch.childAgent ? (
-            <span className="inline-flex min-w-0 items-center gap-1 px-0.5 text-xs leading-4 text-dashboard-text-muted">
+            <span className="inline-flex min-w-0 items-center gap-1 px-0.5">
               <Bot aria-hidden="true" className="size-3 shrink-0" />
               <span className="truncate">
                 via {watch.childAgent.name ?? "subagent"}
               </span>
             </span>
           ) : null}
-        </div>
+        </DetailsRowLine>
       ) : null}
-    </div>
+    </DetailsRow>
   );
 }
 
