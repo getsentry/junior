@@ -1,8 +1,8 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
+  createAssistantMessageEventStream,
   type AssistantMessageEvent,
   type AssistantMessageEventStream,
-  createAssistantMessageEventStream,
 } from "@earendil-works/pi-ai";
 import {
   type Api,
@@ -197,9 +197,6 @@ function relayStream(
   onEvent: (event: AssistantMessageEvent) => void,
 ): { stream: AssistantMessageEventStream; finished: Promise<void> } {
   const relayed = createAssistantMessageEventStream();
-  // `result()` returns the provider stream's own promise, so the final
-  // message, and a rejection if one occurs, reach the agent loop unchanged.
-  relayed.result = () => source.result();
   const finished = (async () => {
     try {
       for await (const event of source) {
@@ -210,6 +207,16 @@ function relayStream(
       relayed.end();
     }
   })();
+  // A provider can end its stream with `end(message)` and no terminal event.
+  // Pass that message on only after every event is relayed, because the
+  // relayed stream drops events pushed after it ends. pi-ai's `result()` does
+  // not reject.
+  void finished
+    .then(() => source.result())
+    .then(
+      (message) => relayed.end(message),
+      () => {},
+    );
   return { stream: relayed, finished };
 }
 

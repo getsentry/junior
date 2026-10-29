@@ -97,7 +97,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    expect(returned).toBeInstanceOf(stream.constructor);
+    expect(returned).not.toBe(stream);
     expect(startInactiveSpan).toHaveBeenCalledTimes(1);
     const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.op).toBe("gen_ai.chat");
@@ -535,20 +535,18 @@ describe("createTracedStreamFn", () => {
 
   it("sets error status and ends the span when stream.result() rejects", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
-    const failure = new Error("stream failure");
     const stream = createAssistantMessageEventStream();
-    stream.result = () => Promise.reject(failure);
+    stream.result = () => Promise.reject(new Error("stream failure"));
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn(base as StreamFn);
-    const returned = await traced(
+    await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
       undefined,
     );
 
     stream.end();
-    await expect(returned.result()).rejects.toBe(failure);
     await flushEvents();
 
     const span = getSpan();
