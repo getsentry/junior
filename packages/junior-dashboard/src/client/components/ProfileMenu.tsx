@@ -275,7 +275,19 @@ export function ProfileMenu({
   }
 
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover
+      onOpenChange={(nextOpen, details) => {
+        // A mouse click always keeps the menu open, also after hover opened it.
+        // A keyboard press (detail 0) still toggles it.
+        const mouseClick =
+          details.event instanceof MouseEvent && details.event.detail > 0;
+        if (!nextOpen && details.reason === "trigger-press" && mouseClick) {
+          return;
+        }
+        setOpen(nextOpen);
+      }}
+      open={open}
+    >
       <PopoverTrigger
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(

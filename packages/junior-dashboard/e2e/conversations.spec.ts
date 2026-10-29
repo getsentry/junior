@@ -416,7 +416,16 @@ test("groups the signed-in profile and session actions in the header", async ({
   await expect(popover).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
-  await trigger.click();
+  // A mouse click keeps a hover-opened menu open, even after a pause.
+  await page.mouse.move(0, 0);
+  await trigger.hover();
+  await expect(popover).toBeVisible();
+  await page.waitForTimeout(600);
+  const openTrigger = page.getByRole("button", {
+    name: /^(Open|Close) profile menu for Dashboard User/,
+  });
+  await openTrigger.click();
+  await expect(openTrigger).toHaveAttribute("aria-expanded", "true");
   const signOutRequest = page.waitForRequest(
     (request) =>
       request.url().endsWith("/api/auth/sign-out") &&
