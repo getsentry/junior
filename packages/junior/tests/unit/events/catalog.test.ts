@@ -64,12 +64,18 @@ describe("event catalog", () => {
         resourceTypes: [
           {
             type: "issue",
-            identifier: { format: "owner/repo#number", pattern: /^\S+#\d+$/ },
+            identifier: {
+              format: "owner/repo#number",
+              pattern: String.raw`^\S+#\d+$`,
+            },
             supportedEvents: ["issue.closed"],
           },
           {
             type: "repository",
-            identifier: { format: "owner/repo", pattern: /^[^\s#]+$/ },
+            identifier: {
+              format: "owner/repo",
+              pattern: String.raw`^[^\s#]+$`,
+            },
             supportedEvents: ["issue.closed"],
           },
           { type: "release_source", supportedEvents: ["release.published"] },

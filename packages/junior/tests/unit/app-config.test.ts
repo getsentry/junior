@@ -779,6 +779,25 @@ describe("createApp plugin config", () => {
         },
       }),
     ).toThrow('Junior plugin "event-demo" events is invalid.');
+
+    expect(() =>
+      defineJuniorPlugin({
+        manifest: {
+          name: "event-demo",
+          displayName: "Event Demo",
+          description: "Invalid identifier pattern",
+        },
+        events: {
+          resourceTypes: [
+            {
+              type: "issue",
+              identifier: { format: "owner/repo#number", pattern: "(" },
+              supportedEvents: ["issue.closed"],
+            },
+          ],
+        },
+      }),
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
   });
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {
