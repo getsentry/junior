@@ -29,7 +29,11 @@ export function TranscriptReasoningView(props: {
     <TraceCollapsible
       className="text-xs leading-tight"
       open={expanded}
-      onOpenChange={setOpen}
+      // Search holds rows open. Keep clicks during search from changing the
+      // state that returns when search ends.
+      onOpenChange={(next) => {
+        if (!searchActive) setOpen(next);
+      }}
     >
       <TraceCollapsibleTrigger className="-mx-2 w-auto">
         <span className="grid min-w-0 flex-1 grid-cols-[1rem_minmax(0,1fr)] items-center gap-2">

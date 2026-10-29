@@ -88,7 +88,11 @@ export function ToolFrame(props: {
     <TraceCollapsible
       className="max-w-full"
       open={expanded}
-      onOpenChange={setOpen}
+      // Search holds rows open. Keep clicks during search from changing the
+      // state that returns when search ends.
+      onOpenChange={(next) => {
+        if (!searchActive) setOpen(next);
+      }}
     >
       <TraceCollapsibleTrigger className="-mx-2 w-auto font-mono text-xs leading-tight">
         {header}
