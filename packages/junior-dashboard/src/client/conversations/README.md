@@ -43,10 +43,10 @@ shared controls and overlays.
 - `TranscriptTurnContextView` owns context content. The shared `Drawer` adds
   its header and layout to the Base UI `Sheet` focus and dismissal boundary.
 
-Review these components together in `/dev/transcripts`. Use the conversation
-fixture for messages, events, activity, context, and typing. Use the attachment
-fixture for file wrapping. Keep visual checks out of automated assertions;
-browser tests cover opening, closing, and keyboard interaction.
+Review these components together on the mock Conversations. Run
+`JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` for messages, events,
+activity, context, typing, and attachments. Keep visual checks out of automated
+assertions; browser tests cover opening, closing, and keyboard interaction.
 
 ## Conversation details
 

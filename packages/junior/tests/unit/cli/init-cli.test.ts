@@ -32,7 +32,7 @@ function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
+        /  \{ exampleDashboardAuthRequired, exampleDashboardMockConversations \},\n/,
         "",
       )
       .replace('  import("./dashboard.ts"),\n', "")
@@ -50,7 +50,7 @@ function removeExampleDashboardNitroConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardComponentGallery,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
+        /import \{\n  exampleDashboardAuthRequired,\n  exampleDashboardMockConversations,\n\} from "\.\/dashboard\.ts";\n/,
         "",
       )
       .replace(
