@@ -48,7 +48,6 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
     `JUNIOR_EVAL_REDIS_URL must point at localhost or 127.0.0.1, got ${evalRedisHostname}`,
   );
 }
-process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
 const resolve = {
   alias: {

@@ -110,7 +110,6 @@ const {
   resolveMock,
   ensureWorkspaceSnapshotBuildMock,
   getReadyWorkspaceMock,
-  missingErrorMock,
   hashMock,
 } = vi.hoisted(() => ({
   resolveMock: vi.fn<
@@ -141,7 +140,6 @@ const {
     cacheHit: false,
     resolveOutcome: "no_profile",
   })),
-  missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
   hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
 }));
 
@@ -154,13 +152,12 @@ vi.mock("@/chat/sandbox/snapshot/profile", () => ({
 
 vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   resolve: resolveMock,
-  isMissingError: missingErrorMock,
 }));
 vi.mock("@/chat/sandbox/snapshot/workspace", () => ({
   requireReadyWorkspaceSnapshot: getReadyWorkspaceMock,
 }));
 
-vi.mock("@/chat/sandbox/docker", () => ({
+vi.mock("@/chat/sandbox/guest-docker", () => ({
   ensureDockerDaemon: vi.fn(async () => {}),
 }));
 
@@ -572,8 +569,6 @@ describe("createTestSandbox", () => {
       cacheHit: false,
       resolveOutcome: "no_profile",
     });
-    missingErrorMock.mockReset();
-    missingErrorMock.mockReturnValue(false);
     hashMock.mockReset();
     hashMock.mockReturnValue(undefined);
     delete process.env.VERCEL_TOKEN;
@@ -3021,9 +3016,6 @@ describe("createTestSandbox", () => {
     sandboxCreateMock
       .mockRejectedValueOnce(missingError)
       .mockResolvedValueOnce(rebuiltSandbox);
-    missingErrorMock.mockImplementation(
-      (error: unknown) => error === missingError,
-    );
 
     const executor = createTestSandbox();
     executor.configureSkills([]);
@@ -3164,9 +3156,6 @@ describe("createTestSandbox", () => {
       );
     const missingError = new Error("Workspace snapshot not found");
     sandboxCreateMock.mockRejectedValueOnce(missingError);
-    missingErrorMock.mockImplementation(
-      (error: unknown) => error === missingError,
-    );
     hashMock.mockReturnValue("hash_workspace");
     const runtime = createSandboxRuntime({
       workspace: {

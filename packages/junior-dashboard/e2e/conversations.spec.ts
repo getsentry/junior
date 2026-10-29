@@ -42,57 +42,53 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(details).toBeVisible();
+  // Turn context takes the details panel and gives it back on close.
   const contextAction = page.getByRole("button", { name: "View turn context" });
   await contextAction.scrollIntoViewIfNeeded();
   await contextAction.focus();
   await page.keyboard.press("Enter");
-  const contextPanel = page.getByRole("dialog", {
+  const contextPanel = page.getByRole("complementary", {
     name: "Turn context",
     exact: true,
   });
   await expect(
     contextPanel.getByRole("heading", { name: "Recalled memories" }),
   ).toBeVisible();
-  const closeContext = contextPanel.getByRole("button", {
-    name: "Close turn context",
-    exact: true,
-  });
-  await expect(closeContext).toBeFocused();
-  await page.setViewportSize({ width: 1024, height: 900 });
-  await expect(
-    page.locator('[data-dashboard-modal][aria-label="Conversation details"]'),
-  ).toBeAttached();
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-  await expect(closeContext).toBeFocused();
-  await page.setViewportSize({ width: 1600, height: 900 });
-  await expect(
-    page.getByRole("complementary", {
-      name: "Conversation details",
-      includeHidden: true,
-    }),
-  ).toBeAttached();
-  await expect(closeContext).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(contextPanel.locator("summary").last()).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(closeContext).toBeFocused();
+  await expect(details).toBeHidden();
+  await expect(contextAction).toHaveAttribute("aria-expanded", "true");
+  await expect(contextAction).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(contextPanel).toBeHidden();
+  await expect(details).toBeVisible();
   await expect(contextAction).toBeFocused();
+  await contextAction.click();
+  await expect(contextPanel).toBeVisible();
+  await contextAction.click();
+  await expect(contextPanel).toBeHidden();
+  await expect(details).toBeVisible();
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
+  await expect(details).toBeHidden();
+  // Small screens show the same panel as a sheet.
   await page.setViewportSize({ width: 390, height: 844 });
   await contextAction.click();
-  await expect(contextPanel).toBeVisible();
-  await contextPanel
-    .getByRole("button", { name: "Close turn context", exact: true })
+  const contextSheet = page.getByRole("dialog", {
+    name: "Turn context",
+    exact: true,
+  });
+  await expect(
+    contextSheet.getByRole("heading", { name: "Recalled memories" }),
+  ).toBeVisible();
+  await contextSheet
+    .getByRole("button", { name: "Close", exact: true })
     .click();
+  await expect(contextSheet).toBeHidden();
   await expect(contextAction).toBeFocused();
   await screenshot(page, "conversation-detail");
 
@@ -559,8 +555,19 @@ test("inspects and copies a child agent transcript", async ({
   await expect(eventDetails).toBeHidden();
   await expect(drawer).toBeVisible();
   await expect(entry).toBeFocused();
+  // A resize mounts the details sheet below the drawer without taking focus.
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
+  await expect(
+    page.locator('[data-dashboard-modal][aria-label="Conversation details"]'),
+  ).toBeAttached();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(entry).toBeFocused();
 });
 
 test("shows the agent tree of a child agent conversation", async ({

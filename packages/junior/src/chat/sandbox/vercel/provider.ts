@@ -1,10 +1,7 @@
 import { FileSystem, Sandbox } from "@vercel/sandbox";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/vercel/credentials";
 import { toVercelNetworkPolicy } from "@/chat/sandbox/egress/vercel";
-import {
-  isSandboxMissingError,
-  isSandboxUnavailableError,
-} from "@/chat/sandbox/errors";
+import { vercelSandboxErrors } from "@/chat/sandbox/vercel/errors";
 import type { SandboxProvider } from "@/chat/sandbox/provider";
 import type {
   CreateWorkspaceSnapshotBuilderInput,
@@ -53,7 +50,7 @@ function adaptSession(
     try {
       return await operation();
     } catch (error) {
-      if (isSandboxUnavailableError(error)) {
+      if (vercelSandboxErrors.isUnavailable(error)) {
         options?.onUnavailable?.(session.sessionId);
       }
       throw error;
@@ -227,7 +224,7 @@ async function deleteWorkspaceSnapshotBuilders(
       });
       await sandbox.delete();
     } catch (error) {
-      if (!isSandboxMissingError(error)) {
+      if (!vercelSandboxErrors.isMissing(error)) {
         if (!hasError) firstError = error;
         hasError = true;
       }
@@ -238,6 +235,7 @@ async function deleteWorkspaceSnapshotBuilders(
 
 /** Vercel Sandbox implementation of the sandbox provider contract. */
 export const vercelSandboxProvider: SandboxProvider = {
+  errors: vercelSandboxErrors,
   createSession: createSandboxSession,
   getSession: getSandboxSession,
   createWorkspaceSnapshotBuilder,

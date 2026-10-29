@@ -8,6 +8,7 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@/api/schema";
 import {
+  serializeError,
   toJsonValue,
   type HarnessRun,
   type TranscriptEvent,
@@ -148,6 +149,52 @@ export async function readConversationDetail(
     );
   }
   return conversationDetailReportSchema.parse(await response.json());
+}
+
+type CallTranscriptSource = {
+  conversationId: string;
+  viewerEmail: string;
+  lastSeq: number;
+  started: boolean;
+};
+
+/** Preserve a failed call's partial transcript and its original error. */
+export async function readFailedCallRun(args: {
+  api: RequestApp;
+  target: CallTranscriptSource | (() => CallTranscriptSource);
+  calls: Array<{ conversationId: string; events: TranscriptEvent[] }>;
+  error: unknown;
+  usage: FixtureUsage;
+  startedAtMs: number;
+}): Promise<HarnessRun> {
+  const errors = [serializeError(args.error)];
+  const calls = [...args.calls];
+  try {
+    const record =
+      typeof args.target === "function" ? args.target() : args.target;
+    if (record.started) {
+      const detail = await readConversationDetail(
+        args.api,
+        record.conversationId,
+        record.viewerEmail,
+      );
+      const events = readCallEvents({
+        afterSeq: record.lastSeq,
+        conversationId: record.conversationId,
+        detail,
+      });
+      calls.push({
+        conversationId: record.conversationId,
+        events: toTranscriptEvents(events.visibleMessages, events.toolCalls),
+      });
+    }
+  } catch (snapshotError) {
+    errors.push(serializeError(snapshotError));
+  }
+  return {
+    ...combinedRun(calls, args.usage, args.startedAtMs),
+    errors,
+  };
 }
 
 /** The connect prompt that the dashboard shows to a person. */

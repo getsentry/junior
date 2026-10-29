@@ -3,7 +3,7 @@ import {
   DOCKER_CLI_WRAPPER_SCRIPT,
   DOCKER_COMPOSE_CLI_WRAPPER_SCRIPT,
   DOCKER_ENSURE_SCRIPT,
-} from "@/chat/sandbox/docker";
+} from "@/chat/sandbox/guest-docker";
 import {
   GLOBAL_RUNTIME_DEPENDENCIES,
   GLOBAL_RUNTIME_POSTINSTALL,

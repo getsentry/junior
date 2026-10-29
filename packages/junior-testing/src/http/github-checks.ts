@@ -143,8 +143,19 @@ export async function interceptTestGitHubChecksHttp(
   }
   if (request.method !== "GET") return undefined;
   switch (url.pathname) {
+    // GitHub's issue endpoint also returns pull requests. Title generation
+    // reads a plain owner/repo#number reference through this endpoint.
+    case `${api}/issues/691`:
     case `${api}/pulls/691`:
       return Response.json(pullRequest);
+    case `${api}/pulls/691/commits`:
+      return Response.json([
+        {
+          sha,
+          author: pullRequest.user,
+          commit: { message: pullRequest.title },
+        },
+      ]);
     case `${api}/commits/${sha}`:
       return Response.json({ sha, commit: { message: pullRequest.title } });
     case `${api}/commits/${sha}/check-runs`:
