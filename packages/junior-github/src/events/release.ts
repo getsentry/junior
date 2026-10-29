@@ -27,13 +27,16 @@ export function gitHubReleaseSourceResource(input: {
 }
 
 /**
- * Describe a release source that a conversation can watch. Call
- * only when `ctx.events.canSubscribe` is true.
+ * Describe a release source that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
  */
 export function gitHubReleaseSourceSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   repo: string;
   tag?: string;
-}): SubscribableResource {
+}): SubscribableResource | undefined {
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubReleaseSourceResource(input),
     suggestedEvents: GITHUB_RELEASE_SUGGESTED_EVENTS,

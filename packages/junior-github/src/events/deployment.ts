@@ -62,14 +62,17 @@ export function gitHubDeploymentSourceResource(input: {
 }
 
 /**
- * Describe a deployment source that a conversation can watch. Call
- * only when `ctx.events.canSubscribe` is true.
+ * Describe a deployment source that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
  */
 export function gitHubDeploymentSourceSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   commitSha: string;
   environment?: string;
   repo: string;
-}): SubscribableResource {
+}): SubscribableResource | undefined {
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubDeploymentSourceResource(input),
     suggestedEvents: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,

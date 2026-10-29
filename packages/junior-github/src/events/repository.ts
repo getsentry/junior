@@ -28,7 +28,7 @@ export const GITHUB_REPOSITORY_EVENTS = [
   ...GITHUB_DEPLOYMENT_EVENTS,
   ...GITHUB_ISSUE_EVENTS,
   ...GITHUB_PULL_REQUEST_EVENTS,
-];
+] as const;
 
 /** Repository events to suggest when a conversation starts a Watch. */
 export const GITHUB_REPOSITORY_SUGGESTED_EVENTS = [
@@ -36,15 +36,18 @@ export const GITHUB_REPOSITORY_SUGGESTED_EVENTS = [
   "pull_request.opened",
   ...GITHUB_ISSUE_SUGGESTED_EVENTS,
   ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-];
+] as const;
 
 /**
- * Describe a repository as a resource that a conversation can watch. Call
- * only when `ctx.events.canSubscribe` is true.
+ * Describe a repository as a resource that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
  */
 export function gitHubRepositorySubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   repo: string;
-}): SubscribableResource {
+}): SubscribableResource | undefined {
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubRepositoryResource(input),
     suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],

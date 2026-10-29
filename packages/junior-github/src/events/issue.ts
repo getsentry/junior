@@ -54,13 +54,16 @@ export function gitHubIssueResource(input: {
 }
 
 /**
- * Describe an issue as a resource that a conversation can watch. Call
- * only when `ctx.events.canSubscribe` is true.
+ * Describe an issue as a resource that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
  */
 export function gitHubIssueSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   number: number;
   repo: string;
-}): SubscribableResource {
+}): SubscribableResource | undefined {
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubIssueResource(input),
     suggestedEvents: GITHUB_ISSUE_SUGGESTED_EVENTS,

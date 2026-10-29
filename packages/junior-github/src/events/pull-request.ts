@@ -149,15 +149,18 @@ export function gitHubPullRequestResource(input: {
 }
 
 /**
- * Describe a pull request as a resource that a conversation can watch. Call
- * only when `ctx.events.canSubscribe` is true.
+ * Describe a pull request as a resource that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
  */
 export function gitHubPullRequestSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   number: number;
   repo: string;
   /** Events already covered by a forced subscription; omit them from suggestions. */
   omitSuggestedEvents?: readonly string[];
-}): SubscribableResource {
+}): SubscribableResource | undefined {
+  if (!input.canSubscribe) return undefined;
   const omitted = new Set(input.omitSuggestedEvents ?? []);
   const suggestedEvents = GITHUB_PULL_REQUEST_SUGGESTED_EVENTS.filter(
     (eventType) => !omitted.has(eventType),

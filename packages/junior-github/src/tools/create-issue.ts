@@ -137,12 +137,11 @@ function gitHubIssueToolResult(
   canSubscribe: boolean,
 ): GitHubIssueToolResult {
   const repo = parseRepo(input.repo);
-  const subscribable = canSubscribe
-    ? gitHubIssueSubscribable({
-        number: result.number,
-        repo: `${repo.owner}/${repo.name}`,
-      })
-    : undefined;
+  const subscribable = gitHubIssueSubscribable({
+    canSubscribe,
+    number: result.number,
+    repo: `${repo.owner}/${repo.name}`,
+  });
   const data = {
     number: result.number,
     url: result.url,

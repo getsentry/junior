@@ -108,13 +108,12 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       // production-scoped unless the caller names another target.
       const deploymentTarget =
         input.target ?? (commitSha ? ("production" as const) : undefined);
-      const subscribable = ctx.events.canSubscribe
-        ? vercelDeploymentSubscribable({
-            commitSha,
-            projectId,
-            target: deploymentTarget,
-          })
-        : undefined;
+      const subscribable = vercelDeploymentSubscribable({
+        canSubscribe: ctx.events.canSubscribe,
+        commitSha,
+        projectId,
+        target: deploymentTarget,
+      });
       const data: Deployment = {
         commitSha: commitSha ?? null,
         deploymentTarget: deploymentTarget ?? null,

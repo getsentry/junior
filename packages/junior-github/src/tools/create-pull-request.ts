@@ -416,13 +416,12 @@ function gitHubPullRequestToolResult(
   omitSuggestedEvents?: readonly string[],
 ): GitHubPullRequestToolResult {
   const repo = parseRepo(input.repo);
-  const subscribable = canSubscribe
-    ? gitHubPullRequestSubscribable({
-        number: result.number,
-        repo: `${repo.owner}/${repo.name}`,
-        ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
-      })
-    : undefined;
+  const subscribable = gitHubPullRequestSubscribable({
+    canSubscribe,
+    number: result.number,
+    repo: `${repo.owner}/${repo.name}`,
+    ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
+  });
   return {
     number: result.number,
     url: result.url,

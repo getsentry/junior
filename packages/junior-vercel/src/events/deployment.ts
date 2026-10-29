@@ -43,14 +43,17 @@ export function vercelDeploymentResource(input: {
 }
 
 /**
- * Describe a deployment resource that a conversation can watch. Call only
- * when `ctx.events.canSubscribe` is true.
+ * Describe a deployment resource that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
  */
 export function vercelDeploymentSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   commitSha?: string;
   projectId: string;
   target?: VercelDeploymentTarget;
 }): SubscribableResource | undefined {
+  if (!input.canSubscribe) return undefined;
   // Commit-scoped watches require a target so the identity stays unambiguous.
   if (input.commitSha && !input.target) return undefined;
   return {
