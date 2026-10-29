@@ -84,6 +84,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/nitro": "catalog:",
     "@sentry/node": "catalog:",
+    "@sentry/server-utils": "catalog:",
     "@sinclair/typebox": "^0.34.49",
     "@slack/types": "^2.21.1",
     "@slack/web-api": "^7.16.0",

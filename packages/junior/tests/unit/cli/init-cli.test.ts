@@ -74,7 +74,7 @@ describe("init cli", () => {
 
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "instrument.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "instrument.mjs"))).toBe(false);
     expect(fs.existsSync(path.join(target, "api"))).toBe(false);
     expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
@@ -116,17 +116,6 @@ describe("init cli", () => {
     expect(serverEntry).toContain('import("./plugins.ts")');
     expect(serverEntry).toContain("createApp({");
     expect(serverEntry).toContain("plugins,");
-
-    const instrumentFile = fs.readFileSync(
-      path.join(target, "instrument.mjs"),
-      "utf8",
-    );
-    expect(instrumentFile).toBe(
-      fs.readFileSync(
-        path.join(repoRoot, "apps", "example", "instrument.mjs"),
-        "utf8",
-      ),
-    );
 
     const nitroConfig = fs.readFileSync(
       path.join(target, "nitro.config.ts"),
@@ -172,14 +161,10 @@ describe("init cli", () => {
     expect(pkg.devDependencies.nitro).toBeDefined();
     expect(pkg.devDependencies.vite).toBeUndefined();
     expect(pkg.devDependencies.vercel).toBeUndefined();
-    expect(pkg.scripts.dev).toBe(
-      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
-    );
+    expect(pkg.scripts.dev).toBe("nitro dev");
     expect(pkg.scripts.check).toBe("junior check");
     expect(pkg.scripts.build).toBe("junior snapshot create && nitro build");
-    expect(pkg.scripts.preview).toBe(
-      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
-    );
+    expect(pkg.scripts.preview).toBe("nitro preview");
     expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
 
     const pnpmWorkspace = fs.readFileSync(

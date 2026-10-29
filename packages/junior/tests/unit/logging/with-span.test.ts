@@ -1,22 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { activeSpan, getTraceData, startSpan } = vi.hoisted(() => ({
-  activeSpan: {
-    setAttribute: vi.fn(),
-    setStatus: vi.fn(),
-  },
-  getTraceData: vi.fn(),
-  startSpan: vi.fn(
-    async (
-      _options: unknown,
-      callback: (span: typeof activeSpan) => Promise<unknown>,
-    ) => callback(activeSpan),
-  ),
-}));
+const { activeSpan, getTraceData, spanAttributes, startSpan } = vi.hoisted(
+  () => ({
+    activeSpan: {
+      setAttribute: vi.fn(),
+      setAttributes: vi.fn(),
+      setStatus: vi.fn(),
+    },
+    spanAttributes: {} as Record<string, unknown>,
+    getTraceData: vi.fn(),
+    startSpan: vi.fn(
+      async (
+        _options: unknown,
+        callback: (span: typeof activeSpan) => Promise<unknown>,
+      ) => callback(activeSpan),
+    ),
+  }),
+);
 
 vi.mock("@/chat/sentry", () => ({
   getActiveSpan: () => activeSpan,
   getTraceData,
+  spanToJSON: () => ({ attributes: spanAttributes }),
   startSpan,
 }));
 
@@ -24,6 +29,7 @@ describe("withSpan", () => {
   afterEach(() => {
     vi.clearAllMocks();
     getTraceData.mockReset();
+    for (const key of Object.keys(spanAttributes)) delete spanAttributes[key];
     vi.resetModules();
   });
 
@@ -82,13 +88,12 @@ describe("withSpan", () => {
     expect(spanOptions.attributes["gen_ai.response.finish_reasons"]).toEqual([
       "tool_call",
     ]);
-    expect(activeSpan.setAttribute).toHaveBeenCalledWith(
-      "gen_ai.response.finish_reasons",
-      ["tool_call"],
-    );
+    expect(activeSpan.setAttributes).toHaveBeenCalledWith({
+      "gen_ai.response.finish_reasons": ["tool_call"],
+    });
   });
 
-  it("sets error.type on the span that throws", async () => {
+  it("sets error.type on the span that throws unless the callback set one", async () => {
     const { withSpan } = await import("@/chat/logging");
 
     await expect(
@@ -101,6 +106,16 @@ describe("withSpan", () => {
       "error.type",
       "TypeError",
     );
+
+    activeSpan.setAttribute.mockClear();
+    spanAttributes["error.type"] = { type: "string", value: "rate_limited" };
+    await expect(
+      withSpan("POST slack.com/api/chat.postMessage", "http.client", {}, () =>
+        Promise.reject(new Error("rate limited")),
+      ),
+    ).rejects.toThrow("rate limited");
+
+    expect(activeSpan.setAttribute).not.toHaveBeenCalled();
   });
 
   it("sets status on the active Sentry span", async () => {

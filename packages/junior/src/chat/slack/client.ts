@@ -1,12 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { WebClient } from "@slack/web-api";
 import { getSlackBotToken } from "@/chat/config";
-import {
-  logWarn,
-  setSpanAttributes,
-  setSpanStatus,
-  withSpan,
-} from "@/chat/logging";
+import { logWarn, setSpanAttributes, withSpan } from "@/chat/logging";
 import {
   parseSlackChannelReferenceId,
   type SlackChannelId,
@@ -498,7 +493,6 @@ export async function withSlackRetries<T>(
               errorAttrs["http.response.status_code"] = mapped.statusCode;
             }
             setSpanAttributes(errorAttrs);
-            setSpanStatus("error");
             throw error;
           }
         },
@@ -667,29 +661,13 @@ export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
   // destination-installation token resolution as Web API calls.
   const token = resolveSlackToken();
 
-  return withSpan(
-    "GET files.slack.com",
-    "http.client",
-    {},
-    async () => {
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      setSpanAttributes({ "http.response.status_code": response.status });
-      if (!response.ok) {
-        setSpanAttributes({ "error.type": String(response.status) });
-        setSpanStatus("error");
-        throw new Error(`Slack file download failed: ${response.status}`);
-      }
-      return Buffer.from(await response.arrayBuffer());
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
     },
-    {
-      "http.request.method": "GET",
-      "server.address": "files.slack.com",
-      "url.scheme": "https",
-      "app.slack.method": "files.download",
-    },
-  );
+  });
+  if (!response.ok) {
+    throw new Error(`Slack file download failed: ${response.status}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
 }

@@ -3,12 +3,25 @@ import {
   scrubPrivateSentryEvent,
   scrubPrivateSentryLog,
   scrubPrivateSentrySpan,
-  scrubPrivateSentryTransaction,
 } from "@/chat/sentry-payload-filter";
 import {
   getDeploymentServiceVersion,
   getDeploymentTelemetryAttributes,
 } from "@/deployment";
+
+// Junior's own gen_ai spans own model calls. Pi parses provider streams itself,
+// so these SDK spans would duplicate them without usage or cost.
+// Remove this filter once Sentry ships a pi-ai integration
+// (getsentry/sentry-javascript#25869).
+const MANUAL_GEN_AI_INTEGRATIONS = new Set([
+  "Anthropic_AI",
+  "Google_GenAI",
+  "Groq",
+  "Mistral",
+  "OpenAI",
+  "TogetherAI",
+  "VercelAI",
+]);
 
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -43,24 +56,20 @@ export function initSentry(): void {
       process.env.NODE_ENV,
     release: serviceVersion,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
-    traceLifecycle: "stream",
-    sendDefaultPii: true,
-    enableLogs,
-    registerEsmLoaderHooks: false,
-    streamGenAiSpans: true,
-    beforeSend: scrubPrivateSentryEvent,
-    beforeSendLog: scrubPrivateSentryLog,
-    beforeSendSpan: Sentry.withStreamedSpan(scrubPrivateSentrySpan),
-    beforeSendTransaction: scrubPrivateSentryTransaction,
-    integrations(defaultIntegrations) {
-      return [
-        ...defaultIntegrations,
-        Sentry.vercelAIIntegration({
-          recordInputs: true,
-          recordOutputs: true,
-        }),
-      ];
+    dataCollection: {
+      // Outgoing calls carry model prompts and provider responses that the
+      // payload filter cannot see. Keep only incoming request bodies.
+      httpBodies: ["incomingRequest"],
+      // Query spans must not carry bound parameter values.
+      databaseQueryData: false,
     },
+    beforeSend: scrubPrivateSentryEvent,
+    beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
+    beforeSendSpan: scrubPrivateSentrySpan,
+    integrations: (defaultIntegrations) =>
+      defaultIntegrations.filter(
+        (integration) => !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name),
+      ),
   });
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.

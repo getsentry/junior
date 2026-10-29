@@ -16,10 +16,9 @@ type RequestContainer = {
 type SentryErrorEvent = Parameters<
   NonNullable<Sentry.NodeOptions["beforeSend"]>
 >[0];
-type SentryTransactionEvent = Parameters<
-  NonNullable<Sentry.NodeOptions["beforeSendTransaction"]>
+type SentrySpan = Parameters<
+  NonNullable<Sentry.NodeOptions["beforeSendSpan"]>
 >[0];
-type SentrySpan = Parameters<Parameters<typeof Sentry.withStreamedSpan>[0]>[0];
 type SentryLog = Parameters<
   NonNullable<Sentry.NodeOptions["beforeSendLog"]>
 >[0];
@@ -170,22 +169,6 @@ export function scrubPrivateSentryEvent(
 
   for (const breadcrumb of event.breadcrumbs ?? []) {
     scrubContainer(breadcrumb as AttributeContainer);
-  }
-
-  return event;
-}
-
-/** Remove private conversation payloads and boundary secrets from transactions. */
-export function scrubPrivateSentryTransaction(
-  event: SentryTransactionEvent,
-): SentryTransactionEvent | null {
-  const eventRecord = event as AttributeContainer;
-  scrubContainer(eventRecord);
-  scrubSensitiveRequest(event.request as RequestContainer | undefined);
-  scrubContainer(event.contexts?.trace as AttributeContainer);
-
-  for (const span of event.spans ?? []) {
-    scrubContainer(span);
   }
 
   return event;

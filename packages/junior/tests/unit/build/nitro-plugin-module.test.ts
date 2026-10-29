@@ -454,8 +454,11 @@ describe("juniorNitro plugin modules", () => {
 
     expect(rollupBeforeHooks).toHaveLength(1);
     await rollupBeforeHooks[0]!({}, { plugins: buildPlugins });
-    expect(buildPlugins).toHaveLength(1);
-    await buildPlugins[0]?.writeBundle?.();
+    expect(buildPlugins.map((plugin) => plugin.name)).toEqual([
+      "code-transformer",
+      "junior:copy-build-content",
+    ]);
+    await buildPlugins[1]?.writeBundle?.();
 
     await expect(
       fs.readFile(

@@ -21,7 +21,7 @@ related:
 
 ## Key spans
 
-- `http.server.request`
+- `http.server`
 - `queue.publish`
 - `queue.process`
 - `chat.turn`
