@@ -71,7 +71,6 @@ export function createVercelConversationWorkQueue(
       sendOptions?: ConversationQueueSendOptions,
     ): Promise<ConversationQueueSendResult> {
       const payload = signConversationQueueMessage(message);
-      // Sentry's Queues view reads `queue.publish` spans with these attributes.
       return await withSpan(
         "conversation.work.publish",
         "queue.publish",
