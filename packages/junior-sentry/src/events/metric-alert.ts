@@ -3,12 +3,19 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 
+/** The `action` values of Sentry metric alert webhooks. */
+export const SENTRY_METRIC_ALERT_ACTIONS = [
+  "critical",
+  "warning",
+  "resolved",
+] as const;
+
 /** Metric alert states, named after Sentry's `metric_alert.<action>` webhooks. */
 export const SENTRY_METRIC_ALERT_EVENTS = [
   "metric_alert.critical",
   "metric_alert.warning",
   "metric_alert.resolved",
-] as const;
+] as const satisfies readonly `metric_alert.${(typeof SENTRY_METRIC_ALERT_ACTIONS)[number]}`[];
 
 export const SENTRY_METRIC_ALERT_SUGGESTED_EVENTS = [
   "metric_alert.critical",

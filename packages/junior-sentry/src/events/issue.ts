@@ -6,7 +6,7 @@ import {
 export const SENTRY_ISSUE_EVENTS = ["issue.created"] as const;
 
 /** Issue levels that Sentry sets, from most to least severe. */
-const SENTRY_ISSUE_LEVELS = [
+export const SENTRY_ISSUE_LEVELS = [
   "fatal",
   "error",
   "warning",
@@ -15,7 +15,7 @@ const SENTRY_ISSUE_LEVELS = [
 ] as const;
 
 /** Issue priorities that Sentry sets. */
-const SENTRY_ISSUE_PRIORITIES = ["high", "medium", "low"] as const;
+export const SENTRY_ISSUE_PRIORITIES = ["high", "medium", "low"] as const;
 
 /** Trusted values that Sentry issue events set, when the webhook has them. */
 export const SENTRY_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({

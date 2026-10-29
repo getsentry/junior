@@ -1,14 +1,30 @@
 import type { EventData, EventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { sentryIssueResource, sentryProjectResource } from "../events/issue.js";
 import {
-  SENTRY_METRIC_ALERT_EVENTS,
+  SENTRY_ISSUE_LEVELS,
+  SENTRY_ISSUE_PRIORITIES,
+  sentryIssueResource,
+  sentryProjectResource,
+} from "../events/issue.js";
+import {
+  SENTRY_METRIC_ALERT_ACTIONS,
   sentryMetricAlertResource,
 } from "../events/metric-alert.js";
 
+// A level or priority that this plugin does not know counts as missing, so a
+// new Sentry value does not reject the webhook or match a filter by mistake.
+const issueLevelSchema = z
+  .enum(SENTRY_ISSUE_LEVELS)
+  .optional()
+  .catch(undefined);
+const issuePrioritySchema = z
+  .enum(SENTRY_ISSUE_PRIORITIES)
+  .optional()
+  .catch(undefined);
+
 const issueWebhookSchema = z
   .object({
-    action: z.string(),
+    action: z.literal("created"),
     data: z.object({
       issue: z
         .object({
@@ -17,8 +33,8 @@ const issueWebhookSchema = z
           id: z.string().min(1),
           issueCategory: z.string().optional(),
           issueType: z.string().optional(),
-          level: z.string().optional(),
-          priority: z.string().optional(),
+          level: issueLevelSchema,
+          priority: issuePrioritySchema,
           project: z.object({ slug: z.string().min(1) }).passthrough(),
           status: z.string().optional(),
           substatus: z.string().optional().nullable(),
@@ -34,7 +50,7 @@ const issueWebhookSchema = z
 
 const metricAlertWebhookSchema = z
   .object({
-    action: z.string(),
+    action: z.enum(SENTRY_METRIC_ALERT_ACTIONS),
     data: z.object({
       description_text: z.string().optional(),
       description_title: z.string().optional(),
@@ -94,16 +110,9 @@ function issueText(issue: {
 }
 
 /** Sentry's own values for the issue. Sentry sets them, so they are trusted. */
-function issueData(issue: {
-  id: string;
-  issueCategory?: string;
-  issueType?: string;
-  level?: string;
-  priority?: string;
-  status?: string;
-  substatus?: string | null;
-  web_url?: string;
-}): EventData {
+function issueData(
+  issue: z.output<typeof issueWebhookSchema>["data"]["issue"],
+): EventData {
   return {
     issueId: issue.id,
     ...(issue.level ? { level: issue.level } : undefined),
@@ -137,7 +146,7 @@ interface WebhookInput {
 
 function normalizeIssueEvents(input: WebhookInput): EventInput[] {
   const parsed = issueWebhookSchema.safeParse(input.body);
-  if (!parsed.success || parsed.data.action !== "created") return [];
+  if (!parsed.success) return [];
 
   const issue = parsed.data.data.issue;
   const org = organizationSlug(issue.url)?.toLowerCase();
@@ -178,10 +187,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
 function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const parsed = metricAlertWebhookSchema.safeParse(input.body);
   if (!parsed.success) return [];
-  const eventType = `metric_alert.${parsed.data.action}`;
-  if (!(SENTRY_METRIC_ALERT_EVENTS as readonly string[]).includes(eventType)) {
-    return [];
-  }
+  const eventType = `metric_alert.${parsed.data.action}` as const;
 
   const { data } = parsed.data;
   const org = webOrganizationSlug(data.web_url)?.toLowerCase();

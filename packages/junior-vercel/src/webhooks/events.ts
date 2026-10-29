@@ -28,13 +28,26 @@ const deploymentTargetSchema = z
   .transform((target) => target ?? "preview")
   .pipe(z.enum(VERCEL_DEPLOYMENT_TARGETS));
 
-// Each Git provider writes the commit SHA to a different metadata key.
-const COMMIT_SHA_META_KEYS = [
-  "githubCommitSha",
-  "gitlabCommitSha",
-  "bitbucketCommitSha",
-  "gitCommitSha",
-] as const;
+// A metadata value that is not a full SHA counts as missing, so a bad value
+// does not reject the webhook.
+const metaCommitShaSchema = commitShaSchema.optional().catch(undefined);
+
+// Each Git provider writes the commit SHA to a different metadata key. The
+// first valid SHA wins.
+const deploymentMetaSchema = z
+  .object({
+    githubCommitSha: metaCommitShaSchema,
+    gitlabCommitSha: metaCommitShaSchema,
+    bitbucketCommitSha: metaCommitShaSchema,
+    gitCommitSha: metaCommitShaSchema,
+  })
+  .transform((meta) => ({
+    commitSha:
+      meta.githubCommitSha ??
+      meta.gitlabCommitSha ??
+      meta.bitbucketCommitSha ??
+      meta.gitCommitSha,
+  }));
 
 // Read only the fields used for routing. Vercel sends more fields than its docs
 // list, so unknown fields must not reject the webhook.
@@ -49,7 +62,7 @@ const deploymentPayloadSchema = z
   .object({
     deployment: z.object({
       id: deploymentIdSchema,
-      meta: z.record(z.string(), z.unknown()),
+      meta: deploymentMetaSchema,
     }),
     project: z.object({
       id: vercelProjectIdSchema,
@@ -57,19 +70,11 @@ const deploymentPayloadSchema = z
     target: deploymentTargetSchema,
   })
   .transform((payload) => ({
-    commitSha: commitSha(payload.deployment.meta),
+    commitSha: payload.deployment.meta.commitSha,
     deploymentId: payload.deployment.id,
     projectId: payload.project.id,
     target: payload.target,
   }));
-
-function commitSha(meta: Record<string, unknown>): string | undefined {
-  for (const key of COMMIT_SHA_META_KEYS) {
-    const parsed = commitShaSchema.safeParse(meta[key]);
-    if (parsed.success) return parsed.data;
-  }
-  return undefined;
-}
 
 const DEPLOYMENT_OUTCOMES = {
   "deployment.succeeded": "succeeded",

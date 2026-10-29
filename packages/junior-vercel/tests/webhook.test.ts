@@ -137,9 +137,10 @@ describe("Vercel webhook events", () => {
     ]);
   });
 
-  it("maps a null Vercel target and alternate Git provider metadata to preview", () => {
+  it("maps a null Vercel target to preview and skips bad commit metadata", () => {
     const body = webhookBody("deployment.succeeded", null);
     body.payload.deployment.meta = {
+      githubCommitSha: "not-a-sha",
       gitlabCommitSha: COMMIT_SHA.toUpperCase(),
     };
 

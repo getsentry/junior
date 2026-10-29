@@ -103,6 +103,22 @@ afterEach(() => {
 });
 
 describe("Sentry webhook events", () => {
+  it("drops an issue level or priority that it does not know", () => {
+    const body = issueBody();
+    body.data.issue.level = "critical";
+    body.data.issue.priority = "urgent";
+
+    const [event] = normalizeSentryEvents({
+      body,
+      hookResource: "issue",
+      webhookOrg: "sentry",
+    });
+
+    expect(event?.data).not.toHaveProperty("level");
+    expect(event?.data).not.toHaveProperty("priority");
+    expect(event?.data).toMatchObject({ issueId: "7513266773" });
+  });
+
   it("normalizes a created issue for the issue and project", () => {
     expect(
       normalizeSentryEvents({
