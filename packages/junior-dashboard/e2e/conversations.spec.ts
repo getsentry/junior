@@ -532,7 +532,7 @@ test("inspects and copies a child agent transcript", async ({
   });
   await entry.click();
   const eventDetails = page.getByRole("dialog", {
-    name: "message",
+    name: "Event details",
     exact: true,
   });
   await expect(

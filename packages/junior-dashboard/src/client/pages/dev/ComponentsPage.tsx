@@ -37,6 +37,8 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Drawer } from "../../components/Drawer";
+import { CopyButton } from "../../components/CopyButton";
+import { DetailsPanel } from "../../components/DetailsPanel";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
@@ -195,6 +197,7 @@ function FoundationsGalleryPage() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("deploy failure");
 
@@ -231,6 +234,12 @@ function FoundationsGalleryPage() {
         <FormNotice title="This automation changed while you were editing.">
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
+      </Fixture>
+      <Fixture title="Copy text">
+        <CopyButton
+          getText={() => JSON.stringify({ status: "ready" }, null, 2)}
+          label="Copy JSON"
+        />
       </Fixture>
       <Fixture title="Select controls">
         <SelectFixtures />
@@ -304,6 +313,34 @@ function FoundationsGalleryPage() {
               : null}
           </Drawer>
         ) : null}
+      </Fixture>
+      <Fixture title="Details panel">
+        <div
+          className={cn(
+            "grid h-80 min-w-0 overflow-hidden rounded-lg border border-dashboard-border",
+            panelOpen && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+          )}
+        >
+          <div className="p-4">
+            <Button onClick={() => setPanelOpen(true)}>Inspect an item</Button>
+            <p className="text-sm text-dashboard-text-muted">
+              The source stays usable beside its details.
+            </p>
+          </div>
+          {panelOpen ? (
+            <DetailsPanel
+              label="Item details"
+              onClose={() => setPanelOpen(false)}
+              title={
+                <h2 className="m-0 text-base font-semibold">Item details</h2>
+              }
+            >
+              <p className="m-0 p-4 text-sm text-dashboard-text-muted">
+                Small windows show these details in a bottom sheet.
+              </p>
+            </DetailsPanel>
+          ) : null}
+        </div>
       </Fixture>
       <Fixture title="Bottom sheet">
         <Button onClick={() => setSheetOpen(true)}>Open bottom sheet</Button>

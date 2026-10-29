@@ -50,13 +50,15 @@ browser tests cover opening, closing, and keyboard interaction.
 
 ## Conversation details
 
-`ConversationPage` owns whether details are open. The page is keyed by the
-Conversation, so switching Conversations closes details. `ConversationHeader`
-only toggles details and restores focus through explicit control refs after
-dismissal.
+`ConversationPage` owns whether details are open. At 1440px and above, details
+open by default. An explicit choice lasts for the current Conversation. The page
+is keyed by the Conversation, so switching Conversations resets that choice.
+`ConversationHeader` toggles details and restores focus through explicit control
+refs after dismissal.
 
-`ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
-uses a 400px aside at 1280px and above. The chat and aside scroll separately.
+`ConversationDetails` owns one set of tabs and content. It supplies its title and
+actions to `DetailsPanel`, which uses a 400px aside at 1280px and above. The chat
+and aside scroll separately.
 Smaller windows use `BottomSheet` with a visible title and close control. The sheet and
 side drawers use the shadcn Base UI `Sheet` and share the app's document
 scroll lock. A resize changes the frame and keeps the selected tab. Tabs stay
@@ -64,3 +66,40 @@ fixed above the scrolling content in both layouts. The sheet title and close con
 control, tap the backdrop, or press Escape to dismiss it. Base UI owns the
 transition lifecycle.
 A pending exit cannot close a new panel or a different Conversation.
+
+## Event log
+
+`ChatLayout` keeps the Conversation header outside the transcript scroll region.
+`ConversationEventLog` fills the pane without a card border or page inset. Its
+search toolbar and column labels stay together at the top while rows scroll.
+`Transcript` shares the search value with its owner, or keeps it locally when
+used alone. Event log search stays visible; the transcript search toggle is for
+the Conversation view.
+
+Rows keep time, event type, and summary in columns when the pane is at least
+512px wide. Smaller panes put the summary below time and type. Model and usage
+metadata share one optional line. Missing model metadata is omitted from rows.
+Selected rows have a background and an accent edge. Up and Down select the
+previous or next visible row while a row has focus. Selection stops at the
+ends of the filtered list. The selected row stays clear of the fixed toolbar.
+
+The timezone toggle uses `useEventTime` to share a UTC/local preference through
+`@uidotdev/usehooks` and browser local storage. It applies to event row clocks
+and detail timestamps. Local mode follows the browser timezone. The button uses
+a generic zone name because a log can span standard and daylight-saving time.
+Detail timestamps use the zone name for each event date. The mode, not
+the timezone identifier, persists across visits and tabs. This hook belongs to
+the client-rendered event viewer. Raw JSON retains the original ISO values.
+
+## Event details
+
+The URL owns the selected event in the main Conversation. `ConversationPage`
+places `ConversationEventDetails` beside the log. It uses the same `DetailsPanel`
+as Conversation details, and only one panel shows at a time. Selecting another
+row changes the event and resets its scroll position and disclosures. Closing
+returns focus to that row. Switching Conversations removes the panel.
+
+Standalone transcripts, such as a subagent drawer, keep selection in
+`ConversationEventLog`. Their event details use a nested drawer on desktop and
+`BottomSheet` on smaller screens. This keeps the main log free of modal behavior
+while a nested transcript retains its parent drawer's focus rules.

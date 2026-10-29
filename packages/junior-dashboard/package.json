@@ -39,6 +39,7 @@
     "@sentry/junior": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",
     "@tanstack/react-query": "^5.100.14",
+    "@uidotdev/usehooks": "2.4.1",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
     "hono": "^4.13.11",

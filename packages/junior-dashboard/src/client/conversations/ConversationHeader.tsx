@@ -53,11 +53,16 @@ export function ConversationHeader(props: {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const searchOpenVisible = searchOpen || props.search.length > 0;
+  const searchOpenVisible =
+    props.view === "rich" && (searchOpen || props.search.length > 0);
   const openMobileNavigation = useOpenMobileNavigation();
 
   useEffect(() => {
-    if (wasDetailsOpen.current && !detailsOpen) {
+    if (
+      wasDetailsOpen.current &&
+      !detailsOpen &&
+      document.activeElement === document.body
+    ) {
       const trigger = window.matchMedia("(max-width: 767px)").matches
         ? menuButtonRef.current
         : detailsButtonRef.current;
@@ -182,7 +187,7 @@ export function ConversationHeader(props: {
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
         className={cn(
-          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border bg-dashboard-bg md:-mx-7",
+          "relative z-10 border-b border-dashboard-border bg-dashboard-bg",
           !showMobileHeader && "hidden md:block",
         )}
       >
