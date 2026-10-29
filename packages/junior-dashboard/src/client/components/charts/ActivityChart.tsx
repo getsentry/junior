@@ -1,66 +1,20 @@
 import {
   cloneElement,
-  createContext,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
-  type SVGProps,
-  useContext,
-  useLayoutEffect,
-  useRef,
-  useState,
 } from "react";
+import { ReferenceLine, usePlotArea, XAxis, YAxis } from "recharts";
 
 import {
   Tooltip,
   TooltipContent,
   TooltipTitle,
   TooltipTrigger,
+  tooltipContentVariants,
 } from "../ui/tooltip";
 import { getDashboardTimeZone } from "../../format";
 import { cn } from "../../styles";
-
-/** Shared SVG dimensions and derived plot bounds for activity charts. */
-export type ActivityChartLayout = {
-  bottom: number;
-  height: number;
-  left: number;
-  plotHeight: number;
-  plotWidth: number;
-  right: number;
-  top: number;
-  width: number;
-};
-
-type LayoutOptions = {
-  bottom?: number;
-  left?: number;
-  right?: number;
-  top?: number;
-  width?: number;
-};
-
-/** Create the shared plot dimensions used by dashboard activity charts. */
-export function createActivityChartLayout(
-  height: number,
-  options?: LayoutOptions,
-): ActivityChartLayout {
-  const width = options?.width ?? 960;
-  const left = options?.left ?? 56;
-  const right = options?.right ?? 18;
-  const top = options?.top ?? 24;
-  const bottom = options?.bottom ?? 36;
-  return {
-    bottom,
-    height,
-    left,
-    plotHeight: height - top - bottom,
-    plotWidth: width - left - right,
-    right,
-    top,
-    width,
-  };
-}
 
 /** True when the bucket key is a UTC hour (`YYYY-MM-DDTHH`). */
 export function isActivityHourBucket(date: string): boolean {
@@ -126,38 +80,9 @@ export function formatActivityCategoryTooltipLabel(label: string): string {
 }
 
 /** Choose the first, middle, and last available chart labels. */
-export function activityLabelIndexes(count: number): number[] {
+function activityLabelIndexes(count: number): number[] {
   return [...new Set([0, Math.floor((count - 1) / 2), count - 1])].filter(
     (index) => index >= 0,
-  );
-}
-
-const chartAxisFontSizePx = 11;
-const ChartSvgScaleContext = createContext(1);
-
-/** Shared visual style for SVG chart axis labels. */
-export const chartAxisLabelClassName =
-  "fill-dashboard-text-muted font-sans tabular-nums leading-none text-dashboard-text-muted";
-
-type ChartAxisLabelProps = Omit<
-  SVGProps<SVGTextElement>,
-  "children" | "className" | "fill" | "fontFamily" | "fontSize"
-> & {
-  children: ReactNode;
-};
-
-/** Render an SVG axis label at the shared on-screen size. */
-export function ChartAxisLabel(props: ChartAxisLabelProps) {
-  const { children, ...textProps } = props;
-  const scale = useContext(ChartSvgScaleContext);
-  return (
-    <text
-      className={chartAxisLabelClassName}
-      fontSize={chartAxisFontSizePx / scale}
-      {...textProps}
-    >
-      {children}
-    </text>
   );
 }
 
@@ -180,151 +105,76 @@ export function ChartAxisHtmlLabel(props: {
   );
 }
 
-type ChartBox = { height: number; width: number };
+/** Plot margins shared by dashboard Recharts charts. */
+export const activityChartMargin = { bottom: 0, left: 4, right: 12, top: 12 };
 
-/**
- * Screen pixels per SVG user unit. The default `preserveAspectRatio` fits the
- * whole viewBox inside the element box, so the smaller ratio wins.
- */
-function chartSvgScale(box: ChartBox | undefined, layout: ActivityChartLayout) {
-  if (!box || box.width <= 0 || box.height <= 0) return 1;
-  return Math.min(box.width / layout.width, box.height / layout.height);
-}
-
-/**
- * Render the shared SVG chart shell and provide its live screen scale to labels.
- * SVG text uses user units, so labels invert this scale to remain 12px on screen.
- * The scale comes from the current element size and viewBox, so a measurement
- * from an earlier layout is never reused.
- */
-export function ChartSvg(props: {
-  "aria-label": string;
-  children: ReactNode;
-  className?: string;
-  layout: ActivityChartLayout;
+/** Render the first, middle, and last bucket labels under a Recharts chart. */
+export function ActivityChartXAxis(props: {
+  /** Center every label, for categories that are not a time series. */
+  centered?: boolean;
+  dataKey?: string;
+  formatLabel?(label: string): string;
+  keys: readonly string[];
 }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [box, setBox] = useState<ChartBox>();
-
-  useLayoutEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const updateBox = (next: ChartBox) =>
-      setBox((previous) =>
-        previous?.width === next.width && previous.height === next.height
-          ? previous
-          : next,
-      );
-    // Measure before the first paint; the observer reports later changes.
-    updateBox({ height: svg.clientHeight, width: svg.clientWidth });
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) updateBox(entry.contentRect);
-    });
-    observer.observe(svg);
-    return () => observer.disconnect();
-  }, []);
-
-  const scale = chartSvgScale(box, props.layout);
-
+  const formatLabel = props.formatLabel ?? formatActivityCategoryLabel;
+  const ticks = activityLabelIndexes(props.keys.length).map(
+    (index) => props.keys[index]!,
+  );
+  const first = props.keys[0];
+  const last = props.keys.at(-1);
   return (
-    <ChartSvgScaleContext value={scale}>
-      <svg
-        aria-label={props["aria-label"]}
-        className={cn("block h-auto w-full", props.className)}
-        ref={svgRef}
-        role="img"
-        viewBox={`0 0 ${props.layout.width} ${props.layout.height}`}
-      >
-        {props.children}
-      </svg>
-    </ChartSvgScaleContext>
+    <XAxis
+      axisLine={false}
+      dataKey={props.dataKey ?? "date"}
+      interval={0}
+      tick={({ payload, x, y }) => {
+        const value = String(payload.value);
+        const anchor = props.centered
+          ? "middle"
+          : value === first
+            ? "start"
+            : value === last
+              ? "end"
+              : "middle";
+        return (
+          <text
+            className="fill-dashboard-text-muted"
+            dy="0.71em"
+            textAnchor={anchor}
+            x={x}
+            y={y}
+          >
+            {formatLabel(value)}
+          </text>
+        );
+      }}
+      tickLine={false}
+      tickMargin={8}
+      ticks={ticks}
+    />
   );
 }
 
-/** Render the shared horizontal guide lines and values for activity charts. */
-export function ActivityChartGrid(props: {
+/** Render minimum, middle, and maximum guide values on a Recharts chart. */
+export function ActivityChartYAxis(props: {
   format?(value: number): string;
-  layout: ActivityChartLayout;
   maximum: number;
+  minimum?: number;
 }) {
+  const minimum = props.minimum ?? 0;
   const format = props.format ?? ((value: number) => String(Math.round(value)));
-  return [0, 0.5, 1].map((ratio) => {
-    const yPosition = props.layout.top + ratio * props.layout.plotHeight;
-    return (
-      <g key={ratio}>
-        <line
-          stroke="var(--color-dashboard-border-subtle)"
-          strokeDasharray="3 5"
-          x1={props.layout.left}
-          x2={props.layout.width - props.layout.right}
-          y1={yPosition}
-          y2={yPosition}
-        />
-        <ChartAxisLabel
-          textAnchor="end"
-          x={props.layout.left - 8}
-          y={yPosition + 3}
-        >
-          {format(props.maximum * (1 - ratio))}
-        </ChartAxisLabel>
-      </g>
-    );
-  });
-}
-
-/** Render the shared first, middle, and last date labels for activity charts. */
-export function ActivityChartDateLabels(props: {
-  dates: readonly string[];
-  formatDate?(date: string): string;
-  layout: ActivityChartLayout;
-  xPosition(index: number): number;
-}) {
-  const formatDate = props.formatDate ?? formatActivityDate;
-  return activityLabelIndexes(props.dates.length).map((index) => {
-    const date = props.dates[index];
-    if (!date) return null;
-    return (
-      <ChartAxisLabel
-        key={date}
-        textAnchor={
-          index === 0
-            ? "start"
-            : index === props.dates.length - 1
-              ? "end"
-              : "middle"
-        }
-        x={props.xPosition(index)}
-        y={props.layout.height - 8}
-      >
-        {formatDate(date)}
-      </ChartAxisLabel>
-    );
-  });
-}
-
-/** Render centered categorical labels using stable category keys. */
-export function ChartCategoryLabels(props: {
-  categories: ReadonlyArray<{ id: string; label: string }>;
-  formatLabel?(label: string): string;
-  layout: ActivityChartLayout;
-  xPosition(index: number): number;
-}) {
-  // Default formats day/hour bucket keys; leave other category labels alone.
-  const formatLabel = props.formatLabel ?? formatActivityCategoryLabel;
-  return activityLabelIndexes(props.categories.length).map((index) => {
-    const category = props.categories[index];
-    if (!category) return null;
-    return (
-      <ChartAxisLabel
-        key={category.id}
-        textAnchor="middle"
-        x={props.xPosition(index)}
-        y={props.layout.height - 8}
-      >
-        {formatLabel(category.label)}
-      </ChartAxisLabel>
-    );
-  });
+  return (
+    <YAxis
+      axisLine={false}
+      domain={[minimum, props.maximum]}
+      interval={0}
+      tickFormatter={format}
+      tickLine={false}
+      tickMargin={8}
+      ticks={[minimum, (minimum + props.maximum) / 2, props.maximum]}
+      width="auto"
+    />
+  );
 }
 
 /** Mean of chart bucket values; empty input is 0. */
@@ -333,92 +183,122 @@ export function activityChartAverage(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-/** Shared visual style for average-line labels. */
-export const chartAverageLabelClassName =
-  "fill-dashboard-text-solid font-sans tabular-nums leading-none";
+/**
+ * Label for an average line, such as `3.2 / day`.
+ * Returns nothing for a zero mean or when the formatter floors it to zero.
+ */
+export function activityChartAverageLabel(
+  average: number,
+  format: (value: number) => string,
+  unit = "day",
+): string | undefined {
+  if (!(average > 0)) return undefined;
+  const formatted = format(average).trim();
+  if (!formatted || /^\$?0(?:\.0+)?(?:ms)?$/i.test(formatted)) return undefined;
+  return `${formatted} / ${unit}`;
+}
+
+const AVERAGE_LABEL_FONT_PX = 12;
 
 /**
- * Opt-in horizontal average across the plotted buckets.
- * Renders a dashed guide plus a compact "value / day" label on the right.
- * Label sits on a dark chip so series-colored bars and guides stay off the text.
+ * Draw the average label on a solid chip at the right end of the line, so
+ * series colors stay off the text. The chip flips below the line near the top.
  */
-export function ActivityChartAverageLine(props: {
-  average: number;
-  format(value: number): string;
-  layout: ActivityChartLayout;
-  maximum: number;
-  stroke?: string;
-  unit?: string;
+function ActivityChartAverageChip(props: {
+  text: string;
+  viewBox?: { width?: number; x?: number; y?: number };
 }) {
-  const scale = useContext(ChartSvgScaleContext);
-  if (!(props.average > 0) || !(props.maximum > 0)) return null;
-
-  const unit = props.unit ?? "day";
-  const formatted = props.format(props.average).trim();
-  // Flooring formatters can turn a real sub-1 mean into "0"; hide that case.
-  if (!formatted || /^\$?0(?:\.0+)?(?:ms)?$/i.test(formatted)) return null;
-
-  const y =
-    props.layout.top +
-    props.layout.plotHeight -
-    (props.average / props.maximum) * props.layout.plotHeight;
-  const x1 = props.layout.left;
-  const x2 = props.layout.width - props.layout.right;
-  const label = `${formatted} / ${unit}`;
-  const fontSize = chartAxisFontSizePx / scale;
-  // Mono width estimate for the chip and dashed-guide stop.
-  const labelWidth = Math.max(52, label.length * fontSize * 0.68);
-  const chipPadX = 5;
-  const chipPadY = 3;
-  const chipHeight = fontSize + chipPadY * 2;
-  const chipWidth = labelWidth + chipPadX * 2;
-  const chipX = x2 - chipWidth;
-  // Keep the chip inside the plot; flip below the line near the top edge.
-  const labelAbove = y - props.layout.top > chipHeight + 4;
-  const chipY = labelAbove ? y - chipHeight - 3 : y + 4;
-  const textY = chipY + chipHeight / 2 + fontSize * 0.35;
-  const lineEnd = Math.max(x1, chipX - 6);
-
+  const plotArea = usePlotArea();
+  const lineY = props.viewBox?.y ?? 0;
+  const right = (props.viewBox?.x ?? 0) + (props.viewBox?.width ?? 0);
+  const chipHeight = AVERAGE_LABEL_FONT_PX + 6;
+  // Width estimate for tabular digits at the label size.
+  const chipWidth =
+    Math.max(52, props.text.length * AVERAGE_LABEL_FONT_PX * 0.62) + 10;
+  const above = lineY - (plotArea?.y ?? 0) > chipHeight + 4;
+  const chipY = above ? lineY - chipHeight - 3 : lineY + 4;
   return (
-    <g aria-label={`average ${label}`} pointerEvents="none">
-      <line
-        stroke={props.stroke ?? "var(--color-dashboard-text-faint)"}
-        strokeDasharray="4 4"
-        strokeOpacity={0.85}
-        strokeWidth={1.25}
-        x1={x1}
-        x2={lineEnd}
-        y1={y}
-        y2={y}
-      />
-      {/* Solid chip so series colors never wash out the label text. */}
+    <g pointerEvents="none">
       <rect
         fill="var(--color-dashboard-bg-elevated)"
         fillOpacity={0.92}
         height={chipHeight}
         rx={3}
         width={chipWidth}
-        x={chipX}
+        x={right - chipWidth}
         y={chipY}
       />
       <text
-        className={chartAverageLabelClassName}
-        fill="var(--color-dashboard-text-solid)"
-        fontSize={fontSize}
+        className="fill-dashboard-text-solid font-sans tabular-nums"
+        dominantBaseline="central"
         textAnchor="middle"
-        x={chipX + chipWidth / 2}
-        y={textY}
+        x={right - chipWidth / 2}
+        y={chipY + chipHeight / 2}
       >
-        {label}
+        {props.text}
       </text>
     </g>
   );
 }
 
-/** Render label and value rows inside an activity-chart tooltip. */
-export function ActivityTooltipRows(props: {
-  rows: ReadonlyArray<readonly [label: ReactNode, value: ReactNode]>;
+/**
+ * Opt-in horizontal average across the plotted buckets.
+ * Renders a dashed guide plus a compact "value / day" label on the right.
+ */
+export function ActivityChartAverageLine(props: {
+  average: number;
+  format(value: number): string;
+  stroke?: string;
+  unit?: string;
 }) {
+  const label = activityChartAverageLabel(
+    props.average,
+    props.format,
+    props.unit,
+  );
+  if (!label) return null;
+  return (
+    <ReferenceLine
+      aria-label={`average ${label}`}
+      ifOverflow="extendDomain"
+      label={<ActivityChartAverageChip text={label} />}
+      stroke={props.stroke ?? "var(--color-dashboard-text-faint)"}
+      strokeDasharray="4 4"
+      strokeOpacity={0.85}
+      strokeWidth={1.25}
+      y={props.average}
+    />
+  );
+}
+
+type TooltipRows = ReadonlyArray<readonly [label: ReactNode, value: ReactNode]>;
+
+/**
+ * Recharts tooltip body for one activity bucket. It titles the bucket with
+ * `formatLabel`, or by default `formatActivityCategoryTooltipLabel`, and lists
+ * `rows` for the hovered datum.
+ * Pass it as `content` of `ChartTooltip`; Recharts injects the other props.
+ */
+export function ActivityChartTooltipContent<Datum>(props: {
+  active?: boolean;
+  formatLabel?(label: string): string;
+  label?: unknown;
+  payload?: ReadonlyArray<{ payload?: unknown }>;
+  rows(datum: Datum): TooltipRows;
+}) {
+  const datum = props.payload?.[0]?.payload as Datum | undefined;
+  if (!props.active || datum === undefined) return null;
+  const formatLabel = props.formatLabel ?? formatActivityCategoryTooltipLabel;
+  return (
+    <div className={tooltipContentVariants()} role="status">
+      <TooltipTitle>{formatLabel(String(props.label))}</TooltipTitle>
+      <ActivityTooltipRows rows={props.rows(datum)} />
+    </div>
+  );
+}
+
+/** Render label and value rows inside an activity-chart tooltip. */
+export function ActivityTooltipRows(props: { rows: TooltipRows }) {
   return (
     <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
       {props.rows.flatMap(([label, value], index) => [
