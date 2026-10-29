@@ -1,6 +1,5 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -98,7 +97,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    expect(returned).toBeInstanceOf(AssistantMessageEventStream);
+    expect(returned).toBeInstanceOf(stream.constructor);
     expect(startInactiveSpan).toHaveBeenCalledTimes(1);
     const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.op).toBe("gen_ai.chat");

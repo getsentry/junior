@@ -1,6 +1,9 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { AssistantMessageEvent } from "@earendil-works/pi-ai";
-import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
+import {
+  type AssistantMessageEvent,
+  type AssistantMessageEventStream,
+  createAssistantMessageEventStream,
+} from "@earendil-works/pi-ai";
 import {
   type Api,
   type AssistantMessage,
@@ -184,22 +187,6 @@ function createResponseTiming(requestStartedAtMs: number): {
   };
 }
 
-// The stream that the agent loop reads in place of the provider stream.
-// `result()` returns the provider stream's own promise, so the final message,
-// and a rejection if one occurs, reach the agent loop unchanged.
-class RelayedAssistantMessageEventStream extends AssistantMessageEventStream {
-  readonly #source: AssistantMessageEventStream;
-
-  constructor(source: AssistantMessageEventStream) {
-    super();
-    this.#source = source;
-  }
-
-  override result(): Promise<AssistantMessage> {
-    return this.#source.result();
-  }
-}
-
 // A pi-ai event stream has one consumer. This relay is the consumer of the
 // provider stream: it shows each event to `onEvent` as the event arrives, then
 // pushes the same event object to the stream that the agent loop reads. The
@@ -209,7 +196,10 @@ function relayStream(
   source: AssistantMessageEventStream,
   onEvent: (event: AssistantMessageEvent) => void,
 ): { stream: AssistantMessageEventStream; finished: Promise<void> } {
-  const relayed = new RelayedAssistantMessageEventStream(source);
+  const relayed = createAssistantMessageEventStream();
+  // `result()` returns the provider stream's own promise, so the final
+  // message, and a rejection if one occurs, reach the agent loop unchanged.
+  relayed.result = () => source.result();
   const finished = (async () => {
     try {
       for await (const event of source) {
