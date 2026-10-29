@@ -55,15 +55,14 @@ export function TranscriptContextEventView(props: {
             />
             Continuation summary
           </CollapsibleTrigger>
-          <CollapsibleContent
-            className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted"
-            hiddenUntilFound
-          >
-            <TranscriptText
-              mentions={props.part.mentions ?? []}
-              role="system"
-              text={event.summary}
-            />
+          <CollapsibleContent hiddenUntilFound>
+            <div className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted">
+              <TranscriptText
+                mentions={props.part.mentions ?? []}
+                role="system"
+                text={event.summary}
+              />
+            </div>
           </CollapsibleContent>
         </Collapsible>
       ) : null}

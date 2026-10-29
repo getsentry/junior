@@ -177,8 +177,8 @@ function BriefSection(props: { children: ReactNode; title: string }) {
         />
         {props.title}
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-3" hiddenUntilFound>
-        {props.children}
+      <CollapsibleContent hiddenUntilFound>
+        <div className="mt-3">{props.children}</div>
       </CollapsibleContent>
     </Collapsible>
   );

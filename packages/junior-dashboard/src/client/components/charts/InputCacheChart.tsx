@@ -188,23 +188,22 @@ export function InputCacheChart(props: {
           />
           How to read this
         </CollapsibleTrigger>
-        <CollapsibleContent
-          className="mt-3 grid gap-2 leading-relaxed"
-          hiddenUntilFound
-        >
-          <p className="m-0">
-            From cache is input reused. Written to cache is input saved for
-            reuse. Uncached is the remaining input.
-          </p>
-          <p className="m-0">
-            Percentages use total input tokens, not call counts. Gray marks and
-            — mean missing data; zero means a reported zero. The latest interval
-            may be incomplete.
-          </p>
-          <p className="m-0">
-            These totals can show when reuse changes, but not why. They do not
-            show individual calls or prove that every call reported cache use.
-          </p>
+        <CollapsibleContent hiddenUntilFound>
+          <div className="mt-3 grid gap-2 leading-relaxed">
+            <p className="m-0">
+              From cache is input reused. Written to cache is input saved for
+              reuse. Uncached is the remaining input.
+            </p>
+            <p className="m-0">
+              Percentages use total input tokens, not call counts. Gray marks
+              and — mean missing data; zero means a reported zero. The latest
+              interval may be incomplete.
+            </p>
+            <p className="m-0">
+              These totals can show when reuse changes, but not why. They do not
+              show individual calls or prove that every call reported cache use.
+            </p>
+          </div>
         </CollapsibleContent>
       </Collapsible>
     </Card>

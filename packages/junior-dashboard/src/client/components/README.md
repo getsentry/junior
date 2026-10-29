@@ -163,6 +163,7 @@ token so each theme can redefine it.
   trigger is a button with `aria-expanded`. Put a `ChevronRight` with
   `dashboardDisclosureChevronClass` in a `group` trigger. Set
   `hiddenUntilFound` on the content when browser find must reach closed text.
+  Closed content then keeps its box, so put margins and padding on a child.
   Use `ui/accordion` for a set of sections with headings.
 - **Overlays.** `ui/sheet.tsx` is the shadcn/ui Base UI Sheet. It uses Base UI
   Dialog for focus and dismissal. `Drawer` adds a visible header and close
