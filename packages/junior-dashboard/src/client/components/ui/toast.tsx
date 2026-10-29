@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Toast. Copyright (c) 2023 shadcn. MIT license: see ../README.md#third-party-notices.
 import * as React from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { cn } from "@dashboard/lib/utils";
