@@ -31,8 +31,10 @@ uses the dashboard overlay and close button, and stops motion when reduced
 motion is set. The copied source license is in `ui/sheet.LICENSE`.
 `Drawer` and `BottomSheet` compose this component for app details.
 `ui/useSheet.ts` owns their close lifecycle, shared document scroll lock, and
-focus rules when a resize puts one modal below another. Conversation browser
-scenarios cover dismissal, nested focus, and layout changes.
+focus rules when a resize puts one modal below another. These are separate
+Dialog roots. A newly mounted sheet must not take focus from the open child
+above it. Conversation browser scenarios cover dismissal, nested focus, and
+layout changes.
 
 ## Foundations
 
@@ -117,7 +119,10 @@ token so each theme can redefine it.
   close with the close button, backdrop, or Escape. `DetailsPanel` uses a docked
   aside at 1280px and above, and a `BottomSheet` below that width. Its owner
   supplies the side column. Nested details use `overlay` to retain a desktop
-  drawer's modal focus rules. `Tooltip` and `IconButtonTooltip` own hover text.
+  drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
+  in `SheetContent`; it only adds app actions, widths, and body padding.
+  `DetailsPanel` owns Escape for docked panels and their scroll frame.
+  `Tooltip` and `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original

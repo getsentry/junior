@@ -119,6 +119,12 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
 
+  // Escape also closes details while focus stays in the interactive log.
+  await entry.click();
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(entry).toBeFocused();
+
   // A resize keeps the selected event in a dismissable mobile sheet.
   await entry.click();
   await page.setViewportSize({ width: 390, height: 844 });

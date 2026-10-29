@@ -217,17 +217,6 @@ export function ConversationPage(props: {
   return (
     <div
       ref={pageRef}
-      onKeyDown={(event) => {
-        if (
-          selectedEvent &&
-          event.key === "Escape" &&
-          !event.defaultPrevented &&
-          !document.querySelector("[data-dashboard-modal]")
-        ) {
-          event.preventDefault();
-          closeEventDetails();
-        }
-      }}
       className={cn(
         "grid h-full min-h-0 min-w-0",
         (showDetails || selectedEvent) && "xl:grid-cols-[minmax(0,1fr)_25rem]",

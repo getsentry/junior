@@ -1,11 +1,5 @@
 import { X } from "lucide-react";
-import {
-  useEffect,
-  useId,
-  useRef,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import { Button } from "./Button";
 import { BottomSheet } from "./BottomSheet";
@@ -32,7 +26,7 @@ export function DetailsPanel(props: {
   /** Nested details stay modal inside an existing drawer. */
   overlay?: boolean;
 }) {
-  const titleId = useId();
+  const { onClose, overlay } = props;
   const closeLabel = `Close ${props.label.toLowerCase()}`;
   const panel = useSyncExternalStore(
     subscribeToPanelLayout,
@@ -51,29 +45,37 @@ export function DetailsPanel(props: {
     }
     wasPanel.current = panel;
   }, [panel]);
+  useEffect(() => {
+    if (!panel || overlay) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !document.querySelector("[data-dashboard-modal]")
+      ) {
+        event.preventDefault();
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [panel, overlay, onClose]);
   if (!panel) {
     return (
-      <BottomSheet label={props.label} onClose={props.onClose}>
+      <BottomSheet label={props.label} onClose={onClose}>
         {props.children}
       </BottomSheet>
     );
   }
 
-  if (props.overlay) {
+  if (overlay) {
     return (
       <Drawer
         closeLabel={closeLabel}
-        header={
-          <>
-            <span className="sr-only" id={titleId}>
-              {props.label}
-            </span>
-            {props.title}
-          </>
-        }
-        onClose={props.onClose}
+        header={props.title}
+        label={props.label}
+        onClose={onClose}
         openKey={props.label}
-        titleId={titleId}
         width="wide"
       >
         {props.children}
@@ -85,29 +87,21 @@ export function DetailsPanel(props: {
     <aside
       aria-label={props.label}
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
-      onKeyDown={(event) => {
-        if (
-          event.key === "Escape" &&
-          !event.defaultPrevented &&
-          !document.querySelector("[data-dashboard-modal]")
-        ) {
-          event.preventDefault();
-          props.onClose();
-        }
-      }}
     >
       <header className="flex items-center justify-between gap-3 border-b border-dashboard-border px-5 py-3">
         <div className="min-w-0">{props.title}</div>
         <Button
           ref={closeRef}
           aria-label={closeLabel}
-          onClick={props.onClose}
+          onClick={onClose}
           size="icon"
         >
           <X aria-hidden="true" size={15} />
         </Button>
       </header>
-      <div className="min-h-0">{props.children}</div>
+      <div className="min-h-0 overflow-y-auto overscroll-contain">
+        {props.children}
+      </div>
     </aside>
   );
 }

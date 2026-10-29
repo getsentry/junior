@@ -27,39 +27,32 @@ export function ConversationEventDetails(props: {
 
   return (
     <DetailsPanel
+      key={event.seq}
       label="Event details"
       onClose={props.onClose}
       overlay={props.overlay}
       title={title}
     >
       <div
-        key={event.seq}
         className={cn(
-          "h-full min-h-0 overflow-y-auto overscroll-contain",
-          props.overlay && "xl:h-auto xl:overflow-visible",
+          "min-w-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]",
+          props.overlay && "xl:p-0",
         )}
       >
-        <div
-          className={cn(
-            "min-w-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]",
-            props.overlay && "xl:p-0",
-          )}
-        >
-          <div className="mb-5 xl:hidden">{title}</div>
-          {conversation.canFork &&
-          event.data.type === "message" &&
-          event.data.role === "assistant" &&
-          !event.data.redacted ? (
-            <div className="mb-3 flex items-center gap-2 text-sm">
-              <ForkConversationButton
-                conversationId={conversation.conversationId}
-                messageId={event.data.messageId}
-              />
-              <span>Fork after this reply</span>
-            </div>
-          ) : null}
-          <EventDetails key={event.seq} event={event} />
-        </div>
+        <div className="mb-5 xl:hidden">{title}</div>
+        {conversation.canFork &&
+        event.data.type === "message" &&
+        event.data.role === "assistant" &&
+        !event.data.redacted ? (
+          <div className="mb-3 flex items-center gap-2 text-sm">
+            <ForkConversationButton
+              conversationId={conversation.conversationId}
+              messageId={event.data.messageId}
+            />
+            <span>Fork after this reply</span>
+          </div>
+        ) : null}
+        <EventDetails event={event} />
       </div>
     </DetailsPanel>
   );

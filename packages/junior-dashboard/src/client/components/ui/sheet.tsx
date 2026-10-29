@@ -44,10 +44,12 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  closeButtonProps,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left";
   showCloseButton?: boolean;
+  closeButtonProps?: React.ComponentProps<typeof Button>;
 }) {
   // Keep portal order tied to the app tree when a resize mounts another sheet.
   const portalRef = React.useRef<HTMLDivElement>(null);
@@ -70,7 +72,16 @@ function SheetContent({
           {showCloseButton && (
             <SheetPrimitive.Close
               data-slot="sheet-close"
-              render={<Button className="absolute top-3 right-3" size="icon" />}
+              render={
+                <Button
+                  {...closeButtonProps}
+                  className={cn(
+                    "absolute top-3 right-3",
+                    closeButtonProps?.className,
+                  )}
+                  size="icon"
+                />
+              }
             >
               <XIcon aria-hidden="true" size={15} strokeWidth={2.25} />
               <span className="sr-only">Close</span>
