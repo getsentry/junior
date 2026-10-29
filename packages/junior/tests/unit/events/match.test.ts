@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { eventMatches, stableEventMatchKey } from "@sentry/junior-plugin-api";
 import {
-  requireSupportedEventMatch,
+  registeredEventTriggerProblems,
+  requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -11,7 +12,10 @@ const catalog: EventCatalog = {
     resourceTypes: [
       {
         type: "pull_request",
-        supportedEvents: ["pull_request.opened"],
+        supportedEvents: [
+          "pull_request.opened",
+          "pull_request.comment.created",
+        ],
         matchFields: {
           isDraft: {
             kind: "boolean",
@@ -20,6 +24,17 @@ const catalog: EventCatalog = {
           base: {
             kind: "string",
             description: "base branch name",
+            events: ["pull_request.opened"],
+          },
+          authors: {
+            kind: "string",
+            list: true,
+            description: "commit author logins",
+          },
+          openerRole: {
+            kind: "string",
+            description: "opener repository role",
+            enum: ["admin", "write"],
           },
         },
       },
@@ -63,30 +78,69 @@ describe("eventMatches", () => {
   });
 });
 
-describe("requireSupportedEventMatch", () => {
-  it("accepts declared fields and rejects unknown ones", () => {
+describe("requireValidEventTrigger", () => {
+  const trigger = (
+    events: string[],
+    match?: Parameters<typeof requireValidEventTrigger>[1]["match"],
+    resourceType = "pull_request",
+  ) => ({ events, match, namespace: "github", resourceType });
+  const problems = (...args: Parameters<typeof trigger>) =>
+    registeredEventTriggerProblems(catalog, trigger(...args)).map(
+      ({ reason, field }) => ({ reason, field }),
+    );
+
+  it("accepts filters every selected event sets and removes repeated values", () => {
     expect(
-      requireSupportedEventMatch(catalog, {
-        match: { isDraft: false, base: ["main", "master"] },
-        namespace: "github",
-        resourceType: "pull_request",
-      }),
-    ).toEqual({ isDraft: false, base: ["main", "master"] });
+      requireValidEventTrigger(
+        catalog,
+        trigger(["pull_request.opened"], {
+          isDraft: false,
+          base: ["main", "master", "main"],
+          authors: "dcramer",
+        }),
+      ),
+    ).toEqual({ isDraft: false, base: ["main", "master"], authors: "dcramer" });
+  });
 
-    expect(() =>
-      requireSupportedEventMatch(catalog, {
-        match: { isDraft: false },
-        namespace: "github",
-        resourceType: "issue",
+  it("rejects filters that a selected event never sets", () => {
+    expect(
+      problems(["pull_request.opened", "pull_request.comment.created"], {
+        base: "main",
       }),
-    ).toThrow(ToolInputError);
+    ).toEqual([{ reason: "field_not_set", field: "base" }]);
+    expect(() =>
+      requireValidEventTrigger(
+        catalog,
+        trigger(["pull_request.opened", "pull_request.comment.created"], {
+          base: "main",
+        }),
+      ),
+    ).toThrow(
+      new ToolInputError(
+        'This github pull request trigger cannot be saved. "base" is not set on "pull_request.comment.created", so the trigger never runs on those events. Remove the filter or those events.',
+      ),
+    );
+  });
 
-    expect(() =>
-      requireSupportedEventMatch(catalog, {
-        match: { author: "dcramer" },
-        namespace: "github",
-        resourceType: "pull_request",
+  it("reports removed filters, unknown events, and wrong values", () => {
+    // A filter a plugin renamed, such as the old authorUsername, is unknown.
+    expect(
+      problems(["pull_request.merged"], {
+        authorUsername: "dcramer",
+        isDraft: "yes",
+        openerRole: "owner",
       }),
-    ).toThrow(ToolInputError);
+    ).toEqual([
+      { reason: "unknown_event", field: undefined },
+      { reason: "unknown_field", field: "authorUsername" },
+      { reason: "invalid_value", field: "isDraft" },
+      { reason: "invalid_value", field: "openerRole" },
+    ]);
+    expect(problems(["issue.opened"], { isDraft: false }, "issue")).toEqual([
+      { reason: "unknown_field", field: "isDraft" },
+    ]);
+    expect(problems(["issue.opened"], undefined, "team")).toEqual([
+      { reason: "unknown_resource_type", field: undefined },
+    ]);
   });
 });

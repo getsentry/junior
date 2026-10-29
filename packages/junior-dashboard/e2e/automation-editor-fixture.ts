@@ -95,6 +95,11 @@ export async function mockAutomationEditor(
               description: "Issue state",
               enum: ["open", "closed"],
             },
+            closedBy: {
+              kind: "string",
+              description: "Login of who closed the issue",
+              events: ["issue.closed"],
+            },
           },
         },
       ],

@@ -3,11 +3,10 @@ import {
   eventNamespaceSchema,
   eventWatchUnavailable,
   requireEventIdentifier,
-  pluginSupportsEvent,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
   registeredResourceTypeSchema,
-  requireSupportedEventMatch,
+  requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { createWatch } from "@/chat/events/store";
@@ -63,25 +62,7 @@ function inputSchema(catalog: EventCatalog) {
         )
         .optional(),
     })
-    .strict()
-    .superRefine((subscription, context) => {
-      subscription.events.forEach((eventType, index) => {
-        if (
-          !pluginSupportsEvent(
-            catalog,
-            subscription.namespace,
-            subscription.resourceType,
-            eventType,
-          )
-        ) {
-          context.addIssue({
-            code: "custom",
-            message: `Resource type "${subscription.namespace}:${subscription.resourceType}" does not support event "${eventType}".`,
-            path: ["events", index],
-          });
-        }
-      });
-    });
+    .strict();
 }
 
 type Input = z.output<ReturnType<typeof inputSchema>>;
@@ -151,23 +132,10 @@ export function createWatchEventsTool(
       );
       if (unavailable) throw new ToolInputError(unavailable);
       const events = cleanStrings(input.events);
-      for (const eventType of events) {
-        if (
-          !pluginSupportsEvent(
-            catalog,
-            input.namespace,
-            input.resourceType,
-            eventType,
-          )
-        ) {
-          throw new ToolInputError(
-            `Resource type "${input.namespace}:${input.resourceType}" does not support event "${eventType}".`,
-          );
-        }
-      }
       const intent = input.intent.trim();
       if (!intent) throw new ToolInputError("intent is required");
-      const match = requireSupportedEventMatch(catalog, {
+      const match = requireValidEventTrigger(catalog, {
+        events,
         match: input.match,
         namespace: input.namespace,
         resourceType: input.resourceType,

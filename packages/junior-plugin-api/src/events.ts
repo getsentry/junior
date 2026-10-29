@@ -57,6 +57,12 @@ export const eventMatchFieldSchema = z
      * the list includes it.
      */
     list: z.literal(true).optional(),
+    /**
+     * The events that set this field. Leave it out when every event of the
+     * resource type sets it. A filter on this field never matches other
+     * events, so a trigger that selects them is rejected.
+     */
+    events: z.array(eventTypeSchema).min(1).optional(),
   })
   .strict()
   .superRefine((field, context) => {
@@ -247,6 +253,17 @@ export const pluginEventTypeSchema = z
       }
       suggested.add(eventType);
     });
+    for (const [key, field] of Object.entries(resourceType.matchFields ?? {})) {
+      field.events?.forEach((eventType, index) => {
+        if (!supported.has(eventType)) {
+          context.addIssue({
+            code: "custom",
+            message: `Match field "${key}" event type "${eventType}" is not supported.`,
+            path: ["matchFields", key, "events", index],
+          });
+        }
+      });
+    }
   });
 
 export const pluginEventsSchema = z

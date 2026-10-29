@@ -105,6 +105,11 @@ Watches route events back into an existing conversation.
   from the resource type `matchFields`. Core drops events that do not match
   before any wake. `resourceType` and `label` are display metadata, not match
   keys.
+- A match field may list the `events` that set it. Core rejects a new or
+  changed trigger when a filter is unknown, has a wrong value, or is not set
+  by every selected event. `eventTriggerProblems` in plugin-api is the one
+  check. Core and the dashboard editor both use it. An unchanged saved trigger
+  is kept, so a plugin rename can leave a saved filter that never matches.
 - A resource type may declare the shape of its identifiers. Resource types can
   share event types, so the identifier shows which one a selector names. Core
   rejects a watch or event automation whose identifier does not fit its

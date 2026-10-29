@@ -232,7 +232,9 @@ describe("event tools", () => {
         },
         {},
       ),
-    ).rejects.toThrow(/github:issue.*does not support event/);
+    ).rejects.toThrow(
+      /github issue trigger cannot be saved\. "pull_request\.merged" is not an event/,
+    );
     expect(createSubscription).not.toHaveBeenCalled();
   });
 

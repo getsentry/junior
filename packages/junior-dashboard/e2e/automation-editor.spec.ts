@@ -112,9 +112,12 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     "getsentry/junior#42",
   );
   await screenshot(page, "automation-event-editor");
+  // Only issue.closed sets closedBy, so the filter hides for issue.opened.
+  await expect(page.getByLabel("closedBy", { exact: true })).toBeVisible();
   await page
     .getByRole("checkbox", { name: "issue · opened", exact: true })
     .check();
+  await expect(page.getByLabel("closedBy", { exact: true })).toHaveCount(0);
   await page.getByLabel("state", { exact: true }).selectOption("closed");
   await page.getByLabel("Instruction", { exact: true }).fill("");
   await page.getByRole("button", { name: "Save changes" }).click();
