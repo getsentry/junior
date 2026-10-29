@@ -172,7 +172,8 @@ token so each theme can redefine it.
   `DetailsPanel` owns Escape for docked panels and their scroll frame.
   `ui/tooltip` owns hover text. Compose `Tooltip`, `TooltipTrigger` with
   `render` set to the control, and `TooltipContent`. Use
-  `TooltipContent size="compact"` for the label of an icon-only control. Use
+  `TooltipContent size="compact"` for the label of an icon-only control. Do
+  not use the native `title` attribute for that label. Use
   `TooltipTitle` to name a chart bucket or detail card. An SVG mark can be the
   trigger, for example `render={<rect … />}`. `TooltipProvider` in
   `src/client.tsx` opens tooltips at once and keeps them open for 150ms, so the

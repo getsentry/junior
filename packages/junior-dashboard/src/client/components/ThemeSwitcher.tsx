@@ -3,6 +3,7 @@ import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import type { DashboardThemeChoice } from "../../theme";
 import { cn } from "../styles";
 import { useDashboardThemeChoice } from "../theme";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 
 const themeChoices = [
@@ -34,14 +35,16 @@ export function ThemeSwitcher(props: { className?: string }) {
         value={[choice]}
       >
         {themeChoices.map(({ Icon, label, value }) => (
-          <ToggleGroupItem
-            aria-label={`${label} theme`}
-            key={value}
-            title={label}
-            value={value}
-          >
-            <Icon aria-hidden="true" size={14} strokeWidth={2} />
-          </ToggleGroupItem>
+          <Tooltip key={value}>
+            <TooltipTrigger
+              render={
+                <ToggleGroupItem aria-label={`${label} theme`} value={value}>
+                  <Icon aria-hidden="true" size={14} strokeWidth={2} />
+                </ToggleGroupItem>
+              }
+            />
+            <TooltipContent size="compact">{label}</TooltipContent>
+          </Tooltip>
         ))}
       </ToggleGroup>
     </div>

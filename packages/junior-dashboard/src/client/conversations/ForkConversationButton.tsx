@@ -5,6 +5,11 @@ import { useNavigate } from "react-router";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Field, FieldLabel } from "../components/ui/field";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { Drawer } from "../components/Drawer";
 import { DashboardApiError } from "../http";
 import { conversationPath } from "./conversationRoutes";
@@ -17,14 +22,20 @@ export function ForkConversationButton(props: ForkTarget) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button
-        size="icon"
-        aria-label="Fork after this message"
-        title="Fork after this message"
-        onClick={() => setOpen(true)}
-      >
-        <GitFork size={14} aria-hidden="true" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon"
+              aria-label="Fork after this message"
+              onClick={() => setOpen(true)}
+            >
+              <GitFork size={14} aria-hidden="true" />
+            </Button>
+          }
+        />
+        <TooltipContent size="compact">Fork after this message</TooltipContent>
+      </Tooltip>
       {open
         ? createPortal(
             <ForkConversationDialog
