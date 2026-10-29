@@ -81,9 +81,10 @@ export function formatActivityCategoryTooltipLabel(label: string): string {
 
 /** Choose the first, middle, and last available chart labels. */
 function activityLabelIndexes(count: number): number[] {
-  return [...new Set([0, Math.floor((count - 1) / 2), count - 1])].filter(
-    (index) => index >= 0,
-  );
+  if (count === 0) {
+    return [];
+  }
+  return [...new Set([0, Math.floor((count - 1) / 2), count - 1])];
 }
 
 /** Shared HTML axis label for non-SVG chart axes. */
