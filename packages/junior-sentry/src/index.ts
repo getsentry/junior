@@ -7,6 +7,7 @@
  */
 import {
   defineJuniorPlugin,
+  mergeEventMatchFields,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
@@ -49,10 +50,10 @@ export function sentryPlugin(): PluginRegistration {
             ...SENTRY_ISSUE_EVENTS,
             ...SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
           ],
-          matchFields: {
-            ...SENTRY_ISSUE_MATCH_FIELDS,
-            ...SENTRY_METRIC_ALERT_MATCH_FIELDS,
-          },
+          matchFields: mergeEventMatchFields(
+            SENTRY_ISSUE_MATCH_FIELDS,
+            SENTRY_METRIC_ALERT_MATCH_FIELDS,
+          ),
         },
         {
           type: "metric_alert",

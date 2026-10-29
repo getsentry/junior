@@ -63,6 +63,44 @@ function routeFixture() {
 }
 
 describe("Vercel webhook events", () => {
+  it("declares filter events that match the data the webhooks set", () => {
+    // The fixture deployment has a Git commit, so every optional value is set.
+    const setBy = new Map<string, Set<string>>();
+    for (const type of [
+      "deployment.succeeded",
+      "deployment.error",
+      "deployment.canceled",
+    ] as const) {
+      for (const event of normalizeVercelEvents({ body: webhookBody(type) })) {
+        const keys = setBy.get(event.eventType) ?? new Set<string>();
+        for (const key of Object.keys(event.data ?? {})) keys.add(key);
+        setBy.set(event.eventType, keys);
+      }
+    }
+
+    const mismatches: string[] = [];
+    for (const resourceType of vercelPlugin().events?.resourceTypes ?? []) {
+      for (const eventType of resourceType.supportedEvents) {
+        const keys = setBy.get(eventType);
+        if (!keys) {
+          mismatches.push(`no fixture publishes ${eventType}`);
+          continue;
+        }
+        for (const [key, field] of Object.entries(
+          resourceType.matchFields ?? {},
+        )) {
+          const declared = field.events?.includes(eventType) ?? true;
+          if (declared !== keys.has(key)) {
+            mismatches.push(
+              `${resourceType.type} filter ${key} ${declared ? "lists" : "omits"} ${eventType}, which ${keys.has(key) ? "sets" : "never sets"} it`,
+            );
+          }
+        }
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
   it.each([
     ["deployment.succeeded", "succeeded"],
     ["deployment.error", "failed"],
