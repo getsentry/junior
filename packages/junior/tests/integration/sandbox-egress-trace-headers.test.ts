@@ -5,7 +5,6 @@ import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import { getSandboxProvider } from "@/chat/sandbox/provider";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { stopSession, type SandboxSession } from "@/chat/sandbox/workspace";
-import { vercelSandboxCredentialsReady } from "../fixtures/vercel-sandbox";
 
 /** Trace-only domain. httpbin echoes the request headers it receives. */
 const TRACE_DOMAIN = "httpbin.org";
@@ -19,6 +18,15 @@ const TRACE_HEADERS = {
 } satisfies TracePropagationHeaders;
 const SANDBOX_TIMEOUT_MS = 5 * 60 * 1000;
 const LIVE_TEST_TIMEOUT_MS = 3 * 60 * 1000;
+
+function sandboxCredentialsReady(): boolean {
+  if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
+  return Boolean(
+    process.env.VERCEL_TOKEN?.trim() &&
+    process.env.VERCEL_TEAM_ID?.trim() &&
+    process.env.VERCEL_PROJECT_ID?.trim(),
+  );
+}
 
 const httpbinResponseSchema = z.object({
   headers: z.record(z.string(), z.string()),
@@ -66,7 +74,7 @@ async function echoedHeaders(
  * domains, and only there. Skip this test when Vercel credentials are not
  * available.
  */
-describe.skipIf(!vercelSandboxCredentialsReady())(
+describe.skipIf(!sandboxCredentialsReady())(
   "Sandbox egress trace headers",
   () => {
     it(

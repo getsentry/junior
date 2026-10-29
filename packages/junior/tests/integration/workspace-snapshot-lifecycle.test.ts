@@ -11,11 +11,19 @@ import { loadSnapshotsForProfile } from "@/chat/sandbox/snapshot/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace, getWorkspace } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
-import { vercelSandboxCredentialsReady } from "../fixtures/vercel-sandbox";
 
 const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
 /** Fail a cold build that exceeds the production phase limit. */
 const LIVE_TEST_TIMEOUT_MS = 10 * 60 * 1000;
+
+function sandboxCredentialsReady(): boolean {
+  if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
+  return Boolean(
+    process.env.VERCEL_TOKEN?.trim() &&
+    process.env.VERCEL_TEAM_ID?.trim() &&
+    process.env.VERCEL_PROJECT_ID?.trim(),
+  );
+}
 
 function setupScript(): string {
   return [
@@ -35,7 +43,7 @@ function profileHash(workspace: Workspace): string {
  * Build a Workspace snapshot with Vercel, then start a Sandbox from it.
  * Skip this test when Vercel credentials are not available.
  */
-describe.skipIf(!vercelSandboxCredentialsReady())(
+describe.skipIf(!sandboxCredentialsReady())(
   "Workspace snapshot lifecycle",
   () => {
     const builderNames: string[] = [];
