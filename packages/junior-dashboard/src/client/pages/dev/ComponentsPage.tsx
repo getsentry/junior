@@ -40,6 +40,7 @@ import { Link, Navigate, Route, Routes } from "react-router";
 
 import { Button } from "../../components/ui/button";
 import { ToggleButton } from "../../components/ToggleButton";
+import { Toggle } from "../../components/ui/toggle";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import {
@@ -518,12 +519,7 @@ function FoundationsGalleryPage() {
             >
               Alternate
             </ToggleButton>
-            <ToggleButton pressed variant="segment">
-              30d
-            </ToggleButton>
-            <ToggleButton pressed={false} variant="segment">
-              90d
-            </ToggleButton>
+            <Toggle>Local time</Toggle>
             <TimeRangeSelector onChange={setRange} value={range} />
           </div>
         </div>

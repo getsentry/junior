@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { ToggleButton } from "../components/ToggleButton";
+import { Toggle } from "../components/ui/toggle";
 import { useEventTime } from "./eventTime";
 import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
@@ -114,15 +114,14 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                 ? `${visibleRows.length} of ${events.length} loaded events`
                 : `${events.length} loaded events`}
             </span>
-            <ToggleButton
+            <Toggle
               aria-label="Use local time"
-              onClick={time.toggle}
+              onPressedChange={time.toggle}
               pressed={time.local}
               title={time.title}
-              variant="segment"
             >
               <span className="max-w-32 truncate">{time.label}</span>
-            </ToggleButton>
+            </Toggle>
           </div>
         </div>
         <div
