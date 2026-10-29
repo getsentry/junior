@@ -1,4 +1,4 @@
-// Adapted from shadcn/ui Base UI Popover. See shadcn.LICENSE.
+// Adapted from shadcn/ui Base UI Popover. Copyright (c) 2023 shadcn. MIT license: see ../README.md#third-party-notices.
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "@dashboard/lib/utils";
 

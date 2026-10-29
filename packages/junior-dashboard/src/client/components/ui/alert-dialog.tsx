@@ -1,4 +1,4 @@
-// Adapted from shadcn/ui Base UI Alert Dialog. See shadcn.LICENSE.
+// Adapted from shadcn/ui Base UI Alert Dialog. Copyright (c) 2023 shadcn. MIT license: see ../README.md#third-party-notices.
 import type { ComponentProps } from "react";
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { cn } from "@dashboard/lib/utils";

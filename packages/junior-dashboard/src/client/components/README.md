@@ -28,7 +28,7 @@ gallery fixture before use.
 
 `ui/sheet.tsx` is the shadcn Base UI Dialog Sheet. It supports all four edges,
 uses the dashboard overlay and close button, and stops motion when reduced
-motion is set. The copied source license is in `ui/sheet.LICENSE`.
+motion is set.
 `Drawer` and `BottomSheet` compose this component for app details.
 `ui/accordion.tsx` is the shadcn Base UI Accordion. It owns disclosure state,
 heading buttons, and measured panel height. Its motion stops when reduced
@@ -38,7 +38,6 @@ for anchored controls and named confirmations. They use dashboard color and
 focus tokens and stop motion when reduced motion is set. `ui/toast.tsx` owns
 short success notifications in a mounted `Toaster` provider. Features call
 `useToastManager` inside that provider. It has no global notification manager.
-These copied components use `ui/shadcn.LICENSE`.
 `ui/useSheet.ts` owns the sheet close lifecycle, shared document scroll lock, and
 focus rules when a resize puts one modal below another. These are separate
 Dialog roots. A newly mounted sheet must not take focus from the open child
@@ -199,3 +198,32 @@ share them. Transcript layout stays in `conversations/`. See
 - Add gallery fixtures under `/dev/<section>` for new or changed shared
   components. Keep the `/dev` index as the catalog only.
 - One-off page glue may stay inline when extraction only adds indirection.
+
+## Third-party notices
+
+Files in `ui/` that name shadcn/ui in their first line are adapted from
+shadcn/ui. Keep that line and this notice when you copy more shadcn/ui source.
+
+```text
+MIT License
+
+Copyright (c) 2023 shadcn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

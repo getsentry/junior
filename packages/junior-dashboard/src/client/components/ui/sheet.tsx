@@ -1,4 +1,4 @@
-// Adapted from shadcn/ui Base UI Sheet. See sheet.LICENSE.
+// Adapted from shadcn/ui Base UI Sheet. Copyright (c) 2023 shadcn. MIT license: see ../README.md#third-party-notices.
 import * as React from "react";
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@dashboard/lib/utils";
