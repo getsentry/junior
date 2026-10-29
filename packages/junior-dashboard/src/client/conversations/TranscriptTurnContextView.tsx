@@ -17,11 +17,10 @@ import { cn } from "../styles";
 import { HighlightText } from "./transcriptSearch";
 import { TranscriptSummary } from "./TranscriptSummary";
 
-/** The turn context that a page panel shows, and the control that opened it. */
+/** The turn context that a page panel shows, keyed by its message. */
 export type TurnContextSelection = {
   contexts: TranscriptViewTurnContext[];
   id: string;
-  trigger: HTMLButtonElement;
 };
 
 /** Let the page that owns a panel show turn context there. */
@@ -50,13 +49,19 @@ export function TurnContextPanelProvider(props: {
   );
 }
 
-/** Show structured context attached to one transcript user message. */
+/**
+ * Show structured context attached to one transcript user message. The panel
+ * keys context by `messageId`, so every control for one message, including a
+ * remounted one, shows the same open state.
+ */
 export function TranscriptTurnContextView(props: {
   contexts: TranscriptViewTurnContext[];
+  messageId?: string;
 }) {
   const panel = useContext(TurnContextPanelContext);
   const [open, setOpen] = useState(false);
-  const id = useId();
+  const instanceId = useId();
+  const id = props.messageId ?? instanceId;
   const expanded = panel ? panel.openId === id : open;
 
   return (
@@ -69,13 +74,10 @@ export function TranscriptTurnContextView(props: {
           "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           expanded && "bg-dashboard-fill-hover text-dashboard-text",
         )}
-        onClick={(event) => {
+        data-turn-context-id={id}
+        onClick={() => {
           if (!panel) return setOpen(true);
-          panel.onToggle({
-            contexts: props.contexts,
-            id,
-            trigger: event.currentTarget,
-          });
+          panel.onToggle({ contexts: props.contexts, id });
         }}
         title="View context"
         type="button"
@@ -90,14 +92,14 @@ export function TranscriptTurnContextView(props: {
               header={
                 <h2
                   className="m-0 text-sm font-semibold text-dashboard-text"
-                  id={id}
+                  id={instanceId}
                 >
                   Turn context
                 </h2>
               }
               onClose={() => setOpen(false)}
-              openKey={id}
-              titleId={id}
+              openKey={instanceId}
+              titleId={instanceId}
             >
               <TurnContextList contexts={props.contexts} />
             </Drawer>,

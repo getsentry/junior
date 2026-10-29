@@ -50,7 +50,10 @@ export function TranscriptMessageContextView(props: {
         </div>
         {!props.redacted && props.message.contexts?.length ? (
           <div className="mt-2">
-            <TranscriptTurnContextView contexts={props.message.contexts} />
+            <TranscriptTurnContextView
+              contexts={props.message.contexts}
+              messageId={props.message.messageId}
+            />
           </div>
         ) : null}
       </details>
@@ -78,7 +81,10 @@ export function TranscriptMessageContextView(props: {
         </div>
         {!props.redacted && props.message.contexts?.length ? (
           <div className="mt-2">
-            <TranscriptTurnContextView contexts={props.message.contexts} />
+            <TranscriptTurnContextView
+              contexts={props.message.contexts}
+              messageId={props.message.messageId}
+            />
           </div>
         ) : null}
       </article>

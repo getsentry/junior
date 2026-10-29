@@ -44,7 +44,8 @@ shared controls and overlays.
   `turnContextPanel` shows the context in the page panel. See "Page panel".
   Other transcripts, such as a subagent drawer, open a modal `Drawer`. Each
   `Transcript` sets the panel for its own rows, so a nested transcript does not
-  use the panel of the page behind it.
+  use the panel of the page behind it. The panel keys context by message id,
+  so every control for one message shows the same open state.
 
 Review these components together in `/dev/transcripts`. Use the conversation
 fixture for messages, events, activity, context, and typing. Use the attachment

@@ -287,7 +287,12 @@ export function ConversationPage(props: {
     trigger?.focus({ preventScroll: true });
   };
   const closeTurnContext = () => {
-    const trigger = turnContext?.trigger;
+    // A message can have one context control per layout. Focus the visible one.
+    const trigger = [
+      ...(pageRef.current?.querySelectorAll<HTMLButtonElement>(
+        `[data-turn-context-id="${CSS.escape(turnContext?.id ?? "")}"]`,
+      ) ?? []),
+    ].find((button) => button.getClientRects().length > 0);
     setTurnContext(undefined);
     trigger?.focus({ preventScroll: true });
   };
