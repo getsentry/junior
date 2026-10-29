@@ -49,7 +49,8 @@ review scheduled and event Automations in both themes at desktop and mobile
 widths. Keep layout and scrollbar checks in manual QA.
 
 Details lead with lifecycle, the next trigger, and the last execution result.
-Trigger, Instructions, and Outcome follow in that order. `AutomationStatus`
+Instructions follow, then compact trigger and delivery rows. The sheet header
+uses the Automation name. `AutomationStatus`
 keeps a failed execution distinct from whether future runs remain enabled. It
 shows block reasons and links to the last Conversation when attention is needed.
 Scheduled times can expand to show both the schedule timezone and browser time.
@@ -58,7 +59,8 @@ next run instead of showing "None".
 
 `AutomationRecentRuns` uses the existing execution-history query and cache. It
 shows up to three newest terminal runs, links to their Conversations when one
-was recorded, and displays recorded runtime and estimated cost. Its loading,
+was recorded, and displays recorded runtime and estimated cost. It omits run
+titles that repeat the Automation name. Its loading,
 empty, and retry states do not replace Automation settings. It does not infer
 queued or running work from terminal records.
 

@@ -7,6 +7,7 @@ import { useSheet } from "./ui/useSheet";
 export function BottomSheet(props: {
   children: ReactNode;
   label: string;
+  title?: string;
   onClose(): void;
 }) {
   const sheet = useSheet(props.onClose);
@@ -19,7 +20,9 @@ export function BottomSheet(props: {
         className="mx-auto max-h-full w-full max-w-2xl gap-0 rounded-t-2xl outline-none data-[side=bottom]:h-[85dvh]"
       >
         <SheetHeader className="border-b border-dashboard-border">
-          <SheetTitle>{props.label}</SheetTitle>
+          <SheetTitle className="break-words">
+            {props.title ?? props.label}
+          </SheetTitle>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {props.children}

@@ -72,6 +72,8 @@ export function AutomationRecentRuns({
             ]
               .filter(Boolean)
               .join(" · ");
+            const title =
+              run.title !== automation.title ? run.title : undefined;
             const content = (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -95,18 +97,20 @@ export function AutomationRecentRuns({
                     {formatRelativeTime(run.executedAt)}
                   </time>
                 </div>
-                {run.title ? (
-                  <p
-                    className="m-0 truncate text-xs text-dashboard-text"
-                    title={run.title}
-                  >
-                    {run.title}
-                  </p>
-                ) : null}
-                {metrics ? (
-                  <p className="m-0 text-xs text-dashboard-text-muted tabular-nums">
-                    {metrics}
-                  </p>
+                {title || metrics ? (
+                  <div className="flex min-w-0 items-baseline justify-between gap-3 text-xs text-dashboard-text-muted">
+                    {title ? (
+                      <p
+                        className="m-0 min-w-0 truncate text-dashboard-text"
+                        title={title}
+                      >
+                        {title}
+                      </p>
+                    ) : null}
+                    {metrics ? (
+                      <p className="m-0 shrink-0 tabular-nums">{metrics}</p>
+                    ) : null}
+                  </div>
                 ) : null}
                 {!run.conversationId ? (
                   <p className="m-0 text-xs text-dashboard-text-muted">

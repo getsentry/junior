@@ -55,8 +55,12 @@ export function AutomationLifecycle({
       className="grid gap-3 border-t border-dashboard-border bg-dashboard-bg-elevated p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
     >
       <div className="flex items-center gap-2">
-        <ButtonLink className="min-h-11 flex-1" to={editPath}>
-          {canEdit ? "Edit automation" : "View settings"}
+        <ButtonLink
+          aria-label={canEdit ? "Edit automation" : "View settings"}
+          className="mr-auto min-h-11"
+          to={editPath}
+        >
+          {canEdit ? "Edit" : "View settings"}
         </ButtonLink>
         {canPause ? (
           <>

@@ -117,7 +117,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await details.getByText("About this Automation", { exact: true }).click();
   await automationDetailsTrigger.click();
   await expect(
-    details.locator("details").filter({ hasText: "Connected accounts" }),
+    details.locator("details").filter({ hasText: "Accounts" }),
   ).not.toHaveAttribute("open");
   await expect(page).toHaveURL(/scheduled-1\?range=7&scope=mine/);
   await screenshot(page, "automation-details", {
@@ -125,7 +125,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     lightTheme: true,
   });
   await expect(
-    details.getByRole("heading", { name: "Instructions", exact: true }),
+    details.getByRole("region", { name: "Instructions", exact: true }),
   ).toBeVisible();
   await expect(
     details.getByText("Send the weekly project summary"),
@@ -141,9 +141,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(
     recentRuns.getByText("42s · $0.42", { exact: true }),
   ).toBeVisible();
-  await expect(
-    details.getByText("Connected accounts", { exact: true }),
-  ).toBeHidden();
+  await expect(details.getByText("Accounts", { exact: true })).toBeHidden();
   await details
     .locator("summary")
     .filter({ hasText: /^Next run/ })
@@ -163,7 +161,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await automationDetailsTrigger.click();
   await page.setViewportSize({ width: 390, height: 844 });
   const sheet = page.getByRole("dialog", {
-    name: "Automation details",
+    name: "Weekly project summary",
     exact: true,
   });
   await expect(sheet).toBeVisible();
@@ -568,9 +566,7 @@ test("pauses and resumes from details, keeps failures visible, and limits action
   await expect(page.getByText(/Pausing stops new runs/)).not.toBeVisible();
   const moreDetails = page.getByText("About this Automation", { exact: true });
   await moreDetails.click();
-  await expect(
-    page.getByText("Connected accounts", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Accounts", { exact: true })).toBeVisible();
   await moreDetails.click();
   await page.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(

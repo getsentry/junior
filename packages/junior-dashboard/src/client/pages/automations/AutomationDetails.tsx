@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
 import { Button } from "../../components/Button";
-import { Detail, DetailList } from "../../components/DetailList";
 import { DetailsPanel } from "../../components/DetailsPanel";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -38,6 +37,7 @@ export function AutomationDetails(props: {
   return (
     <DetailsPanel
       label="Automation details"
+      sheetTitle={automation?.title}
       onClose={props.onClose}
       title={
         <h2 className="m-0 break-words font-display text-base font-medium text-dashboard-text">
@@ -53,15 +53,10 @@ export function AutomationDetails(props: {
           className="min-h-0 overflow-y-auto overscroll-contain p-4 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus [overflow-wrap:anywhere]"
         >
           {automation ? (
-            <>
-              <h2 className="m-0 mb-4 break-words font-display text-base font-medium text-dashboard-text xl:hidden">
-                {automation.title}
-              </h2>
-              <AutomationDetailsContent
-                automation={automation}
-                range={props.range}
-              />
-            </>
+            <AutomationDetailsContent
+              automation={automation}
+              range={props.range}
+            />
           ) : null}
           {props.error ? (
             <InlineError>
@@ -100,50 +95,52 @@ function AutomationDetailsContent({
   return (
     <div className="grid min-w-0 gap-5">
       <AutomationStatus automation={automation} />
-      <AutomationDetailSection title="Trigger">
-        {automation.kind === "scheduled" ? (
-          <p className="m-0">{automationScheduleLabel(automation)}</p>
-        ) : (
-          <>
-            <p className="m-0 break-words">{automation.resource}</p>
-            <p className="m-0 mt-1 text-dashboard-text-muted">
-              {automationEventNames(automation)}
-            </p>
-            {conditions ? (
-              <p className="m-0 mt-1 break-words text-xs text-dashboard-text-muted">
-                {conditions}
-              </p>
-            ) : null}
-          </>
-        )}
-      </AutomationDetailSection>
-      <AutomationDetailSection title="Instructions">
+      <section aria-label="Instructions" className="text-sm leading-relaxed">
         <TranscriptText
           mentions={automation.mentions ?? []}
           text={automation.instruction}
         />
-      </AutomationDetailSection>
-      <AutomationDetailSection title="Outcome">
-        {automation.outcomes.length === 0 ? (
-          <p className="m-0 text-dashboard-text-muted">No message on success</p>
-        ) : (
-          <ol className="m-0 grid list-none gap-2 p-0">
-            {automation.outcomes.map((outcome, index) => (
-              <li key={index}>
-                On success, message{" "}
-                {automationOutcomeLabel(outcome, automation.destination)}
-              </li>
-            ))}
-          </ol>
-        )}
-      </AutomationDetailSection>
+      </section>
+      <dl className="m-0 grid gap-3 text-xs leading-relaxed">
+        <AutomationFact label="Trigger">
+          {automation.kind === "scheduled" ? (
+            <p className="m-0">{automationScheduleLabel(automation)}</p>
+          ) : (
+            <>
+              <p className="m-0 break-words">{automation.resource}</p>
+              <p className="m-0 mt-1 text-dashboard-text-muted">
+                {automationEventNames(automation)}
+              </p>
+              {conditions ? (
+                <p className="m-0 mt-1 break-words text-xs text-dashboard-text-muted">
+                  {conditions}
+                </p>
+              ) : null}
+            </>
+          )}
+        </AutomationFact>
+        <AutomationFact label="On success">
+          {automation.outcomes.length === 0 ? (
+            <span className="text-dashboard-text-muted">No message</span>
+          ) : (
+            <ol className="m-0 grid list-none gap-2 p-0">
+              {automation.outcomes.map((outcome, index) => (
+                <li key={index}>
+                  Message{" "}
+                  {automationOutcomeLabel(outcome, automation.destination)}
+                </li>
+              ))}
+            </ol>
+          )}
+        </AutomationFact>
+      </dl>
       <AutomationRecentRuns automation={automation} />
       <details className="border-t border-dashboard-border pt-3">
         <summary className="w-fit cursor-pointer rounded-sm py-1 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
           About this Automation
         </summary>
-        <DetailList className="mt-3">
-          <Detail label="Created by">
+        <dl className="m-0 mt-3 grid gap-3 text-xs leading-relaxed">
+          <AutomationFact label="Created by">
             {automation.createdByEmail ? (
               <Link
                 className={dashboardInlineLinkClass}
@@ -156,20 +153,20 @@ function AutomationDetailsContent({
             ) : (
               automation.createdBy
             )}
-          </Detail>
-          <Detail label="Created">
+          </AutomationFact>
+          <AutomationFact label="Created">
             {formatAutomationRunTime(automation.createdAt)}
-          </Detail>
-          <Detail label="Connected accounts">
+          </AutomationFact>
+          <AutomationFact label="Accounts">
             {automation.credentialMode === "creator"
               ? `Uses accounts connected by ${automation.ownedByViewer ? "you" : automation.createdBy}.`
               : "Junior’s accounts only"}
-          </Detail>
-          <Detail label="Run counts">
+          </AutomationFact>
+          <AutomationFact label="Runs">
             {automation.runs[range]} runs / {timeRangeLabel(range)} ·{" "}
             {automation.totalRuns} total
-          </Detail>
-        </DetailList>
+          </AutomationFact>
+        </dl>
         <Link
           className={`${dashboardInlineLinkClass} mt-3 inline-block py-2 text-xs`}
           to={`/automations/${encodeURIComponent(automation.id)}/versions${location.search}`}
@@ -181,16 +178,11 @@ function AutomationDetailsContent({
   );
 }
 
-function AutomationDetailSection(props: {
-  title: string;
-  children: ReactNode;
-}) {
+function AutomationFact(props: { label: string; children: ReactNode }) {
   return (
-    <section className="grid min-w-0 gap-2 text-sm leading-relaxed">
-      <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
-        {props.title}
-      </h3>
-      {props.children}
-    </section>
+    <div className="grid min-w-0 grid-cols-[5.25rem_minmax(0,1fr)] gap-3">
+      <dt className="text-dashboard-text-muted">{props.label}</dt>
+      <dd className="m-0 min-w-0">{props.children}</dd>
+    </div>
   );
 }

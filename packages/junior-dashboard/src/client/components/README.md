@@ -120,8 +120,9 @@ token so each theme can redefine it.
   the app's shared scroll lock, skip motion when reduced motion is set, and
   close with the close button, backdrop, or Escape. `DetailsPanel` uses a docked
   aside at 1280px and above, and a `BottomSheet` below that width. Its owner
-  supplies the side column. Nested details use `overlay` to retain a desktop
-  drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
+  supplies the side column. An optional `sheetTitle` gives the sheet a record
+  name while the docked panel keeps its category label. Nested details use
+  `overlay` to retain a desktop drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
   in `SheetContent`; it only adds app actions, widths, and body padding.
   `DetailsPanel` owns Escape for docked panels and their scroll frame.
   `Tooltip` and `IconButtonTooltip` own hover text.

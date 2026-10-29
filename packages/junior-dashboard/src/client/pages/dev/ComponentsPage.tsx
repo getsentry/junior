@@ -330,9 +330,12 @@ function FoundationsGalleryPage() {
           {panelOpen ? (
             <DetailsPanel
               label="Item details"
+              sheetTitle="Deployment configuration"
               onClose={() => setPanelOpen(false)}
               title={
-                <h2 className="m-0 text-base font-semibold">Item details</h2>
+                <h2 className="m-0 text-base font-semibold">
+                  Deployment configuration
+                </h2>
               }
             >
               <p className="m-0 p-4 text-sm text-dashboard-text-muted">
@@ -347,6 +350,7 @@ function FoundationsGalleryPage() {
         {sheetOpen ? (
           <BottomSheet
             label="Gallery details"
+            title="Deployment configuration"
             onClose={() => setSheetOpen(false)}
           >
             <p className="m-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-dashboard-text-muted">
