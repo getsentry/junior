@@ -11,12 +11,12 @@ import {
 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
-import { ToggleButton } from "../components/ToggleButton";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
@@ -124,68 +124,53 @@ export function TranscriptViewToggle(props: {
   value: TranscriptViewMode;
 }) {
   return (
-    <div
+    <ToggleGroup
       aria-label="Transcript view"
       className={
         props.labelled
-          ? "inline-flex items-center gap-6"
-          : "inline-flex items-center gap-0.5 rounded-md border border-dashboard-border bg-dashboard-overlay-soft p-0.5"
+          ? "inline-flex gap-6"
+          : "inline-flex gap-0.5 rounded-md border border-dashboard-border bg-dashboard-overlay-soft p-0.5"
       }
-      role="group"
+      onValueChange={([next]) => {
+        if (next) props.onChange(next);
+      }}
+      value={[props.value]}
     >
-      <ViewModeButton
-        active={props.value === "rich"}
-        label="Conversation"
-        labelled={props.labelled}
-        onClick={() => props.onChange("rich")}
-      >
+      <ViewModeItem label="Conversation" labelled={props.labelled} value="rich">
         <MessagesSquare aria-hidden="true" size={14} strokeWidth={2} />
-      </ViewModeButton>
-      <ViewModeButton
-        active={props.value === "raw"}
-        label="Event log"
-        labelled={props.labelled}
-        onClick={() => props.onChange("raw")}
-      >
+      </ViewModeItem>
+      <ViewModeItem label="Event log" labelled={props.labelled} value="raw">
         <ScrollText aria-hidden="true" size={14} strokeWidth={2} />
-      </ViewModeButton>
-    </div>
+      </ViewModeItem>
+    </ToggleGroup>
   );
 }
 
-function ViewModeButton(props: {
-  active: boolean;
+function ViewModeItem(props: {
   children: ReactNode;
   label: string;
   labelled?: boolean;
-  onClick(): void;
+  value: TranscriptViewMode;
 }) {
-  const button = (
-    <ToggleButton
+  const item = (
+    <ToggleGroupItem
       aria-label={props.label}
-      className={cn(
-        "!no-underline",
+      className={
         props.labelled
-          ? "relative flex h-11 items-center gap-2 rounded-none px-0 py-0 text-sm after:absolute after:inset-x-0 after:bottom-0 after:h-0.5"
-          : "grid size-7 place-items-center rounded-md px-0 py-0",
-        props.active &&
-          (props.labelled
-            ? "text-dashboard-text after:bg-dashboard-text-solid"
-            : "bg-dashboard-fill-hover text-dashboard-text"),
-      )}
-      onClick={props.onClick}
-      pressed={props.active}
-      variant="text"
+          ? "relative h-11 min-w-0 gap-2 rounded-none border-0 px-0 text-sm hover:bg-transparent after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 data-pressed:border-0 data-pressed:bg-transparent data-pressed:after:bg-dashboard-text-solid"
+          : "size-7 min-w-0 border-0 px-0 data-pressed:border-0 data-pressed:bg-dashboard-fill-hover"
+      }
+      value={props.value}
     >
       {props.children}
       {props.labelled ? props.label : null}
-    </ToggleButton>
+    </ToggleGroupItem>
   );
   return props.labelled ? (
-    button
+    item
   ) : (
     <Tooltip>
-      <TooltipTrigger render={button} />
+      <TooltipTrigger render={item} />
       <TooltipContent size="compact">{props.label}</TooltipContent>
     </Tooltip>
   );

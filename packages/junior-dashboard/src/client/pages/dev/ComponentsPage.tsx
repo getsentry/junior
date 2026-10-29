@@ -39,7 +39,6 @@ import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
 
 import { Button } from "../../components/ui/button";
-import { ToggleButton } from "../../components/ToggleButton";
 import { Toggle } from "../../components/ui/toggle";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -505,20 +504,13 @@ function FoundationsGalleryPage() {
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <ToggleButton
+            <Toggle
+              onPressedChange={setPressed}
               pressed={pressed}
               variant="pill"
-              onClick={() => setPressed((value) => !value)}
             >
               Toggle
-            </ToggleButton>
-            <ToggleButton
-              pressed={!pressed}
-              variant="text"
-              onClick={() => setPressed((value) => !value)}
-            >
-              Alternate
-            </ToggleButton>
+            </Toggle>
             <Toggle>Local time</Toggle>
             <TimeRangeSelector onChange={setRange} value={range} />
           </div>

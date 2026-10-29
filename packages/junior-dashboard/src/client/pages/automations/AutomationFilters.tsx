@@ -12,11 +12,11 @@ import {
   PopoverTrigger,
 } from "../../components/ui/popover";
 import { Button } from "../../components/ui/button";
-import { ToggleButton } from "../../components/ToggleButton";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { FilterGroup } from "../../components/FilterBar";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 
 const filterMediaQuery = "(min-width: 768px)";
 const stateOptions = [
@@ -101,7 +101,14 @@ export function AutomationFilters(props: {
   return (
     <div className="grid gap-3">
       <div className="grid gap-2 lg:grid-cols-[auto_minmax(16rem,1fr)] lg:items-center lg:gap-4">
-        <div aria-label="Scope" role="group" className="flex flex-wrap gap-2">
+        <ToggleGroup
+          aria-label="Scope"
+          className="flex-wrap gap-2"
+          onValueChange={([next]) => {
+            if (next) onChange("scope", next);
+          }}
+          value={[filters.scope]}
+        >
           {(
             [
               ["all", "All"],
@@ -110,20 +117,19 @@ export function AutomationFilters(props: {
               ["attention", "Needs attention"],
             ] as const
           ).map(([value, label]) => (
-            <ToggleButton
-              className="min-h-11 font-sans! normal-case! lg:min-h-9"
+            <ToggleGroupItem
+              className="min-h-11 lg:min-h-9"
               key={value}
-              onClick={() => onChange("scope", value)}
-              pressed={filters.scope === value}
+              value={value}
               variant="pill"
             >
               {label}
               {data && value !== "attention" ? (
                 <span className="ml-1.5 opacity-65">{data.counts[value]}</span>
               ) : null}
-            </ToggleButton>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
         <div className="flex items-center gap-2">
           <SearchInput
             className="flex-1"
@@ -194,17 +200,24 @@ function AutomationFilterFields({
   return (
     <div className="grid gap-4">
       <FilterGroup label="Type">
-        {(["all", "scheduled", "event"] as const).map((value) => (
-          <ToggleButton
-            className="min-h-9"
-            key={value}
-            onClick={() => onChange("type", value)}
-            pressed={filters.type === value}
-            variant="pill"
-          >
-            {value}
-          </ToggleButton>
-        ))}
+        <ToggleGroup
+          className="flex-wrap gap-2"
+          onValueChange={([next]) => {
+            if (next) onChange("type", next);
+          }}
+          value={[filters.type]}
+        >
+          {(["all", "scheduled", "event"] as const).map((value) => (
+            <ToggleGroupItem
+              className="min-h-9"
+              key={value}
+              value={value}
+              variant="pill"
+            >
+              {value}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       </FilterGroup>
       <AutomationFilterSelect
         label="Creator"

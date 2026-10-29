@@ -10,8 +10,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { Select } from "../../components/Select";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { post, DashboardApiError } from "../../http";
-import { cn } from "../../styles";
 import {
   scheduleDraft,
   weekdays,
@@ -138,32 +138,25 @@ export function AutomationScheduleFields(props: {
           {value.frequency === "weekly" ? (
             <fieldset>
               <legend className="mb-2 text-sm font-semibold">On</legend>
-              <div className="grid grid-cols-7 gap-1.5">
+              <ToggleGroup
+                className="grid grid-cols-7 gap-1.5"
+                multiple
+                onValueChange={(next) =>
+                  props.onChange({ ...value, weekdays: next })
+                }
+                value={value.weekdays ?? []}
+              >
                 {[...weekdays.slice(1), weekdays[0]].map((day) => (
-                  <button
-                    type="button"
+                  <ToggleGroupItem
                     key={day}
                     aria-label={day}
-                    aria-pressed={value.weekdays?.includes(day) ?? false}
-                    onClick={() =>
-                      props.onChange({
-                        ...value,
-                        weekdays: value.weekdays?.includes(day)
-                          ? value.weekdays.filter((d) => d !== day)
-                          : [...(value.weekdays ?? []), day],
-                      })
-                    }
-                    className={cn(
-                      "min-h-11 cursor-pointer rounded-md border px-1 text-xs font-medium capitalize focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:min-h-10 sm:text-sm",
-                      value.weekdays?.includes(day)
-                        ? "border-dashboard-focus/50 bg-dashboard-focus/10 text-dashboard-focus"
-                        : "border-dashboard-border-emphasis text-dashboard-text-muted hover:bg-dashboard-fill-hover",
-                    )}
+                    className="h-auto min-h-11 min-w-0 border-dashboard-border-emphasis px-1 capitalize data-pressed:border-dashboard-focus/50 data-pressed:bg-dashboard-focus/10 data-pressed:text-dashboard-focus sm:min-h-10 sm:text-sm"
+                    value={day}
                   >
                     {day.slice(0, 3)}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
             </fieldset>
           ) : null}
           <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
