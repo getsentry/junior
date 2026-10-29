@@ -48,7 +48,7 @@ export const GUARDIAN_BLOCK_RULES = {
   different_change: {
     decision: "ask",
     description:
-      "The write is a different kind of change from the one the user asked for, or it adds fields or effects beyond it. Examples: it updates or rewrites an existing resource when the user asked for a new one or only for a review; it publishes as ready when the user asked for a draft; it pushes unreviewed changes straight to a default or protected branch. Upkeep of a resource that the agent created for the work is not a different change.",
+      "The write is a different kind of change from the one the user asked for, or it adds fields or effects beyond it. Examples: it updates or rewrites an existing resource when the user asked for a new one or only for a review; it publishes as ready when the user asked for a draft; it pushes unreviewed changes straight to a default or protected branch. Upkeep of a resource that the agent created for the work is not a different change. This includes an update to its title or description that describes changes already in it, even when the agent earlier offered to put that work in a separate resource. Such an update moves no work, because the changes are already there.",
   },
   unrequested_write: {
     decision: "ask",
