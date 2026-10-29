@@ -353,7 +353,11 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
+      "Find open meeting slots inside each attendee's working hours and calendar time zone, using Google Calendar free/busy data from Junior's own Google account.",
+    promptGuidelines: [
+      "Offer returned slots as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free.",
+      "Free/busy does not show event details. Use listCalendarEvents to inspect conflicts when calendar busy time differs from the requester's stated availability.",
+    ],
     inputSchema,
     outputSchema,
     async execute(input) {
