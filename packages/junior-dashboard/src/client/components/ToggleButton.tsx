@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 
 import { cn } from "../styles";
 
-type ToggleButtonVariant = "pill" | "segment" | "text";
+type ToggleButtonVariant = "pill" | "text";
 
 export type ToggleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   pressed: boolean;
@@ -33,21 +33,15 @@ export function ToggleButton({
 
 const toggleButtonBase: Record<ToggleButtonVariant, string> = {
   pill: "cursor-pointer rounded-md border px-2 py-1 font-sans text-xs font-medium leading-tight transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-  segment:
-    "inline-flex h-7 min-w-10 cursor-pointer items-center justify-center rounded-md border px-2 font-sans text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
   text: "cursor-pointer rounded-sm border-0 bg-transparent px-1.5 py-1 font-sans font-medium underline-offset-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
 };
 
 const toggleButtonPressed: Record<ToggleButtonVariant, string> = {
   pill: "border-dashboard-border-heavy bg-dashboard-text-solid text-dashboard-text-inverse",
-  segment:
-    "border-dashboard-border-interactive bg-dashboard-surface-active text-dashboard-text",
   text: "text-dashboard-text underline decoration-dashboard-text-solid",
 };
 
 const toggleButtonIdle: Record<ToggleButtonVariant, string> = {
   pill: "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text-muted hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover hover:text-dashboard-text",
-  segment:
-    "border-transparent bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
   text: "text-dashboard-text-muted hover:text-dashboard-text",
 };

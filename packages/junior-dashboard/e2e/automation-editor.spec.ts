@@ -256,12 +256,12 @@ test("makes an earlier version active from version history", async ({
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);
   await expect(page.getByText("Changed instruction")).toBeVisible();
   await screenshot(page, "automation-versions");
-  page.once("dialog", (dialog) => {
-    expect(dialog.message()).toContain("Make version 1 active?");
-    void dialog.accept();
-  });
   await page
     .getByRole("button", { name: "Make version 1 active", exact: true })
+    .click();
+  await page
+    .getByRole("alertdialog", { name: "Make version 1 active?" })
+    .getByRole("button", { name: "Make active" })
     .click();
   await expect(
     page.getByText("Version 1 is active again. It was saved as a new version."),

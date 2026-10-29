@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Textarea. See shadcn.LICENSE.
 import type { ComponentProps } from "react";
 import { cn } from "@dashboard/lib/utils";
 

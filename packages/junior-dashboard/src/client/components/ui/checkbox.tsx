@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Checkbox. See shadcn.LICENSE.
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import { cn } from "@dashboard/lib/utils";
 import { CheckIcon } from "lucide-react";

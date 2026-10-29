@@ -313,7 +313,6 @@ test("searches, paginates, and forgets plugin page records", async ({
     }),
   ).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page
     .getByRole("button", {
       name: /^View memory details: Deploy runbooks live in Notion/,
@@ -322,6 +321,10 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page
     .getByRole("dialog", { name: "What Junior remembers" })
     .getByRole("button", { name: "Forget this memory" })
+    .click();
+  await page
+    .getByRole("alertdialog", { name: "Forget this memory?" })
+    .getByRole("button", { name: "Forget" })
     .evaluate((button) => {
       button.click();
       button.click();

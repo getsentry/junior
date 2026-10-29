@@ -35,9 +35,14 @@ heading buttons, and measured panel height. Its motion stops when reduced
 motion is set. Keep one-off disclosure content in the owning feature.
 `ui/popover.tsx` and `ui/alert-dialog.tsx` provide the shadcn Base UI surfaces
 for anchored controls and named confirmations. They use dashboard color and
-focus tokens and stop motion when reduced motion is set. `ui/toast.tsx` owns
-short success notifications in a mounted `Toaster` provider. Features call
-`useToastManager` inside that provider. It has no global notification manager.
+focus tokens and stop motion when reduced motion is set. Use `ui/alert-dialog`
+for every confirmation. Do not use `window.confirm`. Keep the confirmed item
+in state after close, so the closing dialog keeps its text. `ui/tabs.tsx`
+switches panels with Base UI Tabs. `ui/toggle-group.tsx` holds one pressed
+segment with arrow-key focus. Its items use the `ui/toggle` look.
+`ui/toast.tsx` owns short success notifications in a mounted `Toaster`
+provider. Features call `useToastManager` inside that provider. It has no
+global notification manager.
 `ui/useSheet.ts` owns the sheet close lifecycle, shared document scroll lock, and
 focus rules when a resize puts one modal below another. These are separate
 Dialog roots. A newly mounted sheet must not take focus from the open child
@@ -46,17 +51,19 @@ layout changes.
 
 ### Adopted shadcn components
 
-Each `ui/` file is shadcn source that uses dashboard tokens. Its first line
-names the source. The copied license is in `ui/shadcn.LICENSE`. Remove exports
+Each `ui/` file is shadcn source that uses dashboard tokens. Remove exports
 that no app code uses. Use `ui/` components directly. Do not add an app
 component that only renames a `ui/` component or its props. Change the `ui/`
 file when every caller needs the same style or variant. App components compose
 `ui/` source only when they add structure or behavior:
 
-| App component                  | shadcn source |
-| ------------------------------ | ------------- |
-| `Drawer`, `BottomSheet`        | `ui/sheet`    |
-| `layout/DashboardHeader` (nav) | `ui/sheet`    |
+| App component                  | shadcn source     |
+| ------------------------------ | ----------------- |
+| `Drawer`, `BottomSheet`        | `ui/sheet`        |
+| `layout/DashboardHeader` (nav) | `ui/sheet`        |
+| `ProfileMenu` (desktop)        | `ui/popover`      |
+| `TimeRangeSelector`            | `ui/toggle-group` |
+| `ThemeSwitcher`                | `ui/toggle-group` |
 
 Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
 `aria-label`. The `ui/` files join classes with the merging `cn` from
@@ -126,11 +133,12 @@ token so each theme can redefine it.
 - **Actions.** `ui/button` `Button` (`variant`: `default`, `primary`,
   `danger`; `size="icon"`). Form pages use `Button variant="primary"` for their
   one main save action. For a link that looks like a button, put
-  `buttonVariants()` on the router `Link`. Use `ToggleButton` variants (`pill`,
-  `segment`, `text`) for pressed states, not one-off styles. `CopyButton`
-  copies plain text or an async text export. It shares clipboard success,
-  pending, and failure feedback across Markdown exports and event JSON. A
-  failed write allows another attempt.
+  `buttonVariants()` on the router `Link`. Use `ui/toggle-group` for a row
+  that holds one pressed choice. Use `ui/toggle` for one setting that turns on
+  or off. Use `ToggleButton` variants (`pill`, `text`) for other pressed
+  states, not one-off styles. `CopyButton` copies plain text or an async text
+  export. It shares clipboard success, pending, and failure feedback across
+  Markdown exports and event JSON. A failed write allows another attempt.
 - **Forms.** Build a field from `ui/field`: `Field`, `FieldLabel`, the control,
   then `FieldError` and `FieldDescription`. `FieldError` renders nothing when it
   has no message. Give `FieldError` the id `<control id>-error` and
@@ -178,12 +186,12 @@ levels stay distinct.
 - **Page links** use `SegmentedNav`, through `layout/SecondaryNavigation`. They
   are underline tabs that sit on the header border. With `fill`, links share
   the row width while their labels fit. Rows that do not fit scroll sideways.
-- **Panel switches** use `SegmentedTabs`, which draws a pill track. Pass the
-  selected value, items, change handler, and panel content. It owns tab and
-  panel labels and keyboard focus. Pass `scroll` to keep the tabs fixed while
-  the panel content scrolls. That mode fills its frame and owns the content
-  padding, so its scrollbar stays at the frame edge. `BottomSheet` content owns
-  its own padding.
+- **Panel switches** use `ui/tabs`, which draws a pill track. Compose `Tabs`,
+  `TabsList`, one `TabsTrigger` per panel, and one `TabsContent` per panel.
+  Give `TabsList` an `aria-label`. Set `activateOnFocus` so arrow keys select
+  the tab. For tabs that stay fixed above scrolling panels, the owner sets the
+  grid rows and puts the scroll classes on each `TabsContent`, as
+  `ConversationDetails` does.
 
 Keep collection filters in `FilterTabList`.
 

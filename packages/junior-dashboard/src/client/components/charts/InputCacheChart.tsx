@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
-import { ToggleButton } from "../ToggleButton";
 import { Card } from "../layout/Card";
+import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import { formatCompactNumber } from "../../format";
 import {
   type TimeRangeBucketUnit,
@@ -47,26 +47,16 @@ export function InputCacheChart(props: {
       <ChartHeader
         title="Input cache"
         trailing={
-          <div
+          <ToggleGroup
             aria-label="Cache chart display"
-            className="flex gap-1"
-            role="group"
+            onValueChange={([next]) => {
+              if (next) setMode(next);
+            }}
+            value={[mode]}
           >
-            <ToggleButton
-              pressed={mode === "share"}
-              variant="segment"
-              onClick={() => setMode("share")}
-            >
-              Percent
-            </ToggleButton>
-            <ToggleButton
-              pressed={mode === "tokens"}
-              variant="segment"
-              onClick={() => setMode("tokens")}
-            >
-              Tokens
-            </ToggleButton>
-          </div>
+            <ToggleGroupItem value="share">Percent</ToggleGroupItem>
+            <ToggleGroupItem value="tokens">Tokens</ToggleGroupItem>
+          </ToggleGroup>
         }
       />
       <dl className="m-0 flex flex-wrap gap-x-5 gap-y-2 px-4 py-3 font-sans tabular-nums text-xs sm:px-5">
