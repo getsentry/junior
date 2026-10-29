@@ -14,7 +14,7 @@ It demonstrates:
 ```bash
 pnpm install
 cp apps/example/.env.example apps/example/.env
-docker compose up -d --wait postgres redis
+docker compose up -d --wait postgres redis s3
 pnpm cli -- upgrade
 pnpm dev
 ```
@@ -30,6 +30,14 @@ nonstandard local port. Root `pnpm cli -- ...` and `pnpm dev` load
 `apps/example/.env`, so run `pnpm cli -- upgrade` after starting the local
 services so Junior and enabled plugins have their SQL schemas before local chat,
 heartbeat, or server paths use them.
+
+Local attachments and published images use the `s3` service. The `JUNIOR_S3_*`
+defaults point at it, and compose creates the `junior-attachments` bucket when
+the service starts. If `s3` is not running, `sendFiles`, `publishImage`, and
+web messages with images fail. To use the shared dev Vercel Blob store from
+`pnpm dev:env` instead, set `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=vercel-blob` in
+`apps/example/.env`. Attachments stored with one provider are not visible after
+you change to the other.
 
 ## Wiring
 
