@@ -14,16 +14,10 @@ import type { User } from "@sentry/junior-plugin-api";
 export function readAutomationEventCatalog() {
   return Object.entries(automationEventCatalog(getEventCatalog())).flatMap(
     ([namespace, registration]) =>
-      registration.resourceTypes.map(
-        ({
-          automation: _automation,
-          watchUnavailable: _watch,
-          ...resource
-        }) => ({
-          namespace,
-          ...resource,
-        }),
-      ),
+      registration.resourceTypes.map((resource) => ({
+        namespace,
+        ...resource,
+      })),
   );
 }
 

@@ -2,7 +2,6 @@ import {
   normalizeEventIdentifier,
   eventMatchSchema,
   type PluginEvents,
-  type PluginEventType,
   type EventMatch,
   type EventMatchFields,
 } from "@sentry/junior-plugin-api";
@@ -10,18 +9,29 @@ import { z } from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /**
- * One resource type in the event catalog. Core resource types can limit how
- * they are used. These limits are core only, so plugins cannot set them.
+ * How core limits one of its own resource types. Limits sit beside the
+ * plugin-api resource type, not on it, so plugins cannot set them and API
+ * responses never carry them.
  */
-export type EventCatalogResourceType = PluginEventType & {
-  /** False when event automations cannot use this resource type. */
+export type EventResourceTypeLimits = {
+  /** False when event automations cannot use the resource type. */
   automation?: false;
-  /** Why watchEvents cannot watch this resource type, and what to use instead. */
-  watchUnavailable?: string;
-};
+} & (
+  | { watch?: undefined }
+  | {
+      /** False when watchEvents cannot watch the resource type. */
+      watch: false;
+      /** Tells the agent what to use instead of watchEvents. */
+      watchUnavailableMessage: string;
+    }
+);
 
-type EventRegistration = Pick<PluginEvents, "normalizeIdentifier"> & {
-  resourceTypes: readonly EventCatalogResourceType[];
+type EventRegistration = Pick<
+  PluginEvents,
+  "resourceTypes" | "normalizeIdentifier"
+> & {
+  /** Core-only limits, by resource type. */
+  limits?: Readonly<Record<string, EventResourceTypeLimits>>;
 };
 
 export type EventCatalog = Readonly<Record<string, EventRegistration>>;
@@ -45,7 +55,8 @@ export function automationEventCatalog(catalog: EventCatalog): EventCatalog {
   return Object.fromEntries(
     Object.entries(catalog).flatMap(([namespace, registration]) => {
       const resourceTypes = registration.resourceTypes.filter(
-        (resourceType) => resourceType.automation !== false,
+        (resourceType) =>
+          registration.limits?.[resourceType.type]?.automation !== false,
       );
       return resourceTypes.length > 0
         ? [[namespace, { ...registration, resourceTypes }]]
@@ -60,9 +71,8 @@ export function eventWatchUnavailable(
   namespace: string,
   resourceType: string,
 ): string | undefined {
-  return catalog[namespace]?.resourceTypes.find(
-    (candidate) => candidate.type === resourceType,
-  )?.watchUnavailable;
+  const limits = catalog[namespace]?.limits?.[resourceType];
+  return limits?.watch === false ? limits.watchUnavailableMessage : undefined;
 }
 
 function enumSchema(values: string[], unavailableMessage: string) {

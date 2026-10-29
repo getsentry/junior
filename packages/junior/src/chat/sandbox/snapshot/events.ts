@@ -18,7 +18,6 @@ export function workspaceSnapshotEvents(): EventCatalog[string] {
     resourceTypes: [
       {
         type: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
-        automation: false,
         supportedEvents: [
           WORKSPACE_SNAPSHOT_READY_EVENT,
           WORKSPACE_SNAPSHOT_FAILED_EVENT,
@@ -33,6 +32,7 @@ export function workspaceSnapshotEvents(): EventCatalog[string] {
         },
       },
     ],
+    limits: { [WORKSPACE_SNAPSHOT_RESOURCE_TYPE]: { automation: false } },
   };
 }
 

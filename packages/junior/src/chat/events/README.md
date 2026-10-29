@@ -38,15 +38,18 @@ Watches route events back into an existing conversation.
     guidance as any other watch.
   - `slack` has the `channel` resource type for new top-level channel messages.
     Slack ingress publishes these events, not a plugin.
-- Core resource types can limit how they are used. These limits are on
-  `EventCatalogResourceType` in `catalog.ts`, not in the published plugin API.
+- Core resource types can limit how they are used. A core registration keeps
+  these limits in `limits`, by resource type, beside its resource types
+  (`EventResourceTypeLimits` in `catalog.ts`). They are not in the published
+  plugin API, and API responses do not carry them.
   - `automation: false` keeps the resource type out of event automations. The
     `workspace_snapshot` and `timer` types set it, because nothing runs
     event-automation ingest for those events.
-  - `watchUnavailable` makes `watchEvents` reject the resource type with that
-    message. `timer` sets it, because `watchTimer` creates timer watches.
-    `channel` sets it, because only an event automation in that channel can
-    use channel messages.
+  - `watch: false` makes `watchEvents` reject the resource type. It needs
+    `watchUnavailableMessage`, which tells the agent what to use instead.
+    `timer` sets it, because `watchTimer` creates timer watches. `channel` sets
+    it, because only an event automation in that channel can use channel
+    messages.
 - `searchEventTypes` discovers that catalog without creating anything.
   `watchEvents` creates a temporary watch for the
   current conversation. Concrete identifiers still come from plugin tool

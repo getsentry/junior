@@ -41,8 +41,6 @@ export function slackChannelMessageEvents(): EventCatalog[string] {
     resourceTypes: [
       {
         type: CHANNEL_RESOURCE_TYPE,
-        watchUnavailable:
-          "Slack channel messages can trigger only an event automation in that channel. Use createEventAutomation.",
         identifier: {
           format: `"${SLACK_CURRENT_CHANNEL_IDENTIFIER}" for the channel where the automation is created`,
           pattern: String.raw`^(?:current_channel|[CG][A-Z0-9]{2,})$`,
@@ -56,6 +54,13 @@ export function slackChannelMessageEvents(): EventCatalog[string] {
         },
       },
     ],
+    limits: {
+      [CHANNEL_RESOURCE_TYPE]: {
+        watch: false,
+        watchUnavailableMessage:
+          "Slack channel messages can trigger only an event automation in that channel. Use createEventAutomation.",
+      },
+    },
   };
 }
 
