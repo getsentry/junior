@@ -1,9 +1,10 @@
 import {
+  eventTriggerProblems,
   normalizeEventIdentifier,
   eventMatchSchema,
+  type EventTriggerProblem,
   type PluginEvents,
   type EventMatch,
-  type EventMatchFields,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -84,20 +85,6 @@ export function registeredResourceTypeSchema(catalog: EventCatalog) {
   );
 }
 
-/** Return whether one enabled plugin declared an event type. */
-export function pluginSupportsEvent(
-  catalog: EventCatalog,
-  namespace: string,
-  resourceType: string,
-  eventType: string,
-): boolean {
-  return (
-    catalog[namespace]?.resourceTypes
-      .find((candidate) => candidate.type === resourceType)
-      ?.supportedEvents.includes(eventType) ?? false
-  );
-}
-
 /** Return app guidance for one registered resource type and event type. */
 export function eventGuidance(
   catalog: EventCatalog,
@@ -110,93 +97,75 @@ export function eventGuidance(
   )?.guidance?.[eventType];
 }
 
-/** Return declared match keys for one registered resource type. */
-export function eventMatchFields(
-  catalog: EventCatalog,
-  namespace: string,
-  resourceType: string,
-): EventMatchFields | undefined {
-  return catalog[namespace]?.resourceTypes.find(
-    (candidate) => candidate.type === resourceType,
-  )?.matchFields;
-}
-
 /** Build the match object the tools accept for one resource type. */
 export function registeredEventMatchSchema() {
   return eventMatchSchema
     .optional()
     .describe(
-      "Optional exact values from the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
+      "Optional exact values from the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
     );
 }
 
-/** Reject match keys the resource type does not list. */
-export function requireSupportedEventMatch(
+/** The parts of an Event trigger that the catalog checks. */
+export interface EventTriggerSelection {
+  events: readonly string[];
+  match?: EventMatch;
+  namespace: string;
+  resourceType: string;
+}
+
+/**
+ * List why a trigger cannot work with the enabled plugins. Use it for new
+ * triggers and for saved triggers, which can go stale after a plugin renames
+ * or removes an event or filter.
+ */
+export function registeredEventTriggerProblems(
   catalog: EventCatalog,
-  input: {
-    match?: EventMatch;
-    namespace: string;
-    resourceType: string;
-  },
-): EventMatch | undefined {
-  const match = input.match;
+  trigger: EventTriggerSelection,
+): EventTriggerProblem[] {
+  const resourceType = catalog[trigger.namespace]?.resourceTypes.find(
+    (candidate) => candidate.type === trigger.resourceType,
+  );
+  if (!resourceType) {
+    return [
+      {
+        reason: "unknown_resource_type",
+        message: `There is no enabled "${trigger.resourceType}" resource type for "${trigger.namespace}".`,
+      },
+    ];
+  }
+  return eventTriggerProblems(resourceType, trigger);
+}
+
+function uniqueMatchValues(match: EventMatch | undefined) {
   if (!match || Object.keys(match).length === 0) return undefined;
-  const fields = eventMatchFields(catalog, input.namespace, input.resourceType);
-  if (!fields || Object.keys(fields).length === 0) {
+  return Object.fromEntries(
+    Object.entries(match).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? [...new Set(value)] : value,
+    ]),
+  ) as EventMatch;
+}
+
+/**
+ * Reject a trigger that cannot work, with every problem in one message.
+ * Return its match without repeated list values.
+ */
+export function requireValidEventTrigger(
+  catalog: EventCatalog,
+  trigger: EventTriggerSelection,
+): EventMatch | undefined {
+  const problems = registeredEventTriggerProblems(catalog, trigger);
+  if (problems.length > 0) {
+    const resource = `${trigger.namespace} ${trigger.resourceType.replaceAll("_", " ")}`;
     throw new ToolInputError(
-      `Resource type "${input.namespace}:${input.resourceType}" does not support match.`,
+      [
+        `This ${resource} trigger cannot be saved.`,
+        ...problems.map((problem) => problem.message),
+      ].join(" "),
     );
   }
-  const normalized: EventMatch = {};
-  for (const [key, value] of Object.entries(match)) {
-    const field = fields[key];
-    if (!field) {
-      throw new ToolInputError(
-        `Resource type "${input.namespace}:${input.resourceType}" does not support match key "${key}".`,
-      );
-    }
-    if (Array.isArray(value)) {
-      if (field.kind === "boolean") {
-        throw new ToolInputError(
-          `Match key "${key}" is boolean and cannot use a list.`,
-        );
-      }
-      for (const entry of value) {
-        if (typeof entry !== field.kind) {
-          throw new ToolInputError(
-            `Match key "${key}" expects ${field.kind} values.`,
-          );
-        }
-        if (
-          field.enum &&
-          typeof entry === "string" &&
-          !field.enum.includes(entry)
-        ) {
-          throw new ToolInputError(
-            `Match key "${key}" does not allow value "${entry}".`,
-          );
-        }
-      }
-      normalized[key] = [...new Set(value)] as typeof value;
-      continue;
-    }
-    if (typeof value !== field.kind) {
-      throw new ToolInputError(
-        `Match key "${key}" expects a ${field.kind} value.`,
-      );
-    }
-    if (
-      field.enum &&
-      typeof value === "string" &&
-      !field.enum.includes(value)
-    ) {
-      throw new ToolInputError(
-        `Match key "${key}" does not allow value "${value}".`,
-      );
-    }
-    normalized[key] = value;
-  }
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
+  return uniqueMatchValues(trigger.match);
 }
 
 /**

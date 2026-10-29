@@ -530,7 +530,9 @@ describe("event automations", () => {
         },
         "unsupported-event",
       ),
-    ).rejects.toThrow(/github:issue.*does not support event.*issue\.closed/);
+    ).rejects.toThrow(
+      'This github issue trigger cannot be saved. There is no enabled "issue" resource type for "github".',
+    );
 
     const listed = (await execute(
       createListEventAutomationsTool(context(), EVENT_CATALOG),

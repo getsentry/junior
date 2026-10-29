@@ -97,36 +97,49 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.closed_unmerged",
 ] as const;
 
-/** Exact values GitHub may set on pull request event data. Missing keys do not match. */
+/**
+ * Exact values GitHub may set on pull request event data. Missing keys do not
+ * match. The opener and author values load in
+ * `webhooks/pull-request-match-data.ts` for every pull request event. The
+ * pull request comment webhook has no head branch.
+ */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   authors: {
     kind: "string",
     list: true,
     description:
       "GitHub logins of the commit authors and Co-authored-by people, including bots such as Junior's",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   headBranch: {
     kind: "string",
     description: "head branch name from the webhook",
+    events: GITHUB_PULL_REQUEST_EVENTS.filter(
+      (eventType) => eventType !== "pull_request.comment.created",
+    ),
   },
   isDraft: {
     kind: "boolean",
     description: "true when the pull request is a draft",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   openerEmail: {
     kind: "string",
     description:
       "opener email when GitHub sends it; missing on Junior's pull requests",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   openerUsername: {
     kind: "string",
     description:
       "login of who opened the pull request; on Junior's, the person who asked Junior to open it, missing until Junior saves them",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   openerRole: {
     kind: "string",
     description:
       "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
 });
 

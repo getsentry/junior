@@ -624,37 +624,62 @@ describe("github plugin", () => {
         "github_resolvePullRequestReviewThread",
       ),
     });
+    // GitHub sends no head branch with pull request comments.
+    const allEvents = pullRequest?.supportedEvents;
+    const headBranchEvents = allEvents?.filter(
+      (eventType) => eventType !== "pull_request.comment.created",
+    );
     expect(pullRequest?.matchFields).toEqual({
       authors: {
         kind: "string",
         list: true,
         description:
           "GitHub logins of the commit authors and Co-authored-by people, including bots such as Junior's",
+        events: allEvents,
       },
       headBranch: {
         kind: "string",
         description: "head branch name from the webhook",
+        events: headBranchEvents,
       },
       isDraft: {
         kind: "boolean",
         description: "true when the pull request is a draft",
+        events: allEvents,
       },
       openerEmail: {
         kind: "string",
         description:
           "opener email when GitHub sends it; missing on Junior's pull requests",
+        events: allEvents,
       },
       openerRole: {
         kind: "string",
         description:
           "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+        events: allEvents,
       },
       openerUsername: {
         kind: "string",
         description:
           "login of who opened the pull request; on Junior's, the person who asked Junior to open it, missing until Junior saves them",
+        events: allEvents,
       },
     });
+    // Repository watches get every kind of event, so each filter names the
+    // events that set it.
+    const repository = githubPlugin().events?.resourceTypes.find(
+      (resourceType) => resourceType.type === "repository",
+    );
+    expect(repository?.matchFields?.senderId?.events).toEqual([
+      "issue.comment.created",
+    ]);
+    expect(repository?.matchFields?.environment?.events).toContain(
+      "deployment.succeeded",
+    );
+    expect(repository?.matchFields?.headBranch?.events).toEqual(
+      headBranchEvents,
+    );
   });
 
   it("registers release source watches", () => {

@@ -860,14 +860,40 @@ describe("Automation edit API", () => {
         events: ["pull_request.merged"],
         match: { headBranch: "main" },
       };
-      const invalid = await patch({
+      // authorUsername is a GitHub filter that was renamed to openerUsername.
+      const removed = await patch({
         kind: "event",
         revision: current.revision,
-        trigger: { ...trigger, match: { unknownField: "not allowed" } },
+        trigger: { ...trigger, match: { authorUsername: "dcramer" } },
       });
-      expect(invalid.status).toBe(400);
-      expect(await invalid.json()).toMatchObject({
-        fields: { trigger: expect.any(Array) },
+      expect(removed.status).toBe(400);
+      expect(await removed.json()).toMatchObject({
+        fields: {
+          trigger: [
+            expect.stringContaining(
+              '"authorUsername" is not a filter for this resource type.',
+            ),
+          ],
+        },
+      });
+      // GitHub sends no head branch with pull request comments.
+      const neverRuns = await patch({
+        kind: "event",
+        revision: current.revision,
+        trigger: {
+          ...trigger,
+          events: ["pull_request.merged", "pull_request.comment.created"],
+        },
+      });
+      expect(neverRuns.status).toBe(400);
+      expect(await neverRuns.json()).toMatchObject({
+        fields: {
+          trigger: [
+            expect.stringContaining(
+              '"headBranch" is not set on "pull_request.comment.created"',
+            ),
+          ],
+        },
       });
       const response = await patch({
         kind: "event",

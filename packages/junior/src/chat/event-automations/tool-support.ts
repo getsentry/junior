@@ -18,11 +18,10 @@ import {
 import {
   eventNamespaceSchema,
   automationEventCatalog,
-  pluginSupportsEvent,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
   registeredResourceTypeSchema,
-  requireSupportedEventMatch,
+  requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -110,7 +109,7 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
     .strict();
 }
 
-/** Reject an event-automation trigger that is no longer supported by the catalog. */
+/** Reject an event-automation trigger that cannot work with the enabled plugins. */
 export function requireSupportedEventAutomationTrigger(
   catalog: EventCatalog,
   trigger: {
@@ -120,26 +119,7 @@ export function requireSupportedEventAutomationTrigger(
     resourceType: string;
   },
 ): EventAutomation["trigger"]["match"] | undefined {
-  const plugins = automationEventCatalog(catalog);
-  for (const eventType of trigger.events) {
-    if (
-      !pluginSupportsEvent(
-        plugins,
-        trigger.namespace,
-        trigger.resourceType,
-        eventType,
-      )
-    ) {
-      throw new ToolInputError(
-        `Resource type "${trigger.namespace}:${trigger.resourceType}" does not support event "${eventType}".`,
-      );
-    }
-  }
-  return requireSupportedEventMatch(plugins, {
-    match: trigger.match,
-    namespace: trigger.namespace,
-    resourceType: trigger.resourceType,
-  });
+  return requireValidEventTrigger(automationEventCatalog(catalog), trigger);
 }
 
 /** Require the active Slack authority used for event-automation management. */
