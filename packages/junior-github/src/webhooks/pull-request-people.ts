@@ -92,7 +92,7 @@ async function forEachCommit(
       visit({
         coAuthorEmails: [
           ...commit.commit.message.matchAll(CO_AUTHOR_TRAILER),
-        ].map((match) => match[1]!.toLowerCase()),
+        ].map((match) => match[1]!),
         ...(commit.author ? { login: commit.author.login } : undefined),
       });
     }
@@ -122,10 +122,11 @@ export async function loadGitHubPullRequestPeople(args: {
     if (!people.has(key))
       people.set(key, { provider: "github", handle: login });
   };
-  const addEmail = (email: string) => {
-    const login = noreplyLogin(email);
-    if (login) addLogin(login);
-    else if (!people.has(`email:${email}`)) {
+  const addEmail = (value: string) => {
+    const login = noreplyLogin(value);
+    if (login) return addLogin(login);
+    const email = value.toLowerCase();
+    if (!people.has(`email:${email}`)) {
       people.set(`email:${email}`, { email });
     }
   };

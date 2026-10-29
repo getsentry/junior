@@ -2409,7 +2409,7 @@ describe("GitHub-owned pull request outcomes", () => {
               author: { login: "octocat" },
               commit: {
                 message:
-                  "feat: Add the thing\n\nCo-authored-by: Helper <99+helper@users.noreply.github.com>",
+                  "feat: Add the thing\n\nCo-authored-by: Helper <99+HeLper@users.noreply.github.com>",
               },
             },
             {
@@ -2496,12 +2496,12 @@ describe("GitHub-owned pull request outcomes", () => {
 
       // A filter on one commit author matches. The role is then added for
       // the agent from the cache.
-      watch = { match: { authors: "helper" } };
+      watch = { match: { authors: "HeLper" } };
       await route!.handler(signedRequest(opened));
       expect(roleRequests).toHaveLength(1);
       expect(commitRequests).toHaveLength(1);
       expect(loaded()).toEqual(
-        Array(4).fill(["write", ["octocat", "helper", "sentry-junior[bot]"]]),
+        Array(4).fill(["write", ["octocat", "HeLper", "sentry-junior[bot]"]]),
       );
     } finally {
       await fixture.close();
