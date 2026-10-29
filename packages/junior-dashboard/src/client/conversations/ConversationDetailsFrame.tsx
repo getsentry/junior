@@ -11,28 +11,42 @@ import { Button } from "../components/Button";
 import { BottomSheet } from "../components/BottomSheet";
 
 const panelMediaQuery = "(min-width: 1280px)";
+// Open details by default only when the chat column stays wide beside them.
+const defaultOpenMediaQuery = "(min-width: 1440px)";
 
-function subscribeToPanelLayout(onChange: () => void) {
-  const media = window.matchMedia(panelMediaQuery);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const media = window.matchMedia(query);
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
 }
 
-function hasPanelSpace() {
-  return window.matchMedia(panelMediaQuery).matches;
+/**
+ * Report whether the viewport has room to show details as a panel beside the
+ * chat. Narrower viewports show details in a bottom sheet.
+ */
+export function useConversationDetailsPanel(): boolean {
+  return useMediaQuery(panelMediaQuery);
+}
+
+/** Report whether details should open beside the chat without a request. */
+export function useConversationDetailsDefaultOpen(): boolean {
+  return useMediaQuery(defaultOpenMediaQuery);
 }
 
 /** Keep details beside the chat when space permits, or in a modal bottom sheet. */
 export function ConversationDetailsFrame(props: {
+  actions?: ReactNode;
   children: ReactNode;
   onClose(): void;
 }) {
   const titleId = useId();
-  const panel = useSyncExternalStore(
-    subscribeToPanelLayout,
-    hasPanelSpace,
-    () => false,
-  );
+  const panel = useConversationDetailsPanel();
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasPanel = useRef(panel);
   useEffect(() => {
@@ -49,6 +63,12 @@ export function ConversationDetailsFrame(props: {
     return (
       <BottomSheet label="Conversation details" onClose={props.onClose}>
         {props.children}
+        {/* After the tabs, so the sheet still opens with the first tab focused. */}
+        {props.actions ? (
+          <div className="flex justify-end gap-1 border-t border-dashboard-border px-4 py-2">
+            {props.actions}
+          </div>
+        ) : null}
       </BottomSheet>
     );
   }
@@ -68,14 +88,22 @@ export function ConversationDetailsFrame(props: {
         }
       }}
     >
-      <header className="flex items-center justify-between gap-3 border-b border-dashboard-border px-5 py-3">
-        <h2
-          aria-label="Conversation details"
-          className="m-0 text-base font-semibold text-dashboard-text"
-          id={titleId}
-        >
-          Details
-        </h2>
+      <header className="flex items-center justify-between gap-3 border-b border-dashboard-border py-2 pl-5 pr-3">
+        {/* Keep actions beside the title. The panel opens under the pointer
+            that clicked the chat's Details button, so that corner holds only
+            Close. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <h2
+            aria-label="Conversation details"
+            className="m-0 text-base font-semibold text-dashboard-text"
+            id={titleId}
+          >
+            Details
+          </h2>
+          {props.actions ? (
+            <div className="flex items-center gap-0.5">{props.actions}</div>
+          ) : null}
+        </div>
         <Button
           ref={closeRef}
           aria-label="Close conversation details"
