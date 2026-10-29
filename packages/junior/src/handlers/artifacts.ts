@@ -1,5 +1,7 @@
-import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import {
+  createAttachmentStorage,
+  type AttachmentStorage,
+} from "@/chat/attachments/storage";
 import {
   publicArtifactHeaders,
   readPublicArtifact,
@@ -19,7 +21,7 @@ export async function publicArtifactGET(args: {
     const artifact = await readPublicArtifact({
       db: args.db ?? getSqlExecutor(),
       filename: args.filename,
-      storage: args.storage ?? createVercelAttachmentStorage(),
+      storage: args.storage ?? createAttachmentStorage(),
     });
     if (!artifact) {
       return new Response("Not Found", {
