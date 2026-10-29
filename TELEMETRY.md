@@ -169,15 +169,15 @@ Do not add app-specific keys under `user.*`. Put facts about the request in
 
 PostgreSQL queries that are slow, frequent, or failing.
 
-Spans: `db.query`
+Spans: Sentry's automatic `pg` and Neon spans (`sentry.op` `db`, origin
+`auto.db.postgres` or `auto.db.neon`). Node Postgres also adds `pg-pool.connect`
+and `pg.connect` spans.
 
-Attributes: `db.system.name`, `db.namespace`, `db.operation.name`,
-`db.collection.name`, `db.query.summary`, `db.query.text`,
-`db.response.status_code`, `error.type`, `server.address`, `server.port`,
-`app.db.driver`
+Attributes: `db.system.name`, `db.namespace`, `db.user`, `db.query.summary`,
+`db.query.text`, `server.address`, `server.port`, `error.type`
 
 `db.query.text` keeps parameter placeholders and never includes parameter values.
-All inline SQL literals use `?`. SQL comments are removed.
+The SDK replaces inline SQL literals with `?` and removes SQL comments.
 Group by `db.query.text` to identify one query shape. Group by
 `db.query.summary` for a lower-cardinality operation and target view.
 
@@ -189,10 +189,10 @@ Events: `webhook.response.unsuccessful`, `webhook.handler.failed`,
 `slack.event.persist.failed`, `slack.event.routing.failed`,
 `slack.event.enqueue.failed`
 
-Spans: `http.server.request`, `slack.message.ingress`
+Spans: Sentry's automatic `http.server` span, `slack.message.ingress`
 
-Attributes: `http.request.method`, `http.response.status_code`, `url.path`,
-`app.request.id`
+Attributes: `http.request.method`, `http.response.status_code`, `url.path`.
+Webhook logs carry `app.request.id`.
 
 Signed Slack message and mention events get a `slack.message.ingress` span
 before membership checks. It carries conversation, channel, and message IDs,

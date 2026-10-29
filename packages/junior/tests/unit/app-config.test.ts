@@ -825,7 +825,6 @@ describe("createApp plugin config", () => {
       functionMaxDurationSeconds: undefined,
       dashboard: {
         authRequired: false,
-        componentGallery: true,
       },
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -868,15 +867,9 @@ describe("createApp plugin config", () => {
     expect(pluginSystemPage.status).toBe(200);
     await expect(pluginSystemPage.text()).resolves.toBe("dashboard");
 
-    const componentGallery = await app.fetch(
-      new Request("http://localhost/dev"),
-    );
-    expect(componentGallery.status).toBe(200);
-    await expect(componentGallery.text()).resolves.toBe("dashboard");
     expect(createDashboardApp).toHaveBeenCalledWith(
       expect.objectContaining({
         agentName: botConfig.userName,
-        componentGallery: true,
       }),
     );
 

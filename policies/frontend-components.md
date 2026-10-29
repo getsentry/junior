@@ -42,10 +42,9 @@ named components so pages stay thin and taste stays consistent.
 - Keep page modules thin. Compose shared components and wire data. Do not grow
   large one-off Tailwind blocks inside a page when the same surface already has,
   or should have, a named component.
-- When you add or change a shared dashboard component, add or update a fixture
-  on the matching local gallery section (`/dev/foundations`, `/dev/charts`, or
-  `/dev/transcripts`) so visual review can cover only that surface. Keep `/dev`
-  as the catalog index. Feature-only widgets do not need gallery coverage.
+- When you add or change a shared dashboard component, check it on a real page.
+  Use `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` for mock data, and
+  review the dashboard E2E screenshots.
 - Do not add filler eyebrows or section labels that only restate the page title,
   chart purpose, or an obvious section role. If the page or chart title already
   names the content, skip decorative headers such as `Automation`,
@@ -75,10 +74,10 @@ named components so pages stay thin and taste stays consistent.
   - `conversations/ChatLayout` owns the scroll-above-dock frame for reply
     threads.
   - `conversations/ComposerDock` owns reply bottom pad and dock chrome.
-  Pages and feature modules pass children only. They must not invent viewport
-  height, offset, bottom pad, or `env(safe-area-inset-bottom)` math for the
-  composer. Home and create are one landing surface (compose hero + list nav),
-  not a dock. `/conversations/new` redirects to `/`.
+    Pages and feature modules pass children only. They must not invent viewport
+    height, offset, bottom pad, or `env(safe-area-inset-bottom)` math for the
+    composer. Home and create are one landing surface (compose hero + list nav),
+    not a dock. `/conversations/new` redirects to `/`.
 
 ## Exceptions
 

@@ -34,6 +34,24 @@ The plugin saves the created pull request before it tries assignment. Retrying
 the same tool call returns the saved pull request without retrying assignment,
 creating another pull request, or replacing existing assignees.
 
+The plugin saves each person who asks Junior to open or update a pull request in
+`junior_github_pull_request_requesters`. Each row has only the core Junior
+identity id of that person. The plugin does not copy the user or GitHub login.
+When a webhook needs the GitHub login, it reads the identity through
+`ctx.users.readIdentity()` and uses the GitHub identity of the linked user. So a
+person who links GitHub later is found on their older pull requests too. The
+create tool saves the opener after GitHub opens the pull request. The first row
+for a pull request is the opener. Later updates never replace it. When the
+create has no Junior identity, the first person who asks Junior to update the
+pull request is the opener. A retry of the same tool call saves the opener
+again, in case the first call stopped before it did. A pull request that
+Junior's bot opened but that has no saved row has no requester. This is true
+for an `opened` event that arrives before the create tool saves the row.
+Webhooks use the opener's GitHub login for `requesterUsername` and
+`requesterRole`. If the identity lookup fails, the event has no requester
+fields, so filters on them do not match. Webhooks never read the pull request
+body.
+
 The plugin owns its signed webhook route, deployment, pull request, and release
 events, and normalized pull request and issue outcome projections.
 Those projections also feed native code-change records used by the dashboard

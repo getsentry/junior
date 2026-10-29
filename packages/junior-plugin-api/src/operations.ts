@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PluginContext, User } from "./context";
+import type { Identity, PluginContext, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
@@ -161,6 +161,16 @@ export interface RouteRegistrationHookContext extends PluginContext {
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
+  users: {
+    /**
+     * Read one stored identity and the user it links to now, with every
+     * identity of that user. A plugin that saved an identity id uses this to
+     * find the person's other linked accounts later.
+     */
+    readIdentity(
+      identityId: string,
+    ): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {

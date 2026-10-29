@@ -31,7 +31,6 @@ import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
-import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
 import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
@@ -417,22 +416,6 @@ export function DashboardShell() {
             path="/conversations/:conversationId"
           />
           <Route element={<Navigate replace to="/" />} path="/conversations" />
-          <Route
-            element={
-              loading ? (
-                <LoadingView label="Loading components" />
-              ) : !data ? (
-                <LoadingView
-                  label={query.error?.message ?? "Dashboard unavailable"}
-                />
-              ) : data.config.componentGallery ? (
-                <ComponentsPage />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-            path="/dev/*"
-          />
           <Route
             element={<LegacySystemRedirect section="people" />}
             path="/people"

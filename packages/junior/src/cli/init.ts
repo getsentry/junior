@@ -28,16 +28,6 @@ export default app;
   );
 }
 
-function writeInstrumentFile(targetDir: string): void {
-  fs.writeFileSync(
-    path.join(targetDir, "instrument.mjs"),
-    `import { initSentry } from "@sentry/junior/instrumentation";
-
-initSentry();
-`,
-  );
-}
-
 function writePluginsFile(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "plugins.ts"),
@@ -99,8 +89,6 @@ function writePnpmWorkspace(targetDir: string): void {
     `minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
-allowBuilds:
-  "@sentry/cli": true
 `,
   );
 }
@@ -172,15 +160,13 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
+      dev: "nitro dev",
       check: "junior check",
       build: "junior snapshot create && nitro build",
-      preview: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
+      preview: "nitro preview",
       typecheck: "tsc --noEmit",
     },
     dependencies: {
-      "@opentelemetry/api": "1.9.1",
-      "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
@@ -188,7 +174,6 @@ export async function runInit(
     },
     devDependencies: {
       "@types/node": "^25.9.1",
-      "cross-env": "^10.1.0",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
       typescript: "^7.0.2",
@@ -265,7 +250,6 @@ SENTRY_AUTH_TOKEN=
   );
 
   writeServerEntry(target);
-  writeInstrumentFile(target);
   writePluginsFile(target);
   writeNitroConfig(target);
   writeTsConfig(target);
