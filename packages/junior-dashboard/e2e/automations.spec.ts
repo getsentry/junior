@@ -453,7 +453,13 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(mobileFilters).toHaveText("Filters (4)");
   await expect(page.getByLabel("Filter by creator")).not.toBeVisible();
   await mobileFilters.click();
-  await expect(mobileFilters).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.getByRole("dialog", { name: "Filters", exact: true }),
+  ).toBeVisible();
+  // The modal sheet hides the page behind it, including the trigger.
+  await expect(
+    page.getByRole("button", { name: /^Filters/, includeHidden: true }),
+  ).toHaveAttribute("aria-expanded", "true");
   await page.getByLabel("Filter by state").selectOption("blocked");
   await expect(
     page.getByText("No automations matched these filters."),
