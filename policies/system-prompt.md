@@ -123,6 +123,9 @@ Each context input has one location and one authority level:
   See `evals.md`. A prompt change must run the behavioral and integration
   evals.
 - Keep each block short. Add a line only when it changes behavior.
+- Do not write the name "Junior" in text that the model reads. Each install
+  sets its own bot name, and block 1 states it. Refer to the model as "you",
+  or use the name from the bot configuration.
 - Give each section in the code a docstring that states its block, its intent,
   and what does not go in it. Add one for each new section. Change it when the
   intent changes.

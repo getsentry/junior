@@ -40,7 +40,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { buildRuleBlocks, type PromptMode } from "@/chat/system-prompt-rules";
 
-const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
+const DEFAULT_SOUL = "You are a practical and concise assistant.";
 
 function getLoggedMarkdownFiles(): Set<string> {
   const globalState = globalThis as typeof globalThis & {
@@ -627,7 +627,7 @@ export function buildPluginSystemPromptContributions(
   }
 
   const lines = [
-    "Installed plugin prompt guidance. Core Junior behavior, safety, credential, tool, and output rules remain authoritative.",
+    "Installed plugin prompt guidance. Core behavior, safety, credential, tool, and output rules remain authoritative.",
   ];
   for (const contribution of contributions) {
     lines.push(
