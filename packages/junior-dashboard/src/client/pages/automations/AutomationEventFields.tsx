@@ -16,7 +16,7 @@ import {
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
-import { Select } from "../../components/Select";
+import { NativeSelect } from "../../components/ui/native-select";
 import { FormNotice } from "../../components/FormNotice";
 import { Checkbox } from "../../components/ui/checkbox";
 import { fetchDashboardJson } from "../../http";
@@ -93,7 +93,7 @@ export function AutomationEventFields(props: {
         <FieldLabel htmlFor="trigger-resource">
           {unsupported ? "Replace trigger" : "Resource type"}
         </FieldLabel>
-        <Select
+        <NativeSelect
           id="trigger-resource"
           value={
             unsupported
@@ -125,7 +125,7 @@ export function AutomationEventFields(props: {
               {item.namespace} · {item.type.replaceAll("_", " ")}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </Field>
       <AlertDialog
         onOpenChange={(open) => {
@@ -237,7 +237,7 @@ export function AutomationEventFields(props: {
                           </Button>
                         </div>
                       ) : field.kind === "boolean" || field.enum ? (
-                        <Select
+                        <NativeSelect
                           id={`match-${key}`}
                           value={value === undefined ? "" : String(value)}
                           onChange={(e) =>
@@ -255,7 +255,7 @@ export function AutomationEventFields(props: {
                           {(field.enum ?? ["true", "false"]).map((v) => (
                             <option key={v}>{v}</option>
                           ))}
-                        </Select>
+                        </NativeSelect>
                       ) : (
                         <Input
                           size="comfortable"

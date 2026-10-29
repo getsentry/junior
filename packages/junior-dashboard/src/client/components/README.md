@@ -149,8 +149,8 @@ token so each theme can redefine it.
   `ui/textarea` `Textarea`. Use `Input size="comfortable"` for larger mobile
   controls. Add `leading-relaxed` to a `Textarea` for instructions and
   `font-mono` for code. Use `ui/checkbox` and `ui/radio-group` for choices.
-  `Select` owns the native control and its inset arrow. Use its `filter` and
-  `sort` variants for compact controls.
+  `ui/native-select` `NativeSelect` owns the native control and its inset
+  arrow. Use its `filter` and `sort` variants for compact controls.
 - **Status.** Use `StatusDot` for dense table or list markers. Use `StatusChip`
   when the label must stay visible. `StatusChip` is a small dot and
   sentence-case text, with no border or fill. It is not a control.
