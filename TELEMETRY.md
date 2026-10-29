@@ -227,18 +227,34 @@ A message was queued, but the worker started late, ran again, or did no work.
 Events: `conversation.queue.message.rejected`,
 `conversation.work.processing.disabled`
 
-Spans: `conversation.work.process`
+Spans: `conversation.work.publish` (`queue.publish`),
+`conversation.work.process` (`queue.process`)
 
-Attributes: `gen_ai.conversation.id`, `app.queue.lag_ms`,
-`app.queue.delivery_count`, `app.worker.outcome`, `app.worker.pending_count`
+Attributes: `gen_ai.conversation.id`, `messaging.system`,
+`messaging.destination.name`, `messaging.message.id`,
+`messaging.message.body.size`, `messaging.message.receive.latency`,
+`messaging.message.retry.count`, `app.worker.outcome`,
+`app.worker.pending_count`
 
-Each queue message that the worker processes gets one
-`conversation.work.process` span. The span is not in the
-`slack.message.ingress` trace and has no link to it yet.
+These spans use the [Sentry queue span conventions](https://develop.sentry.dev/sdk/telemetry/traces/modules/queues/),
+so they show in the Sentry Queues view. Each conversation work queue send gets
+one `queue.publish` span. Each queue message that the worker processes gets one
+`queue.process` span. The process span is not in the publish trace or the
+`slack.message.ingress` trace and has no link to them yet.
 
-- `app.queue.lag_ms`: time from queue send to worker start.
-- `app.queue.delivery_count`: `1` on the first delivery. Higher values are
-  redeliveries.
+On these spans, the `messaging.*` attributes describe the queue, not Slack:
+
+- `messaging.system`: `vercel_queue`.
+- `messaging.destination.name`: the queue topic, such as
+  `junior_conversation_work`.
+- `messaging.message.id`: the Vercel Queue message ID. The publish span does
+  not have it when Vercel Queue accepts the send without an ID.
+- `messaging.message.body.size`: on the publish span, the JSON payload size in
+  bytes.
+- `messaging.message.receive.latency`: on the process span, the milliseconds
+  from queue send to worker start.
+- `messaging.message.retry.count`: on the process span, `0` on the first
+  delivery. Higher values are redeliveries.
 - `app.worker.outcome`: the worker result, such as `completed`, `active`,
   `no_work`, `yielded`, `lost_lease`, `pending_requeued`, or `failed`.
   `active` means another worker holds the lease. A rejected message records
@@ -247,8 +263,8 @@ Each queue message that the worker processes gets one
   the Conversation state.
 
 ```text
-dataset=spans query='span.op:conversation.work.process gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,span.duration,app.queue.lag_ms,app.queue.delivery_count,app.worker.outcome,app.worker.pending_count
+dataset=spans query='span.op:[queue.publish,queue.process] gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,trace,span.op,span.duration,messaging.message.id,messaging.message.receive.latency,messaging.message.retry.count,app.worker.outcome,app.worker.pending_count
 sort=timestamp
 ```
 
