@@ -1,3 +1,4 @@
+import { getChatConfig } from "@/chat/config";
 import type { AttachmentStorageConfig } from "./config";
 import { createMemoryAttachmentStorage } from "./memory";
 import { createS3AttachmentStorage } from "./s3";
@@ -19,11 +20,24 @@ export interface AttachmentStorage {
   delete(keys: string[]): Promise<void>;
 }
 
+let current: AttachmentStorage | undefined;
+
 /**
- * Create attachment storage for the configured provider.
+ * Return the process attachment storage for the configured provider.
  *
- * Runtime entry points pass `attachmentStorage` from chat config instead of
- * calling a provider adapter, so adding a provider only changes this switch.
+ * Callers get one shared handle and do not choose a provider. Memory storage
+ * depends on this, because every caller must see the same objects.
+ */
+export function getAttachmentStorage(): AttachmentStorage {
+  current ??= createAttachmentStorage(getChatConfig().attachmentStorage);
+  return current;
+}
+
+/**
+ * Create attachment storage for one provider config.
+ *
+ * Runtime code uses `getAttachmentStorage()`. Call this only to test a
+ * provider adapter with its own config.
  */
 export function createAttachmentStorage(
   config: AttachmentStorageConfig,
