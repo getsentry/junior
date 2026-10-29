@@ -112,7 +112,6 @@ afterEach(async () => {
   vi.doUnmock("@vercel/queue");
   vi.doUnmock("@/chat/plugins/task-runner");
   vi.doUnmock("@/chat/sandbox/snapshot/job-runner");
-  vi.doUnmock("@/chat/vercel-queue-client");
   vi.resetModules();
 });
 
@@ -136,12 +135,11 @@ describe("Workspace snapshot Vercel queue integration", () => {
     );
 
     vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
+      QueueClient: vi.fn(function QueueClientMock() {
+        return { send };
+      }),
       handleCallback,
       registerDevConsumer,
-    }));
-    vi.doMock("@/chat/vercel-queue-client", () => ({
-      createVercelQueueClient: () => ({ send }),
     }));
     vi.doMock("@/chat/sandbox/snapshot/job-runner", () => ({
       processWorkspaceSnapshotJob,
