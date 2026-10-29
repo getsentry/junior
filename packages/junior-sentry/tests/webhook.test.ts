@@ -103,7 +103,7 @@ afterEach(() => {
 });
 
 describe("Sentry webhook events", () => {
-  it("normalizes a created issue for the issue and project", () => {
+  it("normalizes a created issue for the issue, project, and organization", () => {
     expect(
       normalizeSentryEvents({
         body: issueBody(),
@@ -112,6 +112,7 @@ describe("Sentry webhook events", () => {
       }),
     ).toEqual([
       {
+        data: { projects: ["junior"] },
         eventKey: "sentry:sentry/junior#7513266773:issue.created",
         eventType: "issue.created",
         identifier: "sentry/junior#7513266773",
@@ -130,6 +131,7 @@ describe("Sentry webhook events", () => {
         ].join("\n"),
       },
       {
+        data: { projects: ["junior"] },
         eventKey: "sentry:sentry/junior#7513266773:issue.created",
         eventType: "issue.created",
         identifier: "sentry/junior",
@@ -137,10 +139,19 @@ describe("Sentry webhook events", () => {
         trustedSummary: "Sentry issue sentry/junior#7513266773 was created.",
         untrustedText: expect.any(String),
       },
+      {
+        data: { projects: ["junior"] },
+        eventKey: "sentry:sentry/junior#7513266773:issue.created",
+        eventType: "issue.created",
+        identifier: "sentry",
+        occurredAtMs: Date.parse("2026-08-05T23:00:00.000Z"),
+        trustedSummary: "Sentry issue sentry/junior#7513266773 was created.",
+        untrustedText: expect.any(String),
+      },
     ]);
   });
 
-  it("normalizes a metric alert state change for the alert rule and project", () => {
+  it("normalizes a metric alert state change for the alert rule, project, and organization", () => {
     expect(
       normalizeSentryEvents({
         body: metricAlertBody(),
@@ -152,6 +163,7 @@ describe("Sentry webhook events", () => {
         data: {
           alertRuleId: "7",
           incidentId: "4",
+          projects: ["junior"],
           url: "https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
         },
         eventKey: "sentry:metric-alert:sentry/7:4:metric_alert.critical",
@@ -171,6 +183,15 @@ describe("Sentry webhook events", () => {
         eventKey: "sentry:metric-alert:sentry/7:4:metric_alert.critical",
         eventType: "metric_alert.critical",
         identifier: "sentry/junior",
+        occurredAtMs: 1_785_976_800_000,
+        trustedSummary: "Sentry metric alert sentry/7 is critical.",
+        untrustedText: expect.any(String),
+      },
+      {
+        data: expect.any(Object),
+        eventKey: "sentry:metric-alert:sentry/7:4:metric_alert.critical",
+        eventType: "metric_alert.critical",
+        identifier: "sentry",
         occurredAtMs: 1_785_976_800_000,
         trustedSummary: "Sentry metric alert sentry/7 is critical.",
         untrustedText: expect.any(String),
@@ -205,10 +226,11 @@ describe("Sentry webhook events", () => {
     ).toEqual([
       expect.objectContaining({ occurredAtMs: 1_785_976_800_000 }),
       expect.objectContaining({ occurredAtMs: 1_785_976_800_000 }),
+      expect.objectContaining({ occurredAtMs: 1_785_976_800_000 }),
     ]);
   });
 
-  it("publishes both events from a valid signed delivery", async () => {
+  it("publishes every event from a valid signed delivery", async () => {
     const fixture = routeFixture();
 
     const response = await fixture.route.handler(signedRequest(issueBody()));
@@ -218,6 +240,7 @@ describe("Sentry webhook events", () => {
     expect(fixture.events.map((event) => event.identifier)).toEqual([
       "sentry/junior#7513266773",
       "sentry/junior",
+      "sentry",
     ]);
   });
 
@@ -247,7 +270,7 @@ describe("Sentry webhook events", () => {
     const response = await route?.handler(signedRequest(issueBody()));
 
     expect(response?.status).toBe(202);
-    expect(publish).toHaveBeenCalledTimes(2);
+    expect(publish).toHaveBeenCalledTimes(3);
   });
 
   it("uses the organization from the signed payload", async () => {
@@ -262,6 +285,7 @@ describe("Sentry webhook events", () => {
     expect(fixture.events.map((event) => event.identifier)).toEqual([
       "other/junior#7513266773",
       "other/junior",
+      "other",
     ]);
   });
 

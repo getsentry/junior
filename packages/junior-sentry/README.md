@@ -49,8 +49,10 @@ For metric alerts, also enable **Alert Rule Action** on the integration and add 
 
 Junior verifies `Sentry-Hook-Signature`, reads the org slug from the signed payload, and publishes:
 
-- `issue.created` for `org/project#issueId` and `org/project`.
-- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId` and for `org/project` of each project on the alert rule.
+- `issue.created` for `org/project#issueId`, `org/project`, and `org`.
+- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId`, for `org/project` of each project on the alert rule, and for `org`.
+
+An `org` subscription can use the optional `projects` match field to receive events for only some projects.
 
 Create watches/event automations before the webhook arrives; unmatched deliveries are not replayed.
 

@@ -16,6 +16,10 @@ import {
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
 import {
+  SENTRY_ORGANIZATION_IDENTIFIER,
+  SENTRY_ORGANIZATION_MATCH_FIELDS,
+} from "./events/organization.js";
+import {
   SENTRY_API_DOMAINS,
   issueSentryCredential,
   sentryGrantForEgress,
@@ -34,6 +38,19 @@ export function sentryPlugin(): PluginRegistration {
           type: "issue",
           supportedEvents: [...SENTRY_ISSUE_EVENTS],
           suggestedEvents: [...SENTRY_ISSUE_EVENTS],
+        },
+        {
+          type: "organization",
+          identifier: SENTRY_ORGANIZATION_IDENTIFIER,
+          supportedEvents: [
+            ...SENTRY_ISSUE_EVENTS,
+            ...SENTRY_METRIC_ALERT_EVENTS,
+          ],
+          suggestedEvents: [
+            ...SENTRY_ISSUE_EVENTS,
+            ...SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
+          ],
+          matchFields: SENTRY_ORGANIZATION_MATCH_FIELDS,
         },
         {
           type: "project",

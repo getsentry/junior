@@ -185,6 +185,26 @@ The issue was created.
 
 </details>
 
+### `organization`
+
+Subscribe to all new issues and metric alerts in an organization with `org`.
+
+To limit the events to some projects, add the optional `projects` match field. An event matches when one of its projects is in the list. For an issue, this is the issue project. For a metric alert, these are the projects on the alert rule.
+
+<details class="event">
+<summary><code>issue.created</code></summary>
+
+An issue was created in the organization.
+
+</details>
+
+<details class="event">
+<summary><code>metric_alert.critical</code>, <code>metric_alert.warning</code>, <code>metric_alert.resolved</code></summary>
+
+A metric alert in the organization changed state. The alert must still have Junior as a trigger action.
+
+</details>
+
 ### `project`
 
 Subscribe to all new issues and metric alerts in a project with `org/project`.

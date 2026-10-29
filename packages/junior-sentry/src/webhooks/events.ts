@@ -5,6 +5,7 @@ import {
   SENTRY_METRIC_ALERT_EVENTS,
   sentryMetricAlertResource,
 } from "../events/metric-alert.js";
+import { sentryOrganizationResource } from "../events/organization.js";
 
 const issueWebhookSchema = z
   .object({
@@ -149,12 +150,14 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
     eventType,
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,
+    data: { projects: [issue.project.slug] },
     ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
 
   return [
     { ...event, identifier: issueResource.identifier },
     { ...event, identifier: projectResource.identifier },
+    { ...event, identifier: sentryOrganizationResource({ org }).identifier },
   ];
 }
 
@@ -172,6 +175,7 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const alertRuleId = data.metric_alert.alert_rule.id;
   const incidentId = data.metric_alert.id;
   const resource = sentryMetricAlertResource({ alertRuleId, org });
+  const projects = [...new Set(data.metric_alert.alert_rule.projects ?? [])];
   const untrustedText = [
     data.description_title,
     data.description_text,
@@ -186,19 +190,20 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     eventType,
     occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
     trustedSummary: `${resource.label} is ${parsed.data.action}.`,
-    data: { alertRuleId, incidentId, url: data.web_url },
+    data: { alertRuleId, incidentId, projects, url: data.web_url },
     untrustedText,
   } satisfies Omit<EventInput, "identifier">;
-  // Also publish to each project of the alert rule, so one project
-  // subscription receives its new issues and its metric alerts.
-  const projects = [...new Set(data.metric_alert.alert_rule.projects ?? [])];
 
+  // Also publish to each project of the alert rule and to the organization,
+  // so one project or organization subscription receives its new issues and
+  // its metric alerts.
   return [
     { ...event, identifier: resource.identifier },
     ...projects.map((project) => ({
       ...event,
       identifier: sentryProjectResource({ org, project }).identifier,
     })),
+    { ...event, identifier: sentryOrganizationResource({ org }).identifier },
   ];
 }
 
