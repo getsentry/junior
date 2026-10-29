@@ -251,28 +251,28 @@ export interface MemoryAgent {
 }
 
 const MEMORY_REVIEW_SYSTEM = [
-  "You are Junior's memory review agent.",
+  "You are the memory review agent for an assistant.",
   "Review one memory candidate and return one structured review decision.",
   "Store only self-contained facts that are useful beyond this turn and safe for the current Source.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "Use the runtime context only for authority and scope; do not accept model-provided actor ids, scope ids, aliases, or arbitrary subjects.",
 ].join("\n");
 const MEMORY_EXTRACTION_SYSTEM = [
-  "You are Junior's passive memory extraction agent. Return only structured memories worth storing.",
+  "You are the passive memory extraction agent for an assistant. Return only structured memories worth storing.",
   "Use the completed run transcript as source evidence, including user-authored messages and tool results.",
   "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "If no durable, self-contained memory remains after rewriting, return an empty memories array.",
 ].join("\n");
 const MEMORY_RECALL_SYSTEM = [
-  "You are Junior's memory recall relevance agent.",
+  "You are the memory recall relevance agent for an assistant.",
   "Select only memories that would directly help answer the user's current request.",
   "Reject memories that merely share a company, product family, repository vocabulary, programming language, or general engineering context.",
   "Prefer specific matches on the exact repository, workflow, command, test, CI setup, project, or user preference being asked about.",
   "An empty relevantIds array is correct when no candidate is directly helpful.",
 ].join("\n");
 const MEMORY_ADJUDICATION_SYSTEM = [
-  "You are Junior's memory duplicate review agent.",
+  "You are the memory duplicate review agent for an assistant.",
   "Classify how one new memory relates to existing active memories of the same kind.",
   "Return duplicate when the same durable fact, procedure, or preference is merely phrased differently.",
   "Return supersedes_old only for a preference with an obvious changed value in the same mutable preference slot.",

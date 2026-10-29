@@ -83,7 +83,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find Google Docs, Sheets, and Slides shared with Junior's own Google account, by words in the title or text. Files that are only shared by public link are not found; ask for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
+      "Find Google Docs, Sheets, and Slides shared with your own Google account, by words in the title or text. Files that are only shared by public link are not found; ask for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
     inputSchema,
     outputSchema,
     async execute(input) {

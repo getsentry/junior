@@ -29,7 +29,7 @@ export function assertGitHubPullRequestApprovalDenied(input: {
   if (!bodyText) {
     if (isEventsPath) {
       throw new EgressPolicyDenied(
-        "GitHub pull request review submissions must include a parseable non-APPROVE event so Junior can enforce the no-approve policy.",
+        "GitHub pull request review submissions must include a parseable non-APPROVE event so the no-approve policy can be enforced.",
       );
     }
     return;
@@ -40,12 +40,12 @@ export function assertGitHubPullRequestApprovalDenied(input: {
     body = JSON.parse(bodyText);
   } catch {
     throw new EgressPolicyDenied(
-      "GitHub pull request review requests must use JSON bodies so Junior can enforce the no-approve policy.",
+      "GitHub pull request review requests must use JSON bodies so the no-approve policy can be enforced.",
     );
   }
   if (!isRecord(body)) {
     throw new EgressPolicyDenied(
-      "GitHub pull request review requests must use JSON object bodies so Junior can enforce the no-approve policy.",
+      "GitHub pull request review requests must use JSON object bodies so the no-approve policy can be enforced.",
     );
   }
 
@@ -53,19 +53,19 @@ export function assertGitHubPullRequestApprovalDenied(input: {
   if ("event" in body) {
     if (typeof body.event !== "string" || body.event.trim().length === 0) {
       throw new EgressPolicyDenied(
-        "GitHub pull request review submissions must include a parseable non-APPROVE event so Junior can enforce the no-approve policy.",
+        "GitHub pull request review submissions must include a parseable non-APPROVE event so the no-approve policy can be enforced.",
       );
     }
     event = body.event.trim().toUpperCase();
   }
   if (event === "APPROVE") {
     throw new EgressPolicyDenied(
-      "Junior cannot approve GitHub pull requests. Request changes, leave a comment review, or dismiss Junior's own review instead.",
+      "You cannot approve GitHub pull requests. Request changes, leave a comment review, or dismiss your own review instead.",
     );
   }
   if (isEventsPath && event === undefined) {
     throw new EgressPolicyDenied(
-      "GitHub pull request review submissions must include a parseable non-APPROVE event so Junior can enforce the no-approve policy.",
+      "GitHub pull request review submissions must include a parseable non-APPROVE event so the no-approve policy can be enforced.",
     );
   }
 }

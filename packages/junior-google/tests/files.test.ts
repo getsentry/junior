@@ -175,14 +175,14 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const hidden = run(tools, "readGoogleDoc", { document: DOC_ID });
     await expect(hidden).rejects.toThrow(PluginToolInputError);
     await expect(hidden).rejects.toThrow(
-      `Junior's Google account (${ACCOUNT_EMAIL}) cannot open this file`,
+      `Your Google account (${ACCOUNT_EMAIL}) cannot open this file`,
     );
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
     ).rejects.toThrow('"Budget" is not a Google Doc');
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow("A Junior admin must reconnect it");
+    ).rejects.toThrow("An admin must reconnect it");
   });
 
   it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {

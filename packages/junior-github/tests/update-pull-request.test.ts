@@ -86,9 +86,7 @@ describe("updatePullRequest", () => {
     });
     const body = (await call?.request.clone().json()) as { body: string };
     expect(body.body).toContain("via **David Cramer**.");
-    expect(body.body).toContain(
-      "[View Junior Session](https://example.com/session)",
-    );
+    expect(body.body).toContain("[View Session](https://example.com/session)");
   });
 
   it("preserves merged status when updating a merged pull request", async () => {

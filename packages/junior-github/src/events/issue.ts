@@ -23,7 +23,7 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
 export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   mentionsBot: {
     kind: "boolean",
-    description: "true when the issue comment mentions the Junior GitHub App",
+    description: "true when the issue comment mentions this GitHub App",
     events: ["issue.comment.created"],
   },
   senderId: {

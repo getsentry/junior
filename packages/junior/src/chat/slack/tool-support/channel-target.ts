@@ -24,7 +24,7 @@ export const slackChannelRefParam = z
   .min(1)
   .max(SLACK_CHANNEL_REF_MAX_LENGTH)
   .describe(
-    "Slack channel id (`C123`), mention (`<#C123>` / `<#C123|name>`), Junior slack reference (`slack:C123`), or a channel name Junior already knows in this workspace.",
+    "Slack channel id (`C123`), mention (`<#C123>` / `<#C123|name>`), Slack reference (`slack:C123`), or a channel name you already know in this workspace.",
   );
 
 /**
@@ -41,7 +41,7 @@ export async function resolveSlackChannelRef(input: {
   const trimmed = input.value.trim();
   if (!trimmed) {
     throw new ToolInputError(
-      `Invalid \`${input.field}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a Junior slack reference (\`slack:C123\`), or a channel name Junior already knows.`,
+      `Invalid \`${input.field}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a Slack reference (\`slack:C123\`), or a channel name you already know.`,
     );
   }
 
@@ -65,7 +65,7 @@ export async function resolveSlackChannelRef(input: {
   }
 
   throw new ToolInputError(
-    `Unknown \`${input.field}\` \`${trimmed}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a link, or a channel name Junior has already seen in this workspace. Public search can discover channels; plain names are not scanned from Slack.`,
+    `Unknown \`${input.field}\` \`${trimmed}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a link, or a channel name you already saw in this workspace. Public search can discover channels; plain names are not scanned from Slack.`,
   );
 }
 

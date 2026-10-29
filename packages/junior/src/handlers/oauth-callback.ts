@@ -243,13 +243,13 @@ export async function GET(
     if (errorParam === "access_denied") {
       return htmlErrorResponse(
         "Authorization declined",
-        `You declined the ${providerLabel} authorization request. Return to Junior and connect your ${providerLabel} account again if you change your mind.`,
+        `You declined the ${providerLabel} authorization request. Return to the conversation and connect your ${providerLabel} account again if you change your mind.`,
         400,
       );
     }
     return htmlErrorResponse(
       "Authorization failed",
-      `${providerLabel} returned an error: ${errorParam}. Return to Junior and try again.`,
+      `${providerLabel} returned an error: ${errorParam}. Return to the conversation and try again.`,
       400,
     );
   }
@@ -268,7 +268,7 @@ export async function GET(
   if (!stored) {
     return htmlErrorResponse(
       "Link expired",
-      `This authorization link has expired (links are valid for 10 minutes). Return to Junior and connect your ${providerLabel} account again to get a new link.`,
+      `This authorization link has expired (links are valid for 10 minutes). Return to the conversation and connect your ${providerLabel} account again to get a new link.`,
       400,
     );
   }
@@ -377,7 +377,7 @@ export async function GET(
   if (!hasRequiredOAuthScope(parsedTokenResponse.scope, requestedScope)) {
     return htmlErrorResponse(
       "Connection failed",
-      `The ${providerLabel} authorization did not grant the access Junior requires. Return to Junior and connect your ${providerLabel} account again.`,
+      `The ${providerLabel} authorization did not grant the required access. Return to the conversation and connect your ${providerLabel} account again.`,
       400,
     );
   }
@@ -400,7 +400,7 @@ export async function GET(
   } catch {
     return htmlErrorResponse(
       "Connection failed",
-      `Junior could not verify the connected ${providerLabel} account. Please try again.`,
+      `The connected ${providerLabel} account could not be verified. Please try again.`,
       500,
     );
   }

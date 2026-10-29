@@ -8,6 +8,7 @@ import {
 } from "../../fixtures/conversation-work";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { botConfig } from "@/chat/config";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import {
   getCapturedSlackApiCalls,
@@ -48,7 +49,7 @@ describe("Slack contract: assistant lifecycle delivery", () => {
         params: expect.objectContaining({
           channel_id: DM_CHANNEL_ID,
           thread_ts: DM_THREAD_TS,
-          title: "Junior",
+          title: botConfig.userName,
         }),
       }),
     ]);

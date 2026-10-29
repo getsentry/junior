@@ -23,7 +23,7 @@ via **Alex**.
 <!-- junior-request-attribution:end -->
 
 <!-- junior-session-footer:start -->
-[View Junior Session](https://example.com/session)
+[View Session](https://example.com/session)
 <!-- junior-session-footer:end -->
 <!-- unfinished comment`,
         user: { login: "alex" },
