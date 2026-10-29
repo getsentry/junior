@@ -28,3 +28,22 @@ shows its error when a public reader cannot make a version active.
 
 Browser behavior lives in `e2e/automation-editor.spec.ts`. API and persistence
 coverage lives in core's `tests/integration/api/automation-edits.test.ts`.
+
+## Automation details
+
+The URL selects one Automation in the list. `AutomationDetails` uses the shared
+`DetailsPanel`: a 400px panel at 1280px and above, and a Base UI bottom sheet on
+smaller screens. The list stays interactive beside the panel. Each pane scrolls
+on its own. `VisualViewportShell` owns the viewport height and mobile body lock;
+`AutomationsPageLayout` keeps navigation above the list and details.
+
+Loading and access errors stay inside the details frame. Closing keeps the list
+query string and returns focus to the selected row. If that row is not on the
+current page, focus returns to the list. Selecting another Automation resets
+its disclosures and lifecycle feedback. Deleting the selected Automation closes
+its details. Edit and version history retain the list query string.
+
+The existing Automation browser journeys cover selection, loading and retry,
+focus, mobile dismissal, deletion, and lifecycle actions. Use mock reporting to
+review scheduled and event Automations in both themes at desktop and mobile
+widths. Keep layout and scrollbar checks in manual QA.

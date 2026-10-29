@@ -2,7 +2,7 @@ import { test, expect } from "./test";
 import { screenshot } from "./screenshot";
 import { mockAutomationEditor } from "./automation-editor-fixture";
 
-test("edits an Automation from its drawer, preserves list state, and protects the draft", async ({
+test("edits an Automation from its details, preserves list state, and protects the draft", async ({
   page,
   dashboard,
 }) => {
@@ -16,6 +16,11 @@ test("edits an Automation from its drawer, preserves list state, and protects th
   await expect(page).toHaveURL(
     /\/automations\/scheduled-1\/edit\?scope=mine&q=weekly/,
   );
+  await expect(
+    page
+      .getByLabel("Automations navigation")
+      .getByRole("link", { name: "Automations", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Weekly project summary",
   );

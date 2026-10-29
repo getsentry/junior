@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   useLocation,
   useNavigate,
@@ -35,7 +35,9 @@ import {
 } from "../../searchParams";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
-import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
+import { AutomationDetails } from "./AutomationDetails";
+import { PageLayout } from "../../components/layout/PageLayout";
+import { cn } from "../../styles";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
 
 const AUTOMATION_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
@@ -55,6 +57,7 @@ export function AutomationsPage(props: {
   view: "list" | "overview";
 }) {
   const queryClient = useQueryClient();
+  const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { automationId } = useParams();
@@ -123,6 +126,15 @@ export function AutomationsPage(props: {
   const totalPages = pageCount(visibleTaskCount, filters.pageSize);
   const page = query.data?.page ?? filters.page;
   const selectedTask = detail.data;
+  const closeDetails = () => {
+    const trigger = automationId
+      ? listRef.current?.querySelector<HTMLButtonElement>(
+          `[data-automation-id="${CSS.escape(automationId)}"] button`,
+        )
+      : undefined;
+    navigate(tasksPath(listPath));
+    (trigger ?? listRef.current)?.focus();
+  };
   // Overview names the tab through PageHeader; the list has a plain heading.
   useDocumentTitle(
     props.view === "list"
@@ -161,7 +173,11 @@ export function AutomationsPage(props: {
         `/api/automations/${encodeURIComponent(automation.id)}`,
       );
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, deleted) => {
+      if (automationId === deleted.id) {
+        navigate(tasksPath(listPath));
+        listRef.current?.focus({ preventScroll: true });
+      }
       await queryClient.invalidateQueries({
         queryKey: ["dashboard", "automations"],
       });
@@ -185,7 +201,7 @@ export function AutomationsPage(props: {
     : [];
   const showExecutionCharts = executionSeries.length > 0;
 
-  return (
+  const content = (
     <>
       {location.state?.automationSaved ? (
         <p role="status" className="m-0 text-sm text-emerald-300">
@@ -223,16 +239,6 @@ export function AutomationsPage(props: {
         <InlineError>
           Automations could not be loaded.{" "}
           <Button onClick={() => void query.refetch()}>Try again</Button>
-        </InlineError>
-      ) : null}
-      {automationId && detail.isPending ? (
-        <p role="status">Loading automation details…</p>
-      ) : null}
-      {automationId && detail.error ? (
-        <InlineError>
-          Automation details could not be loaded. It may be unavailable or you
-          may not have access.{" "}
-          <Button onClick={() => void detail.refetch()}>Try again</Button>
         </InlineError>
       ) : null}
       {query.data && props.view === "overview" ? (
@@ -350,11 +356,36 @@ export function AutomationsPage(props: {
           ) : null}
         </>
       ) : null}
-      <AutomationDetailsDrawer
-        onClose={() => navigate(tasksPath(listPath))}
-        range={range}
-        automation={selectedTask}
-      />
     </>
+  );
+  if (props.view === "overview") return content;
+
+  return (
+    <div
+      className={cn(
+        "grid h-full min-h-0 min-w-0",
+        automationId && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+      )}
+    >
+      <div
+        aria-label="Automations list"
+        className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        ref={listRef}
+        role="region"
+        tabIndex={0}
+      >
+        <PageLayout>{content}</PageLayout>
+      </div>
+      {automationId ? (
+        <AutomationDetails
+          key={automationId}
+          onClose={closeDetails}
+          onRetry={() => void detail.refetch()}
+          error={Boolean(detail.error)}
+          range={range}
+          automation={selectedTask}
+        />
+      ) : null}
+    </div>
   );
 }

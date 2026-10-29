@@ -22,7 +22,7 @@ import {
 /**
  * Show one automation as a compact card: what it is, where it posts, who owns
  * it, and when it runs. Instructions, timezones, and event conditions stay in
- * the details drawer.
+ * the details panel.
  */
 export function AutomationRow(props: {
   deleting: boolean;
@@ -47,6 +47,7 @@ export function AutomationRow(props: {
   return (
     <article
       className="min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint"
+      data-automation-id={automation.id}
       role="listitem"
     >
       <SelectableRow
