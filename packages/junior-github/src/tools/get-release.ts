@@ -179,12 +179,11 @@ export function createGitHubGetReleaseTool(ctx: {
         }
       }
 
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubReleaseSourceSubscribable({
-            repo: repo.ref,
-            tag,
-          })
-        : undefined;
+      const subscribable = gitHubReleaseSourceSubscribable({
+        canSubscribe: ctx.events.canSubscribe,
+        repo: repo.ref,
+        tag,
+      });
       const data: ReleaseSource = {
         release,
         repo: repo.ref,

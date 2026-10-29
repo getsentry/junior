@@ -61,13 +61,18 @@ export function gitHubDeploymentSourceResource(input: {
   };
 }
 
-/** Describe a deployment source when GitHub webhooks are enabled. */
+/**
+ * Describe a deployment source that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
+ */
 export function gitHubDeploymentSourceSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   commitSha: string;
   environment?: string;
   repo: string;
 }): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubDeploymentSourceResource(input),
     suggestedEvents: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,

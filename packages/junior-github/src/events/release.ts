@@ -26,12 +26,17 @@ export function gitHubReleaseSourceResource(input: {
   };
 }
 
-/** Describe a release source when GitHub webhooks are enabled. */
+/**
+ * Describe a release source that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
+ */
 export function gitHubReleaseSourceSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   repo: string;
   tag?: string;
 }): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubReleaseSourceResource(input),
     suggestedEvents: GITHUB_RELEASE_SUGGESTED_EVENTS,

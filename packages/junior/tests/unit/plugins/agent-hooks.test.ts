@@ -666,7 +666,16 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("allows watch hints for conversations", () => {
+  it.each([
+    {
+      name: "allows watch hints while plugin events are enabled",
+      enabled: true,
+    },
+    {
+      name: "withholds watch hints while plugin events are disabled",
+      enabled: false,
+    },
+  ])("$name", ({ enabled }) => {
     const webActor = {
       platform: "web" as const,
       userId: "dashboard:alice",
@@ -684,10 +693,11 @@ describe("agent plugin hooks", () => {
           resourceTypes: [
             { type: "demo", supportedEvents: ["demo.completed"] },
           ],
+          isEnabled: () => enabled,
         },
         hooks: {
           tools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(true);
+            expect(ctx.events.canSubscribe).toBe(enabled);
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };

@@ -9,6 +9,7 @@ import {
   normalizeCheckSuiteEvents,
   type GitHubCheckSuiteFacts,
 } from "./check-suite.js";
+import { gitHubEventKey, pullRequestTargets } from "./event-targets.js";
 import { isBotLogin, mentionsBotLogin } from "./ownership.js";
 
 export type {
@@ -25,10 +26,6 @@ export {
   parseCheckSuitePublishTargets,
   selectFailingChecks,
 } from "./check-suite.js";
-
-function gitHubEventKey(deliveryId: string, eventType: string): string {
-  return `github:${deliveryId}:${eventType}`;
-}
 
 /** Include isDraft only when GitHub sent an explicit draft boolean. */
 function pullRequestDraftData(
@@ -87,18 +84,6 @@ function pullRequestMatchData(
     Object.assign(data, part);
   }
   return Object.keys(data).length > 0 ? data : undefined;
-}
-
-/** Address a pull request event through both the pull request and its repository. */
-function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
-  const { terminal: _terminal, ...repositoryEvent } = event;
-  return [
-    event,
-    {
-      ...repositoryEvent,
-      identifier: gitHubRepositoryResource({ repo }).identifier,
-    },
-  ];
 }
 
 const repositorySchema = z
