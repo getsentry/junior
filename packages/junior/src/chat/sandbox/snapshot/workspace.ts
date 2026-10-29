@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { Sandbox } from "@vercel/sandbox";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAbortError,
   isSandboxApiTransientError,
@@ -15,10 +13,6 @@ import {
   workspaceSnapshotSetupCommand,
 } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
-import {
-  deleteWorkspaceSnapshotBuilders,
-  getWorkspaceSnapshotBuilder,
-} from "@/chat/sandbox/snapshot/builder-sandbox";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import type { Snapshot } from "@/chat/sandbox/snapshot/resolve";
@@ -30,9 +24,11 @@ import {
 } from "@/chat/sandbox/snapshot/store";
 import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import {
-  createSandboxSession,
-  type SandboxSession,
-} from "@/chat/sandbox/workspace";
+  createWorkspaceSnapshotBuilder,
+  deleteWorkspaceSnapshotBuilders,
+  getWorkspaceSnapshotBuilder,
+} from "@/chat/sandbox/vercel";
+import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, withLock } from "@/chat/state/locks";
@@ -57,7 +53,7 @@ const COMMAND_STATUS_POLL_TIMEOUT_MS = 1_000;
 /** Leave time to save the build state before this request ends. */
 const STOP_BUFFER_MS = 40_000;
 
-/** Keep the build open when a request stops or Vercel has a short failure. */
+/** Keep the build open when a request stops or the provider has a short failure. */
 function isCancelOrTransient(error: unknown): boolean {
   return isAbortError(error) || isSandboxApiTransientError(error);
 }
@@ -208,26 +204,28 @@ async function finishBuild(
 
   try {
     await requireRemainingBuildTime(workspace, build, beforeWrite);
-    const sandbox = await getWorkspaceSnapshotBuilder(
+    const builder = await getWorkspaceSnapshotBuilder(
       build.sandboxName,
       signal,
     );
-    const command = await sandbox.getCommand(build.commandId, { signal });
     const pollSignal = AbortSignal.timeout(COMMAND_STATUS_POLL_TIMEOUT_MS);
     const waitSignal = signal
       ? AbortSignal.any([signal, pollSignal])
       : pollSignal;
-    let finished: Awaited<ReturnType<typeof command.wait>>;
+    let finished: Awaited<ReturnType<typeof builder.waitForCommand>>;
     try {
-      finished = await command.wait({ signal: waitSignal });
+      finished = await builder.waitForCommand(build.commandId, {
+        signal,
+        waitSignal,
+      });
     } catch (error) {
       if (pollSignal.aborted && !signal?.aborted) return null;
       throw error;
     }
     if (finished.exitCode !== 0) {
       const [stdout, stderr] = await Promise.all([
-        finished.stdout({ signal }),
-        finished.stderr({ signal }),
+        finished.stdout(),
+        finished.stderr(),
       ]);
       const detail = workspaceSetupFailureDetail({
         exitCode: finished.exitCode,
@@ -240,7 +238,7 @@ async function finishBuild(
     }
 
     await requireRemainingBuildTime(workspace, build, beforeWrite);
-    const snapshot = await sandbox.snapshot({ signal });
+    const snapshot = await builder.snapshot({ signal });
     await requireRemainingBuildTime(workspace, build, beforeWrite);
     const createdAtMs = Date.now();
     const buildDurationMs = Math.max(
@@ -304,19 +302,16 @@ async function startBuild(params: {
   beforeWrite: () => Promise<void>;
 }): Promise<void> {
   const { workspace, value, signal } = params;
-  const credentials = getVercelSandboxCredentials();
   const resources = getSandboxResources(workspace);
   const name = builderName();
   const buildId = randomUUID();
   const startedAt = new Date();
   try {
-    await Sandbox.create({
+    await createWorkspaceSnapshotBuilder({
       name,
-      persistent: true,
-      timeout: BUILD_TIMEOUT_MS,
       runtime: params.runtime,
+      timeoutMs: BUILD_TIMEOUT_MS,
       signal,
-      ...(credentials ?? {}),
       ...(resources ? { resources } : undefined),
     });
     await params.beforeWrite();
@@ -370,7 +365,7 @@ async function startBuild(params: {
         }
       }
     } finally {
-      // Vercel can create the Sandbox before it returns an error.
+      // The provider can create the Sandbox before it returns an error.
       try {
         await deleteBuilder(name);
       } catch (cleanupError) {
@@ -418,11 +413,11 @@ async function continueBuild(params: {
     ? AbortSignal.any([params.signal, phaseTimeoutSignal])
     : phaseTimeoutSignal;
   try {
-    const sandbox = await getWorkspaceSnapshotBuilder(
+    const builder = await getWorkspaceSnapshotBuilder(
       build.sandboxName,
       phaseSignal,
     );
-    const session = createSandboxSession(sandbox);
+    const session = builder.session();
     if (build.phase === "created") {
       await install.dependencies(
         session,
@@ -474,16 +469,15 @@ async function continueBuild(params: {
     }
 
     await params.beforeWrite();
-    const command = await sandbox.runCommand({
+    const commandId = await builder.startDetachedCommand({
       ...workspaceSnapshotSetupCommand(params.workspace, build.id),
-      detached: true,
       timeoutMs: remainingMs,
       signal: phaseSignal,
     });
     await params.beforeWrite();
     const written = await setWorkspaceSnapshotBuild(params.workspace.id, {
       ...build,
-      commandId: command.cmdId,
+      commandId,
       error: null,
     });
     requireBuildWrite(written, params.workspace);

@@ -1,4 +1,3 @@
-import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import type { TracePropagationHeaders } from "@/chat/logging";
 import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/session";
@@ -10,9 +9,13 @@ import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-plac
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginManifest } from "@/chat/plugins/types";
+import type {
+  SandboxNetworkPolicy,
+  SandboxNetworkRule,
+} from "@/chat/sandbox/workspace";
 
-// Module overview: build Vercel Sandbox network policy for provider-owned
-// outbound domains.
+// Module overview: build Sandbox network policy for provider-owned outbound
+// domains.
 //
 // Provider domains are forwarded back to Junior so the host can inject
 // credentials without placing secrets in the sandbox. Trace-only domains may
@@ -86,8 +89,8 @@ export function buildSandboxEgressNetworkPolicy(input?: {
   credentialToken?: string;
   traceConfig?: SandboxEgressTracePropagationConfig;
   traceHeaders?: TracePropagationHeaders;
-}): NetworkPolicy {
-  const allow: Record<string, NetworkPolicyRule[]> = {
+}): SandboxNetworkPolicy {
+  const allow: Record<string, SandboxNetworkRule[]> = {
     "*": [],
   };
   const entries = providerEntries();
@@ -110,7 +113,7 @@ export function buildSandboxEgressNetworkPolicy(input?: {
   const domains = new Map<string, { forward: boolean }>();
   // Provider domains are proxied for credentials; configured trace-only domains
   // get transform rules so wildcard trace configs are not limited to plugins.
-  // Vercel policy rules make forwarding and transforms mutually exclusive.
+  // One rule can forward or transform a request, but not both.
   if (forwardURL) {
     for (const entry of entries) {
       for (const domain of entry.domains) {
