@@ -190,6 +190,9 @@ same way.
   rejects calls to a disabled tool before hooks, action review, and the tool
   executor, and the Turn context lists disabled tools. Do not put
   Turn-specific text in a tool description or schema.
+- Tool discovery keeps each selected tool's full description and input
+  schema. Usage rules can appear after the first paragraph. Only source
+  summaries are shortened.
 - Repo-owned tools declare `readOnlyHint`, `destructiveHint`, `openWorldHint`,
   and `idempotentHint`. External plugin and MCP tools with missing hints are
   logged and enter action review conservatively.

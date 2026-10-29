@@ -16,9 +16,8 @@ Gmail and Drive writes are out of scope.
   reads event titles or details. Optional attendees do not block a slot.
   Slots where they are free come first, and each slot names the optional
   attendees who are busy or off hours. Slots are spread across days and
-  across each day, so the requester gets a real choice. Its call notes direct
-  the agent to `listCalendarEvents` when busy time needs event details to
-  interpret it. These notes stay visible in tool discovery.
+  across each day, so the requester gets a real choice. Use
+  `listCalendarEvents` when busy time needs event details to interpret it.
 - Every Calendar tool takes an optional `timeZone` for the times it reads and
   shows. Without it, the tool uses the requester's timezone from
   `ctx.users.resolveTimezone()`, so Junior does not have to ask for one.

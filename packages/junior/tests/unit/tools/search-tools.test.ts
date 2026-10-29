@@ -6,6 +6,9 @@ import {
 } from "@/chat/tools/search-tools";
 import { tool } from "@/chat/tools/definition";
 
+const customerLookupDescription =
+  "Lookup customer health for account review.\n\nRead the customer's current plan before recommending changes. Account health includes renewal dates, support history, and current usage. Do not treat missing usage data as evidence that the account is inactive.";
+
 function catalog() {
   return {
     bash: tool({
@@ -21,8 +24,7 @@ function catalog() {
       ),
     }),
     agentDemo_lookupCustomer: tool({
-      description:
-        "Lookup customer health for account review.\n\nSecond paragraph with extra implementation detail.",
+      description: customerLookupDescription,
       promptSnippet:
         "Use for renewal risk triage before drafting an account plan.",
       promptGuidelines: [
@@ -142,8 +144,7 @@ function mixedCatalog() {
       inputSchema: Type.Object({ repo: Type.String() }),
     }),
     github_updateIssue: tool({
-      description:
-        "Update an existing GitHub issue's title, body, or state.",
+      description: "Update an existing GitHub issue's title, body, or state.",
       source: githubSource,
       exposure: "deferred",
       inputSchema: Type.Object({
@@ -261,7 +262,7 @@ describe("searchTools", () => {
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
-          description: "Lookup customer health for account review.",
+          description: customerLookupDescription,
           exposure: "deferred",
           source: "agent-demo",
           input_schema: {
@@ -286,7 +287,7 @@ describe("searchTools", () => {
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
-          description: "Lookup customer health for account review.",
+          description: customerLookupDescription,
           input_schema: result.tools[0]?.input_schema,
         },
       ],

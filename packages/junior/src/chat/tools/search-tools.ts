@@ -371,7 +371,7 @@ function toolMetadata(
 ) {
   return {
     tool_name: name,
-    description: summarizeModelVisibleDescription(definition.description),
+    description: definition.description,
     exposure: effectiveToolExposure(definition),
     ...(includeSource && definition.source
       ? { source: definition.source.id }
