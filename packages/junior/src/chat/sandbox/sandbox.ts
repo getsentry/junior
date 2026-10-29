@@ -372,40 +372,31 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         "process.executable.name": "bash",
       },
       async () => {
-        try {
-          const response = await executeBash({
-            command,
-            cwd,
-            ...(env ? { env } : undefined),
-            ...(timeoutMs ? { timeoutMs } : undefined),
-            ...(context.signal ? { signal: context.signal } : undefined),
-          });
-          setSpanAttributes({
-            "process.exit.code": response.exitCode,
-            "app.sandbox.stdout_bytes": Buffer.byteLength(
-              response.stdout ?? "",
-              "utf8",
-            ),
-            "app.sandbox.stderr_bytes": Buffer.byteLength(
-              response.stderr ?? "",
-              "utf8",
-            ),
-            ...(response.aborted
-              ? { "error.type": "outcome_unknown" }
-              : response.exitCode !== 0
-                ? { "error.type": "nonzero_exit" }
-                : {}),
-          });
-          setSpanStatus(response.exitCode === 0 ? "ok" : "error");
-          return response;
-        } catch (error) {
-          setSpanAttributes({
-            "error.type":
-              error instanceof Error ? error.name : "sandbox_execute_error",
-          });
-          setSpanStatus("error");
-          throw error;
-        }
+        const response = await executeBash({
+          command,
+          cwd,
+          ...(env ? { env } : undefined),
+          ...(timeoutMs ? { timeoutMs } : undefined),
+          ...(context.signal ? { signal: context.signal } : undefined),
+        });
+        setSpanAttributes({
+          "process.exit.code": response.exitCode,
+          "app.sandbox.stdout_bytes": Buffer.byteLength(
+            response.stdout ?? "",
+            "utf8",
+          ),
+          "app.sandbox.stderr_bytes": Buffer.byteLength(
+            response.stderr ?? "",
+            "utf8",
+          ),
+          ...(response.aborted
+            ? { "error.type": "outcome_unknown" }
+            : response.exitCode !== 0
+              ? { "error.type": "nonzero_exit" }
+              : {}),
+        });
+        setSpanStatus(response.exitCode === 0 ? "ok" : "error");
+        return response;
       },
     );
     // Always consume egress auth/permission signals regardless of exit code.

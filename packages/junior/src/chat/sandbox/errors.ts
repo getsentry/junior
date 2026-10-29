@@ -1,4 +1,4 @@
-import { setSpanAttributes, setSpanStatus } from "@/chat/logging";
+import { setSpanAttributes } from "@/chat/logging";
 import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
 import { getWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 
@@ -137,7 +137,6 @@ export function throwSandboxOperationError(
       : undefined),
     "app.sandbox.success": false,
   });
-  setSpanStatus("error");
   throw new Error(
     details.summary
       ? `${action} failed (${details.summary})`
