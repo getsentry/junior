@@ -27,7 +27,6 @@
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",
-    "@sentry/nitro": "10.65.0",
     "hono": "^4.13.11"
   },
   "devDependencies": {

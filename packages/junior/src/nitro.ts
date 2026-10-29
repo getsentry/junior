@@ -1,4 +1,5 @@
 import path from "node:path";
+import { withSentryConfig as withSentryNitroConfig } from "@sentry/nitro";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
@@ -21,6 +22,7 @@ import {
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
+  getDeploymentServiceVersion,
 } from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
@@ -29,6 +31,31 @@ import {
 } from "./plugins";
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
 import type { JuniorDashboardOptions } from "./app";
+
+type SentryNitroConfig = Parameters<typeof withSentryNitroConfig>[0];
+type SentryNitroOptions = NonNullable<
+  Parameters<typeof withSentryNitroConfig>[1]
+>;
+
+/**
+ * Sentry's Nitro config wrapper: source map upload and Nitro request hooks.
+ * Junior pins `@sentry/nitro` to the same version as its `@sentry/node`. The
+ * SDK keeps one client for each version, so this lets the Nitro hooks use the
+ * client that `initSentry()` creates. Apps import it from here, not from
+ * `@sentry/nitro`.
+ *
+ * The build release defaults to the release that `initSentry()` reports, so
+ * the uploaded source maps and the runtime events use the same release.
+ */
+export function withSentryConfig(
+  config: SentryNitroConfig,
+  options: SentryNitroOptions = {},
+): SentryNitroConfig {
+  return withSentryNitroConfig(config, {
+    ...options,
+    release: { name: getDeploymentServiceVersion(), ...options.release },
+  });
+}
 
 export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
 
