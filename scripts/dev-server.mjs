@@ -26,6 +26,9 @@ const dashboardPackageDir = path.join(
 );
 const exampleDir = path.join(workspaceRoot, "apps", "example");
 const useProcessGroups = process.platform !== "win32";
+// `pnpm dev --open` opens the Sentry Local UI. Without the flag, no browser
+// tab opens.
+const openLocalUi = process.argv.slice(2).includes("--open");
 
 process.env.NODE_ENV = nodeEnv;
 process.env.PORT = devPort;
@@ -315,7 +318,7 @@ if (tunnelToken) {
 }
 
 watchDistForNitroRestart();
-startNitroDev({ openLocalUi: true });
+startNitroDev({ openLocalUi });
 startLocalHeartbeat();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
