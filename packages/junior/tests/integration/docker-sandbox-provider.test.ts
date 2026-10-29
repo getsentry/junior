@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { dockerJson } from "@/chat/sandbox/docker/api";
 import { dockerSandboxProvider } from "@/chat/sandbox/docker/provider";
-import { usesEgressRelay } from "@/chat/sandbox/docker/relay";
+import { egressCaPem } from "@/chat/sandbox/docker/egress";
+import { RELAY_PROXY_HOST, usesEgressRelay } from "@/chat/sandbox/docker/relay";
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress/session";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -104,8 +105,13 @@ async function countLoopbackHits(fn: () => Promise<void>): Promise<number> {
  */
 async function unauthenticatedProxyReply(port: number): Promise<string> {
   const socket = usesEgressRelay()
-    ? // A relay client without a client certificate.
-      tls.connect({ host: "127.0.0.1", port, rejectUnauthorized: false })
+    ? // A relay client that trusts the proxy but has no client certificate.
+      tls.connect({
+        host: "127.0.0.1",
+        port,
+        servername: RELAY_PROXY_HOST,
+        ca: await egressCaPem(),
+      })
     : // A direct client from an address that is not a sandbox.
       net.connect({ host: "127.0.0.1", port });
   let reply = "";
