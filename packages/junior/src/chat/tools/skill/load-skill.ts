@@ -105,7 +105,7 @@ export function createLoadSkillTool(
       skill_name: z
         .string()
         .min(1)
-        .describe("Skill name to load, without the leading slash."),
+        .describe("Skill name to load, without the leading `$`."),
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ skill_name }) => {
