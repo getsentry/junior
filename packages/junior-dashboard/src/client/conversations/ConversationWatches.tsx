@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Bot,
+  ChevronRight,
   CircleDot,
   Eye,
   FolderGit2,
@@ -14,7 +15,7 @@ import {
   Timer,
   Users,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   conversationWatchesReportSchema,
   type ConversationWatch,
@@ -22,7 +23,8 @@ import {
 
 import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
-import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
+import { dashboardDisclosureChevronClass } from "../styles";
+import { DetailsList, DetailsRow } from "./DetailsList";
 
 /** Load the active Watches that one Conversation owns. */
 export function useConversationWatches(conversationId: string) {
@@ -39,8 +41,8 @@ export function useConversationWatches(conversationId: string) {
 }
 
 /**
- * Show what can wake this Conversation: each active Watch with the resource,
- * the reason, and the event types that deliver to it.
+ * Show what can wake this Conversation: one line per active Watch. A line
+ * expands to show the reason and the event types that deliver to it.
  */
 export function ConversationWatches(props: { watches: ConversationWatch[] }) {
   return (
@@ -66,65 +68,81 @@ const resourceIcons: Partial<Record<string, LucideIcon>> = {
 };
 
 /**
- * Show one Watch in up to three short lines: the resource and time left, the
- * reason it exists, then the event types that wake the Conversation.
+ * Show one Watch as a single line with its resource. Clicking the line shows
+ * why the Watch exists and which events wake the Conversation. The expiry is
+ * an internal limit, so the row does not show it.
  */
 function WatchRow(props: { watch: ConversationWatch }) {
   const { watch } = props;
+  const [expanded, setExpanded] = useState(false);
   const Icon = watch.redacted
     ? LockKeyhole
     : (resourceIcons[watch.resourceType] ?? Eye);
-  const isTimer = watch.firesAt !== undefined;
-  const until = watch.firesAt ?? watch.expiresAt;
   const resource = `${watch.namespace} ${watch.resourceType.replaceAll("_", " ")}`;
-  // A timer has one event, and the time already says when it fires.
-  const events = isTimer ? [] : watch.events;
+  // A timer has one event, and its fire time already says when it wakes.
+  const events = watch.firesAt ? [] : watch.events;
   const filters = Object.entries(watch.match ?? {});
-
-  return (
+  const row = (
     <DetailsRow
+      expanded={expanded}
       icon={<Icon aria-hidden="true" className="size-3.5" />}
       meta={
-        <time dateTime={until}>
-          {isTimer
-            ? `in ${formatRemaining(until)}`
-            : `${formatRemaining(until)} left`}
-        </time>
+        <span className="grid size-5 place-items-center">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
+        </span>
       }
+      onToggle={() => setExpanded((value) => !value)}
       title={watch.label ?? `Private ${resource}`}
-      tooltip={`${isTimer ? "Fires" : "Expires"} ${formatTime(until, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })}`}
-    >
-      {watch.intent ? (
-        <DetailsRowLine className="line-clamp-2 break-words">
-          {watch.intent}
-        </DetailsRowLine>
-      ) : null}
-      {events.length > 0 || filters.length > 0 || watch.childAgent ? (
-        <DetailsRowLine className="flex flex-wrap items-center gap-1 pt-0.5">
-          {events.map((event) => (
-            <WatchChip key={event}>
-              {watchEventLabel(event, watch.resourceType)}
-            </WatchChip>
-          ))}
-          {filters.map(([key, value]) => (
-            <WatchChip filter key={`match:${key}`}>
-              {key.replaceAll("_", " ")}: {[value].flat().join(", ")}
-            </WatchChip>
-          ))}
-          {watch.childAgent ? (
-            <span className="inline-flex min-w-0 items-center gap-1 px-0.5">
-              <Bot aria-hidden="true" className="size-3 shrink-0" />
-              <span className="truncate">
-                via {watch.childAgent.name ?? "subagent"}
-              </span>
+    />
+  );
+  if (!expanded) return row;
+
+  return (
+    <>
+      {row}
+      {/* Indent under the title: icon column, column gap, and row padding. */}
+      <div className="grid min-w-0 gap-1.5 pb-2 pl-9 pr-1.5 pt-0.5 text-xs leading-4 text-dashboard-text-muted">
+        {watch.intent ? (
+          <p className="m-0 break-words">{watch.intent}</p>
+        ) : null}
+        {watch.firesAt ? (
+          <p className="m-0">
+            Fires{" "}
+            <time dateTime={watch.firesAt}>
+              {formatTime(watch.firesAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </time>
+          </p>
+        ) : null}
+        {events.length > 0 || filters.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1">
+            {events.map((event) => (
+              <WatchChip key={event}>
+                {watchEventLabel(event, watch.resourceType)}
+              </WatchChip>
+            ))}
+            {filters.map(([key, value]) => (
+              <WatchChip filter key={`match:${key}`}>
+                {key.replaceAll("_", " ")}: {[value].flat().join(", ")}
+              </WatchChip>
+            ))}
+          </div>
+        ) : null}
+        {watch.childAgent ? (
+          <p className="m-0 flex min-w-0 items-center gap-1">
+            <Bot aria-hidden="true" className="size-3 shrink-0" />
+            <span className="truncate">
+              via {watch.childAgent.name ?? "subagent"}
             </span>
-          ) : null}
-        </DetailsRowLine>
-      ) : null}
-    </DetailsRow>
+          </p>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -152,14 +170,4 @@ function watchEventLabel(event: string, resourceType: string): string {
   const rest =
     parts[0] === resourceType && parts.length > 1 ? parts.slice(1) : parts;
   return rest.join(" ").replaceAll("_", " ");
-}
-
-/** Format the time until a Watch fires or expires as one compact unit. */
-function formatRemaining(value: string): string {
-  const ms = Math.max(0, Date.parse(value) - Date.now());
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${Math.max(1, minutes)}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
 }
