@@ -15,6 +15,9 @@ import type { ConversationTranscript } from "../types";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 const BOTTOM_PROXIMITY_PX = 96;
+// Start loading history before the reader reaches the top, so the prepend
+// usually lands while they still scroll through loaded messages.
+const PREVIOUS_PAGE_PROXIMITY_PX = 600;
 const USER_SCROLL_DELTA_PX = 2;
 
 type ScrollRoot = HTMLElement | Window;
@@ -648,6 +651,47 @@ export function usePinnedTranscriptBottom(input: {
       preserveViewportForPrepend,
     ],
   );
+}
+
+/**
+ * Load the previous history page when the reader scrolls near the top.
+ *
+ * Attach the returned ref to the element above the oldest loaded event. Each
+ * new observer reports its first state, so a short page keeps loading until it
+ * fills the viewport or history ends.
+ */
+export function useAutoLoadPreviousPage(input: {
+  enabled: boolean;
+  historyVersion: string;
+  onLoad: () => void;
+}): RefCallback<HTMLElement> {
+  const [sentinel, setSentinel] = useState<HTMLElement | null>(null);
+  const onLoadRef = useRef(input.onLoad);
+  onLoadRef.current = input.onLoad;
+
+  useEffect(() => {
+    if (!input.enabled || !sentinel) return;
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const root = scrollRootFor(sentinel);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        // One request per observer. The next observer starts after the page
+        // loads and history changes.
+        observer.disconnect();
+        onLoadRef.current();
+      },
+      {
+        root: root && !isWindowRoot(root) ? root : null,
+        rootMargin: `${PREVIOUS_PAGE_PROXIMITY_PX}px 0px 0px 0px`,
+      },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [input.enabled, input.historyVersion, sentinel]);
+
+  return setSentinel;
 }
 
 /** Keep the previously visible content at the same viewport offset after a prepend. */

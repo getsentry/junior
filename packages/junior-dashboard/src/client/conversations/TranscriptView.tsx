@@ -11,6 +11,7 @@ import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
+  useAutoLoadPreviousPage,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -57,6 +58,22 @@ export function Transcript(props: {
     },
   });
 
+  const loadPreviousPage = () => {
+    bottomPinning.preserveViewportForPrepend();
+    props.onLoadPreviousPage?.();
+  };
+  // A failed page keeps the button for a manual retry instead of looping.
+  const previousPageRef = useAutoLoadPreviousPage({
+    enabled: Boolean(
+      props.onLoadPreviousPage &&
+      props.hasPreviousPage &&
+      !props.loadingPreviousPage &&
+      !props.historyError,
+    ),
+    historyVersion: props.historyVersion ?? "empty",
+    onLoad: loadPreviousPage,
+  });
+
   if (!props.transcript) {
     return (
       <div className={transcriptEmptyClass()}>
@@ -74,16 +91,13 @@ export function Transcript(props: {
           </div>
         ) : null}
         {props.hasPreviousPage || props.loadingPreviousPage ? (
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex items-center gap-3" ref={previousPageRef}>
             <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
             <button
               aria-label="Load earlier events"
               className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={props.loadingPreviousPage}
-              onClick={() => {
-                bottomPinning.preserveViewportForPrepend();
-                props.onLoadPreviousPage?.();
-              }}
+              onClick={loadPreviousPage}
               title="Load earlier events"
               type="button"
             >

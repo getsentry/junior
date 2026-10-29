@@ -378,16 +378,12 @@ test("loads earlier events without merging tool starts and results", async ({
   ).toBeVisible();
   await expect(page.getByText("Released the package.")).toBeVisible();
 
-  const loadEarlier = page.getByRole("button", {
-    name: "Load earlier events",
-  });
-  await expect(loadEarlier).toBeVisible();
-  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  // The first page does not fill the pane, so the top of the transcript is
+  // already in view. Earlier history loads without a click.
   await expect(
-    page.getByText("Show earlier events", { exact: true }),
-  ).toBeVisible();
-  await loadEarlier.click();
-  await expect(loadEarlier).toHaveCount(0);
+    page.getByRole("button", { name: "Load earlier events" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Event log", exact: true }).click();
   const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(
     log.getByRole("button", { name: "Event 2: tool_calls", exact: true }),
