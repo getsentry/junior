@@ -32,6 +32,9 @@ export interface PiConversationEventProjection extends PiConversationProjection 
   seqs: number[];
 }
 
+// Only the newest auth-blocked Turn resumes: `pendingAuth` holds one Turn, and
+// a newer pause abandons the older one. The note names the newest request so
+// the agent does not continue an older request that the person replaced.
 function authorizationObservationMessage(
   data: AuthorizationCompletedEventData,
   createdAtMs: number,
