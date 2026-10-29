@@ -1,7 +1,15 @@
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../../components/ui/accordion";
+import { OverlayFixtures } from "./OverlayFixtures";
 import { FormNotice } from "../../components/FormNotice";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
 import { SelectFixtures } from "./SelectFixtures";
+import { ChoiceFixtures } from "./ChoiceFixtures";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
@@ -30,15 +38,25 @@ import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
 
-import { Button, ToggleButton } from "../../components/Button";
+import { Button } from "../../components/ui/button";
+import { ToggleButton } from "../../components/ToggleButton";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "../../components/ui/field";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Drawer } from "../../components/Drawer";
+import { CopyButton } from "../../components/CopyButton";
+import { DetailsPanel } from "../../components/DetailsPanel";
 import { BottomSheet } from "../../components/BottomSheet";
-import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
 import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
 import { DashboardHeader } from "../../components/layout/DashboardHeader";
@@ -51,7 +69,6 @@ import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack"
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
-import { TextArea, TextInput } from "../../components/TextInput";
 import { ThemeSwitcher } from "../../components/ThemeSwitcher";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
@@ -195,6 +212,7 @@ function FoundationsGalleryPage() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("deploy failure");
 
@@ -205,20 +223,21 @@ function FoundationsGalleryPage() {
       title="Foundations"
     >
       <Fixture title="Editor controls">
-        <Field
-          label="Instruction"
-          htmlFor="gallery-instruction"
-          error="Enter an instruction."
-        >
-          <TextArea
-            prose
+        <Field>
+          <FieldLabel htmlFor="gallery-instruction">Instruction</FieldLabel>
+          <Textarea
+            className="leading-relaxed"
             id="gallery-instruction"
             aria-invalid
             aria-describedby="gallery-instruction-error"
           />
+          <FieldError id="gallery-instruction-error">
+            Enter an instruction.
+          </FieldError>
         </Field>
-        <Field label="Repeat" htmlFor="gallery-repeat">
-          <TextInput
+        <Field>
+          <FieldLabel htmlFor="gallery-repeat">Repeat</FieldLabel>
+          <Input
             size="comfortable"
             aria-label="Resource identifier"
             defaultValue="getsentry/junior#42"
@@ -227,13 +246,45 @@ function FoundationsGalleryPage() {
             <option>Every week</option>
           </Select>
         </Field>
-        <Button tone="primary">Save changes</Button>
+        <Button variant="primary">Save changes</Button>
         <FormNotice title="This automation changed while you were editing.">
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
       </Fixture>
+      <Fixture title="Accordion">
+        <Accordion multiple defaultValue={["timing"]}>
+          <AccordionItem value="timing">
+            <AccordionTrigger>Next run</AccordionTrigger>
+            <AccordionContent>
+              <p className="m-0 text-dashboard-text-muted">
+                Monday at 9:00 AM in the schedule timezone.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="about">
+            <AccordionTrigger>About this Automation</AccordionTrigger>
+            <AccordionContent>
+              <p className="m-0 text-dashboard-text-muted">
+                Creator, connected accounts, and version history.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </Fixture>
+      <Fixture title="Popover, confirmation, and toast">
+        <OverlayFixtures />
+      </Fixture>
+      <Fixture title="Copy text">
+        <CopyButton
+          getText={() => JSON.stringify({ status: "ready" }, null, 2)}
+          label="Copy JSON"
+        />
+      </Fixture>
       <Fixture title="Select controls">
         <SelectFixtures />
+      </Fixture>
+      <Fixture title="Checkboxes and radios">
+        <ChoiceFixtures />
       </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
@@ -305,15 +356,48 @@ function FoundationsGalleryPage() {
           </Drawer>
         ) : null}
       </Fixture>
+      <Fixture title="Details panel">
+        <div
+          className={cn(
+            "grid h-80 min-w-0 overflow-hidden rounded-lg border border-dashboard-border",
+            panelOpen && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+          )}
+        >
+          <div className="p-4">
+            <Button onClick={() => setPanelOpen(true)}>Inspect an item</Button>
+            <p className="text-sm text-dashboard-text-muted">
+              The source stays usable beside its details.
+            </p>
+          </div>
+          {panelOpen ? (
+            <DetailsPanel
+              label="Item details"
+              sheetTitle="Deployment configuration"
+              onClose={() => setPanelOpen(false)}
+              title={
+                <h2 className="m-0 text-base font-semibold">
+                  Deployment configuration
+                </h2>
+              }
+            >
+              <p className="m-0 p-4 text-sm text-dashboard-text-muted">
+                Small windows show these details in a bottom sheet.
+              </p>
+            </DetailsPanel>
+          ) : null}
+        </div>
+      </Fixture>
       <Fixture title="Bottom sheet">
         <Button onClick={() => setSheetOpen(true)}>Open bottom sheet</Button>
         {sheetOpen ? (
           <BottomSheet
             label="Gallery details"
+            size="content"
+            title="Deployment configuration"
             onClose={() => setSheetOpen(false)}
           >
             <p className="m-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-dashboard-text-muted">
-              Swipe the handle down, tap outside, or press Escape to return to
+              Use the close button, tap outside, or press Escape to return to
               the page.
             </p>
           </BottomSheet>
@@ -405,17 +489,17 @@ function FoundationsGalleryPage() {
               Copy
             </Button>
             <Button disabled>Disabled</Button>
-            <Button tone="danger">
+            <Button variant="danger">
               <Trash2 aria-hidden="true" size={14} />
               Remove
             </Button>
-            <Button disabled tone="danger">
+            <Button disabled variant="danger">
               Remove disabled
             </Button>
             <Button aria-label="Bot action" size="icon">
               <Bot aria-hidden="true" size={16} />
             </Button>
-            <Button aria-label="Delete action" size="icon" tone="danger">
+            <Button aria-label="Delete action" size="icon" variant="danger">
               <Trash2 aria-hidden="true" size={16} />
             </Button>
           </div>
@@ -447,53 +531,58 @@ function FoundationsGalleryPage() {
       <Fixture title="Forms">
         <div className="grid max-w-xl gap-4">
           <Card className="mb-0" padding="md" variant="raised">
-            <Field
-              help="Lowercase name used when agents switch into this Workspace."
-              htmlFor="gallery-workspace-name"
-              label="Name"
-            >
-              <TextInput
+            <Field>
+              <FieldLabel htmlFor="gallery-workspace-name">Name</FieldLabel>
+              <Input
                 defaultValue="sentry"
                 id="gallery-workspace-name"
                 placeholder="sentry"
               />
+              <FieldDescription id="gallery-workspace-name-help">
+                Lowercase name used when agents switch into this Workspace.
+              </FieldDescription>
             </Field>
           </Card>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)]">
-            <Field htmlFor="gallery-provider" label="Provider" size="compact">
-              <TextInput
+            <Field className="gap-1.5">
+              <FieldLabel
+                htmlFor="gallery-provider"
+                className="font-sans text-xs font-medium text-dashboard-text-muted"
+              >
+                Provider
+              </FieldLabel>
+              <Input
                 defaultValue="github"
                 id="gallery-provider"
                 placeholder="github"
               />
             </Field>
-            <Field
-              htmlFor="gallery-repository"
-              label="Repository"
-              size="compact"
-            >
-              <TextInput
+            <Field className="gap-1.5">
+              <FieldLabel
+                htmlFor="gallery-repository"
+                className="font-sans text-xs font-medium text-dashboard-text-muted"
+              >
+                Repository
+              </FieldLabel>
+              <Input
                 defaultValue="getsentry/sentry"
                 id="gallery-repository"
                 placeholder="getsentry/sentry"
               />
             </Field>
           </div>
-          <Field
-            help="Runs once while Junior builds the reusable snapshot."
-            htmlFor="gallery-setup-script"
-            label="Setup script"
-          >
-            <TextArea
+          <Field>
+            <FieldLabel htmlFor="gallery-setup-script">Setup script</FieldLabel>
+            <Textarea
+              className="font-mono"
               defaultValue={'pnpm install --dir "$JUNIOR_REPOS_ROOT/sentry"'}
               id="gallery-setup-script"
             />
+            <FieldDescription id="gallery-setup-script-help">
+              Runs once while Junior builds the reusable snapshot.
+            </FieldDescription>
           </Field>
-          <TextInput
-            aria-label="Disabled text input"
-            disabled
-            value="read only"
-          />
+          <Input aria-label="Disabled text input" disabled value="read only" />
           <SearchInput
             label="Search conversations"
             onChange={setSearchQuery}

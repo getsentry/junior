@@ -89,6 +89,7 @@ export function summaryFromRow(
   options: {
     access?: ConversationAccess;
     automationTitle?: string;
+    firstHumanMessageText?: string;
     metrics?: {
       durationMs: number;
       usage?: NonNullable<ReportingConversationRow["usage"]>;
@@ -117,6 +118,7 @@ export function summaryFromRow(
     automationTitle: options.automationTitle,
     conversation,
     durationMs: options.metrics?.durationMs ?? row.durationMs,
+    firstHumanMessageText: options.firstHumanMessageText,
     ...(options.access?.visibility === "public" && row.destinationId
       ? { locationId: row.destinationId }
       : undefined),

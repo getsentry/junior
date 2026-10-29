@@ -11,6 +11,7 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   automationEditSchema,
+  automationEventCatalogSchema,
   automationVersionListSchema,
 } from "@/api/schema/automation";
 import { getDb, getConversationStore } from "@/chat/db";
@@ -360,7 +361,8 @@ describe("Automation edit API", () => {
       setPlugins([githubPlugin()]);
       const catalog = await app.request("/api/automations/event-catalog");
       expect(catalog.status).toBe(200);
-      const choices = await catalog.json();
+      // The dashboard parses the JSON body with this same schema.
+      const choices = automationEventCatalogSchema.parse(await catalog.json());
       expect(choices).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -370,11 +372,9 @@ describe("Automation edit API", () => {
           }),
         ]),
       );
-      expect(
-        choices.some(
-          (choice: { namespace: string }) => choice.namespace === "junior",
-        ),
-      ).toBe(false);
+      expect(choices.some((choice) => choice.namespace === "junior")).toBe(
+        false,
+      );
       const summary = await app.request(`/api/automations/${initial.id}`, {
         headers: { "test-viewer": "reader@example.com" },
       });

@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, CircleAlert, Copy } from "lucide-react";
 
-import { Button } from "../components/Button";
-import { IconButtonTooltip } from "../components/Tooltip";
+import { Button } from "./ui/button";
+import { IconButtonTooltip } from "./Tooltip";
 
-/** Copy an available Markdown document while exposing clipboard result state. */
-export function CopyMarkdownButton(props: {
-  getMarkdown?: () => Promise<string> | string;
+/** Copy available text and show whether the clipboard write succeeded. */
+export function CopyButton(props: {
+  getText?: () => Promise<string> | string;
+  label: string;
+  copyingLabel?: string;
   /** `menu` shows icon + label for mobile overflow lists. */
   layout?: "icon" | "menu";
 }) {
@@ -17,18 +19,23 @@ export function CopyMarkdownButton(props: {
     status === "copied"
       ? "Copied"
       : status === "copying"
-        ? "Preparing Markdown"
+        ? (props.copyingLabel ?? "Copying")
         : status === "failed"
           ? "Copy failed"
-          : "Copy as Markdown";
-  const Icon = status === "copied" ? Check : Copy;
+          : props.label;
+  const Icon = {
+    copied: Check,
+    copying: Copy,
+    failed: CircleAlert,
+    idle: Copy,
+  }[status];
 
-  async function copyMarkdown() {
-    if (!props.getMarkdown) return;
+  async function copyText() {
+    if (!props.getText) return;
 
     try {
       setStatus("copying");
-      await navigator.clipboard.writeText(await props.getMarkdown());
+      await navigator.clipboard.writeText(await props.getText());
       setStatus("copied");
     } catch {
       setStatus("failed");
@@ -40,8 +47,8 @@ export function CopyMarkdownButton(props: {
       <button
         aria-label={label}
         className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={!props.getMarkdown || status === "copying"}
-        onClick={() => void copyMarkdown()}
+        disabled={!props.getText || status === "copying"}
+        onClick={() => void copyText()}
         type="button"
       >
         <Icon aria-hidden="true" size={16} strokeWidth={2} />
@@ -54,11 +61,16 @@ export function CopyMarkdownButton(props: {
     <IconButtonTooltip label={label}>
       <Button
         aria-label={label}
-        disabled={!props.getMarkdown || status === "copying"}
-        onClick={() => void copyMarkdown()}
+        disabled={!props.getText || status === "copying"}
+        onClick={() => void copyText()}
         size="icon"
       >
-        <Icon aria-hidden="true" size={15} strokeWidth={2} />
+        <Icon
+          aria-hidden="true"
+          className={status === "failed" ? "text-rose-300" : undefined}
+          size={15}
+          strokeWidth={2}
+        />
       </Button>
     </IconButtonTooltip>
   );

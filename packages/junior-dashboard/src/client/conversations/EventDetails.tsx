@@ -1,5 +1,8 @@
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+import { HighlightedCode } from "../code";
+import { CopyButton } from "../components/CopyButton";
 
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptText } from "./TranscriptText";
@@ -178,13 +181,35 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
         </DetailSection>
       ) : null}
       {content}
-      <details className="border-t border-dashboard-border pt-4">
-        <summary className="cursor-pointer text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+      <RawEventJson event={event} />
+    </div>
+  );
+}
+
+function RawEventJson({ event }: { event: ConversationReportEvent }) {
+  const [open, setOpen] = useState(false);
+  const json = open ? JSON.stringify(event, null, 2) : "";
+  return (
+    <div className="relative min-w-0 border-t border-dashboard-border pt-4">
+      <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary className="min-h-9 cursor-pointer pr-12 text-xs leading-9 text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
           Raw JSON
         </summary>
-        <pre className="mb-0 mt-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-dashboard-text">
-          {JSON.stringify(event, null, 2)}
-        </pre>
+        {open ? (
+          <>
+            <div className="absolute right-0 top-4">
+              <CopyButton getText={() => json} label="Copy JSON" />
+            </div>
+            <div
+              aria-label="Raw event JSON"
+              className="mt-3 max-h-80 min-w-0 overflow-auto overscroll-contain rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+              role="region"
+              tabIndex={0}
+            >
+              <HighlightedCode code={json} language="json" />
+            </div>
+          </>
+        ) : null}
       </details>
     </div>
   );

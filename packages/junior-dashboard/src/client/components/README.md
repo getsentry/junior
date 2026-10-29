@@ -4,6 +4,64 @@ Shared dashboard components live here. Feature pages compose these surfaces
 instead of copying Tailwind blocks. See `policies/frontend-components.md` for
 the policy. `pnpm dashboard-style:check` enforces the token rules below.
 
+## shadcn/ui
+
+`packages/junior-dashboard/components.json` configures shadcn/ui for this package.
+It uses Base UI (`base-nova`), Tailwind 4, and Lucide. Add components from the
+repository root:
+
+```sh
+pnpm --filter @sentry/junior-dashboard exec shadcn add <component>
+```
+
+The CLI writes components to `src/client/components/ui/`. Its `@dashboard/*`
+alias points to `src/client/*`. The existing `@/*` alias still points to core.
+`src/client/lib/utils.ts` provides the shadcn `cn` helper. Existing components
+keep the class join helper in `src/client/styles.ts` until they are migrated.
+
+The shadcn color tokens in `src/tailwind.css` use the dashboard tokens in both
+themes. Primary actions use `text-solid` with inverse text. Danger uses the
+same theme-aware rose shade as existing danger controls. The `dark:` variant
+follows `data-theme`. Keep the existing Tailwind radius scale. Do not apply the CLI's global border or body resets to existing
+components. Check each added component against the rules below and add its
+gallery fixture before use.
+
+`ui/sheet.tsx` is the shadcn Base UI Dialog Sheet. It supports all four edges,
+uses the dashboard overlay and close button, and stops motion when reduced
+motion is set.
+`Drawer` and `BottomSheet` compose this component for app details.
+`ui/accordion.tsx` is the shadcn Base UI Accordion. It owns disclosure state,
+heading buttons, and measured panel height. Its motion stops when reduced
+motion is set. Keep one-off disclosure content in the owning feature.
+`ui/popover.tsx` and `ui/alert-dialog.tsx` provide the shadcn Base UI surfaces
+for anchored controls and named confirmations. They use dashboard color and
+focus tokens and stop motion when reduced motion is set. `ui/toast.tsx` owns
+short success notifications in a mounted `Toaster` provider. Features call
+`useToastManager` inside that provider. It has no global notification manager.
+`ui/useSheet.ts` owns the sheet close lifecycle, shared document scroll lock, and
+focus rules when a resize puts one modal below another. These are separate
+Dialog roots. A newly mounted sheet must not take focus from the open child
+above it. Conversation browser scenarios cover dismissal, nested focus, and
+layout changes.
+
+### Adopted shadcn components
+
+Each `ui/` file is shadcn source that uses dashboard tokens. Its first line
+names the source. The copied license is in `ui/shadcn.LICENSE`. Remove exports
+that no app code uses. Use `ui/` components directly. Do not add an app
+component that only renames a `ui/` component or its props. Change the `ui/`
+file when every caller needs the same style or variant. App components compose
+`ui/` source only when they add structure or behavior:
+
+| App component                  | shadcn source |
+| ------------------------------ | ------------- |
+| `Drawer`, `BottomSheet`        | `ui/sheet`    |
+| `layout/DashboardHeader` (nav) | `ui/sheet`    |
+
+Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
+`aria-label`. The `ui/` files join classes with the merging `cn` from
+`src/client/lib/utils.ts`, so a caller's `className` wins over a base class.
+
 ## Foundations
 
 Tokens live in the `@theme` block of `src/tailwind.css`. Keep every color in a
@@ -65,35 +123,48 @@ token so each theme can redefine it.
 
 ### Primitives
 
-- **Actions.** `Button` (`default`, `primary`, `danger`, and `size="icon"`) and
-  `ButtonLink`. Form pages use `Button tone="primary"` for their one main save
-  action. Use `ToggleButton` variants (`pill`, `segment`, `text`) for pressed
-  states, not one-off styles.
-- **Forms.** `Field` (`default`, `compact`), `TextInput`, `TextArea`, `Select`,
-  and `SearchInput`. Use `TextInput size="comfortable"` for larger mobile
-  controls. Use `TextArea prose` for instructions, not code. `Field error`
-  renders an error at `<htmlFor>-error`. The owning control must set
-  `aria-invalid` and `aria-describedby`. `Select` owns the native control and its
-  inset arrow. Use its `filter` and `sort` variants for compact controls.
+- **Actions.** `ui/button` `Button` (`variant`: `default`, `primary`,
+  `danger`; `size="icon"`). Form pages use `Button variant="primary"` for their
+  one main save action. For a link that looks like a button, put
+  `buttonVariants()` on the router `Link`. Use `ToggleButton` variants (`pill`,
+  `segment`, `text`) for pressed states, not one-off styles. `CopyButton`
+  copies plain text or an async text export. It shares clipboard success,
+  pending, and failure feedback across Markdown exports and event JSON. A
+  failed write allows another attempt.
+- **Forms.** Build a field from `ui/field`: `Field`, `FieldLabel`, the control,
+  then `FieldError` and `FieldDescription`. `FieldError` renders nothing when it
+  has no message. Give `FieldError` the id `<control id>-error` and
+  `FieldDescription` the id `<control id>-help`. The control must set
+  `aria-invalid` and `aria-describedby`. Use `ui/input` `Input` and
+  `ui/textarea` `Textarea`. Use `Input size="comfortable"` for larger mobile
+  controls. Add `leading-relaxed` to a `Textarea` for instructions and
+  `font-mono` for code. Use `ui/checkbox` and `ui/radio-group` for choices.
+  `Select` owns the native control and its inset arrow. Use its `filter` and
+  `sort` variants for compact controls.
 - **Status.** Use `StatusDot` for dense table or list markers. Use `StatusChip`
   when the label must stay visible. `StatusChip` is a small dot and
   sentence-case text, with no border or fill. It is not a control.
 - **Messages.** Use `Notice` for compact transient messages and `FormNotice`
   for wrapping form recovery text.
-- **Overlays.** `Sheet` is a local adaptation of shadcn/ui's Base UI Sheet.
-  It uses Base UI Drawer for focus, dismissal, and native swipe support. The
-  app's shared scroll lock keeps it in sync with the mobile conversation shell.
-  `SheetContent` owns side placement, backdrop fade, and slide transitions.
-  `Drawer` adds a visible header and close control. `BottomSheet` adds a swipe
-  handle and keeps content scrolling separate from gestures. Both skip motion
-  when reduced motion is set. Docked conversation details use a non-modal aside
-  so the chat stays usable. The copied component's license is in `Sheet.LICENSE`.
+- **Overlays.** `ui/sheet.tsx` is the shadcn/ui Base UI Sheet. It uses Base UI
+  Dialog for focus and dismissal. `Drawer` adds a visible header and close
+  control. `BottomSheet` puts details below a title and close control. Its
+  default size fills the details frame; `size="content"` fits short controls.
+  Both use
+  the app's shared scroll lock, skip motion when reduced motion is set, and
+  close with the close button, backdrop, or Escape. `DetailsPanel` uses a docked
+  aside at 1280px and above, and a `BottomSheet` below that width. Its owner
+  supplies the side column. An optional `sheetTitle` gives the sheet a record
+  name while the docked panel keeps its category label. Nested details use
+  `overlay` to retain a desktop drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
+  in `SheetContent`; it only adds app actions, widths, and body padding.
+  `DetailsPanel` owns Escape for docked panels and their scroll frame.
   `Tooltip` and `IconButtonTooltip` own hover text.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original
   Octicons paths. Do not replace it with a provider logo or a status-only icon.
-- **Loading.** Use `Skeleton` for placeholder leaves and `PageContentSkeleton`
+- **Loading.** Use `ui/skeleton` for placeholder leaves and `PageContentSkeleton`
   variants for page bodies. Use `PageRouteLoading` when a page keeps its real
   header above a body skeleton. Use a feature-owned loading component for
   distinct geometry, such as conversations.

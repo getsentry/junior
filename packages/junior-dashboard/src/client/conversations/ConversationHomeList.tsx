@@ -9,7 +9,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
-import { Skeleton } from "../components/Skeleton";
+import { Skeleton } from "../components/ui/skeleton";
 import {
   conversationParticipants,
   ParticipantAvatarStack,

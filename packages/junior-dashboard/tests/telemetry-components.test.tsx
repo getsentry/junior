@@ -394,7 +394,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('aria-label="Conversation"');
     expect(html).toContain('aria-label="Event log"');
-    expect(html).toContain('aria-label="Search transcript"');
+    expect(html).not.toContain('aria-label="Search transcript"');
     expect(html).toContain('aria-label="Conversation details"');
     expect(html).toContain('aria-label="Archive"');
   });

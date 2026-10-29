@@ -220,6 +220,13 @@ export function ConversationFixture() {
   return (
     <div className="h-[64rem] min-w-0 max-w-[52.5rem] bg-dashboard-bg">
       <ChatLayout
+        header={
+          <header className="border-b border-dashboard-border px-3 py-3">
+            <h3 className="m-0 text-sm font-medium">
+              {CONVERSATION.displayTitle}
+            </h3>
+          </header>
+        }
         scrollAriaLabel="Gallery conversation transcript"
         scrollClassName="p-3"
         scroll={

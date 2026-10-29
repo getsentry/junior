@@ -6,6 +6,7 @@ import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
+import { readFirstHumanMessageTexts } from "./first-message";
 import { readConversationEventPage } from "./event-page";
 import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
@@ -43,6 +44,7 @@ function projectConversationDetail(args: {
   childAgentTotals?: ConversationDetailReport["childAgentTotals"];
   conversation: Conversation;
   durationMs: number;
+  firstHumanMessageText?: string;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
   sidebarAnnotations?: ConversationDetailReport["sidebarAnnotations"];
   events: ConversationDetailReport["events"];
@@ -74,6 +76,7 @@ function projectConversationDetail(args: {
         : undefined),
       conversation,
       durationMs: args.durationMs,
+      firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
@@ -128,6 +131,7 @@ async function readConversationDetailFromSql(
     automationTitleByConversation,
     auxiliaryCostsByConversation,
     briefVersion,
+    firstHumanMessageTextByConversation,
     modelUsage,
     metricsByConversation,
     participantsByConversation,
@@ -139,6 +143,7 @@ async function readConversationDetailFromSql(
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
+    readFirstHumanMessageTexts(getDb(), [record.conversation]),
     record.conversation.transcriptPurgedAtMs === undefined
       ? readConversationModelUsageFromSql(executor, { conversationId })
       : Promise.resolve([]),
@@ -206,6 +211,8 @@ async function readConversationDetailFromSql(
       : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
     events,
+    firstHumanMessageText:
+      firstHumanMessageTextByConversation.get(conversationId),
     modelUsage,
     participants: participantsByConversation.get(conversationId) ?? [],
     ...(sourceTask ? { sourceTask } : undefined),

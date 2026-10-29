@@ -6,7 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import { getConversationEventStore } from "@/chat/db";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { memoryAttachmentStorage } from "../../fixtures/attachment-storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import {
   createConversationFixture,
   closeConversationFixture,
@@ -31,7 +31,7 @@ async function webFiles() {
     ["/tmp/desktop.png", Buffer.from("desktop image")],
     ["/tmp/mobile.png", Buffer.from("mobile image")],
   ]);
-  const storage = memoryAttachmentStorage();
+  const storage = createMemoryAttachmentStorage();
   const context: ToolRuntimeContext = {
     conversationId,
     conversationPrivacy: "private",

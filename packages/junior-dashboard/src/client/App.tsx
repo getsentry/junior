@@ -56,6 +56,7 @@ import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPa
 import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
+  isAutomationListPath,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
 import {
@@ -121,17 +122,6 @@ export function DashboardShell() {
     setMobileNavigationOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    if (!mobileNavigationOpen) return;
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileNavigationOpen(false);
-    }
-
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [mobileNavigationOpen]);
-
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
       credentials: "same-origin",
@@ -142,7 +132,10 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <VisualViewportShell className="bg-dashboard-bg" enabled={workspace}>
+      <VisualViewportShell
+        className="bg-dashboard-bg"
+        enabled={workspace || isAutomationListPath(location.pathname)}
+      >
         <DashboardChrome
           banner={
             <>

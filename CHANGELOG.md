@@ -1,4 +1,49 @@
 # Changelog
+## 0.264.0
+
+### New Features ✨
+
+#### Task Execution
+
+- Trace conversation work with queue lag and outcome by @thomasjiangcy with @sentry-junior in [#2283](https://github.com/getsentry/junior/pull/2283)
+- Accept optional trace context on inbound messages by @thomasjiangcy with @sentry-junior in [#2280](https://github.com/getsentry/junior/pull/2280)
+
+#### Other
+
+- (dashboard) Open conversation details by default on large screens by @sentry-junior in [#2316](https://github.com/getsentry/junior/pull/2316)
+
+### Bug Fixes 🐛
+
+- (events) Store plugin identifier patterns as strings by @thomasjiangcy with @sentry-junior in [#2277](https://github.com/getsentry/junior/pull/2277)
+- (github) Always open a PR for completed code changes by @dcramer with @sentry-junior in [#2319](https://github.com/getsentry/junior/pull/2319)
+
+### Internal Changes 🔧
+
+- (dashboard) Adopt shadcn Base UI sheets by @MathurAditya724 in [#2288](https://github.com/getsentry/junior/pull/2288)
+- (prompt) Remove system prompt rules that duplicate tool contracts by @dcramer with @sentry-junior in [#2315](https://github.com/getsentry/junior/pull/2315)
+
+## 0.263.0
+
+### New Features ✨
+
+- (agent-browser) Attach safe visual QA screenshots to PRs by @dcramer with @sentry-junior in [#2312](https://github.com/getsentry/junior/pull/2312)
+- (figma) Add read-only Figma plugin by @dcramer with @sentry-junior in [#2309](https://github.com/getsentry/junior/pull/2309)
+- (github) Check PR mergeability after each push by @BYK with @sentry-junior in [#2302](https://github.com/getsentry/junior/pull/2302)
+- (plugins) Split plugin tool blocks into redirect and deny by @dcramer with @sentry-junior in [#2300](https://github.com/getsentry/junior/pull/2300)
+
+### Bug Fixes 🐛
+
+- (annotations) Show child agent annotations and cards on the parent by @sentry-junior in [#2311](https://github.com/getsentry/junior/pull/2311)
+- (chat) Keep earlier Turn request context out of compaction by @dcramer with @sentry-junior in [#2301](https://github.com/getsentry/junior/pull/2301)
+- (conversations) Show failed turns to the agent by @dcramer with @sentry-junior in [#2305](https://github.com/getsentry/junior/pull/2305)
+- (dashboard) Stop attributing child agent input to the conversation actor by @sentry-junior in [#2310](https://github.com/getsentry/junior/pull/2310)
+- (egress) Let the provider plugin classify upstream 403s by @dcramer with @sentry-junior in [#2314](https://github.com/getsentry/junior/pull/2314)
+- (task-execution) Resume a turn once after its worker stops checking in by @dcramer with @sentry-junior in [#2298](https://github.com/getsentry/junior/pull/2298)
+
+### Documentation 📚
+
+- (contributing) Require an issue before larger changes by @dcramer with @sentry-junior in [#2299](https://github.com/getsentry/junior/pull/2299)
+
 ## 0.262.0
 
 ### New Features ✨
@@ -3146,4 +3191,3 @@
 - Organize and shard end-to-end suites by @sentry-junior in [#968](https://github.com/getsentry/junior/pull/968)
 - Accept explicit Slack URL links by @dcramer in [#967](https://github.com/getsentry/junior/pull/967)
 - Add isolated global sandbox egress by @dcramer in [#943](https://github.com/getsentry/junior/pull/943)
-

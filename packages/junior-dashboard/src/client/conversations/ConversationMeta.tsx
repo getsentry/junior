@@ -16,6 +16,8 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
+  formatRelativeTime,
+  formatTime,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
@@ -547,7 +549,13 @@ export function hasConversationStats(props: {
   return conversationStatItems(props).length > 0;
 }
 
-/** Render runtime, source, token, and cost metadata under the conversation title. */
+type ConversationStatItem = MetricListItem & { label: string };
+
+/**
+ * Render runtime, source, token, and cost metadata. The compact variant is one
+ * line under the conversation title. The full variant is a labeled list for
+ * conversation details.
+ */
 export function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
@@ -555,6 +563,24 @@ export function ConversationStats(props: {
 }) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
+
+  if ((props.variant ?? "full") === "full") {
+    return (
+      <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
+        {stats.map((item) => (
+          <div
+            className="flex min-w-0 items-baseline justify-between gap-4"
+            key={item.key}
+          >
+            <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
+            <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
+              {item.content}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
 
   return (
     <MetricList
@@ -568,7 +594,7 @@ function conversationStatItems(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
   variant?: "compact" | "full";
-}): MetricListItem[] {
+}): ConversationStatItem[] {
   if (!props.conversation) return [];
   const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
@@ -590,17 +616,37 @@ function conversationStatItems(props: {
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
-  const rawStats: Array<MetricListItem | undefined> = [
+  const lastActivityAt = props.conversation.lastSeenAt;
+  const rawStats: Array<ConversationStatItem | undefined> = [
     location
       ? {
           content: <LocationLink label={location} locationUrl={locationUrl} />,
           key: "location",
+          label: "Location",
         }
       : undefined,
     variant === "full" && sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
+          label: "Source",
+        }
+      : undefined,
+    variant === "full" && lastActivityAt
+      ? {
+          content: (
+            <time
+              dateTime={lastActivityAt}
+              title={formatTime(lastActivityAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            >
+              {formatRelativeTime(lastActivityAt)}
+            </time>
+          ),
+          key: "last-activity",
+          label: "Last activity",
         }
       : undefined,
     durationLabel !== "none"
@@ -615,6 +661,7 @@ function conversationStatItems(props: {
             />
           ),
           key: "duration",
+          label: "Runtime",
         }
       : undefined,
     tokenSummary
@@ -637,6 +684,7 @@ function conversationStatItems(props: {
             />
           ),
           key: "tokens",
+          label: "Tokens",
         }
       : undefined,
     costSummary ||
@@ -659,14 +707,18 @@ function conversationStatItems(props: {
             />
           ),
           key: "cost",
+          label: "Cost",
         }
       : undefined,
     childAgentTotals
       ? {
           content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
           key: "subagents",
+          label: "Subagents",
         }
       : undefined,
   ];
-  return rawStats.filter((item): item is MetricListItem => item !== undefined);
+  return rawStats.filter(
+    (item): item is ConversationStatItem => item !== undefined,
+  );
 }

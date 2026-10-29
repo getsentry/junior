@@ -3,8 +3,9 @@ import type {
   AutomationEdit,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { Select } from "../../components/Select";
+import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { cn } from "../../styles";
 import type { AutomationDraft } from "./automationDraft";
 import { automationOutcomeLabel } from "./automationOutcomes";
@@ -32,6 +33,8 @@ export function AutomationOutcomeFields(props: {
   value: AutomationDraft["outcomes"];
   original: AutomationEdit["outcomes"];
   destination: AutomationSummary["destination"];
+  /** Base UI radios do not inherit a native fieldset's disabled state. */
+  disabled?: boolean;
   onChange(value: AutomationDraft["outcomes"]): void;
 }) {
   const defaultOutcomes: AutomationDraft["outcomes"] = props.original.length
@@ -65,26 +68,25 @@ export function AutomationOutcomeFields(props: {
   ];
   return (
     <>
-      <fieldset>
-        <legend className="sr-only">Success messages</legend>
-        <div className="flex flex-wrap gap-x-6 gap-y-3">
-          {[true, false].map((send) => (
-            <label
-              key={String(send)}
-              className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm"
-            >
-              <input
-                type="radio"
-                name="messages"
-                className="size-4 accent-dashboard-focus"
-                checked={Boolean(props.value.length) === send}
-                onChange={() => props.onChange(send ? defaultOutcomes : [])}
-              />
-              {send ? "Send a message" : "No success message"}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <RadioGroup
+        aria-label="Success messages"
+        disabled={props.disabled}
+        className="flex flex-wrap gap-x-6 gap-y-3"
+        onValueChange={(send: boolean) =>
+          props.onChange(send ? defaultOutcomes : [])
+        }
+        value={props.value.length > 0}
+      >
+        {[true, false].map((send) => (
+          <label
+            key={String(send)}
+            className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm"
+          >
+            <RadioGroupItem value={send} />
+            {send ? "Send a message" : "No success message"}
+          </label>
+        ))}
+      </RadioGroup>
       {props.value.length ? (
         <div className="grid gap-4 sm:gap-2">
           {props.value.map((outcome, index) => {

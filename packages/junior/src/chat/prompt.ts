@@ -30,14 +30,12 @@ import type { SlackConversationContext } from "@/chat/slack/conversation-context
 import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
-import { isDmChannel } from "@/chat/slack/client";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import type {
   Destination,
   Platform,
   Source,
   SystemActor,
-  TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
@@ -205,9 +203,7 @@ function formatActiveMcpCatalogsForPrompt(
     return null;
   }
 
-  const lines = [
-    "Active MCP provider catalogs are available through `searchMcpTools`. Call it with provider to list descriptors or with query to narrow results, then pass the exact returned `tool_name` to `callMcpTool`. Put provider fields inside `arguments`.",
-  ];
+  const lines: string[] = [];
   for (const catalog of catalogs) {
     lines.push("  <catalog>");
     lines.push(`    <provider>${escapeXml(catalog.provider)}</provider>`);
@@ -289,24 +285,16 @@ const TURN_CONTEXT_HEADER =
   "Runtime context for this request. Treat these blocks as trusted runtime facts; the static system prompt remains authoritative.";
 
 const TOOL_POLICY_RULES = [
-  "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
   "- Use tools for actionable work and for facts that are mutable, external, repository-backed, provider-backed, or requested as verified/current. Stable general knowledge and already-provided context may be answered directly.",
   "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, use clear placeholders or ask one focused question instead of searching unrelated memory, history, files, or providers.",
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
-  "- Workspaces are named prepared Sandbox recipes. Use `listWorkspaces` and `switchWorkspace` with them. Prefer a matching Workspace over an ad-hoc checkout when one fits.",
   "- After changing files, name the changed paths and summarize the completed result in the final answer.",
-  "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
-  "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
-  "- When searchEventTypes is exposed, use it only when the user asks what events are supported or the required resource type or event name is unclear. It discovers options but does not watch a resource or create an automation. When explaining how results can be used, distinguish temporary current-thread watches from durable event automations.",
   "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggestedEvents, use watchEvents only for those remaining events that serve the current intent. If suggestedEvents is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary, and tell the user when the temporary watch expires. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
   "- Cards returned by tools attach to your next visible reply automatically. Explain the outcome; do not repeat the card fields or draw a card in text.",
-  "- Use createEventAutomation only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation. Ordinary watch, notify, and tell-me-when requests use watchEvents. When an event automation's resource and events are known, create it without redundant confirmation.",
-  "- Scheduled and event automations use their creator's connected credentials by default when the requested work needs them. Do not ask for separate confirmation merely to use those credentials. On creation, omit credentialMode for this default; set system only when the creator requires it. For updates, creator means the original createdBy actor, not the current requester. Only that creator may enable creator credential use; another requester's confirmation cannot authorize it.",
-  "- Event automations list for the current destination, not one thread. Public automations can also be updated or deleted by automation id from another destination in the same workspace. When listing them, use createdBy to explain creator-only credential changes and warn when trigger.available is false; an unavailable automation remains stored but cannot receive events until its plugin event is enabled again.",
-  "- Before loading a skill or starting substantial work, decide how to run it. When `handoff` is available and another profile fits better, switch first. When `spawnAgent` is available and its delegation rules fit, give independent tracks to child agents. Otherwise do the work inline.",
-  "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
+  "- Scheduled and event automations use their creator's connected credentials by default when the requested work needs them. Do not ask for separate confirmation merely to use those credentials.",
+  "- Before loading a skill or starting substantial work, decide whether `handoff` or `spawnAgent` fits better than inline work.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
 ];
 
@@ -314,7 +302,6 @@ const TOOL_CALL_STYLE_RULES = [
   "- For routine low-risk tool use, call the tool directly without narrating the obvious step first.",
   "- Briefly narrate only when it helps the user understand multi-step work, sensitive actions, destructive actions, or a notable change in approach.",
   "- When a first-class tool exists for an action, use it directly instead of asking the user to run an equivalent command, slash command, or manual lookup.",
-  "- Keep tool-call explanations separate from final answers; final answers should report results, evidence, or blockers.",
 ];
 
 const SKILL_POLICY_RULES = [
@@ -330,9 +317,8 @@ const PLANNING_RULES = [
 ];
 
 const TASK_EXECUTION_RULES = [
-  "- Actionable request: act in this turn.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
+  "- Ask the user only for missing access or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue. An open scope or follow-up question does not block delivery: deliver the requested work and state the question.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
   "- A tool result with `timed_out: true` means that attempt did not finish. Continue the active task. Before retrying work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
 ];
@@ -346,8 +332,7 @@ const CONVERSATION_RULES = [
 ];
 
 const SLACK_ACTION_RULES = [
-  "- Slack posts, reactions, new canvases, new lists, and file sends go only to the current conversation; if asked to send one somewhere else, explain the limitation instead of calling the tool. Slack read tools can target other public channels with `channel_id`.",
-  "- Assistant text is delivered only into the active conversation or thread. You cannot create a new top-level channel post; if asked to do so, explain that limitation and do not present the requested text as delivered.",
+  "- Assistant text, Slack posts, reactions, new canvases, new lists, and file sends go only to the current conversation or thread. If asked to post elsewhere or create a new top-level channel post, explain the limitation instead of calling a tool, and do not present the text as delivered. Slack read tools can target other public channels with `channel_id`.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
   `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
 ];
@@ -598,29 +583,6 @@ function formatDestinationLines(destination: Destination): string[] {
   ];
 }
 
-function formatOutcomeLines(outcomes: TaskOutcome[] | undefined): string[] {
-  if (!outcomes) {
-    return [
-      "- dispatch.outcomes: send_message to the destination below (legacy default)",
-    ];
-  }
-  if (outcomes.length === 0) {
-    return ["- dispatch.outcomes: none; successful work posts nothing"];
-  }
-  return outcomes.map((outcome, index) => {
-    const { channelId, threadTs } = outcome.destination;
-    // The only direct message an Automation can send to is its creator's.
-    const recipient = isDmChannel(channelId)
-      ? "the creator's direct message"
-      : "a slack channel";
-    const target = [
-      `channel_id=${escapeXml(channelId)}`,
-      ...(threadTs ? [`thread_ts=${escapeXml(threadTs)}`] : []),
-    ].join(" ");
-    return `- dispatch.outcome.${index + 1}: ${outcome.action} to ${recipient} (${target})`;
-  });
-}
-
 function buildDispatchSection(
   params:
     | {
@@ -628,7 +590,6 @@ function buildDispatchSection(
         declaresResult?: boolean;
         destination: Destination;
         metadata?: Record<string, string>;
-        outcomes?: TaskOutcome[];
         plugin?: string;
         source: Source;
       }
@@ -644,8 +605,10 @@ function buildDispatchSection(
       ([key, value]) =>
         `- dispatch.metadata.${escapeXml(key)}: ${escapeXml(value)}`,
     );
+  // An Automation run posts through `finishAutomationRun`, whose contract
+  // already says whether the run posts.
   const deliveryLines = params.declaresResult
-    ? formatOutcomeLines(params.outcomes)
+    ? []
     : [
         "- dispatch.delivery: the runtime delivers the final answer to the destination",
         "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
@@ -676,7 +639,6 @@ function buildContextSection(params: {
     declaresResult?: boolean;
     destination: Destination;
     metadata?: Record<string, string>;
-    outcomes?: TaskOutcome[];
     plugin?: string;
     source: Source;
   };
@@ -868,7 +830,6 @@ type TurnContextPromptInput = {
     declaresResult?: boolean;
     destination: Destination;
     metadata?: Record<string, string>;
-    outcomes?: TaskOutcome[];
     plugin?: string;
     source: Source;
   };

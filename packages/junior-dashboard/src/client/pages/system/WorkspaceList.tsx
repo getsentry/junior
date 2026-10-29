@@ -2,7 +2,7 @@ import { ChevronRight, FolderGit2, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
-import { Button } from "../../components/Button";
+import { Button } from "../../components/ui/button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";

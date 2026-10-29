@@ -1,15 +1,17 @@
+import { useState } from "react";
 import { ArrowDownToLine } from "lucide-react";
 
 import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
+  useAutoLoadPreviousPage,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -28,6 +30,7 @@ export function Transcript(props: {
   onSelectedEventSeqChange?(seq: number | undefined): void;
   responding?: boolean;
   search?: string;
+  onSearchChange?(value: string): void;
   selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -37,7 +40,8 @@ export function Transcript(props: {
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
-  const search = props.search ?? "";
+  const [localSearch, setLocalSearch] = useState("");
+  const search = props.search ?? localSearch;
   const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
@@ -52,6 +56,21 @@ export function Transcript(props: {
       rich: transcriptBottomVersion(props.transcript, "rich"),
       raw: transcriptBottomVersion(props.transcript, "raw"),
     },
+  });
+
+  const loadPreviousPage = () => {
+    bottomPinning.preserveViewportForPrepend();
+    props.onLoadPreviousPage?.();
+  };
+  const previousPageRef = useAutoLoadPreviousPage({
+    enabled: Boolean(
+      props.onLoadPreviousPage &&
+      props.hasPreviousPage &&
+      !props.loadingPreviousPage &&
+      !props.historyError,
+    ),
+    historyVersion: props.historyVersion ?? "empty",
+    onLoad: loadPreviousPage,
   });
 
   if (!props.transcript) {
@@ -71,16 +90,13 @@ export function Transcript(props: {
           </div>
         ) : null}
         {props.hasPreviousPage || props.loadingPreviousPage ? (
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex items-center gap-3" ref={previousPageRef}>
             <span className="h-px min-w-4 flex-1 bg-dashboard-fill-strong" />
             <button
               aria-label="Load earlier events"
               className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus/55 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={props.loadingPreviousPage}
-              onClick={() => {
-                bottomPinning.preserveViewportForPrepend();
-                props.onLoadPreviousPage?.();
-              }}
+              onClick={loadPreviousPage}
               title="Load earlier events"
               type="button"
             >
@@ -103,6 +119,7 @@ export function Transcript(props: {
           <ConversationEventLog
             key={props.transcript.conversationId}
             conversation={props.transcript}
+            onSearchChange={props.onSearchChange ?? setLocalSearch}
             onSelectedSeqChange={props.onSelectedEventSeqChange}
             selectedSeq={props.selectedEventSeq}
           />

@@ -6,10 +6,10 @@ import {
   automationSchedulePreviewSchema,
   type AutomationEdit,
 } from "@sentry/junior/api/schema";
-import { Field } from "../../components/Field";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { Select } from "../../components/Select";
-import { TextInput } from "../../components/TextInput";
-import { Button } from "../../components/Button";
 import { post, DashboardApiError } from "../../http";
 import { cn } from "../../styles";
 import {
@@ -64,7 +64,8 @@ export function AutomationScheduleFields(props: {
   return (
     <>
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-        <Field label="Repeat" htmlFor="schedule-frequency">
+        <Field>
+          <FieldLabel htmlFor="schedule-frequency">Repeat</FieldLabel>
           <Select
             id="schedule-frequency"
             value={frequency}
@@ -108,8 +109,9 @@ export function AutomationScheduleFields(props: {
             <option value="yearly">Every year</option>
           </Select>
         </Field>
-        <Field label="Time" htmlFor="schedule-time">
-          <TextInput
+        <Field>
+          <FieldLabel htmlFor="schedule-time">Time</FieldLabel>
+          <Input
             size="comfortable"
             id="schedule-time"
             type="time"
@@ -165,12 +167,9 @@ export function AutomationScheduleFields(props: {
             </fieldset>
           ) : null}
           <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-            <Field
-              label="Interval"
-              htmlFor="schedule-interval"
-              help="Number of calendar periods between runs."
-            >
-              <TextInput
+            <Field>
+              <FieldLabel htmlFor="schedule-interval">Interval</FieldLabel>
+              <Input
                 size="comfortable"
                 id="schedule-interval"
                 type="number"
@@ -181,9 +180,13 @@ export function AutomationScheduleFields(props: {
                   props.onChange({ ...value, interval: e.target.valueAsNumber })
                 }
               />
+              <FieldDescription id="schedule-interval-help">
+                Number of calendar periods between runs.
+              </FieldDescription>
             </Field>
-            <Field label="Start date" htmlFor="schedule-start">
-              <TextInput
+            <Field>
+              <FieldLabel htmlFor="schedule-start">Start date</FieldLabel>
+              <Input
                 size="comfortable"
                 id="schedule-start"
                 type="date"
@@ -199,8 +202,9 @@ export function AutomationScheduleFields(props: {
           </div>
           {value.frequency === "monthly" || value.frequency === "yearly" ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Day of month" htmlFor="schedule-day">
-                <TextInput
+              <Field>
+                <FieldLabel htmlFor="schedule-day">Day of month</FieldLabel>
+                <Input
                   size="comfortable"
                   id="schedule-day"
                   type="number"
@@ -216,7 +220,8 @@ export function AutomationScheduleFields(props: {
                 />
               </Field>
               {value.frequency === "yearly" ? (
-                <Field label="Month" htmlFor="schedule-month">
+                <Field>
+                  <FieldLabel htmlFor="schedule-month">Month</FieldLabel>
                   <Select
                     id="schedule-month"
                     value={value.month ?? 1}
@@ -242,8 +247,9 @@ export function AutomationScheduleFields(props: {
           ) : null}
         </>
       ) : (
-        <Field label="Date" htmlFor="schedule-date">
-          <TextInput
+        <Field>
+          <FieldLabel htmlFor="schedule-date">Date</FieldLabel>
+          <Input
             size="comfortable"
             id="schedule-date"
             type="date"
@@ -257,12 +263,9 @@ export function AutomationScheduleFields(props: {
           />
         </Field>
       )}
-      <Field
-        label="Timezone"
-        htmlFor="schedule-timezone"
-        help="Use an IANA timezone. The schedule follows local time, including daylight saving time."
-      >
-        <TextInput
+      <Field>
+        <FieldLabel htmlFor="schedule-timezone">Timezone</FieldLabel>
+        <Input
           size="comfortable"
           id="schedule-timezone"
           list="automation-timezones"
@@ -276,6 +279,10 @@ export function AutomationScheduleFields(props: {
             <option key={zone}>{zone}</option>
           ))}
         </datalist>
+        <FieldDescription id="schedule-timezone-help">
+          Use an IANA timezone. The schedule follows local time, including
+          daylight saving time.
+        </FieldDescription>
       </Field>
       <div
         role="status"

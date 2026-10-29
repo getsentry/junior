@@ -116,6 +116,55 @@ describe("conversation detail API", () => {
     });
   });
 
+  it("titles an untitled conversation from its first human message", async () => {
+    const conversationId = "local:test:untitled-detail";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "web",
+      visibility: "public",
+    });
+    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
+      { displayTitle: "API" },
+    );
+
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          messageId: "bot-message",
+          meta: { author: { isBot: true } },
+          role: "user",
+          text: "Bot input is not a title",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          messageId: "human-message",
+          role: "user",
+          text: "\n  Review this PR and check the failing tests\nMore context",
+          type: "message",
+        },
+      },
+    ]);
+    // While generation runs, the title is the first line of the human message.
+    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
+      { displayTitle: "Review this PR and check the failing tests" },
+    );
+
+    await getConversationStore().recordActivity({
+      conversationId,
+      nowMs: 4,
+      title: "Review failing PR tests",
+    });
+    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
+      { displayTitle: "Review failing PR tests" },
+    );
+  });
+
   it("only returns annotations to viewers with private-content access", async () => {
     const conversationId = "slack:C-private:annotated-detail";
     await getConversationStore().recordActivity({

@@ -211,6 +211,22 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # Keep in sync with the s3 service in compose.yaml.
+      s3:
+        image: versity/versitygw:v1.10.0
+        env:
+          ROOT_ACCESS_KEY: junior
+          ROOT_SECRET_KEY: junior-secret
+          VGW_BACKEND: posix
+          VGW_BACKEND_ARG: /tmp
+          VGW_HEALTH: /health
+        ports:
+          - 7072:7070
+        options: >-
+          --health-cmd "wget -qO- http://localhost:7070/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm

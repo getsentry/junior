@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
-import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
@@ -121,7 +121,7 @@ async function cleanupSnapshotBuilders(
 ): Promise<void> {
   if (names.length === 0) return;
   try {
-    await deleteWorkspaceSnapshotBuilders(names);
+    await getSandboxProvider().deleteWorkspaceSnapshotBuilders(names);
   } catch (error) {
     logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
       "app.workspace.id": workspaceId,

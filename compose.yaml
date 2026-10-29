@@ -27,6 +27,32 @@ services:
     volumes:
       - junior-redis:/data
 
+  # S3-compatible server for local attachment storage and S3 storage tests.
+  s3:
+    image: versity/versitygw:v1.10.0
+    # With the posix backend, a folder in VGW_BACKEND_ARG is a bucket. Create the
+    # local dev bucket, then run the image's normal entrypoint.
+    entrypoint:
+      - sh
+      - -c
+      - mkdir -p "$$VGW_BACKEND_ARG/junior-attachments" && exec /usr/local/bin/docker-entrypoint.sh
+    environment:
+      ROOT_ACCESS_KEY: junior
+      ROOT_SECRET_KEY: junior-secret
+      VGW_BACKEND: posix
+      VGW_BACKEND_ARG: /data
+      VGW_HEALTH: /health
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7070/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "7072:7070"
+    volumes:
+      - junior-s3:/data
+
 volumes:
   junior-postgres:
   junior-redis:
+  junior-s3:

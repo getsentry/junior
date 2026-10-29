@@ -10,7 +10,8 @@ import {
   X,
 } from "lucide-react";
 
-import { Button, ToggleButton } from "../components/Button";
+import { Button } from "../components/ui/button";
+import { ToggleButton } from "../components/ToggleButton";
 import { IconButtonTooltip } from "../components/Tooltip";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -43,17 +44,19 @@ export function ConversationHeaderActions(props: {
   if (layout === "menu") {
     return (
       <div className="grid gap-0.5">
-        <MenuActionButton
-          label={props.searchOpen ? "Hide search" : "Search transcript"}
-          onClick={props.onSearchClick}
-          pressed={props.searchOpen}
-        >
-          {props.searchOpen ? (
-            <X aria-hidden="true" size={16} strokeWidth={2} />
-          ) : (
-            <Search aria-hidden="true" size={16} strokeWidth={2} />
-          )}
-        </MenuActionButton>
+        {props.view === "rich" ? (
+          <MenuActionButton
+            label={props.searchOpen ? "Hide search" : "Search transcript"}
+            onClick={props.onSearchClick}
+            pressed={props.searchOpen}
+          >
+            {props.searchOpen ? (
+              <X aria-hidden="true" size={16} strokeWidth={2} />
+            ) : (
+              <Search aria-hidden="true" size={16} strokeWidth={2} />
+            )}
+          </MenuActionButton>
+        ) : null}
         <MenuActionButton
           label="Conversation"
           onClick={() => props.onViewChange("rich")}
@@ -88,10 +91,12 @@ export function ConversationHeaderActions(props: {
 
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <TranscriptSearchToggle
-        onClick={props.onSearchClick}
-        open={props.searchOpen}
-      />
+      {props.view === "rich" ? (
+        <TranscriptSearchToggle
+          onClick={props.onSearchClick}
+          open={props.searchOpen}
+        />
+      ) : null}
       {props.copyAction}
       <ArchiveConversationButton {...props.archive} layout="bar" />
       <Button

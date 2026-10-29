@@ -26,7 +26,7 @@ named components so pages stay thin and taste stays consistent.
 - Skeleton motion must stop when the user prefers reduced motion. Do not use a
   centered progress card when the expected page structure is known.
 - Prefer small named components for repeated UI surfaces, such as `Field`,
-  `TextInput`, `StatusChip`, `Section`, `Toolbar`, or `EmptyState`, instead of
+  `Input`, `StatusChip`, `Section`, `Toolbar`, or `EmptyState`, instead of
   repeated `<div className="field">` style hooks.
 - For data tables, give metric and status columns equal fixed widths. Let only
   the leading label column flex. Prefer `table-fixed` so column widths stay

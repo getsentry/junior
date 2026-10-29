@@ -4,15 +4,34 @@ The sandbox module creates isolated workspaces, installs declared runtime
 dependencies, synchronizes skills, and proxies credential-capable network
 traffic through verified host egress.
 
+## Provider
+
+- `provider.ts` owns the `SandboxProvider` contract and `getSandboxProvider()`.
+  Sandbox code calls `getSandboxProvider()`, not a provider module. Today it
+  always returns the Vercel provider.
+- `vercel.ts` implements `SandboxProvider`. It is the only module that imports
+  `@vercel/sandbox`, and only `provider.ts` imports it. Two ast-grep rules
+  enforce these boundaries.
+- Provider modules hold only provider-specific declarations and logic. Shared
+  types live in `provider.ts`, `workspace.ts`, and `snapshot/workspace.ts`.
+- Other sandbox code uses `SandboxSession` and `SandboxNetworkPolicy`. Only
+  `vercel.ts` uses Vercel credentials (`credentials.ts`), request options, and
+  SDK objects.
+- `SandboxNetworkPolicy` is provider-neutral. It lists the domains that go
+  through Junior's credentialed egress and the domains that get trace headers.
+  Every other domain stays open. Each provider turns it into its own network
+  rules.
+- Error checks in `errors.ts` still match Vercel error text.
+
 ## Lifecycle
 
 - Sandboxes are ephemeral execution environments associated with a durable
   conversation or run.
 - Runtime state persists only an opaque `SandboxRef` (`id`, dependency profile
-  hash, and optional Workspace id). The provider adapter maps that reference to
-  Vercel's named Sandbox API; callers do not depend on provider names or VM
-  session ids. A removed Workspace recipe invalidates its stored profile the
-  same way any other removed profile input does.
+  hash, and optional Workspace id). `vercel.ts` maps that reference to Vercel's
+  named Sandbox API; callers do not depend on provider names or VM session ids.
+  A removed Workspace recipe invalidates its stored profile the same way any
+  other removed profile input does.
 - Each agent run creates lazy sandbox access from the persisted reference.
   `workspace` serves non-sandbox tools and generated artifacts, while `tools`
   serves the Pi sandbox tool adapter. The live provider session stays private
@@ -105,3 +124,17 @@ traffic through verified host egress.
 All credential-capable provider access follows
 `../../../../../policies/security.md`. The verified egress implementation lives
 under `egress/`; `snapshot/resolve.ts` owns snapshot acquisition.
+
+Sandbox egress has two parts:
+
+- **Provider part:** each sandbox provider catches sandbox traffic for
+  credentialed domains and proves which sandbox VM sent each request.
+  `egress/vercel.ts` is the Vercel part. It turns the policy into Vercel
+  `forwardURL` and header `transform` rules. Vercel then forwards requests to
+  Junior's egress route with a Vercel OIDC token and `vercel-forwarded-*`
+  headers. `egress/vercel.ts` verifies the token and rebuilds the upstream URL.
+  `egress/oidc.ts` checks the token against Vercel's OIDC issuer.
+- **Shared part:** `executeSandboxEgressRequest` in `egress/proxy.ts` takes
+  the verified VM id, the upstream URL, and the signed credential token. It
+  checks provider ownership and the credential context, then runs the shared
+  credentialed egress engine. It does not read provider headers.

@@ -16,7 +16,8 @@
       "@sentry/junior/api/schema": ["../junior/src/api/schema.ts"],
       "@sentry/junior/instrumentation": ["../junior/src/instrumentation.ts"],
       "@sentry/junior-dashboard": ["./src/index.ts"],
-      "@/*": ["../junior/src/*"]
+      "@/*": ["../junior/src/*"],
+      "@dashboard/*": ["./src/client/*"]
     },
     "types": ["node", "vitest/globals"]
   },

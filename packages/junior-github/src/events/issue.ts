@@ -38,7 +38,7 @@ export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
 /** The identifier shape that `gitHubIssueResource` builds. */
 export const GITHUB_ISSUE_IDENTIFIER = {
   format: "owner/repo#number",
-  pattern: /^[^\s/:#]+\/[^\s/:#]+#\d+$/,
+  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+#\d+$`,
 };
 
 /** Build the stable issue identity shared by tools and webhooks. */

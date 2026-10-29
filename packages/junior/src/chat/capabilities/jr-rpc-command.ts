@@ -325,6 +325,30 @@ function createJrRpcCommand(deps: JrRpcDeps) {
   });
 }
 
+function toolCommandResult(
+  command: string,
+  output: { exitCode: number; stdout: string; stderr: string },
+) {
+  return {
+    ok: output.exitCode === 0,
+    command,
+    cwd: "/",
+    exit_code: output.exitCode,
+    signal: null,
+    timed_out: false,
+    stdout: output.stdout,
+    stderr: output.stderr,
+    stdout_truncated: false,
+    stderr_truncated: false,
+  };
+}
+
+// `jr-rpc` exists only in this runtime shell, not in the sandbox. A command
+// that runs it after another shell step would reach the sandbox and fail with
+// "command not found".
+const CHAINED_JR_RPC_PATTERN = /(?:&&|\|\||[;|\n])\s*jr-rpc(?:\s|$)/;
+
+/** Run a standalone `jr-rpc` bash command, or reject one chained after other shell steps. */
 export async function maybeExecuteJrRpcCustomCommand(
   command: string,
   deps: JrRpcDeps,
@@ -350,7 +374,18 @@ export async function maybeExecuteJrRpcCustomCommand(
 > {
   const normalized = command.trim();
   if (!/^jr-rpc(?:\s|$)/.test(normalized)) {
-    return { handled: false };
+    if (!CHAINED_JR_RPC_PATTERN.test(normalized)) {
+      return { handled: false };
+    }
+    return {
+      handled: true,
+      result: toolCommandResult(normalized, {
+        exitCode: 2,
+        stdout: "",
+        stderr:
+          "jr-rpc runs only as a standalone bash command. Run the jr-rpc command by itself, without cd, &&, pipes, or other commands.\n",
+      }),
+    };
   }
   const shell = new Bash({
     customCommands: [createJrRpcCommand(deps)],
@@ -358,17 +393,6 @@ export async function maybeExecuteJrRpcCustomCommand(
   const execResult = await shell.exec(normalized);
   return {
     handled: true,
-    result: {
-      ok: execResult.exitCode === 0,
-      command: normalized,
-      cwd: "/",
-      exit_code: execResult.exitCode,
-      signal: null,
-      timed_out: false,
-      stdout: execResult.stdout,
-      stderr: execResult.stderr,
-      stdout_truncated: false,
-      stderr_truncated: false,
-    },
+    result: toolCommandResult(normalized, execResult),
   };
 }

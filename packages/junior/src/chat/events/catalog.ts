@@ -214,7 +214,7 @@ export function requireEventIdentifier(
   const resourceTypes = registration?.resourceTypes ?? [];
   const fits = (resourceType: (typeof resourceTypes)[number]) =>
     resourceType.identifier !== undefined &&
-    identifier.search(resourceType.identifier.pattern) !== -1;
+    new RegExp(resourceType.identifier.pattern).test(identifier);
   const resourceType = resourceTypes.find(
     (candidate) => candidate.type === input.resourceType,
   );

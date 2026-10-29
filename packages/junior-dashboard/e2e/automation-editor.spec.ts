@@ -2,7 +2,7 @@ import { test, expect } from "./test";
 import { screenshot } from "./screenshot";
 import { mockAutomationEditor } from "./automation-editor-fixture";
 
-test("edits an Automation from its drawer, preserves list state, and protects the draft", async ({
+test("edits an Automation from its details, preserves list state, and protects the draft", async ({
   page,
   dashboard,
 }) => {
@@ -16,6 +16,11 @@ test("edits an Automation from its drawer, preserves list state, and protects th
   await expect(page).toHaveURL(
     /\/automations\/scheduled-1\/edit\?scope=mine&q=weekly/,
   );
+  await expect(
+    page
+      .getByLabel("Automations navigation")
+      .getByRole("link", { name: "Automations", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Weekly project summary",
   );
@@ -64,7 +69,7 @@ test("edits an Automation from its drawer, preserves list state, and protects th
     `${dashboard.baseURL}/automations/list?scope=mine&q=weekly`,
   );
   await expect(
-    page.getByText("Automation saved. Changes apply to future work."),
+    page.getByText("Automation saved", { exact: true }),
   ).toBeVisible();
   expect(state.writes).toEqual([
     {
@@ -162,7 +167,12 @@ test("public non-creators edit settings without creator-only controls", async ({
   dashboard,
 }) => {
   const state = await mockAutomationEditor(page, "event", "event-2");
-  await page.goto(`${dashboard.baseURL}/automations/event-2/edit`);
+  await page.goto(`${dashboard.baseURL}/automations/event-2/edit/`);
+  await expect(
+    page
+      .getByLabel("Automations navigation")
+      .getByRole("link", { name: "Automations", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(
     page.getByText(/You can edit it because it is in a public channel/),
   ).toBeVisible();
@@ -241,6 +251,7 @@ test("makes an earlier version active from version history", async ({
     },
   );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
+  await page.getByText("About this Automation", { exact: true }).click();
   await page.getByRole("link", { name: "Version history" }).click();
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);
   await expect(page.getByText("Changed instruction")).toBeVisible();

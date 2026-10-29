@@ -5,7 +5,9 @@
     "incremental": false,
     "noEmit": false,
     "outDir": "dist",
-    "paths": {},
+    "paths": {
+      "@dashboard/*": ["./src/client/*"]
+    },
     "rootDir": "src"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]

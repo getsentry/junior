@@ -18,7 +18,7 @@ vi.mock("@vercel/sandbox", () => ({
 import { closeDb, getDb } from "@/chat/db";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -72,9 +72,16 @@ describe("Workspace snapshot completion", () => {
 
     const builder = {
       delete: vi.fn(),
-      getCommand: vi.fn(async () => ({
-        wait: vi.fn(async () => ({ exitCode: 0 })),
-      })),
+      // A slow command load must not use the command status poll time.
+      getCommand: vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return {
+          wait: vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+            signal.throwIfAborted();
+            return { exitCode: 0 };
+          }),
+        };
+      }),
       snapshot: vi.fn(async () => ({
         snapshotId: "snapshot-ready",
         sizeBytes: 4_194_304,
@@ -82,15 +89,24 @@ describe("Workspace snapshot completion", () => {
     };
     sandboxGetMock.mockResolvedValue(builder);
 
-    await expect(
-      resolveWorkspaceSnapshot({
-        workspace,
-        runtime: SANDBOX_RUNTIME,
-        shouldStop: () => true,
-        applyNetworkPolicy: async () => {},
-        removeCredentialRoute: false,
-      }),
-    ).resolves.toMatchObject({ snapshotId: "snapshot-ready" });
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((delay) =>
+        abortSignalTimeout(delay === 1_000 ? 20 : delay),
+      );
+    try {
+      await expect(
+        resolveWorkspaceSnapshot({
+          workspace,
+          runtime: SANDBOX_RUNTIME,
+          shouldStop: () => true,
+          applyNetworkPolicy: async () => {},
+          removeCredentialRoute: false,
+        }),
+      ).resolves.toMatchObject({ snapshotId: "snapshot-ready" });
+    } finally {
+      timeoutSpy.mockRestore();
+    }
 
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
@@ -439,7 +455,7 @@ describe("Workspace snapshot completion", () => {
     }));
 
     await expect(
-      deleteWorkspaceSnapshotBuilders([
+      getSandboxProvider().deleteWorkspaceSnapshotBuilders([
         "builder-one",
         "builder-two",
         "builder-three",
