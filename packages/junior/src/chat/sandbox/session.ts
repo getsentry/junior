@@ -60,11 +60,7 @@ interface SandboxCredentials {
 }
 
 /** Path that `sandbox.acquire` took to return a sandbox. */
-type SandboxAcquireOutcome =
-  | "memory"
-  | "resumed"
-  | "created_snapshot"
-  | "created_fresh";
+type SandboxAcquireOutcome = "memory" | "resumed" | "created";
 
 interface SandboxAcquisition {
   controller: AbortController;
@@ -126,7 +122,6 @@ interface ActiveSandbox {
   networkPolicyKey?: string;
 }
 interface SandboxCandidate extends ActiveSandbox {
-  fromSnapshot: boolean;
   profileHash?: string;
   ref: SandboxRef;
   workspace?: Workspace;
@@ -496,9 +491,9 @@ export function createSandboxRuntime(
           })
       : undefined;
 
-    let created: { session: SandboxSession; snapshot: Snapshot };
+    let createdSandbox: SandboxSession;
     try {
-      created = await withSandboxSpan(
+      createdSandbox = await withSandboxSpan(
         "sandbox.create",
         "sandbox.create",
         {
@@ -517,7 +512,7 @@ export function createSandboxRuntime(
               });
           signal?.throwIfAborted();
           setSnapshotSpanAttributes(snapshot);
-          return await createSandboxFromResolvedSnapshot({
+          const created = await createSandboxFromResolvedSnapshot({
             runtime,
             snapshot,
             sandboxCredentials,
@@ -526,12 +521,12 @@ export function createSandboxRuntime(
             workspace,
             prepareWorkspace,
           });
+          return created.session;
         },
       );
     } catch (error) {
       return failSetup(error);
     }
-    const createdSandbox = created.session;
 
     const ref = sandboxReference(createdSandbox, workspace, hash);
     if (!workspace) {
@@ -567,7 +562,6 @@ export function createSandboxRuntime(
 
     return {
       session: createdSandbox,
-      fromSnapshot: Boolean(created.snapshot.snapshotId),
       networkPolicyKey,
       profileHash: hash,
       ref,
@@ -577,7 +571,7 @@ export function createSandboxRuntime(
 
   const createFreshSandbox = async (
     signal?: AbortSignal,
-  ): Promise<SandboxCandidate> => {
+  ): Promise<SandboxSession> => {
     const nextProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
     const candidate = await createSandboxCandidate(
       activeWorkspace,
@@ -587,8 +581,7 @@ export function createSandboxRuntime(
     try {
       await persistSandboxRef(candidate.ref);
       dependencyProfileHash = candidate.profileHash ?? nextProfileHash;
-      rememberSandbox(candidate.session, candidate.networkPolicyKey);
-      return candidate;
+      return rememberSandbox(candidate.session, candidate.networkPolicyKey);
     } catch (error) {
       await stopSession(candidate.session);
       throw error;
@@ -683,9 +676,9 @@ export function createSandboxRuntime(
           return hintedSandbox;
         }
 
-        const created = await createFreshSandbox(signal);
-        setOutcome(created.fromSnapshot ? "created_snapshot" : "created_fresh");
-        return created.session;
+        const createdSandbox = await createFreshSandbox(signal);
+        setOutcome("created");
+        return createdSandbox;
       },
     );
   };

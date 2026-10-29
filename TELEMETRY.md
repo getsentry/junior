@@ -293,8 +293,8 @@ the sandbox:
 
 - `memory`: the runtime already held the sandbox.
 - `resumed`: `sandbox.get` reopened the stored sandbox.
-- `created_snapshot`: `sandbox.create` booted a new sandbox from a snapshot.
-- `created_fresh`: `sandbox.create` booted a new sandbox without a snapshot.
+- `created`: `sandbox.create` booted a new sandbox. Its
+  `app.sandbox.source` and `app.sandbox.snapshot.*` attributes tell how.
 
 Workspace switches create their sandbox outside `sandbox.acquire`. To find the
 sandbox cost of one turn, add the durations of the top-level `sandbox.*` spans

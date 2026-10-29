@@ -877,7 +877,7 @@ describe("createTestSandbox", () => {
   });
 
   it("records which path sandbox acquisition took", async () => {
-    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_fresh"));
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_created"));
     const fresh = createTestSandboxRuntime();
     await fresh.createSandbox();
     await fresh.createSandbox();
@@ -887,20 +887,11 @@ describe("createTestSandbox", () => {
       sandboxId: "sbx_resumed",
     }).createSandbox();
 
-    resolveMock.mockResolvedValueOnce({
-      snapshotId: "snap_123",
-      dependencyCount: 1,
-      cacheHit: true,
-      resolveOutcome: "cache_hit",
-    });
-    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_snapshot"));
-    await createTestSandboxRuntime().createSandbox();
-
     expect(
       recordedSpans
         .filter((span) => span.name === "sandbox.acquire")
         .map((span) => span.attributes["app.sandbox.acquire.outcome"]),
-    ).toEqual(["created_fresh", "memory", "resumed", "created_snapshot"]);
+    ).toEqual(["created", "memory", "resumed"]);
   });
 
   it("does not report a reference change when restoring the same sandbox", async () => {
@@ -1031,7 +1022,7 @@ describe("createTestSandbox", () => {
     process.env.VERCEL_TEAM_ID = "team_123";
     process.env.VERCEL_PROJECT_ID = "prj_123";
 
-    const freshSandbox = makeSandbox("sbx_fresh");
+    const freshSandbox = makeSandbox("sbx_created");
 
     sandboxCreateMock.mockResolvedValue(freshSandbox);
 
@@ -1940,12 +1931,12 @@ describe("createTestSandbox", () => {
   });
 
   it("attaches sandbox egress auth signals to bash results regardless of exit code", async () => {
-    const sandbox = makeSandbox("sbx_fresh_auth_signal");
+    const sandbox = makeSandbox("sbx_created_auth_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
       await setSandboxEgressAuthRequiredSignal(
         {
           credentials: { actor: { type: "user", userId: "U123" } },
-          egressId: "sbx_fresh_auth_signal_session",
+          egressId: "sbx_created_auth_signal_session",
           expiresAtMs: Date.now() + 60_000,
           contextId: "ctx-fresh",
         },
@@ -1967,7 +1958,7 @@ describe("createTestSandbox", () => {
     sandboxGetMock.mockResolvedValue(sandbox);
 
     const executor = createTestSandbox({
-      sandboxId: "sbx_fresh_auth_signal",
+      sandboxId: "sbx_created_auth_signal",
     });
     executor.configureSkills([]);
 
