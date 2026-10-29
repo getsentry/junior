@@ -669,10 +669,16 @@ export function createSlackConversationWorker(
       return { status: "completed" };
     }
 
+    const oldestRecord = records[0];
     const latestRecord = records[records.length - 1];
-    if (!latestRecord) {
+    if (!oldestRecord || !latestRecord) {
       return { status: "completed" };
     }
+    const telemetry = {
+      count: records.length,
+      oldestCreatedAtMs: oldestRecord.createdAtMs,
+      oldestReceivedAtMs: oldestRecord.receivedAtMs,
+    };
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
       throw new Error(
@@ -772,6 +778,7 @@ export function createSlackConversationWorker(
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
               stopSignal: context.stopSignal?.(),
+              telemetry,
               subscribeThread: async () =>
                 await subscribeSlackThreadForMessage({
                   messageCreatedAtMs: latestRecord.createdAtMs,
@@ -792,6 +799,7 @@ export function createSlackConversationWorker(
                 isFinalAttempt: context.attempt.isFinalAttempt,
                 shouldYield: context.shouldYield,
                 stopSignal: context.stopSignal?.(),
+                telemetry,
               },
             );
           }
