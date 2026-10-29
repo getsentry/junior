@@ -397,6 +397,7 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(log.getByText(/Released the package/)).toBeVisible();
 
   // A link to an event before the first page loads earlier history to open it.
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}?event=2`,
   );
@@ -405,11 +406,22 @@ test("loads earlier events without merging tool starts and results", async ({
     exact: true,
   });
   await expect(linked).toBeVisible();
+  const linkedEntry = page
+    .getByRole("region", { name: "Conversation event log" })
+    .getByRole("button", { name: "Event 2: tool_calls", exact: true });
+  await expect(linkedEntry).toBeAttached();
+  // Closing a linked event must not open the default Conversation panel.
+  await linked.getByRole("button", { name: "Close event details" }).click();
+  await expect(linked).toBeHidden();
   await expect(
-    page
-      .getByRole("region", { name: "Conversation event log" })
-      .getByRole("button", { name: "Event 2: tool_calls", exact: true }),
-  ).toBeAttached();
+    page.getByRole("complementary", {
+      name: "Conversation details",
+      exact: true,
+    }),
+  ).toBeHidden();
+  await expect(linkedEntry).toBeFocused();
+  await linkedEntry.click();
+  await expect(linked).toBeVisible();
   await page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Investigate checkout latency/ })

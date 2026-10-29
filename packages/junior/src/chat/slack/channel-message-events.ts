@@ -43,7 +43,7 @@ export function slackChannelMessageEvents(): Pick<
         type: CHANNEL_RESOURCE_TYPE,
         identifier: {
           format: `"${SLACK_CURRENT_CHANNEL_IDENTIFIER}" for the channel where the automation is created`,
-          pattern: /^(?:current_channel|[CG][A-Z0-9]{2,})$/,
+          pattern: String.raw`^(?:current_channel|[CG][A-Z0-9]{2,})$`,
         },
         supportedEvents: [MESSAGE_POSTED_EVENT],
         suggestedEvents: [],

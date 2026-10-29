@@ -9,7 +9,7 @@ import {
 /** The identifier shape that `gitHubRepositoryResource` builds. */
 export const GITHUB_REPOSITORY_IDENTIFIER = {
   format: "owner/repo",
-  pattern: /^[^\s/:#]+\/[^\s/:#]+$/,
+  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+$`,
 };
 
 /** Build the stable repository identity shared by tools and webhooks. */

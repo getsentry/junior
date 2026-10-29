@@ -50,12 +50,14 @@ browser tests cover opening, closing, and keyboard interaction.
 
 ## Conversation details
 
-`ConversationPage` owns whether details are open. The page is keyed by the
-Conversation, so switching Conversations closes details. `ConversationHeader`
-only toggles details and restores focus through explicit control refs after
-dismissal.
+`ConversationPage` owns whether details are open. At 1440px and above, details
+open by default. An explicit choice lasts for the current Conversation. The page
+is keyed by the Conversation, so switching Conversations resets that choice.
+`ConversationHeader` toggles details and restores focus through explicit control
+refs after dismissal.
 
-`ConversationDetails` owns one set of tabs and content. `DetailsPanel`
+`ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
+adds its title and actions to the shared frame. `DetailsPanel`
 uses a 400px aside at 1280px and above. The chat and aside scroll separately.
 Smaller windows use `BottomSheet` with a visible title and close control. The sheet and
 side drawers use the shadcn Base UI `Sheet` and share the app's document

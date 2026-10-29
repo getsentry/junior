@@ -1,7 +1,7 @@
 import type { MessageMetadata } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
-import { logWarn, withLogContext } from "@/chat/logging";
+import { logWarn, withLogContext, withSpan } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
@@ -66,22 +66,59 @@ export function resolveConversationWorkVisibilityTimeoutSeconds(
   );
 }
 
-/** Process one Vercel Queue payload with the generic conversation worker. */
+type QueueTimingMetadata = Pick<MessageMetadata, "createdAt" | "deliveryCount">;
+
+/** Queue lag and redelivery attributes for the worker span. */
+function queueMetadataAttributes(
+  metadata: QueueTimingMetadata | undefined,
+  nowMs: number,
+): Record<string, unknown> {
+  if (!metadata) {
+    return {};
+  }
+  return {
+    "app.queue.delivery_count": metadata.deliveryCount,
+    "app.queue.lag_ms": nowMs - metadata.createdAt.getTime(),
+  };
+}
+
+/**
+ * Process one Vercel Queue payload with the generic conversation worker.
+ * Pass the queue metadata to record queue lag and redelivery on the span.
+ */
 export async function processConversationQueueMessage(
   message: unknown,
   options: ProcessConversationQueueMessageOptions,
+  metadata?: QueueTimingMetadata,
 ): Promise<ConversationWorkProcessResult> {
   const parsed = parseConversationQueueMessage(message);
   try {
-    return await processConversationWork(parsed, {
-      checkInIntervalMs: options.checkInIntervalMs,
-      conversationStore: options.conversationStore,
-      nowMs: options.nowMs,
-      queue: options.queue ?? getVercelConversationWorkQueue(),
-      run: options.run,
-      softYieldAfterMs: options.softYieldAfterMs,
-      state: options.state,
-    });
+    return await withSpan(
+      "conversation.work.process",
+      "conversation.work.process",
+      { conversationId: parsed.conversationId },
+      async (setSpanAttributes) => {
+        try {
+          const result = await processConversationWork(parsed, {
+            checkInIntervalMs: options.checkInIntervalMs,
+            conversationStore: options.conversationStore,
+            nowMs: options.nowMs,
+            queue: options.queue ?? getVercelConversationWorkQueue(),
+            run: options.run,
+            softYieldAfterMs: options.softYieldAfterMs,
+            state: options.state,
+          });
+          setSpanAttributes({ "app.worker.outcome": result.status });
+          return result;
+        } catch (error) {
+          if (isConversationQueueMessageRejectedError(error)) {
+            setSpanAttributes({ "app.worker.outcome": error.reason });
+          }
+          throw error;
+        }
+      },
+      queueMetadataAttributes(metadata, options.nowMs?.() ?? Date.now()),
+    );
   } finally {
     // Turns start title work in the background. The worker owns it.
     options.waitUntil?.(settleConversationTitleWork(parsed.conversationId));
@@ -153,8 +190,8 @@ function conversationWorkCallback(
       });
       return true;
     },
-    run: async (message) => {
-      await processConversationQueueMessage(message, options);
+    run: async (message, metadata) => {
+      await processConversationQueueMessage(message, options, metadata);
     },
     topic: resolveConversationWorkQueueTopic(options),
     verify: verifyConversationQueueMessage,

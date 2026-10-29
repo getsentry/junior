@@ -220,6 +220,38 @@ fields=timestamp,trace,app.slack.user_id,app.slack.team_id,app.slack.user_team,a
 sort=timestamp
 ```
 
+### Conversation Work
+
+A message was queued, but the worker started late, ran again, or did no work.
+
+Events: `conversation.queue.message.rejected`,
+`conversation.work.processing.disabled`
+
+Spans: `conversation.work.process`
+
+Attributes: `gen_ai.conversation.id`, `app.queue.lag_ms`,
+`app.queue.delivery_count`, `app.worker.outcome`, `app.worker.pending_count`
+
+Each queue message that the worker processes gets one
+`conversation.work.process` span. The span is not in the
+`slack.message.ingress` trace and has no link to it yet.
+
+- `app.queue.lag_ms`: time from queue send to worker start.
+- `app.queue.delivery_count`: `1` on the first delivery. Higher values are
+  redeliveries.
+- `app.worker.outcome`: the worker result, such as `completed`, `active`,
+  `no_work`, `yielded`, `lost_lease`, `pending_requeued`, or `failed`.
+  `active` means another worker holds the lease. A rejected message records
+  the reject reason, such as `invalid_record`.
+- `app.worker.pending_count`: pending mailbox messages when the worker read
+  the Conversation state.
+
+```text
+dataset=spans query='span.op:conversation.work.process gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,trace,span.duration,app.queue.lag_ms,app.queue.delivery_count,app.worker.outcome,app.worker.pending_count
+sort=timestamp
+```
+
 ### Slack Delivery
 
 Slack accepted the request but no final reply appeared.

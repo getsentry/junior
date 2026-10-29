@@ -103,6 +103,15 @@ export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
 
+/** Sentry trace propagation headers captured when an inbound message arrives. */
+const inboundMessageTraceContextSchema = z
+  .object({
+    baggage: z.string().optional(),
+    sentryTrace: z.string().min(1),
+  })
+  .optional()
+  .catch(undefined);
+
 /** Canonical durable mailbox entry owned by task execution. */
 export const inboundMessageSchema = z
   .object({
@@ -116,6 +125,7 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
+    traceContext: inboundMessageTraceContextSchema,
   })
   .strict();
 
@@ -373,8 +383,13 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
   if (!parsed.success) {
     return undefined;
   }
-  const { publishExternally: _publishExternally, ...message } = parsed.data;
-  return message;
+  const {
+    publishExternally: _publishExternally,
+    traceContext,
+    ...message
+  } = parsed.data;
+  // A dropped trace context must not leave a key that old strict readers reject.
+  return traceContext ? { ...message, traceContext } : message;
 }
 
 function storeMessage(

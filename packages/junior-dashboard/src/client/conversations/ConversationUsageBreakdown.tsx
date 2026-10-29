@@ -167,6 +167,19 @@ function BreakdownTable(props: {
   );
 }
 
+/** True when the Conversation has model or auxiliary usage to break down. */
+export function hasConversationUsageBreakdown(props: {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+}): boolean {
+  if (!props.conversation) return false;
+  const auxiliaryCosts =
+    props.detail?.auxiliaryCosts ?? props.conversation.auxiliaryCosts;
+  return Boolean(
+    props.detail?.modelUsage?.length || auxiliaryCosts?.operations?.length,
+  );
+}
+
 /**
  * Break a Conversation's usage down by agent, model, and auxiliary
  * operation. The header tooltips show only the largest items; this lists
@@ -177,7 +190,9 @@ export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
 }) {
-  if (!props.conversation) return null;
+  if (!hasConversationUsageBreakdown(props) || !props.conversation) {
+    return null;
+  }
   const modelUsage = props.detail?.modelUsage ?? [];
   const auxiliaryCosts =
     props.detail?.auxiliaryCosts ?? props.conversation.auxiliaryCosts;
@@ -193,8 +208,6 @@ export function ConversationUsageBreakdown(props: {
   const operations = [...(auxiliaryCosts?.operations ?? [])].sort(
     (a, b) => b.costUsd - a.costUsd,
   );
-  if (!modelUsage.length && !operations.length) return null;
-
   const formatCost = costFormatter(cost ?? 0);
   const formatTokens = (value: number | undefined) =>
     value === undefined ? NOT_RECORDED : formatCompactNumber(value);
