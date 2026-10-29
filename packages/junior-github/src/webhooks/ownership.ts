@@ -84,19 +84,99 @@ function ownCommentText(text: string): string {
   return ownTokenText(lexer(text, { gfm: true }), "\n");
 }
 
+// HTML quote tags. Their content is a quote, like a Markdown quote.
+const HTML_QUOTE_OPEN = /<\s*blockquote\b/gi;
+const HTML_QUOTE_CLOSE = /<\s*\/\s*blockquote\s*>/gi;
+
+function childTokens(token: Token): readonly Token[] {
+  // `Token` includes a generic token, so `type` does not narrow it.
+  if (token.type === "list") {
+    return (token as Tokens.List).items.flatMap((item) => item.tokens);
+  }
+  if (token.type === "table") {
+    const table = token as Tokens.Table;
+    return [table.header, ...table.rows].flat().flatMap((cell) => cell.tokens);
+  }
+  return "tokens" in token && token.tokens ? token.tokens : [];
+}
+
+function hasQuoteOrHtml(token: Token): boolean {
+  return (
+    token.type === "blockquote" ||
+    token.type === "html" ||
+    childTokens(token).some(hasQuoteOrHtml)
+  );
+}
+
+/** Count the HTML quote tags in a token, and how many stay open after it. */
+function htmlQuoteTags(token: Token): { count: number; open: number } {
+  if (token.type === "html") {
+    const opens = token.raw.match(HTML_QUOTE_OPEN)?.length ?? 0;
+    const closes = token.raw.match(HTML_QUOTE_CLOSE)?.length ?? 0;
+    return { count: opens + closes, open: opens - closes };
+  }
+  return childTokens(token)
+    .map(htmlQuoteTags)
+    .reduce(
+      (sum, tags) => ({
+        count: sum.count + tags.count,
+        open: sum.open + tags.open,
+      }),
+      { count: 0, open: 0 },
+    );
+}
+
 /**
- * Return the comment text without Markdown quotes, or undefined when nothing
- * is left. A quote repeats text that someone else wrote, so it is never the
- * author's own words. Code stays, because an instruction can name a command.
+ * Collect the source of Markdown tokens outside quotes and HTML, at any
+ * depth. A block with an HTML quote tag is left out as a whole. Blocks after
+ * it are left out until the quote closes, because Markdown splits an HTML
+ * quote at blank lines.
+ */
+function unquotedTokenText(tokens: readonly Token[], separator = ""): string {
+  let openQuotes = 0;
+  return tokens
+    .map((token): string => {
+      const tags = htmlQuoteTags(token);
+      if (openQuotes > 0 || tags.count > 0) {
+        openQuotes = Math.max(0, openQuotes + tags.open);
+        return "\n";
+      }
+      if (token.type === "blockquote" || token.type === "html") return "\n";
+      if (!hasQuoteOrHtml(token)) return token.raw;
+      if (token.type === "list") {
+        return (token as Tokens.List).items
+          .map((item) => unquotedTokenText(item.tokens, "\n").trim())
+          .filter(Boolean)
+          .map((item) => `- ${item}`)
+          .join("\n");
+      }
+      if (token.type === "table") {
+        const table = token as Tokens.Table;
+        return [table.header, ...table.rows]
+          .map((row) =>
+            row.map((cell) => unquotedTokenText(cell.tokens)).join(" | "),
+          )
+          .join("\n");
+      }
+      return unquotedTokenText(childTokens(token));
+    })
+    .join(separator);
+}
+
+/**
+ * Return the comment text without Markdown or HTML quotes, or undefined when
+ * nothing is left. A quote repeats text that someone else wrote, so it is
+ * never the author's own words. This also removes quotes in lists and tables.
+ * Code stays, because an instruction can name a command.
  */
 export function unquotedCommentText(
   text: string | null | undefined,
 ): string | undefined {
   if (!text) return undefined;
   return (
-    lexer(text, { gfm: true })
-      .map((token) => (token.type === "blockquote" ? "\n" : token.raw))
-      .join("")
+    unquotedTokenText(lexer(text, { gfm: true }))
+      // Removed quotes leave blank lines.
+      .replace(/\n{3,}/g, "\n\n")
       .trim() || undefined
   );
 }
