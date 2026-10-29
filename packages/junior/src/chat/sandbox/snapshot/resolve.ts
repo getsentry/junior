@@ -1,14 +1,10 @@
-import { Sandbox } from "@vercel/sandbox";
 import { z } from "zod";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { trace } from "@/chat/sandbox/snapshot/span";
-import {
-  createSandboxSession,
-  type SandboxSession,
-} from "@/chat/sandbox/workspace";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
+import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -133,17 +129,13 @@ async function build(
     },
     async () => {
       const startedAtMs = Date.now();
-      const sandboxCredentials = getVercelSandboxCredentials();
       const resources = getSandboxResources();
-      const sandbox = createSandboxSession(
-        await Sandbox.create({
-          timeout: timeoutMs,
-          runtime,
-          signal,
-          ...(sandboxCredentials ?? {}),
-          ...(resources ? { resources } : undefined),
-        }),
-      );
+      const sandbox = await getSandboxProvider().createSession({
+        timeoutMs,
+        runtime,
+        signal,
+        ...(resources ? { resources } : undefined),
+      });
 
       try {
         await install.dependencies(sandbox, value.dependencies, signal);

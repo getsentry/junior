@@ -4,15 +4,30 @@ The sandbox module creates isolated workspaces, installs declared runtime
 dependencies, synchronizes skills, and proxies credential-capable network
 traffic through verified host egress.
 
+## Provider
+
+- `provider.ts` owns the `SandboxProvider` contract and `getSandboxProvider()`.
+  Sandbox code calls `getSandboxProvider()`, not a provider module. Today it
+  always returns the Vercel provider.
+- `vercel.ts` implements `SandboxProvider`. It is the only module that imports
+  `@vercel/sandbox`, and only `provider.ts` imports it. Two ast-grep rules
+  enforce these boundaries.
+- Provider modules hold only provider-specific declarations and logic. Shared
+  types live in `provider.ts`, `workspace.ts`, and `snapshot/workspace.ts`.
+- Other sandbox code uses `SandboxSession` and `SandboxNetworkPolicy`. Only
+  `vercel.ts` uses Vercel credentials (`credentials.ts`), request options, and
+  SDK objects.
+- Error checks in `errors.ts` still match Vercel error text.
+
 ## Lifecycle
 
 - Sandboxes are ephemeral execution environments associated with a durable
   conversation or run.
 - Runtime state persists only an opaque `SandboxRef` (`id`, dependency profile
-  hash, and optional Workspace id). The provider adapter maps that reference to
-  Vercel's named Sandbox API; callers do not depend on provider names or VM
-  session ids. A removed Workspace recipe invalidates its stored profile the
-  same way any other removed profile input does.
+  hash, and optional Workspace id). `vercel.ts` maps that reference to Vercel's
+  named Sandbox API; callers do not depend on provider names or VM session ids.
+  A removed Workspace recipe invalidates its stored profile the same way any
+  other removed profile input does.
 - Each agent run creates lazy sandbox access from the persisted reference.
   `workspace` serves non-sandbox tools and generated artifacts, while `tools`
   serves the Pi sandbox tool adapter. The live provider session stays private

@@ -205,7 +205,7 @@ import {
   isWorkspaceSnapshotNotReadyError,
   WorkspaceSnapshotNotReadyError,
 } from "@/chat/sandbox/snapshot/not-ready-error";
-import { createSandboxSession } from "@/chat/sandbox/workspace";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -613,10 +613,13 @@ describe("createTestSandbox", () => {
   it("pins workspace commands to the acquired session without SDK replay", async () => {
     const sandbox = makeSandbox("sbx_pinned_session");
     const resumingRunCommand = vi.fn();
-    const workspace = createSandboxSession({
+    sandboxGetMock.mockResolvedValueOnce({
       ...sandbox,
       runCommand: resumingRunCommand,
-    } as never);
+    });
+    const workspace = await getSandboxProvider().getSession({
+      name: "sbx_pinned_session",
+    });
 
     await workspace.runCommand({ cmd: "gh", args: ["pr", "create"] });
 
