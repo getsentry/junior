@@ -1,4 +1,27 @@
 # Changelog
+## 0.264.0
+
+### New Features ✨
+
+#### Task Execution
+
+- Trace conversation work with queue lag and outcome by @thomasjiangcy with @sentry-junior in [#2283](https://github.com/getsentry/junior/pull/2283)
+- Accept optional trace context on inbound messages by @thomasjiangcy with @sentry-junior in [#2280](https://github.com/getsentry/junior/pull/2280)
+
+#### Other
+
+- (dashboard) Open conversation details by default on large screens by @sentry-junior in [#2316](https://github.com/getsentry/junior/pull/2316)
+
+### Bug Fixes 🐛
+
+- (events) Store plugin identifier patterns as strings by @thomasjiangcy with @sentry-junior in [#2277](https://github.com/getsentry/junior/pull/2277)
+- (github) Always open a PR for completed code changes by @dcramer with @sentry-junior in [#2319](https://github.com/getsentry/junior/pull/2319)
+
+### Internal Changes 🔧
+
+- (dashboard) Adopt shadcn Base UI sheets by @MathurAditya724 in [#2288](https://github.com/getsentry/junior/pull/2288)
+- (prompt) Remove system prompt rules that duplicate tool contracts by @dcramer with @sentry-junior in [#2315](https://github.com/getsentry/junior/pull/2315)
+
 ## 0.263.0
 
 ### New Features ✨
