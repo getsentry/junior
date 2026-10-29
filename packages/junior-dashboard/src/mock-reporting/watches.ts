@@ -8,7 +8,7 @@ const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
 
 // Watch times are relative to the real clock, not the fixed fixture time, so
-// time-left labels stay readable.
+// the timer fire time stays in the future.
 function iso(offsetMs: number): string {
   return new Date(Date.now() + offsetMs).toISOString();
 }
