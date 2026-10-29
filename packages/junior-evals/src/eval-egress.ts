@@ -65,10 +65,10 @@ function requestHeadersFromNode(
   return result;
 }
 
-function listen(server: Server): Promise<number> {
+function listen(server: Server, port = 0): Promise<number> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(port, "127.0.0.1", () => {
       server.off("error", reject);
       const address = server.address();
       if (!address || typeof address === "string") {
@@ -309,7 +309,7 @@ async function stopTunnel(tunnel: ChildProcess): Promise<void> {
   });
 }
 
-/** Wait until the public Quick Tunnel route reaches the real proxy handler. */
+/** Wait until the public tunnel route reaches the real proxy handler. */
 async function waitForPublicProxy(baseUrl: string): Promise<void> {
   // A connected tunnel can precede its DNS record. An early lookup can cache
   // NXDOMAIN for 30 minutes. Wait before the first lookup, not after it fails.
@@ -362,6 +362,23 @@ export async function startEvalEgress(
   };
 
   try {
+    // In CI, `scripts/eval-tunnel.sh` owns an account-backed tunnel to this
+    // port. Use its route instead of a Quick Tunnel.
+    const tunnelUrl = process.env.JUNIOR_EVAL_EGRESS_URL;
+    if (tunnelUrl) {
+      const port = await listen(
+        server,
+        Number(process.env.JUNIOR_EVAL_EGRESS_PORT),
+      );
+      await (options.verifyPublicUrl ?? waitForPublicProxy)(tunnelUrl);
+      return {
+        baseUrl: tunnelUrl,
+        close,
+        controlToken,
+        controlUrl: new URL(RESET_PATH, `http://127.0.0.1:${port}`).href,
+        stateUrl: new URL(STATE_PATH, `http://127.0.0.1:${port}`).href,
+      };
+    }
     const port = await listen(server);
     configDir = await mkdtemp(path.join(tmpdir(), "junior-eval-egress-"));
     const configPath = path.join(configDir, "config.yml");

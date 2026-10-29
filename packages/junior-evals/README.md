@@ -512,12 +512,12 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Router cases assert exact model profile and reasoning level selections and fail the `router / run` job hard on mismatch. They do not use the aggregate pass-rate floor.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
-- Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI verifies the pinned official binary's SHA-256 checksum before running it.
+- Behavioral and integration global setup makes the eval egress proxy public so Vercel Sandbox can reach it. Local runs start one Quick Tunnel for the suite and retry a failed allocation up to five times with backoff. Local runs require `cloudflared` on `PATH`. In CI, `scripts/eval-tunnel.sh` makes an account-backed tunnel for each job, and global setup serves its port. CI verifies the pinned official `cloudflared` binary's SHA-256 checksum before running it. See `evals/github-actions.md`.
 - Behavioral and integration state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
 - Set the GitHub Actions repository secret `SENTRY_EVALS_API_KEY` to upload results to `evals.sentry.dev`. Each suite uploads one run after execution, with all shards combined. Existing score gates and artifacts stay in place. Without the key, uploads are skipped.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
-Behavioral and integration evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian and Router evals only need AI Gateway access.
+Behavioral and integration evals require real Vercel Sandbox access and public tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian and Router evals only need AI Gateway access.
 
 ## Authoring Rules
 
