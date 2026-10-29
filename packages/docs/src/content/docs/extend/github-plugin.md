@@ -425,14 +425,14 @@ One pull request: `owner/repo#number`.
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, `authorEmail`, `authorRole`, `requesterUsername`, or `requesterRole`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, `authorEmail`, `authorRole`, `requesterUsername`, or `requesterRole`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 

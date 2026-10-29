@@ -45,8 +45,11 @@ function pullRequestHeadBranchData(
   return headBranch ? { headBranch } : undefined;
 }
 
-/** Trusted author values from a GitHub user object when present. */
-function pullRequestAuthorData(
+/**
+ * Trusted opener values from the GitHub pull request user when present. On a
+ * Junior pull request this is the bot until the opener step replaces it.
+ */
+function pullRequestOpenerData(
   user:
     | {
         email?: string | null;
@@ -55,14 +58,14 @@ function pullRequestAuthorData(
     | null
     | undefined,
 ): {
-  authorEmail?: string;
-  authorUsername?: string;
+  openerEmail?: string;
+  openerUsername?: string;
 } {
-  const data: { authorEmail?: string; authorUsername?: string } = {};
+  const data: { openerEmail?: string; openerUsername?: string } = {};
   const username = user?.login?.trim();
-  if (username) data.authorUsername = username;
+  if (username) data.openerUsername = username;
   const email = user?.email?.trim();
-  if (email) data.authorEmail = email;
+  if (email) data.openerEmail = email;
   return data;
 }
 
@@ -366,7 +369,7 @@ function normalizeIssueCommentEvents(
     const resource = gitHubPullRequestResource(input);
     const data = pullRequestMatchData([
       pullRequestDraftData(parsed.data.issue.draft),
-      pullRequestAuthorData(parsed.data.issue.user),
+      pullRequestOpenerData(parsed.data.issue.user),
       {
         repo: input.repo,
         pullRequest: input.number,
@@ -536,7 +539,7 @@ function normalizePullRequestReviewCommentEvent(
   const author = parsed.data.comment.user?.login;
   const data = pullRequestMatchData([
     pullRequestDraftData(parsed.data.pull_request.draft),
-    pullRequestAuthorData(parsed.data.pull_request.user),
+    pullRequestOpenerData(parsed.data.pull_request.user),
     pullRequestHeadBranchData(parsed.data.pull_request.head?.ref),
     {
       repo,
@@ -614,7 +617,7 @@ function normalizePullRequestReviewEvent(
   const reviewer = parsed.data.review.user?.login;
   const data = pullRequestMatchData([
     pullRequestDraftData(parsed.data.pull_request.draft),
-    pullRequestAuthorData(parsed.data.pull_request.user),
+    pullRequestOpenerData(parsed.data.pull_request.user),
     pullRequestHeadBranchData(parsed.data.pull_request.head?.ref),
   ]);
   const event: EventInput = {
@@ -702,8 +705,8 @@ function pullRequestEventText(pullRequest: {
 
 /** Build the PR and repository targets for one pull request lifecycle event. */
 function pullRequestLifecycleEvents(input: {
-  authorEmail?: string;
-  authorUsername?: string;
+  openerEmail?: string;
+  openerUsername?: string;
   deliveryId: string;
   eventType: string;
   headBranch?: string;
@@ -717,9 +720,9 @@ function pullRequestLifecycleEvents(input: {
 }): EventInput[] {
   const data = pullRequestMatchData([
     pullRequestDraftData(input.isDraft),
-    pullRequestAuthorData({
-      email: input.authorEmail,
-      login: input.authorUsername,
+    pullRequestOpenerData({
+      email: input.openerEmail,
+      login: input.openerUsername,
     }),
     pullRequestHeadBranchData(input.headBranch),
   ]);
@@ -755,7 +758,7 @@ function normalizePullRequestEvent(
   });
   const draft = parsed.data.pull_request.draft;
   const isDraft = typeof draft === "boolean" ? draft : undefined;
-  const author = pullRequestAuthorData(parsed.data.pull_request.user);
+  const opener = pullRequestOpenerData(parsed.data.pull_request.user);
   const headBranch = pullRequestHeadBranchData(
     parsed.data.pull_request.head?.ref,
   )?.headBranch;
@@ -765,7 +768,7 @@ function normalizePullRequestEvent(
     const openedAtMs =
       providerTime(parsed.data.pull_request.created_at) ?? Date.now();
     const events = pullRequestLifecycleEvents({
-      ...author,
+      ...opener,
       deliveryId,
       eventType: "pull_request.opened",
       ...(headBranch ? { headBranch } : undefined),
@@ -781,7 +784,7 @@ function normalizePullRequestEvent(
     if (draft !== true) {
       events.push(
         ...pullRequestLifecycleEvents({
-          ...author,
+          ...opener,
           deliveryId,
           eventType: "pull_request.ready_for_review",
           ...(headBranch ? { headBranch } : undefined),
@@ -799,7 +802,7 @@ function normalizePullRequestEvent(
 
   if (parsed.data.action === "ready_for_review") {
     return pullRequestLifecycleEvents({
-      ...author,
+      ...opener,
       deliveryId,
       eventType: "pull_request.ready_for_review",
       ...(headBranch ? { headBranch } : undefined),
@@ -818,7 +821,7 @@ function normalizePullRequestEvent(
     ? "pull_request.merged"
     : "pull_request.closed_unmerged";
   return pullRequestLifecycleEvents({
-    ...author,
+    ...opener,
     deliveryId,
     eventType,
     ...(headBranch ? { headBranch } : undefined),

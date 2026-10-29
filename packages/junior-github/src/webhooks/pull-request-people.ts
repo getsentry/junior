@@ -34,12 +34,75 @@ const commitPageSchema = z.array(
   }),
 );
 
-/** The pull request that a people lookup reads. */
-export interface GitHubPullRequestPeopleTarget {
-  /** Pull request author and assignees from the webhook. */
-  logins: string[];
+/** One pull request in a repository. */
+export interface GitHubPullRequestTarget {
   number: number;
   repositoryFullName: string;
+}
+
+/** The pull request that a people lookup reads. */
+export interface GitHubPullRequestPeopleTarget extends GitHubPullRequestTarget {
+  /** Pull request opener and assignees from the webhook. */
+  logins: string[];
+}
+
+/** Loads one page of a pull request's commits from GitHub. */
+export type GitHubCommitPageLoader = (
+  page: number,
+  perPage: number,
+) => Promise<unknown>;
+
+/**
+ * Share commit page loads within one webhook delivery, so the `authors` field
+ * and the people involved read each page once.
+ */
+export function shareCommitPages(
+  load: (target: GitHubPullRequestTarget) => Promise<GitHubCommitPageLoader>,
+): (target: GitHubPullRequestTarget) => GitHubCommitPageLoader {
+  const loaders = new Map<string, Promise<GitHubCommitPageLoader>>();
+  const pages = new Map<string, Promise<unknown>>();
+  return (target) => async (page, perPage) => {
+    const pullRequest = `${target.repositoryFullName.toLowerCase()}#${target.number}`;
+    const key = `${pullRequest}:${page}:${perPage}`;
+    let result = pages.get(key);
+    if (!result) {
+      let loader = loaders.get(pullRequest);
+      if (!loader) {
+        loader = load(target);
+        loaders.set(pullRequest, loader);
+      }
+      result = loader.then((loadPage) => loadPage(page, perPage));
+      pages.set(key, result);
+    }
+    return await result;
+  };
+}
+
+/**
+ * Call `visit` with the author login and the `Co-authored-by` emails of each
+ * commit, for up to `MAX_PAGES` pages of commits.
+ */
+async function forEachCommit(
+  loadPage: GitHubCommitPageLoader,
+  visit: (commit: { coAuthorEmails: string[]; login?: string }) => void,
+): Promise<void> {
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const commits = commitPageSchema.parse(await loadPage(page, PAGE_SIZE));
+    for (const commit of commits) {
+      visit({
+        coAuthorEmails: [
+          ...commit.commit.message.matchAll(CO_AUTHOR_TRAILER),
+        ].map((match) => match[1]!.toLowerCase()),
+        ...(commit.author ? { login: commit.author.login } : undefined),
+      });
+    }
+    if (commits.length < PAGE_SIZE) break;
+  }
+}
+
+/** The GitHub login in a noreply email such as `1+octocat@users.noreply.github.com`. */
+function noreplyLogin(email: string): string | undefined {
+  return GITHUB_NOREPLY_EMAIL.exec(email)?.groups?.login;
 }
 
 /**
@@ -50,7 +113,7 @@ export interface GitHubPullRequestPeopleTarget {
  */
 export async function loadGitHubPullRequestPeople(args: {
   logins: readonly string[];
-  loadPage(page: number, perPage: number): Promise<unknown>;
+  loadPage: GitHubCommitPageLoader;
 }): Promise<EventPerson[]> {
   const people = new Map<string, EventPerson>();
   const addLogin = (login: string) => {
@@ -59,9 +122,8 @@ export async function loadGitHubPullRequestPeople(args: {
     if (!people.has(key))
       people.set(key, { provider: "github", handle: login });
   };
-  const addEmail = (value: string) => {
-    const email = value.toLowerCase();
-    const login = GITHUB_NOREPLY_EMAIL.exec(email)?.groups?.login;
+  const addEmail = (email: string) => {
+    const login = noreplyLogin(email);
     if (login) addLogin(login);
     else if (!people.has(`email:${email}`)) {
       people.set(`email:${email}`, { email });
@@ -69,19 +131,34 @@ export async function loadGitHubPullRequestPeople(args: {
   };
 
   args.logins.forEach(addLogin);
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const commits = commitPageSchema.parse(
-      await args.loadPage(page, PAGE_SIZE),
-    );
-    for (const commit of commits) {
-      if (commit.author) addLogin(commit.author.login);
-      for (const match of commit.commit.message.matchAll(CO_AUTHOR_TRAILER)) {
-        addEmail(match[1]!);
-      }
-    }
-    if (commits.length < PAGE_SIZE) break;
-  }
+  await forEachCommit(args.loadPage, (commit) => {
+    if (commit.login) addLogin(commit.login);
+    commit.coAuthorEmails.forEach(addEmail);
+  });
   return [...people.values()].slice(0, MAX_PEOPLE);
+}
+
+/**
+ * Collect the GitHub logins of a pull request's commit authors and
+ * `Co-authored-by` people, for the `authors` event field. Bots stay in the
+ * list, so Junior's own commits name `sentry-junior[bot]` and the people it
+ * credits. A co-author without a noreply email has no known login and is
+ * left out.
+ */
+export async function loadGitHubPullRequestAuthors(args: {
+  loadPage: GitHubCommitPageLoader;
+}): Promise<string[]> {
+  const authors = new Map<string, string>();
+  const add = (login: string | undefined) => {
+    if (login && !authors.has(login.toLowerCase())) {
+      authors.set(login.toLowerCase(), login);
+    }
+  };
+  await forEachCommit(args.loadPage, (commit) => {
+    add(commit.login);
+    commit.coAuthorEmails.forEach((email) => add(noreplyLogin(email)));
+  });
+  return [...authors.values()].slice(0, MAX_PEOPLE);
 }
 
 /**
