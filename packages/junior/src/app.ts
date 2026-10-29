@@ -527,7 +527,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
   const attachmentStorage = createAttachmentStorage(
-    getChatConfig().attachmentStorage.provider,
+    getChatConfig().attachmentStorage,
   );
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,

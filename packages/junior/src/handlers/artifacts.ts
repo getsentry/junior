@@ -24,7 +24,7 @@ export async function publicArtifactGET(args: {
       filename: args.filename,
       storage:
         args.storage ??
-        createAttachmentStorage(getChatConfig().attachmentStorage.provider),
+        createAttachmentStorage(getChatConfig().attachmentStorage),
     });
     if (!artifact) {
       return new Response("Not Found", {
