@@ -108,10 +108,26 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     return route.fallback();
   });
   await page.goto(`${dashboard.baseURL}/automations/event-1/edit`);
-  await expect(page.getByLabel("Resource identifier")).toHaveValue(
-    "getsentry/junior#42",
+  const identifier = page.getByRole("group", { name: "Resource identifier" });
+  await expect(identifier.getByLabel("owner", { exact: true })).toHaveValue(
+    "getsentry",
   );
+  await expect(identifier.getByLabel("repo", { exact: true })).toHaveValue(
+    "junior",
+  );
+  const issueNumber = identifier.getByLabel("number", { exact: true });
+  await expect(issueNumber).toHaveValue("42");
   await screenshot(page, "automation-event-editor");
+  // A wrong part names itself, and fixing it restores the exact identifier.
+  await issueNumber.fill("42a");
+  await expect(
+    identifier.getByText(
+      '"number" must be a positive whole number, such as 123.',
+    ),
+  ).toBeVisible();
+  await expect(issueNumber).toHaveAttribute("aria-invalid", "true");
+  await issueNumber.fill("42");
+  await expect(identifier.getByText("getsentry/junior#42")).toBeVisible();
   // Only issue.closed sets closedBy, so the filter hides for issue.opened.
   await expect(page.getByLabel("closedBy", { exact: true })).toBeVisible();
   await page

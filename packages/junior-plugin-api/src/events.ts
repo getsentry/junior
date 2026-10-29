@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { objectTypeSchema } from "./object-presentation";
+import { eventIdentifierSchema } from "./event-identifiers";
 
 export const EVENT_SUMMARY_MAX_LENGTH = 4_000;
 export const EVENT_TEXT_MAX_LENGTH = 8_000;
@@ -230,30 +231,10 @@ export function eventMatches(
   return true;
 }
 
-function isRegExpSource(value: string): boolean {
-  try {
-    new RegExp(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** The identifier shape of one resource type. Plain JSON, so API responses can carry it. */
-export const eventIdentifierSchema = z
-  .object({
-    /** Shown to the agent, such as "owner/repo#number". */
-    format: z.string().trim().min(1).max(200),
-    /** RegExp source that matches a normalized identifier of this resource type. */
-    pattern: z.string().min(1).refine(isRegExpSource, {
-      message: "Identifier pattern must be a valid regular expression.",
-    }),
-  })
-  .strict();
-
 export const pluginEventTypeSchema = z
   .object({
     type: resourceTypeSchema,
+    /** The identifier parts. Without it, any identifier is accepted. */
     identifier: eventIdentifierSchema.optional(),
     supportedEvents: z.array(eventTypeSchema).min(1),
     suggestedEvents: z.array(eventTypeSchema).optional(),

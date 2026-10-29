@@ -2,6 +2,7 @@ import {
   eventTriggerProblems,
   normalizeEventIdentifier,
   eventMatchSchema,
+  parseEventIdentifier,
   type EventTriggerProblem,
   type EventTriggerSelection,
   type PluginEvents,
@@ -184,20 +185,26 @@ export function requireEventIdentifier(
   const registration = catalog[input.namespace];
   const identifier = normalizeEventIdentifier(registration, input.identifier);
   const resourceTypes = registration?.resourceTypes ?? [];
-  const fits = (resourceType: (typeof resourceTypes)[number]) =>
-    resourceType.identifier !== undefined &&
-    new RegExp(resourceType.identifier.pattern).test(identifier);
   const resourceType = resourceTypes.find(
     (candidate) => candidate.type === input.resourceType,
   );
-  if (!resourceType?.identifier || fits(resourceType)) return identifier;
-  const fitting = resourceTypes.filter(fits).map((candidate) => candidate.type);
+  if (!resourceType?.identifier) return identifier;
+  const parsed = parseEventIdentifier(resourceType.identifier, identifier);
+  if (parsed.ok) return identifier;
+  const fitting = resourceTypes
+    .filter(
+      (candidate) =>
+        candidate.identifier &&
+        parseEventIdentifier(candidate.identifier, identifier).ok,
+    )
+    .map((candidate) => `"${candidate.type}"`);
   throw new ToolInputError(
     [
-      `Identifier "${identifier}" does not fit resourceType "${input.resourceType}" in namespace "${input.namespace}". Expected format: "${resourceType.identifier.format}".`,
+      `Identifier "${identifier}" does not fit resourceType "${input.resourceType}" in namespace "${input.namespace}", which has the form "${resourceType.identifier.template}".`,
+      ...parsed.problems.map((problem) => problem.message),
       ...(fitting.length > 0
         ? [
-            `If the identifier is correct, use one of these resourceType values: ${fitting.map((type) => `"${type}"`).join(", ")}.`,
+            `If the identifier is correct, use one of these resourceType values: ${fitting.join(", ")}.`,
           ]
         : []),
     ].join(" "),

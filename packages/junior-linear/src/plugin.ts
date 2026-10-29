@@ -7,6 +7,8 @@ import {
 import { z } from "zod";
 import {
   LINEAR_ISSUE_EVENTS,
+  LINEAR_ISSUE_IDENTIFIER,
+  LINEAR_TEAM_IDENTIFIER,
   LINEAR_ISSUE_MATCH_FIELDS,
 } from "./events/issue.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
@@ -171,12 +173,14 @@ export function linearPlugin(): PluginRegistration {
       resourceTypes: [
         {
           type: "issue",
+          identifier: LINEAR_ISSUE_IDENTIFIER,
           supportedEvents: [...LINEAR_ISSUE_EVENTS],
           suggestedEvents: [...LINEAR_ISSUE_EVENTS],
           matchFields: LINEAR_ISSUE_MATCH_FIELDS,
         },
         {
           type: "team",
+          identifier: LINEAR_TEAM_IDENTIFIER,
           supportedEvents: [...LINEAR_ISSUE_EVENTS],
           suggestedEvents: [...LINEAR_ISSUE_EVENTS],
           matchFields: LINEAR_ISSUE_MATCH_FIELDS,

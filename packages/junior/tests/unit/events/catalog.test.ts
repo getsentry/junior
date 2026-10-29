@@ -65,16 +65,23 @@ describe("event catalog", () => {
           {
             type: "issue",
             identifier: {
-              format: "owner/repo#number",
-              pattern: String.raw`^\S+#\d+$`,
+              template: "{owner}/{repo}#{number}",
+              parts: {
+                owner: { kind: "string", description: "owner" },
+                repo: { kind: "string", description: "repository" },
+                number: { kind: "number", description: "issue number" },
+              },
             },
             supportedEvents: ["issue.closed"],
           },
           {
             type: "repository",
             identifier: {
-              format: "owner/repo",
-              pattern: String.raw`^[^\s#]+$`,
+              template: "{owner}/{repo}",
+              parts: {
+                owner: { kind: "string", description: "owner" },
+                repo: { kind: "string", description: "repository" },
+              },
             },
             supportedEvents: ["issue.closed"],
           },
@@ -93,11 +100,16 @@ describe("event catalog", () => {
     expect(identifier("issue", "Getsentry/Junior#208")).toBe(
       "getsentry/junior#208",
     );
-    // A resource type without a declared shape accepts any identifier.
+    // A resource type without a declared format accepts any identifier.
     expect(identifier("release_source", "anything")).toBe("anything");
     expect(() => identifier("issue", "getsentry/junior")).toThrow(
       new ToolInputError(
-        'Identifier "getsentry/junior" does not fit resourceType "issue" in namespace "github". Expected format: "owner/repo#number". If the identifier is correct, use one of these resourceType values: "repository".',
+        'Identifier "getsentry/junior" does not fit resourceType "issue" in namespace "github", which has the form "{owner}/{repo}#{number}". Expected "#" after "repo". If the identifier is correct, use one of these resourceType values: "repository".',
+      ),
+    );
+    expect(() => identifier("issue", "getsentry/junior#latest")).toThrow(
+      new ToolInputError(
+        'Identifier "getsentry/junior#latest" does not fit resourceType "issue" in namespace "github", which has the form "{owner}/{repo}#{number}". "number" must be a positive whole number, such as 123.',
       ),
     );
   });

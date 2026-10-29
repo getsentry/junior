@@ -88,6 +88,14 @@ export async function mockAutomationEditor(
         {
           namespace: "github",
           type: "issue",
+          identifier: {
+            template: "{owner}/{repo}#{number}",
+            parts: {
+              owner: { kind: "string", description: "Repository owner" },
+              repo: { kind: "string", description: "Repository name" },
+              number: { kind: "number", description: "Issue number" },
+            },
+          },
           supportedEvents: ["issue.closed", "issue.opened"],
           matchFields: {
             state: {

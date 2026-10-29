@@ -6,6 +6,7 @@
  * automation can watch only its own channel and always uses system credentials.
  */
 import {
+  eventIdentifierSchema,
   eventMatchFieldsSchema,
   type Event,
   type EventInput,
@@ -24,6 +25,16 @@ const CHANNEL_RESOURCE_TYPE = "channel";
 const MESSAGE_POSTED_EVENT = "message.posted";
 const CHANNEL_ID_PATTERN = /^[CG][A-Z0-9]{2,}$/;
 
+const CHANNEL_IDENTIFIER = eventIdentifierSchema.parse({
+  template: "{channel}",
+  parts: {
+    channel: {
+      kind: "string",
+      description: `"${SLACK_CURRENT_CHANNEL_IDENTIFIER}" for the channel where the automation is created`,
+    },
+  },
+});
+
 const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   userId: {
     kind: "string",
@@ -41,10 +52,7 @@ export function slackChannelMessageEvents(): Pick<
     resourceTypes: [
       {
         type: CHANNEL_RESOURCE_TYPE,
-        identifier: {
-          format: `"${SLACK_CURRENT_CHANNEL_IDENTIFIER}" for the channel where the automation is created`,
-          pattern: String.raw`^(?:current_channel|[CG][A-Z0-9]{2,})$`,
-        },
+        identifier: CHANNEL_IDENTIFIER,
         supportedEvents: [MESSAGE_POSTED_EVENT],
         suggestedEvents: [],
         matchFields: CHANNEL_MESSAGE_MATCH_FIELDS,

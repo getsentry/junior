@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import {
   EgressAuthRequired,
+  parseEventIdentifier,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
   type ToolRegistrationHookContext,
@@ -867,7 +868,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("declares an identifier shape that fits only its own resource type", () => {
+  it("declares an identifier format that fits only its own resource type", () => {
     const repo = "getsentry/junior";
     const built = {
       deployment_source: gitHubDeploymentSourceResource({
@@ -884,10 +885,12 @@ describe("github plugin", () => {
       Object.entries(built).map(([type, resource]) => [
         type,
         githubPlugin()
-          .events!.resourceTypes.filter((resourceType) =>
-            new RegExp(resourceType.identifier!.pattern).test(
-              resource.identifier,
-            ),
+          .events!.resourceTypes.filter(
+            (resourceType) =>
+              parseEventIdentifier(
+                resourceType.identifier!,
+                resource.identifier,
+              ).ok,
           )
           .map((resourceType) => resourceType.type),
       ]),

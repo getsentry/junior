@@ -9,7 +9,11 @@ import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { SENTRY_ISSUE_EVENTS } from "./events/issue.js";
+import {
+  SENTRY_ISSUE_EVENTS,
+  SENTRY_ISSUE_IDENTIFIER,
+  SENTRY_PROJECT_IDENTIFIER,
+} from "./events/issue.js";
 import {
   SENTRY_METRIC_ALERT_EVENTS,
   SENTRY_METRIC_ALERT_IDENTIFIER,
@@ -32,11 +36,13 @@ export function sentryPlugin(): PluginRegistration {
       resourceTypes: [
         {
           type: "issue",
+          identifier: SENTRY_ISSUE_IDENTIFIER,
           supportedEvents: [...SENTRY_ISSUE_EVENTS],
           suggestedEvents: [...SENTRY_ISSUE_EVENTS],
         },
         {
           type: "project",
+          identifier: SENTRY_PROJECT_IDENTIFIER,
           supportedEvents: [
             ...SENTRY_ISSUE_EVENTS,
             ...SENTRY_METRIC_ALERT_EVENTS,

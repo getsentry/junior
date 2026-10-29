@@ -1,5 +1,10 @@
 import { createHmac } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
+import {
+  buildEventIdentifier,
+  normalizeEventIdentifier,
+  parseEventIdentifier,
+  type EventInput,
+} from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sentryPlugin } from "../src";
 import { createSentryWebhookRoute } from "../src/webhooks/handler";
@@ -176,6 +181,43 @@ describe("Sentry webhook events", () => {
         untrustedText: expect.any(String),
       },
     ]);
+  });
+
+  it("publishes identifiers that read back from their declared parts", () => {
+    const registration = sentryPlugin().events!;
+    const events = [
+      ...normalizeSentryEvents({
+        body: issueBody(),
+        hookResource: "issue",
+        hookTimestamp: "2026-08-05T23:00:01.000Z",
+      }),
+      ...normalizeSentryEvents({
+        body: metricAlertBody(),
+        hookResource: "metric_alert",
+        hookTimestamp: "1785976800",
+      }),
+    ];
+    const unreadable = events
+      .map((event) => ({
+        eventType: event.eventType,
+        identifier: normalizeEventIdentifier(registration, event.identifier),
+      }))
+      .filter(
+        ({ eventType, identifier }) =>
+          !registration.resourceTypes.some((resourceType) => {
+            const format = resourceType.identifier!;
+            const parsed = parseEventIdentifier(format, identifier);
+            const built =
+              parsed.ok && buildEventIdentifier(format, parsed.parts);
+            return (
+              resourceType.supportedEvents.includes(eventType) &&
+              built &&
+              built.ok &&
+              built.identifier === identifier
+            );
+          }),
+      );
+    expect(unreadable).toEqual([]);
   });
 
   it("ignores a metric alert without an organization or with an unsupported state", () => {

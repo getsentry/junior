@@ -785,13 +785,19 @@ describe("createApp plugin config", () => {
         manifest: {
           name: "event-demo",
           displayName: "Event Demo",
-          description: "Invalid identifier pattern",
+          description: "Invalid identifier template",
         },
         events: {
           resourceTypes: [
             {
               type: "issue",
-              identifier: { format: "owner/repo#number", pattern: "(" },
+              identifier: {
+                template: "{owner}{repo}",
+                parts: {
+                  owner: { kind: "string", description: "owner" },
+                  repo: { kind: "string", description: "repository" },
+                },
+              },
               supportedEvents: ["issue.closed"],
             },
           ],

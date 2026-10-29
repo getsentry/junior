@@ -1,4 +1,8 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  eventIdentifierSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
+import { GITHUB_REPOSITORY_PARTS } from "./identifier-parts.js";
 import { GITHUB_DEPLOYMENT_EVENTS } from "./deployment.js";
 import { GITHUB_ISSUE_EVENTS, GITHUB_ISSUE_SUGGESTED_EVENTS } from "./issue.js";
 import {
@@ -6,11 +10,11 @@ import {
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
 } from "./pull-request.js";
 
-/** The identifier shape that `gitHubRepositoryResource` builds. */
-export const GITHUB_REPOSITORY_IDENTIFIER = {
-  format: "owner/repo",
-  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+$`,
-};
+/** The identifier format that `gitHubRepositoryResource` builds. */
+export const GITHUB_REPOSITORY_IDENTIFIER = eventIdentifierSchema.parse({
+  template: "{owner}/{repo}",
+  parts: GITHUB_REPOSITORY_PARTS,
+});
 
 /** Build the stable repository identity shared by tools and webhooks. */
 export function gitHubRepositoryResource(input: {

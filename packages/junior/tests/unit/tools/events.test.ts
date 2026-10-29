@@ -34,11 +34,21 @@ const context: ToolRuntimeContext = {
   workspace: {} as ToolRuntimeContext["workspace"],
 };
 
+const PULL_REQUEST_IDENTIFIER = {
+  template: "{owner}/{repo}#{number}",
+  parts: {
+    owner: { kind: "string", description: "repository owner" },
+    repo: { kind: "string", description: "repository name" },
+    number: { kind: "number", description: "pull request number" },
+  },
+} as const;
+
 const GITHUB_EVENTS = {
   github: {
     resourceTypes: [
       {
         type: "pull_request",
+        identifier: PULL_REQUEST_IDENTIFIER,
         supportedEvents: [
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
@@ -166,6 +176,7 @@ describe("event tools", () => {
         {
           namespace: "github",
           type: "pull_request",
+          identifier: PULL_REQUEST_IDENTIFIER,
           supportedEvents: [
             "pull_request.checks.failed",
             "pull_request.review.changes_requested",

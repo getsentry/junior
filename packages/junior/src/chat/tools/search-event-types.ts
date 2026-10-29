@@ -1,3 +1,4 @@
+import { eventIdentifierSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { eventNamespaceSchema, type EventCatalog } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -10,7 +11,7 @@ const searchedResourceTypeSchema = z
   .object({
     namespace: z.string(),
     type: z.string(),
-    identifierFormat: z.string().optional(),
+    identifier: eventIdentifierSchema.optional(),
     supportedEvents: z.array(z.string()),
     suggestedEvents: z.array(z.string()).optional(),
     matchFields: z
@@ -52,7 +53,7 @@ function searchableResourceTypes(catalog: EventCatalog) {
         namespace,
         type: resourceType.type,
         ...(resourceType.identifier
-          ? { identifierFormat: resourceType.identifier.format }
+          ? { identifier: resourceType.identifier }
           : undefined),
         supportedEvents: [...resourceType.supportedEvents].sort(),
         ...(resourceType.suggestedEvents

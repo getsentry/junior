@@ -13,6 +13,7 @@ import { createVercelDeploymentTool } from "./tools/deployment.js";
 import { createVercelActionTools } from "./tools/actions.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
+  VERCEL_DEPLOYMENT_IDENTIFIER,
   VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
@@ -26,6 +27,7 @@ export function vercelPlugin(): PluginRegistration {
       resourceTypes: [
         {
           type: "deployment",
+          identifier: VERCEL_DEPLOYMENT_IDENTIFIER,
           supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
           suggestedEvents: [...VERCEL_DEPLOYMENT_SUGGESTED_EVENTS],
         },

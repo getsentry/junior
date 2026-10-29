@@ -1,7 +1,9 @@
 import {
+  eventIdentifierSchema,
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { GITHUB_REPOSITORY_PARTS } from "./identifier-parts.js";
 
 export const GITHUB_ISSUE_EVENTS = [
   "issue.comment.created",
@@ -39,11 +41,14 @@ export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
 });
 
-/** The identifier shape that `gitHubIssueResource` builds. */
-export const GITHUB_ISSUE_IDENTIFIER = {
-  format: "owner/repo#number",
-  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+#\d+$`,
-};
+/** The identifier format that `gitHubIssueResource` builds. */
+export const GITHUB_ISSUE_IDENTIFIER = eventIdentifierSchema.parse({
+  template: "{owner}/{repo}#{number}",
+  parts: {
+    ...GITHUB_REPOSITORY_PARTS,
+    number: { kind: "number", description: "GitHub issue number" },
+  },
+});
 
 /** Build the stable issue identity shared by tools and webhooks. */
 export function gitHubIssueResource(input: {

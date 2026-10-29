@@ -1,4 +1,7 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  eventIdentifierSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
 
 export const VERCEL_DEPLOYMENT_EVENTS = [
   "deployment.succeeded",
@@ -12,7 +15,32 @@ export const VERCEL_DEPLOYMENT_SUGGESTED_EVENTS = [
   "deployment.canceled",
 ];
 
-export type VercelDeploymentTarget = "preview" | "production" | "staging";
+const VERCEL_DEPLOYMENT_TARGETS = ["preview", "production", "staging"] as const;
+
+export type VercelDeploymentTarget = (typeof VERCEL_DEPLOYMENT_TARGETS)[number];
+
+/**
+ * The identifier format that `vercelDeploymentResource` builds. A commit needs
+ * a target, so the commit group is inside the target group.
+ */
+export const VERCEL_DEPLOYMENT_IDENTIFIER = eventIdentifierSchema.parse({
+  template: "{projectId}[:{target}[:{commitSha}]]",
+  parts: {
+    projectId: {
+      kind: "string",
+      description: "Vercel project ID, such as prj_123",
+    },
+    target: {
+      kind: "string",
+      description: "optional deployment target",
+      enum: [...VERCEL_DEPLOYMENT_TARGETS],
+    },
+    commitSha: {
+      kind: "hex",
+      description: "optional full lowercase commit SHA. Needs a target.",
+    },
+  },
+});
 
 /** Build the stable deployment identity shared by tools and webhooks. */
 export function vercelDeploymentResource(input: {

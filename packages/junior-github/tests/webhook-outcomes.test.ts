@@ -1,6 +1,9 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
+  buildEventIdentifier,
   eventMatches,
+  normalizeEventIdentifier,
+  parseEventIdentifier,
   type ConversationAnnotationInput,
   type EventInput,
   type EventMatch,
@@ -320,6 +323,84 @@ describe("GitHub webhook events", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
+  });
+
+  it("publishes identifiers that read back from their declared parts", () => {
+    const registration = githubPlugin().events!;
+    const repository = { full_name: "GetSentry/Junior" };
+    const events = [
+      ...normalizeGitHubEvents({
+        body: {
+          action: "closed",
+          repository,
+          pull_request: { number: 946, merged: true },
+        },
+        deliveryId: "delivery-pr",
+        eventName: "pull_request",
+      }),
+      ...normalizeGitHubEvents({
+        body: { action: "reopened", repository, issue: { number: 947 } },
+        deliveryId: "delivery-issue",
+        eventName: "issues",
+      }),
+      ...normalizeGitHubEvents({
+        body: {
+          action: "created",
+          repository,
+          deployment: {
+            created_at: "2026-07-28T05:15:00.000Z",
+            environment: "Preview EU/West",
+            id: 1,
+            sha: "C610B5D6A88C9DA5D65627A1CDB3829B05C14F75",
+          },
+        },
+        deliveryId: "delivery-deployment",
+        eventName: "deployment",
+      }),
+      ...normalizeGitHubEvents({
+        body: {
+          action: "published",
+          repository,
+          release: {
+            draft: false,
+            id: 2,
+            published_at: "2026-08-04T05:15:00.000Z",
+            tag_name: "Release/1.0",
+          },
+        },
+        deliveryId: "delivery-release",
+        eventName: "release",
+      }),
+    ];
+    expect(new Set(events.map((event) => event.eventType))).toEqual(
+      new Set([
+        "pull_request.merged",
+        "issue.reopened",
+        "deployment.created",
+        "release.published",
+      ]),
+    );
+    const unreadable = events
+      .map((event) => ({
+        eventType: event.eventType,
+        identifier: normalizeEventIdentifier(registration, event.identifier),
+      }))
+      .filter(
+        ({ eventType, identifier }) =>
+          !registration.resourceTypes.some((resourceType) => {
+            const format = resourceType.identifier!;
+            const parsed = parseEventIdentifier(format, identifier);
+            const built =
+              parsed.ok && buildEventIdentifier(format, parsed.parts);
+            return (
+              resourceType.supportedEvents.includes(eventType) &&
+              built &&
+              built.ok &&
+              built.identifier === identifier
+            );
+          }),
+      );
+    expect(unreadable).toEqual([]);
   });
 
   it("uses the provider merge timestamp", () => {

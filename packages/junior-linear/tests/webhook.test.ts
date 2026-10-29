@@ -1,5 +1,10 @@
 import { createHmac } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
+import {
+  buildEventIdentifier,
+  normalizeEventIdentifier,
+  parseEventIdentifier,
+  type EventInput,
+} from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linearPlugin } from "../src";
 import { createLinearWebhookRoute } from "../src/webhooks/handler";
@@ -146,6 +151,35 @@ describe("Linear webhook events", () => {
         trustedSummary: "Linear issue SRE-123 was created.",
       }),
     ]);
+  });
+
+  it("publishes identifiers that read back from their declared parts", () => {
+    const registration = linearPlugin().events!;
+    const events = normalizeLinearEvents({
+      body: issueBody(),
+      linearEvent: "Issue",
+    });
+    const unreadable = events
+      .map((event) => ({
+        eventType: event.eventType,
+        identifier: normalizeEventIdentifier(registration, event.identifier),
+      }))
+      .filter(
+        ({ eventType, identifier }) =>
+          !registration.resourceTypes.some((resourceType) => {
+            const format = resourceType.identifier!;
+            const parsed = parseEventIdentifier(format, identifier);
+            const built =
+              parsed.ok && buildEventIdentifier(format, parsed.parts);
+            return (
+              resourceType.supportedEvents.includes(eventType) &&
+              built &&
+              built.ok &&
+              built.identifier === identifier
+            );
+          }),
+      );
+    expect(unreadable).toEqual([]);
   });
 
   it("publishes both events from a valid signed delivery", async () => {

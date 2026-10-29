@@ -1,5 +1,10 @@
 import { createHmac } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
+import {
+  buildEventIdentifier,
+  normalizeEventIdentifier,
+  parseEventIdentifier,
+  type EventInput,
+} from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 import { createVercelWebhookRoute } from "../src/webhooks/handler";
@@ -105,6 +110,35 @@ Deployment: dpl_123abc`,
       ]);
     },
   );
+
+  it("publishes identifiers that read back from their declared parts", () => {
+    const registration = vercelPlugin().events!;
+    const events = [
+      ...normalizeVercelEvents({ body: webhookBody() }),
+      ...normalizeVercelEvents({ body: webhookBody("deployment.error", null) }),
+    ];
+    const unreadable = events
+      .map((event) => ({
+        eventType: event.eventType,
+        identifier: normalizeEventIdentifier(registration, event.identifier),
+      }))
+      .filter(
+        ({ eventType, identifier }) =>
+          !registration.resourceTypes.some((resourceType) => {
+            const format = resourceType.identifier!;
+            const parsed = parseEventIdentifier(format, identifier);
+            const built =
+              parsed.ok && buildEventIdentifier(format, parsed.parts);
+            return (
+              resourceType.supportedEvents.includes(eventType) &&
+              built &&
+              built.ok &&
+              built.identifier === identifier
+            );
+          }),
+      );
+    expect(unreadable).toEqual([]);
+  });
 
   it("ignores whitespace-only project IDs", () => {
     const body = webhookBody();

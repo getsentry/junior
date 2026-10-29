@@ -1,7 +1,9 @@
 import {
+  eventIdentifierSchema,
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { GITHUB_REPOSITORY_PARTS } from "./identifier-parts.js";
 
 export const GITHUB_DEPLOYMENT_EVENTS = [
   "deployment.created",
@@ -44,11 +46,22 @@ export const GITHUB_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
 });
 
-/** The identifier shape that `gitHubDeploymentSourceResource` builds. */
-export const GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER = {
-  format: "deployment-source:owner/repo[:environment]:<full-commit-sha>",
-  pattern: String.raw`^deployment-source:[^\s/:#]+\/[^\s/:#]+(?::[^\s:]+)?:[0-9a-f]+$`,
-};
+/** The identifier format that `gitHubDeploymentSourceResource` builds. */
+export const GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER = eventIdentifierSchema.parse({
+  template: "deployment-source:{owner}/{repo}[:{environment}]:{commitSha}",
+  parts: {
+    ...GITHUB_REPOSITORY_PARTS,
+    environment: {
+      kind: "string",
+      description:
+        "optional lowercase deployment environment, percent-encoded, such as production",
+    },
+    commitSha: {
+      kind: "hex",
+      description: "full lowercase commit SHA of the deployment",
+    },
+  },
+});
 
 /** Build the stable deployment-source identity shared by tools and webhooks. */
 export function gitHubDeploymentSourceResource(input: {

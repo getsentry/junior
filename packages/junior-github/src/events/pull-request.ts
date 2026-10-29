@@ -1,7 +1,9 @@
 import {
+  eventIdentifierSchema,
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { GITHUB_REPOSITORY_PARTS } from "./identifier-parts.js";
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
@@ -143,11 +145,14 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
 });
 
-/** The identifier shape that `gitHubPullRequestResource` builds. */
-export const GITHUB_PULL_REQUEST_IDENTIFIER = {
-  format: "owner/repo#number",
-  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+#\d+$`,
-};
+/** The identifier format that `gitHubPullRequestResource` builds. */
+export const GITHUB_PULL_REQUEST_IDENTIFIER = eventIdentifierSchema.parse({
+  template: "{owner}/{repo}#{number}",
+  parts: {
+    ...GITHUB_REPOSITORY_PARTS,
+    number: { kind: "number", description: "GitHub pull request number" },
+  },
+});
 
 /** Build the stable pull request identity shared by tools and webhooks. */
 export function gitHubPullRequestResource(input: {

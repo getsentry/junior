@@ -1,14 +1,25 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  eventIdentifierSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
+import { GITHUB_REPOSITORY_PARTS } from "./identifier-parts.js";
 
 export const GITHUB_RELEASE_EVENTS = ["release.published"] as const;
 
 export const GITHUB_RELEASE_SUGGESTED_EVENTS = ["release.published"];
 
-/** The identifier shape that `gitHubReleaseSourceResource` builds. */
-export const GITHUB_RELEASE_SOURCE_IDENTIFIER = {
-  format: "release-source:owner/repo[:tag]",
-  pattern: String.raw`^release-source:[^\s/:#]+\/[^\s/:#]+(?::[^\s:]+)?$`,
-};
+/** The identifier format that `gitHubReleaseSourceResource` builds. */
+export const GITHUB_RELEASE_SOURCE_IDENTIFIER = eventIdentifierSchema.parse({
+  template: "release-source:{owner}/{repo}[:{tag}]",
+  parts: {
+    ...GITHUB_REPOSITORY_PARTS,
+    tag: {
+      kind: "string",
+      description:
+        "optional lowercase release tag, percent-encoded, such as v1.2.0. Leave it out to match every release.",
+    },
+  },
+});
 
 /** Build the stable release-source identity shared by tools and webhooks. */
 export function gitHubReleaseSourceResource(input: {

@@ -29,6 +29,7 @@ import { NativeSelect } from "../../components/ui/native-select";
 import { FormNotice } from "../../components/FormNotice";
 import { Checkbox } from "../../components/ui/checkbox";
 import { fetchDashboardJson } from "../../http";
+import { AutomationIdentifierFields } from "./AutomationIdentifierFields";
 
 type Trigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
 
@@ -181,22 +182,34 @@ export function AutomationEventFields(props: {
               }
             />
           </Field>
-          <Field>
-            <FieldLabel htmlFor="trigger-identifier">
-              Resource identifier
-            </FieldLabel>
-            <Input
-              size="comfortable"
-              id="trigger-identifier"
+          {resource.identifier ? (
+            <AutomationIdentifierFields
+              key={`${resource.namespace}:${resource.type}`}
+              format={resource.identifier}
               value={props.value.identifier}
-              onChange={(e) =>
-                props.onChange({ ...props.value, identifier: e.target.value })
+              onChange={(identifier) =>
+                props.onChange({ ...props.value, identifier })
               }
             />
-            <FieldDescription id="trigger-identifier-help">
-              Use the exact provider resource identifier, not its display name.
-            </FieldDescription>
-          </Field>
+          ) : (
+            <Field>
+              <FieldLabel htmlFor="trigger-identifier">
+                Resource identifier
+              </FieldLabel>
+              <Input
+                size="comfortable"
+                id="trigger-identifier"
+                value={props.value.identifier}
+                onChange={(e) =>
+                  props.onChange({ ...props.value, identifier: e.target.value })
+                }
+              />
+              <FieldDescription id="trigger-identifier-help">
+                Use the exact provider resource identifier, not its display
+                name.
+              </FieldDescription>
+            </Field>
+          )}
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">
               Run on these events
