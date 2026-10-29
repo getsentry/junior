@@ -77,6 +77,7 @@ import {
 } from "@/deployment";
 import {
   consumeConversationQueueMessage,
+  conversationWorkQueueConsumer,
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
@@ -89,6 +90,7 @@ import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
+  pluginTaskQueueConsumer,
   registerVercelPluginTaskDevConsumer,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
@@ -96,7 +98,15 @@ import { processPluginTask } from "@/chat/plugins/task-runner";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
+  workspaceSnapshotJobQueueConsumer,
 } from "@/chat/sandbox/snapshot/job-callback";
+import {
+  getQueueProvider,
+  type QueueConsumer,
+  type QueueWorker,
+} from "@/chat/queue/provider";
+import { closeDb } from "@/chat/db";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
@@ -410,6 +420,38 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   }
 }
 
+// The queue consumers of each app from `createApp()`, for `startQueueWorker()`.
+const appQueueConsumers = new WeakMap<Hono, () => QueueConsumer[]>();
+
+/**
+ * Pull this app's queue messages in this process until `close()`.
+ *
+ * Only for a queue provider whose consumers pull messages, such as the
+ * local BullMQ queue. The dev server runs it in its own worker process, so
+ * the Nitro process only sends messages. `close()` also closes the database
+ * and state connections of this process.
+ */
+export async function startQueueWorker(app: Hono): Promise<QueueWorker> {
+  const consumers = appQueueConsumers.get(app);
+  if (!consumers) {
+    throw new Error("startQueueWorker() needs an app from createApp()");
+  }
+  const provider = getQueueProvider();
+  if (!provider.startWorker) {
+    throw new Error(
+      `The ${provider.messagingSystem} queue provider has no queue worker`,
+    );
+  }
+  const worker = await provider.startWorker(consumers());
+  return {
+    close: async () => {
+      await worker.close();
+      await disconnectStateAdapter();
+      await closeDb();
+    },
+  };
+}
+
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
@@ -701,6 +743,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
+  appQueueConsumers.set(app, () => [
+    conversationWorkQueueConsumer(getConversationWorkOptions()),
+    pluginTaskQueueConsumer(),
+    workspaceSnapshotJobQueueConsumer(),
+  ]);
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();

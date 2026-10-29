@@ -43,6 +43,8 @@ This starts the example app on `http://localhost:3000` by default. It also rebui
 
 `pnpm dev` delivers background work through BullMQ on the Redis in `compose.yaml` (`redis://localhost:6382`). Start it with `docker compose up -d redis`. Local work then needs no Vercel Queues access. To use Vercel Queues, set `JUNIOR_QUEUE_PROVIDER=vercel` and run `pnpm dev:env` for the Vercel token. To use another Redis, set `JUNIOR_QUEUE_REDIS_URL`.
 
+With BullMQ, `pnpm dev` starts one queue worker process next to Nitro. Nitro accepts requests and sends jobs. The worker runs them. A new Junior build restarts both processes. A change to `apps/example/server.ts`, `plugins.ts`, `dashboard.ts` or `apps/example/app/` restarts only the worker. The worker and Nitro must share state, so `pnpm dev` keeps state in that Redis unless you set `JUNIOR_STATE_ADAPTER`. `JUNIOR_STATE_ADAPTER=memory` does not work with BullMQ. Each queue topic runs up to 4 jobs at the same time. Set `JUNIOR_QUEUE_WORKER_CONCURRENCY` to change that number.
+
 To also open the Sentry Local UI in your browser, set `OPEN_SPOTLIGHT_WEB=1`:
 
 ```bash

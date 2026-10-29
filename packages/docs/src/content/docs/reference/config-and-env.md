@@ -53,6 +53,7 @@ related:
 | `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
 | `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel` or `bullmq`. Defaults to `vercel`. Use `bullmq` only for local development.                                                   |
 | `JUNIOR_QUEUE_REDIS_URL`                    | Conditional | Redis for the BullMQ queue, such as `redis://localhost:6382`. Required when the provider is `bullmq`.                                                                       |
+| `JUNIOR_QUEUE_WORKER_CONCURRENCY`           | No          | Jobs that the BullMQ worker runs at the same time for each queue topic. A positive integer. Defaults to `4`.                                                                |
 
 For Vercel deployments, create a private Blob store and connect it to the
 project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
@@ -71,8 +72,11 @@ Junior loses them when the process stops, and each process has its own copy.
 Do not use it for a deployed app.
 
 `JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
-Redis, with workers in the dev server process. Local development then needs no
-Vercel Queues access. Install the optional `bullmq` and `redis` packages to use
+Redis. Local development then needs no Vercel Queues access. The app only
+sends jobs. One separate worker process runs them. `pnpm dev` starts that
+process, and the worker logs `queue.bullmq.worker.started` with its
+concurrency for each queue topic. Because the worker is a separate process,
+state must be in Redis, not memory. Install the optional `bullmq` and `redis` packages to use
 it. Junior loads them only when this provider is selected, so they never enter a
 deployed bundle. Give the queue its own Redis URL. If two dev servers share one
 Redis, each one can take the other's jobs.

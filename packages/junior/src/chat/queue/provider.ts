@@ -65,8 +65,22 @@ export interface QueueProvider {
   createCallback(
     consumer: QueueConsumer,
   ): (request: Request) => Promise<Response>;
-  /** Receive messages in this process during local development. */
-  registerDevConsumer(consumer: QueueConsumer): () => void;
+  /**
+   * Receive messages in the process that sends them during local development.
+   * Only providers that deliver this way implement it.
+   */
+  registerDevConsumer?(consumer: QueueConsumer): () => void;
+  /**
+   * Pull messages for these consumers in this process until `close()`.
+   * Only providers whose consumers pull messages implement it.
+   */
+  startWorker?(consumers: QueueConsumer[]): Promise<QueueWorker>;
+}
+
+/** Consumers that pull messages in one process. */
+export interface QueueWorker {
+  /** Stop taking messages, wait for running ones, and release connections. */
+  close(): Promise<void>;
 }
 
 /** Return the queue provider for this deployment. */

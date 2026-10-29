@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getQueueProvider,
   type QueueConsumer,
   type QueueMessageMetadata,
+  type QueueWorker,
 } from "@/chat/queue/provider";
 
 // Chat config reads the queue provider when it loads, so set it first. CI
@@ -14,31 +15,30 @@ vi.hoisted(() => {
     process.env.REDIS_URL?.trim() || "redis://localhost:6382";
 });
 
-const stops: Array<() => void> = [];
+let worker: QueueWorker | undefined;
 
-afterAll(() => {
-  for (const stop of stops) {
-    stop();
-  }
+afterEach(async () => {
+  await worker?.close();
+  worker = undefined;
 });
 
 function uniqueTopic(name: string): string {
   return `junior_test_${name}_${randomUUID()}`;
 }
 
-function startConsumer(
+async function startConsumer(
   topic: string,
   handler: QueueConsumer["handler"],
   retry: QueueConsumer["retry"] = () => undefined,
-): void {
-  stops.push(
-    getQueueProvider().registerDevConsumer({
-      consumerGroup: `${topic}_dev`,
-      handler,
-      retry,
-      topic,
-    }),
-  );
+): Promise<QueueWorker> {
+  const provider = getQueueProvider();
+  if (!provider.startWorker) {
+    throw new Error("The BullMQ provider must start workers");
+  }
+  worker = await provider.startWorker([
+    { consumerGroup: `${topic}_dev`, handler, retry, topic },
+  ]);
+  return worker;
 }
 
 async function waitFor(check: () => boolean, timeoutMs = 10_000) {
@@ -58,7 +58,7 @@ describe("BullMQ queue provider", () => {
       metadata: QueueMessageMetadata;
       payload: unknown;
     }> = [];
-    startConsumer(topic, async (payload, metadata) => {
+    await startConsumer(topic, async (payload, metadata) => {
       deliveries.push({ metadata, payload });
     });
 
@@ -94,7 +94,7 @@ describe("BullMQ queue provider", () => {
     const topic = uniqueTopic("retry");
     const deliveryCounts: number[] = [];
     let acknowledged = false;
-    startConsumer(
+    await startConsumer(
       topic,
       async (_payload, metadata) => {
         deliveryCounts.push(metadata.deliveryCount);
@@ -121,7 +121,7 @@ describe("BullMQ queue provider", () => {
     let running = 0;
     let mostRunning = 0;
     let finished = 0;
-    startConsumer(topic, async () => {
+    await startConsumer(topic, async () => {
       running += 1;
       mostRunning = Math.max(mostRunning, running);
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -135,5 +135,23 @@ describe("BullMQ queue provider", () => {
     await waitFor(() => finished === 3);
 
     expect(mostRunning).toBe(3);
+  });
+
+  it("lets a running message finish before close() returns", async () => {
+    const topic = uniqueTopic("close");
+    let started = false;
+    let finished = false;
+    const running = await startConsumer(topic, async () => {
+      started = true;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      finished = true;
+    });
+
+    await getQueueProvider().send(topic, {});
+    await waitFor(() => started);
+    await running.close();
+    worker = undefined;
+
+    expect(finished).toBe(true);
   });
 });

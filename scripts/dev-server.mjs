@@ -146,6 +146,17 @@ applyJuniorDevelopmentDefaults(process.env, {
   // The Redis service in `compose.yaml`.
   queueRedisUrl: "redis://localhost:6382",
 });
+// With BullMQ, one separate worker process pulls the queue jobs.
+const runQueueWorker = process.env.JUNIOR_QUEUE_PROVIDER?.trim() === "bullmq";
+if (
+  runQueueWorker &&
+  process.env.JUNIOR_STATE_ADAPTER?.trim().toLowerCase() === "memory"
+) {
+  console.error(
+    "JUNIOR_STATE_ADAPTER=memory does not work with the BullMQ queue: its worker runs in a separate process. Use JUNIOR_STATE_ADAPTER=redis or JUNIOR_QUEUE_PROVIDER=vercel.",
+  );
+  process.exit(1);
+}
 if (
   !process.env.JUNIOR_SCHEDULER_SECRET?.trim() &&
   !process.env.CRON_SECRET?.trim()
@@ -264,18 +275,63 @@ function restartNitroDev() {
   stopChild(nitroChild, "SIGTERM");
 }
 
-function watchDistForNitroRestart() {
+let queueWorkerChild;
+let restartingQueueWorker = false;
+
+function startQueueWorker() {
+  const child = spawnChild(
+    process.execPath,
+    [path.join(workspaceRoot, "scripts", "dev-queue-worker.mjs")],
+    { cwd: exampleDir },
+  );
+  queueWorkerChild = child;
+
+  // A worker that fails, for example on a syntax error, does not stop the
+  // dev server. The next watched change starts it again.
+  child.on("exit", (code, signal) => {
+    if (queueWorkerChild === child) {
+      queueWorkerChild = undefined;
+    }
+    if (!stoppedChildren.has(child)) {
+      console.error(
+        `Queue worker exited (${signal ?? `code ${code}`}). It starts again after the next change to Junior or the example app.`,
+      );
+    }
+  });
+}
+
+function restartQueueWorker() {
+  if (restartingQueueWorker) {
+    return;
+  }
+  if (!queueWorkerChild) {
+    startQueueWorker();
+    return;
+  }
+
+  // Start the new worker only after the old one has closed, so that old
+  // code never takes new jobs.
+  restartingQueueWorker = true;
+  queueWorkerChild.once("exit", () => {
+    restartingQueueWorker = false;
+    startQueueWorker();
+  });
+  stopChild(queueWorkerChild, "SIGTERM");
+}
+
+function watchForRestart(paths, restart, options = {}) {
+  const { includeFile = () => true, recursive = false } = options;
   let timer;
-  const scheduleRestart = () => {
+  const scheduleRestart = (_event, filename) => {
+    if (filename && !includeFile(filename)) {
+      return;
+    }
     clearTimeout(timer);
-    timer = setTimeout(restartNitroDev, 1500);
+    timer = setTimeout(restart, 1500);
   };
 
-  for (const distDir of [
-    path.join(juniorPackageDir, "dist"),
-    path.join(dashboardPackageDir, "dist"),
-  ]) {
-    const watcher = fs.watch(distDir, scheduleRestart);
+  for (const watchedPath of paths) {
+    const watcher = fs.watch(watchedPath, { recursive }, scheduleRestart);
     children.add({
       killed: false,
       kill() {
@@ -285,6 +341,35 @@ function watchDistForNitroRestart() {
       },
     });
   }
+}
+
+function watchForRestarts() {
+  // A new Junior build restarts both processes.
+  watchForRestart(
+    [
+      path.join(juniorPackageDir, "dist"),
+      path.join(dashboardPackageDir, "dist"),
+    ],
+    () => {
+      restartNitroDev();
+      if (runQueueWorker) {
+        restartQueueWorker();
+      }
+    },
+  );
+  if (!runQueueWorker) {
+    return;
+  }
+  // Nitro reloads the example app by itself. The worker loads the app once,
+  // so a change to its runtime files restarts only the worker. Watch the
+  // folder, because editors often save a file by replacing it.
+  const appEntryFiles = new Set(["server.ts", "plugins.ts", "dashboard.ts"]);
+  watchForRestart([exampleDir], restartQueueWorker, {
+    includeFile: (filename) => appEntryFiles.has(filename),
+  });
+  watchForRestart([path.join(exampleDir, "app")], restartQueueWorker, {
+    recursive: true,
+  });
 }
 
 runRequiredChild("pnpm", ["build"], {
@@ -324,8 +409,11 @@ if (tunnelToken) {
   ]);
 }
 
-watchDistForNitroRestart();
+watchForRestarts();
 startNitroDev({ openLocalUi });
+if (runQueueWorker) {
+  startQueueWorker();
+}
 startLocalHeartbeat();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

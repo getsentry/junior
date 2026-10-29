@@ -420,6 +420,12 @@ describe("chat config", () => {
     expect((await loadConfig()).getChatConfig().queue).toEqual({
       provider: "bullmq",
       redisUrl: "redis://localhost:6382",
+      workerConcurrency: 4,
+    });
+
+    process.env.JUNIOR_QUEUE_WORKER_CONCURRENCY = "2";
+    expect((await loadConfig()).getChatConfig().queue).toMatchObject({
+      workerConcurrency: 2,
     });
   });
 
@@ -428,6 +434,16 @@ describe("chat config", () => {
 
     await expect(loadConfig()).rejects.toThrow(
       "JUNIOR_QUEUE_REDIS_URL is required when JUNIOR_QUEUE_PROVIDER is bullmq",
+    );
+  });
+
+  it("throws when the BullMQ worker concurrency is not a positive integer", async () => {
+    process.env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+    process.env.JUNIOR_QUEUE_REDIS_URL = "redis://localhost:6382";
+    process.env.JUNIOR_QUEUE_WORKER_CONCURRENCY = "0";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_QUEUE_WORKER_CONCURRENCY must be a positive integer",
     );
   });
 

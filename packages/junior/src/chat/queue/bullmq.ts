@@ -1,16 +1,21 @@
 import { createHash } from "node:crypto";
 import type { Job, Queue, Worker } from "bullmq";
 import { getChatConfig } from "@/chat/config";
-import { logException } from "@/chat/logging";
+import { logException, logInfo, logWarn } from "@/chat/logging";
 import type {
   QueueConsumer,
   QueueMessageMetadata,
   QueueProvider,
+  QueueWorker,
 } from "@/chat/queue/provider";
 
 // Module overview: a queue provider for local development, backed by BullMQ
-// on Redis. Workers run in this process, so `pnpm dev` needs no Vercel
-// Queues access. Deployed apps use the Vercel provider.
+// on Redis, so `pnpm dev` needs no Vercel Queues access. Deployed apps use
+// the Vercel provider.
+//
+// The Nitro process only sends jobs. The dev server starts one separate
+// worker process that calls `startWorker()` and pulls the jobs. `close()`
+// on that worker releases every BullMQ and Redis resource of its process.
 //
 // `bullmq` and `redis` are optional peer dependencies. Only dev installs
 // need them.
@@ -28,9 +33,9 @@ type RedisConnection = ReturnType<BullMq["createNodeRedisClient"]>;
 // from looping for ever in dev.
 const MAX_ATTEMPTS = 50;
 const MAX_BACKOFF_MS = 30_000;
-// BullMQ runs one job at a time unless told otherwise. One long turn would
-// then block every other conversation.
-const WORKER_CONCURRENCY = 20;
+// Running jobs get this long to finish when the worker stops. After that,
+// BullMQ stops waiting. Their locks expire, and the jobs run again later.
+const SHUTDOWN_GRACE_MS = 10_000;
 // A job id drops a second send only while BullMQ still stores the first job.
 // So this is the dedupe window for idempotency keys.
 const COMPLETED_JOB_AGE_SECONDS = 60 * 60;
@@ -52,12 +57,12 @@ function importAtRuntime(specifier: string): Promise<unknown> {
   return import(/* @vite-ignore */ specifier);
 }
 
-function redisUrl(): string {
+function bullmqConfig() {
   const config = getChatConfig().queue;
   if (config.provider !== "bullmq") {
     throw new Error("The BullMQ queue provider is not configured");
   }
-  return config.redisUrl;
+  return config;
 }
 
 /** Load BullMQ and one shared Redis client the first time they are needed. */
@@ -72,7 +77,7 @@ function load() {
         { cause: error },
       );
     })) as [BullMq, typeof import("redis")];
-    const client = redis.createClient({ url: redisUrl() });
+    const client = redis.createClient({ url: bullmqConfig().redisUrl });
     await client.connect();
     return { bullmq, connection: bullmq.createNodeRedisClient(client) };
   })();
@@ -131,19 +136,46 @@ async function processJob(
   }
 }
 
-/** Start one in-process worker. The returned function stops it. */
-function startWorker(consumer: QueueConsumer): () => Promise<void> {
-  let worker: Worker<JobData> | undefined;
-  let stopped = false;
-  const started = load().then(({ bullmq, connection }) => {
-    if (stopped) {
-      return;
-    }
-    worker = new bullmq.Worker<JobData>(
+/** Wait for running jobs, but stop waiting after the grace period. */
+async function closeWorker(worker: Worker<JobData>): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const graceful = worker.close().then(() => true);
+  const timedOut = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), SHUTDOWN_GRACE_MS);
+  });
+  const finished = await Promise.race([graceful, timedOut]);
+  clearTimeout(timer);
+  if (!finished) {
+    logWarn("queue.bullmq.worker.shutdown_timeout", {
+      "messaging.destination.name": worker.name,
+    });
+    await worker.close(true);
+  }
+}
+
+/** Release the queues and the Redis client of this process. */
+async function closeConnections(): Promise<void> {
+  const current = loaded;
+  loaded = undefined;
+  const open = [...queues.values()];
+  queues.clear();
+  await Promise.all(open.map((queue) => queue.close()));
+  if (current) {
+    const { connection } = await current;
+    await connection.quit();
+  }
+}
+
+/** Start one BullMQ worker for each consumer in this process. */
+async function startWorker(consumers: QueueConsumer[]): Promise<QueueWorker> {
+  const { bullmq, connection } = await load();
+  const concurrency = bullmqConfig().workerConcurrency;
+  const workers = consumers.map((consumer) => {
+    const worker = new bullmq.Worker<JobData>(
       consumer.topic,
       (job) => processJob(job, consumer),
       {
-        concurrency: WORKER_CONCURRENCY,
+        concurrency,
         connection,
         // BullMQ renews this lock while the job runs. Unlike Vercel Queues,
         // a running job is not sent again when the time runs out.
@@ -161,11 +193,17 @@ function startWorker(consumer: QueueConsumer): () => Promise<void> {
         "messaging.destination.name": consumer.topic,
       });
     });
+    return worker;
   });
-  return async () => {
-    stopped = true;
-    await started;
-    await worker?.close();
+  logInfo("queue.bullmq.worker.started", {
+    "app.queue.worker_concurrency": concurrency,
+    "messaging.destination.names": consumers.map((consumer) => consumer.topic),
+  });
+  return {
+    close: async () => {
+      await Promise.all(workers.map((worker) => closeWorker(worker)));
+      await closeConnections();
+    },
   };
 }
 
@@ -195,10 +233,5 @@ export const bullmqQueueProvider: QueueProvider = {
     new Response("This queue provider does not push messages", {
       status: 404,
     }),
-  registerDevConsumer: (consumer) => {
-    const stop = startWorker(consumer);
-    return () => {
-      void stop();
-    };
-  },
+  startWorker,
 };
