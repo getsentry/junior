@@ -123,32 +123,6 @@ body:has(.jr-home) .sl-container {
   width: 100vw;
 }
 
-:root:not([data-has-sidebar]) .hero::before,
-:root:not([data-has-sidebar]) .hero::after {
-  color: var(--jr-pink);
-  font-family: "Arial Black", Impact, sans-serif;
-  font-weight: 900;
-  position: absolute;
-  -webkit-text-stroke: 3px var(--jr-black);
-  z-index: 2;
-}
-
-:root:not([data-has-sidebar]) .hero::before {
-  content: "★";
-  font-size: clamp(3rem, 8vw, 8rem);
-  left: 4vw;
-  top: 18%;
-  transform: rotate(-16deg);
-}
-
-:root:not([data-has-sidebar]) .hero::after {
-  content: "↗";
-  font-size: clamp(4rem, 10vw, 10rem);
-  right: 4vw;
-  top: 15%;
-  transform: rotate(9deg);
-}
-
 :root:not([data-has-sidebar]) .hero > div {
   box-sizing: border-box;
   margin-inline: auto;
@@ -193,13 +167,13 @@ body:has(.jr-home) .sl-container {
   box-shadow: 8px 8px 0 var(--jr-black);
   color: var(--jr-black);
   font-family: "Arial Black", Impact, sans-serif;
-  font-size: clamp(1rem, 2.2vw, 1.65rem);
+  font-size: clamp(1.1rem, 2.2vw, 1.5rem);
   font-weight: 900;
-  line-height: 1.05;
+  line-height: 1.25;
   margin: clamp(2rem, 5vw, 4rem) auto 0;
   max-width: 34rem;
   padding: 1rem 1.25rem;
-  text-transform: uppercase;
+  text-wrap: pretty;
   transform: rotate(-2deg);
 }
 
@@ -244,43 +218,6 @@ body:has(.jr-home) .sl-container {
   max-width: 86rem;
   padding: 0 1.25rem 4rem;
   position: relative;
-}
-
-.jr-scribble {
-  font-family: "Arial Black", Impact, sans-serif;
-  font-weight: 900;
-  pointer-events: none;
-  position: absolute;
-  z-index: 4;
-}
-
-.jr-scribble-star {
-  color: var(--jr-pink);
-  font-size: clamp(3rem, 7vw, 6rem);
-  left: 42%;
-  top: -5rem;
-  transform: rotate(17deg);
-  -webkit-text-stroke: 3px var(--jr-black);
-}
-
-.jr-scribble-arrow {
-  color: var(--jr-violet);
-  font-size: clamp(5rem, 10vw, 9rem);
-  left: 8%;
-  top: -3rem;
-  transform: rotate(12deg);
-  -webkit-text-stroke: 3px var(--jr-black);
-}
-
-.jr-scribble-wow {
-  background: var(--jr-pink);
-  border: 3px solid var(--jr-black);
-  box-shadow: 5px 5px 0 var(--jr-black);
-  font-size: clamp(0.9rem, 2vw, 1.4rem);
-  padding: 0.35rem 0.6rem;
-  right: 7%;
-  top: -1rem;
-  transform: rotate(11deg);
 }
 
 .jr-sticker-scene {
@@ -398,70 +335,34 @@ body:has(.jr-home) .sl-container {
   position: relative;
 }
 
+.jr-sticker-tool {
+  color: var(--jr-black);
+  flex-direction: row;
+  font-size: 1rem;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+}
+
+.jr-sticker-tool img {
+  height: 1.75rem;
+  margin: 0;
+  width: 1.75rem;
+}
+
 .jr-sticker-github {
-  background: var(--jr-black);
-  color: #fff;
-  padding: 1.7rem 1.5rem 1rem;
+  background: var(--jr-cream);
   transform: rotate(5deg);
-  width: 9rem;
-}
-
-.jr-cat-face {
-  font-size: 1.8rem;
-  letter-spacing: 0.1em;
-  white-space: nowrap;
-}
-
-.jr-cat-ears {
-  border-bottom: 28px solid var(--jr-black);
-  border-left: 30px solid transparent;
-  border-right: 30px solid transparent;
-  height: 0;
-  left: 0.65rem;
-  position: absolute;
-  top: -1.9rem;
-  width: 7rem;
 }
 
 .jr-sticker-sentry {
   background: var(--jr-pink);
-  flex-direction: row;
-  gap: 0.4rem;
-  padding: 0.65rem 1rem;
   transform: rotate(-4deg);
 }
 
 .jr-sticker-more {
-  background: var(--jr-cream);
-  color: var(--jr-black);
-  flex-direction: row;
-  font-size: 0.78rem;
-  gap: 0.4rem;
-  padding: 0.55rem 0.8rem;
-  transform: rotate(7deg);
-}
-
-.jr-ticker {
-  background: var(--jr-black);
-  border-block: 5px solid var(--jr-black);
-  color: var(--jr-yellow);
-  display: flex;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: clamp(1.15rem, 2.5vw, 2rem);
-  font-weight: 900;
-  gap: 1.25rem;
-  justify-content: center;
-  margin-inline: calc(50% - 50vw);
-  overflow: hidden;
-  padding: 0.65rem 1rem;
-  text-transform: uppercase;
-  transform: rotate(-1deg);
-  white-space: nowrap;
-}
-
-.jr-ticker i {
-  color: var(--jr-pink);
-  font-style: normal;
+  background: var(--jr-yellow);
+  font-size: 0.75rem;
+  transform: rotate(3deg);
 }
 
 .jr-proof {
@@ -503,23 +404,6 @@ body:has(.jr-home) .sl-container {
   line-height: 1.5;
   margin: 1.75rem 0;
   max-width: 34rem;
-}
-
-.jr-proof-stamp {
-  align-items: center;
-  aspect-ratio: 1;
-  background: var(--jr-pink);
-  border: 4px solid var(--jr-black);
-  border-radius: 50%;
-  display: flex;
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: 0.78rem;
-  font-weight: 900;
-  justify-content: center;
-  line-height: 1.05;
-  text-align: center;
-  transform: rotate(-10deg);
-  width: 7.5rem;
 }
 
 .jr-slack-wrap {
@@ -698,6 +582,13 @@ body:has(.jr-home) .sl-container {
   margin-top: 0.45rem;
 }
 
+.slk-tool-call code {
+  background: none;
+  color: inherit;
+  font-size: 1em;
+  padding: 0;
+}
+
 .jr-cards {
   display: grid;
   gap: 1.5rem;
@@ -709,6 +600,7 @@ body:has(.jr-home) .sl-container {
 .jr-card {
   border: 5px solid var(--jr-black);
   box-shadow: 10px 10px 0 var(--jr-black);
+  container-type: inline-size;
   min-height: 18rem;
   min-width: 0;
   overflow: hidden;
@@ -754,7 +646,8 @@ body:has(.jr-home) .sl-container {
 
 .jr-card h2 {
   color: var(--jr-black);
-  font-size: clamp(2.2rem, 4vw, 3.7rem);
+  /* Size from the card, not the viewport: the page column caps card width. */
+  font-size: clamp(2rem, 30cqi, 3.7rem);
   hyphens: none;
   overflow-wrap: normal;
   word-break: normal;
@@ -973,20 +866,6 @@ body:has(.jr-home) .sl-container {
   text-transform: uppercase;
 }
 
-.jr-made-this {
-  color: var(--jr-cream) !important;
-  font-size: 0.8rem;
-  font-style: italic;
-  margin: 0 0 1rem auto;
-  text-align: right;
-}
-
-.jr-made-this b {
-  color: var(--jr-pink);
-  font-size: 1.2em;
-  -webkit-text-stroke: 1px var(--jr-black);
-}
-
 body:has(.jr-home) footer {
   color: var(--jr-cream);
 }
@@ -1014,11 +893,6 @@ body:has(.jr-home) footer {
 }
 
 @media (max-width: 48rem) {
-  :root:not([data-has-sidebar]) .hero::before,
-  :root:not([data-has-sidebar]) .hero::after {
-    display: none;
-  }
-
   .jr-home-mega {
     font-size: clamp(4rem, 22vw, 8rem);
     letter-spacing: -0.1em;
@@ -1031,10 +905,6 @@ body:has(.jr-home) footer {
 
   :root:not([data-has-sidebar]) .hero .actions {
     justify-content: flex-start;
-  }
-
-  .jr-scribble {
-    display: none;
   }
 
   .jr-sticker-scene {
@@ -1130,10 +1000,6 @@ body:has(.jr-home) footer {
 
   .jr-tool-pile {
     grid-row: 3;
-  }
-
-  .jr-ticker {
-    font-size: 1rem;
   }
 
   .slk-msg {
