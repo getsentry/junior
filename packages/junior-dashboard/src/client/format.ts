@@ -791,6 +791,11 @@ export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
 }
 
+/** Build the Workspace list route that opens one Workspace's details. */
+export function workspacePath(workspaceId: string): string {
+  return `/system/workspaces/${encodeURIComponent(workspaceId)}`;
+}
+
 /** Build the canonical automation detail route for an automation id. */
 export function automationPath(automationId: string): string {
   return `/automations/${encodeURIComponent(automationId)}`;
