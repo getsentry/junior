@@ -57,6 +57,8 @@ jobs:
               - 'packages/junior-evals/tests/**'
               - 'packages/junior-evals/vitest.evals.config.ts'
               - 'packages/junior-evals/vitest.evals.behavioral.config.ts'
+              - 'packages/junior/src/chat/prompt.ts'
+              - 'packages/junior/src/chat/discovery.ts'
 
       - id: decision
         env:
