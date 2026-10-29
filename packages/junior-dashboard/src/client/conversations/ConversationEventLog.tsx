@@ -7,10 +7,10 @@ import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
 import {
-  eventLogModel,
-  eventLogSummary,
+  adjacentEventLogSeqs,
+  eventLogRows,
   eventLogTone,
-  eventLogUsage,
+  filterEventLogRows,
 } from "./eventLog";
 import { ConversationEventDetails } from "./ConversationEventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
@@ -41,38 +41,11 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   // Clicked rows are visible. Reveal links and keyboard selections after layout.
   const revealedSeqRef = useRef<number>(undefined);
   const events = conversation.events;
-  const rows = useMemo(
-    () =>
-      events.map((event) => {
-        const model = eventLogModel(event);
-        return {
-          event,
-          summary: eventLogSummary(event.data)
-            .replace(/\s+/g, " ")
-            .slice(0, 300),
-          metadata: [
-            model?.modelId,
-            model?.modelProfile,
-            model?.reasoningLevel && `${model.reasoningLevel} reasoning`,
-            eventLogUsage(event),
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        };
-      }),
-    [events],
-  );
+  const rows = useMemo(() => eventLogRows(events), [events]);
   // Large payloads are serialized only for an active search or the open entry.
   const visibleRows = useMemo(
-    () =>
-      search.active
-        ? rows.filter(({ event, summary, metadata }) =>
-            `${summary} ${metadata} ${JSON.stringify(event)}`
-              .toLowerCase()
-              .includes(search.normalizedQuery),
-          )
-        : rows,
-    [rows, search.active, search.normalizedQuery],
+    () => filterEventLogRows(rows, search.normalizedQuery),
+    [rows, search.normalizedQuery],
   );
   // Resolve the selection from current data so polling cannot leave stale details.
   const selected = events.find((event) => event.seq === selectedSeq);
@@ -230,6 +203,8 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
               conversation={conversation}
               event={selected}
               onClose={() => setSelectedSeq(undefined)}
+              onSelect={setSelectedSeq}
+              {...adjacentEventLogSeqs(visibleRows, selected.seq)}
             />,
             document.body,
           )
