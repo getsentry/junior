@@ -157,6 +157,17 @@ export {
   startConnectionResponseSchema,
 } from "./schema/connection";
 export {
+  DEFAULT_NOTIFICATION_SCHEDULE,
+  isWithinNotificationSchedule,
+  notificationScheduleSchema,
+  notificationSettingsSchema,
+  testNotificationResponseSchema,
+} from "./schema/notification";
+export type {
+  NotificationSchedule,
+  NotificationSettings,
+} from "./schema/notification";
+export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
   serviceAccountParamsSchema,

@@ -32,6 +32,10 @@ import {
   automationParamsSchema,
   automationSummarySchema,
   automationRunListSchema,
+  DEFAULT_NOTIFICATION_SCHEDULE,
+  notificationScheduleSchema,
+  notificationSettingsSchema,
+  type NotificationSchedule,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import {
@@ -63,11 +67,32 @@ function errorResponse(error: string, status: 400 | 404): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
 }
 
+function mockNotificationSettings(schedule: NotificationSchedule) {
+  return jsonResponse(notificationSettingsSchema, {
+    deviceCount: 0,
+    schedule,
+    timezone: schedule.timezone ?? "America/Los_Angeles",
+    timezoneSource: schedule.timezone ? "manual" : "slack",
+  });
+}
+
 /** Create the reporting API used exclusively by local dashboard mocks. */
 export function createMockReportingApi(): Hono<{
   Variables: JuniorApiVariables;
 }> {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
+
+  // Mocks have no Web Push keys, so only notification hours can change.
+  app.get("/notifications", () =>
+    mockNotificationSettings(DEFAULT_NOTIFICATION_SCHEDULE),
+  );
+  app.put("/notifications/schedule", async (c) => {
+    const parsed = notificationScheduleSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success) return errorResponse("Invalid schedule.", 400);
+    return mockNotificationSettings(parsed.data);
+  });
 
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),

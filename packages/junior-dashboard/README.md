@@ -12,8 +12,16 @@ name, through dashboard settings.
 - Core owns the Better Auth session and passes it in as `auth`. Core accepts
   only Google Workspace accounts on the allowed domains. Dashboard routes fail
   closed when identity or required configuration is missing.
-- The installable shell is static only: a public web app manifest, theme color,
-  and install icon. There is no service worker and no offline app shell cache.
+- The installable shell is a public web app manifest, theme color, install
+  icon, and a service worker (`src/service-worker.ts`). The service worker only
+  shows phone notifications and opens their links. It has no `fetch` handler,
+  so there is no offline app shell cache. It is registered when a user turns
+  on notifications, and on later loads where permission is already granted.
+- Every push shows a notification, because browsers penalize a push that shows
+  nothing. If the user already looks at that page, the notification is silent.
+- Settings owns the notification controls (`client/notifications/`). Core owns
+  `/api/notifications`, the subscriptions, the working hours, and the send
+  decision (`packages/junior/src/chat/notifications/`).
 - API schemas under `src/api/` define the client/server boundary.
 - Connected accounts (`/settings/connections`) use the core `/api/connections`
   contract. It lists plugins with user OAuth, starts OAuth in a new tab, and
@@ -47,7 +55,7 @@ name, through dashboard settings.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure
-  and signed-in profile settings. Junior conversation storage is the reporting
+  and signed-in profile and notification settings. Junior conversation storage is the reporting
   authority; canonical user rows own profile fields such as display name.
 
 Mock reporting data exists for local UI development only and must not be

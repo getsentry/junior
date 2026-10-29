@@ -116,6 +116,17 @@ Dashboard auth requires at least one [allowed domain](#allowed-domains). Set the
 
 For local/demo dashboard visual QA, set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` to replace conversation API responses with sample fixtures.
 
+## Phone notifications
+
+Set both keys to turn on Web Push phone notifications for dashboard replies.
+See [Dashboard](/operate/dashboard/#configure-phone-notifications).
+
+| Variable                      | Required    | Purpose                                                                         |
+| ----------------------------- | ----------- | ------------------------------------------------------------------------------- |
+| `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Conditional | VAPID public key. Required for phone notifications.                             |
+| `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Conditional | VAPID private key. Required for phone notifications.                            |
+| `JUNIOR_WEB_PUSH_SUBJECT`     | No          | `mailto:` or `https:` contact for push services. Defaults to `JUNIOR_BASE_URL`. |
+
 ## Build-time snapshot warmup
 
 If your build command runs `junior snapshot create`:

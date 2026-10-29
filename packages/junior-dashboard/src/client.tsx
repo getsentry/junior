@@ -7,6 +7,10 @@ import { Toaster } from "./client/components/ui/toast";
 import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
+import {
+  clearAppBadge,
+  registerDashboardServiceWorker,
+} from "./client/notifications/push";
 
 declare global {
   interface Window {
@@ -70,6 +74,19 @@ const root = document.getElementById("dashboard-root");
 if (!root) {
   throw new Error("Junior dashboard root element was not found");
 }
+
+// Keep the worker current for devices that already allow notifications.
+// Other devices register it when the user turns notifications on.
+if (
+  typeof Notification !== "undefined" &&
+  Notification.permission === "granted"
+) {
+  void registerDashboardServiceWorker()?.catch(() => undefined);
+}
+clearAppBadge();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") clearAppBadge();
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {
