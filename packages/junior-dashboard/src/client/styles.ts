@@ -17,3 +17,7 @@ export const dashboardInteractiveTextClass =
 /** Raised input surface so the chat box reads against the near-black shell. */
 export const dashboardComposerSurfaceClass =
   "rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-colors";
+
+/** Turn a disclosure chevron when its `group` trigger sets `aria-expanded`. */
+export const dashboardDisclosureChevronClass =
+  "size-3.5 shrink-0 transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none";

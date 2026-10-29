@@ -4,7 +4,13 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { Detail, DetailList } from "../components/DetailList";
 import { StatusChip, type StatusChipTone } from "../components/StatusChip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
 import { formatTime } from "../format";
+import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { MentionPeopleProvider, renderMentionText } from "./transcriptMentions";
 
 type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
@@ -160,16 +166,21 @@ function BriefContentView(props: {
 
 function BriefSection(props: { children: ReactNode; title: string }) {
   return (
-    <details className="group min-w-0 border-t border-dashboard-border pt-3">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-dashboard-text [&::-webkit-details-marker]:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+    <Collapsible className="min-w-0 border-t border-dashboard-border pt-3">
+      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 text-left text-sm font-medium text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus">
         <ChevronRight
           aria-hidden="true"
-          className="size-3.5 shrink-0 text-dashboard-text-muted transition-transform group-open:rotate-90"
+          className={cn(
+            dashboardDisclosureChevronClass,
+            "text-dashboard-text-muted",
+          )}
         />
         {props.title}
-      </summary>
-      <div className="mt-3">{props.children}</div>
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3" hiddenUntilFound>
+        {props.children}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

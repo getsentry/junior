@@ -1,7 +1,14 @@
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import { Card } from "../layout/Card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../../styles";
 import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import { formatCompactNumber } from "../../format";
 import {
@@ -173,11 +180,18 @@ export function InputCacheChart(props: {
         </ChartSvg>
       </div>
       <CacheWrites days={props.days} bucketUnit={props.bucketUnit} />
-      <details className="border-t border-dashboard-border-subtle px-4 py-3 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">
-        <summary className="cursor-pointer text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
+      <Collapsible className="border-t border-dashboard-border-subtle px-4 py-3 font-sans tabular-nums text-xs text-dashboard-text-muted sm:px-5">
+        <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
           How to read this
-        </summary>
-        <div className="mt-3 grid gap-2 leading-relaxed">
+        </CollapsibleTrigger>
+        <CollapsibleContent
+          className="mt-3 grid gap-2 leading-relaxed"
+          hiddenUntilFound
+        >
           <p className="m-0">
             From cache is input reused. Written to cache is input saved for
             reuse. Uncached is the remaining input.
@@ -191,8 +205,8 @@ export function InputCacheChart(props: {
             These totals can show when reuse changes, but not why. They do not
             show individual calls or prove that every call reported cache use.
           </p>
-        </div>
-      </details>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }
