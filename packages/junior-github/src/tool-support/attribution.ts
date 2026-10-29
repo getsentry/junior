@@ -169,48 +169,60 @@ function applyAttribution(body: string, label: string | undefined): string {
   return normalizedBody ? `${normalizedBody}\n\n${attribution}` : attribution;
 }
 
+/** The stored Junior identity and user of the Actor that makes a GitHub write. */
+export interface GitHubRequester {
+  identity?: Identity;
+  user?: User;
+}
+
+/**
+ * Look up the current Actor once for one GitHub write. The attribution block,
+ * the saved pull request requester, and the assignee all use this one result.
+ *
+ * System actors have no requester. The lookup is best effort: a failure is
+ * logged and gives no requester, so it never blocks the write.
+ */
+export async function resolveGitHubRequester(ctx: {
+  actor?: Actor;
+  log: PluginLogger;
+  users: {
+    resolveActor(): Promise<GitHubRequester | undefined>;
+  };
+}): Promise<GitHubRequester | undefined> {
+  if (!ctx.actor || ctx.actor.platform === "system") return undefined;
+  try {
+    return await ctx.users.resolveActor();
+  } catch (error) {
+    ctx.log.warn("github.requester.resolve_actor.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
 /**
  * Append or replace runtime-owned requester attribution in a GitHub body.
- *
- * Identity lookup is best-effort presentation data. A storage failure falls
- * back to the already-hydrated actor profile instead of blocking the write.
+ * With no stored requester, the label falls back to the already-hydrated
+ * actor profile.
  */
-export async function appendGitHubRequesterAttribution(
+export function appendGitHubRequesterAttribution(
   body: string,
   ctx: {
     actor?: Actor;
     automationLink?: { url: string };
-    log: PluginLogger;
     source?: Source;
-    users: {
-      resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
-    };
   },
-): Promise<string> {
-  let resolved:
-    | {
-        identity?: Identity;
-        user?: User;
-      }
-    | undefined;
-  if (ctx.actor) {
-    try {
-      resolved = await ctx.users.resolveActor();
-    } catch (error) {
-      ctx.log.warn("github.requester_attribution.resolve_actor.failed", {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  requester: GitHubRequester | undefined,
+): string {
   return applyAttribution(
     body,
     requesterLabel({
       actor: ctx.actor,
       automationUrl: ctx.automationLink?.url,
-      identity: resolved?.identity,
+      identity: requester?.identity,
       source: ctx.source,
-      user: resolved?.user,
+      user: requester?.user,
     }),
   );
 }

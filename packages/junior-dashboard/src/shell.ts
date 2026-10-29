@@ -117,9 +117,8 @@ function dashboardStartUrl(basePath: string): string {
 /** List the browser page paths served by the authenticated dashboard shell. */
 export function dashboardPagePaths(
   basePath: string,
-  options: { componentGallery?: boolean } = {},
 ): Array<{ nested?: boolean; path: string }> {
-  const paths: Array<{ nested?: boolean; path: string }> = [
+  return [
     { path: basePath },
     {
       path: basePath === "/" ? "/admin" : `${basePath}/admin`,
@@ -165,13 +164,6 @@ export function dashboardPagePaths(
       path: basePath === "/" ? "/plugins" : `${basePath}/plugins`,
     },
   ];
-  if (options.componentGallery) {
-    paths.push({
-      nested: true,
-      path: basePath === "/" ? "/dev" : `${basePath}/dev`,
-    });
-  }
-  return paths;
 }
 
 /** Serve the installable web app manifest for the dashboard shell. */

@@ -16,10 +16,9 @@ type RequestContainer = {
 type SentryErrorEvent = Parameters<
   NonNullable<Sentry.NodeOptions["beforeSend"]>
 >[0];
-type SentryTransactionEvent = Parameters<
-  NonNullable<Sentry.NodeOptions["beforeSendTransaction"]>
+type SentrySpan = Parameters<
+  NonNullable<Sentry.NodeOptions["beforeSendSpan"]>
 >[0];
-type SentrySpan = Parameters<Parameters<typeof Sentry.withStreamedSpan>[0]>[0];
 type SentryLog = Parameters<
   NonNullable<Sentry.NodeOptions["beforeSendLog"]>
 >[0];
@@ -36,9 +35,12 @@ const PAYLOAD_ATTRIBUTE_KEYS = new Set([
 const URL_ATTRIBUTE_KEYS = new Set([
   "http.target",
   "http.url",
+  // Fetch and HTTP breadcrumbs keep the request URL under `url`.
+  "url",
   "url.full",
   "url.path",
 ]);
+const SLACK_FILE_HOST = "files.slack.com";
 const OAUTH_CALLBACK_PATH = "/api/oauth/callback/";
 const LOCAL_CREDENTIAL_PATH = "/api/internal/local-oauth-credentials";
 const SECRET_HEADER_NAMES = new Set([
@@ -59,15 +61,43 @@ function isSecretHeaderAttribute(key: string): boolean {
   );
 }
 
+function isSlackFileRequest(attributes: AttributeMap): boolean {
+  return (
+    attributes["server.address"] === SLACK_FILE_HOST ||
+    [...URL_ATTRIBUTE_KEYS].some((key) => {
+      const value = attributes[key];
+      return (
+        typeof value === "string" && value.includes(`//${SLACK_FILE_HOST}/`)
+      );
+    })
+  );
+}
+
+/** Keep only the host of private Slack file URLs, which name the workspace and file. */
+function scrubSlackFileUrls(attributes: AttributeMap): void {
+  for (const key of URL_ATTRIBUTE_KEYS) {
+    const value = attributes[key];
+    if (typeof value !== "string") {
+      continue;
+    }
+    if (value.includes("://")) {
+      attributes[key] = `https://${SLACK_FILE_HOST}`;
+    } else {
+      delete attributes[key];
+    }
+  }
+}
+
 function scrubSensitiveUrlAttributes(
   attributes: AttributeMap | undefined,
 ): void {
   if (!attributes) {
     return;
   }
-  // Query strings are not useful enough in telemetry to justify retaining
-  // OAuth codes, signed state, or other caller-supplied secrets.
+  // Query strings and fragments are not useful enough in telemetry to justify
+  // retaining OAuth codes, signed state, or other caller-supplied secrets.
   delete attributes["url.query"];
+  delete attributes["url.fragment"];
 
   const hasLocalCredentialUrl = [...URL_ATTRIBUTE_KEYS].some((key) => {
     const value = attributes[key];
@@ -80,6 +110,10 @@ function scrubSensitiveUrlAttributes(
     ) {
       delete attributes[key];
     }
+  }
+  if (isSlackFileRequest(attributes)) {
+    scrubSlackFileUrls(attributes);
+    return;
   }
   for (const key of URL_ATTRIBUTE_KEYS) {
     const value = attributes[key];
@@ -170,22 +204,6 @@ export function scrubPrivateSentryEvent(
 
   for (const breadcrumb of event.breadcrumbs ?? []) {
     scrubContainer(breadcrumb as AttributeContainer);
-  }
-
-  return event;
-}
-
-/** Remove private conversation payloads and boundary secrets from transactions. */
-export function scrubPrivateSentryTransaction(
-  event: SentryTransactionEvent,
-): SentryTransactionEvent | null {
-  const eventRecord = event as AttributeContainer;
-  scrubContainer(eventRecord);
-  scrubSensitiveRequest(event.request as RequestContainer | undefined);
-  scrubContainer(event.contexts?.trace as AttributeContainer);
-
-  for (const span of event.spans ?? []) {
-    scrubContainer(span);
   }
 
   return event;

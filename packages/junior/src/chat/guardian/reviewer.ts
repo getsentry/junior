@@ -195,7 +195,6 @@ export function createGuardianActionReviewer(options: {
           system: GUARDIAN_ACTION_POLICY,
           prompt: guardianPrompt(proposal),
           maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
-          recordTelemetryPayloads: false,
           temperature: 0,
           promptName: "junior.guardian_action_review",
           signal,

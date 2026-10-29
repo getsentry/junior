@@ -89,7 +89,6 @@ describe("Guardian action review", () => {
         maxTokens: 2_000,
         modelId: "test/guardian",
         prompt: expect.stringContaining('"cadence": "weekly"'),
-        recordTelemetryPayloads: false,
       }),
     );
   });

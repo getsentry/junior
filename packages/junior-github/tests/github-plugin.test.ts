@@ -7,18 +7,38 @@ import {
   type WorkspacePrepareHookContext,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { githubPlugin } from "../src/index";
 import { gitHubDeploymentSourceResource } from "../src/events/deployment";
 import { gitHubIssueResource } from "../src/events/issue";
 import { gitHubPullRequestResource } from "../src/events/pull-request";
 import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
+import type { GitHubDb } from "../src/db/database";
+import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
 
-const db = {};
+let dbFixture: GitHubFixture;
+let db: GitHubDb;
+
+beforeAll(async () => {
+  dbFixture = await createGitHubFixture();
+  db = dbFixture.db();
+});
+
+afterAll(async () => {
+  await dbFixture.close();
+});
 
 class TestTokenStore {
   private refreshLock = Promise.resolve();
@@ -631,6 +651,16 @@ describe("github plugin", () => {
       isDraft: {
         kind: "boolean",
         description: "true when the pull request is a draft",
+      },
+      requesterRole: {
+        kind: "string",
+        description:
+          "requesterUsername's repository role, with the same values as authorRole",
+      },
+      requesterUsername: {
+        kind: "string",
+        description:
+          "login of the person who asked for the pull request: on Junior's own pull requests, the person who asked Junior to open it, missing until saved; otherwise the author",
       },
     });
   });

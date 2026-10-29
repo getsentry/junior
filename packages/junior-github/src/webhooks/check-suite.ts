@@ -17,6 +17,8 @@ const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
   "authorRole",
   "authorUsername",
   "isDraft",
+  "requesterRole",
+  "requesterUsername",
 ]);
 
 function gitHubEventKey(deliveryId: string, eventType: string): string {

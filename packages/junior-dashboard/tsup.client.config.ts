@@ -35,6 +35,7 @@ export default defineConfig({
     "react-dom",
     "react-is",
     "react-router",
+    "recharts",
     "shiki",
     "zod",
   ],

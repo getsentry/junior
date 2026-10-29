@@ -1,21 +1,16 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
   ConversationAnnotationInput,
   EventInput,
 } from "@sentry/junior-plugin-api";
-import {
-  createLocalPgliteFixture,
-  type LocalPgliteFixture,
-} from "@sentry/junior-testing/pglite";
+import { createLocalPgliteFixture } from "@sentry/junior-testing/pglite";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   githubSqlSchema,
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
+  juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import type { GitHubDb } from "../src/db/database";
@@ -81,31 +76,12 @@ function checkSuitePullRequest(
   };
 }
 
+import {
+  createGitHubFixture,
+  type GitHubFixture,
+  migrationSql,
+} from "./github-db";
 import { mswServer } from "./msw";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-type GitHubFixture = LocalPgliteFixture<GitHubDb>;
-
-async function createGitHubFixture(): Promise<GitHubFixture> {
-  const fixture = await createLocalPgliteFixture<GitHubDb>(githubSqlSchema);
-  for (const migrationFile of [
-    "0000_pull_request_outcomes.sql",
-    "0001_issue_outcomes.sql",
-    "0002_pull_request_commit_composition.sql",
-    "0003_pull_request_conversations.sql",
-    "0004_marvelous_toad_men.sql",
-    "0005_github_cost_associations.sql",
-    "0006_fat_korvac.sql",
-    "0007_shallow_millenium_guard.sql",
-  ]) {
-    await fixture.execute(await migrationSql(migrationFile));
-  }
-  return fixture;
-}
-
-async function migrationSql(name: string): Promise<string> {
-  return await readFile(resolve(__dirname, `../migrations/${name}`), "utf8");
-}
 
 it("returns only candidate conversations with unmerged pull requests", async () => {
   const fixture = await createGitHubFixture();
@@ -2488,6 +2464,327 @@ describe("GitHub-owned pull request outcomes", () => {
       await route!.handler(signedRequest(opened));
       expect(roleRequests).toHaveLength(1);
       expect(published[0]?.data?.authorRole).toBe("write");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("saves Junior pull request requesters and filters by the opener", async () => {
+    const fixture = await createGitHubFixture();
+    const roleLogins: string[] = [];
+    const published: EventInput[] = [];
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    vi.stubEnv("GITHUB_APP_ID", "123");
+    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
+    vi.stubEnv(
+      "GITHUB_APP_BOT_EMAIL",
+      "264270552+sentry-junior[bot]@users.noreply.github.com",
+    );
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () =>
+          HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+        ({ params }) => {
+          const login = String(params.login);
+          roleLogins.push(login);
+          const role = login === "dcramer" ? "admin" : "none";
+          return HttpResponse.json({ permission: role, role_name: role });
+        },
+      ),
+    );
+    // Core identities: one Slack identity per person. A person with a linked
+    // GitHub account has a GitHub identity on the same user.
+    const linkedGitHub = new Set(["dcramer", "octocat"]);
+    const identityOf = (person: string) => ({
+      identity: {
+        id: `slack-identity-${person}`,
+        provider: "slack",
+        providerSubjectId: person,
+      },
+      user: {
+        email: `${person}@example.com`,
+        id: `user-${person}`,
+        identities: linkedGitHub.has(person)
+          ? [
+              {
+                id: `github-identity-${person}`,
+                provider: "github",
+                providerSubjectId: person,
+                handle: person,
+              },
+            ]
+          : [],
+      },
+    });
+    const plugin = githubPlugin();
+    const db = fixture.db();
+    const pluginCtx = {
+      cache: {
+        async getOrLoad<T>(
+          _key: string,
+          load: () => Promise<{ ttlMs?: number; value: T }>,
+        ) {
+          return (await load()).value;
+        },
+      },
+      db,
+      log: { error() {}, info() {}, warn() {} },
+      plugin: { name: "github" },
+    };
+    const [route] = plugin.hooks!.routes!({
+      ...pluginCtx,
+      annotations: {
+        forConversation() {
+          return {
+            async upsert() {},
+            async remove() {},
+            async list() {
+              return [];
+            },
+          };
+        },
+      },
+      codeChanges: {
+        async associateConversations() {},
+        async record() {},
+      },
+      users: {
+        async readIdentity(identityId: string) {
+          return identityOf(identityId.replace("slack-identity-", ""));
+        },
+      },
+      events: {
+        hasMatch: async () => true,
+        neededMatchKeys: async () => ["requesterRole"],
+        async publish(event) {
+          published.push(event);
+        },
+      },
+    });
+    // Webhooks ignore the attribution block in the body. Only saved
+    // requesters count.
+    const opened = pullRequestPayload();
+    Object.assign(opened.pull_request, {
+      body: `<!-- junior-request-attribution:start -->\nvia @octocat.\n<!-- junior-request-attribution:end -->\n\n${opened.pull_request.body}`,
+      head: {
+        ref: "fix/requester-role",
+        repo: { full_name: "getsentry/junior" },
+      },
+    });
+    const requesterFields = () => {
+      const fields = published
+        .filter((event) => event.eventType === "pull_request.opened")
+        .map((event) => [
+          event.data?.requesterUsername,
+          event.data?.requesterRole,
+        ]);
+      published.length = 0;
+      return fields;
+    };
+
+    // `person` is the Actor of the next tool call. Burak has no linked
+    // GitHub account.
+    let person = "dcramer";
+    let createResponse = () =>
+      Response.json(
+        {
+          html_url: "https://github.com/getsentry/junior/pull/946",
+          number: 946,
+        },
+        { status: 201 },
+      );
+    const state = new Map<string, unknown>();
+    const tools = plugin.hooks!.tools!({
+      ...pluginCtx,
+      actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      conversationId: "slack:C123:1712345.0001",
+      destination: { platform: "local", conversationId: "local:test" },
+      source: {
+        kind: "local",
+        visibility: "private",
+        conversationId: "local:test",
+      },
+      egress: {
+        async fetch({ operation }: { operation: string }) {
+          if (operation === "github.pull.create") return createResponse();
+          if (operation === "github.pull.update") {
+            return Response.json({
+              base: { ref: "main" },
+              body: "Updated",
+              draft: false,
+              head: { ref: "fix/requester-role" },
+              html_url: "https://github.com/getsentry/junior/pull/946",
+              merged: false,
+              number: 946,
+              state: "open",
+              title: "Fix requester role",
+            });
+          }
+          return Response.json({});
+        },
+      },
+      events: { canSubscribe: false },
+      users: {
+        async resolveActor() {
+          return identityOf(person);
+        },
+      },
+      state: {
+        async delete(key: string) {
+          state.delete(key);
+        },
+        async get(key: string) {
+          return state.get(key);
+        },
+        async set(key: string, value: unknown) {
+          state.set(key, value);
+        },
+        async withLock<T>(_key: string, _ttl: number, run: () => Promise<T>) {
+          return await run();
+        },
+      },
+    } as any);
+    const createInput = {
+      base: "main",
+      head: "fix/requester-role",
+      repo: "getsentry/junior",
+      title: "Fix requester role",
+    };
+    const savedRequesters = async () =>
+      (
+        await db
+          .select()
+          .from(juniorGitHubPullRequestRequesters)
+          .orderBy(juniorGitHubPullRequestRequesters.createdAt)
+      ).map((row) => [row.number, row.identityId]);
+
+    try {
+      // GitHub can deliver `opened` before the create call returns. The
+      // opener is not saved yet, so the event has no requester and filters
+      // on it do not match.
+      createResponse = () => {
+        const response = Response.json(
+          {
+            html_url: "https://github.com/getsentry/junior/pull/946",
+            number: 946,
+          },
+          { status: 201 },
+        );
+        return route!.handler(signedRequest(opened)).then(() => response);
+      };
+      await tools.createPullRequest!.execute!(createInput, {
+        toolCallId: "call-create",
+      });
+      expect(requesterFields()).toEqual([
+        [undefined, undefined],
+        [undefined, undefined],
+      ]);
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
+        ["dcramer", "admin"],
+        ["dcramer", "admin"],
+      ]);
+
+      // The call can stop after it saves its completed state but before it
+      // saves the opener. A retry of the same call saves the opener.
+      await db.delete(juniorGitHubPullRequestRequesters);
+      await tools.createPullRequest!.execute!(createInput, {
+        toolCallId: "call-create",
+      });
+      expect(await savedRequesters()).toEqual([
+        [946, "slack-identity-dcramer"],
+      ]);
+
+      // A create that GitHub rejects saves no requester.
+      person = "octocat";
+      createResponse = () =>
+        Response.json(
+          { message: "A pull request already exists" },
+          { status: 422 },
+        );
+      await expect(
+        tools.createPullRequest!.execute!(createInput, {
+          toolCallId: "call-rejected",
+        }),
+      ).rejects.toThrow("HTTP 422");
+      expect(await savedRequesters()).toEqual([
+        [946, "slack-identity-dcramer"],
+      ]);
+
+      // An update adds a requester. The opener does not change.
+      await tools.updatePullRequest!.execute!(
+        { body: "Updated", number: 946, repo: "getsentry/junior" },
+        { toolCallId: "call-update" },
+      );
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
+        ["dcramer", "admin"],
+        ["dcramer", "admin"],
+      ]);
+      expect(await savedRequesters()).toEqual([
+        [946, "slack-identity-dcramer"],
+        [946, "slack-identity-octocat"],
+      ]);
+
+      // An opener with no linked GitHub account falls back to the bot.
+      person = "burak";
+      const reused = pullRequestPayload();
+      Object.assign(reused.pull_request, {
+        head: { ref: "fix/requester-role" },
+        id: 1002,
+        number: 947,
+      });
+      createResponse = () =>
+        Response.json(
+          {
+            html_url: "https://github.com/getsentry/junior/pull/947",
+            number: 947,
+          },
+          { status: 201 },
+        );
+      await tools.createPullRequest!.execute!(createInput, {
+        toolCallId: "call-unlinked",
+      });
+      await route!.handler(signedRequest(reused));
+      expect(requesterFields()).toEqual([
+        ["sentry-junior[bot]", "none"],
+        ["sentry-junior[bot]", "none"],
+      ]);
+
+      // The row keeps the identity, not a login. Once the opener links a
+      // GitHub account, events use it.
+      linkedGitHub.add("burak");
+      await route!.handler(signedRequest(reused));
+      expect(requesterFields()).toEqual([
+        ["burak", "none"],
+        ["burak", "none"],
+      ]);
+
+      // A person's pull request uses its author.
+      opened.pull_request.user = { login: "octocat" };
+      await route!.handler(signedRequest(opened));
+      expect(requesterFields()).toEqual([
+        ["octocat", "none"],
+        ["octocat", "none"],
+      ]);
+      expect(roleLogins).toEqual([
+        "dcramer",
+        "dcramer",
+        "sentry-junior[bot]",
+        "burak",
+        "octocat",
+      ]);
     } finally {
       await fixture.close();
     }
