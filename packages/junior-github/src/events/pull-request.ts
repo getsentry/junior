@@ -123,7 +123,7 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   requesterUsername: {
     kind: "string",
     description:
-      "login of the person who asked for the pull request: on Junior's own pull requests, the person who asked Junior to open it (missing until Junior saves them, so an early opened event may not have it); otherwise the author",
+      "login of the person who asked for the pull request: on Junior's own pull requests, the person who asked Junior to open it, missing until saved; otherwise the author",
   },
   requesterRole: {
     kind: "string",

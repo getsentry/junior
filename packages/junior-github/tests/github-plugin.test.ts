@@ -657,7 +657,7 @@ describe("github plugin", () => {
       requesterUsername: {
         kind: "string",
         description:
-          "login of the person who asked for the pull request: on Junior's own pull requests, the linked requester saved when Junior opened it; otherwise the author",
+          "login of the person who asked for the pull request: on Junior's own pull requests, the person who asked Junior to open it, missing until saved; otherwise the author",
       },
     });
   });
