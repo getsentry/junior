@@ -1,4 +1,110 @@
 # Changelog
+## 0.265.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Show active watches in conversation details by @dcramer with @sentry-junior in [#2387](https://github.com/getsentry/junior/pull/2387)
+- Open run details from Automation runs and executions by @MathurAditya724 with @sentry-junior in [#2353](https://github.com/getsentry/junior/pull/2353)
+- Move transcript reasoning and tool rows onto shadcn trace by @MathurAditya724 with @sentry-junior in [#2346](https://github.com/getsentry/junior/pull/2346)
+- Show memory details in the shared details panel by @MathurAditya724 with @sentry-junior in [#2352](https://github.com/getsentry/junior/pull/2352)
+- Move disclosures onto shadcn collapsible by @MathurAditya724 with @sentry-junior in [#2368](https://github.com/getsentry/junior/pull/2368)
+- Render charts with shadcn Recharts by @MathurAditya724 with @sentry-junior in [#2369](https://github.com/getsentry/junior/pull/2369)
+- Move the native select onto shadcn and remove the dev gallery by @MathurAditya724 with @sentry-junior in [#2344](https://github.com/getsentry/junior/pull/2344)
+- Add shadcn table and use it for dashboard tables by @MathurAditya724 with @sentry-junior in [#2367](https://github.com/getsentry/junior/pull/2367)
+- Share one right panel for details, events, and turn context by @MathurAditya724 with @sentry-junior in [#2355](https://github.com/getsentry/junior/pull/2355)
+- Open Workspace details beside the list by @MathurAditya724 with @sentry-junior in [#2354](https://github.com/getsentry/junior/pull/2354)
+- Move tooltips and the remaining toggles and tabs onto shadcn by @MathurAditya724 with @sentry-junior in [#2343](https://github.com/getsentry/junior/pull/2343)
+- Move tabs, toggle groups, profile menu, and confirmations onto shadcn by @MathurAditya724 with @sentry-junior in [#2341](https://github.com/getsentry/junior/pull/2341)
+- Move simple controls onto shadcn components by @MathurAditya724 with @sentry-junior in [#2332](https://github.com/getsentry/junior/pull/2332)
+- Load earlier transcript history on scroll by @MathurAditya724 with @sentry-junior in [#2335](https://github.com/getsentry/junior/pull/2335)
+- Keep Automation details beside the list by @MathurAditya724 in [#2322](https://github.com/getsentry/junior/pull/2322)
+- Keep event details beside the event log by @MathurAditya724 in [#2285](https://github.com/getsentry/junior/pull/2285)
+
+#### Github
+
+- Split PR opener from commit authors in event data by @dcramer with @sentry-junior in [#2373](https://github.com/getsentry/junior/pull/2373)
+- Store PR requesters with their Junior identity instead of parsing PR bodies by @dcramer with @sentry-junior in [#2306](https://github.com/getsentry/junior/pull/2306)
+
+#### Sentry
+
+- Upgrade Sentry SDKs to v11 by @mydea and @dcramer with @sentry-junior in [#2339](https://github.com/getsentry/junior/pull/2339)
+- Export withSentryConfig from @sentry/junior/nitro by @mydea with @sentry-junior in [#2340](https://github.com/getsentry/junior/pull/2340)
+
+#### Other
+
+- (attachments) Add S3-compatible attachment storage by @thomasjiangcy with @sentry-junior in [#2325](https://github.com/getsentry/junior/pull/2325)
+- (automations) Show event triggers in the same words everywhere by @dcramer with @sentry-junior in [#2385](https://github.com/getsentry/junior/pull/2385)
+- (dev) Use compose S3 storage for local attachments by @thomasjiangcy with @sentry-junior in [#2327](https://github.com/getsentry/junior/pull/2327)
+- (events) Reject event filters that cannot match by @dcramer with @sentry-junior in [#2381](https://github.com/getsentry/junior/pull/2381)
+- (sandbox) Record sandbox acquire outcome on span by @thomasjiangcy with @sentry-junior in [#2281](https://github.com/getsentry/junior/pull/2281)
+- (slack) Record mailbox input timing on chat.turn spans by @thomasjiangcy with @sentry-junior in [#2284](https://github.com/getsentry/junior/pull/2284)
+- (task-execution) Use Sentry queue spans for conversation work by @thomasjiangcy with @sentry-junior in [#2320](https://github.com/getsentry/junior/pull/2320)
+- (telemetry) Record time to first byte and first token on gen_ai.chat by @thomasjiangcy with @sentry-junior in [#2286](https://github.com/getsentry/junior/pull/2286)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep tooltips on disabled icon buttons by @MathurAditya724 with @sentry-junior in [#2348](https://github.com/getsentry/junior/pull/2348)
+- Split the long Automations e2e journey and keep focus after delete by @MathurAditya724 with @sentry-junior in [#2366](https://github.com/getsentry/junior/pull/2366)
+- Ignore ResizeObserver loop notices in the error screen by @thomasjiangcy with @sentry-junior in [#2356](https://github.com/getsentry/junior/pull/2356)
+- Refresh conversation titles in lists and show the first message until one is set by @MathurAditya724 with @sentry-junior in [#2342](https://github.com/getsentry/junior/pull/2342)
+
+#### Dev
+
+- Share one @sentry/junior copy between the app and dashboard by @thomasjiangcy with @sentry-junior in [#2363](https://github.com/getsentry/junior/pull/2363)
+- Pin sentry CLI to 0.47.0 and fix pnpm dev watchers by @thomasjiangcy with @sentry-junior in [#2345](https://github.com/getsentry/junior/pull/2345)
+- Keep evals on Blob storage and start S3 in acp-local by @thomasjiangcy with @sentry-junior in [#2328](https://github.com/getsentry/junior/pull/2328)
+
+#### Other
+
+- (events) Show filter events in searchEventTypes results by @dcramer with @sentry-junior in [#2394](https://github.com/getsentry/junior/pull/2394)
+- (google) Let the requester be optional in findMeetingTimes by @sentry-junior in [#2375](https://github.com/getsentry/junior/pull/2375)
+- (prompt) Say that replies are not top-level channel posts by @dcramer with @sentry-junior in [#2350](https://github.com/getsentry/junior/pull/2350)
+- (runtime) Stop hardcoding the bot name in model and user text by @dcramer with @sentry-junior in [#2374](https://github.com/getsentry/junior/pull/2374)
+- Update Node adapter and respect conditional watch replies by @MathurAditya724 with @dependabot in [#2313](https://github.com/getsentry/junior/pull/2313)
+
+### Documentation 📚
+
+- (dashboard) Trim the components README to dashboard rules by @MathurAditya724 with @sentry-junior in [#2372](https://github.com/getsentry/junior/pull/2372)
+- (home) Fix card title overflow and cut homepage clutter by @sentry-junior in [#2323](https://github.com/getsentry/junior/pull/2323)
+
+### Internal Changes 🔧
+
+#### Attachments
+
+- Get configured attachment storage with getAttachmentStorage() by @thomasjiangcy with @sentry-junior in [#2331](https://github.com/getsentry/junior/pull/2331)
+- Use memory storage in remaining attachment tests by @thomasjiangcy with @sentry-junior in [#2330](https://github.com/getsentry/junior/pull/2330)
+- Add memory attachment storage provider by @thomasjiangcy with @sentry-junior in [#2329](https://github.com/getsentry/junior/pull/2329)
+- Choose attachment storage in one place by @thomasjiangcy with @sentry-junior in [#2324](https://github.com/getsentry/junior/pull/2324)
+
+#### Dashboard
+
+- Remove shadcn/ui component license files by @sentry-junior in [#2333](https://github.com/getsentry/junior/pull/2333)
+- Find the mobile Filters trigger behind its modal sheet by @sentry-junior in [#2336](https://github.com/getsentry/junior/pull/2336)
+
+#### Events
+
+- Declare core event limits per resource type by @dcramer with @sentry-junior in [#2379](https://github.com/getsentry/junior/pull/2379)
+- Remove duplicate watch checks in GitHub and Vercel by @dcramer with @sentry-junior in [#2378](https://github.com/getsentry/junior/pull/2378)
+
+#### Sandbox
+
+- Let the sandbox provider own its error checks by @thomasjiangcy with @sentry-junior in [#2349](https://github.com/getsentry/junior/pull/2349)
+- Prove Vercel Sandbox adds trace headers on trace-only domains by @thomasjiangcy with @sentry-junior in [#2347](https://github.com/getsentry/junior/pull/2347)
+- Make sandbox egress headers a Vercel provider detail by @thomasjiangcy with @sentry-junior in [#2337](https://github.com/getsentry/junior/pull/2337)
+- Keep Vercel Sandbox SDK calls in one provider module by @thomasjiangcy with @sentry-junior in [#2326](https://github.com/getsentry/junior/pull/2326)
+
+#### Other
+
+- (evals) Add evals for provider failure, pushback, stale memory, and injected instructions by @dcramer with @sentry-junior in [#2370](https://github.com/getsentry/junior/pull/2370)
+- (queue) Keep Vercel Queue SDK calls in one provider module by @thomasjiangcy with @sentry-junior in [#2338](https://github.com/getsentry/junior/pull/2338)
+- (sentry) Remove SENTRY_WEBHOOK_ORG by @dcramer with @sentry-junior in [#2386](https://github.com/getsentry/junior/pull/2386)
+- (skills) Use $skill as the documented skill invocation by @dcramer with @sentry-junior in [#2389](https://github.com/getsentry/junior/pull/2389)
+- (slack) Trace assistant status calls for first feedback by @thomasjiangcy with @sentry-junior in [#2282](https://github.com/getsentry/junior/pull/2282)
+
 ## 0.264.0
 
 ### New Features ✨
