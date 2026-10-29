@@ -33,6 +33,8 @@ export function AutomationOutcomeFields(props: {
   value: AutomationDraft["outcomes"];
   original: AutomationEdit["outcomes"];
   destination: AutomationSummary["destination"];
+  /** Base UI radios do not inherit a native fieldset's disabled state. */
+  disabled?: boolean;
   onChange(value: AutomationDraft["outcomes"]): void;
 }) {
   const defaultOutcomes: AutomationDraft["outcomes"] = props.original.length
@@ -68,6 +70,7 @@ export function AutomationOutcomeFields(props: {
     <>
       <RadioGroup
         aria-label="Success messages"
+        disabled={props.disabled}
         className="flex flex-wrap gap-x-6 gap-y-3"
         onValueChange={(send: boolean) =>
           props.onChange(send ? defaultOutcomes : [])

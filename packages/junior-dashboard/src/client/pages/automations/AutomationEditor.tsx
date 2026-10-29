@@ -312,6 +312,7 @@ export function AutomationEditor(props: {
               <AutomationEventFields
                 value={draft.trigger ?? original.trigger}
                 original={original.trigger}
+                disabled={save.isPending}
                 onChange={(trigger) => change({ trigger })}
               />
             )}
@@ -331,6 +332,7 @@ export function AutomationEditor(props: {
               value={draft.outcomes}
               original={original.outcomes}
               destination={props.summary.destination}
+              disabled={save.isPending}
               onChange={(outcomes) => change({ outcomes })}
             />
           ) : (
@@ -351,6 +353,7 @@ export function AutomationEditor(props: {
         >
           <RadioGroup
             aria-label="Credential mode"
+            disabled={save.isPending}
             className="divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-emphasis"
             onValueChange={(credentialMode: "creator" | "system") =>
               change({ credentialMode })

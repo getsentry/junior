@@ -17,6 +17,8 @@ type Trigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
 export function AutomationEventFields(props: {
   value: Trigger;
   original: Trigger;
+  /** Base UI checkboxes do not inherit a native fieldset's disabled state. */
+  disabled?: boolean;
   onChange(value: Trigger): void;
 }) {
   const catalog = useQuery({
@@ -159,6 +161,7 @@ export function AutomationEventFields(props: {
                   <Checkbox
                     className="mt-0.5"
                     checked={props.value.events.includes(event)}
+                    disabled={props.disabled}
                     onCheckedChange={() =>
                       props.onChange({
                         ...props.value,
