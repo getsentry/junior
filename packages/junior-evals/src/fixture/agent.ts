@@ -11,11 +11,7 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import {
-  serializeError,
-  type HarnessRun,
-  type TranscriptEvent,
-} from "vitest-evals/harness";
+import { type HarnessRun, type TranscriptEvent } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -57,6 +53,7 @@ import {
   combinedRun,
   readAuthorizationPrompt,
   readCallEvents,
+  readFailedCallRun,
   readConversationDetail,
   slackCallReplies,
   toHarnessRun,
@@ -603,16 +600,23 @@ export async function createFixtureAgent(
       await send();
       await waitForIdle();
     } catch (error) {
+      // Keep the partial transcript before cleanup removes the test identities.
+      // A timeout must show the work that was still running, not an empty run.
+      const failedRun = await readFailedCallRun({
+        api,
+        target,
+        calls,
+        error,
+        usage: currentUsage(),
+        startedAtMs,
+      });
       // Work must not outlive the test and reach closed stores.
       await close();
       // Record the run, so the eval report counts the test as a failed eval.
       // Without a run, the report gate fails hard, as for a broken setup.
       context.task.meta.harness = {
         name: "junior",
-        run: {
-          ...combinedRun(calls, currentUsage(), startedAtMs),
-          errors: [serializeError(error)],
-        },
+        run: failedRun,
       };
       throw error;
     } finally {
