@@ -1,8 +1,13 @@
+import nodeHttp from "node:http";
+import net from "node:net";
+import tls from "node:tls";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { dockerJson } from "@/chat/sandbox/docker/api";
 import { dockerSandboxProvider } from "@/chat/sandbox/docker/provider";
+import { usesEgressRelay } from "@/chat/sandbox/docker/relay";
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress/session";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -40,6 +45,79 @@ async function curlJson(session: SandboxSession, url: string) {
   expect(result.stderr).toBe("");
   expect(result.exitCode).toBe(0);
   return echoSchema.parse(JSON.parse(result.stdout)).headers;
+}
+
+/** Return the port of this process's egress proxy for one sandbox. */
+async function proxyPort(session: SandboxSession): Promise<number> {
+  if (usesEgressRelay()) {
+    const relay = await dockerJson<{
+      Config: { Labels: Record<string, string> };
+    }>({
+      path: `/containers/${session.sandboxId}-egress/json`,
+    });
+    return Number(relay.Config.Labels["dev.junior.sandbox.relay-target"]);
+  }
+  const rules = await session.runCommand({
+    cmd: "sudo",
+    args: ["iptables", "-t", "nat", "-S", "JUNIOR_EGRESS"],
+  });
+  return Number(/--to-destination [\d.]+:(\d+)/.exec(rules.stdout)?.[1]);
+}
+
+/** Hosts that name loopback, link-local, and private addresses. */
+const PRIVATE_HOSTS = [
+  "localhost",
+  "127.0.0.1",
+  "169.254.169.254",
+  "10.0.0.1",
+  "172.16.0.1",
+  "192.168.0.1",
+];
+
+/**
+ * Run `fn` while a service listens on this host's loopback port 80. Return
+ * how many requests reached it. When this user cannot listen on port 80, run
+ * `fn` without the service.
+ */
+async function countLoopbackHits(fn: () => Promise<void>): Promise<number> {
+  let hits = 0;
+  const server = nodeHttp.createServer((_req, res) => {
+    hits += 1;
+    res.end();
+  });
+  await new Promise((resolve) => {
+    server.once("listening", resolve);
+    server.once("error", resolve);
+    server.listen(80, "127.0.0.1");
+  });
+  try {
+    await fn();
+  } finally {
+    server.close();
+  }
+  return hits;
+}
+
+/**
+ * Send one credentialed request straight to the proxy from this process,
+ * which is not a sandbox. Return what the proxy sent back.
+ */
+async function unauthenticatedProxyReply(port: number): Promise<string> {
+  const socket = usesEgressRelay()
+    ? // A relay client without a client certificate.
+      tls.connect({ host: "127.0.0.1", port, rejectUnauthorized: false })
+    : // A direct client from an address that is not a sandbox.
+      net.connect({ host: "127.0.0.1", port });
+  let reply = "";
+  socket.on("data", (chunk: Buffer) => (reply += chunk.toString()));
+  // A rejected client sees a TLS alert or a reset. Only the reply matters.
+  socket.on("error", () => undefined);
+  const closed = new Promise((resolve) => socket.on("close", resolve));
+  socket.write(
+    `GET /anything HTTP/1.1\r\nHost: ${CREDENTIAL_DOMAIN}\r\nConnection: close\r\n\r\n`,
+  );
+  await closed;
+  return reply;
 }
 
 /**
@@ -168,6 +246,27 @@ describe.skipIf(!process.env.JUNIOR_DOCKER_SANDBOX_TEST)(
             ],
           });
           expect(retargeted.stdout).toBe("400");
+
+          // Only sandboxes, or their relays with a client certificate, can
+          // use the proxy.
+          expect(
+            await unauthenticatedProxyReply(await proxyPort(session)),
+          ).toBe("");
+
+          // Pass-through never reaches an address that is not public. The
+          // proxy closes the connection, so curl gets no status code. A
+          // loopback service on this host counts requests that get through.
+          const loopbackHits = await countLoopbackHits(async () => {
+            const blocked = await session.runCommand({
+              cmd: "sh",
+              args: [
+                "-c",
+                `for host in ${PRIVATE_HOSTS.join(" ")}; do curl -s -o /dev/null -m 5 -w '%{http_code} ' -H "Host: $host" http://${OTHER_DOMAIN}/; done`,
+              ],
+            });
+            expect(blocked.stdout).toBe("000 ".repeat(PRIVATE_HOSTS.length));
+          });
+          expect(loopbackHits).toBe(0);
 
           // Other domains keep their real certificate and reach the network.
           const other = await session.runCommand({
