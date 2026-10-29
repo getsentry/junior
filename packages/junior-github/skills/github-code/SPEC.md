@@ -10,7 +10,7 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - Preserve unrelated work; reject destructive Git operations except `--force-with-lease` pushes to branches Junior pushed or the requester named.
 - Treat shallow clones as inspection checkouts; deepen before history work; never force-push around missing ancestry.
 - Install dependencies with the lockfile frozen mode before verification when needed.
-- Finish completed edits with a pushed PR unless the user opts out; default draft.
+- Finish every code change with a pushed PR, without asking, unless the user opts out or asked for investigation only. Open it ready when work and checks are done; open a draft when work, checks, or decisions remain. An open scope question goes in the PR body, not in a stop.
 - After each push to a branch with an open PR, check mergeability. Resolve conflicts without asking, by merging the PR base branch (usually the default branch). Never rebase for this. GitHub sends no event for a new conflict, and conflicted PRs get no new checks.
 - Write conventional PR titles and short plain-English bodies; keep check results out of the PR body.
 - Report exact validation and permission failures.
@@ -35,7 +35,7 @@ Should not trigger for issue-only ops, non-GitHub ticketing, product telemetry, 
 1. Run the repository skill validator.
 2. Confirm all referenced files exist.
 3. Confirm `SKILL.md` stays a router (workflow detail lives in references).
-4. Confirm code-edit completion defaults to a draft PR.
+4. Confirm code-edit completion always opens a PR, and an open scope question does not stop it.
 
 ## Maintenance
 
