@@ -43,6 +43,46 @@ describe("Sentry private payload filtering", () => {
     expect(span.attributes?.["url.query"]).toBeUndefined();
   });
 
+  it("keeps only the host of private Slack file URLs", () => {
+    const fileUrl =
+      "https://files.slack.com/files-pri/T123-F456/private-plan.pdf";
+    const span = {
+      attributes: {
+        "server.address": "files.slack.com",
+        "url.full": `${fileUrl}?pub_secret=abc`,
+        "url.path": "/files-pri/T123-F456/private-plan.pdf",
+        "url.query": "pub_secret=abc",
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "GET files.slack.com",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+    const event = {
+      type: undefined,
+      breadcrumbs: [
+        {
+          category: "http",
+          data: { url: fileUrl, "url.query": "pub_secret=abc" },
+        },
+      ],
+    } as SentryEvent;
+
+    scrubPrivateSentrySpan(span);
+    scrubPrivateSentryEvent(event);
+
+    expect(span.attributes).toEqual({
+      "server.address": "files.slack.com",
+      "url.full": "https://files.slack.com",
+    });
+    expect(event.breadcrumbs?.[0]?.data).toEqual({
+      url: "https://files.slack.com",
+    });
+  });
+
   it("removes OAuth secrets from captured request data", () => {
     const event = {
       type: undefined,
