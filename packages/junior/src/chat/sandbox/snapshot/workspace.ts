@@ -46,21 +46,27 @@ export interface CreateWorkspaceSnapshotBuilderInput {
   signal?: AbortSignal;
 }
 
+/** Detached setup command in a Workspace snapshot builder Sandbox. */
+export interface WorkspaceSnapshotCommand {
+  /** Wait until the command exits. `signal` stops only this wait. */
+  wait(options: { signal: AbortSignal }): Promise<{
+    exitCode: number;
+    stdout(options?: { signal?: AbortSignal }): Promise<string>;
+    stderr(options?: { signal?: AbortSignal }): Promise<string>;
+  }>;
+}
+
 /** Saved Workspace snapshot builder Sandbox that one build job can continue. */
 export interface WorkspaceSnapshotBuilder {
   /** Session pinned to the current VM session, without SDK replay. */
   session(): SandboxSession;
   /** Start a command that keeps running after this request ends. */
   startDetachedCommand(input: SandboxCommandInput): Promise<string>;
-  /** Wait for a detached command that an earlier job started. */
-  waitForCommand(
+  /** Load a detached command that an earlier job started. */
+  getCommand(
     commandId: string,
-    options: { signal?: AbortSignal; waitSignal: AbortSignal },
-  ): Promise<{
-    exitCode: number;
-    stdout(): Promise<string>;
-    stderr(): Promise<string>;
-  }>;
+    options?: { signal?: AbortSignal },
+  ): Promise<WorkspaceSnapshotCommand>;
   snapshot(options?: {
     signal?: AbortSignal;
   }): Promise<{ snapshotId: string; sizeBytes?: number }>;
@@ -236,24 +242,23 @@ async function finishBuild(
       build.sandboxName,
       signal,
     );
+    const command = await builder.getCommand(build.commandId, { signal });
+    // Start the poll timeout after the command loads so only the wait is soft.
     const pollSignal = AbortSignal.timeout(COMMAND_STATUS_POLL_TIMEOUT_MS);
     const waitSignal = signal
       ? AbortSignal.any([signal, pollSignal])
       : pollSignal;
-    let finished: Awaited<ReturnType<typeof builder.waitForCommand>>;
+    let finished: Awaited<ReturnType<typeof command.wait>>;
     try {
-      finished = await builder.waitForCommand(build.commandId, {
-        signal,
-        waitSignal,
-      });
+      finished = await command.wait({ signal: waitSignal });
     } catch (error) {
       if (pollSignal.aborted && !signal?.aborted) return null;
       throw error;
     }
     if (finished.exitCode !== 0) {
       const [stdout, stderr] = await Promise.all([
-        finished.stdout(),
-        finished.stderr(),
+        finished.stdout({ signal }),
+        finished.stderr({ signal }),
       ]);
       const detail = workspaceSetupFailureDetail({
         exitCode: finished.exitCode,

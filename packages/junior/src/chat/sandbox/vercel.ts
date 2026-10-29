@@ -200,17 +200,7 @@ async function getWorkspaceSnapshotBuilder(
       const command = await sandbox.runCommand({ ...input, detached: true });
       return command.cmdId;
     },
-    async waitForCommand(commandId, options) {
-      const command = await sandbox.getCommand(commandId, {
-        signal: options.signal,
-      });
-      const finished = await command.wait({ signal: options.waitSignal });
-      return {
-        exitCode: finished.exitCode,
-        stdout: () => finished.stdout({ signal: options.signal }),
-        stderr: () => finished.stderr({ signal: options.signal }),
-      };
-    },
+    getCommand: (commandId, options) => sandbox.getCommand(commandId, options),
     async snapshot(options) {
       const snapshot = await sandbox.snapshot(options);
       return {
