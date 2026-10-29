@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
@@ -263,6 +264,46 @@ export async function findUserByVerifiedEmails(
     .where(inArray(juniorUsers.primaryEmailNormalized, Array.from(normalized)))
     .limit(2);
   return rows.length === 1 ? rows[0] : undefined;
+}
+
+const linkedSlackIdentity = alias(juniorIdentities, "linked_slack_identity");
+
+/**
+ * Find the one Slack user in a workspace who is linked to an exact provider
+ * Identity.
+ *
+ * Only the provider account id from an account-linking flow matches. Handles,
+ * emails, and display names never match. Return undefined when no Slack user
+ * or more than one Slack user matches.
+ */
+export async function findLinkedSlackUserId(
+  executor: JuniorSqlDatabase,
+  args: { provider: string; providerSubjectId: string; slackTeamId: string },
+): Promise<string | undefined> {
+  const rows = await executor
+    .db()
+    .select({ slackUserId: linkedSlackIdentity.providerSubjectId })
+    .from(juniorIdentities)
+    // The join needs a user on both sides, so unlinked identities drop out.
+    .innerJoin(
+      linkedSlackIdentity,
+      and(
+        eq(linkedSlackIdentity.userId, juniorIdentities.userId),
+        eq(linkedSlackIdentity.kind, "user"),
+        eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, args.slackTeamId),
+      ),
+    )
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, args.provider),
+        eq(juniorIdentities.providerTenantId, ""),
+        eq(juniorIdentities.providerSubjectId, args.providerSubjectId),
+      ),
+    )
+    .limit(2);
+  return rows.length === 1 ? rows[0]?.slackUserId : undefined;
 }
 
 /** Remove one exact provider identity owned by a workspace Slack user. */

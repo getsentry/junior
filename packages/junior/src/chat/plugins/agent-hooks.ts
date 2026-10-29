@@ -9,6 +9,8 @@ import {
   eventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
+  IdentityDispatchOptions,
+  IdentityDispatchResult,
   InvocationContext,
   PluginMcp,
   PluginMcpContent,
@@ -909,6 +911,10 @@ function requirePublishedEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
+  dispatchForIdentity(
+    plugin: string,
+    request: IdentityDispatchOptions,
+  ): Promise<IdentityDispatchResult>;
   events: {
     hasMatch?(event: Event): Promise<boolean>;
     neededMatchKeys?(input: {
@@ -931,6 +937,10 @@ export function getPluginRoutes(options: {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
+      agent: {
+        dispatchForIdentity: (dispatchOptions) =>
+          options.dispatchForIdentity(pluginName, dispatchOptions),
+      },
       annotations: {
         forConversation: (conversationId) =>
           createPluginAnnotations({
