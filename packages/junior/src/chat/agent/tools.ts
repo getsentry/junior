@@ -411,11 +411,10 @@ export async function wireAgentTools(
       ? {
           // A dispatch record from before #1788 has no outcomes and sends to
           // its Destination.
-          // TODO(dcramer): Remove this fallback, the "legacy default" line in
-          // `formatOutcomeLines`, and the same check in `finishedRunReply`
-          // when automation dispatches require `outcomes`. Automations have
-          // stored outcomes since #1788, and older dispatch records have
-          // passed the 7-day state TTL.
+          // TODO(dcramer): Remove this fallback and the same check in
+          // `finishedRunReply` when automation dispatches require `outcomes`.
+          // Automations have stored outcomes since #1788, and older dispatch
+          // records have passed the 7-day state TTL.
           automation: {
             sendsMessage: args.run.dispatch.outcomes?.length !== 0,
           },
