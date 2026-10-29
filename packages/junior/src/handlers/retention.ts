@@ -47,7 +47,7 @@ export async function GET(
     const result = await runRetentionPurge(getSqlExecutor(), {
       attachmentStorage:
         options.attachmentStorage ??
-        createAttachmentStorage(getChatConfig().attachmentStorage.provider),
+        createAttachmentStorage(getChatConfig().attachmentStorage),
       nowMs: Date.now(),
     });
     return Response.json(result, { status: 200 });

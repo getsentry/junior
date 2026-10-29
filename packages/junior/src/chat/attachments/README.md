@@ -3,10 +3,13 @@
 This module owns durable files linked to a conversation.
 
 - `storage.ts` defines the provider-neutral object storage capability.
-- `createAttachmentStorage(provider)` in `storage.ts` maps a provider to its
-  adapter. Runtime entry points pass `attachmentStorage.provider` from chat
-  config. They do not call a provider adapter directly. Today the only
-  provider is `vercel-blob`.
+- `config.ts` reads the provider and its settings from env. Chat config keeps
+  the result as `attachmentStorage`.
+- `createAttachmentStorage(config)` in `storage.ts` maps a provider to its
+  adapter. Runtime entry points pass `attachmentStorage` from chat config.
+  They do not call a provider adapter directly.
+- `vercel.ts` stores objects in Vercel Blob. `s3.ts` stores objects in an
+  S3-compatible bucket with path-style URLs.
 - Provider adapters keep their SDK types private.
 - `store.ts` writes object storage first, then creates the SQL row. A row means
   the attachment is durable.

@@ -81,7 +81,7 @@ export function createJuniorApi(
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: createAttachmentStorage(
-        getChatConfig().attachmentStorage.provider,
+        getChatConfig().attachmentStorage,
       ),
       queue: options.conversationWorkQueue ?? getVercelConversationWorkQueue(),
     }),
