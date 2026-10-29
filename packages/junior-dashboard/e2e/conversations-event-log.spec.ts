@@ -152,6 +152,7 @@ test("inspects all reporting events and searches full event data", async ({
 
   // Escape also closes details while focus stays in the interactive log.
   await entry.click();
+  await expect(panel).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();

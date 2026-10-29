@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, CircleAlert, Copy } from "lucide-react";
 
 import { Button } from "./Button";
 import { IconButtonTooltip } from "./Tooltip";
@@ -10,7 +10,7 @@ export function CopyButton(props: {
   label: string;
   copyingLabel?: string;
   /** `menu` shows icon + label for mobile overflow lists. */
-  layout?: "icon" | "menu" | "text";
+  layout?: "icon" | "menu";
 }) {
   const [status, setStatus] = useState<
     "copied" | "copying" | "failed" | "idle"
@@ -23,7 +23,12 @@ export function CopyButton(props: {
         : status === "failed"
           ? "Copy failed"
           : props.label;
-  const Icon = status === "copied" ? Check : Copy;
+  const Icon = {
+    copied: Check,
+    copying: Copy,
+    failed: CircleAlert,
+    idle: Copy,
+  }[status];
 
   async function copyText() {
     if (!props.getText) return;
@@ -52,20 +57,21 @@ export function CopyButton(props: {
     );
   }
 
-  const button = (
-    <Button
-      aria-label={label}
-      disabled={!props.getText || status === "copying"}
-      onClick={() => void copyText()}
-      size={props.layout === "text" ? undefined : "icon"}
-    >
-      <Icon aria-hidden="true" size={15} strokeWidth={2} />
-      {props.layout === "text" ? <span>{label}</span> : null}
-    </Button>
-  );
-  return props.layout === "text" ? (
-    button
-  ) : (
-    <IconButtonTooltip label={label}>{button}</IconButtonTooltip>
+  return (
+    <IconButtonTooltip label={label}>
+      <Button
+        aria-label={label}
+        disabled={!props.getText || status === "copying"}
+        onClick={() => void copyText()}
+        size="icon"
+      >
+        <Icon
+          aria-hidden="true"
+          className={status === "failed" ? "text-rose-300" : undefined}
+          size={15}
+          strokeWidth={2}
+        />
+      </Button>
+    </IconButtonTooltip>
   );
 }

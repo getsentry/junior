@@ -192,20 +192,25 @@ function RawEventJson({ event }: { event: ConversationReportEvent }) {
   return (
     <div className="relative min-w-0 border-t border-dashboard-border pt-4">
       <details onToggle={(event) => setOpen(event.currentTarget.open)}>
-        <summary className="min-h-8 cursor-pointer pr-28 text-xs leading-8 text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+        <summary className="min-h-9 cursor-pointer pr-12 text-xs leading-9 text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
           Raw JSON
         </summary>
         {open ? (
-          <div className="mt-3 min-w-0">
-            <HighlightedCode code={json} language="json" />
-          </div>
+          <>
+            <div className="absolute right-0 top-4">
+              <CopyButton getText={() => json} label="Copy JSON" />
+            </div>
+            <div
+              aria-label="Raw event JSON"
+              className="mt-3 max-h-80 min-w-0 overflow-auto overscroll-contain rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+              role="region"
+              tabIndex={0}
+            >
+              <HighlightedCode code={json} language="json" />
+            </div>
+          </>
         ) : null}
       </details>
-      {open ? (
-        <div className="absolute right-0 top-4">
-          <CopyButton getText={() => json} label="Copy JSON" layout="text" />
-        </div>
-      ) : null}
     </div>
   );
 }

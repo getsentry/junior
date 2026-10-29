@@ -239,7 +239,6 @@ function FoundationsGalleryPage() {
         <CopyButton
           getText={() => JSON.stringify({ status: "ready" }, null, 2)}
           label="Copy JSON"
-          layout="text"
         />
       </Fixture>
       <Fixture title="Select controls">
