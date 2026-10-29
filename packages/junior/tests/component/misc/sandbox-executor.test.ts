@@ -164,6 +164,35 @@ vi.mock("@/chat/sandbox/docker", () => ({
   ensureDockerDaemon: vi.fn(async () => {}),
 }));
 
+const { recordedSpans } = vi.hoisted(() => ({
+  recordedSpans: [] as Array<{
+    name: string;
+    attributes: Record<string, unknown>;
+  }>,
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
+  return {
+    ...actual,
+    withSpan: (async (name, op, context, callback, attributes = {}) => {
+      const span = { name, attributes: { ...attributes } };
+      recordedSpans.push(span);
+      return await actual.withSpan(
+        name,
+        op,
+        context,
+        async (setSpanAttributes) =>
+          await callback((nextAttributes) => {
+            Object.assign(span.attributes, nextAttributes);
+            setSpanAttributes(nextAttributes);
+          }),
+        attributes,
+      );
+    }) as typeof actual.withSpan,
+  };
+});
+
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import {
   parseSandboxEgressCredentialToken,
@@ -526,6 +555,7 @@ async function expectWorkspaceToDelegate(
 
 describe("createTestSandbox", () => {
   beforeEach(() => {
+    recordedSpans.length = 0;
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
     resolveMock.mockReset();
@@ -846,6 +876,24 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
+  it("records which path sandbox acquisition took", async () => {
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_created"));
+    const fresh = createTestSandboxRuntime();
+    await fresh.createSandbox();
+    await fresh.createSandbox();
+
+    sandboxGetMock.mockResolvedValueOnce(makeSandbox("sbx_resumed"));
+    await createTestSandboxRuntime({
+      sandboxId: "sbx_resumed",
+    }).createSandbox();
+
+    expect(
+      recordedSpans
+        .filter((span) => span.name === "sandbox.acquire")
+        .map((span) => span.attributes["app.sandbox.acquire.outcome"]),
+    ).toEqual(["created", "memory", "resumed"]);
+  });
+
   it("does not report a reference change when restoring the same sandbox", async () => {
     const restoredSandbox = makeSandbox("sbx_restored");
     const onSandboxAcquired = vi.fn();
@@ -974,7 +1022,7 @@ describe("createTestSandbox", () => {
     process.env.VERCEL_TEAM_ID = "team_123";
     process.env.VERCEL_PROJECT_ID = "prj_123";
 
-    const freshSandbox = makeSandbox("sbx_fresh");
+    const freshSandbox = makeSandbox("sbx_created");
 
     sandboxCreateMock.mockResolvedValue(freshSandbox);
 
@@ -1883,12 +1931,12 @@ describe("createTestSandbox", () => {
   });
 
   it("attaches sandbox egress auth signals to bash results regardless of exit code", async () => {
-    const sandbox = makeSandbox("sbx_fresh_auth_signal");
+    const sandbox = makeSandbox("sbx_created_auth_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
       await setSandboxEgressAuthRequiredSignal(
         {
           credentials: { actor: { type: "user", userId: "U123" } },
-          egressId: "sbx_fresh_auth_signal_session",
+          egressId: "sbx_created_auth_signal_session",
           expiresAtMs: Date.now() + 60_000,
           contextId: "ctx-fresh",
         },
@@ -1910,7 +1958,7 @@ describe("createTestSandbox", () => {
     sandboxGetMock.mockResolvedValue(sandbox);
 
     const executor = createTestSandbox({
-      sandboxId: "sbx_fresh_auth_signal",
+      sandboxId: "sbx_created_auth_signal",
     });
     executor.configureSkills([]);
 

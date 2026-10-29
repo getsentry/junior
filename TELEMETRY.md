@@ -392,11 +392,30 @@ Spans: `execute_tool <toolName>`, `sandbox.acquire`, `sandbox.create`,
 Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `gen_ai.tool.call.result`, `gen_ai.tool.call.result.size`, `mcp.method.name`,
 `process.executable.name`, `process.exit.code`, `app.sandbox.source`,
+`app.sandbox.acquire.outcome`,
 `app.sandbox.snapshot.resolve_outcome`, `app.sandbox.search.raw_output_bytes`,
 `app.sandbox.search.parsed_records`,
 `app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
 `app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
+
+`app.sandbox.acquire.outcome` on `sandbox.acquire` tells which path returned
+the sandbox:
+
+- `memory`: the runtime already held the sandbox.
+- `resumed`: `sandbox.get` reopened the stored sandbox.
+- `created`: `sandbox.create` booted a new sandbox. Its
+  `app.sandbox.source` and `app.sandbox.snapshot.*` attributes tell how.
+
+Workspace switches create their sandbox outside `sandbox.acquire`. To find the
+sandbox cost of one turn, add the durations of the top-level `sandbox.*` spans
+under its `chat.turn` span. Do not add nested `sandbox.*` spans again.
+
+```text
+dataset=spans query='span.op:sandbox.acquire'
+fields=timestamp,trace,span.duration,app.sandbox.acquire.outcome
+sort=-span.duration
+```
 
 Sandbox egress events: `sandbox.egress.upstream.requested` is logged for every
 forwarded request outside production. In production, it is logged only for

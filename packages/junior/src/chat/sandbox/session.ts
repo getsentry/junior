@@ -4,6 +4,7 @@ import {
   setSpanAttributes,
   withSpan,
   type LogContext,
+  type SetSpanAttributes,
   type TracePropagationHeaders,
 } from "@/chat/logging";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
@@ -202,7 +203,7 @@ export function createSandboxRuntime(
     name: string,
     op: string,
     attributes: Record<string, unknown>,
-    callback: () => Promise<T>,
+    callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
   /** Drop unavailable live state; keep the durable hint for reacquire. */
@@ -657,9 +658,10 @@ export function createSandboxRuntime(
         "app.sandbox.runtime": SANDBOX_RUNTIME,
         "app.sandbox.skills_count": availableSkills.length,
       },
-      async () => {
+      async (setSpanAttributes) => {
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
+          setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
           return cachedSandbox;
         }
 
@@ -667,10 +669,13 @@ export function createSandboxRuntime(
         // Reopen the current sandbox before starting a new one.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
+          setSpanAttributes({ "app.sandbox.acquire.outcome": "resumed" });
           return hintedSandbox;
         }
 
-        return await createFreshSandbox(signal);
+        const createdSandbox = await createFreshSandbox(signal);
+        setSpanAttributes({ "app.sandbox.acquire.outcome": "created" });
+        return createdSandbox;
       },
     );
   };
