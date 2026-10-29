@@ -1,7 +1,5 @@
-import {
-  eventMatchFieldsSchema,
-  type SubscribableResource,
-} from "@sentry/junior-plugin-api";
+import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import { gitHubCommentMatchFields } from "./comment.js";
 
 export const GITHUB_ISSUE_EVENTS = [
   "issue.comment.created",
@@ -20,24 +18,9 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
  * `issue.comment.created` sets them, so a trigger with these filters cannot
  * select other events.
  */
-export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
-  mentionsBot: {
-    kind: "boolean",
-    description: "true when the issue comment mentions this GitHub App",
-    events: ["issue.comment.created"],
-  },
-  senderId: {
-    kind: "number",
-    description:
-      "immutable numeric GitHub user id of the issue commenter; prefer over logins",
-    events: ["issue.comment.created"],
-  },
-  senderLogin: {
-    kind: "string",
-    description: "GitHub login of the issue commenter; logins can be renamed",
-    events: ["issue.comment.created"],
-  },
-});
+export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = gitHubCommentMatchFields([
+  "issue.comment.created",
+]);
 
 /** The identifier shape that `gitHubIssueResource` builds. */
 export const GITHUB_ISSUE_IDENTIFIER = {

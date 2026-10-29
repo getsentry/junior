@@ -685,6 +685,7 @@ describe("github plugin", () => {
       id: 4001,
       user: { login: "jane" },
     };
+    const sender = { id: 77, login: "jane" };
     const checkSuite = (conclusion: string) => ({
       action: "completed",
       check_suite: {
@@ -743,7 +744,7 @@ describe("github plugin", () => {
           comment,
           issue: { number: 12 },
           repository,
-          sender: { id: 77, login: "jane" },
+          sender,
         },
       },
       {
@@ -758,7 +759,7 @@ describe("github plugin", () => {
             user: opener,
           },
           repository,
-          sender: { id: 77, login: "jane" },
+          sender,
         },
       },
       ...[
@@ -777,6 +778,7 @@ describe("github plugin", () => {
           pull_request: pullRequest,
           repository,
           review: { body: "Looks good", state, user: { login: "jane" } },
+          sender,
         },
       })),
       {
@@ -786,6 +788,7 @@ describe("github plugin", () => {
           comment,
           pull_request: pullRequest,
           repository,
+          sender,
         },
       },
       { eventName: "check_suite", body: checkSuite("failure") },
@@ -839,6 +842,22 @@ describe("github plugin", () => {
     }
 
     expect(filterEventMismatches({ resourceTypes, events })).toEqual([]);
+
+    // Events of the same kind set the same data, so one filter fits them all.
+    const missing: string[] = [];
+    for (const event of events) {
+      const required = event.eventType.startsWith("pull_request.")
+        ? ["repo", "pullRequest"]
+        : event.eventType.startsWith("issue.")
+          ? ["repo", "issue"]
+          : [];
+      for (const key of required) {
+        if (!(key in (event.data ?? {}))) {
+          missing.push(`${event.eventType} does not set ${key}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
   });
 
   it("registers release source watches", () => {

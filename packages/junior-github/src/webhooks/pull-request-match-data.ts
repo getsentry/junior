@@ -45,16 +45,14 @@ interface LookupContext {
 }
 
 /**
- * Map each Event key to its pull request number. Repository watches get a
- * copy of each pull request Event with the repository identifier and the same
- * key, so the number comes from the copy with the pull request identifier.
+ * Map each Event key to its pull request number. Every pull request Event
+ * sets `pullRequest`, and the repository copy has the same key.
  */
 function pullRequestNumbers(events: EventInput[]): Map<string, number> {
   const numbers = new Map<string, number>();
   for (const event of events) {
-    if (!event.eventType.startsWith("pull_request.")) continue;
-    const match = /#(\d+)$/.exec(event.identifier);
-    if (match) numbers.set(event.eventKey, Number(match[1]));
+    const number = event.data?.pullRequest;
+    if (typeof number === "number") numbers.set(event.eventKey, number);
   }
   return numbers;
 }
