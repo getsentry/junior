@@ -456,6 +456,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               <TooltipTrigger
                 render={
                   <Button
+                    focusableWhenDisabled
                     aria-label="Attach images"
                     disabled={sendLocked || readingImages}
                     onClick={() => fileInputRef.current?.click()}

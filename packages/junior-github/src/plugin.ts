@@ -48,7 +48,6 @@ import {
 import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
-import { loadGitHubPullRequestPeople } from "./webhooks/pull-request-people.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
   listGitHubAssignedWork,
@@ -363,14 +362,8 @@ export function githubPlugin(
               linkedGitHubLogin(
                 (await ctx.users.readIdentity(identityId))?.user,
               ),
-            loadPullRequestPeople: async (pullRequest) =>
-              await loadGitHubPullRequestPeople({
-                logins: pullRequest.logins,
-                loadPage: await loadPullRequestCommitPages(
-                  installationEnv,
-                  pullRequest,
-                ),
-              }),
+            loadPullRequestCommitPages: async (pullRequest) =>
+              await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
               await markPullRequestFeedbackReviewing(installationEnv, target),

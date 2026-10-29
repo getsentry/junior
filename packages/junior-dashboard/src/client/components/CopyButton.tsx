@@ -62,6 +62,7 @@ export function CopyButton(props: {
       <TooltipTrigger
         render={
           <Button
+            focusableWhenDisabled
             aria-label={label}
             disabled={!props.getText || status === "copying"}
             onClick={() => void copyText()}

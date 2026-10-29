@@ -52,6 +52,11 @@ export const eventMatchFieldSchema = z
     kind: z.enum(["boolean", "string", "number"]),
     description: z.string().trim().min(1).max(200),
     enum: z.array(z.string().min(1)).min(1).optional(),
+    /**
+     * The event value is a list of `kind` values. A match value matches when
+     * the list includes it.
+     */
+    list: z.literal(true).optional(),
   })
   .strict()
   .superRefine((field, context) => {
@@ -60,6 +65,13 @@ export const eventMatchFieldSchema = z
         code: "custom",
         message: 'Event match field enum requires kind "string".',
         path: ["enum"],
+      });
+    }
+    if (field.list && field.kind === "boolean") {
+      context.addIssue({
+        code: "custom",
+        message: 'Event match field list cannot use kind "boolean".',
+        path: ["list"],
       });
     }
   });
@@ -130,7 +142,12 @@ export function stableEventMatchKey(match: EventMatch | undefined): string {
   );
 }
 
-/** Return whether trusted event data matches one exact match object. */
+/**
+ * Return whether trusted event data matches one exact match object. A list
+ * match value matches when the event value equals any entry. A list event
+ * value matches when it includes the match value, or any entry of a list
+ * match value.
+ */
 export function eventMatches(
   match: EventMatch | undefined,
   data: EventData | undefined,
@@ -140,11 +157,17 @@ export function eventMatches(
   for (const [key, expected] of Object.entries(match)) {
     const actual = data[key];
     if (actual === undefined) return false;
-    if (Array.isArray(expected)) {
-      if (!expected.some((value) => Object.is(value, actual))) return false;
-      continue;
+    const actualValues: unknown[] = Array.isArray(actual) ? actual : [actual];
+    const expectedValues: unknown[] = Array.isArray(expected)
+      ? expected
+      : [expected];
+    if (
+      !expectedValues.some((value) =>
+        actualValues.some((entry) => Object.is(value, entry)),
+      )
+    ) {
+      return false;
     }
-    if (!Object.is(expected, actual)) return false;
   }
   return true;
 }

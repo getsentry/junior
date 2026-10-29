@@ -47,6 +47,14 @@ describe("eventMatches", () => {
     ).toBe(false);
   });
 
+  it("matches list event values that include a match value", () => {
+    const data = { authors: ["dcramer", "sentry-junior[bot]"] };
+    expect(eventMatches({ authors: "dcramer" }, data)).toBe(true);
+    expect(eventMatches({ authors: ["octocat", "dcramer"] }, data)).toBe(true);
+    expect(eventMatches({ authors: "octocat" }, data)).toBe(false);
+    expect(eventMatches({ authors: "dcramer" }, { authors: [] })).toBe(false);
+  });
+
   it("treats list order as the same match key", () => {
     expect(stableEventMatchKey(undefined)).toBe("");
     expect(
