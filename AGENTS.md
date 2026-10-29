@@ -83,6 +83,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Design and failures    | `policies/interface-design.md`, `policies/correctness-complexity.md`, `policies/error-handling.md`               |
 | Frontend components    | `policies/frontend-components.md`, `packages/junior-dashboard/src/client/components/README.md`                   |
 | Agent steering         | `policies/agent-steering.md`                                                                                     |
+| System prompt shape    | `policies/system-prompt.md`                                                                                      |
 | Provider boundaries    | `policies/provider-boundaries.md`                                                                                |
 | Comments and telemetry | `policies/code-comments.md`, `policies/observability.md`, `TELEMETRY.md`                                         |
 | Chat architecture      | `packages/junior/src/chat/README.md`                                                                             |
