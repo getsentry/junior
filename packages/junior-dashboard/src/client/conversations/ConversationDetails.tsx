@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from "react";
 
-import { useDetailsPanel } from "../components/DetailsPanel";
+import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { IconButtonTooltip } from "../components/Tooltip";
-import { ConversationDetailsFrame } from "./ConversationDetailsFrame";
 import { SegmentedTabs } from "../components/SegmentedTabs";
 import {
   ConversationChildAgents,
@@ -57,7 +56,16 @@ export function ConversationDetails(props: {
   ].filter((section) => section.content != null);
 
   return (
-    <ConversationDetailsFrame
+    <DetailsPanel
+      label="Conversation details"
+      title={
+        <h2
+          aria-label="Conversation details"
+          className="m-0 text-base font-semibold text-dashboard-text"
+        >
+          Details
+        </h2>
+      }
       actions={
         <>
           <ShareConversationButton
@@ -119,7 +127,7 @@ export function ConversationDetails(props: {
           </p>
         )}
       </SegmentedTabs>
-    </ConversationDetailsFrame>
+    </DetailsPanel>
   );
 }
 

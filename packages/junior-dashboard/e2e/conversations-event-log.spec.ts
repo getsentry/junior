@@ -2,7 +2,7 @@ import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 import { mockDashboardApis } from "./harness";
 
-test.use({ timezoneId: "Asia/Kolkata" });
+test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
 test("inspects all reporting events and searches full event data", async ({
   context,
@@ -134,11 +134,12 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(entry.getByText("11:54:09.000", { exact: true })).toBeVisible();
   await localTime.click();
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
-  await expect(entry.getByText("17:24:09.000", { exact: true })).toBeVisible();
-  await expect(panel.locator("header time")).toContainText("17:24:09.000");
+  await expect(localTime).toHaveText("ET");
+  await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
+  await expect(panel.locator("header time")).toContainText("07:54:09.000");
   await page.reload();
   await expect(localTime).toHaveAttribute("aria-pressed", "true");
-  await expect(entry.getByText("17:24:09.000", { exact: true })).toBeVisible();
+  await expect(entry.getByText("07:54:09.000", { exact: true })).toBeVisible();
   const secondTab = await context.newPage();
   await mockDashboardApis(secondTab);
   await secondTab.goto(page.url());
@@ -156,7 +157,7 @@ test("inspects all reporting events and searches full event data", async ({
   await secondTab.close();
   await page.bringToFront();
   await localTime.click();
-  await expect(panel.locator("header time")).toContainText("17:24:09.000");
+  await expect(panel.locator("header time")).toContainText("07:54:09.000");
   await panel.getByText("Raw JSON", { exact: true }).click();
   const rawJson = JSON.stringify(
     report.events.find((event: { seq: number }) => event.seq === 3),

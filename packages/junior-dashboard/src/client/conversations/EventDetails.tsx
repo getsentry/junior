@@ -188,7 +188,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
 
 function RawEventJson({ event }: { event: ConversationReportEvent }) {
   const [open, setOpen] = useState(false);
-  const json = JSON.stringify(event, null, 2);
+  const json = open ? JSON.stringify(event, null, 2) : "";
   return (
     <div className="relative min-w-0 border-t border-dashboard-border pt-4">
       <details onToggle={(event) => setOpen(event.currentTarget.open)}>

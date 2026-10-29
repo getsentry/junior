@@ -28,9 +28,10 @@ export function useEventTime() {
         day: "numeric",
         timeZoneName: "short",
       }),
+      // A log can span both standard time and daylight-saving time.
       zone: new Intl.DateTimeFormat(undefined, {
         timeZone,
-        timeZoneName: "short",
+        timeZoneName: "shortGeneric",
       }),
     };
   }, [timeZone]);

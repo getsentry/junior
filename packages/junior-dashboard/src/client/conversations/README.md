@@ -56,9 +56,9 @@ is keyed by the Conversation, so switching Conversations resets that choice.
 `ConversationHeader` toggles details and restores focus through explicit control
 refs after dismissal.
 
-`ConversationDetails` owns one set of tabs and content. `ConversationDetailsFrame`
-adds its title and actions to the shared frame. `DetailsPanel`
-uses a 400px aside at 1280px and above. The chat and aside scroll separately.
+`ConversationDetails` owns one set of tabs and content. It supplies its title and
+actions to `DetailsPanel`, which uses a 400px aside at 1280px and above. The chat
+and aside scroll separately.
 Smaller windows use `BottomSheet` with a visible title and close control. The sheet and
 side drawers use the shadcn Base UI `Sheet` and share the app's document
 scroll lock. A resize changes the frame and keeps the selected tab. Tabs stay
@@ -85,7 +85,9 @@ ends of the filtered list. The selected row stays clear of the fixed toolbar.
 
 The timezone toggle uses `useEventTime` to share a UTC/local preference through
 `@uidotdev/usehooks` and browser local storage. It applies to event row clocks
-and detail timestamps. Local mode follows the browser timezone. The mode, not
+and detail timestamps. Local mode follows the browser timezone. The button uses
+a generic zone name because a log can span standard and daylight-saving time.
+Detail timestamps use the zone name for each event date. The mode, not
 the timezone identifier, persists across visits and tabs. This hook belongs to
 the client-rendered event viewer. Raw JSON retains the original ISO values.
 

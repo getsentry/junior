@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
@@ -27,7 +35,6 @@ import {
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationDetails } from "./ConversationDetails";
-import { useConversationDetailsDefaultOpen } from "./ConversationDetailsFrame";
 import { ConversationEventDetails } from "./ConversationEventDetails";
 import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
@@ -76,6 +83,14 @@ import type {
 
 export { liveModelId } from "./ConversationMeta";
 
+const detailsDefaultOpenQuery = "(min-width: 1440px)";
+
+function subscribeToDetailsLayout(onChange: () => void) {
+  const media = window.matchMedia(detailsDefaultOpenQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
@@ -83,7 +98,11 @@ export function ConversationPage(props: {
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
-  const detailsDefaultOpen = useConversationDetailsDefaultOpen();
+  const detailsDefaultOpen = useSyncExternalStore(
+    subscribeToDetailsLayout,
+    () => window.matchMedia(detailsDefaultOpenQuery).matches,
+    () => false,
+  );
   const [detailsChoice, setDetailsChoice] = useState<boolean>();
   const detailsOpen = detailsChoice ?? detailsDefaultOpen;
   const pageRef = useRef<HTMLDivElement>(null);

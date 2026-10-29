@@ -121,7 +121,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
               title={time.title}
               variant="segment"
             >
-              {time.label}
+              <span className="max-w-32 truncate">{time.label}</span>
             </ToggleButton>
           </div>
         </div>
