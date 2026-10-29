@@ -1,9 +1,10 @@
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
+import type { VariantProps } from "class-variance-authority";
 import { cn } from "@dashboard/lib/utils";
 import { toggleVariants } from "./toggle";
 
-/** Own one pressed value and arrow-key focus across a row of segments. */
+/** Own the pressed values and arrow-key focus across a row of items. */
 function ToggleGroup<Value extends string>({
   className,
   ...props
@@ -17,15 +18,16 @@ function ToggleGroup<Value extends string>({
   );
 }
 
-/** Render one segment with the `ui/toggle` look. */
+/** Render one item with a `ui/toggle` look. */
 function ToggleGroupItem<Value extends string>({
   className,
+  variant,
   ...props
-}: TogglePrimitive.Props<Value>) {
+}: TogglePrimitive.Props<Value> & VariantProps<typeof toggleVariants>) {
   return (
     <TogglePrimitive
       data-slot="toggle-group-item"
-      className={cn(toggleVariants(), className)}
+      className={cn(toggleVariants({ variant }), className)}
       {...props}
     />
   );

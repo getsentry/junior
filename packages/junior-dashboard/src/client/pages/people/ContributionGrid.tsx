@@ -1,6 +1,11 @@
 import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
 import { formatDuration } from "../../components/Duration";
-import { Tooltip } from "../../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { getDashboardAgentName } from "../../agentName";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { cn } from "../../styles";
@@ -79,8 +84,22 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
           {weeks.flatMap((week, weekIndex) =>
             week.map((day, dayIndex) =>
               day ? (
-                <Tooltip
-                  content={
+                <Tooltip key={day.date}>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
+                        className={cn(
+                          "size-3 border border-dashboard-overlay outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
+                          activityClass(day.conversations, max),
+                        )}
+                        role="listitem"
+                        tabIndex={0}
+                      />
+                    }
+                  />
+                  <TooltipContent>
+                    <TooltipTitle>{formatDate(day.date)}</TooltipTitle>
                     <ActivityTooltipRows
                       rows={[
                         ["conversations", day.conversations],
@@ -92,19 +111,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                         ["tokens", formatCompactNumber(day.tokens ?? 0)],
                       ]}
                     />
-                  }
-                  key={day.date}
-                  label={formatDate(day.date)}
-                >
-                  <span
-                    aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
-                    className={cn(
-                      "size-3 border border-dashboard-overlay outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
-                      activityClass(day.conversations, max),
-                    )}
-                    role="listitem"
-                    tabIndex={0}
-                  />
+                  </TooltipContent>
                 </Tooltip>
               ) : (
                 <span

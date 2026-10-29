@@ -10,7 +10,12 @@ import {
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
-import { Tooltip } from "../../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { formatCostSummary } from "../../format";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
@@ -125,27 +130,33 @@ export function PluginBarChart(props: {
               );
               const formatted = formatChartValue(value, series.format);
               return (
-                <Tooltip
-                  content={`${series.label}: ${formatted}`}
-                  key={`${category.id}:${series.key}`}
-                  label={formatActivityCategoryTooltipLabel(category.label)}
-                >
-                  <rect
-                    aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
-                    fill={seriesColor(series, seriesIndex)}
-                    height={renderedHeight}
-                    opacity={value ? 0.82 : 0.1}
-                    rx="1.5"
-                    tabIndex={value ? 0 : -1}
-                    width={barWidth * 0.75}
-                    x={
-                      layout.left +
-                      categoryIndex * step +
-                      (step - groupWidth) / 2 +
-                      seriesIndex * barWidth
+                <Tooltip key={`${category.id}:${series.key}`}>
+                  <TooltipTrigger
+                    render={
+                      <rect
+                        aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
+                        fill={seriesColor(series, seriesIndex)}
+                        height={renderedHeight}
+                        opacity={value ? 0.82 : 0.1}
+                        rx="1.5"
+                        tabIndex={value ? 0 : -1}
+                        width={barWidth * 0.75}
+                        x={
+                          layout.left +
+                          categoryIndex * step +
+                          (step - groupWidth) / 2 +
+                          seriesIndex * barWidth
+                        }
+                        y={value >= 0 ? zeroY - renderedHeight : zeroY}
+                      />
                     }
-                    y={value >= 0 ? zeroY - renderedHeight : zeroY}
                   />
+                  <TooltipContent>
+                    <TooltipTitle>
+                      {formatActivityCategoryTooltipLabel(category.label)}
+                    </TooltipTitle>
+                    {`${series.label}: ${formatted}`}
+                  </TooltipContent>
                 </Tooltip>
               );
             }),

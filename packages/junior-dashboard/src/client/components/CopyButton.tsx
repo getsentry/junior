@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Check, CircleAlert, Copy } from "lucide-react";
 
 import { Button } from "./ui/button";
-import { IconButtonTooltip } from "./Tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Copy available text and show whether the clipboard write succeeded. */
 export function CopyButton(props: {
@@ -58,20 +58,25 @@ export function CopyButton(props: {
   }
 
   return (
-    <IconButtonTooltip label={label}>
-      <Button
-        aria-label={label}
-        disabled={!props.getText || status === "copying"}
-        onClick={() => void copyText()}
-        size="icon"
-      >
-        <Icon
-          aria-hidden="true"
-          className={status === "failed" ? "text-rose-300" : undefined}
-          size={15}
-          strokeWidth={2}
-        />
-      </Button>
-    </IconButtonTooltip>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label={label}
+            disabled={!props.getText || status === "copying"}
+            onClick={() => void copyText()}
+            size="icon"
+          >
+            <Icon
+              aria-hidden="true"
+              className={status === "failed" ? "text-rose-300" : undefined}
+              size={15}
+              strokeWidth={2}
+            />
+          </Button>
+        }
+      />
+      <TooltipContent size="compact">{label}</TooltipContent>
+    </Tooltip>
   );
 }

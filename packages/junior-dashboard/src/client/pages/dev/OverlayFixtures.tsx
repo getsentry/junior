@@ -1,3 +1,4 @@
+import { Link2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import {
@@ -16,8 +17,14 @@ import {
   AlertDialogAction,
 } from "../../components/ui/alert-dialog";
 import { useToastManager } from "../../components/ui/toast";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 
-/** Exercise anchored controls, confirmation focus, and success feedback. */
+/** Exercise anchored controls, tooltips, confirmation focus, and success feedback. */
 export function OverlayFixtures() {
   const toast = useToastManager();
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -33,6 +40,32 @@ export function OverlayFixtures() {
             </p>
           </PopoverContent>
         </Popover>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button aria-label="Copy link" size="icon" />}
+          >
+            <Link2 aria-hidden="true" size={15} />
+          </TooltipTrigger>
+          <TooltipContent size="compact">Copy link</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className="border-b border-dotted border-dashboard-border-interactive text-sm"
+                tabIndex={0}
+              />
+            }
+          >
+            $0.42
+          </TooltipTrigger>
+          <TooltipContent>
+            <TooltipTitle>May 1</TooltipTitle>
+            12 conversations · 1.2M tokens
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => setConfirmationOpen(true)}>

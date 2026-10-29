@@ -38,8 +38,8 @@ for anchored controls and named confirmations. They use dashboard color and
 focus tokens and stop motion when reduced motion is set. Use `ui/alert-dialog`
 for every confirmation. Do not use `window.confirm`. Keep the confirmed item
 in state after close, so the closing dialog keeps its text. `ui/tabs.tsx`
-switches panels with Base UI Tabs. `ui/toggle-group.tsx` holds one pressed
-segment with arrow-key focus. Its items use the `ui/toggle` look.
+switches panels with Base UI Tabs. `ui/toggle-group.tsx` holds the pressed
+items of a row with arrow-key focus. Its items use a `ui/toggle` look.
 `ui/toast.tsx` owns short success notifications in a mounted `Toaster`
 provider. Features call `useToastManager` inside that provider. It has no
 global notification manager.
@@ -64,6 +64,9 @@ file when every caller needs the same style or variant. App components compose
 | `ProfileMenu` (desktop)        | `ui/popover`      |
 | `TimeRangeSelector`            | `ui/toggle-group` |
 | `ThemeSwitcher`                | `ui/toggle-group` |
+| `TranscriptViewToggle`         | `ui/toggle-group` |
+| `FilterTabList`                | `ui/tabs`         |
+| `charts/ActivityChartTooltip`  | `ui/tooltip`      |
 
 Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
 `aria-label`. The `ui/` files join classes with the merging `cn` from
@@ -134,9 +137,9 @@ token so each theme can redefine it.
   `danger`; `size="icon"`). Form pages use `Button variant="primary"` for their
   one main save action. For a link that looks like a button, put
   `buttonVariants()` on the router `Link`. Use `ui/toggle-group` for a row
-  that holds one pressed choice. Use `ui/toggle` for one setting that turns on
-  or off. Use `ToggleButton` variants (`pill`, `text`) for other pressed
-  states, not one-off styles. `CopyButton` copies plain text or an async text
+  of pressed choices. Set `multiple` when more than one can be pressed. Use
+  `ui/toggle` for one setting that turns on or off. Both take `variant`:
+  `default` for a quiet segment, `pill` for a bordered filter chip. `CopyButton` copies plain text or an async text
   export. It shares clipboard success, pending, and failure feedback across
   Markdown exports and event JSON. A failed write allows another attempt.
 - **Forms.** Build a field from `ui/field`: `Field`, `FieldLabel`, the control,
@@ -167,7 +170,15 @@ token so each theme can redefine it.
   `overlay` to retain a desktop drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
   in `SheetContent`; it only adds app actions, widths, and body padding.
   `DetailsPanel` owns Escape for docked panels and their scroll frame.
-  `Tooltip` and `IconButtonTooltip` own hover text.
+  `ui/tooltip` owns hover text. Compose `Tooltip`, `TooltipTrigger` with
+  `render` set to the control, and `TooltipContent`. Use
+  `TooltipContent size="compact"` for the label of an icon-only control. Do
+  not use the native `title` attribute for that label. Use
+  `TooltipTitle` to name a chart bucket or detail card. An SVG mark can be the
+  trigger, for example `render={<rect … />}`. `TooltipProvider` in
+  `src/client.tsx` opens tooltips at once and keeps them open for 150ms, so the
+  pointer can reach selectable text. Tooltips open on mouse hover and keyboard
+  focus only. Touch does not open them, so a tap still runs the control.
 - **Identity.** `ActorAvatar`, `ParticipantAvatarStack`, and `ObjectIcon`.
   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
   Item icons. It uses the shared type and status mapping and the original
@@ -186,14 +197,16 @@ levels stay distinct.
 - **Page links** use `SegmentedNav`, through `layout/SecondaryNavigation`. They
   are underline tabs that sit on the header border. With `fill`, links share
   the row width while their labels fit. Rows that do not fit scroll sideways.
-- **Panel switches** use `ui/tabs`, which draws a pill track. Compose `Tabs`,
+- **Panel switches** use `ui/tabs`. The default `TabsList` draws a pill track.
+  Compose `Tabs`,
   `TabsList`, one `TabsTrigger` per panel, and one `TabsContent` per panel.
   Give `TabsList` an `aria-label`. Set `activateOnFocus` so arrow keys select
   the tab. For tabs that stay fixed above scrolling panels, the owner sets the
   grid rows and puts the scroll classes on each `TabsContent`, as
   `ConversationDetails` does.
 
-Keep collection filters in `FilterTabList`.
+Keep collection filters in `FilterTabList`. It uses `TabsList variant="line"`
+and adds the count badges.
 
 ### Patterns
 

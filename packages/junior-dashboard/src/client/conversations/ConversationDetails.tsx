@@ -1,7 +1,11 @@
 import { useState, type ReactNode } from "react";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import { IconButtonTooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import {
   Tabs,
   TabsContent,
@@ -74,17 +78,24 @@ export function ConversationDetails(props: {
             layout="icon"
           />
           {props.sentryConversationUrl ? (
-            <IconButtonTooltip label="Open in Sentry" placement="below">
-              <a
-                aria-label="Open in Sentry"
-                className="grid size-9 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-                href={props.sentryConversationUrl}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                <SentryGlyph />
-              </a>
-            </IconButtonTooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <a
+                    aria-label="Open in Sentry"
+                    className="grid size-9 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+                    href={props.sentryConversationUrl}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    <SentryGlyph />
+                  </a>
+                }
+              />
+              <TooltipContent size="compact" side="bottom">
+                Open in Sentry
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </>
       }
