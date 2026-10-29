@@ -9,10 +9,9 @@ import {
   getDeploymentTelemetryAttributes,
 } from "@/deployment";
 
-// Junior's own gen_ai spans own model calls. Pi parses provider streams itself,
-// so these SDK spans would duplicate them without usage or cost.
-// Remove this filter once Sentry ships a pi-ai integration
-// (getsentry/sentry-javascript#25869).
+// Junior records its own gen_ai spans with usage and cost. These SDK spans
+// would duplicate them, and Pi reads provider streams itself, so they have no
+// usage. Remove this filter after getsentry/sentry-javascript#25869.
 const MANUAL_GEN_AI_INTEGRATIONS = new Set([
   "Anthropic_AI",
   "Google_GenAI",

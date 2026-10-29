@@ -174,8 +174,6 @@ describe("init cli", () => {
     expect(pnpmWorkspace).toBe(`minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
-allowBuilds:
-  "@sentry/cli": true
 `);
 
     const envExample = fs.readFileSync(

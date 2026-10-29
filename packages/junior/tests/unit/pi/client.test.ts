@@ -301,7 +301,6 @@ describe("completeText", () => {
       modelId: "openai/gpt-4o-mini",
       schema,
       prompt: "return json",
-      recordTelemetryPayloads: false,
       system: "structured only",
     });
 
@@ -314,11 +313,6 @@ describe("completeText", () => {
         model: { modelId: "openai/gpt-4o-mini" },
         schema,
         prompt: "return json",
-        experimental_telemetry: {
-          isEnabled: true,
-          recordInputs: false,
-          recordOutputs: false,
-        },
         system: "structured only",
       }),
     );

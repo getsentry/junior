@@ -1662,9 +1662,7 @@ export async function withSpan<T>(
         } catch (error) {
           // Sentry sets the error status but not `error.type`. Keep a more
           // specific type that the callback already set.
-          if (
-            Sentry.spanToJSON(span).attributes?.["error.type"] === undefined
-          ) {
+          if (spanToJSON(span).attributes?.["error.type"] === undefined) {
             span.setAttribute(
               "error.type",
               error instanceof Error ? error.name : typeof error,

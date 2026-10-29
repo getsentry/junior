@@ -93,7 +93,7 @@ describe("withSpan", () => {
     });
   });
 
-  it("sets error.type on the span that throws unless the callback set one", async () => {
+  it("sets error.type on the span that throws", async () => {
     const { withSpan } = await import("@/chat/logging");
 
     await expect(
@@ -106,9 +106,12 @@ describe("withSpan", () => {
       "error.type",
       "TypeError",
     );
+  });
 
-    activeSpan.setAttribute.mockClear();
-    spanAttributes["error.type"] = { type: "string", value: "rate_limited" };
+  it("keeps an error.type that the callback set", async () => {
+    const { withSpan } = await import("@/chat/logging");
+
+    spanAttributes["error.type"] = "rate_limited";
     await expect(
       withSpan("POST slack.com/api/chat.postMessage", "http.client", {}, () =>
         Promise.reject(new Error("rate limited")),

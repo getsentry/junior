@@ -12,8 +12,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opentelemetry/api": "1.9.1",
-    "@opentelemetry/core": "2.9.0",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
     "@sentry/junior-amplitude": "workspace:*",

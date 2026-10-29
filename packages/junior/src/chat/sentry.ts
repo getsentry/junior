@@ -16,7 +16,6 @@ export {
   startInactiveSpan,
   startSpan,
   startSpanManual,
-  vercelAIIntegration,
   withActiveSpan,
   withScope,
 } from "@sentry/node";

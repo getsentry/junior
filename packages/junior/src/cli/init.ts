@@ -89,8 +89,6 @@ function writePnpmWorkspace(targetDir: string): void {
     `minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
-allowBuilds:
-  "@sentry/cli": true
 `,
   );
 }
@@ -169,8 +167,6 @@ export async function runInit(
       typecheck: "tsc --noEmit",
     },
     dependencies: {
-      "@opentelemetry/api": "1.9.1",
-      "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
