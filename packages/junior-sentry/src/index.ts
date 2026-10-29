@@ -22,7 +22,7 @@ import {
 } from "./org-read.js";
 import { resolveSentryOAuthAccount } from "./oauth-account.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
-import { sentryWebhookOrg, sentryWebhookSecret } from "./webhooks/secret.js";
+import { sentryWebhookSecret } from "./webhooks/secret.js";
 
 /** Register Sentry runtime metadata and signed event ingress. */
 export function sentryPlugin(): PluginRegistration {
@@ -53,8 +53,7 @@ export function sentryPlugin(): PluginRegistration {
           suggestedEvents: SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
         },
       ],
-      isEnabled: () =>
-        Boolean(sentryWebhookSecret()) && Boolean(sentryWebhookOrg()),
+      isEnabled: () => Boolean(sentryWebhookSecret()),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
     manifest: {
@@ -75,7 +74,6 @@ export function sentryPlugin(): PluginRegistration {
         SENTRY_CLIENT_ID: {},
         SENTRY_CLIENT_SECRET: {},
         SENTRY_READ_TOKEN: {},
-        SENTRY_WEBHOOK_ORG: {},
         SENTRY_WEBHOOK_SECRET: {},
       },
       name: "sentry",
@@ -103,7 +101,6 @@ export function sentryPlugin(): PluginRegistration {
         return [
           createSentryWebhookRoute({
             events: ctx.events,
-            webhookOrg: sentryWebhookOrg,
             webhookSecret: sentryWebhookSecret,
           }),
         ];

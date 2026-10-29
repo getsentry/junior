@@ -93,7 +93,6 @@ function routeFixture() {
           events.push(event);
         },
       },
-      webhookOrg: () => "sentry",
       webhookSecret: () => SECRET,
     }),
   };
@@ -110,7 +109,6 @@ describe("Sentry webhook events", () => {
         body: issueBody(),
         hookResource: "issue",
         hookTimestamp: "2026-08-05T23:00:01.000Z",
-        webhookOrg: "sentry",
       }),
     ).toEqual([
       {
@@ -148,7 +146,6 @@ describe("Sentry webhook events", () => {
         body: metricAlertBody(),
         hookResource: "metric_alert",
         hookTimestamp: "1785976800",
-        webhookOrg: "sentry",
       }),
     ).toEqual([
       {
@@ -181,17 +178,15 @@ describe("Sentry webhook events", () => {
     ]);
   });
 
-  it("ignores a metric alert for a different organization or state", () => {
-    const otherOrg = metricAlertBody();
-    otherOrg.data.web_url =
-      "https://sentry.io/organizations/other/alerts/rules/details/7/";
+  it("ignores a metric alert without an organization or with an unsupported state", () => {
+    const noOrg = metricAlertBody();
+    noOrg.data.web_url = "https://sentry.io/alerts/rules/details/7/";
 
-    for (const body of [otherOrg, metricAlertBody("triggered")]) {
+    for (const body of [noOrg, metricAlertBody("triggered")]) {
       expect(
         normalizeSentryEvents({
           body,
           hookResource: "metric_alert",
-          webhookOrg: "sentry",
         }),
       ).toEqual([]);
     }
@@ -206,7 +201,6 @@ describe("Sentry webhook events", () => {
         body,
         hookResource: "issue",
         hookTimestamp: "1785976800",
-        webhookOrg: "sentry",
       }),
     ).toEqual([
       expect.objectContaining({ occurredAtMs: 1_785_976_800_000 }),
@@ -243,7 +237,6 @@ describe("Sentry webhook events", () => {
   });
 
   it("uses the trimmed environment secret for plugin ingress", async () => {
-    vi.stubEnv("SENTRY_WEBHOOK_ORG", " SENTRY ");
     vi.stubEnv("SENTRY_WEBHOOK_SECRET", ` ${SECRET} `);
     const publish = vi.fn(async () => {});
     const [route] =
@@ -257,7 +250,7 @@ describe("Sentry webhook events", () => {
     expect(publish).toHaveBeenCalledTimes(2);
   });
 
-  it("ignores a signed delivery for a different organization", async () => {
+  it("uses the organization from the signed payload", async () => {
     const fixture = routeFixture();
     const body = issueBody();
     body.data.issue.url =
@@ -266,7 +259,10 @@ describe("Sentry webhook events", () => {
     const response = await fixture.route.handler(signedRequest(body));
 
     expect(response.status).toBe(202);
-    expect(fixture.events).toEqual([]);
+    expect(fixture.events.map((event) => event.identifier)).toEqual([
+      "other/junior#7513266773",
+      "other/junior",
+    ]);
   });
 
   it("rejects a delivery whose signature does not match", async () => {
@@ -322,7 +318,6 @@ describe("Sentry webhook events", () => {
           throw new Error("queue unavailable");
         },
       },
-      webhookOrg: () => "sentry",
       webhookSecret: () => SECRET,
     });
 

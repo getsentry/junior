@@ -118,7 +118,6 @@ interface WebhookInput {
   body: unknown;
   hookResource: string;
   hookTimestamp?: string;
-  webhookOrg: string;
 }
 
 function normalizeIssueEvents(input: WebhookInput): EventInput[] {
@@ -127,7 +126,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
 
   const issue = parsed.data.data.issue;
   const org = organizationSlug(issue.url)?.toLowerCase();
-  if (!org || org !== input.webhookOrg.toLowerCase()) return [];
+  if (!org) return [];
   const issueResource = sentryIssueResource({
     issueId: issue.id,
     org,
@@ -169,7 +168,7 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
 
   const { data } = parsed.data;
   const org = webOrganizationSlug(data.web_url)?.toLowerCase();
-  if (!org || org !== input.webhookOrg.toLowerCase()) return [];
+  if (!org) return [];
   const alertRuleId = data.metric_alert.alert_rule.id;
   const incidentId = data.metric_alert.id;
   const resource = sentryMetricAlertResource({ alertRuleId, org });
