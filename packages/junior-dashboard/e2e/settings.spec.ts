@@ -21,6 +21,38 @@ test("updates the signed-in user's display name", async ({
   ).toBeVisible();
 });
 
+test("saves notification working hours", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/settings`);
+  await expect(
+    page.getByRole("heading", { name: "Phone notifications" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Phone notifications are not set up for this Junior install.",
+    ),
+  ).toBeVisible();
+  await screenshot(page, "settings-notifications");
+
+  const saturday = page.getByRole("button", { name: "Sat" });
+  await expect(saturday).toHaveAttribute("aria-pressed", "false");
+  await saturday.click();
+  await page.getByLabel("Start").fill("08:30");
+  const saved = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" &&
+      request.url().endsWith("/api/notifications/schedule"),
+  );
+  await page.getByRole("button", { name: "Save hours" }).click();
+  expect((await saved).postDataJSON()).toEqual({
+    workingHoursOnly: true,
+    days: [1, 2, 3, 4, 5, 6],
+    start: "08:30",
+    end: "18:00",
+  });
+  await expect(page.getByText("Hours saved.")).toBeVisible();
+  await expect(saturday).toHaveAttribute("aria-pressed", "true");
+});
+
 test("follows the system theme until the user picks one", async ({
   page,
   dashboard,

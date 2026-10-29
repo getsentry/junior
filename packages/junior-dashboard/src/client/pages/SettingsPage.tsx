@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
 import { InlineError } from "../components/InlineError";
+import { NotificationSettingsCard } from "../notifications/NotificationSettingsCard";
 import { Card } from "../components/layout/Card";
 import { useDocumentTitle } from "../documentTitle";
 import { patch } from "../http";
@@ -58,7 +59,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
       <section className="mx-auto w-full max-w-3xl">
         <h1 className="m-0 text-2xl font-bold">Settings</h1>
         <p className="mt-2 mb-0 max-w-2xl text-sm text-dashboard-text-muted">
-          Manage how your account appears in the dashboard.
+          Manage how your account appears and when Junior notifies you.
         </p>
 
         <form className="mt-6" onSubmit={submit}>
@@ -97,6 +98,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
             </div>
           </Card>
         </form>
+        <NotificationSettingsCard />
       </section>
     </div>
   );

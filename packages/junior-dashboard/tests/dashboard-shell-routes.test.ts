@@ -260,6 +260,27 @@ describe("dashboard shell routes", () => {
     });
   });
 
+  it("serves the notification service worker for the dashboard scope without auth", async () => {
+    const app = createDashboardApp({
+      allowedDomains: ["sentry.io"],
+      auth: auth(null),
+      basePath: "/ops",
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/sw.js"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "application/javascript; charset=utf-8",
+    );
+    expect(response.headers.get("service-worker-allowed")).toBe("/ops");
+    const source = await response.text();
+    expect(source).toContain('addEventListener("push"');
+    expect(source).not.toContain('addEventListener("fetch"');
+  });
+
   it("serves the install icon without auth", async () => {
     const app = dashboard(null);
 

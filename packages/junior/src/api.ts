@@ -4,6 +4,7 @@ import { getAttachmentStorage } from "./chat/attachments/storage";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
+import { createNotificationRoutes } from "./api/notifications/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
@@ -85,6 +86,7 @@ export function createJuniorApi(
   );
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
+  app.route("/api/notifications", createNotificationRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
   app.route("/api/people", createPeopleRoutes());

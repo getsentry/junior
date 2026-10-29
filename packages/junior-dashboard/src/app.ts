@@ -51,6 +51,10 @@ import {
   renderInstallIcon,
   renderManifest,
 } from "./shell";
+import {
+  DASHBOARD_SERVICE_WORKER_PATH,
+  renderServiceWorker,
+} from "./service-worker";
 import { normalizeDashboardPath, resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_BASE_PATH = "/";
@@ -436,11 +440,12 @@ export function createDashboardApp(
   app.get("/favicon.ico", () => renderFavicon());
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
+  app.get(DASHBOARD_SERVICE_WORKER_PATH, () => renderServiceWorker(basePath));
 
   /**
    * Require dashboard auth for every later route; login, Better Auth callbacks,
-   * favicon, install manifest, and install icon are the only registration-order
-   * bypasses.
+   * favicon, install manifest, install icon, and the static service worker are
+   * the only registration-order bypasses.
    */
   const requireAuth = async (
     c: Context<{ Variables: Variables }>,

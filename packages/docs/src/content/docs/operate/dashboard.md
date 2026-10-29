@@ -167,6 +167,43 @@ Set the required environment variables:
 Dashboard cookies are signed with `JUNIOR_SECRET` by default. Set `BETTER_AUTH_SECRET` only when you need a separate rotation boundary for browser sessions.
 Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `JUNIOR_BASE_URL` to the public origin users should visit. Alternate deployment origins redirect there before Google sign-in so the OAuth state and callback cookies share one host. Slack reply footers and other surfaces that include a dashboard conversation link use the same public origin.
 
+## Configure phone notifications
+
+The dashboard can send phone notifications through Web Push. When Junior
+replies in a dashboard Conversation, the person who sent the message gets a
+notification on each device that they turned on. A Conversation in a Slack
+thread does not send these notifications. Slack notifies people there.
+
+1. Create one VAPID key pair for the deployment:
+
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+
+2. Set the environment variables:
+
+   | Variable                      | Required | Purpose                                                                         |
+   | ----------------------------- | -------- | ------------------------------------------------------------------------------- |
+   | `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Yes      | VAPID public key. The browser uses it to subscribe.                             |
+   | `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Yes      | VAPID private key. Keep it secret.                                              |
+   | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to `JUNIOR_BASE_URL`. |
+
+3. Redeploy. Each person opens **Settings** and selects **Turn on for this
+   device**.
+
+On iPhone and iPad, Web Push works only from a Home Screen app. Open the
+dashboard in Safari, select **Share**, then **Add to Home Screen**. Open Junior
+from the Home Screen and turn on notifications there.
+
+Each person sets working hours in **Settings**: days, a start time, an end
+time, and a timezone. The default is 09:00 to 18:00, Monday to Friday. Outside
+these hours, Junior does not send a notification. The reply still shows in the
+dashboard. The automatic timezone comes from the person's linked Slack profile,
+then the saved user timezone, then `JUNIOR_TIMEZONE`. Calendar working hours
+are not used, because Google Calendar does not make them available.
+
+If you change the key pair, every device must turn notifications on again.
+
 ## Verify
 
 After deployment:
