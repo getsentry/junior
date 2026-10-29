@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import {
   EgressAuthRequired,
+  type EventInput,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
   type ToolRegistrationHookContext,
@@ -25,6 +26,7 @@ import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
 import { normalizeGitHubEvents } from "../src/webhooks/events";
 import { withGitHubPullRequestMatchData } from "../src/webhooks/pull-request-match-data";
+import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -788,6 +790,14 @@ describe("github plugin", () => {
       },
       { eventName: "check_suite", body: checkSuite("failure") },
       { eventName: "check_suite", body: checkSuite("success") },
+      {
+        eventName: "release",
+        body: {
+          action: "published",
+          release: { draft: false, id: 6001, tag_name: "v1.2.0" },
+          repository,
+        },
+      },
     ];
     const resourceTypes = githubPlugin().events?.resourceTypes ?? [];
     const fieldNames = [
@@ -797,11 +807,11 @@ describe("github plugin", () => {
         ),
       ),
     ];
-    const setBy = new Map<string, Set<string>>();
+    const events: EventInput[] = [];
     for (const [index, delivery] of deliveries.entries()) {
       const deliveryId = `delivery-${index}`;
       const botEmail = "264270552+sentry-junior[bot]@users.noreply.github.com";
-      const events = await withGitHubPullRequestMatchData({
+      const published = await withGitHubPullRequestMatchData({
         body: delivery.body,
         botEmail,
         db,
@@ -825,35 +835,10 @@ describe("github plugin", () => {
         loadRole: async () => "write",
         neededMatchKeys: async () => fieldNames,
       });
-      for (const event of events) {
-        const keys = setBy.get(event.eventType) ?? new Set<string>();
-        for (const key of Object.keys(event.data ?? {})) keys.add(key);
-        setBy.set(event.eventType, keys);
-      }
+      events.push(...published);
     }
 
-    const mismatches: string[] = [];
-    for (const resourceType of resourceTypes) {
-      for (const eventType of resourceType.supportedEvents) {
-        if (resourceType.type === "release_source") continue;
-        const keys = setBy.get(eventType);
-        if (!keys) {
-          mismatches.push(`no fixture publishes ${eventType}`);
-          continue;
-        }
-        for (const [key, field] of Object.entries(
-          resourceType.matchFields ?? {},
-        )) {
-          const declared = field.events?.includes(eventType) ?? true;
-          if (declared !== keys.has(key)) {
-            mismatches.push(
-              `${resourceType.type} filter ${key} ${declared ? "lists" : "omits"} ${eventType}, which ${keys.has(key) ? "sets" : "never sets"} it`,
-            );
-          }
-        }
-      }
-    }
-    expect(mismatches).toEqual([]);
+    expect(filterEventMismatches({ resourceTypes, events })).toEqual([]);
   });
 
   it("registers release source watches", () => {

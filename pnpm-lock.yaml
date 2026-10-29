@@ -728,6 +728,9 @@ importers:
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0
+      '@sentry/junior-testing':
+        specifier: workspace:*
+        version: file:packages/junior-testing
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -783,6 +786,9 @@ importers:
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0
+      '@sentry/junior-testing':
+        specifier: workspace:*
+        version: file:packages/junior-testing
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1

@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { EventInput } from "@sentry/junior-plugin-api";
+import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sentryPlugin } from "../src";
 import { createSentryWebhookRoute } from "../src/webhooks/handler";
@@ -112,39 +113,16 @@ describe("Sentry webhook events", () => {
         hookResource: "metric_alert",
       })),
     ];
-    const setBy = new Map<string, Set<string>>();
-    for (const delivery of deliveries) {
-      for (const event of normalizeSentryEvents({
-        ...delivery,
-        webhookOrg: "sentry",
-      })) {
-        const keys = setBy.get(event.eventType) ?? new Set<string>();
-        for (const key of Object.keys(event.data ?? {})) keys.add(key);
-        setBy.set(event.eventType, keys);
-      }
-    }
+    const events = deliveries.flatMap((delivery) =>
+      normalizeSentryEvents(delivery),
+    );
 
-    const mismatches: string[] = [];
-    for (const resourceType of sentryPlugin().events?.resourceTypes ?? []) {
-      for (const eventType of resourceType.supportedEvents) {
-        const keys = setBy.get(eventType);
-        if (!keys) {
-          mismatches.push(`no fixture publishes ${eventType}`);
-          continue;
-        }
-        for (const [key, field] of Object.entries(
-          resourceType.matchFields ?? {},
-        )) {
-          const declared = field.events?.includes(eventType) ?? true;
-          if (declared !== keys.has(key)) {
-            mismatches.push(
-              `${resourceType.type} filter ${key} ${declared ? "lists" : "omits"} ${eventType}, which ${keys.has(key) ? "sets" : "never sets"} it`,
-            );
-          }
-        }
-      }
-    }
-    expect(mismatches).toEqual([]);
+    expect(
+      filterEventMismatches({
+        resourceTypes: sentryPlugin().events?.resourceTypes ?? [],
+        events,
+      }),
+    ).toEqual([]);
   });
 
   it("drops an issue level or priority that it does not know", () => {
@@ -155,7 +133,6 @@ describe("Sentry webhook events", () => {
     const [event] = normalizeSentryEvents({
       body,
       hookResource: "issue",
-      webhookOrg: "sentry",
     });
 
     expect(event?.data).not.toHaveProperty("level");
