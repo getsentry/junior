@@ -35,20 +35,17 @@ describe("Guardian Action Review", () => {
       }),
     );
 
-    expect(
-      mcpToolCallsOf(destructiveToolName, conversation).map((call) => ({
-        input: call.input,
-        status: call.status,
-      })),
-    ).toEqual([
-      {
-        input: {
-          arguments: { workspace: "preview-18" },
-          tool_name: destructiveToolName,
-        },
-        status: "completed",
+    // Check only the fields under test. The agent can add optional fields,
+    // such as `intent`.
+    const calls = mcpToolCallsOf(destructiveToolName, conversation);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      input: {
+        arguments: { workspace: "preview-18" },
+        tool_name: destructiveToolName,
       },
-    ]);
+      status: "completed",
+    });
     expect(conversation.replies).toHaveLength(1);
   });
 
