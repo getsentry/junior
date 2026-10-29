@@ -37,7 +37,12 @@ motion is set. Keep one-off disclosure content in the owning feature.
 for anchored controls and named confirmations. They use dashboard color and
 focus tokens and stop motion when reduced motion is set. Use `ui/alert-dialog`
 for every confirmation. Do not use `window.confirm`. Keep the confirmed item
-in state after close, so the closing dialog keeps its text. `ui/tabs.tsx`
+in state after close, so the closing dialog keeps its text.
+`ui/dialog.tsx` shows one short form above the page, such as the fork message.
+Use it for a task, not for record details. A dialog that can open above a sheet
+takes `useSheet` props. Then it shares the scroll lock and the topmost-modal
+focus rules with the sheet. On small screens the dialog sits near the top, so
+the on-screen keyboard does not cover its fields. `ui/tabs.tsx`
 switches panels with Base UI Tabs. `ui/toggle-group.tsx` holds the pressed
 items of a row with arrow-key focus. Its items use a `ui/toggle` look.
 `ui/toast.tsx` owns short success notifications in a mounted `Toaster`
@@ -170,6 +175,8 @@ token so each theme can redefine it.
   `overlay` to retain a desktop drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
   in `SheetContent`; it only adds app actions, widths, and body padding.
   `DetailsPanel` owns Escape for docked panels and their scroll frame.
+  Use `ui/dialog` for a form. Do not put a form in a `Drawer` or a
+  `DetailsPanel`.
   `ui/tooltip` owns hover text. Compose `Tooltip`, `TooltipTrigger` with
   `render` set to the control, and `TooltipContent`. Use
   `TooltipContent size="compact"` for the label of an icon-only control. Do

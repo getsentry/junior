@@ -16,6 +16,15 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from "../../components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from "../../components/ui/dialog";
+import { Field, FieldLabel } from "../../components/ui/field";
+import { Textarea } from "../../components/ui/textarea";
 import { useToastManager } from "../../components/ui/toast";
 import {
   Tooltip,
@@ -24,10 +33,11 @@ import {
   TooltipTrigger,
 } from "../../components/ui/tooltip";
 
-/** Exercise anchored controls, tooltips, confirmation focus, and success feedback. */
+/** Exercise anchored controls, tooltips, form and confirmation focus, and success feedback. */
 export function OverlayFixtures() {
   const toast = useToastManager();
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   return (
     <div className="grid gap-4">
       <div>
@@ -68,6 +78,7 @@ export function OverlayFixtures() {
         </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Button onClick={() => setFormOpen(true)}>Fork example</Button>
         <Button onClick={() => setConfirmationOpen(true)}>
           Delete example
         </Button>
@@ -93,6 +104,25 @@ export function OverlayFixtures() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <Dialog open={formOpen} onOpenChange={setFormOpen}>
+          <DialogContent>
+            <DialogTitle>Fork Conversation</DialogTitle>
+            <Field>
+              <FieldLabel htmlFor="gallery-dialog-message">Message</FieldLabel>
+              <Textarea
+                id="gallery-dialog-message"
+                className="min-h-24 leading-relaxed"
+                placeholder="Message Junior…"
+              />
+            </Field>
+            <DialogFooter>
+              <DialogClose render={<Button>Cancel</Button>} />
+              <Button variant="primary" onClick={() => setFormOpen(false)}>
+                Fork and send
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
