@@ -63,6 +63,7 @@ vi.mock("../src/client/components/Drawer", () => ({
   ),
 }));
 
+const shimmerClass = /class="[^"]*\bshimmer\b/;
 const client = new QueryClient();
 
 afterEach(() => client.clear());
@@ -419,7 +420,7 @@ describe("dashboard canonical-event components", () => {
 
     expect(liveHtml).toContain('role="status"');
     expect(liveHtml).toContain("Junior is thinking…");
-    expect(liveHtml).toContain("junior-text-shimmer");
+    expect(liveHtml).toMatch(shimmerClass);
     expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
     expect(quietHtml).not.toContain("Junior is thinking…");

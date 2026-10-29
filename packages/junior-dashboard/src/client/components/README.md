@@ -33,6 +33,13 @@ motion is set.
 `ui/accordion.tsx` is the shadcn Base UI Accordion. It owns disclosure state,
 heading buttons, and measured panel height. Its motion stops when reduced
 motion is set. Keep one-off disclosure content in the owning feature.
+`ui/trace.tsx` composes `ui/collapsible.tsx`, the shadcn Base UI Collapsible.
+It owns transcript activity rows: a padded row button with `aria-expanded` and
+a chevron, and a details card below the title. The closed panel unmounts, so
+closed rows do not render their content. Its motion stops when reduced motion is
+set. `ShimmerText` uses the shadcn `shimmer` utility from `shadcn/tailwind.css`.
+The utility follows the text color and `data-theme`, and it stops when reduced
+motion is set.
 `ui/popover.tsx` and `ui/alert-dialog.tsx` provide the shadcn Base UI surfaces
 for anchored controls and named confirmations. They use dashboard color and
 focus tokens and stop motion when reduced motion is set. Use `ui/alert-dialog`
@@ -67,6 +74,8 @@ file when every caller needs the same style or variant. App components compose
 | `TranscriptViewToggle`         | `ui/toggle-group` |
 | `FilterTabList`                | `ui/tabs`         |
 | `charts/ActivityChartTooltip`  | `ui/tooltip`      |
+| `conversations/ToolFrame`      | `ui/trace`        |
+| `TranscriptReasoningView`      | `ui/trace`        |
 
 Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
 `aria-label`. The `ui/` files join classes with the merging `cn` from

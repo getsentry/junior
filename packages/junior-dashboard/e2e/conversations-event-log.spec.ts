@@ -20,24 +20,27 @@ test("inspects all reporting events and searches full event data", async ({
   const transcript = page.getByLabel("Conversation transcript", {
     exact: true,
   });
-  const toolSummary = transcript
-    .locator("summary")
-    .filter({ hasText: "webSearch" });
+  const toolRow = transcript.getByRole("button", { name: /^webSearch/ });
   const activity = transcript
     .locator("details")
     .filter({
-      has: page.locator("summary").filter({ hasText: "webSearch" }),
+      has: page.getByRole("button", {
+        includeHidden: true,
+        name: /^webSearch/,
+      }),
     })
     .first();
   await activity.locator(":scope > summary").click();
-  await toolSummary.focus();
+  await toolRow.focus();
   await page.keyboard.press("Enter");
   const toolResult = transcript
     .locator("pre")
     .filter({ hasText: "payments-v42 deploy notes" });
   await expect(toolResult).toBeVisible();
-  await toolSummary.click();
+  await expect(toolRow).toHaveAttribute("aria-expanded", "true");
+  await toolRow.click();
   await expect(toolResult).toBeHidden();
+  await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
   // Search must still reveal a result that the reader has closed.
   await page.getByRole("button", { name: "Search transcript" }).click();
