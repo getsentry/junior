@@ -196,12 +196,15 @@ function clearExampleVercelOutput() {
   });
 }
 
-function startNitroDev() {
+// Restarts reuse this function. Open the Sentry Local UI only on the first
+// start, so that each rebuild does not open a new browser tab.
+function startNitroDev({ openLocalUi = false } = {}) {
   const child = spawnChild("pnpm", [
     "exec",
     "sentry",
     "local",
     "run",
+    ...(openLocalUi ? ["--open"] : []),
     "--port",
     "8969",
     "--",
@@ -310,7 +313,7 @@ if (tunnelToken) {
 }
 
 watchDistForNitroRestart();
-startNitroDev();
+startNitroDev({ openLocalUi: true });
 startLocalHeartbeat();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
