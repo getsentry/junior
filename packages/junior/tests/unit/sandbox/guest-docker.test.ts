@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DOCKER_ENSURE_SCRIPT,
   ensureDockerDaemon,
-} from "@/chat/sandbox/docker";
+} from "@/chat/sandbox/guest-docker";
 
 describe("sandbox docker helpers", () => {
   it("starts dockerd through sudo and waits for the socket", () => {
