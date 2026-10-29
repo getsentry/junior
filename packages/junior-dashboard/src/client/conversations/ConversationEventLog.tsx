@@ -1,6 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { ToggleButton } from "../components/Button";
+import { useEventTime } from "./eventTime";
 import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
@@ -28,6 +30,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   selectedSeq?: number;
 }) {
   const { conversation } = props;
+  const time = useEventTime();
   const search = useTranscriptSearch();
   const [localSelectedSeq, setLocalSelectedSeq] = useState<number>();
   const selectedSeq = props.onSelectedSeqChange
@@ -98,20 +101,28 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
       <div className="sticky top-0 z-10 bg-dashboard-bg">
         <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border px-4 py-2">
           <SearchInput
-            className="min-w-32 flex-1"
+            className="min-w-32 flex-1 @max-[28rem]:basis-full"
             label="Search events"
             onChange={props.onSearchChange}
             placeholder="Search events…"
             size="compact"
             value={search.query}
           />
-          <div className="ml-auto flex items-center gap-3 whitespace-nowrap text-xs text-dashboard-text-muted">
+          <div className="ml-auto flex items-center gap-3 whitespace-nowrap text-xs text-dashboard-text-muted @max-[28rem]:w-full @max-[28rem]:justify-between">
             <span role="status">
               {search.active
                 ? `${visibleRows.length} of ${events.length} loaded events`
                 : `${events.length} loaded events`}
             </span>
-            <span title="Event times in UTC">UTC</span>
+            <ToggleButton
+              aria-label="Use local time"
+              onClick={time.toggle}
+              pressed={time.local}
+              title={time.title}
+              variant="segment"
+            >
+              {time.label}
+            </ToggleButton>
           </div>
         </div>
         <div
@@ -134,7 +145,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
         >
           {visibleRows.map(({ event, summary, metadata }, index) => (
             <li
-              className="scroll-mt-28 scroll-mb-2"
+              className="scroll-mt-32 scroll-mb-2"
               data-event-seq={event.seq}
               key={event.seq}
             >
@@ -178,9 +189,9 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                 <time
                   className="tabular-nums text-dashboard-text-muted"
                   dateTime={event.createdAt}
-                  title={event.createdAt}
+                  title={time.formatTimestamp(event.createdAt)}
                 >
-                  {event.createdAt.slice(11, 23)}
+                  {time.formatClock(event.createdAt)}
                 </time>
                 <span
                   className={cn("truncate", eventLogTone(event.data))}

@@ -81,6 +81,12 @@ Selected rows have a background and an accent edge. Up and Down select the
 previous or next visible row while a row has focus. Selection stops at the
 ends of the filtered list. The selected row stays clear of the fixed toolbar.
 
+The timezone toggle uses `useEventTime` to share a UTC/local preference through
+`@uidotdev/usehooks` and browser local storage. It applies to event row clocks
+and detail timestamps. Local mode follows the browser timezone. The mode, not
+the timezone identifier, persists across visits and tabs. This hook belongs to
+the client-rendered event viewer. Raw JSON retains the original ISO values.
+
 ## Event details
 
 The URL owns the selected event in the main Conversation. `ConversationPage`

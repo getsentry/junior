@@ -3,6 +3,7 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { cn } from "../styles";
 import { DetailsPanel } from "../components/DetailsPanel";
 import type { ConversationTranscript } from "../types";
+import { useEventTime } from "./eventTime";
 import { EventDetails } from "./EventDetails";
 import { ForkConversationButton } from "./ForkConversationButton";
 
@@ -14,14 +15,19 @@ export function ConversationEventDetails(props: {
   overlay?: boolean;
 }) {
   const { conversation, event } = props;
+  const time = useEventTime();
   const title = (
     <>
       <h2 className="m-0 break-words font-mono text-sm font-semibold text-dashboard-text">
         {event.data.type}
       </h2>
-      <p className="mb-0 mt-1 break-all font-mono text-xs text-dashboard-text-muted">
-        {event.createdAt}
-      </p>
+      <time
+        className="mt-1 block break-words font-mono text-xs text-dashboard-text-muted"
+        dateTime={event.createdAt}
+        title={event.createdAt}
+      >
+        {time.formatTimestamp(event.createdAt)}
+      </time>
     </>
   );
 
