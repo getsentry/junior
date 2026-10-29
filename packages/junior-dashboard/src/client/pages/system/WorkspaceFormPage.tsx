@@ -1,22 +1,26 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
-  workspaceListSchema,
   workspaceSchema,
   type WorkspaceListReport,
 } from "@sentry/junior/api/schema";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { fetchDashboardJson, post, put } from "../../http";
+import { workspacePath } from "../../format";
+import { post, put } from "../../http";
 import { SystemPageLayout } from "./SystemPageLayout";
-import { WorkspaceDetails } from "./WorkspaceDetails";
 import { WorkspaceEditor } from "./WorkspaceEditor";
-import { readWorkspaceApiError, workspacesQueryKey } from "./WorkspacesPage";
+import {
+  readWorkspaceApiError,
+  useWorkspaceData,
+  useWorkspacesData,
+  workspaceQueryKey,
+  workspacesQueryKey,
+} from "./workspaceQueries";
 import {
   canSaveWorkspaceDraft,
   createWorkspaceDraft,
@@ -25,41 +29,21 @@ import {
   workspaceDraftBody,
 } from "./workspaceDraft";
 
-// TODO: support 24h once junior_stats can store hour keys (date column is day-only).
-/** Workspace switch stats are daily counters only. */
-const WORKSPACE_RANGE_OPTIONS: TimeRangeDays[] = [7, 30, 90];
-
-/** Create or edit one Workspace at a stable dashboard route. */
+/** Create or edit one Workspace recipe on a full page. */
 export function WorkspaceFormPage() {
   const { workspaceId } = useParams();
   const editing = workspaceId !== undefined;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [range, setRange] = useState<TimeRangeDays>(30);
   const [newDraft, setNewDraft] = useState(createWorkspaceDraft);
   const [editedDraft, setEditedDraft] = useState<{
     draft: WorkspaceDraft;
     workspaceId: string;
   }>();
 
-  const workspaceQuery = useQuery({
-    enabled: editing,
-    queryKey: ["dashboard", "workspace", workspaceId],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        workspaceSchema,
-        `/api/workspaces/${encodeURIComponent(workspaceId!)}`,
-        signal,
-      ),
-    retry: false,
-  });
+  const workspaceQuery = useWorkspaceData(workspaceId);
   // Shares the list cache so the default size is usually loaded already.
-  const workspacesQuery = useQuery({
-    queryKey: workspacesQueryKey,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(workspaceListSchema, "/api/workspaces", signal),
-    retry: false,
-  });
+  const workspacesQuery = useWorkspacesData();
   const defaultVcpus = workspacesQuery.data?.defaultVcpus ?? null;
 
   // Seed the edit draft once per Workspace id. editWorkspaceDraft assigns fresh
@@ -103,7 +87,11 @@ export function WorkspaceFormPage() {
             ].sort((left, right) => left.name.localeCompare(right.name)),
           },
       );
-      navigate("/system/workspaces");
+      // A recipe change can retire the current snapshot; read it again.
+      await queryClient.invalidateQueries({
+        queryKey: workspaceQueryKey(workspace.id),
+      });
+      navigate(workspacePath(workspace.id));
     },
   });
 
@@ -121,30 +109,15 @@ export function WorkspaceFormPage() {
         <PageHeader
           description={
             editing
-              ? "Inspect the current snapshot and update how Junior prepares this Workspace."
+              ? "Change the repositories, setup script, or Sandbox size."
               : "Name the recipe, choose repositories, and optionally add a one-time setup script."
           }
-          {...(editing
-            ? {
-                onRangeChange: setRange,
-                range,
-                rangeOptions: WORKSPACE_RANGE_OPTIONS,
-              }
-            : {})}
           title={
             editing
               ? (workspaceQuery.data?.name ?? "Workspace")
               : "New Workspace"
           }
         />
-
-        {editing && workspaceQuery.data ? (
-          <WorkspaceDetails
-            defaultVcpus={defaultVcpus}
-            range={range}
-            workspace={workspaceQuery.data}
-          />
-        ) : null}
 
         {workspaceQuery.error ? (
           <Card padding="sm">
@@ -158,8 +131,11 @@ export function WorkspaceFormPage() {
         ) : draft ? (
           <WorkspaceEditor
             busy={saveMutation.isPending}
-            defaultVcpus={defaultVcpus}
             canSave={canSaveWorkspaceDraft(draft, saveMutation.isPending)}
+            cancelPath={
+              workspaceId ? workspacePath(workspaceId) : "/system/workspaces"
+            }
+            defaultVcpus={defaultVcpus}
             draft={draft}
             editing={editing}
             error={

@@ -1,26 +1,19 @@
-import { ChevronRight, FolderGit2, Trash2 } from "lucide-react";
-import { useNavigate } from "react-router";
+import { ChevronRight, FolderGit2 } from "lucide-react";
 import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
-import { Button } from "../../components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../../components/ui/tooltip";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
-import { formatSandboxSize } from "./SandboxSizeSummary";
+import { formatSandboxSize } from "./sandboxSize";
 
 type WorkspaceListProps = {
-  busy: boolean;
   defaultVcpus: number | null;
-  onDelete(workspace: WorkspaceReport): void;
+  onSelect(workspace: WorkspaceReport): void;
+  selectedId: string | undefined;
   workspaces: WorkspaceReport[];
 };
 
-/** List Workspace recipes and expose their edit and delete actions. */
+/** List Workspace recipes. Selecting a row opens its details. */
 export function WorkspaceList(props: WorkspaceListProps) {
   return (
     <Card padding="none">
@@ -35,10 +28,10 @@ export function WorkspaceList(props: WorkspaceListProps) {
         <ul className="m-0 list-none p-0">
           {props.workspaces.map((workspace) => (
             <WorkspaceListItem
-              busy={props.busy}
               defaultVcpus={props.defaultVcpus}
               key={workspace.id}
-              onDelete={props.onDelete}
+              onSelect={() => props.onSelect(workspace)}
+              selected={workspace.id === props.selectedId}
               workspace={workspace}
             />
           ))}
@@ -49,26 +42,27 @@ export function WorkspaceList(props: WorkspaceListProps) {
 }
 
 function WorkspaceListItem(props: {
-  busy: boolean;
   defaultVcpus: number | null;
-  onDelete(workspace: WorkspaceReport): void;
+  onSelect(): void;
+  selected: boolean;
   workspace: WorkspaceReport;
 }) {
   const { workspace } = props;
-  const navigate = useNavigate();
-  const openWorkspace = () =>
-    navigate(`/system/workspaces/${encodeURIComponent(workspace.id)}`);
   return (
-    <li className="border-b border-dashboard-border-subtle last:border-b-0">
+    <li
+      className="border-b border-dashboard-border-subtle last:border-b-0"
+      data-workspace-id={workspace.id}
+    >
       <SelectableRow
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5"
-        onSelect={openWorkspace}
-        selected={false}
+        className="px-4 py-3.5"
+        onSelect={props.onSelect}
+        selected={props.selected}
       >
         <button
-          aria-label={`Manage ${workspace.name}`}
-          className="flex min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left"
-          onClick={openWorkspace}
+          aria-expanded={props.selected}
+          aria-label={`View Workspace details: ${workspace.name}`}
+          className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          onClick={props.onSelect}
           type="button"
         >
           <span className="grid size-9 shrink-0 place-items-center rounded-md border border-dashboard-border-strong bg-dashboard-fill-soft text-dashboard-accent transition-colors group-hover:border-dashboard-accent/20 group-hover:bg-dashboard-accent/[0.06] group-hover:text-dashboard-accent-text">
@@ -99,22 +93,6 @@ function WorkspaceListItem(props: {
             size={16}
           />
         </button>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                focusableWhenDisabled
-                aria-label={`Delete ${workspace.name}`}
-                disabled={props.busy}
-                onClick={() => props.onDelete(workspace)}
-                size="icon"
-              >
-                <Trash2 aria-hidden="true" size={15} />
-              </Button>
-            }
-          />
-          <TooltipContent size="compact">Delete Workspace</TooltipContent>
-        </Tooltip>
       </SelectableRow>
     </li>
   );

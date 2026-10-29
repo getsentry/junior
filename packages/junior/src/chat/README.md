@@ -343,7 +343,6 @@ so it has no instructions of its own. `agent-invocations/result.ts` owns its
 
 ```text
 When you reply, follow any reply format in the instructions.
-Briefly report what you did or what is needed next.
 ```
 
 **Automation outcome** (exact line)
@@ -355,8 +354,9 @@ End with `finishAutomationRun`.
 Automations store an ordered outcome list. An empty list sends no successful
 output. New Automations use an empty list unless the user asks for a visible
 result. A `send_message` outcome sends that result to its explicit Destination.
-Watches send their output to the Conversation. Task input never asks the model
-to emit a silence marker.
+Watches send their output to the Conversation when a reply serves the stored
+instructions. Task input does not require a reply for every Event and never
+asks the model to emit a silence marker.
 
 **Example: schedule / reminder (minimal)**
 

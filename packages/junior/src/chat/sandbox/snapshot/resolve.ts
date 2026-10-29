@@ -416,17 +416,3 @@ export async function resolve(params: {
     },
   );
 }
-
-/** Identify provider errors that mean a referenced snapshot no longer exists. */
-export function isMissingError(error: unknown): boolean {
-  const searchable =
-    error instanceof Error
-      ? error.message.toLowerCase()
-      : String(error).toLowerCase();
-  return (
-    searchable.includes("snapshot") &&
-    (searchable.includes("not found") ||
-      searchable.includes("unknown") ||
-      searchable.includes("404"))
-  );
-}
