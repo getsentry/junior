@@ -1,4 +1,8 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type {
+  AutomationExecution,
+  AutomationSummary,
+} from "@sentry/junior/api/schema";
+import type { StatusChipTone } from "../../components/StatusChip";
 import { formatTime } from "../../format";
 
 type ScheduledAutomation = Extract<AutomationSummary, { kind: "scheduled" }>;
@@ -48,4 +52,24 @@ export function formatAutomationRunTime(
         new Date(value),
       )
     : formatTime(value, options);
+}
+
+/** Map a run outcome to its status color. */
+export function automationRunStatusTone(
+  status: AutomationExecution["status"],
+): StatusChipTone {
+  if (status === "failed") return "danger";
+  if (status === "blocked") return "warning";
+  return "success";
+}
+
+/** Name a run by its Conversation title, else by its Automation. */
+export function automationRunTitle(
+  run: AutomationExecution,
+  automationTitle: string,
+): string {
+  return (
+    run.title?.trim() ||
+    (run.conversationId ? automationTitle : "No conversation")
+  );
 }

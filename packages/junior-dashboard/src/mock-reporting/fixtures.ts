@@ -3115,7 +3115,19 @@ export function readMockAutomationExecutions(
     const costUsd = costs[index % costs.length];
     const durationMs = durations[index % durations.length];
     const totalTokens = tokens[index % tokens.length];
+    const executedAtMs = nowMs - index * 86_400_000 - 3_600_000;
     return {
+      automationVersion: index < 3 ? 2 : 1,
+      credentialMode: task.credentialMode,
+      ...(status === "failed"
+        ? { error: "Slack rejected the result message: channel_not_found." }
+        : status === "blocked"
+          ? { error: "GitHub needs the creator to reconnect their account." }
+          : undefined),
+      ...(task.kind === "scheduled"
+        ? { scheduledFor: new Date(executedAtMs - 60_000).toISOString() }
+        : undefined),
+      startedAt: new Date(executedAtMs - (durationMs ?? 5_000)).toISOString(),
       ...(hasConversation
         ? {
             conversationId:
@@ -3128,9 +3140,7 @@ export function readMockAutomationExecutions(
             ...(totalTokens !== undefined ? { totalTokens } : undefined),
           }
         : undefined),
-      executedAt: new Date(
-        nowMs - index * 86_400_000 - 3_600_000,
-      ).toISOString(),
+      executedAt: new Date(executedAtMs).toISOString(),
       executionId: `${id}-run-${index + 1}`,
       status,
     };
