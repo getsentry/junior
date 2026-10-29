@@ -416,16 +416,7 @@ test("groups the signed-in profile and session actions in the header", async ({
   await expect(popover).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
-  // A mouse click keeps a hover-opened menu open, even after a pause.
-  await page.mouse.move(0, 0);
-  await trigger.hover();
-  await expect(popover).toBeVisible();
-  await page.waitForTimeout(600);
-  const openTrigger = page.getByRole("button", {
-    name: /^(Open|Close) profile menu for Dashboard User/,
-  });
-  await openTrigger.click();
-  await expect(openTrigger).toHaveAttribute("aria-expanded", "true");
+  await trigger.click();
   const signOutRequest = page.waitForRequest(
     (request) =>
       request.url().endsWith("/api/auth/sign-out") &&
@@ -433,6 +424,23 @@ test("groups the signed-in profile and session actions in the header", async ({
   );
   await page.getByRole("button", { name: "Log out" }).click();
   await signOutRequest;
+});
+
+test.describe("keeps a hover-opened profile menu open on click", () => {
+  test.use({ controlTimers: true });
+
+  test("after the hover pause", async ({ page, dashboard }) => {
+    await page.goto(dashboard.baseURL);
+    const trigger = page.getByRole("button", {
+      name: /^(Open|Close) profile menu for Dashboard User/,
+    });
+    await trigger.hover();
+    await expect(page.locator("#profile-popover")).toBeVisible();
+    // Pass Base UI's 500ms window that keeps a hover-opened popover open.
+    await page.clock.fastForward(600);
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
 });
 
 test("inspects and copies a child agent transcript", async ({
