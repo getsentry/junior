@@ -92,6 +92,11 @@ function isStatus(error: unknown, status: number): boolean {
   return error instanceof DockerApiError && error.statusCode === status;
 }
 
+/** Return the name of a sandbox's egress relay container. See `relay.ts`. */
+export function egressRelayName(name: string): string {
+  return `${name}-egress`;
+}
+
 /** Return a sandbox name for a sandbox that the caller did not name. */
 export function newSandboxName(): string {
   return `junior-${randomUUID()}`;
@@ -123,6 +128,8 @@ async function pruneNetworks(): Promise<void> {
   }>("networks");
   for (const network of networks) {
     if (used.has(network.Labels[DOCKER_SANDBOX_LABEL])) continue;
+    // An egress relay is not a sandbox, but it holds the network.
+    await forceRemove(egressRelayName(network.Name));
     await removeNetwork(network.Name);
   }
 }
@@ -334,8 +341,7 @@ export async function getContainer(
   return toContainer(details);
 }
 
-/** Remove a sandbox container, its inner Docker volume, and its network. */
-export async function removeContainer(name: string): Promise<void> {
+async function forceRemove(name: string): Promise<void> {
   try {
     await dockerRequest({
       method: "DELETE",
@@ -346,20 +352,35 @@ export async function removeContainer(name: string): Promise<void> {
     // 409 means that Docker already removes an auto-remove container.
     if (!isStatus(error, 404) && !isStatus(error, 409)) throw error;
   }
+}
+
+/**
+ * Remove a sandbox container, its inner Docker volume, its egress relay, and
+ * its network.
+ */
+export async function removeContainer(name: string): Promise<void> {
+  await forceRemove(name);
+  await forceRemove(egressRelayName(name));
   await removeNetwork(name);
 }
 
-/** Stop a sandbox container. A container that is not persistent goes away. */
-export async function stopContainer(id: string): Promise<void> {
+/**
+ * Stop a sandbox container and remove its egress relay. A container that is
+ * not persistent goes away. The next policy update starts a new relay.
+ */
+export async function stopContainer(
+  container: Pick<SandboxContainer, "id" | "name">,
+): Promise<void> {
   try {
     await dockerRequest({
       method: "POST",
-      path: `/containers/${id}/stop`,
+      path: `/containers/${container.id}/stop`,
       query: { t: 5 },
     });
   } catch (error) {
     if (!isStatus(error, 304) && !isStatus(error, 404)) throw error;
   }
+  await forceRemove(egressRelayName(container.name));
 }
 
 /** Move the container's stop deadline later by `durationMs`. */

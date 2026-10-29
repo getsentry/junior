@@ -34,6 +34,7 @@ const OID = {
   authorityKeyIdentifier: "2.5.29.35",
   extKeyUsage: "2.5.29.37",
   serverAuth: "1.3.6.1.5.5.7.3.1",
+  clientAuth: "1.3.6.1.5.5.7.3.2",
 };
 
 /** The CA key and certificate that sign leaf certificates. */
@@ -221,7 +222,10 @@ export async function loadEgressCa(dir: string): Promise<EgressCa> {
   };
 }
 
-/** Issue a TLS server certificate for one host, signed by the egress CA. */
+/**
+ * Issue a TLS certificate for one name, signed by the egress CA.
+ * It works as a server certificate and as an egress relay client certificate.
+ */
 export function issueLeafCertificate(
   ca: EgressCa,
   host: string,
@@ -237,7 +241,11 @@ export function issueLeafCertificate(
       extension(OID.basicConstraints, true, sequence()),
       // digitalSignature.
       extension(OID.keyUsage, true, tlv(0x03, Buffer.from([7, 0x80]))),
-      extension(OID.extKeyUsage, false, sequence(oid(OID.serverAuth))),
+      extension(
+        OID.extKeyUsage,
+        false,
+        sequence(oid(OID.serverAuth), oid(OID.clientAuth)),
+      ),
       extension(
         OID.subjectAltName,
         false,

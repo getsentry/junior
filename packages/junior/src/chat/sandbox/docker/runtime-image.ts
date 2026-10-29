@@ -35,6 +35,8 @@ const COMMON_PACKAGES = [
   "openssl",
   "procps-ng",
   "shadow-utils",
+  // The egress relay runs `socat`. See `relay.ts`.
+  "socat",
   "sudo",
   "tar",
   "unzip",

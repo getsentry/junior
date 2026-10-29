@@ -205,8 +205,20 @@ Vercel Sandbox, and some workloads do not behave the same. Set
   TCP traffic to ports 80 and 443 on public addresses to a proxy in this Junior
   process. The rules also catch traffic from the agent's inner containers.
   `allow-all` removes the rules.
-- The proxy knows each sandbox by its IP on the sandbox's own network. It
-  checks with Docker that the address still belongs to that container.
+- On Linux, the proxy knows each sandbox by its IP on the sandbox's own
+  network. It checks with Docker that the address still belongs to that
+  container.
+- On macOS and other hosts, the Docker daemon runs in a VM. The sandbox cannot
+  reach the proxy through its gateway, and the proxy sees one VM address for
+  every sandbox. So `docker/relay.ts` starts an egress relay container on the
+  sandbox's own network, and the rules send traffic to it. The relay runs
+  `socat` and sends each connection to the proxy at `host.docker.internal`
+  over TLS. Its client certificate names the sandbox's container id, and the
+  egress CA signs it. The proxy then accepts only connections with a valid
+  client certificate. Only one sandbox can reach each relay, and the relay key
+  stays in the relay container, so a sandbox cannot use another sandbox's
+  identity. A port per sandbox without this check would not be safe, because
+  a sandbox could connect to another sandbox's port.
 - The redirect hides the original address. So the proxy reads the host from
   TLS SNI or from the HTTP `Host` header. It decrypts only credentialed and
   trace domains. Credentialed requests go to `executeSandboxEgressRequest`.
@@ -259,7 +271,7 @@ the dev stack, not every workload.
 - **No credit-based idle stop.** A sandbox stops only when its timeout passes.
   Containers that stop early, for example when the daemon restarts, lose their
   running commands, and a Workspace build then fails and starts again.
-- **macOS is not verified.** On Docker Desktop, the proxy runs on the Mac, but
-  the sandbox network gateway is inside Docker's VM. The redirect target and
-  source-IP identity likely do not work there. Linux hosts and Vercel Sandboxes
-  work.
+- **macOS uses the egress relay.** It was checked on Linux with the relay
+  forced on. OrbStack showed the original problem. Docker Desktop is not
+  verified. A privileged sandbox can reach the Docker VM, and with it the relay
+  key, so the relay does not make untrusted workloads safe.

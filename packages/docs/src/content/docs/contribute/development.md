@@ -63,7 +63,7 @@ By default, Junior runs agent sandboxes in Vercel Sandbox. To run them in a loca
 JUNIOR_SANDBOX_PROVIDER=docker
 ```
 
-The Docker provider needs a Linux Docker daemon on a unix socket. It uses `/var/run/docker.sock`, or the unix socket in `DOCKER_HOST`. Each sandbox is a privileged container, so do not run untrusted workloads with it.
+The Docker provider needs a Docker daemon on a unix socket. It uses `/var/run/docker.sock`, or the unix socket in `DOCKER_HOST`. On macOS, the daemon runs in a VM, so each sandbox sends its web traffic through an egress relay container. Each sandbox is a privileged container, so do not run untrusted workloads with it.
 
 The first sandbox builds the `junior-sandbox-runtime` image. This takes a few minutes. Later sandboxes start in seconds. `pnpm dev` and `pnpm cli -- chat ...` both use the provider. Each process runs its own egress proxy, and the process that last acquired a sandbox carries its web traffic.
 
@@ -80,7 +80,7 @@ docker network prune -f --filter label=dev.junior.sandbox
 docker image prune -a -f --filter label=dev.junior.sandbox=snapshot
 ```
 
-Docker Desktop on macOS is not verified. The limits of this provider are in `packages/junior/src/chat/sandbox/README.md`.
+The limits of this provider are in `packages/junior/src/chat/sandbox/README.md`.
 
 ## Work in isolated branches
 

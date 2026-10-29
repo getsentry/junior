@@ -12,6 +12,11 @@ import {
 import { dockerJson } from "@/chat/sandbox/docker/api";
 import type { SandboxContainer } from "@/chat/sandbox/docker/container";
 import { runRawExec } from "@/chat/sandbox/docker/exec";
+import {
+  ensureEgressRelay,
+  RELAY_PROXY_HOST,
+  usesEgressRelay,
+} from "@/chat/sandbox/docker/relay";
 import { dockerSandboxDir } from "@/chat/sandbox/docker/settings";
 import { logWarn } from "@/chat/logging";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
@@ -32,6 +37,10 @@ import type { SandboxNetworkPolicy } from "@/chat/sandbox/workspace";
 // Credentialed requests go to the shared `executeSandboxEgressRequest`. Trace
 // requests get their headers and go upstream. All other connections pass
 // through unchanged.
+//
+// When the Docker daemon runs in a VM, the proxy cannot see sandbox addresses.
+// Then each sandbox reaches the proxy through its egress relay, and a TLS
+// client certificate names the sandbox. See `relay.ts`.
 //
 // The proxy and its routes live in the process that applied the policy. This
 // is the process that runs the sandbox's commands, and it also owns the
@@ -376,17 +385,34 @@ function passThrough(
   socket.on("error", () => upstream.destroy());
 }
 
+/** Return the sandbox address of a direct connection from a sandbox. */
+function directSource(socket: net.Socket): string {
+  return (socket.remoteAddress ?? "").replace(/^::ffff:/, "");
+}
+
+/**
+ * Return the sandbox address of a relay connection. The client certificate
+ * names the sandbox's container id.
+ */
+function relaySource(proxy: Proxy, socket: tls.TLSSocket): string {
+  const egressId = socket.getPeerCertificate().subject?.CN;
+  for (const [sourceIp, route] of proxy.routes) {
+    if (route.egressId === egressId) return sourceIp;
+  }
+  return "";
+}
+
 async function handleConnection(
   proxy: Proxy,
   server: http.Server,
   connections: WeakMap<object, Connection>,
   socket: net.Socket,
+  sourceIp: string,
 ) {
-  const sourceIp = (socket.remoteAddress ?? "").replace(/^::ffff:/, "");
   const route = proxy.routes.get(sourceIp);
   if (!route || !(await ownsAddress(route, sourceIp))) {
     logWarn("sandbox.egress.docker.unknown_source", {
-      "client.address": sourceIp,
+      "client.address": socket.remoteAddress ?? "",
     });
     socket.destroy();
     return;
@@ -437,13 +463,24 @@ async function startProxy(): Promise<Proxy> {
       res.end();
     });
   });
-  const listener = net.createServer((socket) => {
-    handleConnection(proxy, server, connections, socket).catch(() =>
+  const handle = (socket: net.Socket, sourceIp: string) =>
+    handleConnection(proxy, server, connections, socket, sourceIp).catch(() =>
       socket.destroy(),
     );
-  });
-  // Bind every address: each sandbox reaches the proxy through the gateway of
-  // its own network. The route table rejects every other source.
+  const listener = usesEgressRelay()
+    ? tls.createServer(
+        {
+          key: proxy.leafKey.export({ type: "pkcs8", format: "pem" }),
+          cert: issueLeafCertificate(proxy.ca, RELAY_PROXY_HOST, proxy.leafKey),
+          ca: proxy.ca.certPem,
+          requestCert: true,
+          rejectUnauthorized: true,
+        },
+        (socket) => void handle(socket, relaySource(proxy, socket)),
+      )
+    : net.createServer((socket) => void handle(socket, directSource(socket)));
+  // Bind every address: each sandbox or relay reaches the proxy through a
+  // Docker gateway. The route table rejects every other source.
   await new Promise<void>((resolve, reject) => {
     listener.once("error", reject);
     listener.listen(0, "0.0.0.0", () => resolve());
@@ -508,7 +545,9 @@ export async function applyEgressPolicy(
       name: container.name,
       policy,
     });
-    target = `${container.gateway}:${proxy.port}`;
+    target = usesEgressRelay()
+      ? await ensureEgressRelay(container, proxy.ca, proxy.port)
+      : `${container.gateway}:${proxy.port}`;
   } else if (proxyPromise) {
     (await proxyPromise).routes.delete(container.ip);
   }

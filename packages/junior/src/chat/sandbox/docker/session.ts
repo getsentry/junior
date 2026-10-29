@@ -252,7 +252,7 @@ export function adaptSession(
           snapshotOptions?.signal,
         ),
       })),
-    stop: () => run(() => stopContainer(id)),
+    stop: () => run(() => stopContainer(container)),
     update: (params) =>
       run(async () => {
         if (params.networkPolicy) {
