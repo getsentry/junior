@@ -2,6 +2,12 @@ import type { AutomationSummary } from "@sentry/junior/api/schema";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../../components/ui/accordion";
 import { Button } from "../../components/Button";
 import { DetailsPanel } from "../../components/DetailsPanel";
 import { InlineError } from "../../components/InlineError";
@@ -135,45 +141,49 @@ function AutomationDetailsContent({
         </AutomationFact>
       </dl>
       <AutomationRecentRuns automation={automation} />
-      <details className="border-t border-dashboard-border pt-3">
-        <summary className="w-fit cursor-pointer rounded-sm py-1 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
-          About this Automation
-        </summary>
-        <dl className="m-0 mt-3 grid gap-3 text-xs leading-relaxed">
-          <AutomationFact label="Created by">
-            {automation.createdByEmail ? (
-              <Link
-                className={dashboardInlineLinkClass}
-                to={peoplePath(automation.createdByEmail)}
-              >
-                {automation.ownedByViewer ? "you" : automation.createdBy}
-              </Link>
-            ) : automation.ownedByViewer ? (
-              "you"
-            ) : (
-              automation.createdBy
-            )}
-          </AutomationFact>
-          <AutomationFact label="Created">
-            {formatAutomationRunTime(automation.createdAt)}
-          </AutomationFact>
-          <AutomationFact label="Accounts">
-            {automation.credentialMode === "creator"
-              ? `Uses accounts connected by ${automation.ownedByViewer ? "you" : automation.createdBy}.`
-              : "Junior’s accounts only"}
-          </AutomationFact>
-          <AutomationFact label="Runs">
-            {automation.runs[range]} runs / {timeRangeLabel(range)} ·{" "}
-            {automation.totalRuns} total
-          </AutomationFact>
-        </dl>
-        <Link
-          className={`${dashboardInlineLinkClass} mt-3 inline-block py-2 text-xs`}
-          to={`/automations/${encodeURIComponent(automation.id)}/versions${location.search}`}
-        >
-          Version history
-        </Link>
-      </details>
+      <Accordion className="border-t border-dashboard-border pt-1">
+        <AccordionItem value="about">
+          <AccordionTrigger className="min-h-11 text-xs text-dashboard-text-muted">
+            About this Automation
+          </AccordionTrigger>
+          <AccordionContent>
+            <dl className="m-0 grid gap-3 text-xs leading-relaxed">
+              <AutomationFact label="Created by">
+                {automation.createdByEmail ? (
+                  <Link
+                    className={dashboardInlineLinkClass}
+                    to={peoplePath(automation.createdByEmail)}
+                  >
+                    {automation.ownedByViewer ? "you" : automation.createdBy}
+                  </Link>
+                ) : automation.ownedByViewer ? (
+                  "you"
+                ) : (
+                  automation.createdBy
+                )}
+              </AutomationFact>
+              <AutomationFact label="Created">
+                {formatAutomationRunTime(automation.createdAt)}
+              </AutomationFact>
+              <AutomationFact label="Accounts">
+                {automation.credentialMode === "creator"
+                  ? `Uses accounts connected by ${automation.ownedByViewer ? "you" : automation.createdBy}.`
+                  : "Junior’s accounts only"}
+              </AutomationFact>
+              <AutomationFact label="Runs">
+                {automation.runs[range]} runs / {timeRangeLabel(range)} ·{" "}
+                {automation.totalRuns} total
+              </AutomationFact>
+            </dl>
+            <Link
+              className={`${dashboardInlineLinkClass} mt-3 inline-block py-2 text-xs`}
+              to={`/automations/${encodeURIComponent(automation.id)}/versions${location.search}`}
+            >
+              Version history
+            </Link>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </div>
   );
 }

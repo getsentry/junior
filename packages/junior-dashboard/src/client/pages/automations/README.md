@@ -53,7 +53,9 @@ Instructions follow, then compact trigger and delivery rows. The sheet header
 uses the Automation name. `AutomationStatus`
 keeps a failed execution distinct from whether future runs remain enabled. It
 shows block reasons and links to the last Conversation when attention is needed.
-Scheduled times can expand to show both the schedule timezone and browser time.
+Scheduled times use the shared shadcn Accordion to show the schedule timezone
+and browser time. About this Automation uses the same component. Both start
+collapsed and reset when the selection changes.
 Paused, blocked, completed, and unavailable Automations explain why there is no
 next run instead of showing "None".
 

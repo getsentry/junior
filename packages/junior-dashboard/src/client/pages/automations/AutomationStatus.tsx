@@ -1,6 +1,12 @@
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { Link } from "react-router";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../../components/ui/accordion";
 import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
@@ -148,28 +154,34 @@ function AutomationNextTrigger({
         ? "Run was due"
         : "Next run";
     return (
-      <details className="text-sm text-dashboard-text">
-        <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-dashboard-focus">
-          {timingLabel}{" "}
-          <time dateTime={automation.nextRunAt}>
-            {formatRelativeTime(automation.nextRunAt)}
-          </time>
-        </summary>
-        <dl className="m-0 mt-2 grid gap-1 border-l border-dashboard-border pl-3 text-xs leading-relaxed">
-          <dt className="text-dashboard-text-muted">Schedule time</dt>
-          <dd className="m-0">
-            <time dateTime={automation.nextRunAt}>{scheduleTime}</time>
-          </dd>
-          {localTime !== scheduleTime ? (
-            <>
-              <dt className="mt-1 text-dashboard-text-muted">Your time</dt>
+      <Accordion>
+        <AccordionItem value="next-run">
+          <AccordionTrigger className="py-1 text-sm font-normal">
+            <span>
+              {timingLabel}{" "}
+              <time dateTime={automation.nextRunAt}>
+                {formatRelativeTime(automation.nextRunAt)}
+              </time>
+            </span>
+          </AccordionTrigger>
+          <AccordionContent>
+            <dl className="m-0 mt-1 grid gap-1 border-l border-dashboard-border pl-3 text-xs leading-relaxed">
+              <dt className="text-dashboard-text-muted">Schedule time</dt>
               <dd className="m-0">
-                <time dateTime={automation.nextRunAt}>{localTime}</time>
+                <time dateTime={automation.nextRunAt}>{scheduleTime}</time>
               </dd>
-            </>
-          ) : null}
-        </dl>
-      </details>
+              {localTime !== scheduleTime ? (
+                <>
+                  <dt className="mt-1 text-dashboard-text-muted">Your time</dt>
+                  <dd className="m-0">
+                    <time dateTime={automation.nextRunAt}>{localTime}</time>
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     );
   } else description = "Next run not scheduled";
   return <p className="m-0 text-sm text-dashboard-text">{description}</p>;

@@ -1,3 +1,9 @@
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../../components/ui/accordion";
 import { FormNotice } from "../../components/FormNotice";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
@@ -234,6 +240,26 @@ function FoundationsGalleryPage() {
         <FormNotice title="This automation changed while you were editing.">
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
+      </Fixture>
+      <Fixture title="Accordion">
+        <Accordion multiple defaultValue={["timing"]}>
+          <AccordionItem value="timing">
+            <AccordionTrigger>Next run</AccordionTrigger>
+            <AccordionContent>
+              <p className="m-0 text-dashboard-text-muted">
+                Monday at 9:00 AM in the schedule timezone.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="about">
+            <AccordionTrigger>About this Automation</AccordionTrigger>
+            <AccordionContent>
+              <p className="m-0 text-dashboard-text-muted">
+                Creator, connected accounts, and version history.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </Fixture>
       <Fixture title="Copy text">
         <CopyButton

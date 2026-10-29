@@ -30,6 +30,9 @@ gallery fixture before use.
 uses the dashboard overlay and close button, and stops motion when reduced
 motion is set. The copied source license is in `ui/sheet.LICENSE`.
 `Drawer` and `BottomSheet` compose this component for app details.
+`ui/accordion.tsx` is the shadcn Base UI Accordion. It owns disclosure state,
+heading buttons, and measured panel height. Its motion stops when reduced
+motion is set. Keep one-off disclosure content in the owning feature.
 `ui/useSheet.ts` owns their close lifecycle, shared document scroll lock, and
 focus rules when a resize puts one modal below another. These are separate
 Dialog roots. A newly mounted sheet must not take focus from the open child

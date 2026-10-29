@@ -117,8 +117,8 @@ test("opens scheduled and event automations in the native Automations view", asy
   await details.getByText("About this Automation", { exact: true }).click();
   await automationDetailsTrigger.click();
   await expect(
-    details.locator("details").filter({ hasText: "Accounts" }),
-  ).not.toHaveAttribute("open");
+    details.getByRole("button", { name: "About this Automation", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
   await expect(page).toHaveURL(/scheduled-1\?range=7&scope=mine/);
   await screenshot(page, "automation-details", {
     view: "desktop",
@@ -142,12 +142,15 @@ test("opens scheduled and event automations in the native Automations view", asy
     recentRuns.getByText("42s · $0.42", { exact: true }),
   ).toBeVisible();
   await expect(details.getByText("Accounts", { exact: true })).toBeHidden();
-  await details
-    .locator("summary")
-    .filter({ hasText: /^Next run/ })
-    .click();
+  await details.getByRole("button", { name: /^Next run/ }).click();
   await expect(details.getByText("Your time", { exact: true })).toBeVisible();
-  await details.getByText("About this Automation", { exact: true }).click();
+  const about = details.getByRole("button", {
+    name: "About this Automation",
+    exact: true,
+  });
+  await about.focus();
+  await page.keyboard.press("Space");
+  await expect(about).toHaveAttribute("aria-expanded", "true");
   await expect(details.getByRole("link", { name: "you" })).toHaveAttribute(
     "href",
     "/people/dev%40example.com",
