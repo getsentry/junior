@@ -287,7 +287,7 @@ const app = await createApp({
   guardianModelId: "openai/gpt-6-luna",
   embeddingModelId: "openai/text-embedding-3-small",
   webSearchModelId: "openai/gpt-6-luna",
-  imageGenerationModelId: "google/gemini-3-pro-image",
+  imageGenerationModelId: "openai/gpt-image-2",
   visionModelId: "openai/gpt-5.6-sol",
 });
 ```

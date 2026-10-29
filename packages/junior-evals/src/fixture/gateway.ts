@@ -16,22 +16,14 @@ import { mswServer } from "@junior-tests/msw/server";
 import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
-const GATEWAY_CHAT_COMPLETIONS_URL =
-  "https://ai-gateway.vercel.sh/v1/chat/completions";
+// The AI SDK `generateImage()` call of the gateway provider.
+const GATEWAY_IMAGE_MODEL_URL =
+  "https://ai-gateway.vercel.sh/v4/ai/image-model";
 // A valid 1x1 PNG. The agent can view it, so the model must decode it.
-const STUB_PNG_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+const STUB_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
 
-/** Whether a request asks the gateway to generate an image. */
-async function isImageGeneration(request: Request): Promise<boolean> {
-  if (!request.url.startsWith(GATEWAY_CHAT_COMPLETIONS_URL)) return false;
-  const payload = (await request.clone().json()) as { modalities?: unknown };
-  return (
-    Array.isArray(payload.modalities) && payload.modalities.includes("image")
-  );
-}
-
-let generatedImageDataUrl = STUB_PNG_DATA_URL;
+let generatedImageBase64 = STUB_PNG_BASE64;
 
 /**
  * Set the PNG that image generation returns in this test. Use it when the
@@ -39,9 +31,9 @@ let generatedImageDataUrl = STUB_PNG_DATA_URL;
  * look like the result, so the agent may try again.
  */
 export function mockGeneratedImage(png: Buffer): void {
-  generatedImageDataUrl = `data:image/png;base64,${png.toString("base64")}`;
+  generatedImageBase64 = png.toString("base64");
   onTestFinished(() => {
-    generatedImageDataUrl = STUB_PNG_DATA_URL;
+    generatedImageBase64 = STUB_PNG_BASE64;
   });
 }
 
@@ -135,16 +127,8 @@ export function installGatewayObserver(): GatewayObserver {
       counts[endpoint] = (counts[endpoint] ?? 0) + 1;
       const searchResponse = await answerWebSearch(request);
       if (searchResponse) return searchResponse;
-      if (await isImageGeneration(request)) {
-        return HttpResponse.json({
-          choices: [
-            {
-              message: {
-                images: [{ image_url: { url: generatedImageDataUrl } }],
-              },
-            },
-          ],
-        });
+      if (request.url === GATEWAY_IMAGE_MODEL_URL) {
+        return HttpResponse.json({ images: [generatedImageBase64] });
       }
       const hook = progressHook;
       if (

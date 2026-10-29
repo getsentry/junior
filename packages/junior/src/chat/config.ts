@@ -269,7 +269,7 @@ const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
-const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
+const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
