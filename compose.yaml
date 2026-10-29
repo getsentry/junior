@@ -27,6 +27,23 @@ services:
     volumes:
       - junior-redis:/data
 
+  # S3-compatible server for S3 attachment storage tests.
+  s3:
+    image: versity/versitygw:v1.10.0
+    environment:
+      ROOT_ACCESS_KEY: junior
+      ROOT_SECRET_KEY: junior-secret
+      VGW_BACKEND: posix
+      VGW_BACKEND_ARG: /tmp
+      VGW_HEALTH: /health
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7070/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "7072:7070"
+
 volumes:
   junior-postgres:
   junior-redis:
