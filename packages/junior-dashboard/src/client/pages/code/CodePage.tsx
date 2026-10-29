@@ -12,6 +12,14 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import {
@@ -88,61 +96,50 @@ function CodeOverview(props: {
             </EmptyTelemetry>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[36rem] table-fixed border-collapse text-left">
-              <colgroup>
-                <col />
-                <col className="w-28" />
-                <col className="w-28" />
-                <col className="w-28" />
-              </colgroup>
-              <thead className="font-sans font-medium text-xs text-dashboard-text-muted">
-                <tr className="border-b border-dashboard-border-subtle">
-                  <th className="px-4 py-2.5 font-medium">Repository</th>
-                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
-                    Created
-                  </th>
-                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
-                    Merge rate
-                  </th>
-                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
-                    Median cost
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.repositories.map((repository) => (
-                  <tr
-                    className="border-b border-dashboard-border-subtle last:border-b-0"
-                    key={repository.id}
-                  >
-                    <td className="min-w-0 px-4 py-3">
-                      <div className="truncate font-display text-sm text-dashboard-text">
-                        <Link
-                          className="text-inherit no-underline hover:text-dashboard-accent-text"
-                          to={codeRepositoryPath(repository.id)}
-                        >
-                          {repository.name}
-                        </Link>
-                      </div>
-                      <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
-                        {repository.provider}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
-                      {repository.created}
-                    </td>
-                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
-                      {formatMergeRate(repository.mergeRate)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-sans text-sm tabular-nums whitespace-nowrap text-dashboard-text">
-                      {formatCodeCost(repository.medianCostUsd)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table className="min-w-[36rem] table-fixed">
+            <colgroup>
+              <col />
+              <col className="w-28" />
+              <col className="w-28" />
+              <col className="w-28" />
+            </colgroup>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="px-4">Repository</TableHead>
+                <TableHead className="px-4 text-right">Created</TableHead>
+                <TableHead className="px-4 text-right">Merge rate</TableHead>
+                <TableHead className="px-4 text-right">Median cost</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.repositories.map((repository) => (
+                <TableRow key={repository.id}>
+                  <TableCell className="min-w-0 px-4 py-3">
+                    <div className="truncate font-display text-sm text-dashboard-text">
+                      <Link
+                        className="text-inherit no-underline hover:text-dashboard-accent-text"
+                        to={codeRepositoryPath(repository.id)}
+                      >
+                        {repository.name}
+                      </Link>
+                    </div>
+                    <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
+                      {repository.provider}
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-right font-sans tabular-nums">
+                    {repository.created}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-right font-sans tabular-nums">
+                    {formatMergeRate(repository.mergeRate)}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-right font-sans tabular-nums">
+                    {formatCodeCost(repository.medianCostUsd)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </Card>
       {data.changes.length > 0 ? (

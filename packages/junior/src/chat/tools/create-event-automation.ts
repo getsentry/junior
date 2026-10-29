@@ -76,7 +76,7 @@ export function createEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
+      "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. When the resource and events are known, create it without redundant confirmation. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema,

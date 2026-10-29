@@ -1,13 +1,24 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   automationEventCatalogSchema,
   type AutomationEdit,
 } from "@sentry/junior/api/schema";
-import { Field } from "../../components/Field";
-import { Select } from "../../components/Select";
-import { TextInput } from "../../components/TextInput";
-import { Button } from "../../components/Button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
+import { NativeSelect } from "../../components/ui/native-select";
 import { FormNotice } from "../../components/FormNotice";
+import { Checkbox } from "../../components/ui/checkbox";
 import { fetchDashboardJson } from "../../http";
 
 type Trigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
@@ -16,8 +27,11 @@ type Trigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
 export function AutomationEventFields(props: {
   value: Trigger;
   original: Trigger;
+  /** Base UI checkboxes do not inherit a native fieldset's disabled state. */
+  disabled?: boolean;
   onChange(value: Trigger): void;
 }) {
+  const [replacement, setReplacement] = useState<Trigger>();
   const catalog = useQuery({
     queryKey: ["dashboard", "automation-event-catalog"],
     queryFn: ({ signal }) =>
@@ -75,11 +89,11 @@ export function AutomationEventFields(props: {
           </pre>
         </FormNotice>
       ) : null}
-      <Field
-        label={unsupported ? "Replace trigger" : "Resource type"}
-        htmlFor="trigger-resource"
-      >
-        <Select
+      <Field>
+        <FieldLabel htmlFor="trigger-resource">
+          {unsupported ? "Replace trigger" : "Resource type"}
+        </FieldLabel>
+        <NativeSelect
           id="trigger-resource"
           value={
             unsupported
@@ -91,13 +105,7 @@ export function AutomationEventFields(props: {
               (item) => `${item.namespace}:${item.type}` === e.target.value,
             );
             if (!next) return;
-            if (
-              !window.confirm(
-                "Replace the saved trigger? Its resource, events, and conditions will be cleared.",
-              )
-            )
-              return;
-            props.onChange({
+            setReplacement({
               namespace: next.namespace,
               resourceType: next.type,
               identifier: "",
@@ -117,12 +125,38 @@ export function AutomationEventFields(props: {
               {item.namespace} · {item.type.replaceAll("_", " ")}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </Field>
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setReplacement(undefined);
+        }}
+        open={replacement !== undefined}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>Replace the saved trigger?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Its resource, events, and conditions will be cleared.
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (replacement) props.onChange(replacement);
+                setReplacement(undefined);
+              }}
+              variant="primary"
+            >
+              Replace trigger
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {!unsupported && resource ? (
         <>
-          <Field label="Resource name" htmlFor="trigger-label">
-            <TextInput
+          <Field>
+            <FieldLabel htmlFor="trigger-label">Resource name</FieldLabel>
+            <Input
               size="comfortable"
               id="trigger-label"
               value={props.value.label}
@@ -131,12 +165,11 @@ export function AutomationEventFields(props: {
               }
             />
           </Field>
-          <Field
-            label="Resource identifier"
-            htmlFor="trigger-identifier"
-            help="Use the exact provider resource identifier, not its display name."
-          >
-            <TextInput
+          <Field>
+            <FieldLabel htmlFor="trigger-identifier">
+              Resource identifier
+            </FieldLabel>
+            <Input
               size="comfortable"
               id="trigger-identifier"
               value={props.value.identifier}
@@ -144,6 +177,9 @@ export function AutomationEventFields(props: {
                 props.onChange({ ...props.value, identifier: e.target.value })
               }
             />
+            <FieldDescription id="trigger-identifier-help">
+              Use the exact provider resource identifier, not its display name.
+            </FieldDescription>
           </Field>
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">
@@ -155,11 +191,11 @@ export function AutomationEventFields(props: {
                   key={event}
                   className="flex min-h-11 cursor-pointer items-start gap-3 px-3 py-3 text-sm"
                 >
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 size-4 shrink-0 accent-dashboard-focus"
+                  <Checkbox
+                    className="mt-0.5"
                     checked={props.value.events.includes(event)}
-                    onChange={() =>
+                    disabled={props.disabled}
+                    onCheckedChange={() =>
                       props.onChange({
                         ...props.value,
                         events: props.value.events.includes(event)
@@ -191,12 +227,8 @@ export function AutomationEventFields(props: {
                 ([key, field]) => {
                   const value = props.value.match?.[key];
                   return (
-                    <Field
-                      key={key}
-                      label={key}
-                      htmlFor={`match-${key}`}
-                      help={field.description}
-                    >
+                    <Field key={key}>
+                      <FieldLabel htmlFor={`match-${key}`}>{key}</FieldLabel>
                       {Array.isArray(value) ? (
                         <div className="text-sm">
                           <span className="break-all">{value.join(", ")}</span>{" "}
@@ -205,7 +237,7 @@ export function AutomationEventFields(props: {
                           </Button>
                         </div>
                       ) : field.kind === "boolean" || field.enum ? (
-                        <Select
+                        <NativeSelect
                           id={`match-${key}`}
                           value={value === undefined ? "" : String(value)}
                           onChange={(e) =>
@@ -223,9 +255,9 @@ export function AutomationEventFields(props: {
                           {(field.enum ?? ["true", "false"]).map((v) => (
                             <option key={v}>{v}</option>
                           ))}
-                        </Select>
+                        </NativeSelect>
                       ) : (
-                        <TextInput
+                        <Input
                           size="comfortable"
                           id={`match-${key}`}
                           type={field.kind === "number" ? "number" : "text"}
@@ -243,6 +275,11 @@ export function AutomationEventFields(props: {
                           }
                         />
                       )}
+                      {field.description ? (
+                        <FieldDescription id={`match-${key}-help`}>
+                          {field.description}
+                        </FieldDescription>
+                      ) : null}
                     </Field>
                   );
                 },

@@ -103,6 +103,13 @@ export function useConversationsData(search = "") {
         signal,
       ),
     placeholderData: keepPreviousData,
+    // Active rows change while no Conversation is open, such as a new title.
+    refetchInterval: (query) =>
+      query.state.data?.conversations.some(
+        (conversation) => conversation.status === "active",
+      )
+        ? 10_000
+        : false,
     retry: false,
   });
 }

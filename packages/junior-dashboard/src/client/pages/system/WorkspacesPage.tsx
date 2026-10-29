@@ -1,132 +1,136 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 import { Plus } from "lucide-react";
-import {
-  workspaceListSchema,
-  type BaselineSnapshotReport,
-  type WorkspaceReport,
-} from "@sentry/junior/api/schema";
+import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
 import { getDashboardAgentName } from "../../agentName";
-import { ButtonLink } from "../../components/Button";
+import { buttonVariants } from "../../components/ui/button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { InlineError } from "../../components/InlineError";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import {
-  DashboardApiError,
-  deleteDashboardResource,
-  fetchDashboardJson,
-} from "../../http";
-import { BaselineSnapshotCard } from "./BaselineSnapshotCard";
-import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
+import { PageLayout } from "../../components/layout/PageLayout";
+import { useDocumentTitle } from "../../documentTitle";
+import { workspacePath } from "../../format";
+import { cn } from "../../styles";
+import { BaseSandboxCard } from "./BaseSandboxCard";
+import { SystemNavigation } from "./SystemNavigation";
+import { WorkspaceDeleteDialog } from "./WorkspaceDeleteDialog";
+import { WorkspaceDetails } from "./WorkspaceDetails";
 import { WorkspaceList } from "./WorkspaceList";
+import { useWorkspacesData } from "./workspaceQueries";
 
-export const workspacesQueryKey = ["dashboard", "workspaces"] as const;
+const listPath = "/system/workspaces";
 
-/** Return a useful dashboard error message without exposing response details. */
-export function readWorkspaceApiError(
-  error: unknown,
-  fallback: string,
-): string {
-  if (error instanceof DashboardApiError) {
-    return error.apiError ?? fallback;
-  }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return fallback;
-}
-
-/** Manage install-wide repository Workspace recipes. */
+/** List install-wide Workspace recipes. The URL selects one for the details panel. */
 export function WorkspacesPage() {
-  const queryClient = useQueryClient();
-  const workspacesQuery = useQuery({
-    queryKey: workspacesQueryKey,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(workspaceListSchema, "/api/workspaces", signal),
-    retry: false,
-  });
-  const deleteMutation = useMutation({
-    mutationFn: async (workspace: WorkspaceReport) => {
-      await deleteDashboardResource(
-        `/api/workspaces/${encodeURIComponent(workspace.id)}`,
-      );
-      return workspace;
-    },
-    onSuccess: async (workspace) => {
-      await queryClient.cancelQueries({ queryKey: workspacesQueryKey });
-      queryClient.setQueryData<{
-        baselineSnapshot: BaselineSnapshotReport | null;
-        workspaces: WorkspaceReport[];
-      }>(workspacesQueryKey, (current) => ({
-        baselineSnapshot: current?.baselineSnapshot ?? null,
-        workspaces: (current?.workspaces ?? []).filter(
-          (item) => item.id !== workspace.id,
-        ),
-      }));
-    },
-  });
-
-  if (!workspacesQuery.data && !workspacesQuery.error) {
-    return (
-      <SystemRouteLoading
-        description="Repository recipes Junior can switch into."
-        label="Loading Workspaces"
-        title="Workspaces"
-        variant="list"
-      />
-    );
-  }
-
+  const { workspaceId } = useParams();
+  const navigate = useNavigate();
+  const listRef = useRef<HTMLDivElement>(null);
+  const deleteSource = useRef<HTMLButtonElement | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceReport>();
+  const workspacesQuery = useWorkspacesData();
   const workspaces = workspacesQuery.data?.workspaces ?? [];
-  const baselineSnapshot = workspacesQuery.data?.baselineSnapshot ?? null;
+  const defaultVcpus = workspacesQuery.data?.defaultVcpus ?? null;
+  const selected = workspaces.find((item) => item.id === workspaceId);
+  // PageHeader keeps its title after close, so this page owns the tab title.
+  useDocumentTitle(selected?.name ?? "Workspaces");
+
+  const closeDetails = () => {
+    const trigger = workspaceId
+      ? listRef.current?.querySelector<HTMLButtonElement>(
+          `[data-workspace-id="${CSS.escape(workspaceId)}"] button`,
+        )
+      : undefined;
+    navigate(listPath);
+    (trigger ?? listRef.current)?.focus();
+  };
+
   return (
-    <SystemPageLayout>
-      <PageHeader
-        actions={
-          <ButtonLink to="/system/workspaces/new">
-            <Plus aria-hidden="true" size={14} />
-            New Workspace
-          </ButtonLink>
-        }
-        description={`Named repository recipes ${getDashboardAgentName()} can switch into without cloning each turn.`}
-        title="Workspaces"
-      />
-
-      {workspacesQuery.error ? (
-        <Card padding="sm">
-          <EmptyTelemetry>
-            Workspaces failed to load. Try refreshing the dashboard.
-          </EmptyTelemetry>
-        </Card>
-      ) : null}
-
-      {deleteMutation.error ? (
-        <InlineError>
-          {readWorkspaceApiError(
-            deleteMutation.error,
-            "Could not delete the Workspace. Try again.",
-          )}
-        </InlineError>
-      ) : null}
-
-      {!workspacesQuery.error ? (
-        <BaselineSnapshotCard snapshot={baselineSnapshot} />
-      ) : null}
-
-      <WorkspaceList
-        busy={deleteMutation.isPending}
-        onDelete={(workspace) => {
-          if (
-            window.confirm(
-              `Delete Workspace “${workspace.name}”? Active conversations keep their current Sandbox until the next switch.`,
-            )
-          ) {
-            deleteMutation.mutate(workspace);
+    <SystemNavigation className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]">
+      <div
+        className={cn(
+          "grid h-full min-h-0 min-w-0",
+          workspaceId && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+        )}
+      >
+        <div
+          aria-label="Workspaces list"
+          className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+          ref={listRef}
+          role="region"
+          tabIndex={0}
+        >
+          <PageLayout>
+            <PageHeader
+              actions={
+                <Link className={buttonVariants()} to={`${listPath}/new`}>
+                  <Plus aria-hidden="true" size={14} />
+                  New Workspace
+                </Link>
+              }
+              description={`Named repository recipes ${getDashboardAgentName()} can switch into without cloning each turn.`}
+              title="Workspaces"
+            />
+            {workspacesQuery.error ? (
+              <Card padding="sm">
+                <EmptyTelemetry>
+                  Workspaces failed to load. Try refreshing the dashboard.
+                </EmptyTelemetry>
+              </Card>
+            ) : workspacesQuery.data ? (
+              <>
+                <BaseSandboxCard
+                  defaultVcpus={defaultVcpus}
+                  snapshot={workspacesQuery.data.baselineSnapshot}
+                />
+                <WorkspaceList
+                  defaultVcpus={defaultVcpus}
+                  onSelect={(workspace) =>
+                    navigate(
+                      workspace.id === workspaceId
+                        ? listPath
+                        : workspacePath(workspace.id),
+                    )
+                  }
+                  selectedId={workspaceId}
+                  workspaces={workspaces}
+                />
+              </>
+            ) : (
+              <PageContentSkeleton label="Loading Workspaces" variant="list" />
+            )}
+          </PageLayout>
+        </div>
+        {workspaceId ? (
+          <WorkspaceDetails
+            defaultVcpus={defaultVcpus}
+            key={workspaceId}
+            listError={Boolean(workspacesQuery.error)}
+            onClose={closeDetails}
+            onDelete={(workspace, source) => {
+              deleteSource.current = source;
+              setDeleteTarget(workspace);
+            }}
+            workspace={selected}
+            workspaceId={workspaceId}
+          />
+        ) : null}
+      </div>
+      {deleteTarget ? (
+        <WorkspaceDeleteDialog
+          onClose={() => setDeleteTarget(undefined)}
+          onDeleted={() => {
+            if (workspaceId === deleteTarget.id) navigate(listPath);
+          }}
+          returnFocus={() =>
+            deleteSource.current?.isConnected
+              ? deleteSource.current
+              : (listRef.current ?? false)
           }
-        }}
-        workspaces={workspaces}
-      />
-    </SystemPageLayout>
+          workspace={deleteTarget}
+        />
+      ) : null}
+    </SystemNavigation>
   );
 }

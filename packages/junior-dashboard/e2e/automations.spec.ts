@@ -1,6 +1,7 @@
 import { mockAutomationEditor } from "./automation-editor-fixture";
 import { automationReport } from "./automation-fixture";
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
+import { NOW } from "../src/mock-reporting/fixtures";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -9,7 +10,58 @@ test("opens scheduled and event automations in the native Automations view", asy
   dashboard,
 }) => {
   // Saved cards may refer to a different deployment. Stay in this dashboard.
-  await page.goto(`${dashboard.baseURL}/dev/transcripts`);
+  const conversationId = "automation-card";
+  await page.route(
+    `**/api/conversations/${conversationId}/pending-messages`,
+    async (route) => {
+      await route.fulfill({
+        json: { conversationId, generatedAt: NOW, messages: [] },
+      });
+    },
+  );
+  await page.route(`**/api/conversations/${conversationId}`, async (route) => {
+    const card = { key: "scheduled-1", kind: "object", plugin: "junior" };
+    await route.fulfill({
+      json: {
+        annotations: [
+          {
+            ...card,
+            createdAt: NOW,
+            label: "Weekly release digest",
+            objectType: "automation",
+            title: "Weekly release digest",
+            updatedAt: NOW,
+            url: null,
+          },
+        ],
+        conversationId,
+        cumulativeDurationMs: 1_000,
+        displayTitle: "Automation card",
+        eventHistory: { status: "available" },
+        events: [
+          {
+            createdAt: NOW,
+            data: {
+              cards: [card],
+              messageId: `${conversationId}:reply`,
+              role: "assistant",
+              text: "I saved the weekly release digest.",
+              type: "message",
+            },
+            seq: 0,
+          },
+        ],
+        generatedAt: NOW,
+        isParticipant: true,
+        lastProgressAt: NOW,
+        lastSeenAt: NOW,
+        startedAt: NOW,
+        status: "completed",
+        surface: "internal",
+      },
+    });
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${conversationId}`);
   const cardLink = page
     .getByRole("region", { name: "Weekly release digest" })
     .getByRole("link", { name: "Open automation", exact: true });
@@ -21,8 +73,24 @@ test("opens scheduled and event automations in the native Automations view", asy
   });
   await cardLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/scheduled-1`);
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Automation details" }),
+  ).toBeVisible();
   expect(documentRequests).toEqual([]);
+  // Shared links can include a trailing slash, as accepted by the router.
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1/?scope=mine`);
+  await expect(
+    page.getByRole("complementary", { name: "Automation details" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Automations navigation" })
+      .getByRole("link", { name: "Automations", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: "Close automation details" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/list?scope=mine`,
+  );
 
   await page.goto(`${dashboard.baseURL}/tasks/list?range=7#history`);
   await expect(page).toHaveURL(
@@ -99,23 +167,56 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/scheduled-1?range=7&scope=mine`,
   );
-  const details = page.getByRole("dialog", { name: "Weekly project summary" });
-  await expect(details).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("hidden");
-  const closeAutomationDetails = details.getByRole("button", {
-    name: "Close automation details",
+  const details = page.getByRole("complementary", {
+    name: "Automation details",
   });
-  await expect(closeAutomationDetails).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(closeAutomationDetails).not.toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(closeAutomationDetails).toBeFocused();
-  await expect(details.getByText("What to do")).toBeVisible();
+  await expect(details).toBeVisible();
+  await expect(automationDetailsTrigger).toBeFocused();
+  await page
+    .getByRole("button", {
+      name: "View automation details: Closed issue summary",
+    })
+    .click();
+  await expect(
+    details.getByRole("heading", { name: "Closed issue summary", exact: true }),
+  ).toBeVisible();
+  await details.getByText("About this Automation", { exact: true }).click();
+  await automationDetailsTrigger.click();
+  await expect(
+    details.getByRole("button", { name: "About this Automation", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect(page).toHaveURL(/scheduled-1\?range=7&scope=mine/);
+  await screenshot(page, "automation-details", {
+    view: "desktop",
+    lightTheme: true,
+  });
+  await expect(
+    details.getByRole("region", { name: "Instructions", exact: true }),
+  ).toBeVisible();
   await expect(
     details.getByText("Send the weekly project summary"),
   ).toBeVisible();
+  const recentRuns = details.getByRole("region", {
+    name: "Recent runs",
+    exact: true,
+  });
+  await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
+  await expect(
+    recentRuns.getByRole("link", { name: /^Open completed run/ }),
+  ).toHaveAttribute("href", "/conversations/scheduler%3Adaily-ops-digest");
+  await expect(
+    recentRuns.getByText("42s · $0.42", { exact: true }),
+  ).toBeVisible();
+  await expect(details.getByText("Accounts", { exact: true })).toBeHidden();
+  await details.getByRole("button", { name: /^Next run/ }).click();
+  await expect(details.getByText("Your time", { exact: true })).toBeVisible();
+  const about = details.getByRole("button", {
+    name: "About this Automation",
+    exact: true,
+  });
+  await about.focus();
+  await page.keyboard.press("Space");
+  await expect(about).toHaveAttribute("aria-expanded", "true");
   await expect(details.getByRole("link", { name: "you" })).toHaveAttribute(
     "href",
     "/people/dev%40example.com",
@@ -125,26 +226,59 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/list?range=7&scope=mine`,
   );
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("");
   await expect(automationDetailsTrigger).toBeFocused();
-  const actions = page.getByRole("button", {
-    name: "Actions: Weekly project summary",
-  });
-  await actions.focus();
-  await page.keyboard.press("Enter");
-  const deleteItem = page.getByRole("menuitem", {
-    name: "Delete",
+  await automationDetailsTrigger.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sheet = page.getByRole("dialog", {
+    name: "Weekly project summary",
     exact: true,
   });
-  await expect(deleteItem).toBeFocused();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(sheet).toBeVisible();
+  await sheet
+    .getByRole("button", { name: "About pausing", exact: true })
+    .click();
+  const pausePopover = page.getByRole("dialog", {
+    name: "About pausing",
+    exact: true,
+  });
+  await expect(pausePopover).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(actions).toBeFocused();
-  await expect(deleteItem).toHaveCount(0);
-  await page.keyboard.press("ArrowDown");
-  await expect(deleteItem).toBeFocused();
+  await expect(pausePopover).toBeHidden();
+  await expect(sheet).toBeVisible();
+  const closeSheet = sheet.getByRole("button", { name: "Close", exact: true });
+  await closeSheet.focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(closeSheet).not.toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeSheet).toBeFocused();
+  await screenshot(page, "automation-details-sheet", {
+    view: "mobile",
+    lightTheme: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(automationDetailsTrigger).toBeFocused();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole("button", { name: /^Actions:/ })).toHaveCount(0);
+  await automationDetailsTrigger.click();
+  const deleteButton = details.getByRole("button", {
+    name: "Delete automation",
+    exact: true,
+  });
+  await deleteButton.click();
+  const confirmation = page.getByRole("alertdialog", {
+    name: "Delete automation?",
+    exact: true,
+  });
+  await expect(confirmation).toContainText("Weekly project summary");
+  await expect(
+    confirmation.getByRole("button", { name: "Cancel", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(confirmation).toBeHidden();
+  await expect(details).toBeVisible();
+  await expect(deleteButton).toBeFocused();
+  await deleteButton.press("Enter");
   const deletePath = "/api/automations/scheduled-1";
   // The summary GET uses the same URL, so fail only the DELETE.
   await page.route(`**${deletePath}`, (route) =>
@@ -152,20 +286,45 @@ test("opens scheduled and event automations in the native Automations view", asy
       ? route.fulfill({ status: 500, json: { error: "Delete failed" } })
       : route.fallback(),
   );
-  page.once("dialog", (dialog) => dialog.accept());
   const deletion = page.waitForRequest(
     (request) =>
       request.url().endsWith(deletePath) && request.method() === "DELETE",
   );
-  await deleteItem.click();
+  await confirmation
+    .getByRole("button", { name: "Delete automation", exact: true })
+    .click();
   await deletion;
   await expect(
     page.getByText("The automation could not be deleted. Try again."),
   ).toBeVisible();
-  await expect(actions).toBeEnabled();
+  await expect(
+    confirmation.getByRole("button", {
+      name: "Delete automation",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    page.getByText("Automation deleted", { exact: true }),
+  ).toHaveCount(0);
+  await confirmation
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  await expect(deleteButton).toBeFocused();
+  await page.getByRole("button", { name: "Close automation details" }).click();
   await expect(page.getByText("Incident change alerts")).not.toBeVisible();
   await page.getByRole("button", { name: /^Filters/ }).click();
   await page.getByRole("button", { name: "event", exact: true }).click();
+  await page.getByLabel("Filter by creator").selectOption("dev@example.com");
+  await expect(page).toHaveURL(/[?&]type=event(?:&|$)/);
+  await expect(page).toHaveURL(/[?&]creator=dev%40example.com(?:&|$)/);
+  await expect(
+    page.getByRole("button", { name: "event", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Remove creator filter", exact: true })
+    .click();
+  await expect(page).toHaveURL(/[?&]type=event(?:&|$)/);
   await expect(weeklySummary).not.toBeVisible();
   await expect(issueSummary).toBeVisible();
   await page.getByRole("button", { name: /^Public/ }).click();
@@ -179,8 +338,19 @@ test("opens scheduled and event automations in the native Automations view", asy
       name: "View automation details: Incident change alerts",
     })
     .click();
-  const publicDetails = page.getByRole("dialog");
+  const publicDetails = page.getByRole("complementary", {
+    name: "Automation details",
+  });
   await expect(publicDetails).toBeVisible();
+  await publicDetails
+    .getByText("About this Automation", { exact: true })
+    .click();
+  await expect(
+    publicDetails.getByRole("button", {
+      name: "Delete automation",
+      exact: true,
+    }),
+  ).toHaveCount(0);
   const creatorLink = publicDetails.getByRole("link", { name: "Avery Chen" });
   await expect(creatorLink).toHaveAttribute(
     "href",
@@ -191,6 +361,33 @@ test("opens scheduled and event automations in the native Automations view", asy
   await creatorLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
+});
+
+test("restores shared Automation list and details URLs, recovers failed loads, and deletes the selected Automation", async ({
+  page,
+  dashboard,
+}) => {
+  const details = page.getByRole("complementary", {
+    name: "Automation details",
+  });
+  const recentRuns = details.getByRole("region", {
+    name: "Recent runs",
+    exact: true,
+  });
+  const weeklySummary = page.getByText("Weekly project summary", {
+    exact: true,
+  });
+  const automationDetailsTrigger = page.getByRole("button", {
+    name: "View automation details: Weekly project summary",
+  });
+  const deleteButton = details.getByRole("button", {
+    name: "Delete automation",
+    exact: true,
+  });
+  const confirmation = page.getByRole("alertdialog", {
+    name: "Delete automation?",
+    exact: true,
+  });
 
   // A shared, paged URL and direct details must not depend on the current page.
   const collection = {
@@ -222,7 +419,9 @@ test("opens scheduled and event automations in the native Automations view", asy
   });
   const listUrl = `${dashboard.baseURL}/automations/list?scope=mine&type=scheduled&sort=title&page=2`;
   await page.goto(`${listUrl}&state=invalid`);
+  await page.getByRole("button", { name: /^Filters/ }).click();
   await expect(page.getByLabel("Filter by state")).toHaveValue("");
+  await page.keyboard.press("Escape");
   // List order stays visible without opening Filters.
   await expect(page.getByLabel("Sort automations")).toBeVisible();
   await expect(page.getByLabel("Sort automations")).toHaveValue("title");
@@ -241,12 +440,56 @@ test("opens scheduled and event automations in the native Automations view", asy
     .click();
   await expect(page).toHaveURL(listUrl);
   await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
+  const pendingDetail = Promise.withResolvers<void>();
+  let detailRequests = 0;
+  await page.route("**/api/automations/scheduled-1", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    detailRequests += 1;
+    if (detailRequests === 1) {
+      await pendingDetail.promise;
+      return route.fulfill({
+        status: 503,
+        json: { error: "Detail unavailable" },
+      });
+    }
+    return route.fallback();
+  });
+  let failRuns = true;
+  await page.route("**/api/automations/scheduled-1/executions", (route) => {
+    if (!failRuns) return route.fallback();
+    failRuns = false;
+    return route.fulfill({
+      status: 503,
+      json: { error: "History unavailable" },
+    });
+  });
   await page.goto(listUrl.replace("/list?", "/scheduled-1?"));
+  await expect(details.getByRole("status")).toHaveText(
+    "Loading automation details",
+  );
+  pendingDetail.resolve();
   await expect(
-    page.getByRole("dialog", { name: "Weekly project summary" }),
+    details.getByText(/Automation details could not be loaded/),
   ).toBeVisible();
+  await details.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(
+    details.getByRole("heading", {
+      name: "Weekly project summary",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(recentRuns.getByRole("alert")).toContainText(
+    "Recent runs could not be loaded.",
+  );
+  await recentRuns
+    .getByRole("button", { name: "Try again", exact: true })
+    .click();
+  await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
   await page.getByRole("button", { name: "Close automation details" }).click();
   await expect(page).toHaveURL(listUrl);
+  await expect(
+    page.getByLabel("Automations list", { exact: true }),
+  ).toBeFocused();
   await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
   await page.getByRole("button", { name: "Previous page" }).click();
   await expect(page.getByText("Showing 1-25 of 31")).toBeVisible();
@@ -255,11 +498,17 @@ test("opens scheduled and event automations in the native Automations view", asy
   await page.getByLabel("Filter by destination").selectOption("T123:C123");
   await page.getByLabel("Filter by state").selectOption("active");
   await expect(page).toHaveURL(/state=active/);
+  await page.keyboard.press("Escape");
   await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Remove creator filter", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /^Filters/ }).click();
   await expect(page.getByLabel("Filter by creator")).toHaveValue(
     "dev@example.com",
   );
   await expect(page.getByLabel("Sort automations")).toHaveValue("title");
+  await page.keyboard.press("Escape");
   delayList = true;
   await page.getByLabel("Search automations").fill("no match");
   await expect(page.getByText("Updating results…")).toBeVisible();
@@ -283,16 +532,76 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(mobileFilters).toHaveText("Filters (4)");
   await expect(page.getByLabel("Filter by creator")).not.toBeVisible();
   await mobileFilters.click();
-  await expect(mobileFilters).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.getByRole("dialog", { name: "Filters", exact: true }),
+  ).toBeVisible();
+  // The modal sheet hides the page behind it, including the trigger.
+  await expect(
+    page.getByRole("button", { name: /^Filters/, includeHidden: true }),
+  ).toHaveAttribute("aria-expanded", "true");
   await page.getByLabel("Filter by state").selectOption("blocked");
   await expect(
     page.getByText("No automations matched these filters."),
   ).toBeVisible();
-  await mobileFilters.click();
+  await page
+    .getByRole("dialog", { name: "Filters", exact: true })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   await page.reload();
   await expect(mobileFilters).toHaveText("Filters (4)");
   await mobileFilters.click();
   await expect(page.getByLabel("Filter by state")).toHaveValue("blocked");
+  await page
+    .getByRole("dialog", { name: "Filters", exact: true })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Remove state filter", exact: true })
+    .click();
+  await expect(page).not.toHaveURL(/[?&]state=/);
+  await expect(
+    page.getByRole("button", { name: "Remove creator filter", exact: true }),
+  ).toBeVisible();
+
+  // Deleting the selected Automation must remove its details as well.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(
+    `${dashboard.baseURL}/automations/scheduled-1?scope=mine&sort=title`,
+  );
+  await expect(details).toBeVisible();
+  const finishDelete = Promise.withResolvers<void>();
+  await page.route("**/api/automations/scheduled-1", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    await finishDelete.promise;
+    collection.automations = collection.automations.filter(
+      (item) => item.id !== "scheduled-1",
+    );
+    return route.fulfill({ status: 204 });
+  });
+  await deleteButton.click();
+  await confirmation
+    .getByRole("button", { name: "Delete automation", exact: true })
+    .click();
+  await expect(
+    confirmation.getByRole("button", { name: "Deleting…", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    confirmation.getByRole("button", { name: "Cancel", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(confirmation).toBeVisible();
+  finishDelete.resolve();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/list?scope=mine&sort=title`,
+  );
+  await expect(details).toBeHidden();
+  await expect(automationDetailsTrigger).toHaveCount(0);
+  await expect(
+    page.getByText("Automation deleted", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Automations list", { exact: true }),
+  ).toBeFocused();
 });
 
 test("lists runs across automations", async ({ page, dashboard }) => {
@@ -314,6 +623,35 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(
     page.getByText("completed", { exact: true }).first(),
   ).toBeVisible();
+
+  // Rows open run details. The row link still opens the Conversation.
+  const firstRow = page.getByRole("listitem").first();
+  const runId = await firstRow.getAttribute("data-run-id");
+  await expect(
+    firstRow.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute("href", /^\/conversations\//);
+  const firstRun = firstRow.getByRole("button");
+  await firstRun.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/runs?run=${encodeURIComponent(runId!)}`,
+  );
+  const details = page.getByRole("complementary", { name: "Run details" });
+  // The Runs list spans Automations, so details name the Automation.
+  await expect(details.getByText("Automation", { exact: true })).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: "Open conversation" }),
+  ).toBeVisible();
+  await page
+    .getByRole("group", { name: "Status" })
+    .getByRole("button", { name: "failed" })
+    .click();
+  await expect(page).toHaveURL(/status=failed/);
+  // A filter keeps the selected run open.
+  await expect(details).toBeVisible();
+  await page.getByRole("button", { name: "Close run details" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/runs?status=failed`,
+  );
 });
 
 test("opens one automation's execution history", async ({
@@ -336,9 +674,6 @@ test("opens one automation's execution history", async ({
     page.getByLabel("Automation executions during the last 90 days"),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Weekly project summary/ }),
-  ).toBeVisible();
-  await expect(
     page.locator('[title="completed"]:visible').first(),
   ).toBeVisible();
   await expect(page.getByText("$0.42").first()).toBeVisible();
@@ -347,6 +682,67 @@ test("opens one automation's execution history", async ({
   await expect(
     page.getByText("No conversation", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-run-id="scheduled-1-run-1"]')
+      .getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("scheduler:daily-ops-digest")}`,
+  );
+
+  // A row opens run details instead of the Conversation.
+  const failedRun = page.getByRole("button", {
+    name: /Ship notes for the release train/,
+  });
+  await failedRun.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/scheduled-1/executions?run=scheduled-1-run-2`,
+  );
+  await expect(failedRun).toHaveAttribute("aria-expanded", "true");
+  const details = page.getByRole("complementary", { name: "Run details" });
+  await expect(
+    details.getByRole("heading", { name: "Ship notes for the release train" }),
+  ).toBeVisible();
+  await expect(details.getByText("Automation", { exact: true })).toHaveCount(0);
+  await expect(
+    details.getByText("Slack rejected the result message: channel_not_found."),
+  ).toBeVisible();
+  await expect(
+    details.getByText("Creator’s connected accounts", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: "Version 3" }),
+  ).toHaveAttribute("href", "/automations/scheduled-1/versions");
+  await expect(
+    details.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+  );
+  await screenshot(page, "automation-run-details", { lightTheme: true });
+
+  // Up and Down move the selection while details are open.
+  await failedRun.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page).toHaveURL(/run=scheduled-1-run-3$/);
+  await expect(
+    details.getByText("No Conversation was recorded for this run."),
+  ).toBeVisible();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+  await expect(page).toHaveURL(/run=scheduled-1-run-1$/);
+  const firstRun = page.getByRole("button", {
+    name: /Weekly project summary/,
+  });
+  await expect(firstRun).toBeFocused();
+
+  await page.getByRole("button", { name: "Close run details" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/scheduled-1/executions`,
+  );
+  await expect(details).toBeHidden();
+  await expect(firstRun).toBeFocused();
 });
 
 test("pauses and resumes from details, keeps failures visible, and limits actions to creators", async ({
@@ -411,31 +807,53 @@ test("pauses and resumes from details, keeps failures visible, and limits action
   await expect(
     page.getByRole("button", { name: "Resume", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
-    "paused",
-  );
+  await expect(
+    page
+      .getByRole("complementary", { name: "Automation details" })
+      .getByRole("status", { name: "Automation state" }),
+  ).toHaveText("paused");
+  await expect(
+    page.getByText("No new runs while paused", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Automation paused", { exact: true }),
+  ).toBeVisible();
   await screenshot(page, "automation-paused");
-  const pauseHelp = page.getByText("About pausing", { exact: true });
+  const pauseHelp = page.getByRole("button", {
+    name: "About pausing",
+    exact: true,
+  });
   await pauseHelp.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText(/Pausing stops new runs/)).toBeVisible();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
   await expect(page.getByText(/Pausing stops new runs/)).not.toBeVisible();
-  const moreDetails = page.getByText("More details", { exact: true });
+  const moreDetails = page.getByText("About this Automation", { exact: true });
   await moreDetails.click();
-  await expect(
-    page.getByText("Connected accounts", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Accounts", { exact: true })).toBeVisible();
   await moreDetails.click();
   await page.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Pause", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "View run history" }),
+    page.getByText("Automation resumed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open last run", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close automation details" }).click();
   await expect(page).toHaveURL(/list\?scope=attention/);
+  await page.route("**/api/automations/event-2/executions", (route) =>
+    route.fulfill({
+      json: {
+        automation: report.automations.find((item) => item.id === "event-2"),
+        executions: [],
+        executionDays: [],
+        truncated: false,
+      },
+    }),
+  );
   await page
     .getByRole("button", {
       name: "View automation details: Incident change alerts",
@@ -446,7 +864,11 @@ test("pauses and resumes from details, keeps failures visible, and limits action
   ).toHaveCount(0);
   await expect(
     page.getByText(
-      "This event source is unavailable. Enable its plugin or choose another event.",
+      "No runs yet. Results will appear here after the first run.",
+      { exact: true },
     ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Enable its plugin or choose another event."),
   ).toBeVisible();
 });

@@ -16,13 +16,20 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
+  formatRelativeTime,
+  formatTime,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
   summarizeUsage,
   automationPath,
 } from "../format";
-import { Tooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn, dashboardInlineLinkClass } from "../styles";
 import {
@@ -134,9 +141,36 @@ export function ConversationSidebarAnnotations(props: {
     : [];
 
   return (
-    <Tooltip
-      align="left"
-      content={
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={`Linked work, newest first: ${details.join(", ")}`}
+            className="inline-flex min-w-0 max-w-full items-center"
+          >
+            {useMobileFacepile ? (
+              <SidebarAnnotationIconFacepile
+                annotations={mobileFacepileAnnotations}
+                // Discs sit on the sidebar panel / row surface.
+                cutoutColor="var(--color-dashboard-surface-panel)"
+              />
+            ) : (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                {badges.labeledGroups.map((group) => (
+                  <SidebarAnnotationGroupChip group={group} key={group.label} />
+                ))}
+                {badges.overflowGroupCount > 0 ? (
+                  <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
+                    +{badges.overflowGroupCount}
+                  </span>
+                ) : null}
+              </span>
+            )}
+          </span>
+        }
+      />
+      <TooltipContent align="start">
+        <TooltipTitle>Linked work</TooltipTitle>
         <ul className="m-0 list-none space-y-1 p-0">
           {annotations.map((annotation, index) => (
             <li
@@ -156,33 +190,7 @@ export function ConversationSidebarAnnotations(props: {
             </li>
           ))}
         </ul>
-      }
-      label="Linked work"
-      triggerClassName="min-w-0"
-    >
-      <span
-        aria-label={`Linked work, newest first: ${details.join(", ")}`}
-        className="inline-flex min-w-0 max-w-full items-center"
-      >
-        {useMobileFacepile ? (
-          <SidebarAnnotationIconFacepile
-            annotations={mobileFacepileAnnotations}
-            // Discs sit on the sidebar panel / row surface (#09090b).
-            cutoutColor="var(--color-dashboard-surface-panel)"
-          />
-        ) : (
-          <span className="inline-flex min-w-0 items-center gap-1">
-            {badges.labeledGroups.map((group) => (
-              <SidebarAnnotationGroupChip group={group} key={group.label} />
-            ))}
-            {badges.overflowGroupCount > 0 ? (
-              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted">
-                +{badges.overflowGroupCount}
-              </span>
-            ) : null}
-          </span>
-        )}
-      </span>
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -343,21 +351,33 @@ type SidebarAnnotationIconName = NonNullable<
 >;
 
 const SIDEBAR_ICON_PRESENTATION = {
-  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
+  "circle-dot": {
+    className: "text-[#3fb950] light:text-[#1a7f37]",
+    Icon: CircleDot,
+    label: "Open",
+  },
   "circle-dashed": {
-    className: "text-[#8c959f]",
+    className: "text-[#8c959f] light:text-[#59636e]",
     Icon: CircleDashed,
     label: "Draft",
   },
-  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
-  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "circle-x": {
+    className: "text-[#f85149] light:text-[#cf222e]",
+    Icon: CircleX,
+    label: "Closed",
+  },
+  "git-merge": {
+    className: "text-[#a371f7] light:text-[#8250df]",
+    Icon: GitMerge,
+    label: "Merged",
+  },
   "git-pull-request": {
-    className: "text-[#3fb950]",
+    className: "text-[#3fb950] light:text-[#1a7f37]",
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922]",
+    className: "text-[#d29922] light:text-[#9a6700]",
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -535,7 +555,13 @@ export function hasConversationStats(props: {
   return conversationStatItems(props).length > 0;
 }
 
-/** Render runtime, source, token, and cost metadata under the conversation title. */
+type ConversationStatItem = MetricListItem & { label: string };
+
+/**
+ * Render runtime, source, token, and cost metadata. The compact variant is one
+ * line under the conversation title. The full variant is a labeled list for
+ * conversation details.
+ */
 export function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
@@ -543,6 +569,24 @@ export function ConversationStats(props: {
 }) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
+
+  if ((props.variant ?? "full") === "full") {
+    return (
+      <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
+        {stats.map((item) => (
+          <div
+            className="flex min-w-0 items-baseline justify-between gap-4"
+            key={item.key}
+          >
+            <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
+            <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
+              {item.content}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
 
   return (
     <MetricList
@@ -556,7 +600,7 @@ function conversationStatItems(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
   variant?: "compact" | "full";
-}): MetricListItem[] {
+}): ConversationStatItem[] {
   if (!props.conversation) return [];
   const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
@@ -578,17 +622,37 @@ function conversationStatItems(props: {
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
-  const rawStats: Array<MetricListItem | undefined> = [
+  const lastActivityAt = props.conversation.lastSeenAt;
+  const rawStats: Array<ConversationStatItem | undefined> = [
     location
       ? {
           content: <LocationLink label={location} locationUrl={locationUrl} />,
           key: "location",
+          label: "Location",
         }
       : undefined,
     variant === "full" && sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
+          label: "Source",
+        }
+      : undefined,
+    variant === "full" && lastActivityAt
+      ? {
+          content: (
+            <time
+              dateTime={lastActivityAt}
+              title={formatTime(lastActivityAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            >
+              {formatRelativeTime(lastActivityAt)}
+            </time>
+          ),
+          key: "last-activity",
+          label: "Last activity",
         }
       : undefined,
     durationLabel !== "none"
@@ -603,6 +667,7 @@ function conversationStatItems(props: {
             />
           ),
           key: "duration",
+          label: "Runtime",
         }
       : undefined,
     tokenSummary
@@ -625,6 +690,7 @@ function conversationStatItems(props: {
             />
           ),
           key: "tokens",
+          label: "Tokens",
         }
       : undefined,
     costSummary ||
@@ -647,14 +713,18 @@ function conversationStatItems(props: {
             />
           ),
           key: "cost",
+          label: "Cost",
         }
       : undefined,
     childAgentTotals
       ? {
           content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
           key: "subagents",
+          label: "Subagents",
         }
       : undefined,
   ];
-  return rawStats.filter((item): item is MetricListItem => item !== undefined);
+  return rawStats.filter(
+    (item): item is ConversationStatItem => item !== undefined,
+  );
 }

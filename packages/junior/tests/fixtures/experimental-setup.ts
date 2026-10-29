@@ -7,7 +7,6 @@ import { setExperimentalFeatures } from "@/chat/experimental";
  */
 export const SUITE_EXPERIMENTAL = {
   "passive-routing": true,
-  subagents: true,
 } as const;
 
 /** Re-apply suite experimental defaults after vi.resetModules(). */

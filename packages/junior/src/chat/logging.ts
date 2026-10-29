@@ -1372,17 +1372,10 @@ export function getLogContextAttributes(): LogAttributes {
 /** Return inherited log context filtered to attributes valid for the span operation. */
 export function getLogContextAttributesForSpan(op: string): LogAttributes {
   const attributes = { ...getLogContextAttributes() };
-  if (op === "gen_ai.invoke_agent" || op === "gen_ai.execute_tool") {
-    delete attributes["gen_ai.request.model"];
-    return attributes;
-  }
-  if (op === "gen_ai.chat" || op === "gen_ai.embeddings") {
-    delete attributes["gen_ai.agent.name"];
-    delete attributes["gen_ai.request.model"];
-    return attributes;
-  }
-  delete attributes["gen_ai.agent.name"];
   delete attributes["gen_ai.request.model"];
+  if (op !== "gen_ai.invoke_agent" && op !== "gen_ai.execute_tool") {
+    delete attributes["gen_ai.agent.name"];
+  }
   return attributes;
 }
 
@@ -1524,11 +1517,7 @@ function setAttributesOnSpan(
   span: Sentry.Span,
   attributes: Record<string, unknown>,
 ): void {
-  for (const [key, value] of Object.entries(
-    normalizeSpanAttributes(attributes),
-  )) {
-    span.setAttribute(key, value);
-  }
+  span.setAttributes(normalizeSpanAttributes(attributes));
 }
 
 /**
@@ -1653,36 +1642,37 @@ export async function withSpan<T>(
   callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   attributes: Record<string, unknown> = {},
 ): Promise<T> {
-  const normalizedAttributes = normalizeSpanAttributes(attributes);
-
-  return withLogContext(context, () => {
-    // Child spans inherit the active log context so nested GenAI spans keep
-    // conversation/session correlation even when callers pass only delta
-    // context such as modelId or tool metadata.
-    const inheritedAttributes = getLogContextAttributesForSpan(op);
-    return Sentry.startSpan(
+  return withLogContext(context, () =>
+    Sentry.startSpan(
       {
         name,
         op,
         attributes: {
-          ...inheritedAttributes,
-          ...normalizedAttributes,
+          // Child spans inherit the active log context so nested GenAI spans
+          // keep conversation correlation when callers pass only delta context.
+          ...getLogContextAttributesForSpan(op),
+          ...normalizeSpanAttributes(attributes),
         },
       },
-      async (span: Sentry.Span) => {
+      async (span) => {
         try {
           return await callback((attributes) =>
             setAttributesOnSpan(span, attributes),
           );
         } catch (error) {
-          setAttributesOnSpan(span, {
-            "error.type": error instanceof Error ? error.name : typeof error,
-          });
+          // Sentry sets the error status but not `error.type`. Keep a more
+          // specific type that the callback already set.
+          if (spanToJSON(span).attributes?.["error.type"] === undefined) {
+            span.setAttribute(
+              "error.type",
+              error instanceof Error ? error.name : typeof error,
+            );
+          }
           throw error;
         }
       },
-    );
-  });
+    ),
+  );
 }
 
 /** Return Sentry-standard trace propagation headers for the active span. */

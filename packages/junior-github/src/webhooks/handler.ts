@@ -7,7 +7,6 @@ import type {
   PluginLogger,
   PluginRoute,
   EventInput,
-  EventPerson,
   EventPublisher,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
@@ -38,8 +37,16 @@ import {
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
 import {
+  withGitHubPullRequestMatchData,
+  type GitHubRoleTarget,
+} from "./pull-request-match-data.js";
+import {
+  loadGitHubPullRequestAuthors,
+  loadGitHubPullRequestPeople,
+  shareCommitPages,
   withGitHubPullRequestPeople,
-  type GitHubPullRequestPeopleTarget,
+  type GitHubCommitPageLoader,
+  type GitHubPullRequestTarget,
 } from "./pull-request-people.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
@@ -159,10 +166,17 @@ export function createGitHubWebhookRoute(args: {
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
-  /** Load the people involved in a pull request for approvals and merges. */
-  loadPullRequestPeople?(
-    target: GitHubPullRequestPeopleTarget,
-  ): Promise<EventPerson[]>;
+  /**
+   * Read a pull request's commits for the `authors` field and the people
+   * involved.
+   */
+  loadPullRequestCommitPages?(
+    target: GitHubPullRequestTarget,
+  ): Promise<GitHubCommitPageLoader>;
+  /** Load a repository role for `openerRole`. */
+  loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
+  /** Linked GitHub login of the user of one Junior identity, if any. */
+  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
   log?: Pick<PluginLogger, "error">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
@@ -337,18 +351,48 @@ export function createGitHubWebhookRoute(args: {
             })
           : undefined;
       const hasMatch = args.events.hasMatch;
+      const commitPages = args.loadPullRequestCommitPages
+        ? shareCommitPages(args.loadPullRequestCommitPages)
+        : undefined;
       const events = await withGitHubPullRequestPeople({
         body,
         deliveryId,
-        events: normalizeGitHubEvents({
+        events: await withGitHubPullRequestMatchData({
           body,
           botEmail,
-          ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
+          db: args.db,
           deliveryId,
-          eventName,
+          events: normalizeGitHubEvents({
+            body,
+            botEmail,
+            ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
+            deliveryId,
+            eventName,
+          }),
+          hasMatch,
+          ...(commitPages
+            ? {
+                loadAuthors: async (target: GitHubPullRequestTarget) =>
+                  await loadGitHubPullRequestAuthors({
+                    loadPage: commitPages(target),
+                  }),
+              }
+            : undefined),
+          loadGitHubLogin: args.loadGitHubLogin,
+          loadRole: args.loadRepositoryRole,
+          log: args.log,
+          neededMatchKeys: args.events.neededMatchKeys,
         }),
         hasMatch,
-        load: args.loadPullRequestPeople,
+        ...(commitPages
+          ? {
+              load: async (target) =>
+                await loadGitHubPullRequestPeople({
+                  logins: target.logins,
+                  loadPage: commitPages(target),
+                }),
+            }
+          : undefined),
         log: args.log,
       });
       const feedbackTarget = pullRequestFeedbackTarget(events);

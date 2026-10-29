@@ -30,6 +30,7 @@ import {
 } from "../conversations/aggregate";
 import type { ActorIdentity } from "../schema/conversation";
 import { readConversationAccessFromSql } from "../conversations/access";
+import { readFirstHumanMessageTexts } from "../conversations/first-message";
 import { summaryFromRow } from "../conversations/reporting";
 import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
@@ -597,16 +598,21 @@ export async function readLocationDetailFromSql(
   const activity = activityDays(days, nowMs, ACTIVITY_DAYS);
   const hourlyActivity = activityHours(hours, nowMs);
   const recentConversationIds = recentRows.map((row) => row.conversationId);
-  const [accessByConversation, metricsByRoot, automationTitleByConversation] =
-    await Promise.all([
-      readConversationAccessFromSql(
-        getDb(),
-        recentConversationIds,
-        options.viewer,
-      ),
-      readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
-      readAutomationTitlesByConversationId(recentRows),
-    ]);
+  const [
+    accessByConversation,
+    metricsByRoot,
+    automationTitleByConversation,
+    firstHumanMessageTextByConversation,
+  ] = await Promise.all([
+    readConversationAccessFromSql(
+      getDb(),
+      recentConversationIds,
+      options.viewer,
+    ),
+    readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
+    readAutomationTitlesByConversationId(recentRows),
+    readFirstHumanMessageTexts(getDb(), recentRows),
+  ]);
   return {
     ...location,
     activityDays: activity,
@@ -622,6 +628,9 @@ export async function readLocationDetailFromSql(
       summaryFromRow(row, {
         access: accessByConversation.get(row.conversationId),
         automationTitle: automationTitleByConversation.get(row.conversationId),
+        firstHumanMessageText: firstHumanMessageTextByConversation.get(
+          row.conversationId,
+        ),
         metrics: metricsByRoot.get(row.conversationId),
       }),
     ),

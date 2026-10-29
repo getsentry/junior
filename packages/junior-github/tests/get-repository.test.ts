@@ -57,6 +57,13 @@ describe("getRepository", () => {
           "pull_request.closed_unmerged",
         ],
         supportedEvents: [
+          "deployment.created",
+          "deployment.queued",
+          "deployment.pending",
+          "deployment.in_progress",
+          "deployment.succeeded",
+          "deployment.failed",
+          "deployment.error",
           "issue.comment.created",
           "issue.opened",
           "issue.closed",

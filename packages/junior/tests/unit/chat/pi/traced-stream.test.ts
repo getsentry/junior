@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
+  type AssistantMessageEvent,
   type Model,
 } from "@earendil-works/pi-ai";
 import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
@@ -68,12 +69,18 @@ type SpanMock = {
   end: ReturnType<typeof vi.fn>;
 };
 
+// Lets the relay read pushed events before the test continues.
+function flushEvents(): Promise<void> {
+  return new Promise((r) => setImmediate(r));
+}
+
 function getSpan(): SpanMock {
   return startInactiveSpan.mock.results[0]!.value as SpanMock;
 }
 
 describe("createTracedStreamFn", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.resetModules();
   });
@@ -90,7 +97,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    expect(returned).toBe(stream);
+    expect(returned).not.toBe(stream);
     expect(startInactiveSpan).toHaveBeenCalledTimes(1);
     const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.op).toBe("gen_ai.chat");
@@ -193,14 +200,15 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    expect(returned).toBe(stream);
-
     // Resolve the stream's terminal Promise to trigger end-attribute population.
     const finalMessage = fakeMessage();
     stream.end(finalMessage);
-    await stream.result();
+    for await (const _event of returned) {
+      // The relayed stream ends when the provider stream ends.
+    }
+    await expect(returned.result()).resolves.toBe(finalMessage);
     // Allow the .then callback to flush.
-    await new Promise((r) => setImmediate(r));
+    await flushEvents();
 
     const span = getSpan();
     const endAttributes = Object.fromEntries(
@@ -366,6 +374,103 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.conversation.compacted"]).toBe(true);
   });
 
+  it("records time to first byte and first token once without changing stream events", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as StreamFn);
+    const returned = await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    const finalMessage = fakeMessage();
+    const events: AssistantMessageEvent[] = [
+      { type: "start", partial: finalMessage },
+      { type: "text_start", contentIndex: 0, partial: finalMessage },
+      {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "hi",
+        partial: finalMessage,
+      },
+      { type: "done", reason: "stop", message: finalMessage },
+    ];
+    vi.setSystemTime(10_250);
+    stream.push(events[0]!);
+    await flushEvents();
+    vi.setSystemTime(10_900);
+    stream.push(events[1]!);
+    await flushEvents();
+    vi.setSystemTime(11_500);
+    for (const event of events.slice(2)) {
+      stream.push(event);
+    }
+
+    const received: AssistantMessageEvent[] = [];
+    for await (const event of returned) {
+      received.push(event);
+    }
+    await expect(returned.result()).resolves.toBe(finalMessage);
+    await new Promise((r) => setImmediate(r));
+
+    expect(received).toEqual(events);
+    expect(received[0]).toBe(events[0]);
+    const span = getSpan();
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBe(250);
+    expect(endAttributes["gen_ai.response.time_to_first_chunk"]).toBe(0.9);
+    expect(endAttributes["app.ai.first_token_type"]).toBe("text_start");
+    expect(endAttributes["gen_ai.response.streaming"]).toBe(true);
+    const timingWrites = span.setAttribute.mock.calls.filter((c) =>
+      [
+        "app.ai.time_to_first_byte_ms",
+        "gen_ai.response.time_to_first_chunk",
+      ].includes(c[0] as string),
+    );
+    expect(timingWrites).toHaveLength(2);
+  });
+
+  it("records time to first byte but not first token when the stream errors after start", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    const errorMessage = { ...fakeMessage(), stopReason: "aborted" as const };
+    vi.setSystemTime(10_300);
+    stream.push({ type: "start", partial: errorMessage });
+    await flushEvents();
+    vi.setSystemTime(10_800);
+    stream.push({ type: "error", reason: "aborted", error: errorMessage });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const endAttributes = Object.fromEntries(
+      getSpan().setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["gen_ai.response.streaming"]).toBe(true);
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBe(300);
+    expect(
+      endAttributes["gen_ai.response.time_to_first_chunk"],
+    ).toBeUndefined();
+    expect(endAttributes["app.ai.first_token_type"]).toBeUndefined();
+  });
+
   it("ends the span when the stream errors", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
@@ -393,8 +498,16 @@ describe("createTracedStreamFn", () => {
       code: 2,
       message: "LLM stream failed",
     });
-    const endAttributeKeys = span.setAttribute.mock.calls.map((c) => c[0]);
-    expect(endAttributeKeys).toContain("error.type");
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(endAttributes["error.type"]).toBeDefined();
+    // An error or abort before any event records no timing.
+    expect(endAttributes["gen_ai.response.streaming"]).toBe(false);
+    expect(endAttributes["app.ai.time_to_first_byte_ms"]).toBeUndefined();
+    expect(
+      endAttributes["gen_ai.response.time_to_first_chunk"],
+    ).toBeUndefined();
   });
 
   it("sets error status and ends the span when base() throws", async () => {
@@ -422,12 +535,10 @@ describe("createTracedStreamFn", () => {
 
   it("sets error status and ends the span when stream.result() rejects", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
-    const fakeStream = {
-      result: () => Promise.reject(new Error("stream failure")),
-    };
-    const base = vi.fn(() => fakeStream);
+    const stream = createAssistantMessageEventStream();
+    stream.result = () => Promise.reject(new Error("stream failure"));
+    const base = vi.fn(() => stream);
 
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
@@ -435,7 +546,8 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    await new Promise((r) => setImmediate(r));
+    stream.end();
+    await flushEvents();
 
     const span = getSpan();
     expect(span.setStatus).toHaveBeenCalledWith({

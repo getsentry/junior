@@ -8,7 +8,7 @@ describe("non-interactive shell commands", () => {
   it("builds shell scripts with closed stdin and non-interactive env", () => {
     const script = buildNonInteractiveShellScript("echo ok", {
       env: { CUSTOM_TOKEN: "secret-value" },
-      pathPrefix: "/custom/bin:$PATH",
+      path: "/custom/bin:$PATH",
     });
 
     expect(script).toContain('export PATH="/custom/bin:$PATH"');

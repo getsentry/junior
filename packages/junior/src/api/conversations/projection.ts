@@ -10,6 +10,7 @@ import type {
   Conversation as StoredConversation,
   ConversationSource,
 } from "@/chat/conversations/store";
+import { fallbackShortTitle } from "@/chat/services/short-title";
 import { slackStatsLocationLabel, surfaceFallbackLabel } from "./shared";
 import type {
   ActorIdentity,
@@ -132,6 +133,7 @@ function titleFromConversation(args: {
   automationTitle?: string;
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
+  firstHumanMessageText?: string;
   surface: ConversationSurface;
   visibility?: SlackConversationVisibility;
 }): string {
@@ -157,7 +159,11 @@ function titleFromConversation(args: {
     // Dispatched runs, such as automation runs, are not internal machinery.
     (args.conversation.source === "plugin"
       ? "Automation run"
-      : surfaceFallbackLabel(args.surface))
+      : // Read-time fallback while title generation runs. Nothing is stored.
+        fallbackShortTitle(
+          args.firstHumanMessageText ?? "",
+          surfaceFallbackLabel(args.surface),
+        ))
   );
 }
 
@@ -220,6 +226,8 @@ export function conversationSummaryFromStoredConversation(args: {
   childAgentTotals?: ConversationSummaryReport["childAgentTotals"];
   conversation: ConversationProjectionSource;
   durationMs: number;
+  /** First human message text, used as the title until one is stored. */
+  firstHumanMessageText?: string;
   locationId?: string;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
@@ -260,6 +268,7 @@ export function conversationSummaryFromStoredConversation(args: {
       automationTitle: args.automationTitle,
       canViewPrivateContent,
       conversation,
+      firstHumanMessageText: args.firstHumanMessageText,
       surface,
       visibility,
     }),

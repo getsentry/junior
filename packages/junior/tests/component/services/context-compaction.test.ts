@@ -281,15 +281,47 @@ describe("context compaction projection reset", () => {
   it("retains split host context during active compaction", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
+    const { buildTurnContextPrompt } = await import("@/chat/prompt");
     const conversationId = "conversation-active-split-context";
+    // An earlier Turn sent session context. A later Turn that no person
+    // started got request context. Neither request context applies now.
+    const sessionContext = buildTurnContextPrompt({
+      availableSkills: [],
+      activeMcpCatalogs: [],
+      disabledTools: [{ name: "firstTurnTool", reason: "First Turn only." }],
+      runtime: { conversationId },
+    })!;
+    const earlierRequestContext = buildTurnContextPrompt({
+      availableSkills: [],
+      includeSessionContext: false,
+      disabledTools: [
+        { name: "createEventAutomation", reason: "No person started it." },
+      ],
+      pluginPromptContributions: [
+        { pluginName: "memory", id: "userPrompt:0", text: "Earlier memory." },
+      ],
+    })!;
+    const earlierTurns = [
+      user(sessionContext, 1),
+      user("<current-instruction>\nPlan it.\n</current-instruction>", 1),
+      assistant("Planned.", 1),
+      {
+        role: "user",
+        content: [
+          { type: "text", text: earlierRequestContext },
+          {
+            type: "text",
+            text: "<current-instruction>\n[task]\n</current-instruction>",
+          },
+        ],
+        timestamp: 2,
+      } as PiMessage,
+      assistant("Say go.", 2),
+    ];
     const timestamp = 3;
     const contextMessage = {
       role: "user",
       content: [
-        {
-          type: "text",
-          text: "<runtime-turn-context>\nRuntime facts\n</runtime-turn-context>",
-        },
         {
           type: "text",
           text: "<skill>\nUse the repository formatter.\n</skill>",
@@ -324,6 +356,7 @@ describe("context compaction projection reset", () => {
           { message: instruction, provenance: { authority: "instruction" } },
         ],
         piMessages: [
+          ...earlierTurns,
           {
             role: "toolResult",
             toolCallId: "tool-1",
@@ -334,7 +367,13 @@ describe("context compaction projection reset", () => {
           } as PiMessage,
           contextMessage,
         ],
-        runtimeContextMessages: [contextMessage, instruction, agents],
+        runtimeContextMessages: [
+          ...earlierTurns,
+          contextMessage,
+          instruction,
+          agents,
+        ],
+        turnStartMessageIndex: earlierTurns.length,
       },
       {
         completeText: async () => ({ text: "Short summary." }) as never,
@@ -347,17 +386,16 @@ describe("context compaction projection reset", () => {
       expect.stringContaining("<current-instruction>"),
       expect.stringContaining("Short summary."),
     ]);
-    expect(textOf(result.piMessages![0]!)).toContain(
-      "Use the repository formatter.",
-    );
-    expect(textOf(result.piMessages![0]!)).toContain("Keep the API stable.");
-    expect(textOf(result.piMessages![0]!)).toContain("Use the new formatter.");
-    expect(textOf(result.piMessages![0]!)).not.toContain(
-      "Use the old formatter.",
-    );
-    expect(textOf(result.piMessages![0]!)).not.toContain(
-      AGENTS_REPLACEMENT_NOTICE,
-    );
+    const context = textOf(result.piMessages![0]!);
+    expect(context).toContain(`- gen_ai.conversation.id: ${conversationId}`);
+    expect(context).not.toContain("firstTurnTool");
+    expect(context).not.toContain("createEventAutomation");
+    expect(context).not.toContain("Earlier memory.");
+    expect(context).toContain("Use the repository formatter.");
+    expect(context).toContain("Keep the API stable.");
+    expect(context).toContain("Use the new formatter.");
+    expect(context).not.toContain("Use the old formatter.");
+    expect(context).not.toContain(AGENTS_REPLACEMENT_NOTICE);
   });
 
   it("blocks the next provider request when hard-limit compaction fails", async () => {

@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
@@ -48,6 +49,8 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   getDashboardConversationLink,
   getDashboardTaskLink,
@@ -56,7 +59,11 @@ import { createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  readActorIdentity,
+  readIdentityById,
+  resolveViewerUser,
+} from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -67,17 +74,12 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
-import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
+import {
+  getWorkspace,
+  listWorkspaceNamesByRepository,
+} from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
-
-/** Signal that a plugin intentionally denied a tool execution. */
-export class PluginHookDeniedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PluginHookDeniedError";
-  }
-}
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -158,6 +160,7 @@ function basePluginContext(plugin: PluginRegistration) {
   const name = plugin.manifest.name;
   return {
     plugin: { name },
+    cache: createPluginCache(name),
     log: createPluginLogger(name),
     db: getDb(),
   };
@@ -745,6 +748,12 @@ export function getPluginTools(
         },
       },
       workspaces: {
+        async active() {
+          const id = context.workspaces?.activeWorkspaceId();
+          if (!id) return undefined;
+          const workspace = await getWorkspace(getDb(), id);
+          return workspace ? { name: workspace.name } : {};
+        },
         async findByRepository(input: { provider: string; repo: string }) {
           return await listWorkspaceNamesByRepository(getDb(), input);
         },
@@ -941,6 +950,7 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      users: { readIdentity: readIdentityById },
       events: {
         async hasMatch(event) {
           if (!options.events.hasMatch) return false;
@@ -1693,7 +1703,7 @@ export function createPluginHookRunner(
           continue;
         }
         let replacement: Record<string, unknown> | undefined;
-        let denied: string | undefined;
+        let blocked: PluginToolDeniedError | ToolInputError | undefined;
         await hook({
           ...basePluginContext(plugin),
           actor: input.actor,
@@ -1715,8 +1725,11 @@ export function createPluginHookRunner(
             },
           },
           decision: {
-            deny(message) {
-              denied = message;
+            deny(reason) {
+              blocked = new PluginToolDeniedError(reason);
+            },
+            redirect(message) {
+              blocked = new ToolInputError(message);
             },
             replaceInput(input) {
               replacement = input;
@@ -1724,8 +1737,8 @@ export function createPluginHookRunner(
           },
         });
 
-        if (denied) {
-          throw new PluginHookDeniedError(denied);
+        if (blocked) {
+          throw blocked;
         }
         if (replacement !== undefined) {
           if (!isRecord(replacement)) {

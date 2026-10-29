@@ -32,7 +32,7 @@ function formattedDate(value: string): string {
   }).format(new Date(value));
 }
 
-/** Project one viewer-visible memory API record into the dashboard drawer model. */
+/** Project one viewer-visible memory API record into the dashboard details model. */
 export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
   const learned =
     memory.origin === "automatic"

@@ -12,10 +12,14 @@ const systemNavigationItems = [
 ];
 
 /** Render the stable secondary navigation shared by System pages. */
-export function SystemNavigation(props: { children: ReactNode }) {
+export function SystemNavigation(props: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <SecondaryNavigation
       ariaLabel="System navigation"
+      className={props.className}
       items={systemNavigationItems}
     >
       {props.children}

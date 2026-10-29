@@ -194,6 +194,14 @@ test("starts and continues conversations from the dashboard", async ({
   ).toHaveCount(0);
   const composer = page.getByLabel("Continue this conversation");
   await composer.fill("Continue in Junior");
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
+  await expect(details).toBeVisible();
+  await expect(composer).toHaveValue("Continue in Junior");
   await composer.evaluate((element, data) => {
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(
@@ -217,6 +225,7 @@ test("starts and continues conversations from the dashboard", async ({
   ).toBeVisible();
   await expect(composer).toHaveValue("");
   await expect.poll(() => continueRequests.length).toBe(1);
+  await expect(details).toBeVisible();
   // Distinct messages can queue while an earlier accept is still open.
   await composer.fill("Second queued message");
   await page.getByRole("button", { name: "Send" }).click();

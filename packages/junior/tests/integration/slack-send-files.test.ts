@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import type { AttachmentWrite } from "@/chat/attachments/storage";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   closeDb,
@@ -313,15 +314,7 @@ describe("Slack sendFiles", () => {
       title: "Attachment delivery conversation",
       visibility: "private",
     });
-    const puts: string[] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async (input) => {
-        puts.push(input.key);
-      },
-      delete: async () => undefined,
-    };
+    const storage = createMemoryAttachmentStorage();
     const tool = createSlackSendFilesTool(
       createContext("attach the report"),
       createToolState(),
@@ -374,9 +367,12 @@ describe("Slack sendFiles", () => {
     expect(rows[0]).toMatchObject({
       conversationId,
       filename: "report.txt",
-      storageProvider: "test",
+      storageProvider: "memory",
     });
-    expect(puts).toEqual([rows[0]?.storageKey]);
+    // The durable retry reuses the stored object instead of writing another.
+    expect([...storage.objects.entries()]).toEqual([
+      [rows[0]?.storageKey, Buffer.from("report body")],
+    ]);
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal"),
     ).toHaveLength(2);
@@ -420,12 +416,7 @@ describe("Slack sendFiles", () => {
       title: "Cached attachment delivery",
       visibility: "private",
     });
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async () => undefined,
-      delete: async () => undefined,
-    };
+    const storage = createMemoryAttachmentStorage();
     const state = createToolState();
     const tool = createSlackSendFilesTool(
       createContext("attach the report"),
@@ -499,15 +490,7 @@ describe("Slack sendFiles", () => {
       title: "Attachment revive conversation",
       visibility: "private",
     });
-    const puts: string[] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async (input) => {
-        puts.push(input.key);
-      },
-      delete: async () => undefined,
-    };
+    const storage = createMemoryAttachmentStorage();
     const firstTool = createSlackSendFilesTool(
       createContext("attach the report"),
       createToolState(),
@@ -527,6 +510,7 @@ describe("Slack sendFiles", () => {
     expect(first.attachment_refs).toEqual([
       { id: expect.any(String), filename: "report.txt" },
     ]);
+    const [firstKey] = [...storage.objects.keys()];
 
     await getSqlExecutor()
       .db()
@@ -558,10 +542,10 @@ describe("Slack sendFiles", () => {
     expect(rows[0]).toMatchObject({
       id: attachmentId,
       deleteRequestedAt: null,
-      storageKey: puts[1],
     });
-    expect(puts).toHaveLength(2);
-    expect(puts[0]).not.toBe(puts[1]);
+    // Revive writes a new object and deletes the purge-marked one.
+    expect(rows[0]?.storageKey).not.toBe(firstKey);
+    expect([...storage.objects.keys()]).toEqual([rows[0]?.storageKey]);
   });
 
   it("deletes the blob when SQL insert fails after put", async () => {
@@ -569,16 +553,13 @@ describe("Slack sendFiles", () => {
     try {
       await migrateSchema(fixture.sql);
       // No conversation row: FK on junior_attachments.conversation_id fails.
-      const deleted: string[] = [];
+      const memoryStorage = createMemoryAttachmentStorage();
       const puts: string[] = [];
-      const storage: AttachmentStorage = {
-        provider: "test",
-        get: async () => null,
-        put: async (input) => {
+      const storage = {
+        ...memoryStorage,
+        put: async (input: AttachmentWrite) => {
           puts.push(input.key);
-        },
-        delete: async (keys) => {
-          deleted.push(...keys);
+          await memoryStorage.put(input);
         },
       };
       const tool = createSlackSendFilesTool(
@@ -601,7 +582,7 @@ describe("Slack sendFiles", () => {
       ).rejects.toThrow(/Failed query|foreign key|violates/i);
 
       expect(puts).toHaveLength(1);
-      expect(deleted).toEqual(puts);
+      expect([...memoryStorage.objects.keys()]).toEqual([]);
       expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual(
         [],
       );

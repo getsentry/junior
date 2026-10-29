@@ -2,7 +2,8 @@ import { ArrowRight, ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
-import { ButtonLink } from "../components/Button";
+import { buttonVariants } from "../components/ui/button";
+import { Link } from "react-router";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { automationPath, formatRelativeTime } from "../format";
 import { messageRawText } from "./transcriptRenderModel";
@@ -70,13 +71,13 @@ export function TranscriptAutomationTriggerView(props: {
           <HighlightText text={name} />
         </span>
         {automationId ? (
-          <ButtonLink
-            className="h-8 shrink-0 text-xs"
+          <Link
+            className={cn(buttonVariants(), "h-8 shrink-0 text-xs")}
             to={automationPath(automationId)}
           >
             Open automation
             <ArrowRight aria-hidden="true" size={14} />
-          </ButtonLink>
+          </Link>
         ) : null}
       </div>
       {details.length > 0 ? (

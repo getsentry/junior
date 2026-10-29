@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 import { cn } from "../styles";
 import {
   findTranscriptMarkdownLinks,
@@ -184,51 +192,48 @@ function MarkdownTable(props: {
   );
 
   return (
-    <div className="min-w-0 max-w-full overflow-x-auto rounded-md border border-dashboard-border bg-dashboard-fill-faint">
-      <table className="w-max min-w-full border-collapse text-left text-sm">
-        <thead className="bg-dashboard-overlay-soft">
-          <tr>
+    <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-dashboard-border bg-dashboard-fill-faint">
+      <Table className="w-max min-w-full">
+        <TableHeader className="bg-dashboard-overlay-soft">
+          <TableRow className="border-dashboard-border">
             {Array.from({ length: columnCount }, (_, index) => {
               const alignment = props.block.alignments[index] ?? null;
               return (
-                <th
+                <TableHead
                   className={cn(
-                    "whitespace-nowrap border-b border-dashboard-border px-2.5 py-1.5 font-sans text-xs font-medium text-dashboard-text-muted",
+                    "px-2.5 py-1.5",
                     tableCellAlignClass(alignment),
                   )}
                   key={`h-${index}`}
                   scope="col"
                 >
                   {renderInlineMarkdown(props.block.headers[index] ?? "")}
-                </th>
+                </TableHead>
               );
             })}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {props.block.rows.map((row, rowIndex) => (
-            <tr
-              className="border-b border-dashboard-border-subtle last:border-b-0"
-              key={`r-${rowIndex}`}
-            >
+            <TableRow key={`r-${rowIndex}`}>
               {Array.from({ length: columnCount }, (_, index) => {
                 const alignment = props.block.alignments[index] ?? null;
                 return (
-                  <td
+                  <TableCell
                     className={cn(
-                      "whitespace-nowrap px-2.5 py-1.5 align-top text-dashboard-text",
+                      "px-2.5 py-1.5 align-top",
                       tableCellAlignClass(alignment),
                     )}
                     key={`c-${rowIndex}-${index}`}
                   >
                     {renderInlineMarkdown(row[index] ?? "")}
-                  </td>
+                  </TableCell>
                 );
               })}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

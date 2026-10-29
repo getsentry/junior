@@ -99,13 +99,11 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
 
 /** Exact values GitHub may set on pull request event data. Missing keys do not match. */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
-  authorEmail: {
+  authors: {
     kind: "string",
-    description: "pull request author email when GitHub sends it",
-  },
-  authorUsername: {
-    kind: "string",
-    description: "pull request author login",
+    list: true,
+    description:
+      "GitHub logins of the commit authors and Co-authored-by people, including bots such as Junior's",
   },
   headBranch: {
     kind: "string",
@@ -115,12 +113,27 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
     kind: "boolean",
     description: "true when the pull request is a draft",
   },
+  openerEmail: {
+    kind: "string",
+    description:
+      "opener email when GitHub sends it; missing on Junior's pull requests",
+  },
+  openerUsername: {
+    kind: "string",
+    description:
+      "login of who opened the pull request; on Junior's, the person who asked Junior to open it, missing until Junior saves them",
+  },
+  openerRole: {
+    kind: "string",
+    description:
+      "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+  },
 });
 
 /** The identifier shape that `gitHubPullRequestResource` builds. */
 export const GITHUB_PULL_REQUEST_IDENTIFIER = {
   format: "owner/repo#number",
-  pattern: /^[^\s/:#]+\/[^\s/:#]+#\d+$/,
+  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+#\d+$`,
 };
 
 /** Build the stable pull request identity shared by tools and webhooks. */

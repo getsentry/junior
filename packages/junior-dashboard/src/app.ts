@@ -79,7 +79,6 @@ export interface JuniorDashboardOptions {
   authPath?: string;
   authRequired?: boolean;
   auth?: DashboardAuth;
-  componentGallery?: boolean;
   mockConversations?: boolean;
 }
 
@@ -129,9 +128,6 @@ function resolveDashboardOptions(
     ...options,
     authRequired:
       options.authRequired ?? readEnvFlag("JUNIOR_DASHBOARD_AUTH_REQUIRED"),
-    componentGallery:
-      options.componentGallery ??
-      readEnvFlag("JUNIOR_DASHBOARD_COMPONENT_GALLERY"),
     mockConversations:
       options.mockConversations ??
       readEnvFlag("JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"),
@@ -142,12 +138,8 @@ function isJsonRoute(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
-function isDashboardPagePath(
-  pathname: string,
-  basePath: string,
-  options: { componentGallery?: boolean } = {},
-): boolean {
-  for (const { nested, path } of dashboardPagePaths(basePath, options)) {
+function isDashboardPagePath(pathname: string, basePath: string): boolean {
+  for (const { nested, path } of dashboardPagePaths(basePath)) {
     if (pathname === path || (nested && pathname.startsWith(`${path}/`))) {
       return true;
     }
@@ -158,7 +150,6 @@ function isDashboardPagePath(
 
 interface DashboardReturnPathOptions {
   authenticatedRoutes?: readonly AuthenticatedRoute[];
-  componentGallery?: boolean;
 }
 
 function dashboardReturnPath(
@@ -167,7 +158,7 @@ function dashboardReturnPath(
   options: DashboardReturnPathOptions = {},
 ): string | undefined {
   if (
-    !isDashboardPagePath(url.pathname, basePath, options) &&
+    !isDashboardPagePath(url.pathname, basePath) &&
     !isAuthPath(url.pathname, options.authenticatedRoutes ?? [])
   ) {
     return undefined;
@@ -190,7 +181,7 @@ function requestedReturnPath(
   const returnUrl = new URL(next, url.origin);
   if (
     returnUrl.origin !== url.origin ||
-    (!isDashboardPagePath(returnUrl.pathname, basePath, options) &&
+    (!isDashboardPagePath(returnUrl.pathname, basePath) &&
       !isAuthPath(returnUrl.pathname, options.authenticatedRoutes ?? []))
   ) {
     return undefined;
@@ -399,7 +390,6 @@ export function createDashboardApp(
     if (canonicalUrl) return Response.redirect(canonicalUrl, 302);
     const returnUrl = callbackUrl(c.req.raw, basePath, {
       authenticatedRoutes,
-      componentGallery: options.componentGallery,
     });
     if (!authRequired || !auth) {
       return Response.redirect(returnUrl, 302);
@@ -471,7 +461,6 @@ export function createDashboardApp(
     if (!auth) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
         authenticatedRoutes,
-        componentGallery: options.componentGallery,
       });
     }
     const browserSession = await auth.getSession(c.req.raw);
@@ -491,7 +480,6 @@ export function createDashboardApp(
     if (!session) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
         authenticatedRoutes,
-        componentGallery: options.componentGallery,
       });
     }
     if (!dashboardSessionIsAuthorized(session, allowedDomains)) {
@@ -543,9 +531,7 @@ export function createDashboardApp(
     }
   }
 
-  for (const { nested, path } of dashboardPagePaths(basePath, {
-    componentGallery: options.componentGallery,
-  })) {
+  for (const { nested, path } of dashboardPagePaths(basePath)) {
     app.get(path, () => renderDashboard(basePath, agentName));
     if (nested) {
       app.get(`${path}/*`, () => renderDashboard(basePath, agentName));
@@ -580,7 +566,6 @@ export function createDashboardApp(
       authRequired,
       authPath,
       basePath,
-      componentGallery: options.componentGallery === true,
       sentryConversationLinks: hasSentryConversationLinks(),
       timeZone: dashboardTimeZone(),
       version: JUNIOR_VERSION,

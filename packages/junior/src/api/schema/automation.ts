@@ -12,6 +12,7 @@ import {
 } from "@/chat/automations/edit-schema";
 import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z
   .object({
@@ -41,6 +42,8 @@ const automationSummaryBaseSchema = z.object({
   destination: automationDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),
+  /** People mentioned in the instruction, resolved at read time. */
+  mentions: z.array(actorIdentitySchema).optional(),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
   lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),
@@ -156,13 +159,22 @@ export const automationExecutionStatusSchema = z.enum([
 
 export const automationExecutionSchema = z
   .object({
+    /** Automation version that the run dispatched, when recorded. */
+    automationVersion: z.number().int().positive().optional(),
     conversationId: z.string().min(1).optional(),
     /** Estimated model cost for the linked conversation, when known. */
     costUsd: z.number().finite().nonnegative().optional(),
+    /** Accounts that the dispatched version could use. */
+    credentialMode: z.enum(["creator", "system"]).optional(),
     /** Cumulative conversation runtime in milliseconds, when known. */
     durationMs: z.number().finite().nonnegative().optional(),
+    /** Reason that the run failed or was blocked, when recorded. */
+    error: z.string().min(1).optional(),
     executedAt: z.string().datetime(),
     executionId: z.string().min(1),
+    /** Planned occurrence of a Scheduled automation run. */
+    scheduledFor: z.string().datetime().optional(),
+    startedAt: z.string().datetime().optional(),
     status: automationExecutionStatusSchema,
     title: z.string().min(1).optional(),
     /** Cumulative conversation token total, when known. */

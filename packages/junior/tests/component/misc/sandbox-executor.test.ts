@@ -110,7 +110,6 @@ const {
   resolveMock,
   ensureWorkspaceSnapshotBuildMock,
   getReadyWorkspaceMock,
-  missingErrorMock,
   hashMock,
 } = vi.hoisted(() => ({
   resolveMock: vi.fn<
@@ -141,7 +140,6 @@ const {
     cacheHit: false,
     resolveOutcome: "no_profile",
   })),
-  missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
   hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
 }));
 
@@ -154,15 +152,43 @@ vi.mock("@/chat/sandbox/snapshot/profile", () => ({
 
 vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   resolve: resolveMock,
-  isMissingError: missingErrorMock,
 }));
 vi.mock("@/chat/sandbox/snapshot/workspace", () => ({
   requireReadyWorkspaceSnapshot: getReadyWorkspaceMock,
 }));
 
-vi.mock("@/chat/sandbox/docker", () => ({
+vi.mock("@/chat/sandbox/guest-docker", () => ({
   ensureDockerDaemon: vi.fn(async () => {}),
 }));
+
+const { recordedSpans } = vi.hoisted(() => ({
+  recordedSpans: [] as Array<{
+    name: string;
+    attributes: Record<string, unknown>;
+  }>,
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
+  return {
+    ...actual,
+    withSpan: (async (name, op, context, callback, attributes = {}) => {
+      const span = { name, attributes: { ...attributes } };
+      recordedSpans.push(span);
+      return await actual.withSpan(
+        name,
+        op,
+        context,
+        async (setSpanAttributes) =>
+          await callback((nextAttributes) => {
+            Object.assign(span.attributes, nextAttributes);
+            setSpanAttributes(nextAttributes);
+          }),
+        attributes,
+      );
+    }) as typeof actual.withSpan,
+  };
+});
 
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import {
@@ -176,7 +202,7 @@ import {
   isWorkspaceSnapshotNotReadyError,
   WorkspaceSnapshotNotReadyError,
 } from "@/chat/sandbox/snapshot/not-ready-error";
-import { createSandboxSession } from "@/chat/sandbox/workspace";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -526,6 +552,7 @@ async function expectWorkspaceToDelegate(
 
 describe("createTestSandbox", () => {
   beforeEach(() => {
+    recordedSpans.length = 0;
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
     resolveMock.mockReset();
@@ -542,8 +569,6 @@ describe("createTestSandbox", () => {
       cacheHit: false,
       resolveOutcome: "no_profile",
     });
-    missingErrorMock.mockReset();
-    missingErrorMock.mockReturnValue(false);
     hashMock.mockReset();
     hashMock.mockReturnValue(undefined);
     delete process.env.VERCEL_TOKEN;
@@ -583,10 +608,13 @@ describe("createTestSandbox", () => {
   it("pins workspace commands to the acquired session without SDK replay", async () => {
     const sandbox = makeSandbox("sbx_pinned_session");
     const resumingRunCommand = vi.fn();
-    const workspace = createSandboxSession({
+    sandboxGetMock.mockResolvedValueOnce({
       ...sandbox,
       runCommand: resumingRunCommand,
-    } as never);
+    });
+    const workspace = await getSandboxProvider().getSession({
+      name: "sbx_pinned_session",
+    });
 
     await workspace.runCommand({ cmd: "gh", args: ["pr", "create"] });
 
@@ -846,6 +874,24 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
+  it("records which path sandbox acquisition took", async () => {
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_created"));
+    const fresh = createTestSandboxRuntime();
+    await fresh.createSandbox();
+    await fresh.createSandbox();
+
+    sandboxGetMock.mockResolvedValueOnce(makeSandbox("sbx_resumed"));
+    await createTestSandboxRuntime({
+      sandboxId: "sbx_resumed",
+    }).createSandbox();
+
+    expect(
+      recordedSpans
+        .filter((span) => span.name === "sandbox.acquire")
+        .map((span) => span.attributes["app.sandbox.acquire.outcome"]),
+    ).toEqual(["created", "memory", "resumed"]);
+  });
+
   it("does not report a reference change when restoring the same sandbox", async () => {
     const restoredSandbox = makeSandbox("sbx_restored");
     const onSandboxAcquired = vi.fn();
@@ -865,23 +911,15 @@ describe("createTestSandbox", () => {
   it("keeps restored sandbox policy tracking tied to the applied policy", async () => {
     const restoredSandbox = makeSandbox("sbx_restored_policy");
     const firstPolicy = {
-      allow: {
-        "*": [],
-        "api.first.example": [
-          {
-            forwardURL: "https://junior.example.com/api/internal/proxy",
-          },
-        ],
+      credentialEgress: {
+        credentialToken: "first-token",
+        domains: ["api.first.example"],
       },
     };
     const secondPolicy = {
-      allow: {
-        "*": [],
-        "api.second.example": [
-          {
-            forwardURL: "https://junior.example.com/api/internal/proxy",
-          },
-        ],
+      credentialEgress: {
+        credentialToken: "second-token",
+        domains: ["api.second.example"],
       },
     };
     const createNetworkPolicy = vi
@@ -900,10 +938,30 @@ describe("createTestSandbox", () => {
     await manager.refreshNetworkPolicy();
 
     expect(restoredSandbox.update).toHaveBeenNthCalledWith(1, {
-      networkPolicy: firstPolicy,
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "api.first.example": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/first-token",
+            },
+          ],
+        },
+      },
     });
     expect(restoredSandbox.update).toHaveBeenNthCalledWith(2, {
-      networkPolicy: secondPolicy,
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "api.second.example": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/second-token",
+            },
+          ],
+        },
+      },
     });
     expect(createNetworkPolicy).toHaveBeenCalledTimes(2);
   });
@@ -913,13 +971,9 @@ describe("createTestSandbox", () => {
     sandboxCreateMock.mockResolvedValue(sandbox);
     let providerDomain = "api.first.example";
     const createNetworkPolicy = vi.fn((sandboxId: string) => ({
-      allow: {
-        "*": [],
-        [providerDomain]: [
-          {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${sandboxId}`,
-          },
-        ],
+      credentialEgress: {
+        credentialToken: sandboxId,
+        domains: [providerDomain],
       },
     }));
 
@@ -974,7 +1028,7 @@ describe("createTestSandbox", () => {
     process.env.VERCEL_TEAM_ID = "team_123";
     process.env.VERCEL_PROJECT_ID = "prj_123";
 
-    const freshSandbox = makeSandbox("sbx_fresh");
+    const freshSandbox = makeSandbox("sbx_created");
 
     sandboxCreateMock.mockResolvedValue(freshSandbox);
 
@@ -1027,6 +1081,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1068,6 +1123,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1082,6 +1138,7 @@ describe("createTestSandbox", () => {
         id: "workspace-2",
         name: "junior",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1114,6 +1171,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1150,6 +1208,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1226,6 +1285,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry-docs",
         setupScript: "echo new",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1267,6 +1327,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1287,6 +1348,7 @@ describe("createTestSandbox", () => {
   });
 
   it("loads a ready Workspace snapshot without starting a build", async () => {
+    process.env.SANDBOX_VCPUS = "4";
     const controller = new AbortController();
     getReadyWorkspaceMock.mockResolvedValueOnce({
       snapshotId: "snap_workspace_setup",
@@ -1301,6 +1363,7 @@ describe("createTestSandbox", () => {
       id: "workspace-setup",
       name: "setup",
       setupScript: "echo ready",
+      vcpus: 8,
       snapshot: null,
       repos: [],
     };
@@ -1317,6 +1380,10 @@ describe("createTestSandbox", () => {
       runtime: "node22",
     });
     expect(resolveMock).not.toHaveBeenCalled();
+    // The Workspace size wins over the app setting.
+    expect(sandboxCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ resources: { vcpus: 8 } }),
+    );
   });
 
   it("forwards abort signal into Workspace provider preparation", async () => {
@@ -1350,6 +1417,7 @@ describe("createTestSandbox", () => {
         id: "workspace-provider",
         name: "provider",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -1388,6 +1456,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1445,6 +1514,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -1573,7 +1643,7 @@ describe("createTestSandbox", () => {
     });
     expect(invocation.args?.[0]).toBe("-c");
     expect(invocation.args?.[1]).toContain(
-      'export PATH="/vercel/sandbox/.junior/bin:$PATH"',
+      'export PATH="$PATH:/vercel/sandbox/.junior/bin"',
     );
     expect(invocation.args?.[1]).toContain("export CI='1'");
     expect(invocation.args?.[1]).toContain("export TERM='dumb'");
@@ -1867,12 +1937,12 @@ describe("createTestSandbox", () => {
   });
 
   it("attaches sandbox egress auth signals to bash results regardless of exit code", async () => {
-    const sandbox = makeSandbox("sbx_fresh_auth_signal");
+    const sandbox = makeSandbox("sbx_created_auth_signal");
     sandbox.runCommand.mockImplementationOnce(async () => {
       await setSandboxEgressAuthRequiredSignal(
         {
           credentials: { actor: { type: "user", userId: "U123" } },
-          egressId: "sbx_fresh_auth_signal_session",
+          egressId: "sbx_created_auth_signal_session",
           expiresAtMs: Date.now() + 60_000,
           contextId: "ctx-fresh",
         },
@@ -1894,7 +1964,7 @@ describe("createTestSandbox", () => {
     sandboxGetMock.mockResolvedValue(sandbox);
 
     const executor = createTestSandbox({
-      sandboxId: "sbx_fresh_auth_signal",
+      sandboxId: "sbx_created_auth_signal",
     });
     executor.configureSkills([]);
 
@@ -1995,7 +2065,6 @@ describe("createTestSandbox", () => {
           status: 403,
           upstreamHost: "github.com",
           upstreamPath: "/getsentry/junior.git/info/refs",
-          acceptedPermissions: "contents=write",
         },
       );
       return {
@@ -2032,7 +2101,6 @@ describe("createTestSandbox", () => {
       status: 403,
       upstreamHost: "github.com",
       upstreamPath: "/getsentry/junior.git/info/refs",
-      acceptedPermissions: "contents=write",
     });
   });
 
@@ -2948,9 +3016,6 @@ describe("createTestSandbox", () => {
     sandboxCreateMock
       .mockRejectedValueOnce(missingError)
       .mockResolvedValueOnce(rebuiltSandbox);
-    missingErrorMock.mockImplementation(
-      (error: unknown) => error === missingError,
-    );
 
     const executor = createTestSandbox();
     executor.configureSkills([]);
@@ -2984,6 +3049,7 @@ describe("createTestSandbox", () => {
       id: "workspace-snapshot-not-ready",
       name: "snapshot-not-ready",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -3011,6 +3077,7 @@ describe("createTestSandbox", () => {
       id: "workspace-sentry-docs",
       name: "sentry-docs",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -3048,6 +3115,7 @@ describe("createTestSandbox", () => {
       id: "workspace-sentry-docs-helpers",
       name: "sentry-docs",
       setupScript: "",
+      vcpus: null,
       snapshot: null,
       repos: [],
     };
@@ -3088,15 +3156,13 @@ describe("createTestSandbox", () => {
       );
     const missingError = new Error("Workspace snapshot not found");
     sandboxCreateMock.mockRejectedValueOnce(missingError);
-    missingErrorMock.mockImplementation(
-      (error: unknown) => error === missingError,
-    );
     hashMock.mockReturnValue("hash_workspace");
     const runtime = createSandboxRuntime({
       workspace: {
         id: "workspace-missing-snapshot",
         name: "missing-snapshot",
         setupScript: "",
+        vcpus: null,
         snapshot: null,
         repos: [],
       },
@@ -3186,13 +3252,9 @@ describe("createTestSandbox", () => {
       .mockRejectedValueOnce(snapshottingError)
       .mockResolvedValueOnce(snapshotSandbox);
     const createNetworkPolicy = vi.fn((sandboxId: string) => ({
-      allow: {
-        "*": [],
-        "api.example.com": [
-          {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${sandboxId}`,
-          },
-        ],
+      credentialEgress: {
+        credentialToken: sandboxId,
+        domains: ["api.example.com"],
       },
     }));
 

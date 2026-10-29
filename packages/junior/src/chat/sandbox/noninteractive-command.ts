@@ -6,7 +6,8 @@ import type {
 
 interface NonInteractiveShellOptions {
   env?: Record<string, string>;
-  pathPrefix?: string;
+  /** Full PATH value to export, for example `$PATH:/extra/bin`. */
+  path?: string;
 }
 
 interface NonInteractiveCommandInput extends NonInteractiveShellOptions {
@@ -49,8 +50,8 @@ function shellQuote(value: string): string {
 
 function buildEnvExports(options: NonInteractiveShellOptions): string[] {
   const lines: string[] = [];
-  if (options.pathPrefix) {
-    lines.push(`export PATH="${options.pathPrefix}"`);
+  if (options.path) {
+    lines.push(`export PATH="${options.path}"`);
   }
 
   for (const [key, value] of Object.entries(NON_INTERACTIVE_ENV)) {
@@ -92,7 +93,7 @@ function buildNonInteractiveCommand(input: NonInteractiveCommandInput): {
       input.login ? "-lc" : "-c",
       buildNonInteractiveShellScript(buildCommandScript(input), {
         env: input.env,
-        pathPrefix: input.pathPrefix,
+        path: input.path,
       }),
     ],
   };

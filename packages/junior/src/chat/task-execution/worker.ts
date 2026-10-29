@@ -1,7 +1,13 @@
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
-import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
+import {
+  logException,
+  logInfo,
+  logWarn,
+  setSpanAttributes,
+  withLogContext,
+} from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -395,9 +401,11 @@ async function processConversationWorkInContext(
     }
     throw error;
   }
+  const pendingCount = initial ? countPendingConversationMessages(initial) : 0;
+  setSpanAttributes({ "app.worker.pending_count": pendingCount });
   if (
     !initial ||
-    (countPendingConversationMessages(initial) === 0 &&
+    (pendingCount === 0 &&
       initial.execution.status === "idle" &&
       !initial.execution.lease)
   ) {

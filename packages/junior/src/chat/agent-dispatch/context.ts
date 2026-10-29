@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import {
   identityDispatchOptionsSchema,
   type HeartbeatHookContext,
@@ -107,6 +108,7 @@ export function createHeartbeatContext(args: {
   let dispatchCount = 0;
   return {
     plugin: { name: pluginName },
+    cache: createPluginCache(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
     state: createPluginState(pluginName),

@@ -8,7 +8,7 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
@@ -25,8 +25,10 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
 import {
   type PluginUserPageRecord,
+  type PluginUserPageRecordAction,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import { pathWithSearch } from "../../searchParams";
@@ -36,7 +38,7 @@ import {
   useMemoryDashboardData,
   useMemorySearchCounts,
 } from "./memoryDashboard";
-import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
+import { MemoryDetails } from "./MemoryDetails";
 import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemorySearchHighlight } from "./MemorySearchHighlight";
 import { MemoryTimeline } from "./MemoryTimeline";
@@ -64,13 +66,16 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
 
   return (
     <MemoryPageLayout>
-      <PageHeader
-        description={props.page.description}
-        {...(overview ? { onRangeChange: setRange, range } : {})}
-        title={props.page.label}
-      />
       {overview ? (
-        <MemoryOverview range={range} />
+        <>
+          <PageHeader
+            description={props.page.description}
+            onRangeChange={setRange}
+            range={range}
+            title={props.page.label}
+          />
+          <MemoryOverview range={range} />
+        </>
       ) : (
         <MemoryLibrary libraryPath={libraryPath} page={props.page} />
       )}
@@ -161,11 +166,34 @@ function MemoryLibrary(props: {
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
+  const listRef = useRef<HTMLDivElement>(null);
   const memoryQuery = useMemoryRecord(memoryId);
   const selectedRecord =
     memoryQuery.data ?? records.find((record) => record.id === memoryId);
   const memoryPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
+  const closeDetails = () => {
+    const trigger = memoryId
+      ? listRef.current?.querySelector<HTMLButtonElement>(
+          `button[data-memory-id="${CSS.escape(memoryId)}"]`,
+        )
+      : undefined;
+    navigate(memoryPath(props.libraryPath));
+    (trigger ?? listRef.current)?.focus();
+  };
+  const forget = (recordAction: PluginUserPageRecordAction) => {
+    // The forgotten row leaves the list, so focus the list instead.
+    navigate(memoryPath(props.libraryPath));
+    listRef.current?.focus();
+    runAction(recordAction);
+  };
+
+  useEffect(() => {
+    // Forget leaves the shared mutation in success or error. Clear it when
+    // another memory opens, so old action feedback does not stay visible.
+    if (memoryId) action.reset();
+    // oxlint-disable-next-line react/exhaustive-deps -- reset only on open id change
+  }, [memoryId]);
 
   useEffect(() => {
     // Drop stale permalinks after a forget/archive or unknown id once the
@@ -198,116 +226,143 @@ function MemoryLibrary(props: {
   const loading = !query.data && !query.error;
 
   return (
-    <section className="grid gap-4" aria-labelledby="memory-library-title">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2
-            className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
-            id="memory-library-title"
-          >
-            {searchQuery ? "Search results" : "What Junior remembers"}
-          </h2>
-        </div>
-        {content?.searchPlaceholder ? (
-          <SearchInput
-            className="w-full max-w-md sm:w-auto"
-            label={content.searchPlaceholder}
-            onChange={setSearchText}
-            placeholder={content.searchPlaceholder}
-            size="default"
-            value={searchText}
-          />
-        ) : null}
-      </div>
-
-      <FilterTabList
-        ariaLabel="Memory collections"
-        items={[
-          {
-            count: counts?.active,
-            label: "All",
-            value: "",
-          },
-          {
-            count: counts?.personal,
-            label: "Private",
-            value: "private",
-          },
-          {
-            count: counts?.public,
-            label: "Public",
-            value: "public",
-          },
-        ]}
-        onChange={setFilter}
-        value={filter}
-      />
-
-      {loading ? (
-        <PageContentSkeleton label="Loading memories" variant="panel" />
-      ) : query.error ? (
-        <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
-          <CircleAlert aria-hidden="true" size={18} />
-          {query.error.message}
-        </Card>
-      ) : records.length === 0 ? (
-        <Card className="grid min-h-56 place-items-center p-8 text-center">
-          <div>
-            <Database
-              aria-hidden="true"
-              className="mx-auto text-dashboard-text-muted"
-              size={26}
-            />
-            <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
-              {content?.emptyText ?? "No memories yet."}
-            </p>
-          </div>
-        </Card>
-      ) : (
-        <div className="grid gap-3">
-          <Card padding="none">
-            <MemoryListHeader />
-            {records.map((record, index) => (
-              <MemoryRow
-                first={index === 0}
-                key={record.id}
-                onSelect={() =>
-                  navigate(
-                    memoryPath(
-                      memoryId === record.id
-                        ? props.libraryPath
-                        : `/memories/${encodeURIComponent(record.id)}`,
-                    ),
-                  )
-                }
-                record={record}
-                searchQuery={searchQuery}
-                selected={record.id === memoryId}
-              />
-            ))}
-          </Card>
-          <LoadMorePagination
-            className="mt-2"
-            hasMore={!query.isPlaceholderData && Boolean(query.hasNextPage)}
-            loading={query.isFetchingNextPage}
-            onLoadMore={() => void query.fetchNextPage()}
-          />
-          {action.error ? (
-            <InlineError className="text-center">
-              Could not complete this action. Try again.
-            </InlineError>
-          ) : null}
-        </div>
+    <div
+      className={cn(
+        "grid h-full min-h-0 min-w-0",
+        memoryId && "xl:grid-cols-[minmax(0,1fr)_25rem]",
       )}
-      {!loading ? (
-        <MemoryDetailsDrawer
-          action={action}
-          onAction={runAction}
-          onClose={() => navigate(memoryPath(props.libraryPath))}
+    >
+      <div
+        aria-label="Memories list"
+        className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        ref={listRef}
+        role="region"
+        tabIndex={0}
+      >
+        <PageLayout className="gap-6 sm:gap-8">
+          <PageHeader
+            description={props.page.description}
+            title={props.page.label}
+          />
+          <section
+            className="grid gap-4"
+            aria-labelledby="memory-library-title"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2
+                  className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
+                  id="memory-library-title"
+                >
+                  {searchQuery ? "Search results" : "What Junior remembers"}
+                </h2>
+              </div>
+              {content?.searchPlaceholder ? (
+                <SearchInput
+                  className="w-full max-w-md sm:w-auto"
+                  label={content.searchPlaceholder}
+                  onChange={setSearchText}
+                  placeholder={content.searchPlaceholder}
+                  size="default"
+                  value={searchText}
+                />
+              ) : null}
+            </div>
+
+            <FilterTabList
+              ariaLabel="Memory collections"
+              items={[
+                {
+                  count: counts?.active,
+                  label: "All",
+                  value: "",
+                },
+                {
+                  count: counts?.personal,
+                  label: "Private",
+                  value: "private",
+                },
+                {
+                  count: counts?.public,
+                  label: "Public",
+                  value: "public",
+                },
+              ]}
+              onChange={setFilter}
+              value={filter}
+            />
+
+            {loading ? (
+              <PageContentSkeleton label="Loading memories" variant="panel" />
+            ) : query.error ? (
+              <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
+                <CircleAlert aria-hidden="true" size={18} />
+                {query.error.message}
+              </Card>
+            ) : records.length === 0 ? (
+              <Card className="grid min-h-56 place-items-center p-8 text-center">
+                <div>
+                  <Database
+                    aria-hidden="true"
+                    className="mx-auto text-dashboard-text-muted"
+                    size={26}
+                  />
+                  <p className="mt-4 mb-0 text-sm text-dashboard-text-muted">
+                    {content?.emptyText ?? "No memories yet."}
+                  </p>
+                </div>
+              </Card>
+            ) : (
+              <div className="grid gap-3">
+                <Card padding="none">
+                  <MemoryListHeader />
+                  {records.map((record, index) => (
+                    <MemoryRow
+                      first={index === 0}
+                      key={record.id}
+                      onSelect={() =>
+                        navigate(
+                          memoryPath(
+                            memoryId === record.id
+                              ? props.libraryPath
+                              : `/memories/${encodeURIComponent(record.id)}`,
+                          ),
+                        )
+                      }
+                      record={record}
+                      searchQuery={searchQuery}
+                      selected={record.id === memoryId}
+                    />
+                  ))}
+                </Card>
+                <LoadMorePagination
+                  className="mt-2"
+                  hasMore={
+                    !query.isPlaceholderData && Boolean(query.hasNextPage)
+                  }
+                  loading={query.isFetchingNextPage}
+                  onLoadMore={() => void query.fetchNextPage()}
+                />
+                {action.error ? (
+                  <InlineError className="text-center">
+                    Could not complete this action. Try again.
+                  </InlineError>
+                ) : null}
+              </div>
+            )}
+          </section>
+        </PageLayout>
+      </div>
+      {memoryId ? (
+        <MemoryDetails
+          forgetPending={action.isPending}
+          key={memoryId}
+          onClose={closeDetails}
+          onForget={forget}
           record={selectedRecord}
         />
       ) : null}
-    </section>
+    </div>
   );
 }
 
@@ -500,6 +555,7 @@ function MemoryRow(props: {
       <button
         aria-expanded={props.selected}
         aria-label={`View memory details: ${props.record.title}`}
+        data-memory-id={props.record.id}
         className={cn(
           "grid min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left",
           MEMORY_GRID,

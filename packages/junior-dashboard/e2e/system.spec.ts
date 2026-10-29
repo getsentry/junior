@@ -124,11 +124,15 @@ test("lists Workspaces with the baseline snapshot", async ({
     page.getByRole("heading", { name: "Workspaces", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Baseline snapshot", exact: true }),
+    page.getByRole("heading", { name: "Base Sandbox", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("4 vCPUs · 8 GB", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "View Workspace details: sentry" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Manage sentry" }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "View Workspace details: sentry" }),
+  ).toContainText("2 repos · 4 vCPUs · 8 GB");
   await expect(page.getByRole("link", { name: "New Workspace" })).toBeVisible();
   await screenshot(page, "workspaces");
 });
@@ -143,6 +147,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
           id: "11111111-1111-4111-8111-111111111111",
           name: "sentry",
           setupScript: "pnpm install",
+          vcpus: 8,
           snapshot: null,
           repos: [
             {
@@ -156,7 +161,9 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
       });
       return;
     }
-    await route.fulfill({ json: { baselineSnapshot: null, workspaces: [] } });
+    await route.fulfill({
+      json: { baselineSnapshot: null, defaultVcpus: 4, workspaces: [] },
+    });
   });
 
   await page.goto(`${dashboard.baseURL}/system/workspaces`);
@@ -171,10 +178,17 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
     .getByLabel("Repository 1", { exact: true })
     .fill("getsentry/sentry");
   await page.getByLabel("Setup script").fill("pnpm install");
+  await page.getByLabel("vCPUs").fill("8");
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
-  await expect(page).toHaveURL(`${dashboard.baseURL}/system/workspaces`);
-  await expect(page.getByText("github:getsentry/sentry")).toBeVisible();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/system/workspaces/11111111-1111-4111-8111-111111111111`,
+  );
+  await expect(
+    page
+      .getByRole("region", { name: "Workspaces list" })
+      .getByText("github:getsentry/sentry"),
+  ).toBeVisible();
   expect(createdBody).toEqual({
     name: "sentry",
     repos: [
@@ -184,44 +198,39 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
       },
     ],
     setupScript: "pnpm install",
+    vcpus: 8,
   });
 });
 
-test("shows Workspace snapshot details on its direct route", async ({
+test("opens Workspace details beside the list and edits on a full page", async ({
   page,
   dashboard,
 }) => {
   const workspaceId = "11111111-1111-4111-8111-111111111111";
-  await page.route(`**/api/workspaces/${workspaceId}`, async (route) => {
-    await route.fulfill({
-      json: {
-        id: workspaceId,
-        name: "sentry",
-        setupScript: "pnpm install",
-        snapshot: {
-          id: "snap_workspace_123",
-          generatedAt: new Date(NOW_MS - 60_000).toISOString(),
-          buildDurationMs: 45_000,
-          sizeBytes: 4_194_304,
-        },
-        repos: [
-          {
-            checkoutPath: "repos/sentry",
-            provider: "github",
-            repo: "getsentry/sentry",
-          },
-        ],
-      },
-    });
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto(`${dashboard.baseURL}/system/workspaces`);
+
+  const row = page.getByRole("button", {
+    name: "View Workspace details: sentry",
   });
+  await row.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/system/workspaces/${workspaceId}`,
+  );
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  const details = page.getByRole("complementary", {
+    name: "Workspace details",
+  });
+  await expect(details.getByText("snap_workspace_123")).toBeVisible();
+  await expect(details.getByText(/built in 45s/)).toBeVisible();
+  await expect(details.getByText("repos/getsentry")).toBeVisible();
+  await expect(details.getByText("pnpm install")).toBeVisible();
+  await screenshot(page, "workspace-detail", { view: "desktop" });
 
-  await page.goto(`${dashboard.baseURL}/system/workspaces/${workspaceId}`);
-
-  await expect(
-    page.getByRole("heading", { name: "Current snapshot" }),
-  ).toBeVisible();
-  await expect(page.getByText("snap_workspace_123")).toBeVisible();
-  await expect(page.getByText("45s")).toBeVisible();
+  await details.getByRole("link", { name: "Edit sentry" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/system/workspaces/${workspaceId}/edit`,
+  );
   await expect(page.getByLabel("Name")).toHaveValue("sentry");
   await expect(
     page.getByLabel("System navigation").getByRole("link", {
@@ -229,7 +238,13 @@ test("shows Workspace snapshot details on its direct route", async ({
       exact: true,
     }),
   ).toHaveAttribute("href", "/system/workspaces");
-  await screenshot(page, "workspace-detail");
+
+  await page.getByRole("link", { name: "Cancel" }).click();
+  await expect(details).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/workspaces`);
+  await expect(details).toBeHidden();
+  await expect(row).toBeFocused();
 });
 
 test("keeps System navigation usable on mobile", async ({

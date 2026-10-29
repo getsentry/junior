@@ -12,7 +12,12 @@ import {
 } from "react";
 import { ImagePlus, Send, Square } from "lucide-react";
 
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 
@@ -447,16 +452,25 @@ export const ConversationComposer = memo(function ConversationComposer(
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <Button
-              aria-label="Attach images"
-              disabled={sendLocked || readingImages}
-              onClick={() => fileInputRef.current?.click()}
-              size="icon"
-              title="Attach images (up to 3 MB total)"
-              type="button"
-            >
-              <ImagePlus aria-hidden="true" size={16} />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    focusableWhenDisabled
+                    aria-label="Attach images"
+                    disabled={sendLocked || readingImages}
+                    onClick={() => fileInputRef.current?.click()}
+                    size="icon"
+                    type="button"
+                  >
+                    <ImagePlus aria-hidden="true" size={16} />
+                  </Button>
+                }
+              />
+              <TooltipContent size="compact">
+                Attach images (up to 3 MB total)
+              </TooltipContent>
+            </Tooltip>
             {props.footerStart}
             {props.footerStart ? null : (
               <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
@@ -488,7 +502,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 readingImages
               }
               title={sendLocked ? "Sending message" : props.submitLabel}
-              tone="primary"
+              variant="primary"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />

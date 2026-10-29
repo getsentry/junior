@@ -37,8 +37,14 @@ export function sentryPlugin(): PluginRegistration {
         },
         {
           type: "project",
-          supportedEvents: [...SENTRY_ISSUE_EVENTS],
-          suggestedEvents: [...SENTRY_ISSUE_EVENTS],
+          supportedEvents: [
+            ...SENTRY_ISSUE_EVENTS,
+            ...SENTRY_METRIC_ALERT_EVENTS,
+          ],
+          suggestedEvents: [
+            ...SENTRY_ISSUE_EVENTS,
+            ...SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
+          ],
         },
         {
           type: "metric_alert",

@@ -10,10 +10,10 @@ import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import { dashboardContainerClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
 import { useDocumentTitle } from "../documentTitle";
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
-import { TextInput } from "../components/TextInput";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 
@@ -129,7 +129,7 @@ export function PersonalTokensPage() {
             </div>
           ) : (
             <div className="mt-5 flex gap-2">
-              <TextInput
+              <Input
                 aria-label="Token name"
                 className="min-w-0 flex-1"
                 maxLength={80}
@@ -189,7 +189,7 @@ export function PersonalTokensPage() {
                       revokeTokenMutation.mutate(token);
                     }}
                     size="icon"
-                    tone="danger"
+                    variant="danger"
                     type="button"
                   >
                     <Trash2 size={16} />

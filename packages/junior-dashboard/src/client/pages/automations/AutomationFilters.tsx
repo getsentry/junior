@@ -1,16 +1,43 @@
-import { useId, useState } from "react";
-import { SlidersHorizontal } from "lucide-react";
-import { cn } from "../../styles";
+import { useState, useSyncExternalStore } from "react";
+import { SlidersHorizontal, X } from "lucide-react";
 import type {
   AutomationList,
   AutomationListQuery,
 } from "@sentry/junior/api/schema";
-import { Button, ToggleButton } from "../../components/Button";
+import { BottomSheet } from "../../components/BottomSheet";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from "../../components/ui/popover";
+import { Button } from "../../components/ui/button";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { FilterGroup } from "../../components/FilterBar";
 import { SearchInput } from "../../components/SearchInput";
+import { NativeSelect } from "../../components/ui/native-select";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 
-/** Keep collection controls visible while a filtered page loads. */
+const filterMediaQuery = "(min-width: 768px)";
+const stateOptions = [
+  { value: "active", label: "Active" },
+  { value: "blocked", label: "Blocked" },
+  { value: "paused", label: "Paused" },
+  { value: "unavailable", label: "Trigger unavailable" },
+  { value: "completed", label: "Completed" },
+];
+
+function subscribeToFilterLayout(onChange: () => void) {
+  const media = window.matchMedia(filterMediaQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function filtersFitPopover() {
+  return window.matchMedia(filterMediaQuery).matches;
+}
+
+/** Keep URL filters visible while editing them in a popover or mobile sheet. */
 export function AutomationFilters(props: {
   filters: AutomationListQuery;
   data: AutomationList | undefined;
@@ -20,17 +47,68 @@ export function AutomationFilters(props: {
 }) {
   const { filters, data, onChange } = props;
   const [expanded, setExpanded] = useState(false);
-  const controlsId = useId();
-  const activeCount = [
-    filters.type !== "all",
-    Boolean(filters.creator),
-    Boolean(filters.destination),
-    filters.state !== "all",
-  ].filter(Boolean).length;
+  const desktop = useSyncExternalStore(
+    subscribeToFilterLayout,
+    filtersFitPopover,
+    () => false,
+  );
+  const activeFilters = [
+    {
+      key: "type",
+      label: "Type",
+      value: filters.type === "all" ? "" : filters.type,
+      text: filters.type === "scheduled" ? "Scheduled" : "Event",
+    },
+    {
+      key: "creator",
+      label: "Creator",
+      value: filters.creator,
+      text:
+        data?.creators.find((option) => option.value === filters.creator)
+          ?.label ?? filters.creator,
+    },
+    {
+      key: "destination",
+      label: "Destination",
+      value: filters.destination,
+      text:
+        data?.destinations.find(
+          (option) => option.value === filters.destination,
+        )?.label ?? filters.destination,
+    },
+    {
+      key: "state",
+      label: "State",
+      value: filters.state === "all" ? "" : filters.state,
+      text: stateOptions.find((option) => option.value === filters.state)
+        ?.label,
+    },
+  ].filter((filter) => filter.value);
+  const trigger = (
+    <Button
+      className="h-11 shrink-0"
+      aria-expanded={expanded}
+      aria-haspopup="dialog"
+      onClick={desktop ? undefined : () => setExpanded(true)}
+    >
+      <SlidersHorizontal aria-hidden="true" size={14} /> Filters
+      {activeFilters.length ? ` (${activeFilters.length})` : ""}
+    </Button>
+  );
+  const controls = (
+    <AutomationFilterFields filters={filters} data={data} onChange={onChange} />
+  );
   return (
     <div className="grid gap-3">
       <div className="grid gap-2 lg:grid-cols-[auto_minmax(16rem,1fr)] lg:items-center lg:gap-4">
-        <div aria-label="Scope" role="group" className="flex flex-wrap gap-2">
+        <ToggleGroup
+          aria-label="Scope"
+          className="flex-wrap gap-2"
+          onValueChange={([next]) => {
+            if (next) onChange("scope", next);
+          }}
+          value={[filters.scope]}
+        >
           {(
             [
               ["all", "All"],
@@ -39,20 +117,19 @@ export function AutomationFilters(props: {
               ["attention", "Needs attention"],
             ] as const
           ).map(([value, label]) => (
-            <ToggleButton
-              className="min-h-11 font-sans! normal-case! lg:min-h-9"
+            <ToggleGroupItem
+              className="min-h-11 lg:min-h-9"
               key={value}
-              onClick={() => onChange("scope", value)}
-              pressed={filters.scope === value}
+              value={value}
               variant="pill"
             >
               {label}
               {data && value !== "attention" ? (
                 <span className="ml-1.5 opacity-65">{data.counts[value]}</span>
               ) : null}
-            </ToggleButton>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
         <div className="flex items-center gap-2">
           <SearchInput
             className="flex-1"
@@ -62,68 +139,107 @@ export function AutomationFilters(props: {
             value={props.searchText}
             onChange={props.onSearch}
           />
-          <Button
-            className="h-11 shrink-0"
-            aria-expanded={expanded}
-            aria-controls={controlsId}
-            onClick={() => setExpanded(!expanded)}
-          >
-            <SlidersHorizontal aria-hidden="true" size={14} /> Filters
-            {activeCount ? ` (${activeCount})` : ""}
-          </Button>
+          {desktop ? (
+            <Popover open={expanded} onOpenChange={setExpanded}>
+              <PopoverTrigger render={trigger} />
+              <PopoverContent align="end" className="w-80">
+                <PopoverTitle>Filters</PopoverTitle>
+                <div className="mt-4">{controls}</div>
+              </PopoverContent>
+            </Popover>
+          ) : (
+            trigger
+          )}
         </div>
       </div>
-      <div
-        id={controlsId}
-        className={cn(
-          "grid-cols-2 items-end gap-3 lg:grid-cols-3 xl:grid-cols-[auto_repeat(3,minmax(0,1fr))]",
-          expanded ? "grid" : "hidden",
-        )}
-      >
-        <FilterGroup
-          className="col-span-2 lg:col-span-3 xl:col-span-1"
-          label="Type"
+      {activeFilters.length > 0 ? (
+        <div
+          aria-label="Active filters"
+          role="group"
+          className="flex min-w-0 flex-wrap gap-2"
+        >
+          {activeFilters.map((filter) => (
+            <Button
+              key={filter.key}
+              aria-label={`Remove ${filter.key} filter`}
+              className="min-h-9 max-w-full text-xs"
+              title={`${filter.label}: ${filter.text}`}
+              onClick={() => onChange(filter.key, "")}
+            >
+              <span className="truncate">
+                {filter.label}: {filter.text}
+              </span>
+              <X aria-hidden="true" className="shrink-0" size={12} />
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      {!desktop && expanded ? (
+        <BottomSheet
+          label="Filters"
+          size="content"
+          onClose={() => setExpanded(false)}
+        >
+          <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {controls}
+          </div>
+        </BottomSheet>
+      ) : null}
+    </div>
+  );
+}
+
+function AutomationFilterFields({
+  filters,
+  data,
+  onChange,
+}: Pick<
+  Parameters<typeof AutomationFilters>[0],
+  "filters" | "data" | "onChange"
+>) {
+  return (
+    <div className="grid gap-4">
+      <FilterGroup label="Type">
+        <ToggleGroup
+          className="flex-wrap gap-2"
+          onValueChange={([next]) => {
+            if (next) onChange("type", next);
+          }}
+          value={[filters.type]}
         >
           {(["all", "scheduled", "event"] as const).map((value) => (
-            <ToggleButton
+            <ToggleGroupItem
               className="min-h-9"
               key={value}
-              onClick={() => onChange("type", value)}
-              pressed={filters.type === value}
+              value={value}
               variant="pill"
             >
               {value}
-            </ToggleButton>
+            </ToggleGroupItem>
           ))}
-        </FilterGroup>
-        <AutomationFilterSelect
-          label="Creator"
-          emptyLabel="All"
-          value={filters.creator ?? ""}
-          options={data?.creators ?? []}
-          onChange={(value) => onChange("creator", value)}
-        />
-        <AutomationFilterSelect
-          label="Destination"
-          emptyLabel="All"
-          value={filters.destination ?? ""}
-          options={data?.destinations ?? []}
-          onChange={(value) => onChange("destination", value)}
-        />
-        <AutomationFilterSelect
-          label="State"
-          emptyLabel="All"
-          value={filters.state === "all" ? "" : filters.state}
-          options={[
-            { value: "active", label: "Active" },
-            { value: "blocked", label: "Blocked" },
-            { value: "paused", label: "Paused" },
-            { value: "unavailable", label: "Trigger unavailable" },
-            { value: "completed", label: "Completed" },
-          ]}
-          onChange={(value) => onChange("state", value)}
-        />
-      </div>
+        </ToggleGroup>
+      </FilterGroup>
+      <AutomationFilterSelect
+        label="Creator"
+        emptyLabel="All"
+        value={filters.creator ?? ""}
+        options={data?.creators ?? []}
+        onChange={(value) => onChange("creator", value)}
+      />
+      <AutomationFilterSelect
+        label="Destination"
+        emptyLabel="All"
+        value={filters.destination ?? ""}
+        options={data?.destinations ?? []}
+        onChange={(value) => onChange("destination", value)}
+      />
+      <AutomationFilterSelect
+        label="State"
+        emptyLabel="All"
+        value={filters.state === "all" ? "" : filters.state}
+        options={stateOptions}
+        onChange={(value) => onChange("state", value)}
+      />
     </div>
   );
 }
@@ -157,9 +273,9 @@ function AutomationFilterSelect(props: {
 }) {
   return (
     <FilterGroup label={props.label}>
-      <select
+      <NativeSelect
         aria-label={props.ariaLabel ?? `Filter by ${props.label.toLowerCase()}`}
-        className="h-9 w-full min-w-0 rounded-lg border border-dashboard-border-emphasis bg-dashboard-control px-2 text-sm text-dashboard-text transition-colors hover:border-dashboard-border-interactive focus:border-dashboard-focus focus:outline-none focus:ring-1 focus:ring-dashboard-focus/25 [color-scheme:var(--dashboard-color-scheme,dark)]"
+        variant="filter"
         value={props.value}
         onChange={(event) => props.onChange(event.currentTarget.value)}
       >
@@ -173,7 +289,7 @@ function AutomationFilterSelect(props: {
             {option.label}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </FilterGroup>
   );
 }

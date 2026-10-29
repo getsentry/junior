@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -69,6 +70,7 @@ export async function getPluginConversationTitleContext(args: {
             egress,
             log: createPluginLogger(plugin.manifest.name),
             plugin: { name: plugin.manifest.name },
+            cache: createPluginCache(plugin.manifest.name),
             signal,
             text: args.text,
           }),

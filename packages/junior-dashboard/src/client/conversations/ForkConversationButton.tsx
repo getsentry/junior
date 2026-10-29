@@ -2,10 +2,15 @@ import { GitFork } from "lucide-react";
 import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
+import { Field, FieldLabel } from "../components/ui/field";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { Drawer } from "../components/Drawer";
-import { Field } from "../components/Field";
-import { TextArea } from "../components/TextInput";
 import { DashboardApiError } from "../http";
 import { conversationPath } from "./conversationRoutes";
 import { useForkConversation } from "./queries";
@@ -17,14 +22,20 @@ export function ForkConversationButton(props: ForkTarget) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button
-        size="icon"
-        aria-label="Fork after this message"
-        title="Fork after this message"
-        onClick={() => setOpen(true)}
-      >
-        <GitFork size={14} aria-hidden="true" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon"
+              aria-label="Fork after this message"
+              onClick={() => setOpen(true)}
+            >
+              <GitFork size={14} aria-hidden="true" />
+            </Button>
+          }
+        />
+        <TooltipContent size="compact">Fork after this message</TooltipContent>
+      </Tooltip>
       {open
         ? createPortal(
             <ForkConversationDialog
@@ -60,7 +71,6 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
   return (
     <Drawer
       closeLabel="Close fork dialog"
-      dismissLabel="Dismiss fork dialog"
       header={
         <h2 id={titleId} className="m-0 text-lg font-semibold">
           Fork Conversation
@@ -83,12 +93,12 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
         <p className="m-0">
           Creates a fork of the conversation from this point.
         </p>
-        <Field htmlFor={inputId} label="Message">
-          <TextArea
+        <Field>
+          <FieldLabel htmlFor={inputId}>Message</FieldLabel>
+          <Textarea
             id={inputId}
-            prose
             autoFocus
-            className="min-h-28"
+            className="min-h-28 leading-relaxed"
             placeholder="Message Junior…"
             value={message}
             disabled={fork.isPending}
@@ -113,7 +123,7 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
           </p>
         ) : null}
         <Button
-          tone="primary"
+          variant="primary"
           type="submit"
           disabled={!message.trim() || fork.isPending}
         >

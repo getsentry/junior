@@ -4,24 +4,20 @@ description: Junior investigates issues, gathers company context, and takes acti
 template: splash
 hero:
   title: '<span class="jr-home-mega" aria-label="Junior">JUNIOR</span>'
-  tagline: "Drop a question in Slack. Junior digs through your tools, brings receipts, and handles the next annoying step."
+  tagline: "Ask in Slack. Junior digs through your tools, shows its work, and handles the next annoying step."
   actions:
     - text: Set Up Junior
       link: /start-here/quickstart/
       icon: right-arrow
-    - text: See Junior Cook
+    - text: How to Ask
       link: /start-here/using-junior/
       icon: right-arrow
 ---
 
 <div class="jr-home">
-  <div class="jr-scribble jr-scribble-star" aria-hidden="true">★</div>
-  <div class="jr-scribble jr-scribble-arrow" aria-hidden="true">↘</div>
-  <div class="jr-scribble jr-scribble-wow" aria-hidden="true">WOW!</div>
-
   <section class="jr-sticker-scene" aria-label="Junior connects Slack to your tools">
     <div class="jr-sticker jr-sticker-slack">
-      <span class="jr-sticker-kicker">YELL HERE</span>
+      <span class="jr-sticker-kicker">ASK HERE</span>
       <svg aria-hidden="true" viewBox="0 0 120 96" xmlns="http://www.w3.org/2000/svg">
         <path d="M10 12h100v58H65L43 88V70H10z" fill="#ff3cac" stroke="#000" stroke-width="7" stroke-linejoin="round" />
         <circle cx="35" cy="41" r="6" fill="#000" />
@@ -32,7 +28,7 @@ hero:
     </div>
 
     <div class="jr-flow-arrow jr-flow-arrow-pink" aria-hidden="true">
-      <span>the vague ask</span>
+      <span>a vague question</span>
       <svg viewBox="0 0 180 78" xmlns="http://www.w3.org/2000/svg">
         <path d="M8 42c50-27 101-26 151-5" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
         <path d="m139 17 31 23-37 13" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
@@ -45,7 +41,7 @@ hero:
     </div>
 
     <div class="jr-flow-arrow jr-flow-arrow-yellow" aria-hidden="true">
-      <span>receipts + buttons</span>
+      <span>answer + next step</span>
       <svg viewBox="0 0 180 78" xmlns="http://www.w3.org/2000/svg">
         <path d="M8 42c50-27 101-26 151-5" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
         <path d="m139 17 31 23-37 13" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
@@ -53,42 +49,26 @@ hero:
     </div>
 
     <div class="jr-tool-pile">
-      <div class="jr-sticker jr-sticker-github">
-        <span class="jr-cat-ears" aria-hidden="true"></span>
-        <span class="jr-cat-face" aria-hidden="true">•ᴗ•</span>
+      <div class="jr-sticker jr-sticker-tool jr-sticker-github">
+        <img src="/integrations/github.svg" alt="" />
         <strong>GitHub</strong>
       </div>
-      <div class="jr-sticker jr-sticker-sentry">
-        <span aria-hidden="true">△</span>
+      <div class="jr-sticker jr-sticker-tool jr-sticker-sentry">
+        <img src="/integrations/sentry.svg" alt="" />
         <strong>Sentry</strong>
       </div>
-      <div class="jr-sticker jr-sticker-more">
-        <span aria-hidden="true">+∞</span>
-        <strong>your stuff</strong>
+      <div class="jr-sticker jr-sticker-tool jr-sticker-more">
+        <strong>+ the rest of your stack</strong>
       </div>
     </div>
 
   </section>
 
-<div
-  class="jr-ticker"
-  aria-label="Ask the question, let Junior dig, get the receipts, and ship the fix"
->
-  <span>ASK THE QUESTION</span>
-  <i>★</i>
-  <span>LET JUNIOR DIG</span>
-  <i>★</i>
-  <span>GET THE RECEIPTS</span>
-  <i>★</i>
-  <span>SHIP THE FIX</span>
-</div>
-
   <section class="jr-proof" aria-labelledby="jr-proof-title">
     <div class="jr-proof-copy">
       <div class="jr-section-number">ONE SLACK MESSAGE</div>
       <h2 id="jr-proof-title">Junior digs.<br />You ship.</h2>
-      <p>Junior snoops through Sentry, GitHub, Linear, docs, dashboards — whatever you plugged in. Then it comes back with receipts and can actually do the next thing.</p>
-      <div class="jr-proof-stamp">FINDS IT<br />EXPLAINS IT<br />DOES IT</div>
+      <p>Junior checks the tools you connect, answers in the thread with sources, and does the next step. It asks before anything risky.</p>
     </div>
 
     <div class="jr-slack-wrap">
@@ -118,8 +98,8 @@ hero:
             <div class="slk-avatar slk-avatar-bot" aria-hidden="true"><img src="/junior-mark.png" alt="" /></div>
             <div class="slk-msg-body">
               <div class="slk-msg-meta"><span class="slk-name">Junior</span><span class="slk-app-badge">App</span><span class="slk-time">12:04 PM</span></div>
-              <p class="slk-text">yep, auth did it. <code class="slk-code">9f4e2c</code> broke webhook verification. rolled it back, the graph is chilling out, and the update is drafted.</p>
-              <div class="slk-tool-call">↳ Sentry snitched · GitHub confirmed · rollback shipped</div>
+              <p class="slk-text">yep, auth did it. <code class="slk-code">9f4e2c</code> broke webhook verification. rolled it back, errors are back to baseline, and the update is drafted below.</p>
+              <div class="slk-tool-call">Sentry: 401 spike at 11:52 · GitHub: <code>9f4e2c</code> merged 11:49 · Vercel: rolled back 12:04</div>
             </div>
           </div>
         </div>
@@ -130,43 +110,43 @@ hero:
 
 <section class="jr-real-work" aria-labelledby="jr-real-work-title">
   <header class="jr-real-work-heading">
-    <p>REAL STUFF. ALREADY SHIPPED.</p>
-    <h2 id="jr-real-work-title">Junior does more than yap.</h2>
-    <span>These mocks map to plugins and workflows in the repo right now. No roadmap fanfic.</span>
+    <p>NOT JUST ANSWERS</p>
+    <h2 id="jr-real-work-title">It does the chores too.</h2>
+    <span>Pull requests, tickets, browser checks. Junior finishes the work in the thread where you asked for it.</span>
   </header>
 
   <div class="jr-mock-grid">
-    <article class="jr-product-mock jr-product-mock-incident">
+    <article class="jr-product-mock jr-product-mock-pr">
       <header class="jr-product-mock-label">
         <span>01</span>
         <div>
-          <small>SENTRY + GITHUB + VERCEL</small>
-          <h3>Prod is on fire</h3>
+          <small>GITHUB</small>
+          <h3>Babysit the PR</h3>
         </div>
       </header>
-      <div class="jr-mock-window jr-incident-window">
+      <div class="jr-mock-window jr-chat-window">
         <div class="jr-mock-window-bar">
-          <span># incident-ops</span>
-          <i>LIVE</i>
+          <span># checkout-team</span>
+          <i>WATCHING</i>
         </div>
         <div class="jr-mini-message">
           <b>DC</b>
-          <p><strong>@jr</strong> why are checkouts dying? find it and fix it if the deploy did it.</p>
+          <p><strong>@jr</strong> fix the flaky retry test and open a PR</p>
         </div>
         <div class="jr-mini-message jr-mini-message-bot">
           <b>J</b>
           <div>
-            <span class="jr-mock-status">CAUSE FOUND</span>
-            <p><code>9f4e2c</code> broke signature checks. rolled back. errors are dropping.</p>
+            <span class="jr-mock-status">PR #2318 OPEN</span>
+            <p>CI failed on lint, so I fixed it and pushed. I'll ping you when someone reviews.</p>
           </div>
         </div>
         <div class="jr-receipt-list">
-          <span>✓ Sentry spike matched</span>
-          <span>✓ GitHub diff checked</span>
-          <span>✓ Vercel rollback shipped</span>
+          <span>✓ test fixed</span>
+          <span>✓ CI green</span>
+          <span>◉ watching for reviews</span>
         </div>
       </div>
-      <div class="jr-product-mock-caption">Ask for the answer and the fix in the same sentence. Wild concept.</div>
+      <div class="jr-product-mock-caption">Junior keeps the PR moving: CI failures, review comments, and the merge ping.</div>
     </article>
 
     <article class="jr-product-mock jr-product-mock-linear">
@@ -192,9 +172,9 @@ hero:
             <span>↗ 3 links</span>
           </div>
         </div>
-        <div class="jr-linear-done">created from the thread · context survived</div>
+        <div class="jr-linear-done">filed from the thread · links included</div>
       </div>
-      <div class="jr-product-mock-caption">No copy-paste pilgrimage. The useful thread bits come with it.</div>
+      <div class="jr-product-mock-caption">The thread becomes the ticket. No copy-paste required.</div>
     </article>
 
     <article class="jr-product-mock jr-product-mock-browser">
@@ -221,9 +201,9 @@ hero:
           <span>✓ console clean</span>
           <span>✓ screenshots attached</span>
         </div>
-        <div class="jr-browser-verdict"><b>SHIP IT</b><span>nothing cursed found</span></div>
+        <div class="jr-browser-verdict"><b>LOOKS GOOD</b><span>0 layout bugs found</span></div>
       </div>
-      <div class="jr-product-mock-caption">Junior can open the real page, click around, and bring visual receipts.</div>
+      <div class="jr-product-mock-caption">Junior opens the real page, clicks around, and attaches the screenshots.</div>
     </article>
 
   </div>
@@ -235,15 +215,15 @@ hero:
     <h2>Find it.</h2>
     <p>
       Errors, deploys, logs, code changes, owners. Junior digs through the pile
-      so you do not have to.
+      so you don't have to.
     </p>
   </article>
   <article class="jr-card jr-card-pink">
     <span>02</span>
     <h2>Prove it.</h2>
     <p>
-      No mystery vibes. Junior shows its work and brings the useful bits back
-      from every tool it checked.
+      No mystery vibes. Every answer links the issue, commit, or log line it
+      came from.
     </p>
   </article>
   <article class="jr-card jr-card-cream">
@@ -259,13 +239,13 @@ hero:
 <section class="jr-integrations" aria-labelledby="jr-integrations-title">
   <header class="jr-integrations-heading">
     <div>
-      <span>THE WHOLE TOOL SHED</span>
+      <span>PLUGINS</span>
       <h2 id="jr-integrations-title">MORE TOOLS.<br />SAME THREAD.</h2>
     </div>
     <div class="jr-integrations-summary">
       <p>
-        Junior starts in Slack, then digs through the systems your team already
-        uses. Pick an integration and put it to work.
+        Connect the tools your team already uses. Junior reads them, works in
+        them, and reports back in Slack.
       </p>
     </div>
   </header>
@@ -338,7 +318,7 @@ hero:
     <img src="/integrations/slack.svg" alt="" />
     <span>
       <strong>Slack</strong>
-      <small>WHERE IT STARTS</small>
+      <small>HOME BASE</small>
     </span>
   </a>
 </div>
@@ -348,7 +328,7 @@ hero:
 
 <section class="jr-customers" aria-labelledby="jr-customers-title">
   <span class="jr-customers-eyebrow" id="jr-customers-title">
-    BUILT AT SENTRY. YES, WE ACTUALLY USE IT.
+    BUILT AT SENTRY. USED THERE EVERY DAY.
   </span>
   <a class="jr-customer-logo" href="https://sentry.io" aria-label="Sentry">
     <svg
@@ -367,9 +347,7 @@ hero:
     class="jr-customers-cta"
     href="https://github.com/getsentry/junior/issues/new?title=Add%20our%20company%20to%20the%20Junior%20homepage"
   >
-    <span>Got Junior running? Flex on us →</span>
+    <span>Running Junior at your company? Tell us →</span>
   </a>
 </section>
-
-  <div class="jr-made-this"><b>*</b> yes, Junior made this homepage too.</div>
 </div>

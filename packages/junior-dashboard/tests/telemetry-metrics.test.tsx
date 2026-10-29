@@ -29,6 +29,8 @@ import {
   ToolCallsMetric,
 } from "../src/client/conversations/TelemetryMetrics";
 
+const shimmerClass = /class="[^"]*\bshimmer\b/;
+
 /** Read rendered markup as plain text, one space between elements. */
 function text(html: string): string {
   return html
@@ -73,7 +75,7 @@ describe("CostMetric", () => {
     expect(emptyHtml).toContain("$…");
     expect(emptyHtml).toContain("grok-4-5");
     expect(emptyHtml).toContain("· in progress");
-    expect(emptyHtml).toContain("junior-text-shimmer");
+    expect(emptyHtml).toMatch(shimmerClass);
 
     const partialHtml = renderToStaticMarkup(
       <CostMetric
@@ -90,7 +92,7 @@ describe("CostMetric", () => {
     );
     expect(partialHtml).toContain("$0.04+");
     expect(text(partialHtml)).toContain("grok-4-5 in progress $0.0410");
-    expect(partialHtml).toContain("junior-text-shimmer");
+    expect(partialHtml).toMatch(shimmerClass);
 
     const settledHtml = renderToStaticMarkup(
       <CostMetric summary={{ total: 0.041 }} />,
@@ -98,7 +100,7 @@ describe("CostMetric", () => {
     expect(settledHtml).toContain("$0.04");
     expect(settledHtml).not.toContain("+");
     expect(settledHtml).not.toContain("in progress");
-    expect(settledHtml).not.toContain("junior-text-shimmer");
+    expect(settledHtml).not.toMatch(shimmerClass);
   });
 
   it("splits cost between this agent and its subagents", () => {
@@ -284,7 +286,7 @@ describe("TokenMetric", () => {
     );
     expect(tokenHtml).toContain("1.6k tokens");
     expect(text(tokenHtml)).toContain("grok-4-5 in progress 1.6k");
-    expect(tokenHtml).toContain("junior-text-shimmer");
+    expect(tokenHtml).toMatch(shimmerClass);
 
     const toolHtml = renderToStaticMarkup(
       <ToolCallsMetric
@@ -293,10 +295,10 @@ describe("TokenMetric", () => {
       />,
     );
     expect(toolHtml).toContain("2 tool calls");
-    expect(toolHtml).toContain("junior-text-shimmer");
+    expect(toolHtml).toMatch(shimmerClass);
 
     const durationHtml = renderToStaticMarkup(<DurationMetric label="31s" />);
     expect(durationHtml).toContain("31s");
-    expect(durationHtml).not.toContain("junior-text-shimmer");
+    expect(durationHtml).not.toMatch(shimmerClass);
   });
 });

@@ -10,7 +10,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import { getToolActionRejectionMarker } from "@/chat/tool-support/action-review-history";
+import { getToolActionRejectionMarker } from "@/chat/guardian/history";
 
 // A successful result of one of these tools ends the run on purpose, so the
 // run has its outcome even without a reply.

@@ -31,7 +31,6 @@ import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
-import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
 import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
@@ -49,13 +48,17 @@ import {
 } from "./pages/system/SystemPageLayout";
 import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
-import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
+import {
+  isMemoryLibraryPath,
+  MemoryRouteLoading,
+} from "./pages/memory/MemoryPageLayout";
 import { AutomationExecutionsPage } from "./pages/automations/AutomationExecutionsPage";
 import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
 import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPage";
 import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
+  hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
 import {
@@ -121,17 +124,6 @@ export function DashboardShell() {
     setMobileNavigationOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    if (!mobileNavigationOpen) return;
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileNavigationOpen(false);
-    }
-
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [mobileNavigationOpen]);
-
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
       credentials: "same-origin",
@@ -142,7 +134,14 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <VisualViewportShell className="bg-dashboard-bg" enabled={workspace}>
+      <VisualViewportShell
+        className="bg-dashboard-bg"
+        enabled={
+          workspace ||
+          hasAutomationDetailsFrame(location.pathname) ||
+          isMemoryLibraryPath(location.pathname)
+        }
+      >
         <DashboardChrome
           banner={
             <>
@@ -152,7 +151,6 @@ export function DashboardShell() {
           }
           header={
             <DashboardHeader
-              compact={workspace}
               mobileBackTo={conversationId ? "/" : undefined}
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
@@ -426,22 +424,6 @@ export function DashboardShell() {
           />
           <Route element={<Navigate replace to="/" />} path="/conversations" />
           <Route
-            element={
-              loading ? (
-                <LoadingView label="Loading components" />
-              ) : !data ? (
-                <LoadingView
-                  label={query.error?.message ?? "Dashboard unavailable"}
-                />
-              ) : data.config.componentGallery ? (
-                <ComponentsPage />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-            path="/dev/*"
-          />
-          <Route
             element={<LegacySystemRedirect section="people" />}
             path="/people"
           />
@@ -500,6 +482,21 @@ export function DashboardShell() {
           <Route
             element={
               loading ? (
+                <SystemRouteLoading
+                  description="Repository recipes Junior can switch into."
+                  label="Loading Workspaces"
+                  title="Workspaces"
+                  variant="list"
+                />
+              ) : (
+                <WorkspacesPage />
+              )
+            }
+            path="/system/workspaces/:workspaceId"
+          />
+          <Route
+            element={
+              loading ? (
                 <SystemPageLayout>
                   <LoadingView label="Loading Workspace" />
                 </SystemPageLayout>
@@ -507,7 +504,7 @@ export function DashboardShell() {
                 <WorkspaceFormPage />
               )
             }
-            path="/system/workspaces/:workspaceId"
+            path="/system/workspaces/:workspaceId/edit"
           />
           <Route
             element={

@@ -1,6 +1,6 @@
 /** Version history for one Automation. Making a version active saves it again. */
 import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,7 +10,22 @@ import {
   type AutomationVersionList,
 } from "@sentry/junior/api/schema";
 import { useAutomationData, useAutomationVersionsData } from "../../api";
-import { Button } from "../../components/Button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../components/ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../../styles";
 import { Detail, DetailList } from "../../components/DetailList";
 import { FormNotice } from "../../components/FormNotice";
 import { InlineError } from "../../components/InlineError";
@@ -90,6 +105,9 @@ function AutomationVersionsView(props: {
   const { automation, data } = props;
   const queryClient = useQueryClient();
   const [activated, setActivated] = useState<number>();
+  // Keep the version after close so the closing dialog keeps its text.
+  const [confirming, setConfirming] = useState<number>();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const canActivate = !(
     automation.kind === "scheduled" && automation.status === "completed"
   );
@@ -155,15 +173,8 @@ function AutomationVersionsView(props: {
                   activate.variables === version.version ? activate.error : null
                 }
                 onActivate={() => {
-                  const creatorOnly = automation.ownedByViewer
-                    ? ""
-                    : ` Only ${automation.createdBy} can turn on their connected accounts or change where results go.`;
-                  if (
-                    window.confirm(
-                      `Make version ${version.version} active? Junior saves these settings as a new version. Future runs use them.${creatorOnly}`,
-                    )
-                  )
-                    activate.mutate(version.version);
+                  setConfirming(version.version);
+                  setConfirmOpen(true);
                 }}
                 pending={
                   activate.isPending && activate.variables === version.version
@@ -176,6 +187,29 @@ function AutomationVersionsView(props: {
           </ol>
         </Card>
       )}
+      <AlertDialog onOpenChange={setConfirmOpen} open={confirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogTitle>Make version {confirming} active?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Junior saves these settings as a new version. Future runs use them.
+            {automation.ownedByViewer
+              ? null
+              : ` Only ${automation.createdBy} can turn on their connected accounts or change where results go.`}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirming !== undefined) activate.mutate(confirming);
+                setConfirmOpen(false);
+              }}
+              variant="primary"
+            >
+              Make active
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {data.truncated ? (
         <p className="m-0 text-center text-xs text-dashboard-text-muted">
           Showing the 100 most recent versions.
@@ -255,12 +289,18 @@ function VersionRow(props: {
             : "Try again."}
         </FormNotice>
       ) : null}
-      <details>
-        <summary className="w-fit cursor-pointer py-1 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
+      <Collapsible>
+        <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 py-1 text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={dashboardDisclosureChevronClass}
+          />
           Show settings
-        </summary>
-        <VersionSettings automation={automation} version={version} />
-      </details>
+        </CollapsibleTrigger>
+        <CollapsibleContent hiddenUntilFound>
+          <VersionSettings automation={automation} version={version} />
+        </CollapsibleContent>
+      </Collapsible>
     </li>
   );
 }

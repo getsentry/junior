@@ -4,10 +4,10 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
+  renderEventBatchText,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
-import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import {
   getEventBatchDelayMs,
   parseEventMessages,
@@ -33,7 +33,12 @@ import {
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
 } from "./store";
-import type { AgentInvocation, TerminalAgentInvocation } from "./types";
+import { listUnreportedSiblingAgents } from "./list";
+import type {
+  AgentInvocation,
+  ChildAgent,
+  TerminalAgentInvocation,
+} from "./types";
 import { enqueueAgentInvocation } from "./work";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
@@ -111,9 +116,16 @@ const OUTPUT_LABEL = {
   stopped: "Error",
 } as const satisfies Record<TerminalAgentInvocation["status"], string>;
 
+function siblingLabel(sibling: ChildAgent): string {
+  return sibling.agentName
+    ? `"${sibling.agentName}"`
+    : (sibling.title ?? sibling.childConversationId);
+}
+
 function renderResultInput(
   invocation: TerminalAgentInvocation,
   summary: string,
+  openSiblings: readonly ChildAgent[],
 ): string {
   const output = (
     invocation.status === "completed"
@@ -136,6 +148,14 @@ function renderResultInput(
     output || "(empty)",
     "",
     RESULT_NEXT_STEP[invocation.status],
+    // Fan-out: one Turn per result would post partial findings. Name the open
+    // siblings so the parent can wait for them.
+    ...(openSiblings.length > 0
+      ? [
+          "",
+          `Other child agents that you started have not reported yet: ${openSiblings.map(siblingLabel).join(", ")}. Their results arrive later. Unless this result is useful to the user alone, wait for them before you report.`,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -143,6 +163,7 @@ function renderResultInput(
 function buildResultInboundMessage(
   invocation: TerminalAgentInvocation,
   nowMs: number,
+  openSiblings: readonly ChildAgent[],
 ): InboundMessage {
   const summary = trustedSummary(invocation, childAgentLabel(invocation));
   const metadata: EventMailboxMetadata = {
@@ -165,7 +186,7 @@ function buildResultInboundMessage(
     input: {
       authorId: resultAuthorId(invocation.actor),
       metadata,
-      text: renderResultInput(invocation, summary),
+      text: renderResultInput(invocation, summary, openSiblings),
     },
     receivedAtMs: nowMs,
     source: "event",
@@ -193,8 +214,12 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
+  const openSiblings = await listUnreportedSiblingAgents(
+    invocation.parentConversationId,
+    invocation.childConversationId,
+  );
   await appendAndEnqueueInboundMessage({
-    message: buildResultInboundMessage(invocation, nowMs),
+    message: buildResultInboundMessage(invocation, nowMs, openSiblings),
     queue: options.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: options.state,
@@ -369,7 +394,7 @@ export async function startAgentInvocationsForChildInput(
     // use the grants of the person who set it.
     const { actor, source } = events[0]!;
     const invocation = await createAgentInvocationFromLatest({
-      input: joinMailboxText(messages),
+      input: renderEventBatchText(messages),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
       ),

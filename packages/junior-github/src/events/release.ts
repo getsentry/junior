@@ -7,7 +7,7 @@ export const GITHUB_RELEASE_SUGGESTED_EVENTS = ["release.published"];
 /** The identifier shape that `gitHubReleaseSourceResource` builds. */
 export const GITHUB_RELEASE_SOURCE_IDENTIFIER = {
   format: "release-source:owner/repo[:tag]",
-  pattern: /^release-source:[^\s/:#]+\/[^\s/:#]+(?::[^\s:]+)?$/,
+  pattern: String.raw`^release-source:[^\s/:#]+\/[^\s/:#]+(?::[^\s:]+)?$`,
 };
 
 /** Build the stable release-source identity shared by tools and webhooks. */

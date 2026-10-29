@@ -64,7 +64,7 @@ async function writeResponse(res: ServerResponse, response: Response) {
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
 export async function startDashboardE2eServer(
-  options: { basePath?: string; componentGallery?: boolean } = {},
+  options: { basePath?: string } = {},
 ): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
@@ -88,7 +88,6 @@ export async function startDashboardE2eServer(
       },
     },
     basePath: options.basePath,
-    componentGallery: options.componentGallery === true,
     mockConversations: true,
   });
 
@@ -395,11 +394,16 @@ export async function mockDashboardApis(
             totalTokens: 1_200,
           },
           {
+            automationVersion: 3,
             conversationId: "slack:CQA123:1770003600.000200",
             costUsd: 0.18,
+            credentialMode: "creator",
             durationMs: 18_000,
+            error: "Slack rejected the result message: channel_not_found.",
             executedAt: "2026-08-05T16:00:00.000Z",
             executionId: `${id}-run-2`,
+            scheduledFor: "2026-08-05T15:59:00.000Z",
+            startedAt: "2026-08-05T15:59:42.000Z",
             status: "failed",
             title: "Ship notes for the release train",
             totalTokens: 480,
@@ -501,6 +505,7 @@ export async function mockDashboardApis(
         },
       ],
       setupScript: "pnpm install",
+      vcpus: null,
       snapshot: {
         buildDurationMs: 45_000,
         generatedAt: "2026-08-15T05:40:21.000Z",
@@ -521,6 +526,7 @@ export async function mockDashboardApis(
           generatedAt: "2026-08-15T05:30:21.000Z",
           id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
         },
+        defaultVcpus: 4,
         workspaces: [{ ...workspace, snapshot: null }],
       },
     });

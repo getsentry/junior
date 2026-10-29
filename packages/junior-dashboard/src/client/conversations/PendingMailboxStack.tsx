@@ -15,7 +15,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { Tooltip } from "../components/Tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { actorLabel } from "../format";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import {
@@ -44,13 +48,18 @@ function pendingDeliveryMeta(
 
 function PendingMetaIcon(props: { children: ReactElement; label: string }) {
   return (
-    <Tooltip content={props.label} placement="above">
-      <span
-        aria-label={props.label}
-        className="inline-flex text-dashboard-text-muted"
-      >
-        {props.children}
-      </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={props.label}
+            className="inline-flex text-dashboard-text-muted"
+          >
+            {props.children}
+          </span>
+        }
+      />
+      <TooltipContent>{props.label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -69,10 +78,15 @@ function PendingMetaIcons(props: {
   return (
     <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-1.5 text-xs leading-none text-dashboard-text-muted">
       {props.showSlack ? (
-        <Tooltip content="Slack" placement="above">
-          <span className="inline-flex text-dashboard-text-muted">
-            <SlackMark className="size-3.5" />
-          </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex text-dashboard-text-muted">
+                <SlackMark className="size-3.5" />
+              </span>
+            }
+          />
+          <TooltipContent>Slack</TooltipContent>
         </Tooltip>
       ) : null}
       <PendingMetaIcon label={delivery.label}>
@@ -84,28 +98,33 @@ function PendingMetaIcons(props: {
         />
       </PendingMetaIcon>
       {props.onCancel ? (
-        <Tooltip content="Remove queued message" placement="above">
-          <button
-            aria-label={
-              props.cancelError
-                ? "Could not remove. Try again."
-                : "Remove queued message"
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label={
+                  props.cancelError
+                    ? "Could not remove. Try again."
+                    : "Remove queued message"
+                }
+                className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+                disabled={props.cancelDisabled}
+                onClick={props.onCancel}
+                type="button"
+              >
+                {props.cancelPending ? (
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="animate-spin"
+                    size={13}
+                  />
+                ) : (
+                  <X aria-hidden="true" size={14} strokeWidth={2.2} />
+                )}
+              </button>
             }
-            className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
-            disabled={props.cancelDisabled}
-            onClick={props.onCancel}
-            type="button"
-          >
-            {props.cancelPending ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin"
-                size={13}
-              />
-            ) : (
-              <X aria-hidden="true" size={14} strokeWidth={2.2} />
-            )}
-          </button>
+          />
+          <TooltipContent>Remove queued message</TooltipContent>
         </Tooltip>
       ) : null}
     </TranscriptHeadingMeta>

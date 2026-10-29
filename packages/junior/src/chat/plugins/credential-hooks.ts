@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import {
   pluginAuthorizationSchema,
   pluginCredentialResultSchema,
@@ -76,6 +77,7 @@ function basePluginContext(plugin: NonNullable<ReturnType<typeof pluginFor>>) {
   const pluginName = plugin.manifest.name;
   return {
     plugin: { name: pluginName },
+    cache: createPluginCache(pluginName),
     log: createPluginLogger(pluginName),
     db: getDb(),
   };

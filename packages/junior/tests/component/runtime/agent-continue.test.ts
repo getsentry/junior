@@ -138,6 +138,8 @@ describe("paused turn scheduling", () => {
       sliceId: 1,
       state: "running",
       destination: SLACK_DESTINATION,
+      // The turn already used its lost-worker resume, so recovery fails it.
+      lostWorkerResumeCount: 1,
       source: slackSessionSource("1712345.0006"),
       piMessages: [
         {
