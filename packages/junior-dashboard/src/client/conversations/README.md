@@ -65,6 +65,19 @@ control, tap the backdrop, or press Escape to dismiss it. Base UI owns the
 transition lifecycle.
 A pending exit cannot close a new panel or a different Conversation.
 
+## Event log
+
+`ChatLayout` keeps the Conversation header outside the transcript scroll region.
+`ConversationEventLog` fills the pane without a card border or page inset. Its
+search toolbar and column labels stay together at the top while rows scroll.
+`Transcript` shares the search value with its owner, or keeps it locally when
+used alone. Event log search stays visible; the transcript search toggle is for
+the Conversation view.
+
+Rows keep time, event type, and summary in columns when the pane is at least
+512px wide. Smaller panes put the summary below time and type. Model and usage
+metadata share one optional line. Missing model metadata is omitted from rows.
+
 ## Event details
 
 The URL owns the selected event in the main Conversation. `ConversationPage`

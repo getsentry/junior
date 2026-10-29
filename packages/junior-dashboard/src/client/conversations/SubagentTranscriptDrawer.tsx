@@ -69,7 +69,8 @@ function SubagentTranscriptDrawerContent(props: {
       ? props.target.agentName
       : undefined;
   const startedAt = detail ? Date.parse(detail.startedAt) : undefined;
-  const searchOpenVisible = searchOpen || search.length > 0;
+  const searchOpenVisible =
+    view === "rich" && (searchOpen || search.length > 0);
 
   const titleId = "subagent-transcript-drawer-title";
 
@@ -77,17 +78,19 @@ function SubagentTranscriptDrawerContent(props: {
     <Drawer
       actions={
         <>
-          <TranscriptSearchToggle
-            onClick={() => {
-              if (searchOpenVisible) {
-                setSearchOpen(false);
-                if (search.length > 0) setSearch("");
-                return;
-              }
-              setSearchOpen(true);
-            }}
-            open={searchOpenVisible}
-          />
+          {view === "rich" ? (
+            <TranscriptSearchToggle
+              onClick={() => {
+                if (searchOpenVisible) {
+                  setSearchOpen(false);
+                  if (search.length > 0) setSearch("");
+                  return;
+                }
+                setSearchOpen(true);
+              }}
+              open={searchOpenVisible}
+            />
+          ) : null}
           <TranscriptViewToggle onChange={setView} value={view} />
           <CopyButton
             label="Copy as Markdown"
@@ -186,6 +189,7 @@ function SubagentTranscriptDrawerContent(props: {
           loadingPreviousPage={query.isLoadingPreviousPage}
           onLoadPreviousPage={query.loadPreviousPage}
           search={search}
+          onSearchChange={setSearch}
           transcript={detail}
           view={view}
         />

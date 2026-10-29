@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
 import {
@@ -14,7 +15,7 @@ import { ConversationEventDetails } from "./ConversationEventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 const rowClass =
-  "grid grid-cols-[12ch_minmax(0,1fr)_1rem] items-center gap-x-3 px-3 @min-[48rem]:grid-cols-[12ch_19ch_minmax(0,1fr)_1rem]";
+  "grid grid-cols-[12ch_minmax(0,1fr)_1rem] items-baseline gap-x-3 px-4 @min-[32rem]:grid-cols-[12ch_17ch_minmax(0,1fr)_1rem]";
 
 /**
  * Show every reporting event in sequence order, outside the transcript reducer.
@@ -23,6 +24,7 @@ const rowClass =
  */
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
+  onSearchChange(value: string): void;
   onSelectedSeqChange?(seq: number | undefined): void;
   selectedSeq?: number;
 }) {
@@ -39,20 +41,31 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   const events = conversation.events;
   const rows = useMemo(
     () =>
-      events.map((event) => ({
-        event,
-        model: eventLogModel(event),
-        usage: eventLogUsage(event),
-        summary: eventLogSummary(event.data).replace(/\s+/g, " ").slice(0, 300),
-      })),
+      events.map((event) => {
+        const model = eventLogModel(event);
+        return {
+          event,
+          summary: eventLogSummary(event.data)
+            .replace(/\s+/g, " ")
+            .slice(0, 300),
+          metadata: [
+            model?.modelId,
+            model?.modelProfile,
+            model?.reasoningLevel && `${model.reasoningLevel} reasoning`,
+            eventLogUsage(event),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        };
+      }),
     [events],
   );
   // Large payloads are serialized only for an active search or the open entry.
   const visibleRows = useMemo(
     () =>
       search.active
-        ? rows.filter(({ event, summary, usage }) =>
-            `${summary} ${usage} ${JSON.stringify(event)}`
+        ? rows.filter(({ event, summary, metadata }) =>
+            `${summary} ${metadata} ${JSON.stringify(event)}`
               .toLowerCase()
               .includes(search.normalizedQuery),
           )
@@ -83,40 +96,52 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
 
   return (
     <section aria-label="Conversation event log" className="@container min-w-0">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-dashboard-text-muted">
-        <span role="status">
-          {search.active
-            ? `${visibleRows.length} of ${events.length} loaded events`
-            : `${events.length} loaded events`}
-        </span>
-        <span>Times in UTC · Select a row for details</span>
-      </div>
-      <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel font-mono text-xs">
+      <div className="sticky top-0 z-10 bg-dashboard-bg">
+        <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border px-4 py-2">
+          <SearchInput
+            className="min-w-32 flex-1"
+            label="Search events"
+            onChange={props.onSearchChange}
+            placeholder="Search events…"
+            size="compact"
+            value={search.query}
+          />
+          <div className="ml-auto flex items-center gap-3 whitespace-nowrap text-xs text-dashboard-text-muted">
+            <span role="status">
+              {search.active
+                ? `${visibleRows.length} of ${events.length} loaded events`
+                : `${events.length} loaded events`}
+            </span>
+            <span title="Event times in UTC">UTC</span>
+          </div>
+        </div>
         <div
           aria-hidden="true"
           className={cn(
             rowClass,
-            "border-b border-dashboard-border bg-dashboard-surface-raised py-2 text-dashboard-text-muted",
+            "border-b border-dashboard-border py-2 font-mono text-xs text-dashboard-text-muted",
           )}
         >
-          <span>Time (UTC)</span>
+          <span>Time</span>
           <span>Event</span>
-          <span className="hidden @min-[48rem]:block">Summary</span>
+          <span className="hidden @min-[32rem]:block">Summary</span>
           <span />
         </div>
+      </div>
+      <div className="font-mono text-xs">
         <ol
           aria-label="Events"
           className="m-0 list-none divide-y divide-dashboard-border-subtle p-0"
           ref={listRef}
         >
-          {visibleRows.map(({ event, summary, model, usage }) => (
+          {visibleRows.map(({ event, summary, metadata }) => (
             <li data-event-seq={event.seq} key={event.seq}>
               <button
                 aria-expanded={selectedSeq === event.seq}
                 aria-label={`Event ${event.seq}: ${event.data.type}`}
                 className={cn(
                   rowClass,
-                  "min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[48rem]:min-h-8 @min-[48rem]:py-1",
+                  "min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[32rem]:min-h-9 @min-[32rem]:py-1.5",
                   selectedSeq === event.seq && "bg-dashboard-fill-strong",
                 )}
                 onClick={() => {
@@ -138,48 +163,22 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                 >
                   <HighlightText text={event.data.type} />
                 </span>
-                <span className="col-span-2 row-start-2 grid min-w-0 gap-1 text-dashboard-text @min-[48rem]:col-span-1 @min-[48rem]:row-auto">
-                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                    <span
-                      className={cn(
-                        "break-all",
-                        model
-                          ? "font-semibold text-violet-300"
-                          : "text-dashboard-text-muted",
-                      )}
-                    >
-                      <HighlightText
-                        text={model?.modelId ?? "Model not recorded"}
-                      />
-                    </span>
-                    {model?.modelProfile ? (
-                      <span className="text-dashboard-text-muted">
-                        <HighlightText text={model.modelProfile} />
-                      </span>
-                    ) : null}
-                    {model?.reasoningLevel ? (
-                      <span className="text-dashboard-text-muted">
-                        <HighlightText
-                          text={`${model.reasoningLevel} reasoning`}
-                        />
-                      </span>
-                    ) : null}
-                  </span>
+                <span className="col-span-2 row-start-2 grid min-w-0 gap-0.5 text-dashboard-text @min-[32rem]:col-span-1 @min-[32rem]:row-auto">
                   <span className="truncate" title={summary}>
                     <HighlightText text={summary} />
                   </span>
-                  {usage ? (
+                  {metadata ? (
                     <span
-                      className="text-dashboard-text-muted"
-                      title="Usage for this event only; costs are estimated USD"
+                      className="truncate text-dashboard-text-muted"
+                      title={metadata}
                     >
-                      <HighlightText text={usage} />
+                      <HighlightText text={metadata} />
                     </span>
                   ) : null}
                 </span>
                 <ChevronRight
                   aria-hidden="true"
-                  className="col-start-3 row-start-1 text-dashboard-text-muted @min-[48rem]:col-start-4"
+                  className="col-start-3 row-start-1 text-dashboard-text-muted @min-[32rem]:col-start-4"
                   size={14}
                 />
               </button>

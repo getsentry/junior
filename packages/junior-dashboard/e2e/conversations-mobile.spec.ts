@@ -577,8 +577,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Event log" }).click();
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Hide search" }).click();
+  await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 
   await page.getByRole("link", { name: "Back to conversations" }).click();

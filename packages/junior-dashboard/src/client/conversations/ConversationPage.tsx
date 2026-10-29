@@ -223,104 +223,102 @@ export function ConversationPage(props: {
       )}
     >
       <ChatLayout
+        header={
+          <ConversationHeader
+            agentTree={
+              agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+            }
+            conversationId={conversationId}
+            detailsOpen={showDetails}
+            onDetailsClick={() => {
+              if (selectedEventSeq !== undefined)
+                setSelectedEventSeq(undefined);
+              setDetailsOpen((open) => !open);
+            }}
+            forks={
+              detail.data?.forkedFromConversationId ||
+              detail.data?.forks?.length ? (
+                <ConversationForkLinks
+                  forkedFromConversationId={
+                    detail.data.forkedFromConversationId
+                  }
+                  forkedFromTitle={detail.data.forkedFromTitle}
+                  forks={detail.data.forks}
+                />
+              ) : null
+            }
+            copyAction={
+              <CopyButton
+                label="Copy as Markdown"
+                copyingLabel="Preparing Markdown"
+                key={conversationDetail?.conversationId ?? "loading"}
+                getText={
+                  conversationDetail
+                    ? async () =>
+                        buildConversationMarkdown(
+                          await detail.loadCompleteTranscript(),
+                          conversation,
+                        )
+                    : undefined
+                }
+              />
+            }
+            linkedWork={
+              hasConversationAnnotations(detail.data?.annotations) ? (
+                <ConversationAnnotations detail={detail.data} layout="strip" />
+              ) : null
+            }
+            archive={{
+              archived: Boolean(conversation?.archivedAt),
+              disabled: !conversation || archive.isPending,
+              error: Boolean(archive.error),
+              onClick: () =>
+                archive.mutate({
+                  archived: !conversation?.archivedAt,
+                  lastSeenAt: conversation!.lastSeenAt,
+                }),
+              pending: archive.isPending,
+            }}
+            live={live}
+            meta={
+              <ConversationHeaderMeta
+                identity={identity}
+                stats={
+                  hasConversationStats({
+                    conversation,
+                    detail: detail.data,
+                    variant: "compact",
+                  }) ? (
+                    <ConversationStats
+                      conversation={conversation}
+                      detail={detail.data}
+                      variant="compact"
+                    />
+                  ) : null
+                }
+              />
+            }
+            onSearchChange={setSearch}
+            onViewChange={onViewChange}
+            privacy={
+              <ConversationPrivacyChip visibility={conversation?.visibility} />
+            }
+            search={search}
+            title={title}
+            view={view}
+          />
+        }
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
-        scrollClassName="px-4 pb-4 md:px-7 md:pb-6"
+        scrollClassName={
+          view === "raw" ? undefined : "px-4 pb-4 md:px-7 md:pb-6"
+        }
         scroll={
           <section className="min-w-0">
-            <ConversationHeader
-              agentTree={
-                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
-              }
-              conversationId={conversationId}
-              detailsOpen={showDetails}
-              onDetailsClick={() => {
-                if (selectedEventSeq !== undefined)
-                  setSelectedEventSeq(undefined);
-                setDetailsOpen((open) => !open);
-              }}
-              forks={
-                detail.data?.forkedFromConversationId ||
-                detail.data?.forks?.length ? (
-                  <ConversationForkLinks
-                    forkedFromConversationId={
-                      detail.data.forkedFromConversationId
-                    }
-                    forkedFromTitle={detail.data.forkedFromTitle}
-                    forks={detail.data.forks}
-                  />
-                ) : null
-              }
-              copyAction={
-                <CopyButton
-                  label="Copy as Markdown"
-                  copyingLabel="Preparing Markdown"
-                  key={conversationDetail?.conversationId ?? "loading"}
-                  getText={
-                    conversationDetail
-                      ? async () =>
-                          buildConversationMarkdown(
-                            await detail.loadCompleteTranscript(),
-                            conversation,
-                          )
-                      : undefined
-                  }
-                />
-              }
-              linkedWork={
-                hasConversationAnnotations(detail.data?.annotations) ? (
-                  <ConversationAnnotations
-                    detail={detail.data}
-                    layout="strip"
-                  />
-                ) : null
-              }
-              archive={{
-                archived: Boolean(conversation?.archivedAt),
-                disabled: !conversation || archive.isPending,
-                error: Boolean(archive.error),
-                onClick: () =>
-                  archive.mutate({
-                    archived: !conversation?.archivedAt,
-                    lastSeenAt: conversation!.lastSeenAt,
-                  }),
-                pending: archive.isPending,
-              }}
-              live={live}
-              meta={
-                <ConversationHeaderMeta
-                  identity={identity}
-                  stats={
-                    hasConversationStats({
-                      conversation,
-                      detail: detail.data,
-                      variant: "compact",
-                    }) ? (
-                      <ConversationStats
-                        conversation={conversation}
-                        detail={detail.data}
-                        variant="compact"
-                      />
-                    ) : null
-                  }
-                />
-              }
-              onSearchChange={setSearch}
-              onViewChange={onViewChange}
-              privacy={
-                <ConversationPrivacyChip
-                  visibility={conversation?.visibility}
-                />
-              }
-              search={search}
-              title={title}
-              view={view}
-            />
-
             <div
               className={
                 view === "raw"
-                  ? "w-full pt-5 md:pt-7"
+                  ? "w-full"
                   : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
               }
             >
@@ -352,6 +350,7 @@ export function ConversationPage(props: {
                     }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
+                    onSearchChange={setSearch}
                     selectedEventSeq={selectedEventSeq}
                     transcript={transcript}
                     view={view}

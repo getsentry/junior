@@ -47,7 +47,7 @@ test("inspects all reporting events and searches full event data", async ({
 
   await page.getByRole("button", { name: "Event log", exact: true }).click();
   const log = page.getByRole("region", { name: "Conversation event log" });
-  const entries = log.getByRole("button");
+  const entries = log.getByRole("button", { name: /^Event \d+:/ });
   await expect(entries).toHaveCount(report.events.length);
   expect(
     await entries.evaluateAll((buttons) =>
@@ -177,7 +177,7 @@ test("inspects all reporting events and searches full event data", async ({
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect(page).not.toHaveURL(/[?&]event=/);
 
-  const search = page.getByPlaceholder("Search transcript…");
+  const search = page.getByPlaceholder("Search events…");
   await search.fill("memory-checkout-runbook");
   await expect(entries).toHaveCount(1);
   await expect(entries).toHaveAttribute("aria-label", "Event 2: turn_context");

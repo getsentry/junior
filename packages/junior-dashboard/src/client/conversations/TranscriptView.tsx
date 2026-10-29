@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowDownToLine } from "lucide-react";
 
 import type {
@@ -28,6 +29,7 @@ export function Transcript(props: {
   onSelectedEventSeqChange?(seq: number | undefined): void;
   responding?: boolean;
   search?: string;
+  onSearchChange?(value: string): void;
   selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -37,7 +39,8 @@ export function Transcript(props: {
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
-  const search = props.search ?? "";
+  const [localSearch, setLocalSearch] = useState("");
+  const search = props.search ?? localSearch;
   const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
@@ -103,6 +106,7 @@ export function Transcript(props: {
           <ConversationEventLog
             key={props.transcript.conversationId}
             conversation={props.transcript}
+            onSearchChange={props.onSearchChange ?? setLocalSearch}
             onSelectedSeqChange={props.onSelectedEventSeqChange}
             selectedSeq={props.selectedEventSeq}
           />
