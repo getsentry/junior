@@ -105,6 +105,9 @@ The context message holds these inputs. Each input has one authority level:
   See `evals.md`. A prompt change must run the behavioral and integration
   evals.
 - Keep each block short. Add a line only when it changes behavior.
+- Give each section in the code a docstring that states its block, its intent,
+  and what does not go in it. Add one for each new section. Change it when the
+  intent changes.
 
 ## Exceptions
 

@@ -276,16 +276,24 @@ function formatConfigurationLines(
 
 type PromptPlatform = Platform;
 
-// Block 1: Identity. The consumer and plugin blocks come last, and models tend
-// to follow the nearest rule, so the header states precedence.
+/**
+ * Block 1 header: the role and the precedence rule. The consumer and plugin
+ * blocks come last, and models tend to follow the nearest rule, so the header
+ * states that core rules win.
+ */
 const PRECEDENCE_RULE =
   "The rules in this system prompt hold for the whole conversation. Use the personality section for voice and tone in every reply. The personality, world, and plugin sections at the end set voice and add facts; when they conflict with the rules before them, those rules win.";
 const SLACK_HEADER = `You are a Slack-based helper assistant. ${PRECEDENCE_RULE}`;
 const LOCAL_HEADER = `You are a helper assistant. ${PRECEDENCE_RULE}`;
 
+/**
+ * Header of the context message. Trust levels live in `<context-trust>`, so
+ * this header only points there.
+ */
 const TURN_CONTEXT_HEADER =
   "Runtime context for this request. `<context-trust>` in the system prompt says how much authority each block has. The static system prompt remains authoritative.";
 
+/** Block 1, `# Identity`: the name and platform identity. Keep it short. */
 function buildIdentitySection(platform: PromptPlatform): string {
   if (platform !== "slack") {
     return [
@@ -300,10 +308,18 @@ function buildIdentitySection(platform: PromptPlatform): string {
   ].join("\n");
 }
 
+/**
+ * Block 7, `# Personality`: the consumer's `SOUL.md`. It sets voice and tone
+ * only. Core behavior must not depend on it.
+ */
 function buildPersonalitySection(): string {
   return ["# Personality", JUNIOR_PERSONALITY.trim()].join("\n");
 }
 
+/**
+ * Block 8, `# World`: the consumer's `WORLD.md`. It holds facts about the
+ * operator, such as the company, repos, and resources.
+ */
 function buildWorldSection(): string | null {
   if (!JUNIOR_WORLD) {
     return null;
@@ -598,7 +614,11 @@ function buildConversationNotesSection(
   );
 }
 
-/** Render plugin system prompt additions under a core-owned wrapper. */
+/**
+ * Block 9, `<plugin-system-context>`: static guidance from plugin
+ * `systemPrompt` hooks, under a core-owned wrapper. It comes after all core
+ * rules and must be the same text on each Turn.
+ */
 export function buildPluginSystemPromptContributions(
   contributions: PluginPromptContributionContext[],
 ): string | null {
