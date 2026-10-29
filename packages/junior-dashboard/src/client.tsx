@@ -3,6 +3,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 
+import { Toaster } from "./client/components/ui/toast";
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
 
@@ -87,7 +88,9 @@ const router = createBrowserRouter(
 createRoot(root).render(
   <DashboardErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <Toaster>
+        <RouterProvider router={router} />
+      </Toaster>
     </QueryClientProvider>
   </DashboardErrorBoundary>,
 );

@@ -69,7 +69,7 @@ test("edits an Automation from its details, preserves list state, and protects t
     `${dashboard.baseURL}/automations/list?scope=mine&q=weekly`,
   );
   await expect(
-    page.getByText("Automation saved. Changes apply to future work."),
+    page.getByText("Automation saved", { exact: true }),
   ).toBeVisible();
   expect(state.writes).toEqual([
     {

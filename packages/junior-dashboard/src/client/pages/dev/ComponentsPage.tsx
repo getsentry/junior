@@ -4,6 +4,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "../../components/ui/accordion";
+import { OverlayFixtures } from "./OverlayFixtures";
 import { FormNotice } from "../../components/FormNotice";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
@@ -261,6 +262,9 @@ function FoundationsGalleryPage() {
           </AccordionItem>
         </Accordion>
       </Fixture>
+      <Fixture title="Popover, confirmation, and toast">
+        <OverlayFixtures />
+      </Fixture>
       <Fixture title="Copy text">
         <CopyButton
           getText={() => JSON.stringify({ status: "ready" }, null, 2)}
@@ -376,6 +380,7 @@ function FoundationsGalleryPage() {
         {sheetOpen ? (
           <BottomSheet
             label="Gallery details"
+            size="content"
             title="Deployment configuration"
             onClose={() => setSheetOpen(false)}
           >

@@ -1,11 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useLocation,
   useNavigate,
   useParams,
   useSearchParams,
 } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   automationListQuerySchema,
   type AutomationSummary,
@@ -25,7 +24,6 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import { deleteDashboardResource } from "../../http";
 import { automationPath } from "../../format";
 import { useDocumentTitle } from "../../documentTitle";
 import {
@@ -33,6 +31,7 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
+import { AutomationDeleteDialog } from "./AutomationDeleteDialog";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
 import { AutomationDetails } from "./AutomationDetails";
@@ -56,7 +55,8 @@ export function AutomationsPage(props: {
   enabled: boolean;
   view: "list" | "overview";
 }) {
-  const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState<AutomationSummary>();
+  const deleteSource = useRef<HTMLButtonElement | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -96,17 +96,14 @@ export function AutomationsPage(props: {
     props.view === "list" ? request.toString() : "",
   );
   const detail = useAutomationData(props.enabled, automationId);
-  const setFilter = (key: string, value: string) =>
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete("page");
-        if (value) next.set(key, value);
-        else next.delete(key);
-        return next;
-      },
-      { replace: true },
-    );
+  const setFilter = (key: string, value: string) => {
+    // Consecutive control events can precede the router's next render.
+    const next = new URLSearchParams(window.location.search);
+    next.delete("page");
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setSearchParams(next, { replace: true });
+  };
   const setPage = (page: number) =>
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -167,22 +164,6 @@ export function AutomationsPage(props: {
     query.isPlaceholderData,
     setSearchParams,
   ]);
-  const deletion = useMutation({
-    mutationFn: async (automation: AutomationSummary) => {
-      await deleteDashboardResource(
-        `/api/automations/${encodeURIComponent(automation.id)}`,
-      );
-    },
-    onSuccess: async (_result, deleted) => {
-      if (automationId === deleted.id) {
-        navigate(tasksPath(listPath));
-        listRef.current?.focus({ preventScroll: true });
-      }
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
-    },
-  });
 
   const loading = !query.data && !query.error;
   const executionSeries = query.data?.executionDays?.length
@@ -203,11 +184,6 @@ export function AutomationsPage(props: {
 
   const content = (
     <>
-      {location.state?.automationSaved ? (
-        <p role="status" className="m-0 text-sm text-emerald-300">
-          Automation saved. Changes apply to future work.
-        </p>
-      ) : null}
       {props.view === "overview" ? (
         <PageHeader
           description="Scheduled and event-driven work created by users."
@@ -314,20 +290,7 @@ export function AutomationsPage(props: {
                 const key = `${automation.kind}:${automation.id}`;
                 return (
                   <AutomationRow
-                    deleting={
-                      deletion.isPending &&
-                      deletion.variables?.id === automation.id
-                    }
                     key={key}
-                    onDelete={() => {
-                      if (
-                        window.confirm(
-                          `Delete this ${automation.kind} automation?`,
-                        )
-                      ) {
-                        deletion.mutate(automation);
-                      }
-                    }}
                     onSelect={() =>
                       navigate(
                         automationId === automation.id
@@ -349,11 +312,6 @@ export function AutomationsPage(props: {
             pageSize={filters.pageSize}
             total={visibleTaskCount}
           />
-          {deletion.error ? (
-            <InlineError className="text-center">
-              The automation could not be deleted. Try again.
-            </InlineError>
-          ) : null}
         </>
       ) : null}
     </>
@@ -380,10 +338,29 @@ export function AutomationsPage(props: {
         <AutomationDetails
           key={automationId}
           onClose={closeDetails}
+          onDelete={(source) => {
+            if (!selectedTask?.ownedByViewer) return;
+            deleteSource.current = source;
+            setDeleteTarget(selectedTask);
+          }}
           onRetry={() => void detail.refetch()}
           error={Boolean(detail.error)}
           range={range}
           automation={selectedTask}
+        />
+      ) : null}
+      {deleteTarget ? (
+        <AutomationDeleteDialog
+          automation={deleteTarget}
+          onClose={() => setDeleteTarget(undefined)}
+          onDeleted={() => {
+            if (automationId === deleteTarget.id) navigate(tasksPath(listPath));
+          }}
+          returnFocus={() =>
+            deleteSource.current?.isConnected
+              ? deleteSource.current
+              : (listRef.current ?? false)
+          }
         />
       ) : null}
     </div>

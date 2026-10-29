@@ -33,6 +33,7 @@ import { automationOutcomeLabel } from "./automationOutcomes";
 /** Keep Automation context scrollable above persistent, permission-aware actions. */
 export function AutomationDetails(props: {
   onClose(): void;
+  onDelete(source: HTMLButtonElement): void;
   onRetry(): void;
   error: boolean;
   range: TimeRangeDays;
@@ -80,6 +81,7 @@ export function AutomationDetails(props: {
         {automation ? (
           <AutomationLifecycle
             automation={automation}
+            onDelete={props.onDelete}
             editPath={`/automations/${encodeURIComponent(automation.id)}/edit${location.search}`}
           />
         ) : null}

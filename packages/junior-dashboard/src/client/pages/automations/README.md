@@ -66,8 +66,21 @@ titles that repeat the Automation name. Its loading,
 empty, and retry states do not replace Automation settings. It does not infer
 queued or running work from terminal records.
 
-`AutomationLifecycle` owns revision-checked actions in a fixed footer. Base UI
-Popover provides pause help beside those controls on desktop and mobile. The
+`AutomationLifecycle` owns revision-checked actions in a fixed footer. Edit and
+Delete use labeled icons there; list rows have no action menu. Public readers
+can edit settings. Delete and lifecycle actions stay creator-only. The shared
+shadcn Popover provides pause help beside those controls. The
 scroll region above it owns the summary and settings. Creator, creation date,
 connected accounts, run counts, and version history stay under About this
 Automation. Selection changes remount the content and actions together.
+
+Filters use a shadcn Popover at 768px and above and the shared BottomSheet below
+that width. Both edit the same URL filters immediately. Active filter chips
+remove one filter without clearing search, scope, or other filters. The mobile
+sheet fits its controls instead of taking the full details height.
+
+`AutomationDeleteDialog` names the Automation before deletion. It keeps errors
+and retry inside the dialog and blocks dismissal while the request is pending.
+Cancel returns focus to Delete. Successful deletion closes the selected details
+and returns focus to the list. Success toasts confirm Save, Pause, Resume, and
+Delete. Their state belongs to the mounted dashboard's Toaster provider.

@@ -1,3 +1,4 @@
+import { cn } from "../styles";
 import type { ReactNode } from "react";
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -8,6 +9,7 @@ export function BottomSheet(props: {
   children: ReactNode;
   label: string;
   title?: string;
+  size?: "full" | "content";
   onClose(): void;
 }) {
   const sheet = useSheet(props.onClose);
@@ -17,7 +19,12 @@ export function BottomSheet(props: {
         {...sheet.contentProps}
         aria-label={props.label}
         side="bottom"
-        className="mx-auto max-h-full w-full max-w-2xl gap-0 rounded-t-2xl outline-none data-[side=bottom]:h-[85dvh]"
+        className={cn(
+          "mx-auto w-full max-w-2xl gap-0 rounded-t-2xl outline-none",
+          props.size === "content"
+            ? "max-h-[85dvh]"
+            : "max-h-full data-[side=bottom]:h-[85dvh]",
+        )}
       >
         <SheetHeader className="border-b border-dashboard-border">
           <SheetTitle className="break-words">
