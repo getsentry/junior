@@ -82,7 +82,7 @@ function scenarioResult(file, assertion) {
 }
 
 /** Exclude intentional skips. Report file setup failures as separate errors. */
-function scenariosFromReport(report) {
+export function scenariosFromReport(report) {
   if (!Array.isArray(report.testResults)) {
     throw new Error("Expected a Vitest JSON report with testResults");
   }

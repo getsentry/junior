@@ -528,6 +528,48 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 
 Behavioral and integration evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian and Router evals only need AI Gateway access.
 
+## Live Samples
+
+A pull request run does not measure a prompt change well:
+
+- A passed test writes its recordings. Each later run with the same requests
+  replays that pass. Only a failed test goes live again.
+- Each case gets one result in each run.
+
+To measure a prompt change, use the `Evals sample` workflow
+(`.github/workflows/evals-behavioral-sample.yml`). It runs the behavioral
+eval files that you select with `VITEST_EVALS_REPLAY_MODE=off`. Each request
+goes live, and the run records nothing. It runs the files one time for each
+sample, in parallel jobs.
+
+- `ref`: the branch, tag, or commit to run. The plan job resolves it to one
+  commit, so all samples run the same code. For a pull request from a fork,
+  use `refs/pull/<number>/head`.
+- `files`: eval files, relative to `packages/junior-evals`, with a space
+  between them.
+- `filter`: optional. A case name filter, the same as `-t`.
+- `samples`: the number of runs, from 1 to 10. The default is 5.
+
+To compare a branch with `main`, start two runs with the same `files`,
+`filter`, and `samples`:
+
+```sh
+gh workflow run evals-behavioral-sample.yml --repo getsentry/junior \
+  -f ref=main -f files="evals/conversation/output.eval.ts" -f samples=5
+gh workflow run evals-behavioral-sample.yml --repo getsentry/junior \
+  -f ref=my-branch -f files="evals/conversation/output.eval.ts" -f samples=5
+```
+
+The `behavioral sample / summary` job shows the passed runs of each case, for
+example `3/5`. Compare the two summaries. Each sample job also shows its
+`vitest-evals` summary with judge scores. The workflow does not upload to
+`evals.sentry.dev` and does not publish a check.
+
+The ref must have `scripts/network-jail.sh` and the
+`.github/actions/setup-node-pnpm` action. The summary uses the scripts of the
+workflow branch. Live runs cost model and Sandbox usage for each sample, so
+select only the files that the change can affect.
+
 ## Authoring Rules
 
 - Write cases that run the agent with the agent test fixture (see **Agent Test Fixture**).

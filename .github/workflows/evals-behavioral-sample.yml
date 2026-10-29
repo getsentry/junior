@@ -1,0 +1,217 @@
+name: Evals sample
+run-name: "behavioral sample: ${{ inputs.ref }} x${{ inputs.samples }}"
+
+# Runs chosen behavioral eval files live several times, without replay. Run it
+# one time for `main` and one time for a branch to compare their pass counts.
+# See "Live Samples" in `packages/junior-evals/README.md`.
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to run
+        required: true
+        default: main
+      files:
+        description: Space-separated eval files, relative to packages/junior-evals (for example evals/conversation/output.eval.ts)
+        required: true
+      filter:
+        description: Optional case name filter (vitest -t)
+        required: false
+        default: ""
+      samples:
+        description: Number of live runs (1-10)
+        required: true
+        default: "5"
+
+jobs:
+  plan:
+    name: behavioral sample / plan
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      samples: ${{ steps.plan.outputs.samples }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      # Resolve the ref one time, so that every sample runs the same commit.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: plan
+        env:
+          EVAL_FILES: ${{ inputs.files }}
+          SAMPLES: ${{ inputs.samples }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SAMPLES" =~ ^[1-9][0-9]*$ ]] || (( SAMPLES > 10 )); then
+            echo "::error::samples must be a number from 1 to 10, got '$SAMPLES'"
+            exit 1
+          fi
+          read -r -a files <<< "$EVAL_FILES"
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "::error::files must name at least one eval file"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            if [[ ! "$file" =~ ^evals/[A-Za-z0-9_/.-]+\.eval\.ts$ || "$file" == *..* ]]; then
+              echo "::error::files must be paths like evals/<dir>/<name>.eval.ts, got '$file'"
+              exit 1
+            fi
+          done
+          {
+            echo "samples=$(jq -cn --argjson n "$SAMPLES" '[range(1; $n + 1)]')"
+            echo "sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+  sample:
+    name: behavioral sample / ${{ matrix.sample }}
+    needs: plan
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: ${{ fromJSON(needs.plan.outputs.samples) }}
+    # Keep services and setup the same as `evals-behavioral.yml`.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_DB: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Relative to `packages/junior-evals`.
+      RESULT_FILE: sample-results-${{ matrix.sample }}.json
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.10.4/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
+      - name: Keep sandbox snapshot ids
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/junior-evals/sandbox-snapshots.json
+          key: eval-sandbox-snapshots-${{ github.run_id }}
+          restore-keys: eval-sandbox-snapshots-
+      - name: Run behavioral evals live
+        continue-on-error: true
+        env:
+          VITEST_EVALS_OUTPUT_FILE: ${{ env.RESULT_FILE }}
+          VITEST_EVALS_REPORT_LEVEL: info
+          # `off` sends every request live and records nothing. It needs the
+          # write token of Roach.
+          VITEST_EVALS_REPLAY_MODE: "off"
+          ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
+          EVAL_FILES: ${{ inputs.files }}
+          FILTER: ${{ inputs.filter }}
+        run: |
+          set -euo pipefail
+          read -r -a files <<< "$EVAL_FILES"
+          args=("${files[@]}")
+          if [[ -n "$FILTER" ]]; then
+            args+=(-t "$FILTER")
+          fi
+          packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:behavioral "${args[@]}"
+      - name: Require eval results
+        working-directory: packages/junior-evals
+        run: |
+          jq -e '.numTotalTests > 0 and (.testResults | length > 0)' "$RESULT_FILE" >/dev/null || {
+            echo "::error::sample ${{ matrix.sample }} produced no eval results ($RESULT_FILE)"
+            exit 1
+          }
+      - name: Publish sample summary
+        uses: getsentry/vitest-evals@v0.16.1
+        with:
+          results: packages/junior-evals/${{ env.RESULT_FILE }}
+      - name: Upload sample results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-results-${{ matrix.sample }}
+          path: packages/junior-evals/${{ env.RESULT_FILE }}
+          if-no-files-found: error
+          retention-days: 14
+
+  summary:
+    name: behavioral sample / summary
+    needs: [plan, sample]
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      # Use the scripts of this workflow, not of the sampled ref.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+      - name: Download sample results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sample-results-*
+          path: sample-results
+          merge-multiple: true
+      - name: Write pass counts
+        env:
+          REF: ${{ inputs.ref }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          EVAL_FILES: ${{ inputs.files }}
+          FILTER: ${{ inputs.filter }}
+          SAMPLES: ${{ inputs.samples }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(sample-results/sample-results-*.json)
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "::error::no sample produced results"
+            exit 1
+          fi
+          {
+            echo "## Behavioral eval samples"
+            echo
+            echo "- ref: \`$REF\` (\`$SHA\`)"
+            echo "- files: \`$EVAL_FILES\`"
+            echo "- filter: \`${FILTER:-none}\`"
+            echo "- requested samples: $SAMPLES"
+            echo "- replay: off (every request is live)"
+            echo
+            node packages/junior-evals/scripts/sample-summary.mjs "${files[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
