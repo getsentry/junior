@@ -21,6 +21,7 @@ const searchedResourceTypeSchema = z
             kind: z.enum(["boolean", "string", "number"]),
             description: z.string(),
             enum: z.array(z.string()).optional(),
+            list: z.literal(true).optional(),
           })
           .strict(),
       )

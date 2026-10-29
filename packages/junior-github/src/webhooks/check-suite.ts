@@ -13,12 +13,10 @@ import { gitHubRepositoryResource } from "../events/repository.js";
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
-  "authorEmail",
-  "authorRole",
-  "authorUsername",
   "isDraft",
-  "requesterRole",
-  "requesterUsername",
+  "openerEmail",
+  "openerRole",
+  "openerUsername",
 ]);
 
 function gitHubEventKey(deliveryId: string, eventType: string): string {
@@ -157,8 +155,8 @@ export type GitHubFailingCheck = {
 
 /** Pull request values filled in when a match filter needs them. */
 export type GitHubCheckSuitePullRequestFacts = {
-  authorEmail?: string;
-  authorUsername?: string;
+  openerEmail?: string;
+  openerUsername?: string;
   isDraft?: boolean;
 };
 
@@ -198,8 +196,8 @@ function checkSuiteHeadBranch(
 /** Build the trusted data and summary for one check-suite event. */
 export function buildCheckSuiteEvent(args: {
   appName?: string;
-  authorEmail?: string;
-  authorUsername?: string;
+  openerEmail?: string;
+  openerUsername?: string;
   checkSuiteId?: number;
   deliveryId: string;
   eventType: "pull_request.checks.failed" | "pull_request.checks.recovered";
@@ -237,8 +235,8 @@ export function buildCheckSuiteEvent(args: {
   };
   if (pullRequestNumber !== undefined) data.pullRequest = pullRequestNumber;
   if (typeof args.isDraft === "boolean") data.isDraft = args.isDraft;
-  if (args.authorUsername) data.authorUsername = args.authorUsername;
-  if (args.authorEmail) data.authorEmail = args.authorEmail;
+  if (args.openerUsername) data.openerUsername = args.openerUsername;
+  if (args.openerEmail) data.openerEmail = args.openerEmail;
   if (args.headBranch) data.headBranch = args.headBranch;
   if (args.headSha) data.headSha = args.headSha;
   if (args.checkSuiteId !== undefined) data.checkSuiteId = args.checkSuiteId;
@@ -400,11 +398,11 @@ export function normalizeCheckSuiteEvents(
     return pullRequestTargets(
       buildCheckSuiteEvent({
         ...shared,
-        ...(facts?.authorEmail
-          ? { authorEmail: facts.authorEmail }
+        ...(facts?.openerEmail
+          ? { openerEmail: facts.openerEmail }
           : undefined),
-        ...(facts?.authorUsername
-          ? { authorUsername: facts.authorUsername }
+        ...(facts?.openerUsername
+          ? { openerUsername: facts.openerUsername }
           : undefined),
         ...(pullRequestHeadBranch
           ? { headBranch: pullRequestHeadBranch }
@@ -528,10 +526,10 @@ function pullRequestFactsFromResponse(
   if (isRecord(user)) {
     const username =
       typeof user.login === "string" ? user.login.trim() : undefined;
-    if (username) facts.authorUsername = username;
+    if (username) facts.openerUsername = username;
     const email =
       typeof user.email === "string" ? user.email.trim() : undefined;
-    if (email) facts.authorEmail = email;
+    if (email) facts.openerEmail = email;
   }
   return Object.keys(facts).length > 0 ? facts : undefined;
 }

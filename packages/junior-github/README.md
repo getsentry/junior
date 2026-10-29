@@ -44,13 +44,25 @@ create tool saves the opener after GitHub opens the pull request. The first row
 for a pull request is the opener. Later updates never replace it. When the
 create has no Junior identity, the first person who asks Junior to update the
 pull request is the opener. A retry of the same tool call saves the opener
-again, in case the first call stopped before it did. A pull request that
-Junior's bot opened but that has no saved row has no requester. This is true
-for an `opened` event that arrives before the create tool saves the row.
-Webhooks use the opener's GitHub login for `requesterUsername` and
-`requesterRole`. If the identity lookup fails, the event has no requester
-fields, so filters on them do not match. Webhooks never read the pull request
-body.
+again, in case the first call stopped before it did.
+
+Pull request events have two kinds of people fields. `openerUsername`,
+`openerEmail`, and `openerRole` name who opened the pull request. On a pull
+request that Junior's bot opened, the opener is the person who asked Junior to
+open it: the linked GitHub login of the saved opener row. With no saved row, no
+linked GitHub login, or a failed identity lookup, the opener is unknown and the
+event has no opener fields, so filters on them do not match. The bot is never
+used in its place. An `opened` event can arrive before the create tool saves
+the row. `authors` lists the GitHub logins of the commit authors and of the
+`Co-authored-by` trailers with GitHub noreply emails, bots included. Webhooks
+never read the pull request body.
+
+The opener on Junior's pull requests, `openerRole`, and `authors` need database
+or GitHub calls. A webhook loads the values that a Watch or event automation
+filters on before it decides on a match. It loads the other values only when an
+event matches, so the agent sees all of them. A failed load leaves the value
+out. `authors` and the people involved in approvals and merges share one read of
+the commits per delivery.
 
 The plugin owns its signed webhook route, deployment, pull request, and release
 events, and normalized pull request and issue outcome projections.

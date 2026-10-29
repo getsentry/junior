@@ -587,14 +587,7 @@ describe("github plugin", () => {
         "pull_request.merged",
       ]),
       matchFields: {
-        authorEmail: {
-          kind: "string",
-          description: "pull request author email when GitHub sends it",
-        },
-        authorUsername: {
-          kind: "string",
-          description: "pull request author login",
-        },
+        authors: { kind: "string", list: true },
         environment: { kind: "string" },
         headBranch: {
           kind: "string",
@@ -604,6 +597,7 @@ describe("github plugin", () => {
           kind: "boolean",
           description: "true when the pull request is a draft",
         },
+        openerUsername: { kind: "string" },
         workflowId: { kind: "number" },
         workflowPath: { kind: "string" },
       },
@@ -631,18 +625,11 @@ describe("github plugin", () => {
       ),
     });
     expect(pullRequest?.matchFields).toEqual({
-      authorEmail: {
+      authors: {
         kind: "string",
-        description: "pull request author email when GitHub sends it",
-      },
-      authorRole: {
-        kind: "string",
+        list: true,
         description:
-          "pull request author's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
-      },
-      authorUsername: {
-        kind: "string",
-        description: "pull request author login",
+          "GitHub logins of the commit authors and Co-authored-by people, including bots such as Junior's",
       },
       headBranch: {
         kind: "string",
@@ -652,15 +639,20 @@ describe("github plugin", () => {
         kind: "boolean",
         description: "true when the pull request is a draft",
       },
-      requesterRole: {
+      openerEmail: {
         kind: "string",
         description:
-          "requesterUsername's repository role, with the same values as authorRole",
+          "opener email when GitHub sends it; missing on Junior's pull requests",
       },
-      requesterUsername: {
+      openerRole: {
         kind: "string",
         description:
-          "login of the person who asked for the pull request: on Junior's own pull requests, the person who asked Junior to open it, missing until saved; otherwise the author",
+          "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+      },
+      openerUsername: {
+        kind: "string",
+        description:
+          "login of who opened the pull request; on Junior's, the person who asked Junior to open it, missing until Junior saves them",
       },
     });
   });
