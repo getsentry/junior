@@ -61,6 +61,9 @@ export function dockerStream(
   return new Promise((resolve, reject) => {
     const request = http.request({
       socketPath: dockerSocketPath(),
+      // The daemon closes idle connections. A reused keep-alive socket then
+      // fails with EPIPE, so each request opens its own connection.
+      agent: false,
       path: requestPath(input),
       method: input.method ?? "GET",
       headers: {
