@@ -28,3 +28,60 @@ shows its error when a public reader cannot make a version active.
 
 Browser behavior lives in `e2e/automation-editor.spec.ts`. API and persistence
 coverage lives in core's `tests/integration/api/automation-edits.test.ts`.
+
+## Automation details
+
+The URL selects one Automation in the list. Route matching follows React
+Router, including trailing slashes. `AutomationDetails` uses the shared
+`DetailsPanel`: a 400px panel at 1280px and above, and a Base UI bottom sheet on
+smaller screens. The list stays interactive beside the panel. Each pane scrolls
+on its own. `VisualViewportShell` owns the viewport height and mobile body lock;
+`AutomationsPageLayout` keeps navigation above the list and details.
+
+Loading and access errors stay inside the details frame. Closing keeps the list
+query string and returns focus to the selected row. If that row is not on the
+current page, focus returns to the list. Selecting another Automation resets
+its disclosures and lifecycle feedback. Deleting the selected Automation closes
+its details. Edit and version history retain the list query string.
+
+The existing Automation browser journeys cover selection, loading and retry,
+focus, mobile dismissal, deletion, and lifecycle actions. Use mock reporting to
+review scheduled and event Automations in both themes at desktop and mobile
+widths. Keep layout and scrollbar checks in manual QA.
+
+Details lead with lifecycle, the next trigger, and the last execution result.
+Instructions follow, then compact trigger and delivery rows. The sheet header
+uses the Automation name. `AutomationStatus`
+keeps a failed execution distinct from whether future runs remain enabled. It
+shows block reasons and links to the last Conversation when attention is needed.
+Scheduled times use the shared shadcn Accordion to show the schedule timezone
+and browser time. About this Automation uses the same component. Both start
+collapsed and reset when the selection changes.
+Paused, blocked, completed, and unavailable Automations explain why there is no
+next run instead of showing "None".
+
+`AutomationRecentRuns` uses the existing execution-history query and cache. It
+shows up to three newest terminal runs, links to their Conversations when one
+was recorded, and displays recorded runtime and estimated cost. It omits run
+titles that repeat the Automation name. Its loading,
+empty, and retry states do not replace Automation settings. It does not infer
+queued or running work from terminal records.
+
+`AutomationLifecycle` owns revision-checked actions in a fixed footer. Edit and
+Delete use labeled icons there; list rows have no action menu. Public readers
+can edit settings. Delete and lifecycle actions stay creator-only. The shared
+shadcn Popover provides pause help beside those controls. The
+scroll region above it owns the summary and settings. Creator, creation date,
+connected accounts, run counts, and version history stay under About this
+Automation. Selection changes remount the content and actions together.
+
+Filters use a shadcn Popover at 768px and above and the shared BottomSheet below
+that width. Both edit the same URL filters immediately. Active filter chips
+remove one filter without clearing search, scope, or other filters. The mobile
+sheet fits its controls instead of taking the full details height.
+
+`AutomationDeleteDialog` names the Automation before deletion. It keeps errors
+and retry inside the dialog and blocks dismissal while the request is pending.
+Cancel returns focus to Delete. Successful deletion closes the selected details
+and returns focus to the list. Success toasts confirm Save, Pause, Resume, and
+Delete. Their state belongs to the mounted dashboard's Toaster provider.

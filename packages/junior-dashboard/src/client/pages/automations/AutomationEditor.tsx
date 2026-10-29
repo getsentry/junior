@@ -10,6 +10,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { Field } from "../../components/Field";
 import { TextArea, TextInput } from "../../components/TextInput";
+import { useToastManager } from "../../components/ui/toast";
 import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
@@ -34,6 +35,7 @@ export function AutomationEditor(props: {
   summary: AutomationSummary;
   returnPath: string;
 }) {
+  const toast = useToastManager();
   const [original, setOriginal] = useState(props.automation);
   const [draft, setDraft] = useState(() =>
     createAutomationDraft(props.automation),
@@ -81,7 +83,12 @@ export function AutomationEditor(props: {
       await queryClient.invalidateQueries({
         queryKey: ["dashboard", "automations"],
       });
-      navigate(props.returnPath, { state: { automationSaved: true } });
+      toast.add({
+        title: "Automation saved",
+        description: "Changes apply to future work.",
+        type: "success",
+      });
+      navigate(props.returnPath);
     },
     onError: (error) => {
       setFields(error instanceof DashboardApiError ? (error.fields ?? {}) : {});

@@ -1,3 +1,10 @@
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../../components/ui/accordion";
+import { OverlayFixtures } from "./OverlayFixtures";
 import { FormNotice } from "../../components/FormNotice";
 import { SearchInput } from "../../components/SearchInput";
 import { Select } from "../../components/Select";
@@ -236,6 +243,29 @@ function FoundationsGalleryPage() {
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
       </Fixture>
+      <Fixture title="Accordion">
+        <Accordion multiple defaultValue={["timing"]}>
+          <AccordionItem value="timing">
+            <AccordionTrigger>Next run</AccordionTrigger>
+            <AccordionContent>
+              <p className="m-0 text-dashboard-text-muted">
+                Monday at 9:00 AM in the schedule timezone.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="about">
+            <AccordionTrigger>About this Automation</AccordionTrigger>
+            <AccordionContent>
+              <p className="m-0 text-dashboard-text-muted">
+                Creator, connected accounts, and version history.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </Fixture>
+      <Fixture title="Popover, confirmation, and toast">
+        <OverlayFixtures />
+      </Fixture>
       <Fixture title="Copy text">
         <CopyButton
           getText={() => JSON.stringify({ status: "ready" }, null, 2)}
@@ -334,9 +364,12 @@ function FoundationsGalleryPage() {
           {panelOpen ? (
             <DetailsPanel
               label="Item details"
+              sheetTitle="Deployment configuration"
               onClose={() => setPanelOpen(false)}
               title={
-                <h2 className="m-0 text-base font-semibold">Item details</h2>
+                <h2 className="m-0 text-base font-semibold">
+                  Deployment configuration
+                </h2>
               }
             >
               <p className="m-0 p-4 text-sm text-dashboard-text-muted">
@@ -351,6 +384,8 @@ function FoundationsGalleryPage() {
         {sheetOpen ? (
           <BottomSheet
             label="Gallery details"
+            size="content"
+            title="Deployment configuration"
             onClose={() => setSheetOpen(false)}
           >
             <p className="m-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-dashboard-text-muted">

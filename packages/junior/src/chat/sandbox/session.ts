@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import {
   setSpanAttributes,
   withSpan,
   type LogContext,
+  type SetSpanAttributes,
   type TracePropagationHeaders,
 } from "@/chat/logging";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import { ensureDockerDaemon } from "@/chat/sandbox/docker";
 import {
   isAlreadyExistsError,
@@ -32,12 +31,14 @@ import {
 import { requireReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
-  createSandboxSession,
   stopSession,
+  type CreateSandboxSessionInput,
   type SandboxCommandResult,
   type SandboxFileSystem,
+  type SandboxNetworkPolicy,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -54,35 +55,11 @@ const SANDBOX_NAME_PREFIX = "junior-";
 const MAX_KEEPALIVE_INTERVAL_MS = 30_000;
 const MIN_KEEPALIVE_INTERVAL_MS = 1_000;
 
-interface SandboxCredentials {
-  token?: string;
-  teamId?: string;
-  projectId?: string;
-}
-
 interface SandboxAcquisition {
   controller: AbortController;
   promise: Promise<SandboxSession>;
   settled: boolean;
   waiters: number;
-}
-
-function sandboxFetchOptions(
-  signal?: AbortSignal,
-): { fetch: typeof globalThis.fetch } | Record<string, never> {
-  if (!signal) return {};
-  return {
-    fetch: (input, init) => {
-      const requestSignal =
-        init?.signal ?? (input instanceof Request ? input.signal : undefined);
-      return globalThis.fetch(input, {
-        ...init,
-        signal: requestSignal
-          ? AbortSignal.any([requestSignal, signal])
-          : signal,
-      });
-    },
-  };
 }
 
 interface SandboxToolExecutors {
@@ -135,7 +112,7 @@ interface SandboxRuntimeOptions {
   createNetworkPolicy?: (
     egressId: string,
     traceHeaders?: TracePropagationHeaders,
-  ) => NetworkPolicy | undefined;
+  ) => SandboxNetworkPolicy | undefined;
   onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
   onWorkspacePrepare?: (
     sandbox: SandboxSession,
@@ -202,7 +179,7 @@ export function createSandboxRuntime(
     name: string,
     op: string,
     attributes: Record<string, unknown>,
-    callback: () => Promise<T>,
+    callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
   /** Drop unavailable live state; keep the durable hint for reacquire. */
@@ -215,10 +192,11 @@ export function createSandboxRuntime(
     }
   };
 
-  const adaptSandbox = (
-    vercelSandbox: Parameters<typeof createSandboxSession>[0],
-  ): SandboxSession =>
-    createSandboxSession(vercelSandbox, {
+  const createSession = (
+    input: Omit<CreateSandboxSessionInput, "onUnavailable">,
+  ): Promise<SandboxSession> =>
+    getSandboxProvider().createSession({
+      ...input,
       onUnavailable: invalidateSession,
     });
 
@@ -226,10 +204,11 @@ export function createSandboxRuntime(
     `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
 
   // Build once before boot so missing proxy config fails before sandbox work.
-  // The final route is rebound to the Vercel session id after creation.
+  // The final route is rebound to the provider session id after creation.
   const preflightNetworkPolicy = (
     sandboxName: string,
-  ): NetworkPolicy | undefined => options.createNetworkPolicy?.(sandboxName);
+  ): SandboxNetworkPolicy | undefined =>
+    options.createNetworkPolicy?.(sandboxName);
 
   const persistSandboxRef = async (nextRef: SandboxRef): Promise<void> => {
     if (
@@ -342,7 +321,6 @@ export function createSandboxRuntime(
 
   const createSandboxFromSnapshot = async (
     snapshotId: string,
-    sandboxCredentials: SandboxCredentials | undefined,
     initialSandboxName: string,
     workspace: Workspace | undefined,
     signal?: AbortSignal,
@@ -354,21 +332,15 @@ export function createSandboxRuntime(
         attempt === 0 ? initialSandboxName : createSandboxName();
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       try {
-        return adaptSandbox(
-          await Sandbox.create({
-            timeout: timeoutMs,
-            ...(networkPolicy
-              ? { name: sandboxName, persistent: false, networkPolicy }
-              : undefined),
-            source: {
-              type: "snapshot",
-              snapshotId,
-            },
-            ...(resources ? { resources } : undefined),
-            ...(sandboxCredentials ?? {}),
-            ...sandboxFetchOptions(signal),
-          }),
-        );
+        return await createSession({
+          timeoutMs,
+          ...(networkPolicy
+            ? { name: sandboxName, persistent: false, networkPolicy }
+            : undefined),
+          snapshotId,
+          ...(resources ? { resources } : undefined),
+          scopeSignal: signal,
+        });
       } catch (error) {
         if (
           !isSnapshottingError(error) ||
@@ -400,37 +372,31 @@ export function createSandboxRuntime(
   const createSandboxFromResolvedSnapshot = async (params: {
     runtime: string;
     snapshot: Snapshot;
-    sandboxCredentials: SandboxCredentials | undefined;
     sandboxName: string;
     signal?: AbortSignal;
     workspace?: Workspace;
     prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
   }): Promise<{ session: SandboxSession; snapshot: Snapshot }> => {
-    const { runtime, snapshot, sandboxCredentials, sandboxName, signal } =
-      params;
+    const { runtime, snapshot, sandboxName, signal } = params;
     signal?.throwIfAborted();
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       const resources = getSandboxResources(params.workspace);
-      const session = adaptSandbox(
-        await Sandbox.create({
-          timeout: timeoutMs,
-          runtime,
-          ...(networkPolicy
-            ? { name: sandboxName, persistent: false, networkPolicy }
-            : undefined),
-          ...(resources ? { resources } : undefined),
-          ...(sandboxCredentials ?? {}),
-          ...sandboxFetchOptions(signal),
-        }),
-      );
+      const session = await createSession({
+        timeoutMs,
+        runtime,
+        ...(networkPolicy
+          ? { name: sandboxName, persistent: false, networkPolicy }
+          : undefined),
+        ...(resources ? { resources } : undefined),
+        scopeSignal: signal,
+      });
       return { session, snapshot };
     }
 
     try {
       const session = await createSandboxFromSnapshot(
         snapshot.snapshotId,
-        sandboxCredentials,
         sandboxName,
         params.workspace,
         signal,
@@ -460,7 +426,6 @@ export function createSandboxRuntime(
       signal?.throwIfAborted();
       const session = await createSandboxFromSnapshot(
         rebuilt.snapshotId,
-        sandboxCredentials,
         sandboxName,
         params.workspace,
         signal,
@@ -475,7 +440,6 @@ export function createSandboxRuntime(
     signal?: AbortSignal,
   ): Promise<SandboxCandidate> => {
     const runtime = SANDBOX_RUNTIME;
-    const sandboxCredentials = getVercelSandboxCredentials();
     const sandboxName = createSandboxName();
     const prepareWorkspace = workspace
       ? async (sandbox: SandboxSession) =>
@@ -513,7 +477,6 @@ export function createSandboxRuntime(
           const created = await createSandboxFromResolvedSnapshot({
             runtime,
             snapshot,
-            sandboxCredentials,
             sandboxName,
             signal,
             workspace,
@@ -599,7 +562,6 @@ export function createSandboxRuntime(
 
     let hintedSandbox: SandboxSession | null = null;
     try {
-      const sandboxCredentials = getVercelSandboxCredentials();
       hintedSandbox = await withSandboxSpan(
         "sandbox.get",
         "sandbox.get",
@@ -608,14 +570,11 @@ export function createSandboxRuntime(
           "app.sandbox.source": "id_hint",
         },
         async () =>
-          adaptSandbox(
-            await Sandbox.get({
-              name: ref.id,
-              resume: true,
-              ...(sandboxCredentials ?? {}),
-              ...sandboxFetchOptions(signal),
-            }),
-          ),
+          await getSandboxProvider().getSession({
+            name: ref.id,
+            onUnavailable: invalidateSession,
+            scopeSignal: signal,
+          }),
       );
     } catch (error) {
       if (isSandboxMissingError(error)) {
@@ -657,9 +616,10 @@ export function createSandboxRuntime(
         "app.sandbox.runtime": SANDBOX_RUNTIME,
         "app.sandbox.skills_count": availableSkills.length,
       },
-      async () => {
+      async (setSpanAttributes) => {
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
+          setSpanAttributes({ "app.sandbox.acquire.outcome": "memory" });
           return cachedSandbox;
         }
 
@@ -667,10 +627,13 @@ export function createSandboxRuntime(
         // Reopen the current sandbox before starting a new one.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
+          setSpanAttributes({ "app.sandbox.acquire.outcome": "resumed" });
           return hintedSandbox;
         }
 
-        return await createFreshSandbox(signal);
+        const createdSandbox = await createFreshSandbox(signal);
+        setSpanAttributes({ "app.sandbox.acquire.outcome": "created" });
+        return createdSandbox;
       },
     );
   };

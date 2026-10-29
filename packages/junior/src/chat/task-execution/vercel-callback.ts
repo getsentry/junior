@@ -12,6 +12,7 @@ import {
   type ConversationWorkQueue,
 } from "./queue";
 import {
+  CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM,
   getVercelConversationWorkQueue,
   resolveConversationWorkQueueTopic,
 } from "./vercel-queue";
@@ -66,36 +67,45 @@ export function resolveConversationWorkVisibilityTimeoutSeconds(
   );
 }
 
-type QueueTimingMetadata = Pick<MessageMetadata, "createdAt" | "deliveryCount">;
+type QueueTelemetryMetadata = Pick<
+  MessageMetadata,
+  "createdAt" | "deliveryCount" | "messageId" | "topicName"
+>;
 
-/** Queue lag and redelivery attributes for the worker span. */
-function queueMetadataAttributes(
-  metadata: QueueTimingMetadata | undefined,
+/**
+ * Sentry queue attributes for the worker span. The span always sets the
+ * messaging system and destination so the inherited Slack values do not win.
+ */
+function queueProcessAttributes(
+  metadata: QueueTelemetryMetadata | undefined,
   nowMs: number,
 ): Record<string, unknown> {
-  if (!metadata) {
-    return {};
-  }
   return {
-    "app.queue.delivery_count": metadata.deliveryCount,
-    "app.queue.lag_ms": nowMs - metadata.createdAt.getTime(),
+    "messaging.destination.name":
+      metadata?.topicName ?? resolveConversationWorkQueueTopic(),
+    "messaging.system": CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM,
+    ...(metadata && {
+      "messaging.message.id": metadata.messageId,
+      "messaging.message.receive.latency": nowMs - metadata.createdAt.getTime(),
+      "messaging.message.retry.count": metadata.deliveryCount - 1,
+    }),
   };
 }
 
 /**
  * Process one Vercel Queue payload with the generic conversation worker.
- * Pass the queue metadata to record queue lag and redelivery on the span.
+ * Pass the queue metadata to record time in queue and retries on the span.
  */
 export async function processConversationQueueMessage(
   message: unknown,
   options: ProcessConversationQueueMessageOptions,
-  metadata?: QueueTimingMetadata,
+  metadata?: QueueTelemetryMetadata,
 ): Promise<ConversationWorkProcessResult> {
   const parsed = parseConversationQueueMessage(message);
   try {
     return await withSpan(
       "conversation.work.process",
-      "conversation.work.process",
+      "queue.process",
       { conversationId: parsed.conversationId },
       async (setSpanAttributes) => {
         try {
@@ -117,7 +127,7 @@ export async function processConversationQueueMessage(
           throw error;
         }
       },
-      queueMetadataAttributes(metadata, options.nowMs?.() ?? Date.now()),
+      queueProcessAttributes(metadata, options.nowMs?.() ?? Date.now()),
     );
   } finally {
     // Turns start title work in the background. The worker owns it.

@@ -1,0 +1,16 @@
+id: no-vercel-sandbox-sdk-outside-vercel-module
+language: TypeScript
+severity: error
+message: Only packages/junior/src/chat/sandbox/vercel.ts may import @vercel/sandbox. Other code uses the provider-neutral sandbox functions and types. See packages/junior/src/chat/sandbox/README.md.
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+ignores:
+  - packages/junior/src/chat/sandbox/vercel.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: '^["'']@vercel/sandbox(/.*)?["'']$'

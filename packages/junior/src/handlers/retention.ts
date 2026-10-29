@@ -1,7 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { runRetentionPurge } from "@/chat/conversations/retention";
-import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import {
+  getAttachmentStorage,
+  type AttachmentStorage,
+} from "@/chat/attachments/storage";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 
@@ -42,8 +44,7 @@ export async function GET(
 
   try {
     const result = await runRetentionPurge(getSqlExecutor(), {
-      attachmentStorage:
-        options.attachmentStorage ?? createVercelAttachmentStorage(),
+      attachmentStorage: options.attachmentStorage ?? getAttachmentStorage(),
       nowMs: Date.now(),
     });
     return Response.json(result, { status: 200 });

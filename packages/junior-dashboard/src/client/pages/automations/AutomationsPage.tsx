@@ -1,11 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useLocation,
   useNavigate,
   useParams,
   useSearchParams,
 } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   automationListQuerySchema,
   type AutomationSummary,
@@ -25,7 +24,6 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import { deleteDashboardResource } from "../../http";
 import { automationPath } from "../../format";
 import { useDocumentTitle } from "../../documentTitle";
 import {
@@ -33,9 +31,12 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
+import { AutomationDeleteDialog } from "./AutomationDeleteDialog";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
-import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
+import { AutomationDetails } from "./AutomationDetails";
+import { PageLayout } from "../../components/layout/PageLayout";
+import { cn } from "../../styles";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
 
 const AUTOMATION_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
@@ -54,7 +55,9 @@ export function AutomationsPage(props: {
   enabled: boolean;
   view: "list" | "overview";
 }) {
-  const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState<AutomationSummary>();
+  const deleteSource = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { automationId } = useParams();
@@ -93,17 +96,14 @@ export function AutomationsPage(props: {
     props.view === "list" ? request.toString() : "",
   );
   const detail = useAutomationData(props.enabled, automationId);
-  const setFilter = (key: string, value: string) =>
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete("page");
-        if (value) next.set(key, value);
-        else next.delete(key);
-        return next;
-      },
-      { replace: true },
-    );
+  const setFilter = (key: string, value: string) => {
+    // Consecutive control events can precede the router's next render.
+    const next = new URLSearchParams(window.location.search);
+    next.delete("page");
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setSearchParams(next, { replace: true });
+  };
   const setPage = (page: number) =>
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -123,6 +123,15 @@ export function AutomationsPage(props: {
   const totalPages = pageCount(visibleTaskCount, filters.pageSize);
   const page = query.data?.page ?? filters.page;
   const selectedTask = detail.data;
+  const closeDetails = () => {
+    const trigger = automationId
+      ? listRef.current?.querySelector<HTMLButtonElement>(
+          `[data-automation-id="${CSS.escape(automationId)}"] button`,
+        )
+      : undefined;
+    navigate(tasksPath(listPath));
+    (trigger ?? listRef.current)?.focus();
+  };
   // Overview names the tab through PageHeader; the list has a plain heading.
   useDocumentTitle(
     props.view === "list"
@@ -155,18 +164,6 @@ export function AutomationsPage(props: {
     query.isPlaceholderData,
     setSearchParams,
   ]);
-  const deletion = useMutation({
-    mutationFn: async (automation: AutomationSummary) => {
-      await deleteDashboardResource(
-        `/api/automations/${encodeURIComponent(automation.id)}`,
-      );
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
-    },
-  });
 
   const loading = !query.data && !query.error;
   const executionSeries = query.data?.executionDays?.length
@@ -185,13 +182,8 @@ export function AutomationsPage(props: {
     : [];
   const showExecutionCharts = executionSeries.length > 0;
 
-  return (
+  const content = (
     <>
-      {location.state?.automationSaved ? (
-        <p role="status" className="m-0 text-sm text-emerald-300">
-          Automation saved. Changes apply to future work.
-        </p>
-      ) : null}
       {props.view === "overview" ? (
         <PageHeader
           description="Scheduled and event-driven work created by users."
@@ -223,16 +215,6 @@ export function AutomationsPage(props: {
         <InlineError>
           Automations could not be loaded.{" "}
           <Button onClick={() => void query.refetch()}>Try again</Button>
-        </InlineError>
-      ) : null}
-      {automationId && detail.isPending ? (
-        <p role="status">Loading automation details…</p>
-      ) : null}
-      {automationId && detail.error ? (
-        <InlineError>
-          Automation details could not be loaded. It may be unavailable or you
-          may not have access.{" "}
-          <Button onClick={() => void detail.refetch()}>Try again</Button>
         </InlineError>
       ) : null}
       {query.data && props.view === "overview" ? (
@@ -308,20 +290,7 @@ export function AutomationsPage(props: {
                 const key = `${automation.kind}:${automation.id}`;
                 return (
                   <AutomationRow
-                    deleting={
-                      deletion.isPending &&
-                      deletion.variables?.id === automation.id
-                    }
                     key={key}
-                    onDelete={() => {
-                      if (
-                        window.confirm(
-                          `Delete this ${automation.kind} automation?`,
-                        )
-                      ) {
-                        deletion.mutate(automation);
-                      }
-                    }}
                     onSelect={() =>
                       navigate(
                         automationId === automation.id
@@ -343,18 +312,57 @@ export function AutomationsPage(props: {
             pageSize={filters.pageSize}
             total={visibleTaskCount}
           />
-          {deletion.error ? (
-            <InlineError className="text-center">
-              The automation could not be deleted. Try again.
-            </InlineError>
-          ) : null}
         </>
       ) : null}
-      <AutomationDetailsDrawer
-        onClose={() => navigate(tasksPath(listPath))}
-        range={range}
-        automation={selectedTask}
-      />
     </>
+  );
+  if (props.view === "overview") return content;
+
+  return (
+    <div
+      className={cn(
+        "grid h-full min-h-0 min-w-0",
+        automationId && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+      )}
+    >
+      <div
+        aria-label="Automations list"
+        className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        ref={listRef}
+        role="region"
+        tabIndex={0}
+      >
+        <PageLayout>{content}</PageLayout>
+      </div>
+      {automationId ? (
+        <AutomationDetails
+          key={automationId}
+          onClose={closeDetails}
+          onDelete={(source) => {
+            if (!selectedTask?.ownedByViewer) return;
+            deleteSource.current = source;
+            setDeleteTarget(selectedTask);
+          }}
+          onRetry={() => void detail.refetch()}
+          error={Boolean(detail.error)}
+          range={range}
+          automation={selectedTask}
+        />
+      ) : null}
+      {deleteTarget ? (
+        <AutomationDeleteDialog
+          automation={deleteTarget}
+          onClose={() => setDeleteTarget(undefined)}
+          onDeleted={() => {
+            if (automationId === deleteTarget.id) navigate(tasksPath(listPath));
+          }}
+          returnFocus={() =>
+            deleteSource.current?.isConnected
+              ? deleteSource.current
+              : (listRef.current ?? false)
+          }
+        />
+      ) : null}
+    </div>
   );
 }

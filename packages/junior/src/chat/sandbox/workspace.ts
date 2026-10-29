@@ -1,9 +1,17 @@
-import {
-  FileSystem,
-  type NetworkPolicy,
-  type Sandbox as VercelSandbox,
-} from "@vercel/sandbox";
-import { isSandboxUnavailableError } from "@/chat/sandbox/errors";
+/** One outbound rule for a domain in a Sandbox network policy. */
+export type SandboxNetworkRule =
+  | { forwardURL: string }
+  | { transform: Array<{ headers: Record<string, string> }> };
+
+/**
+ * Outbound network access for one Sandbox.
+ *
+ * `allow-all` opens the network. The object form lists domains and their
+ * rules; `*` with no rules allows every other domain.
+ */
+export type SandboxNetworkPolicy =
+  | "allow-all"
+  | { allow: Record<string, SandboxNetworkRule[]> };
 
 export interface SandboxCommandResult {
   exitCode: number;
@@ -97,84 +105,30 @@ export interface SandboxSession extends SandboxWorkspace {
   mkDir(path: string): Promise<void>;
   snapshot(options?: { signal?: AbortSignal }): Promise<{ snapshotId: string }>;
   stop(): Promise<unknown>;
-  update(params: { networkPolicy?: NetworkPolicy }): Promise<void>;
+  update(params: { networkPolicy?: SandboxNetworkPolicy }): Promise<void>;
 }
 
-/** Pin Junior's sandbox contract to one Vercel session without SDK replay. */
-export function createSandboxSession(
-  sandbox: VercelSandbox,
-  options?: {
-    onUnavailable?: (sessionId: string) => void;
-  },
-): SandboxSession {
-  // Pin operations to the acquired VM session. The Sandbox convenience methods
-  // may resume and replay an operation after a lifecycle failure.
-  const session = sandbox.currentSession();
-  const fileSystem = new FileSystem(session);
-  const run = async <T>(operation: () => Promise<T>): Promise<T> => {
-    try {
-      return await operation();
-    } catch (error) {
-      if (isSandboxUnavailableError(error)) {
-        options?.onUnavailable?.(session.sessionId);
-      }
-      throw error;
-    }
-  };
-  const fs: SandboxFileSystem = {
-    readFile: async (filePath, readOptions) =>
-      await run(async () => await fileSystem.readFile(filePath, readOptions)),
-    writeFile: async (filePath, content, writeOptions) =>
-      await run(
-        async () => await fileSystem.writeFile(filePath, content, writeOptions),
-      ),
-    readdir: async (filePath, readOptions) =>
-      await run(async () => await fileSystem.readdir(filePath, readOptions)),
-    stat: async (filePath, statOptions) =>
-      await run(async () => await fileSystem.stat(filePath, statOptions)),
-  };
+/** Options shared by every provider call that returns a `SandboxSession`. */
+export interface SandboxSessionOptions {
+  /** Called when a session operation finds that the VM session is gone. */
+  onUnavailable?: (sessionId: string) => void;
+  /** Abort every provider request made through the returned session. */
+  scopeSignal?: AbortSignal;
+}
 
-  return {
-    sandboxId: sandbox.name,
-    sessionId: session.sessionId,
-    fs,
-    extendTimeout(duration) {
-      return run(async () => await session.extendTimeout(duration));
-    },
-    mkDir(path) {
-      return run(async () => await session.mkDir(path));
-    },
-    readFileToBuffer(input) {
-      return run(async () => await session.readFileToBuffer(input));
-    },
-    async runCommand(input) {
-      const result = await run(async () => await session.runCommand(input));
-      const [stdout, stderr] = await Promise.all([
-        run(async () => await result.stdout()),
-        run(async () => await result.stderr()),
-      ]);
-      return {
-        exitCode: result.exitCode,
-        stdout,
-        stderr,
-      };
-    },
-    snapshot(options) {
-      return run(async () => {
-        const snapshot = await session.snapshot(options);
-        return { snapshotId: snapshot.snapshotId };
-      });
-    },
-    stop() {
-      return run(async () => await session.stop());
-    },
-    update(params) {
-      return run(async () => await session.update(params));
-    },
-    writeFiles(files) {
-      return run(async () => await session.writeFiles(files));
-    },
-  };
+/** Input for one new Sandbox. */
+export interface CreateSandboxSessionInput extends SandboxSessionOptions {
+  name?: string;
+  persistent?: boolean;
+  /** Runtime image for a new Sandbox. Unused when `snapshotId` is set. */
+  runtime?: string;
+  /** Boot from this snapshot instead of an empty runtime image. */
+  snapshotId?: string;
+  timeoutMs: number;
+  networkPolicy?: SandboxNetworkPolicy;
+  resources?: { vcpus: number };
+  /** Abort only the create request. */
+  signal?: AbortSignal;
 }
 
 /** Best-effort stop; ignore secondary stop failures during cleanup. */

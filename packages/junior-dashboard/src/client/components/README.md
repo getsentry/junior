@@ -30,7 +30,16 @@ gallery fixture before use.
 uses the dashboard overlay and close button, and stops motion when reduced
 motion is set.
 `Drawer` and `BottomSheet` compose this component for app details.
-`ui/useSheet.ts` owns their close lifecycle, shared document scroll lock, and
+`ui/accordion.tsx` is the shadcn Base UI Accordion. It owns disclosure state,
+heading buttons, and measured panel height. Its motion stops when reduced
+motion is set. Keep one-off disclosure content in the owning feature.
+`ui/popover.tsx` and `ui/alert-dialog.tsx` provide the shadcn Base UI surfaces
+for anchored controls and named confirmations. They use dashboard color and
+focus tokens and stop motion when reduced motion is set. `ui/toast.tsx` owns
+short success notifications in a mounted `Toaster` provider. Features call
+`useToastManager` inside that provider. It has no global notification manager.
+These copied components use `ui/shadcn.LICENSE`.
+`ui/useSheet.ts` owns the sheet close lifecycle, shared document scroll lock, and
 focus rules when a resize puts one modal below another. These are separate
 Dialog roots. A newly mounted sheet must not take focus from the open child
 above it. Conversation browser scenarios cover dismissal, nested focus, and
@@ -136,12 +145,15 @@ token so each theme can redefine it.
   for wrapping form recovery text.
 - **Overlays.** `ui/sheet.tsx` is the shadcn/ui Base UI Sheet. It uses Base UI
   Dialog for focus and dismissal. `Drawer` adds a visible header and close
-  control. `BottomSheet` puts details below a title and close control. Both use
+  control. `BottomSheet` puts details below a title and close control. Its
+  default size fills the details frame; `size="content"` fits short controls.
+  Both use
   the app's shared scroll lock, skip motion when reduced motion is set, and
   close with the close button, backdrop, or Escape. `DetailsPanel` uses a docked
   aside at 1280px and above, and a `BottomSheet` below that width. Its owner
-  supplies the side column. Nested details use `overlay` to retain a desktop
-  drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
+  supplies the side column. An optional `sheetTitle` gives the sheet a record
+  name while the docked panel keeps its category label. Nested details use
+  `overlay` to retain a desktop drawer's modal focus rules. `Drawer` uses `SheetHeader` and the close control
   in `SheetContent`; it only adds app actions, widths, and body padding.
   `DetailsPanel` owns Escape for docked panels and their scroll frame.
   `Tooltip` and `IconButtonTooltip` own hover text.

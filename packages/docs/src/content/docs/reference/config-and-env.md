@@ -45,12 +45,28 @@ related:
 | `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                    |
 | `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments and published public artifacts. Vercel sets this when an OIDC-enabled Blob store is connected to the project.        |
 | `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static Vercel Blob credential when OIDC is unavailable. Vercel sets this for a token-connected store.                                                                       |
+| `JUNIOR_ATTACHMENT_STORAGE_PROVIDER`        | No          | Object storage for attachments and public artifacts: `vercel-blob`, `s3`, or `memory`. Defaults to `vercel-blob`. Use `memory` only for tests.                              |
+| `JUNIOR_S3_ENDPOINT`                        | Conditional | Base URL of an S3-compatible API, such as `http://localhost:7070`. Required when the provider is `s3`.                                                                      |
+| `JUNIOR_S3_BUCKET`                          | Conditional | Private bucket for attachment objects. Required when the provider is `s3`.                                                                                                  |
+| `JUNIOR_S3_ACCESS_KEY_ID`                   | Conditional | S3 access key ID. Required when the provider is `s3`.                                                                                                                       |
+| `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
+| `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
 
 For Vercel deployments, create a private Blob store and connect it to the
 project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
 It supplies `BLOB_STORE_ID` and uses Vercel's short-lived OIDC credential. Use
 `BLOB_READ_WRITE_TOKEN` for local development, CI, non-Vercel hosts, or as a
 fallback. See [Deploy to Vercel](/start-here/deploy-to-vercel/#configure-attachment-storage).
+
+Set `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=s3` to store attachments in an
+S3-compatible service instead of Vercel Blob. Junior uses path-style URLs, such
+as `<endpoint>/<bucket>/<key>`. Keep the bucket private. Junior serves public
+artifacts through its own route. Attachments stored with one provider are not
+visible after you change to another provider.
+
+`JUNIOR_ATTACHMENT_STORAGE_PROVIDER=memory` keeps objects in process memory.
+Junior loses them when the process stops, and each process has its own copy.
+Do not use it for a deployed app.
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
