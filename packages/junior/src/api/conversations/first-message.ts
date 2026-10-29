@@ -3,14 +3,20 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 
 /**
- * Read the text of the first human message for each conversation. Read-time
- * titles use it while the generated title is still unset.
+ * Read the text of the first human message for each untitled conversation.
+ * Read-time titles use it while the generated title is still unset.
  */
 export async function readFirstHumanMessageTexts(
   db: JuniorDatabase,
-  conversationIds: string[],
+  conversations: ReadonlyArray<{
+    conversationId: string;
+    title?: string | null;
+  }>,
 ): Promise<Map<string, string>> {
-  if (conversationIds.length === 0) return new Map();
+  const untitledIds = conversations.flatMap((conversation) =>
+    conversation.title ? [] : [conversation.conversationId],
+  );
+  if (untitledIds.length === 0) return new Map();
 
   const text = sql<string>`${juniorConversationEvents.payload}->>'text'`;
   const rows = await db
@@ -21,7 +27,7 @@ export async function readFirstHumanMessageTexts(
     .from(juniorConversationEvents)
     .where(
       and(
-        inArray(juniorConversationEvents.conversationId, conversationIds),
+        inArray(juniorConversationEvents.conversationId, untitledIds),
         eq(juniorConversationEvents.type, "message"),
         sql`${juniorConversationEvents.payload}->>'role' = 'user'`,
         sql`coalesce(${juniorConversationEvents.payload}->'meta'->'author'->>'isBot', 'false') <> 'true'`,

@@ -143,10 +143,7 @@ async function readConversationDetailFromSql(
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
-    readFirstHumanMessageTexts(
-      getDb(),
-      record.conversation.title ? [] : [conversationId],
-    ),
+    readFirstHumanMessageTexts(getDb(), [record.conversation]),
     record.conversation.transcriptPurgedAtMs === undefined
       ? readConversationModelUsageFromSql(executor, { conversationId })
       : Promise.resolve([]),

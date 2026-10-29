@@ -392,12 +392,7 @@ export async function readConversationFeedFromSql(
     readLastUserMessageAtByConversation(db, conversationIds),
     readConversationActivityPreviews(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
-    readFirstHumanMessageTexts(
-      db,
-      conversations
-        .filter((conversation) => !conversation.title)
-        .map((conversation) => conversation.conversationId),
-    ),
+    readFirstHumanMessageTexts(db, conversations),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
