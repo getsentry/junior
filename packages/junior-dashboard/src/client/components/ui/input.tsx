@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Input. See shadcn.LICENSE.
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@dashboard/lib/utils";

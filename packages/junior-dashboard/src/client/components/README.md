@@ -38,7 +38,6 @@ for anchored controls and named confirmations. They use dashboard color and
 focus tokens and stop motion when reduced motion is set. `ui/toast.tsx` owns
 short success notifications in a mounted `Toaster` provider. Features call
 `useToastManager` inside that provider. It has no global notification manager.
-These copied components use `ui/shadcn.LICENSE`.
 `ui/useSheet.ts` owns the sheet close lifecycle, shared document scroll lock, and
 focus rules when a resize puts one modal below another. These are separate
 Dialog roots. A newly mounted sheet must not take focus from the open child
@@ -47,8 +46,7 @@ layout changes.
 
 ### Adopted shadcn components
 
-Each `ui/` file is shadcn source that uses dashboard tokens. Its first line
-names the source. The copied license is in `ui/shadcn.LICENSE`. Remove exports
+Each `ui/` file is shadcn source that uses dashboard tokens. Remove exports
 that no app code uses. Use `ui/` components directly. Do not add an app
 component that only renames a `ui/` component or its props. Change the `ui/`
 file when every caller needs the same style or variant. App components compose

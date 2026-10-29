@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Accordion. See accordion.LICENSE.
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
 import { cn } from "@dashboard/lib/utils";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
