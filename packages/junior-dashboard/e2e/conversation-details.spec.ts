@@ -60,7 +60,6 @@ test("opens conversation details beside the chat", async ({
   // press first makes this a keyboard focus.
   await page.keyboard.press("Shift");
   await costMetric.focus();
-  // Scope past sidebar linked-work tooltips that can stay open on the selected row.
   const costTooltip = page.getByRole("tooltip").filter({ hasText: /\$/ });
   await expect(costTooltip).toBeVisible();
   const tooltipId = await costTooltip.getAttribute("id");
