@@ -224,6 +224,10 @@ Vercel Sandbox, and some workloads do not behave the same. Set
   trace domains. Credentialed requests go to `executeSandboxEgressRequest`.
   Trace requests get their headers and go upstream. All other connections
   pass through with their real certificates.
+- Pass-through connections start in the Junior process. So the proxy resolves
+  the host name once and closes the connection when any address is loopback,
+  private, link-local, or another address that is not public. It then connects
+  to the resolved address, so a second DNS answer cannot change the target.
 - The proxy and its routes live in the process that applied the policy. That
   process runs the sandbox's commands and reads the auth-required signals that
   the egress engine writes, also with the memory state adapter. Each policy

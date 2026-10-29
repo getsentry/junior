@@ -1,3 +1,4 @@
+import dns from "node:dns/promises";
 import http from "node:http";
 import net from "node:net";
 import { Duplex, Readable } from "node:stream";
@@ -55,6 +56,38 @@ const DIRECT_RANGES = [
   "172.16.0.0/12",
   "192.168.0.0/16",
 ];
+/**
+ * Pass-through connections start in the Junior process, so a sandbox could
+ * name a host-local or internal service in SNI or `Host`. Block every
+ * address that is not public.
+ */
+const BLOCKED_PASS_THROUGH = new net.BlockList();
+for (const [address, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["224.0.0.0", 3],
+] as const) {
+  BLOCKED_PASS_THROUGH.addSubnet(address, prefix, "ipv4");
+}
+for (const [address, prefix] of [
+  ["::", 128],
+  ["::1", 128],
+  // The IPv4 rules also match IPv4-mapped addresses. NAT64 addresses can
+  // still name blocked IPv4 addresses.
+  ["64:ff9b::", 96],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["ff00::", 8],
+] as const) {
+  BLOCKED_PASS_THROUGH.addSubnet(address, prefix, "ipv6");
+}
 const MAX_PEEK_BYTES = 64 * 1024;
 const PEEK_TIMEOUT_MS = 10_000;
 const HOP_BY_HOP = new Set([
@@ -369,6 +402,24 @@ function replay(socket: net.Socket, data: Buffer): Duplex {
   return stream;
 }
 
+/**
+ * Resolve a pass-through host once and return its address. Return undefined
+ * when any address is not public. The caller connects to this address, so a
+ * second DNS answer cannot change the target.
+ */
+async function publicAddress(host: string): Promise<string | undefined> {
+  const records = await dns
+    .lookup(host, { all: true, verbatim: true })
+    .catch(() => []);
+  const blocked = records.some((record) =>
+    BLOCKED_PASS_THROUGH.check(
+      record.address,
+      record.family === 6 ? "ipv6" : "ipv4",
+    ),
+  );
+  return blocked ? undefined : records[0]?.address;
+}
+
 function passThrough(
   socket: net.Socket,
   data: Buffer,
@@ -426,7 +477,15 @@ async function handleConnection(
     return;
   }
   if (!interceptMode(route, host)) {
-    passThrough(socket, data, host, scheme === "https" ? 443 : 80);
+    const address = await publicAddress(host);
+    if (!address) {
+      logWarn("sandbox.egress.docker.pass_through_blocked", {
+        "server.address": host,
+      });
+      socket.destroy();
+      return;
+    }
+    passThrough(socket, data, address, scheme === "https" ? 443 : 80);
     return;
   }
   const replayed = replay(socket, data);
