@@ -30,14 +30,12 @@ import type { SlackConversationContext } from "@/chat/slack/conversation-context
 import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
-import { isDmChannel } from "@/chat/slack/client";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import type {
   Destination,
   Platform,
   Source,
   SystemActor,
-  TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
@@ -585,29 +583,6 @@ function formatDestinationLines(destination: Destination): string[] {
   ];
 }
 
-function formatOutcomeLines(outcomes: TaskOutcome[] | undefined): string[] {
-  if (!outcomes) {
-    return [
-      "- dispatch.outcomes: send_message to the destination below (legacy default)",
-    ];
-  }
-  if (outcomes.length === 0) {
-    return ["- dispatch.outcomes: none; successful work posts nothing"];
-  }
-  return outcomes.map((outcome, index) => {
-    const { channelId, threadTs } = outcome.destination;
-    // The only direct message an Automation can send to is its creator's.
-    const recipient = isDmChannel(channelId)
-      ? "the creator's direct message"
-      : "a slack channel";
-    const target = [
-      `channel_id=${escapeXml(channelId)}`,
-      ...(threadTs ? [`thread_ts=${escapeXml(threadTs)}`] : []),
-    ].join(" ");
-    return `- dispatch.outcome.${index + 1}: ${outcome.action} to ${recipient} (${target})`;
-  });
-}
-
 function buildDispatchSection(
   params:
     | {
@@ -615,7 +590,6 @@ function buildDispatchSection(
         declaresResult?: boolean;
         destination: Destination;
         metadata?: Record<string, string>;
-        outcomes?: TaskOutcome[];
         plugin?: string;
         source: Source;
       }
@@ -631,8 +605,10 @@ function buildDispatchSection(
       ([key, value]) =>
         `- dispatch.metadata.${escapeXml(key)}: ${escapeXml(value)}`,
     );
+  // An Automation run posts through `finishAutomationRun`, whose contract
+  // already says whether the run posts.
   const deliveryLines = params.declaresResult
-    ? formatOutcomeLines(params.outcomes)
+    ? []
     : [
         "- dispatch.delivery: the runtime delivers the final answer to the destination",
         "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
@@ -663,7 +639,6 @@ function buildContextSection(params: {
     declaresResult?: boolean;
     destination: Destination;
     metadata?: Record<string, string>;
-    outcomes?: TaskOutcome[];
     plugin?: string;
     source: Source;
   };
@@ -855,7 +830,6 @@ type TurnContextPromptInput = {
     declaresResult?: boolean;
     destination: Destination;
     metadata?: Record<string, string>;
-    outcomes?: TaskOutcome[];
     plugin?: string;
     source: Source;
   };
