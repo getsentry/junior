@@ -1,3 +1,4 @@
+import { botConfig } from "@/chat/config";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { CORE_EVENT_NAMESPACE, type EventCatalog } from "@/chat/events/catalog";
 import { workspaceSnapshotEvents } from "@/chat/sandbox/snapshot/events";
@@ -17,7 +18,7 @@ export function getEventCatalog(): EventCatalog {
   const snapshot = workspaceSnapshotEvents();
   const catalog: Record<string, EventCatalog[string]> = {
     [CORE_EVENT_NAMESPACE]: {
-      displayName: "Junior",
+      displayName: botConfig.userName,
       resourceTypes: [
         ...snapshot.resourceTypes,
         {
