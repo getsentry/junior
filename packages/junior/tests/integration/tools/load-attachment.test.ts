@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -15,48 +15,14 @@ function workspace(): SandboxWorkspace & {
     written,
     readFileToBuffer: vi.fn(async () => null),
     runCommand: vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "" })),
-    writeFiles: vi.fn(async (files: Array<{ content: Buffer; path: string }>) => {
-      written.push(
-        ...files.map((file) => ({ content: file.content, path: file.path })),
-      );
-    }),
+    writeFiles: vi.fn(
+      async (files: Array<{ content: Buffer; path: string }>) => {
+        written.push(
+          ...files.map((file) => ({ content: file.content, path: file.path })),
+        );
+      },
+    ),
   };
-}
-
-/** Object storage double whose `get` can be forced to return truncated bytes. */
-function memoryAttachmentStorage(): AttachmentStorage & {
-  objects: Map<string, Buffer>;
-  truncateNextRead?: number;
-} {
-  const state: AttachmentStorage & {
-    objects: Map<string, Buffer>;
-    truncateNextRead?: number;
-  } = {
-    objects: new Map<string, Buffer>(),
-    provider: "test",
-    truncateNextRead: undefined,
-    async put(input) {
-      state.objects.set(input.key, Buffer.from(input.body));
-    },
-    async get(key) {
-      const body = state.objects.get(key);
-      if (!body) return null;
-      const bytes =
-        state.truncateNextRead !== undefined
-          ? body.subarray(0, state.truncateNextRead)
-          : body;
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(bytes);
-          controller.close();
-        },
-      });
-    },
-    async delete(keys) {
-      for (const key of keys) state.objects.delete(key);
-    },
-  };
-  return state;
 }
 
 describe("loadAttachment tool", () => {
@@ -65,7 +31,7 @@ describe("loadAttachment tool", () => {
   });
 
   it("restores a stored attachment to the sandbox", async () => {
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     const db = getSqlExecutor();
     await getConversationStore().recordActivity({
       conversationId: CONVERSATION_ID,
@@ -112,7 +78,7 @@ describe("loadAttachment tool", () => {
   });
 
   it("fails instead of writing a truncated file when storage returns fewer bytes than expected", async () => {
-    const storage = memoryAttachmentStorage();
+    const storage = createMemoryAttachmentStorage();
     const db = getSqlExecutor();
     await getConversationStore().recordActivity({
       conversationId: CONVERSATION_ID,
@@ -137,12 +103,20 @@ describe("loadAttachment tool", () => {
     // Simulate an eventually-consistent object storage read (for example, a
     // CDN edge that has not yet propagated a fresh write) that reports
     // success but returns an empty body.
-    storage.truncateNextRead = 0;
+    const emptyReadStorage = {
+      ...storage,
+      get: async () =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+    };
     const sandboxWorkspace = workspace();
     const tool = createLoadAttachmentTool({
       conversationId: CONVERSATION_ID,
       db,
-      storage,
+      storage: emptyReadStorage,
       workspace: sandboxWorkspace,
     });
 

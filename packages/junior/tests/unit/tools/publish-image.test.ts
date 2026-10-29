@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -19,32 +19,6 @@ function workspace(data: Buffer | null): SandboxWorkspace {
       stdout: "",
     })),
     writeFiles: vi.fn(async () => {}),
-  };
-}
-
-function storage(): AttachmentStorage & {
-  objects: Map<string, Buffer>;
-} {
-  const objects = new Map<string, Buffer>();
-  return {
-    objects,
-    provider: "test",
-    async put(input) {
-      objects.set(input.key, Buffer.from(input.body));
-    },
-    async get(key) {
-      const body = objects.get(key);
-      if (!body) return null;
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(body);
-          controller.close();
-        },
-      });
-    },
-    async delete(keys) {
-      for (const key of keys) objects.delete(key);
-    },
   };
 }
 
@@ -81,9 +55,7 @@ function memoryDb(): JuniorSqlDatabase & {
               rows.set(next.id, next);
               return {
                 returning() {
-                  return Promise.resolve([
-                    { ext: next.ext, id: next.id },
-                  ]);
+                  return Promise.resolve([{ ext: next.ext, id: next.id }]);
                 },
               };
             },
@@ -102,7 +74,7 @@ function memoryDb(): JuniorSqlDatabase & {
 
 describe("publishImage tool", () => {
   it("publishes a sandbox image to a conversation-owned public URL", async () => {
-    const imageStorage = storage();
+    const imageStorage = createMemoryAttachmentStorage();
     const db = memoryDb();
     const tool = createPublishImageTool({
       conversationId: CONVERSATION_ID,
@@ -139,7 +111,7 @@ describe("publishImage tool", () => {
       conversationId: CONVERSATION_ID,
       db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
-      storage: storage(),
+      storage: createMemoryAttachmentStorage(),
       workspace: workspace(null),
     });
 
@@ -156,21 +128,25 @@ describe("publishImage tool", () => {
       conversationId: CONVERSATION_ID,
       db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
-      storage: storage(),
+      storage: createMemoryAttachmentStorage(),
       workspace: workspace(Buffer.from("not-an-image")),
     });
 
-    await expect(tool.execute?.({ path: "notes.txt" }, {})).rejects.toMatchObject({
+    await expect(
+      tool.execute?.({ path: "notes.txt" }, {}),
+    ).rejects.toMatchObject({
       name: "ToolInputError",
       message: expect.stringContaining("unsupported image format"),
     });
   });
 
   it("keeps storage outages as system errors", async () => {
-    const imageStorage = storage();
-    imageStorage.put = vi.fn(async () => {
-      throw new Error("blob unavailable");
-    });
+    const imageStorage = {
+      ...createMemoryAttachmentStorage(),
+      put: vi.fn(async () => {
+        throw new Error("blob unavailable");
+      }),
+    };
     const tool = createPublishImageTool({
       conversationId: CONVERSATION_ID,
       db: memoryDb(),
@@ -179,7 +155,9 @@ describe("publishImage tool", () => {
       workspace: workspace(PNG_BYTES),
     });
 
-    await expect(tool.execute?.({ path: "chart.png" }, {})).rejects.toMatchObject({
+    await expect(
+      tool.execute?.({ path: "chart.png" }, {}),
+    ).rejects.toMatchObject({
       name: "Error",
       message: "blob unavailable",
     });
