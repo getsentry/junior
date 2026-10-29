@@ -129,7 +129,12 @@ describe("Google Calendar tools", () => {
     const { fetch, tools } = calendarTools(
       Response.json({
         calendars: {
-          [REQUESTER]: { busy: [] },
+          // The requester says this all-day block is only a hold.
+          [REQUESTER]: {
+            busy: [
+              { start: "2026-10-12T16:00:00Z", end: "2026-10-13T00:00:00Z" },
+            ],
+          },
           "bob@example.com": {
             busy: [
               { start: "2026-10-12T16:00:00Z", end: "2026-10-12T17:00:00Z" },
@@ -138,15 +143,16 @@ describe("Google Calendar tools", () => {
           "carol@example.com": { busy: [], errors: [{ reason: "notFound" }] },
         },
       }),
-      Response.json({ timeZone: LA }),
       Response.json({ timeZone: "America/New_York" }),
       Response.json({}, { status: 404 }),
+      Response.json({ timeZone: LA }),
     );
 
     const result = await tools.findMeetingTimes!.execute!(
       tools.findMeetingTimes!.prepareArguments!({
         attendees: ["Bob@example.com", "carol@example.com"],
         maxResults: 1,
+        optionalAttendees: [REQUESTER],
         timeMax: "2026-10-13T00:00:00Z",
         timeMin: "2026-10-12T16:00:00Z",
         timeZone: LA,
@@ -158,12 +164,12 @@ describe("Google Calendar tools", () => {
     expect(freeBusy.operation).toBe("google.calendar.freebusy.query");
     expect(freeBusy.provider).toBe("google");
     expect((await freeBusy.request.json()).items).toEqual([
-      { id: REQUESTER },
       { id: "bob@example.com" },
       { id: "carol@example.com" },
+      { id: REQUESTER },
     ]);
-    const bobZone = new URL(timeZones[1].request.url);
-    expect(timeZones[1].operation).toBe("google.calendar.events.list");
+    const bobZone = new URL(timeZones[0].request.url);
+    expect(timeZones[0].operation).toBe("google.calendar.events.list");
     expect(bobZone.pathname).toBe(
       "/calendar/v3/calendars/bob%40example.com/events",
     );
@@ -171,12 +177,14 @@ describe("Google Calendar tools", () => {
     expect(bobZone.searchParams.has("timeZone")).toBe(false);
     expect(result).toMatchObject({
       checked: [
-        { email: REQUESTER, timeZone: LA },
         { email: "bob@example.com", timeZone: "America/New_York" },
+        { email: REQUESTER, timeZone: LA },
       ],
-      // 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York.
+      // 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York. The
+      // requester listed themselves as optional, so the hold does not block it.
       slots: [
         {
+          optionalConflicts: [REQUESTER],
           otherTimeZoneLabels: ["Mon, Oct 12, 13:00 – 13:30 EDT"],
           start: "2026-10-12T17:00:00.000Z",
         },
