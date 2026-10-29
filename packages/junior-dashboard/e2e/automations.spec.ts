@@ -869,6 +869,6 @@ test("pauses and resumes from details, keeps failures visible, and limits action
     ),
   ).toBeVisible();
   await expect(
-    page.getByText("Enable its plugin or choose another event."),
+    page.getByText("Edit the trigger, or enable its plugin again."),
   ).toBeVisible();
 });

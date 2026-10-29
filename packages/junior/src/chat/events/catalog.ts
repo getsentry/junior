@@ -3,6 +3,7 @@ import {
   normalizeEventIdentifier,
   eventMatchSchema,
   type EventTriggerProblem,
+  type EventTriggerSelection,
   type PluginEvents,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
@@ -12,7 +13,10 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 type EventRegistration = Pick<
   PluginEvents,
   "resourceTypes" | "normalizeIdentifier"
->;
+> & {
+  /** Name people see for the source, such as GitHub. Defaults to the namespace. */
+  displayName?: string;
+};
 
 export type EventCatalog = Readonly<Record<string, EventRegistration>>;
 
@@ -102,39 +106,30 @@ export function registeredEventMatchSchema() {
   return eventMatchSchema
     .optional()
     .describe(
-      "Optional exact values from the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
+      "Optional filters: exact values for the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
     );
 }
 
-/** The parts of an Event trigger that the catalog checks. */
-export interface EventTriggerSelection {
-  events: readonly string[];
-  match?: EventMatch;
+/** One selection of events and filters, with the source that owns it. */
+type RegisteredEventSelection = EventTriggerSelection & {
   namespace: string;
-  resourceType: string;
-}
+};
 
 /**
- * List why a trigger cannot work with the enabled plugins. Use it for new
- * triggers and for saved triggers, which can go stale after a plugin renames
- * or removes an event or filter.
+ * List why a selection cannot work with the enabled plugins. Use it for new
+ * selections and for saved triggers, which can go stale after a plugin renames
+ * or removes a resource type, event, or filter.
  */
 export function registeredEventTriggerProblems(
   catalog: EventCatalog,
-  trigger: EventTriggerSelection,
+  selection: RegisteredEventSelection,
+  options?: { inputKeys?: boolean },
 ): EventTriggerProblem[] {
-  const resourceType = catalog[trigger.namespace]?.resourceTypes.find(
-    (candidate) => candidate.type === trigger.resourceType,
+  return eventTriggerProblems(
+    catalog[selection.namespace]?.resourceTypes ?? [],
+    selection,
+    options,
   );
-  if (!resourceType) {
-    return [
-      {
-        reason: "unknown_resource_type",
-        message: `There is no enabled "${trigger.resourceType}" resource type for "${trigger.namespace}".`,
-      },
-    ];
-  }
-  return eventTriggerProblems(resourceType, trigger);
 }
 
 function uniqueMatchValues(match: EventMatch | undefined) {
@@ -148,24 +143,32 @@ function uniqueMatchValues(match: EventMatch | undefined) {
 }
 
 /**
- * Reject a trigger that cannot work, with every problem in one message.
- * Return its match without repeated list values.
+ * Reject an event automation trigger or a Watch that cannot work, with every
+ * problem in one message for the agent. Return its match without repeated
+ * list values.
  */
 export function requireValidEventTrigger(
   catalog: EventCatalog,
-  trigger: EventTriggerSelection,
+  selection: RegisteredEventSelection,
+  target: "event_automation" | "watch",
 ): EventMatch | undefined {
-  const problems = registeredEventTriggerProblems(catalog, trigger);
+  const problems = registeredEventTriggerProblems(catalog, selection, {
+    inputKeys: true,
+  });
   if (problems.length > 0) {
-    const resource = `${trigger.namespace} ${trigger.resourceType.replaceAll("_", " ")}`;
+    const source =
+      catalog[selection.namespace]?.displayName ?? selection.namespace;
+    const resource = `${source} ${selection.resourceType.replaceAll("_", " ")}`;
     throw new ToolInputError(
       [
-        `This ${resource} trigger cannot be saved.`,
+        target === "watch"
+          ? `This ${resource} watch cannot be created.`
+          : `This ${resource} trigger cannot be saved.`,
         ...problems.map((problem) => problem.message),
       ].join(" "),
     );
   }
-  return uniqueMatchValues(trigger.match);
+  return uniqueMatchValues(selection.match);
 }
 
 /**

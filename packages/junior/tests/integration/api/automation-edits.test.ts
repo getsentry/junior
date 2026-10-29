@@ -12,6 +12,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   automationEditSchema,
   automationEventCatalogSchema,
+  automationListSchema,
   automationVersionListSchema,
 } from "@/api/schema/automation";
 import { getDb, getConversationStore } from "@/chat/db";
@@ -21,6 +22,7 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   createEventAutomation,
   getEventAutomation,
+  saveEventAutomation,
 } from "@/chat/event-automations/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
@@ -839,7 +841,7 @@ describe("Automation edit API", () => {
   test("validates replacement event selectors through the registered plugin", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     setPlugins([githubPlugin()]);
-    const { fixture, read, patch } = await setup("event");
+    const { app, fixture, id, read, patch } = await setup("event");
     try {
       const initial = await read();
       if (initial.kind !== "event")
@@ -871,7 +873,7 @@ describe("Automation edit API", () => {
         fields: {
           trigger: [
             expect.stringContaining(
-              '"authorUsername" is not a filter for this resource type.',
+              'Filter "authorUsername" (match.authorUsername) does not exist for this resource type.',
             ),
           ],
         },
@@ -890,7 +892,7 @@ describe("Automation edit API", () => {
         fields: {
           trigger: [
             expect.stringContaining(
-              '"headBranch" is not set on "pull_request.comment.created"',
+              'Filter "headBranch" (match.headBranch) is not set on "pull_request.comment.created"',
             ),
           ],
         },
@@ -905,6 +907,32 @@ describe("Automation edit API", () => {
         trigger: { ...trigger, identifier: "getsentry/junior#42" },
         triggerAvailable: true,
       });
+      const unavailableIds = async () =>
+        automationListSchema
+          .parse(
+            await (
+              await app.request("/api/automations?state=unavailable")
+            ).json(),
+          )
+          .automations.map((automation) => automation.id);
+      expect(await unavailableIds()).toEqual([]);
+      // A saved filter that the plugin renamed never matches, so the
+      // Automation reports an unavailable trigger and says why.
+      const stored = await getEventAutomation(getDb(), id);
+      if (!stored) throw new Error("Missing event Automation");
+      await saveEventAutomation(getDb(), {
+        ...stored,
+        trigger: { ...stored.trigger, match: { authorUsername: "dcramer" } },
+      });
+      const summary = await app.request(`/api/automations/${id}`);
+      expect(summary.status).toBe(200);
+      expect(await summary.json()).toMatchObject({
+        triggerAvailable: false,
+        triggerProblems: [
+          expect.stringContaining('Filter "authorUsername" does not exist'),
+        ],
+      });
+      expect(await unavailableIds()).toEqual([id]);
     } finally {
       await fixture.close();
     }

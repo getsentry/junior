@@ -7,7 +7,7 @@ import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
 import { formatRelativeTime, peoplePath } from "../../format";
 import {
-  automationEventConditions,
+  automationEventFilters,
   automationEventNames,
   automationScheduleLabel,
   formatAutomationRunTime,
@@ -15,7 +15,7 @@ import {
 
 /**
  * Show one automation as a compact card: what it is, where it posts, who owns
- * it, and when it runs. Instructions, timezones, and event conditions stay in
+ * it, and when it runs. Instructions, timezones, and event filters stay in
  * the details panel.
  */
 export function AutomationRow(props: {
@@ -123,13 +123,13 @@ function AutomationSummaryLine({
     automation.kind === "scheduled"
       ? automation.schedule
       : `${automation.resource} · ${automationEventNames(automation)}`;
-  const conditions =
-    automation.kind === "event" ? automationEventConditions(automation) : "";
+  const filters =
+    automation.kind === "event" ? automationEventFilters(automation) : "";
   const triggerDetail =
     automation.kind === "scheduled"
       ? automationScheduleLabel(automation)
-      : conditions
-        ? `${trigger} · ${conditions}`
+      : filters
+        ? `${trigger} · ${filters}`
         : trigger;
   return (
     <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-dashboard-text-muted">

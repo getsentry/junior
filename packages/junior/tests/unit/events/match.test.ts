@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { eventMatches, stableEventMatchKey } from "@sentry/junior-plugin-api";
+import {
+  eventMatches,
+  mergeEventMatchFields,
+  stableEventMatchKey,
+  type EventMatchFields,
+} from "@sentry/junior-plugin-api";
 import {
   registeredEventTriggerProblems,
   requireValidEventTrigger,
@@ -9,6 +14,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const catalog: EventCatalog = {
   github: {
+    displayName: "GitHub",
     resourceTypes: [
       {
         type: "pull_request",
@@ -98,6 +104,7 @@ describe("requireValidEventTrigger", () => {
           base: ["main", "master", "main"],
           authors: "dcramer",
         }),
+        "event_automation",
       ),
     ).toEqual({ isDraft: false, base: ["main", "master"], authors: "dcramer" });
   });
@@ -108,18 +115,21 @@ describe("requireValidEventTrigger", () => {
         base: "main",
       }),
     ).toEqual([{ reason: "field_not_set", field: "base" }]);
+    const unmatchable = trigger(
+      ["pull_request.opened", "pull_request.comment.created"],
+      { base: "main" },
+    );
+    // The agent sees the input key, so it knows what to change.
     expect(() =>
-      requireValidEventTrigger(
-        catalog,
-        trigger(["pull_request.opened", "pull_request.comment.created"], {
-          base: "main",
-        }),
-      ),
+      requireValidEventTrigger(catalog, unmatchable, "event_automation"),
     ).toThrow(
       new ToolInputError(
-        'This github pull request trigger cannot be saved. "base" is not set on "pull_request.comment.created", so the trigger never runs on those events. Remove the filter or those events.',
+        'This GitHub pull request trigger cannot be saved. Filter "base" (match.base) is not set on "pull_request.comment.created", so it never matches those events. Remove the filter or those events.',
       ),
     );
+    expect(() =>
+      requireValidEventTrigger(catalog, unmatchable, "watch"),
+    ).toThrow(/^This GitHub pull request watch cannot be created\. /);
   });
 
   it("reports removed filters, unknown events, and wrong values", () => {
@@ -142,5 +152,55 @@ describe("requireValidEventTrigger", () => {
     expect(problems(["issue.opened"], undefined, "team")).toEqual([
       { reason: "unknown_resource_type", field: undefined },
     ]);
+  });
+});
+
+describe("mergeEventMatchFields", () => {
+  const pullRequestFields: EventMatchFields = {
+    senderId: {
+      kind: "number",
+      description: "pull request commenter id",
+      events: ["pull_request.comment.created"],
+    },
+  };
+
+  it("keeps every event that sets a shared filter", () => {
+    expect(
+      mergeEventMatchFields(
+        {
+          senderId: {
+            kind: "number",
+            description: "issue commenter id",
+            events: ["issue.comment.created"],
+          },
+        },
+        pullRequestFields,
+      ).senderId,
+    ).toEqual({
+      kind: "number",
+      description: "issue commenter id",
+      events: ["issue.comment.created", "pull_request.comment.created"],
+    });
+  });
+
+  it("rejects a shared filter that describes different values", () => {
+    expect(() =>
+      mergeEventMatchFields(
+        {
+          senderId: {
+            kind: "string",
+            description: "issue commenter login",
+            events: ["issue.comment.created"],
+          },
+        },
+        pullRequestFields,
+      ),
+    ).toThrow('Match field "senderId" has a different kind, enum, or list');
+    expect(() =>
+      mergeEventMatchFields(
+        { senderId: { kind: "number", description: "every commenter" } },
+        pullRequestFields,
+      ),
+    ).toThrow('Match field "senderId" is in two maps');
   });
 });

@@ -23,7 +23,7 @@ import { AutomationLifecycle } from "./AutomationLifecycle";
 import { AutomationRecentRuns } from "./AutomationRecentRuns";
 import { AutomationStatus } from "./AutomationStatus";
 import {
-  automationEventConditions,
+  automationEventFilters,
   automationEventNames,
   automationScheduleLabel,
   formatAutomationRunTime,
@@ -98,8 +98,8 @@ function AutomationDetailsContent({
   range: TimeRangeDays;
 }) {
   const location = useLocation();
-  const conditions =
-    automation.kind === "event" ? automationEventConditions(automation) : "";
+  const filters =
+    automation.kind === "event" ? automationEventFilters(automation) : "";
   return (
     <div className="grid min-w-0 gap-5">
       <AutomationStatus automation={automation} />
@@ -119,9 +119,9 @@ function AutomationDetailsContent({
               <p className="m-0 mt-1 text-dashboard-text-muted">
                 {automationEventNames(automation)}
               </p>
-              {conditions ? (
+              {filters ? (
                 <p className="m-0 mt-1 break-words text-xs text-dashboard-text-muted">
-                  {conditions}
+                  {filters}
                 </p>
               ) : null}
             </>

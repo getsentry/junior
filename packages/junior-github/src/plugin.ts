@@ -6,6 +6,7 @@
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import {
   defineJuniorPlugin,
+  mergeEventMatchFields,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
@@ -190,11 +191,11 @@ export function githubPlugin(
           identifier: GITHUB_REPOSITORY_IDENTIFIER,
           supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
           suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
-          matchFields: {
-            ...GITHUB_DEPLOYMENT_MATCH_FIELDS,
-            ...GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
-            ...GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          },
+          matchFields: mergeEventMatchFields(
+            GITHUB_DEPLOYMENT_MATCH_FIELDS,
+            GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+            GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          ),
           guidance: gitHubPullRequestEventGuidance(
             options.pullRequestEvents?.guidance,
           ),
