@@ -313,6 +313,11 @@ async function handleRequest(
     res.writeHead(403).end("Sandbox egress route is gone");
     return;
   }
+  // Credentials never go upstream in clear text, like on Vercel.
+  if (intercept.mode === "credential" && connection.scheme !== "https") {
+    res.writeHead(403).end("Credentialed egress requires HTTPS");
+    return;
+  }
   const path = originFormPath(req.url);
   if (!path) {
     res.writeHead(400).end("Request target must be a path");

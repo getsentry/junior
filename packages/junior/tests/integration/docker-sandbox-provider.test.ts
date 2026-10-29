@@ -138,6 +138,20 @@ describe.skipIf(!process.env.JUNIOR_DOCKER_SANDBOX_TEST)(
           expect(traced).toMatchObject(TRACE_HEADERS);
           expect(traced.authorization).toBeUndefined();
 
+          // Credentials never go upstream over plain HTTP.
+          const plain = await session.runCommand({
+            cmd: "curl",
+            args: [
+              "-sS",
+              "-o",
+              "/dev/null",
+              "-w",
+              "%{http_code}",
+              `http://${CREDENTIAL_DOMAIN}/anything`,
+            ],
+          });
+          expect(plain.stdout).toBe("403");
+
           // An absolute request target cannot move a credentialed request
           // to another host.
           const retargeted = await session.runCommand({
