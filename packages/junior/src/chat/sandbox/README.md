@@ -17,6 +17,10 @@ traffic through verified host egress.
 - Other sandbox code uses `SandboxSession` and `SandboxNetworkPolicy`. Only
   `vercel.ts` uses Vercel credentials (`credentials.ts`), request options, and
   SDK objects.
+- `SandboxNetworkPolicy` is provider-neutral. It lists the domains that go
+  through Junior's credentialed egress and the domains that get trace headers.
+  Every other domain stays open. Each provider turns it into its own network
+  rules.
 - Error checks in `errors.ts` still match Vercel error text.
 
 ## Lifecycle
@@ -120,3 +124,17 @@ traffic through verified host egress.
 All credential-capable provider access follows
 `../../../../../policies/security.md`. The verified egress implementation lives
 under `egress/`; `snapshot/resolve.ts` owns snapshot acquisition.
+
+Sandbox egress has two parts:
+
+- **Provider part:** each sandbox provider catches sandbox traffic for
+  credentialed domains and proves which sandbox VM sent each request.
+  `egress/vercel.ts` is the Vercel part. It turns the policy into Vercel
+  `forwardURL` and header `transform` rules. Vercel then forwards requests to
+  Junior's egress route with a Vercel OIDC token and `vercel-forwarded-*`
+  headers. `egress/vercel.ts` verifies the token and rebuilds the upstream URL.
+  `egress/oidc.ts` checks the token against Vercel's OIDC issuer.
+- **Shared part:** `executeSandboxEgressRequest` in `egress/proxy.ts` takes
+  the verified VM id, the upstream URL, and the signed credential token. It
+  checks provider ownership and the credential context, then runs the shared
+  credentialed egress engine. It does not read provider headers.

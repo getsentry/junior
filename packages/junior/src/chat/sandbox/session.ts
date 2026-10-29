@@ -203,8 +203,9 @@ export function createSandboxRuntime(
   const createSandboxName = (): string =>
     `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
 
-  // Build once before boot so missing proxy config fails before sandbox work.
-  // The final route is rebound to the provider session id after creation.
+  // Build once before boot so the provider applies the policy at create, and
+  // missing egress config fails before sandbox work. The final credential token
+  // is rebound to the provider session id after creation.
   const preflightNetworkPolicy = (
     sandboxName: string,
   ): SandboxNetworkPolicy | undefined =>

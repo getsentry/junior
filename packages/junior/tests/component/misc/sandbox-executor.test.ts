@@ -916,23 +916,15 @@ describe("createTestSandbox", () => {
   it("keeps restored sandbox policy tracking tied to the applied policy", async () => {
     const restoredSandbox = makeSandbox("sbx_restored_policy");
     const firstPolicy = {
-      allow: {
-        "*": [],
-        "api.first.example": [
-          {
-            forwardURL: "https://junior.example.com/api/internal/proxy",
-          },
-        ],
+      credentialEgress: {
+        credentialToken: "first-token",
+        domains: ["api.first.example"],
       },
     };
     const secondPolicy = {
-      allow: {
-        "*": [],
-        "api.second.example": [
-          {
-            forwardURL: "https://junior.example.com/api/internal/proxy",
-          },
-        ],
+      credentialEgress: {
+        credentialToken: "second-token",
+        domains: ["api.second.example"],
       },
     };
     const createNetworkPolicy = vi
@@ -951,10 +943,30 @@ describe("createTestSandbox", () => {
     await manager.refreshNetworkPolicy();
 
     expect(restoredSandbox.update).toHaveBeenNthCalledWith(1, {
-      networkPolicy: firstPolicy,
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "api.first.example": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/first-token",
+            },
+          ],
+        },
+      },
     });
     expect(restoredSandbox.update).toHaveBeenNthCalledWith(2, {
-      networkPolicy: secondPolicy,
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "api.second.example": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/second-token",
+            },
+          ],
+        },
+      },
     });
     expect(createNetworkPolicy).toHaveBeenCalledTimes(2);
   });
@@ -964,13 +976,9 @@ describe("createTestSandbox", () => {
     sandboxCreateMock.mockResolvedValue(sandbox);
     let providerDomain = "api.first.example";
     const createNetworkPolicy = vi.fn((sandboxId: string) => ({
-      allow: {
-        "*": [],
-        [providerDomain]: [
-          {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${sandboxId}`,
-          },
-        ],
+      credentialEgress: {
+        credentialToken: sandboxId,
+        domains: [providerDomain],
       },
     }));
 
@@ -3255,13 +3263,9 @@ describe("createTestSandbox", () => {
       .mockRejectedValueOnce(snapshottingError)
       .mockResolvedValueOnce(snapshotSandbox);
     const createNetworkPolicy = vi.fn((sandboxId: string) => ({
-      allow: {
-        "*": [],
-        "api.example.com": [
-          {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${sandboxId}`,
-          },
-        ],
+      credentialEgress: {
+        credentialToken: sandboxId,
+        domains: ["api.example.com"],
       },
     }));
 

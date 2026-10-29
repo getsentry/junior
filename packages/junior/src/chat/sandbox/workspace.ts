@@ -1,17 +1,19 @@
-/** One outbound rule for a domain in a Sandbox network policy. */
-export type SandboxNetworkRule =
-  | { forwardURL: string }
-  | { transform: Array<{ headers: Record<string, string> }> };
-
 /**
  * Outbound network access for one Sandbox.
  *
- * `allow-all` opens the network. The object form lists domains and their
- * rules; `*` with no rules allows every other domain.
+ * `allow-all` opens the network with no Junior egress rules. The object form
+ * also allows every domain, and adds Junior egress rules for the listed
+ * domains. A domain is in at most one list. Each sandbox provider turns this
+ * policy into its own network rules.
  */
 export type SandboxNetworkPolicy =
   | "allow-all"
-  | { allow: Record<string, SandboxNetworkRule[]> };
+  | {
+      /** Send requests for these domains through Junior's credentialed egress. */
+      credentialEgress?: { credentialToken: string; domains: string[] };
+      /** Add these headers to requests for these domains. */
+      traceHeaders?: { domains: string[]; headers: Record<string, string> };
+    };
 
 export interface SandboxCommandResult {
   exitCode: number;
