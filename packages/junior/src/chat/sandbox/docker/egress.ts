@@ -91,16 +91,38 @@ export async function egressCaPem(): Promise<string> {
   return (await loadEgressCa(dockerSandboxDir())).certPem;
 }
 
+/**
+ * Return how the proxy handles a host, and the policy domain that it matched.
+ * Upstream URLs use that domain, not the host name that the sandbox sent.
+ */
 function interceptMode(
   route: Route | undefined,
   host: string,
-): "credential" | "trace" | undefined {
+): { mode: "credential" | "trace"; domain: string } | undefined {
   const policy = route?.policy;
-  const matches = (domains: string[] | undefined) =>
-    (domains ?? []).some((domain) => matchesSandboxEgressDomain(host, domain));
-  if (matches(policy?.credentialEgress?.domains)) return "credential";
-  if (matches(policy?.traceHeaders?.domains)) return "trace";
+  const find = (domains: string[] | undefined) =>
+    (domains ?? []).find((domain) => matchesSandboxEgressDomain(host, domain));
+  const credentialDomain = find(policy?.credentialEgress?.domains);
+  if (credentialDomain) return { mode: "credential", domain: credentialDomain };
+  const traceDomain = find(policy?.traceHeaders?.domains);
+  if (traceDomain) return { mode: "trace", domain: traceDomain };
   return undefined;
+}
+
+/**
+ * Return the path and query of an origin-form request target.
+ * An absolute or `//` target could name another host, so it is rejected.
+ */
+function originFormPath(target: string | undefined): string | undefined {
+  if (
+    !target?.startsWith("/") ||
+    target.startsWith("//") ||
+    /[\r\n#]/.test(target)
+  ) {
+    return undefined;
+  }
+  const url = new URL(target, "http://sandbox-request.local");
+  return `${url.pathname}${url.search}`;
 }
 
 /** Return the SNI host name of a complete TLS ClientHello record. */
@@ -244,12 +266,19 @@ async function handleRequest(
     res.writeHead(421).end("Host does not match the TLS server name");
     return;
   }
-  const mode = interceptMode(route, host);
-  if (!route || !mode) {
+  const intercept = interceptMode(route, host);
+  if (!route || !intercept) {
     res.writeHead(403).end("Sandbox egress route is gone");
     return;
   }
-  const upstreamUrl = new URL(req.url ?? "/", `${connection.scheme}://${host}`);
+  const path = originFormPath(req.url);
+  if (!path) {
+    res.writeHead(400).end("Request target must be a path");
+    return;
+  }
+  const upstreamUrl = new URL(
+    `${connection.scheme}://${intercept.domain}${path}`,
+  );
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const request = new Request(upstreamUrl, {
     method: req.method,
@@ -259,7 +288,7 @@ async function handleRequest(
       : undefined),
   } as RequestInit);
   const response =
-    mode === "credential"
+    intercept.mode === "credential"
       ? await executeSandboxEgressRequest({
           request,
           egressId: route.egressId,

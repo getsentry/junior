@@ -138,6 +138,23 @@ describe.skipIf(!process.env.JUNIOR_DOCKER_SANDBOX_TEST)(
           expect(traced).toMatchObject(TRACE_HEADERS);
           expect(traced.authorization).toBeUndefined();
 
+          // An absolute request target cannot move a credentialed request
+          // to another host.
+          const retargeted = await session.runCommand({
+            cmd: "curl",
+            args: [
+              "-sS",
+              "-o",
+              "/dev/null",
+              "-w",
+              "%{http_code}",
+              "--request-target",
+              `https://${OTHER_DOMAIN}/`,
+              `https://${CREDENTIAL_DOMAIN}/anything`,
+            ],
+          });
+          expect(retargeted.stdout).toBe("400");
+
           // Other domains keep their real certificate and reach the network.
           const other = await session.runCommand({
             cmd: "curl",
