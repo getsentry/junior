@@ -55,29 +55,6 @@ export function MemoryDetails(props: {
 
   return (
     <DetailsPanel
-      actions={
-        forgetAction ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  aria-label="Forget this memory"
-                  disabled={props.forgetPending}
-                  onClick={() => {
-                    if (forgetAction.confirmation) setConfirmOpen(true);
-                    else props.onForget(forgetAction);
-                  }}
-                  size="icon"
-                  variant="danger"
-                >
-                  <Trash2 aria-hidden="true" size={15} />
-                </Button>
-              }
-            />
-            <TooltipContent size="compact">Forget this memory</TooltipContent>
-          </Tooltip>
-        ) : undefined
-      }
       label="Memory details"
       onClose={props.onClose}
       sheetTitle={heading}
@@ -94,26 +71,61 @@ export function MemoryDetails(props: {
         </h2>
       }
     >
-      <div className="grid min-w-0 gap-4 p-4 [overflow-wrap:anywhere]">
-        {record ? (
-          <>
-            <div className="grid gap-3 text-sm leading-relaxed">
-              <TranscriptText
-                mentions={NO_MEMORY_MENTIONS}
-                text={record.title}
-              />
-              {record.description ? (
+      <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+        <div
+          aria-label="Memory content"
+          role="region"
+          tabIndex={0}
+          className="grid min-h-0 min-w-0 content-start gap-4 overflow-y-auto overscroll-contain p-4 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus [overflow-wrap:anywhere]"
+        >
+          {record ? (
+            <>
+              <div className="grid gap-3 text-sm leading-relaxed">
                 <TranscriptText
                   mentions={NO_MEMORY_MENTIONS}
-                  text={record.description}
+                  text={record.title}
                 />
-              ) : null}
-            </div>
-            <MemoryFacts record={record} />
-          </>
-        ) : (
-          <PageContentSkeleton label="Loading memory" variant="panel" />
-        )}
+                {record.description ? (
+                  <TranscriptText
+                    mentions={NO_MEMORY_MENTIONS}
+                    text={record.description}
+                  />
+                ) : null}
+              </div>
+              <MemoryFacts record={record} />
+            </>
+          ) : (
+            <PageContentSkeleton label="Loading memory" variant="panel" />
+          )}
+        </div>
+        {record && forgetAction ? (
+          // Keep the destructive action away from the title and close control.
+          <footer
+            aria-label="Memory actions"
+            className="flex items-center gap-2 border-t border-dashboard-border bg-dashboard-bg-elevated p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label="Forget this memory"
+                    className="min-h-11 min-w-11"
+                    disabled={props.forgetPending}
+                    onClick={() => {
+                      if (forgetAction.confirmation) setConfirmOpen(true);
+                      else props.onForget(forgetAction);
+                    }}
+                    size="icon"
+                    variant="danger"
+                  >
+                    <Trash2 aria-hidden="true" size={16} />
+                  </Button>
+                }
+              />
+              <TooltipContent size="compact">Forget this memory</TooltipContent>
+            </Tooltip>
+          </footer>
+        ) : null}
       </div>
       {forgetAction?.confirmation && record ? (
         <AlertDialog onOpenChange={setConfirmOpen} open={confirmOpen}>
