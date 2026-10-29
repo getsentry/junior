@@ -6,9 +6,6 @@ import {
 } from "@/chat/tools/search-tools";
 import { tool } from "@/chat/tools/definition";
 
-const customerLookupDescription =
-  "Lookup customer health for account review.\n\nRead the customer's current plan before recommending changes. Account health includes renewal dates, support history, and current usage. Do not treat missing usage data as evidence that the account is inactive.";
-
 function catalog() {
   return {
     bash: tool({
@@ -24,7 +21,8 @@ function catalog() {
       ),
     }),
     agentDemo_lookupCustomer: tool({
-      description: customerLookupDescription,
+      description:
+        "Lookup customer health for account review.\n\nSecond paragraph with extra implementation detail.",
       promptSnippet:
         "Use for renewal risk triage before drafting an account plan.",
       promptGuidelines: [
@@ -262,7 +260,7 @@ describe("searchTools", () => {
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
-          description: customerLookupDescription,
+          description: "Lookup customer health for account review.",
           exposure: "deferred",
           source: "agent-demo",
           input_schema: {
@@ -287,7 +285,7 @@ describe("searchTools", () => {
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
-          description: customerLookupDescription,
+          description: "Lookup customer health for account review.",
           input_schema: result.tools[0]?.input_schema,
         },
       ],
