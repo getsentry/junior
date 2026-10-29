@@ -40,6 +40,8 @@ for every confirmation. Do not use `window.confirm`. Keep the confirmed item
 in state after close, so the closing dialog keeps its text. `ui/tabs.tsx`
 switches panels with Base UI Tabs. `ui/toggle-group.tsx` holds the pressed
 items of a row with arrow-key focus. Its items use a `ui/toggle` look.
+`ui/table.tsx` renders data tables. Its container scrolls sideways when the
+table is wider than its box. Callers set column widths and cell padding.
 `ui/toast.tsx` owns short success notifications in a mounted `Toaster`
 provider. Features call `useToastManager` inside that provider. It has no
 global notification manager.
