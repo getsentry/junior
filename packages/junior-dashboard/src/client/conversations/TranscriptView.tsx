@@ -22,6 +22,10 @@ import {
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TurnContextPanelProvider,
+  type TurnContextPanel,
+} from "./TranscriptTurnContextView";
 
 /** Render one conversation transcript as ordered message and tool events. */
 export function Transcript(props: {
@@ -42,6 +46,8 @@ export function Transcript(props: {
     conversation: ConversationTranscript;
   }) => void;
   transcript?: ConversationTranscript;
+  /** Show turn context in the owner's panel. Without it, a drawer opens. */
+  turnContextPanel?: TurnContextPanel;
   view?: TranscriptViewMode;
 }) {
   const view = props.view ?? "rich";
@@ -129,11 +135,13 @@ export function Transcript(props: {
             selectedSeq={props.selectedEventSeq}
           />
         ) : (
-          <ConversationTranscriptView
-            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-            conversation={props.transcript}
-            responding={props.responding ?? props.live ?? false}
-          />
+          <TurnContextPanelProvider panel={props.turnContextPanel}>
+            <ConversationTranscriptView
+              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+              conversation={props.transcript}
+              responding={props.responding ?? props.live ?? false}
+            />
+          </TurnContextPanelProvider>
         )}
         <div
           aria-hidden="true"

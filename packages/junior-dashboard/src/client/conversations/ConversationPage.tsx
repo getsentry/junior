@@ -36,6 +36,18 @@ import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationEventDetails } from "./ConversationEventDetails";
+import { ConversationEventLogLoading } from "./ConversationEventLog";
+import {
+  adjacentEventLogSeqs,
+  eventLogRows,
+  filterEventLogRows,
+} from "./eventLog";
+import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TurnContextDetails,
+  type TurnContextPanel,
+  type TurnContextSelection,
+} from "./TranscriptTurnContextView";
 import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
@@ -103,8 +115,6 @@ export function ConversationPage(props: {
     () => window.matchMedia(detailsDefaultOpenQuery).matches,
     () => false,
   );
-  const [detailsChoice, setDetailsChoice] = useState<boolean>();
-  const detailsOpen = detailsChoice ?? detailsDefaultOpen;
   const pageRef = useRef<HTMLDivElement>(null);
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
@@ -113,7 +123,16 @@ export function ConversationPage(props: {
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
   );
-  const showDetails = detailsOpen && selectedEventSeq === undefined;
+  // Event details and turn context show over Conversation details. Closing
+  // them shows details again when details are open. A linked event starts
+  // with details closed, so closing it does not open a panel nobody chose.
+  const [detailsChoice, setDetailsChoice] = useState<boolean | undefined>(() =>
+    selectedEventSeq === undefined ? undefined : false,
+  );
+  const detailsOpen = detailsChoice ?? detailsDefaultOpen;
+  const [turnContext, setTurnContext] = useState<TurnContextSelection>();
+  const eventOpen = selectedEventSeq !== undefined;
+  const showDetails = detailsOpen && !eventOpen && !turnContext;
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     selectedEventSeq === undefined ? "rich" : "raw",
   );
@@ -172,7 +191,6 @@ export function ConversationPage(props: {
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
       setView("raw");
-      setDetailsChoice(false);
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -190,6 +208,8 @@ export function ConversationPage(props: {
       if (value !== "raw" && selectedEventSeq !== undefined) {
         setSelectedEventSeq(undefined);
       }
+      // Turn context belongs to a message in the Conversation view.
+      setTurnContext(undefined);
       setView(value);
     },
     [selectedEventSeq, setSelectedEventSeq],
@@ -211,6 +231,35 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (loadLinkedEvent) loadPreviousPageRef.current();
   }, [loadLinkedEvent, oldestLoadedSeq]);
+  // Keep the panel while the transcript or a linked event loads.
+  const eventLoading =
+    eventOpen &&
+    !selectedEvent &&
+    (detail.isPending ||
+      (linkedEventMissing &&
+        (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
+        !detail.historyError));
+  const showEvent = Boolean(selectedEvent) || eventLoading;
+  // Step through the same filtered rows that the event log shows.
+  const events = transcript?.events;
+  const normalizedSearch = search.trim().toLowerCase();
+  const eventRows = useMemo(
+    () =>
+      eventOpen && events
+        ? filterEventLogRows(eventLogRows(events), normalizedSearch)
+        : [],
+    [eventOpen, events, normalizedSearch],
+  );
+  const turnContextPanel = useMemo<TurnContextPanel>(
+    () => ({
+      openId: turnContext?.id,
+      onToggle: (selection) =>
+        setTurnContext((current) =>
+          current?.id === selection.id ? undefined : selection,
+        ),
+    }),
+    [turnContext?.id],
+  );
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -238,13 +287,24 @@ export function ConversationPage(props: {
     setSelectedEventSeq(undefined);
     trigger?.focus({ preventScroll: true });
   };
+  const closeTurnContext = () => {
+    // A message can have one context control per layout. Focus the visible one.
+    const trigger = [
+      ...(pageRef.current?.querySelectorAll<HTMLButtonElement>(
+        `[data-turn-context-id="${CSS.escape(turnContext?.id ?? "")}"]`,
+      ) ?? []),
+    ].find((button) => button.getClientRects().length > 0);
+    setTurnContext(undefined);
+    trigger?.focus({ preventScroll: true });
+  };
 
   return (
     <div
       ref={pageRef}
       className={cn(
         "grid h-full min-h-0 min-w-0",
-        (showDetails || selectedEvent) && "xl:grid-cols-[minmax(0,1fr)_25rem]",
+        (showDetails || showEvent || turnContext) &&
+          "xl:grid-cols-[minmax(0,1fr)_25rem]",
       )}
     >
       <ChatLayout
@@ -256,8 +316,8 @@ export function ConversationPage(props: {
             conversationId={conversationId}
             detailsOpen={showDetails}
             onDetailsClick={() => {
-              if (selectedEventSeq !== undefined)
-                setSelectedEventSeq(undefined);
+              if (eventOpen) setSelectedEventSeq(undefined);
+              setTurnContext(undefined);
               setDetailsChoice(!showDetails);
             }}
             forks={
@@ -348,7 +408,11 @@ export function ConversationPage(props: {
               }
             >
               {detail.isPending ? (
-                <TranscriptLoading />
+                view === "raw" ? (
+                  <ConversationEventLogLoading />
+                ) : (
+                  <TranscriptLoading />
+                )
               ) : detail.error && !detail.data ? (
                 <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
                   {detail.error.message}
@@ -378,6 +442,7 @@ export function ConversationPage(props: {
                     onSearchChange={setSearch}
                     selectedEventSeq={selectedEventSeq}
                     transcript={transcript}
+                    turnContextPanel={turnContextPanel}
                     view={view}
                   />
                 </>
@@ -446,12 +511,23 @@ export function ConversationPage(props: {
           }
         />
       ) : null}
-      {selectedEvent && transcript ? (
+      {showEvent ? (
         <ConversationEventDetails
           conversation={transcript}
           event={selectedEvent}
           onClose={closeEventDetails}
+          onSelect={setSelectedEventSeq}
+          {...adjacentEventLogSeqs(eventRows, selectedEventSeq)}
         />
+      ) : null}
+      {turnContext ? (
+        <TranscriptSearchProvider query={search}>
+          <TurnContextDetails
+            contexts={turnContext.contexts}
+            key={turnContext.id}
+            onClose={closeTurnContext}
+          />
+        </TranscriptSearchProvider>
       ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
