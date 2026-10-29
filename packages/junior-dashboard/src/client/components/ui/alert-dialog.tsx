@@ -1,4 +1,3 @@
-// Adapted from shadcn/ui Base UI Alert Dialog. See shadcn.LICENSE.
 import type { ComponentProps } from "react";
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { cn } from "@dashboard/lib/utils";
