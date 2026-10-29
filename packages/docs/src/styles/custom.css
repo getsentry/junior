@@ -709,6 +709,7 @@ body:has(.jr-home) .sl-container {
 .jr-card {
   border: 5px solid var(--jr-black);
   box-shadow: 10px 10px 0 var(--jr-black);
+  container-type: inline-size;
   min-height: 18rem;
   min-width: 0;
   overflow: hidden;
@@ -754,7 +755,8 @@ body:has(.jr-home) .sl-container {
 
 .jr-card h2 {
   color: var(--jr-black);
-  font-size: clamp(2.2rem, 4vw, 3.7rem);
+  /* Size from the card, not the viewport: the page column caps card width. */
+  font-size: clamp(2rem, 30cqi, 3.7rem);
   hyphens: none;
   overflow-wrap: normal;
   word-break: normal;
