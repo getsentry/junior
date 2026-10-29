@@ -20,10 +20,13 @@ rule:
         has:
           field: key
           regex: "^(description|instructions)$"
-      - kind: call_expression
-        has:
-          field: function
-          kind: member_expression
+      # Only the arguments of `.describe()`, not strings in its receiver.
+      - kind: arguments
+        inside:
+          kind: call_expression
           has:
-            field: property
-            regex: "^describe$"
+            field: function
+            kind: member_expression
+            has:
+              field: property
+              regex: "^describe$"

@@ -4,6 +4,7 @@ valid:
   - 'const input = z.string().describe("A channel name you already know.");'
   - 'throw new Error("Junior plugin manifest.name is required.");'
   - 'const fields = { description: "Login of the junior-event bot." };'
+  - 'const input = z.object({ kind: z.literal("Junior") }).describe("The kind.");'
 invalid:
   - 'const tool = { description: "Read events that Junior''s account can see." };'
   - "const tool = { description: `Find slots on Junior calendar ${zone}.` };"
