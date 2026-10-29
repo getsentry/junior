@@ -40,10 +40,17 @@ file when every caller needs the same style or variant. App components compose
 | `TranscriptViewToggle`         | `ui/toggle-group` |
 | `FilterTabList`                | `ui/tabs`         |
 | `charts/ActivityChartTooltip`  | `ui/tooltip`      |
+| `conversations/ToolFrame`      | `ui/trace`        |
+| `TranscriptReasoningView`      | `ui/trace`        |
 | Recharts activity charts       | `ui/chart`        |
 
 Rules for adopted components:
 
+- Use `ui/trace` for transcript activity rows. It composes `ui/collapsible`.
+  A closed tool row unmounts its panel, so it does not run Shiki. Reasoning
+  sets `hiddenUntilFound`, so browser find reaches closed text. Transcript
+  search holds rows open and turns off the row button. Put only inline
+  elements, such as `span`, inside the row button.
 - Use `ui/alert-dialog` for every confirmation. Do not use `window.confirm`.
   Keep the confirmed item in state after close, so the closing dialog keeps its
   text.

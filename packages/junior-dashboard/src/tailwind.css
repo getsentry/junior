@@ -338,16 +338,6 @@
   }
 }
 
-@keyframes junior-text-shimmer {
-  0% {
-    background-position: 200% 50%;
-  }
-
-  100% {
-    background-position: -200% 50%;
-  }
-}
-
 @keyframes junior-active-indicator {
   0%,
   100% {

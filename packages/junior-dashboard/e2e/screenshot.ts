@@ -72,24 +72,18 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
       height: view.height,
       width: view.width,
     });
-    await page.waitForLoadState("networkidle");
-    await page.evaluate(async () => {
-      // fonts.ready only waits for faces the page has already requested. A
-      // late web font swap changes text width and layout, so load every face.
-      await Promise.allSettled([...document.fonts].map((font) => font.load()));
-      await document.fonts.ready;
-      // Full-page captures include offscreen images. Start lazy loads before
-      // decoding, and let failed images render their fallback in the capture.
-      await Promise.allSettled(
-        [...document.images].map((image) => {
-          image.loading = "eager";
-          return image.decode();
-        }),
-      );
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      );
-    });
+    await settle(page);
+    // For a page taller than the viewport, Chrome resizes the view during the
+    // capture. It paints that size before ResizeObserver callbacks and React
+    // updates run, so charts and sticky bars keep the old size in the image.
+    // Resize first and let the page settle, so the capture fits the viewport.
+    const height = await page.evaluate(
+      () => document.documentElement.scrollHeight,
+    );
+    if (!options.clip && height > view.height) {
+      await page.setViewportSize({ height, width: view.width });
+      await settle(page);
+    }
     // Element shots clip a full-page capture. A plain element shot scrolls
     // the element into view, where sticky page chrome can cover it.
     const clip = options.target
@@ -113,4 +107,26 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
   }
 
   if (previous) await page.setViewportSize(previous);
+}
+
+/** Wait for network, fonts, images, and two frames so the page stops moving. */
+async function settle(page: Page) {
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(async () => {
+    // fonts.ready only waits for faces the page has already requested. A
+    // late web font swap changes text width and layout, so load every face.
+    await Promise.allSettled([...document.fonts].map((font) => font.load()));
+    await document.fonts.ready;
+    // Full-page captures include offscreen images. Start lazy loads before
+    // decoding, and let failed images render their fallback in the capture.
+    await Promise.allSettled(
+      [...document.images].map((image) => {
+        image.loading = "eager";
+        return image.decode();
+      }),
+    );
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+  });
 }
