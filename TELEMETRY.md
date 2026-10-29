@@ -277,8 +277,7 @@ A Slack `chat.turn` span records mailbox timing for its input messages:
   of the `chat.turn` span. It includes queue wait and worker setup.
 
 For the oldest input message, delivery lag, wait, and the `chat.turn` duration
-are contiguous. `app.turn.wait_ms` ends at the same turn start that
-`app.turn.first_feedback_ms` measures from.
+are contiguous.
 
 The timing attributes are absent when the value is negative. A negative value
 is clock skew between Slack and Junior hosts, not latency. Resumed `chat.turn`
@@ -289,6 +288,20 @@ dataset=spans query='span.op:chat.turn has:app.turn.wait_ms'
 fields=timestamp,trace,span.duration,app.turn.input_count,app.turn.delivery_lag_ms,app.turn.wait_ms
 sort=-app.turn.wait_ms
 ```
+
+First feedback is the earliest `http.client` span for
+`POST slack.com/api/reactions.add` or
+`POST slack.com/api/assistant.threads.setStatus` in the turn's trace. For a
+mention, ingress adds the processing reaction before the worker runs. Use the
+ingress `reactions.add` span for a mention. It is in the same trace after
+#2269 PR 5b joins the ingress and turn traces.
+
+A mention turn also calls `reactions.add` again, and Slack returns an
+`already_reacted` error. This is a known double reaction. #2318 tracks it.
+
+Each reply post attempt has an `http.client` span named
+`POST slack.com/api/chat.postMessage` under `chat.turn`. It carries
+`messaging.message.id` when Slack accepts the post.
 
 ### Agent And Model
 
