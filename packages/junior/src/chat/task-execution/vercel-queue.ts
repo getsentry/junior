@@ -1,6 +1,5 @@
-import type { SendOptions, SendResult } from "@vercel/queue";
 import { withSpan } from "@/chat/logging";
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
+import { getQueueProvider, type QueueProvider } from "@/chat/queue/provider";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -15,22 +14,8 @@ import {
 export const DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC = "junior_conversation_work";
 export const CONVERSATION_WORK_QUEUE_RETENTION_SECONDS =
   CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
-/**
- * `messaging.system` value on conversation work queue spans. OpenTelemetry
- * has no well-known value for Vercel Queues.
- */
-export const CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM = "vercel_queue";
-
-interface QueueSender {
-  send<T = unknown>(
-    topicName: string,
-    payload: T,
-    options?: SendOptions,
-  ): Promise<SendResult>;
-}
-
 export interface VercelConversationWorkQueueOptions {
-  client?: QueueSender;
+  client?: Pick<QueueProvider, "send">;
   retentionSeconds?: number;
   topic?: string;
 }
@@ -63,7 +48,7 @@ export function createVercelConversationWorkQueue(
   options: VercelConversationWorkQueueOptions = {},
 ): ConversationWorkQueue {
   const topic = resolveConversationWorkQueueTopic(options);
-  const client = options.client ?? createVercelQueueClient();
+  const client = options.client ?? getQueueProvider();
 
   return {
     async send(
@@ -91,11 +76,11 @@ export function createVercelConversationWorkQueue(
         },
         {
           "messaging.destination.name": topic,
-          // @vercel/queue's default JSON transport sends these UTF-8 bytes.
+          // The queue provider sends the payload as these UTF-8 JSON bytes.
           "messaging.message.body.size": Buffer.byteLength(
             JSON.stringify(payload),
           ),
-          "messaging.system": CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM,
+          "messaging.system": getQueueProvider().messagingSystem,
         },
       );
     },

@@ -1,8 +1,11 @@
-import type { MessageMetadata } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { logWarn, withLogContext, withSpan } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
+import {
+  getQueueProvider,
+  type QueueMessageMetadata,
+} from "@/chat/queue/provider";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   conversationQueueMessageSchema,
@@ -12,7 +15,6 @@ import {
   type ConversationWorkQueue,
 } from "./queue";
 import {
-  CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM,
   getVercelConversationWorkQueue,
   resolveConversationWorkQueueTopic,
 } from "./vercel-queue";
@@ -68,7 +70,7 @@ export function resolveConversationWorkVisibilityTimeoutSeconds(
 }
 
 type QueueTelemetryMetadata = Pick<
-  MessageMetadata,
+  QueueMessageMetadata,
   "createdAt" | "deliveryCount" | "messageId" | "topicName"
 >;
 
@@ -83,7 +85,7 @@ function queueProcessAttributes(
   return {
     "messaging.destination.name":
       metadata?.topicName ?? resolveConversationWorkQueueTopic(),
-    "messaging.system": CONVERSATION_WORK_QUEUE_MESSAGING_SYSTEM,
+    "messaging.system": getQueueProvider().messagingSystem,
     ...(metadata && {
       "messaging.message.id": metadata.messageId,
       "messaging.message.receive.latency": nowMs - metadata.createdAt.getTime(),
@@ -93,7 +95,7 @@ function queueProcessAttributes(
 }
 
 /**
- * Process one Vercel Queue payload with the generic conversation worker.
+ * Process one queue payload with the generic conversation worker.
  * Pass the queue metadata to record time in queue and retries on the span.
  */
 export async function processConversationQueueMessage(
@@ -136,7 +138,7 @@ export async function processConversationQueueMessage(
 }
 
 /**
- * Run one queue message through the worker without a Vercel push callback.
+ * Run one queue message through the worker without a queue push callback.
  * In-process queues use this. The callback's kill switch, request deadline,
  * and permanent rejection rules apply; signature checks do not.
  */
@@ -149,18 +151,14 @@ export async function consumeConversationQueueMessage(
     consumerGroup: "in_process",
     createdAt: new Date(nowMs),
     deliveryCount: 1,
-    expiresAt: new Date(
-      nowMs + CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS * 1000,
-    ),
     messageId: options.messageId,
-    region: "local",
     topicName: resolveConversationWorkQueueTopic(options),
   });
 }
 
 function logConversationQueueMessageRejected(
   reason: ConversationQueueMessageRejectedError["reason"] | string,
-  metadata: MessageMetadata,
+  metadata: QueueMessageMetadata,
   error?: unknown,
 ): void {
   const conversationId = isConversationQueueMessageRejectedError(error)
