@@ -32,6 +32,9 @@ export interface PiConversationEventProjection extends PiConversationProjection 
   seqs: number[];
 }
 
+// A newer request that waits for authorization replaces the older one, and
+// only the newest one resumes. The note says "newest" so that the agent does
+// not take a later message that drops an older request as a drop of this one.
 function authorizationObservationMessage(
   data: AuthorizationCompletedEventData,
   createdAtMs: number,
@@ -42,7 +45,7 @@ function authorizationObservationMessage(
     content: [
       {
         type: "text",
-        text: `${label} completed for provider "${data.provider}". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that ${data.provider} is connected.`,
+        text: `${label} completed for provider "${data.provider}". Continue the newest request that waited for it and retry the provider operation. If the person dropped that request after they sent it, do not continue it; say only that ${data.provider} is connected.`,
       },
     ],
     timestamp: createdAtMs,
