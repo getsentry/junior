@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 import { createVercelDeploymentTool } from "../src/tools/deployment";
 
@@ -19,16 +19,7 @@ function toolFixture(
 }
 
 describe("Vercel deployment", () => {
-  beforeEach(() => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "");
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("resolves a channel project and returns a commit-scoped subscribable resource", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", " webhook-secret ");
     const { fetch, tool } = toolFixture();
 
     await expect(
@@ -90,7 +81,6 @@ describe("Vercel deployment", () => {
   });
 
   it("returns a project-wide subscribable resource when commit and target are omitted", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();
 
     await expect(
@@ -111,7 +101,6 @@ describe("Vercel deployment", () => {
   });
 
   it("returns a target-scoped subscribable resource without a commit", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();
 
     await expect(
@@ -132,7 +121,6 @@ describe("Vercel deployment", () => {
   });
 
   it("defaults a commit-scoped watch to production when target is omitted", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();
 
     await expect(
@@ -172,20 +160,7 @@ describe("Vercel deployment", () => {
     });
   });
 
-  it("omits the subscribable hint when webhook verification is unavailable", async () => {
-    const { tool } = toolFixture();
-
-    const result = await tool.execute?.(
-      { project: "junior", target: "staging" },
-      { toolCallId: "deployment-without-webhooks" },
-    );
-
-    expect(result).not.toHaveProperty("subscribable");
-    expect(result).not.toHaveProperty("data.subscribable");
-  });
-
   it("omits the subscribable hint when the host cannot create subscriptions", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture(undefined, false);
 
     const result = await tool.execute?.(

@@ -1,0 +1,29 @@
+/**
+ * Event key and target helpers shared by the GitHub webhook normalizers.
+ */
+import type { EventInput } from "@sentry/junior-plugin-api";
+import { gitHubRepositoryResource } from "../events/repository.js";
+
+/** Build the event key for one event type from one webhook delivery. */
+export function gitHubEventKey(deliveryId: string, eventType: string): string {
+  return `github:${deliveryId}:${eventType}`;
+}
+
+/**
+ * Address a pull request event through both the pull request and its
+ * repository. Only the pull request copy keeps `terminal`, so a terminal
+ * event never completes a repository Watch.
+ */
+export function pullRequestTargets(
+  event: EventInput,
+  repo: string,
+): EventInput[] {
+  const { terminal: _terminal, ...repositoryEvent } = event;
+  return [
+    event,
+    {
+      ...repositoryEvent,
+      identifier: gitHubRepositoryResource({ repo }).identifier,
+    },
+  ];
+}

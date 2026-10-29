@@ -336,6 +336,11 @@ export const eventInputSchema = z
     eventType: eventTypeSchema,
     identifier: z.string().min(1),
     occurredAtMs: z.number().finite(),
+    /**
+     * The Watch that gets this Event completes after delivery. Set it only on
+     * the Event for the exact resource. Never set it on copies for broader
+     * resources, such as a repository, because those Watches must stay active.
+     */
     terminal: z.boolean().optional(),
     trustedSummary: z
       .string()

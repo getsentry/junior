@@ -148,14 +148,16 @@ export function gitHubPullRequestResource(input: {
   };
 }
 
-/** Describe a pull request as a resource when webhook subscriptions are enabled. */
+/**
+ * Describe a pull request as a resource that a conversation can watch. Call
+ * only when `ctx.events.canSubscribe` is true.
+ */
 export function gitHubPullRequestSubscribable(input: {
   number: number;
   repo: string;
   /** Events already covered by a forced subscription; omit them from suggestions. */
   omitSuggestedEvents?: readonly string[];
-}): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+}): SubscribableResource {
   const omitted = new Set(input.omitSuggestedEvents ?? []);
   const suggestedEvents = GITHUB_PULL_REQUEST_SUGGESTED_EVENTS.filter(
     (eventType) => !omitted.has(eventType),

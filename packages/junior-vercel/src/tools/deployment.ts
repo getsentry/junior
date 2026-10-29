@@ -9,7 +9,6 @@ import {
 import { z } from "zod";
 import { vercelProjectIdSchema } from "../project.js";
 import { vercelDeploymentSubscribable } from "../events/deployment.js";
-import { vercelWebhookSecret } from "../webhooks/secret.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const targetSchema = z.enum(["preview", "production", "staging"]);
@@ -114,7 +113,6 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
             commitSha,
             projectId,
             target: deploymentTarget,
-            webhookSecret: vercelWebhookSecret(),
           })
         : undefined;
       const data: Deployment = {

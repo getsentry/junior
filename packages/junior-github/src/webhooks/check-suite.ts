@@ -10,6 +10,7 @@ import {
 } from "../credential-support.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
+import { gitHubEventKey, pullRequestTargets } from "./event-targets.js";
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -18,21 +19,6 @@ const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
   "openerRole",
   "openerUsername",
 ]);
-
-function gitHubEventKey(deliveryId: string, eventType: string): string {
-  return `github:${deliveryId}:${eventType}`;
-}
-
-function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
-  const { terminal: _terminal, ...repositoryEvent } = event;
-  return [
-    event,
-    {
-      ...repositoryEvent,
-      identifier: gitHubRepositoryResource({ repo }).identifier,
-    },
-  ];
-}
 
 /**
  * Check suite pull_requests use GitHub's CheckRunPullRequest shape:

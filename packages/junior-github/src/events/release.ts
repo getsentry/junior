@@ -26,12 +26,14 @@ export function gitHubReleaseSourceResource(input: {
   };
 }
 
-/** Describe a release source when GitHub webhooks are enabled. */
+/**
+ * Describe a release source that a conversation can watch. Call
+ * only when `ctx.events.canSubscribe` is true.
+ */
 export function gitHubReleaseSourceSubscribable(input: {
   repo: string;
   tag?: string;
-}): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+}): SubscribableResource {
   return {
     ...gitHubReleaseSourceResource(input),
     suggestedEvents: GITHUB_RELEASE_SUGGESTED_EVENTS,

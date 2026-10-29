@@ -42,14 +42,15 @@ export function vercelDeploymentResource(input: {
   };
 }
 
-/** Describe a deployment resource when signed Vercel webhooks are enabled. */
+/**
+ * Describe a deployment resource that a conversation can watch. Call only
+ * when `ctx.events.canSubscribe` is true.
+ */
 export function vercelDeploymentSubscribable(input: {
   commitSha?: string;
   projectId: string;
   target?: VercelDeploymentTarget;
-  webhookSecret?: string;
 }): SubscribableResource | undefined {
-  if (!input.webhookSecret) return undefined;
   // Commit-scoped watches require a target so the identity stays unambiguous.
   if (input.commitSha && !input.target) return undefined;
   return {

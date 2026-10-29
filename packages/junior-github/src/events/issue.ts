@@ -53,12 +53,14 @@ export function gitHubIssueResource(input: {
   };
 }
 
-/** Describe an issue as a resource when webhook subscriptions are enabled. */
+/**
+ * Describe an issue as a resource that a conversation can watch. Call
+ * only when `ctx.events.canSubscribe` is true.
+ */
 export function gitHubIssueSubscribable(input: {
   number: number;
   repo: string;
-}): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+}): SubscribableResource {
   return {
     ...gitHubIssueResource(input),
     suggestedEvents: GITHUB_ISSUE_SUGGESTED_EVENTS,

@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
-const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
 function toolContext(response?: Response) {
   const fetch = vi.fn(
@@ -42,16 +41,7 @@ function toolContext(response?: Response) {
 }
 
 describe("updatePullRequest", () => {
-  afterEach(() => {
-    if (ORIGINAL_WEBHOOK_SECRET === undefined) {
-      delete process.env.GITHUB_WEBHOOK_SECRET;
-    } else {
-      process.env.GITHUB_WEBHOOK_SECRET = ORIGINAL_WEBHOOK_SECRET;
-    }
-  });
-
   it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const { fetch, tool } = toolContext();
 
     await expect(

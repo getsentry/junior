@@ -45,7 +45,11 @@ import {
   GITHUB_RELEASE_SOURCE_IDENTIFIER,
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./events/release.js";
-import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
+import {
+  GITHUB_REPOSITORY_EVENTS,
+  GITHUB_REPOSITORY_IDENTIFIER,
+  GITHUB_REPOSITORY_SUGGESTED_EVENTS,
+} from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
@@ -184,17 +188,8 @@ export function githubPlugin(
         {
           type: "repository",
           identifier: GITHUB_REPOSITORY_IDENTIFIER,
-          supportedEvents: [
-            ...GITHUB_DEPLOYMENT_EVENTS,
-            ...GITHUB_ISSUE_EVENTS,
-            ...GITHUB_PULL_REQUEST_EVENTS,
-          ],
-          suggestedEvents: [
-            "issue.opened",
-            "pull_request.opened",
-            ...GITHUB_ISSUE_SUGGESTED_EVENTS,
-            ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-          ],
+          supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+          suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
           matchFields: {
             ...GITHUB_DEPLOYMENT_MATCH_FIELDS,
             ...GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
