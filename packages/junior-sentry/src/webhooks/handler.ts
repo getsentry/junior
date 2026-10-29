@@ -26,7 +26,6 @@ function parseJson(body: string): unknown {
 /** Create the public, signed Sentry event webhook route. */
 export function createSentryWebhookRoute(args: {
   events: EventPublisher;
-  webhookOrg(): string | undefined;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -49,18 +48,11 @@ export function createSentryWebhookRoute(args: {
           status: 400,
         });
       }
-      const webhookOrg = args.webhookOrg();
-      if (!webhookOrg) {
-        return new Response("Sentry webhook organization is not configured", {
-          status: 503,
-        });
-      }
       const events = normalizeSentryEvents({
         body,
         hookResource,
         hookTimestamp:
           request.headers.get("sentry-hook-timestamp")?.trim() || undefined,
-        webhookOrg,
       });
       for (const event of events) {
         await args.events.publish(event);
