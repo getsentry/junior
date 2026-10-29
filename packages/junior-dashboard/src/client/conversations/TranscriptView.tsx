@@ -62,7 +62,6 @@ export function Transcript(props: {
     bottomPinning.preserveViewportForPrepend();
     props.onLoadPreviousPage?.();
   };
-  // A failed page keeps the button for a manual retry instead of looping.
   const previousPageRef = useAutoLoadPreviousPage({
     enabled: Boolean(
       props.onLoadPreviousPage &&

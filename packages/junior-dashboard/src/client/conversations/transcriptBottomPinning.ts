@@ -15,8 +15,6 @@ import type { ConversationTranscript } from "../types";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 const BOTTOM_PROXIMITY_PX = 96;
-// Start loading history before the reader reaches the top, so the prepend
-// usually lands while they still scroll through loaded messages.
 const PREVIOUS_PAGE_PROXIMITY_PX = 600;
 const USER_SCROLL_DELTA_PX = 2;
 
@@ -653,13 +651,7 @@ export function usePinnedTranscriptBottom(input: {
   );
 }
 
-/**
- * Load the previous history page when the reader scrolls near the top.
- *
- * Attach the returned ref to the element above the oldest loaded event. Each
- * new observer reports its first state, so a short page keeps loading until it
- * fills the viewport or history ends.
- */
+/** Load the previous history page when the reader scrolls near the top. */
 export function useAutoLoadPreviousPage(input: {
   enabled: boolean;
   historyVersion: string;
@@ -677,8 +669,6 @@ export function useAutoLoadPreviousPage(input: {
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
-        // One request per observer. The next observer starts after the page
-        // loads and history changes.
         observer.disconnect();
         onLoadRef.current();
       },
