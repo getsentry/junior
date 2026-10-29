@@ -100,7 +100,9 @@ token so each theme can redefine it.
 - **Actions.** `Button` (`default`, `primary`, `danger`, and `size="icon"`) and
   `ButtonLink`. Form pages use `Button tone="primary"` for their one main save
   action. Use `ToggleButton` variants (`pill`, `segment`, `text`) for pressed
-  states, not one-off styles.
+  states, not one-off styles. `CopyButton` copies plain text or an async text
+  export. It shares clipboard success, pending, and failure feedback across
+  Markdown exports and event JSON. A failed write allows another attempt.
 - **Forms.** `Field` (`default`, `compact`), `TextInput`, `TextArea`, `Select`,
   and `SearchInput`. Use `TextInput size="comfortable"` for larger mobile
   controls. Use `TextArea prose` for instructions, not code. `Field error`

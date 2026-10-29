@@ -14,7 +14,7 @@ import { Drawer } from "../components/Drawer";
 import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { subagentStatusTone } from "./ConversationChildAgents";
-import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import { CopyButton } from "../components/CopyButton";
 import {
   TranscriptSearchToggle,
   TranscriptViewToggle,
@@ -89,9 +89,11 @@ function SubagentTranscriptDrawerContent(props: {
             open={searchOpenVisible}
           />
           <TranscriptViewToggle onChange={setView} value={view} />
-          <CopyMarkdownButton
+          <CopyButton
+            label="Copy as Markdown"
+            copyingLabel="Preparing Markdown"
             key={props.target.conversationId}
-            getMarkdown={
+            getText={
               detail
                 ? async () =>
                     buildConversationMarkdown(

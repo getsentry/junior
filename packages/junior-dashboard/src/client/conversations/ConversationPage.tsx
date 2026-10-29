@@ -18,7 +18,7 @@ import {
 import { conversationIsResponding } from "./transcript";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
-import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import { CopyButton } from "../components/CopyButton";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   CONVERSATION_EVENT_PARAM,
@@ -252,9 +252,11 @@ export function ConversationPage(props: {
                 ) : null
               }
               copyAction={
-                <CopyMarkdownButton
+                <CopyButton
+                  label="Copy as Markdown"
+                  copyingLabel="Preparing Markdown"
                   key={conversationDetail?.conversationId ?? "loading"}
-                  getMarkdown={
+                  getText={
                     conversationDetail
                       ? async () =>
                           buildConversationMarkdown(

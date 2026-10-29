@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
-import { Button } from "../components/Button";
-import { IconButtonTooltip } from "../components/Tooltip";
+import { Button } from "./Button";
+import { IconButtonTooltip } from "./Tooltip";
 
-/** Copy an available Markdown document while exposing clipboard result state. */
-export function CopyMarkdownButton(props: {
-  getMarkdown?: () => Promise<string> | string;
+/** Copy available text and show whether the clipboard write succeeded. */
+export function CopyButton(props: {
+  getText?: () => Promise<string> | string;
+  label: string;
+  copyingLabel?: string;
   /** `menu` shows icon + label for mobile overflow lists. */
-  layout?: "icon" | "menu";
+  layout?: "icon" | "menu" | "text";
 }) {
   const [status, setStatus] = useState<
     "copied" | "copying" | "failed" | "idle"
@@ -17,18 +19,18 @@ export function CopyMarkdownButton(props: {
     status === "copied"
       ? "Copied"
       : status === "copying"
-        ? "Preparing Markdown"
+        ? (props.copyingLabel ?? "Copying")
         : status === "failed"
           ? "Copy failed"
-          : "Copy as Markdown";
+          : props.label;
   const Icon = status === "copied" ? Check : Copy;
 
-  async function copyMarkdown() {
-    if (!props.getMarkdown) return;
+  async function copyText() {
+    if (!props.getText) return;
 
     try {
       setStatus("copying");
-      await navigator.clipboard.writeText(await props.getMarkdown());
+      await navigator.clipboard.writeText(await props.getText());
       setStatus("copied");
     } catch {
       setStatus("failed");
@@ -40,8 +42,8 @@ export function CopyMarkdownButton(props: {
       <button
         aria-label={label}
         className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={!props.getMarkdown || status === "copying"}
-        onClick={() => void copyMarkdown()}
+        disabled={!props.getText || status === "copying"}
+        onClick={() => void copyText()}
         type="button"
       >
         <Icon aria-hidden="true" size={16} strokeWidth={2} />
@@ -50,16 +52,20 @@ export function CopyMarkdownButton(props: {
     );
   }
 
-  return (
-    <IconButtonTooltip label={label}>
-      <Button
-        aria-label={label}
-        disabled={!props.getMarkdown || status === "copying"}
-        onClick={() => void copyMarkdown()}
-        size="icon"
-      >
-        <Icon aria-hidden="true" size={15} strokeWidth={2} />
-      </Button>
-    </IconButtonTooltip>
+  const button = (
+    <Button
+      aria-label={label}
+      disabled={!props.getText || status === "copying"}
+      onClick={() => void copyText()}
+      size={props.layout === "text" ? undefined : "icon"}
+    >
+      <Icon aria-hidden="true" size={15} strokeWidth={2} />
+      {props.layout === "text" ? <span>{label}</span> : null}
+    </Button>
+  );
+  return props.layout === "text" ? (
+    button
+  ) : (
+    <IconButtonTooltip label={label}>{button}</IconButtonTooltip>
   );
 }

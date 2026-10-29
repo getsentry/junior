@@ -2,6 +2,7 @@ import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
 test("inspects all reporting events and searches full event data", async ({
+  context,
   page,
   dashboard,
 }) => {
@@ -105,12 +106,42 @@ test("inspects all reporting events and searches full event data", async ({
   ).toBeVisible();
   await screenshot(page, "conversation-event-details");
   await panel.getByText("Raw JSON", { exact: true }).click();
-  await expect(panel.locator("pre")).toHaveText(
-    JSON.stringify(
-      report.events.find((event: { seq: number }) => event.seq === 3),
-      null,
-      2,
-    ),
+  const rawJson = JSON.stringify(
+    report.events.find((event: { seq: number }) => event.seq === 3),
+    null,
+    2,
+  );
+  await expect(panel.locator("pre")).toHaveText(rawJson);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: dashboard.baseURL,
+  });
+  await panel.getByRole("button", { name: "Copy JSON", exact: true }).click();
+  const copied = panel.getByRole("button", { name: "Copied", exact: true });
+  await expect(copied).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    rawJson,
+  );
+  // A denied write must not keep the previous success state or block retry.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: () =>
+        Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
+    });
+  });
+  await copied.click();
+  const failedCopy = panel.getByRole("button", {
+    name: "Copy failed",
+    exact: true,
+  });
+  await expect(failedCopy).toBeVisible();
+  await page.evaluate(() =>
+    Reflect.deleteProperty(navigator.clipboard, "writeText"),
+  );
+  await failedCopy.click();
+  await expect(copied).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    rawJson,
   );
   await otherEntry.click();
   await entry.click();

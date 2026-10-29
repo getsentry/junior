@@ -37,6 +37,7 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Drawer } from "../../components/Drawer";
+import { CopyButton } from "../../components/CopyButton";
 import { DetailsPanel } from "../../components/DetailsPanel";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Field } from "../../components/Field";
@@ -233,6 +234,13 @@ function FoundationsGalleryPage() {
         <FormNotice title="This automation changed while you were editing.">
           Your edits are still here. Review the latest version before saving.
         </FormNotice>
+      </Fixture>
+      <Fixture title="Copy text">
+        <CopyButton
+          getText={() => JSON.stringify({ status: "ready" }, null, 2)}
+          label="Copy JSON"
+          layout="text"
+        />
       </Fixture>
       <Fixture title="Select controls">
         <SelectFixtures />
