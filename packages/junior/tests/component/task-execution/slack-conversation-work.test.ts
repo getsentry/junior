@@ -447,7 +447,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      inputTelemetry?: SlackTurnInputTelemetry;
+      telemetry?: SlackTurnInputTelemetry;
     }> = [];
 
     await handleSlackWebhookAndFlush({
@@ -488,7 +488,7 @@ describe("Slack conversation work execution", () => {
           thread,
           message,
           skipped: hooks.messageContext?.skipped ?? [],
-          inputTelemetry: hooks.inputTelemetry,
+          telemetry: hooks.telemetry,
         });
       },
       handleSubscribedMessage: async () => {
@@ -512,7 +512,7 @@ describe("Slack conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.inputTelemetry).toEqual({
+    expect(calls[0]?.telemetry).toEqual({
       count: 2,
       oldestCreatedAtMs: oldestInput?.createdAtMs,
       oldestReceivedAtMs: oldestInput?.receivedAtMs,
