@@ -30,14 +30,22 @@ export function automationEventConditions(automation: EventAutomation): string {
     .join(" · ");
 }
 
-/** Format a run time with date, time, and zone for details and tooltips. */
-export function formatAutomationRunTime(value: string): string {
-  return formatTime(value, {
+/** Format a run in an explicit timezone, or the dashboard timezone by default. */
+export function formatAutomationRunTime(
+  value: string,
+  timeZone?: string,
+): string {
+  const options: Intl.DateTimeFormatOptions = {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
     month: "short",
     timeZoneName: "short",
     year: "numeric",
-  });
+  };
+  return timeZone
+    ? new Intl.DateTimeFormat(undefined, { ...options, timeZone }).format(
+        new Date(value),
+      )
+    : formatTime(value, options);
 }

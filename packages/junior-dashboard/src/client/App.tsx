@@ -56,6 +56,7 @@ import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPa
 import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
+  isAutomationListPath,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
 import {
@@ -142,7 +143,10 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <VisualViewportShell className="bg-dashboard-bg" enabled={workspace}>
+      <VisualViewportShell
+        className="bg-dashboard-bg"
+        enabled={workspace || isAutomationListPath(location.pathname)}
+      >
         <DashboardChrome
           banner={
             <>

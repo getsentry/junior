@@ -33,6 +33,7 @@ export function DetailsPanel(props: {
   onClose(): void;
   label: string;
   title: ReactNode;
+  sheetTitle?: string;
   /** Nested details stay modal inside an existing drawer. */
   overlay?: boolean;
 }) {
@@ -68,7 +69,11 @@ export function DetailsPanel(props: {
   }, [panel, overlay, onClose]);
   if (!panel) {
     return (
-      <BottomSheet label={props.label} onClose={onClose}>
+      <BottomSheet
+        label={props.label}
+        title={props.sheetTitle}
+        onClose={onClose}
+      >
         {props.actions ? (
           <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
             <div className="min-h-0">{props.children}</div>
