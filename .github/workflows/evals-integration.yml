@@ -44,6 +44,7 @@ jobs:
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.integration.config.ts'
               - 'packages/junior/src/chat/prompt.ts'
+              - 'packages/junior/src/chat/system-prompt-rules.ts'
               - 'packages/junior/src/chat/discovery.ts'
       - id: decision
         env:

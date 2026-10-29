@@ -509,7 +509,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Adding a trigger label fires immediately; unrelated labels do not.
 - Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,memory,scheduler,sentry,skills}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
-- Behavioral and integration path triggers also cover the system prompt (`packages/junior/src/chat/prompt.ts`) and the file that loads `SOUL.md` and `WORLD.md` (`packages/junior/src/chat/discovery.ts`).
+- Behavioral and integration path triggers also cover the system prompt (`packages/junior/src/chat/prompt.ts` and `packages/junior/src/chat/system-prompt-rules.ts`) and the file that loads `SOUL.md` and `WORLD.md` (`packages/junior/src/chat/discovery.ts`).
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/guardian/**`.
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
