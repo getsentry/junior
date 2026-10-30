@@ -74,6 +74,7 @@ import { linkifyGitHubReferences } from "./reply-markdown.js";
 import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
 import { githubCloneCommandRedirect } from "./clone-command.js";
+import { gitHooksOverrideDenial } from "./git-hooks-guard.js";
 import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
@@ -401,6 +402,15 @@ export function githubPlugin(
         await configureGit(ctx, "http.emptyAuth", "true");
       },
       async beforeToolExecute(ctx) {
+        const hooksDenial = gitHooksOverrideDenial({
+          input: ctx.tool.input,
+          juniorRoot: ctx.juniorRoot,
+          toolName: ctx.tool.name,
+        });
+        if (hooksDenial) {
+          ctx.decision.deny(hooksDenial);
+          return;
+        }
         if (ctx.tool.name !== "bash") {
           return;
         }
