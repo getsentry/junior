@@ -12,9 +12,10 @@ Each step ships on its own. Each step leaves `main` correct.
 - Merge #2181 before step 5. Step 5 moves `agent-invocations/root-conversation.ts`
   and Guardian to Identity ids, and #2181 changes the same code. `onBehalfOf`
   stays provenance. It does not set the Owner.
-- Merge #2260 before step 5. It changes Guardian and event ingress. Its Watch
-  requester is provenance. The Event Turn still runs as the system Actor, so
-  the Owner of an event Conversation stays the system Identity.
+- Merge #2260 (stacked on #2217) before step 3. Step 3 builds event authors on
+  its `doneBy.subjectId`, and #2260 also changes Guardian and event ingress.
+  Its Watch requester is provenance. The Event Turn still runs as the system
+  Actor.
 - #2211 owns the record of which Automation or dispatch did the work. This plan
   reads that record for provenance. It does not add a second system Identity.
 
@@ -53,6 +54,10 @@ Each step ships on its own. Each step leaves `main` correct.
       does the same.
 - [ ] Map a Slack bot author to its own Identity: provider `slack`, subject
       the bot id, no User. Proposal: add a `bot` Identity kind.
+- [ ] Event authors (proposal in Event Authors): add `hasActor` to
+      `pluginEventDeclarationSchema` and `isBot` to `doneBy`. Each plugin sets
+      them. Core upserts the author Identity from `doneBy.subjectId` with no
+      email. Events without an actor use the system Identity.
 - [ ] Stop writing the `scheduler`, `local-cli`, and `event` system rows and the
       synthetic `junior/<email>` web rows.
 - [ ] Migration: move references in `junior_conversations` and

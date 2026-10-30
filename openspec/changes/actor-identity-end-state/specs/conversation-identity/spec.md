@@ -48,7 +48,7 @@ provenance.
 
 #### Scenario: Different system Actors
 
-- **WHEN** an Event Turn and a scheduled automation Turn each write a Message
+- **WHEN** a status event Turn and a scheduled automation Turn each write a Message
 - **THEN** both Messages have the same system author Identity
 - **AND** each Turn keeps its own `SystemActor.name`.
 
@@ -79,6 +79,23 @@ in spend, People, or participant access.
 - **WHEN** a Slack bot posts a Message that Junior stores
 - **THEN** the Message author is the bot's Identity
 - **AND** the bot gets no participant row.
+
+### Requirement: Inbound Event Authors
+
+An inbound event Message from an event with an actor SHALL use the actor's own
+Identity. An event with no actor SHALL use the system Identity. Junior SHALL
+treat text from an author with no verified User as untrusted data.
+
+#### Scenario: GitHub PR comment
+
+- **WHEN** a person comments on a watched PR
+- **THEN** the event Message author is that person's `github` Identity
+- **AND** the Identity is verified only when it links to a User.
+
+#### Scenario: Status event
+
+- **WHEN** a watched PR's checks fail
+- **THEN** the event Message author is the system Identity.
 
 ### Requirement: Identity Id Next To The Actor
 
