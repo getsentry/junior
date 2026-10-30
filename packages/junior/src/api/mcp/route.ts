@@ -7,6 +7,7 @@
  */
 import { Hono } from "hono";
 import { handleMcpAuthorize } from "./authorization";
+import { authenticateMcpAccessToken } from "./grants";
 import {
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
@@ -18,6 +19,7 @@ import {
   resolveMcpUrls,
   type McpUrls,
 } from "./metadata";
+import { handleMcpServerRequest } from "./server";
 import type { McpState } from "./state";
 import { handleMcpToken } from "./token";
 
@@ -37,18 +39,26 @@ type McpHttpHandlerOptions = {
   state: McpState;
 };
 
-/** Return the RFC 6750 challenge that points clients to resource metadata. */
-function unauthorized(urls: McpUrls): Response {
-  return Response.json(
-    { error: "invalid_token" },
-    {
-      status: 401,
-      headers: {
-        "cache-control": "no-store",
-        "www-authenticate": `Bearer resource_metadata="${urls.resourceMetadata}"`,
-      },
+/**
+ * Return the RFC 6750 challenge that points clients to resource metadata.
+ * A request that sent a token also gets `invalid_token`.
+ */
+function unauthorized(urls: McpUrls, sentToken: boolean): Response {
+  const error = sentToken ? 'error="invalid_token", ' : "";
+  return new Response(null, {
+    status: 401,
+    headers: {
+      "cache-control": "no-store",
+      "www-authenticate": `Bearer ${error}resource_metadata="${urls.resourceMetadata}"`,
     },
-  );
+  });
+}
+
+function bearerToken(request: Request): string | undefined {
+  const match = request.headers
+    .get("authorization")
+    ?.match(/^Bearer\s+(\S+)$/i);
+  return match?.[1];
 }
 
 /** Create the fetch handler for every path in `MCP_ROUTE_PATHS`. */
@@ -74,9 +84,25 @@ export function createMcpHttpHandler(
   app.post(MCP_TOKEN_PATH, (c) =>
     handleMcpToken({ request: c.req.raw, state: options.state }),
   );
-  app.on(["GET", "POST", "DELETE"], MCP_PATH, (c) =>
-    unauthorized(urls(c.req.raw)),
-  );
+  // Only MCP access tokens for this exact resource pass. Personal tokens and
+  // dashboard sessions do not, because MCP grants are a separate consent.
+  app.on(["GET", "POST", "DELETE"], MCP_PATH, async (c) => {
+    const requestUrls = urls(c.req.raw);
+    const token = bearerToken(c.req.raw);
+    const user = token
+      ? await authenticateMcpAccessToken({
+          resource: requestUrls.resource,
+          state: options.state,
+          token,
+        })
+      : undefined;
+    if (!user) return unauthorized(requestUrls, token !== undefined);
+    // The stateless transport has no session to stream or delete.
+    if (c.req.method !== "POST") {
+      return new Response(null, { status: 405, headers: { allow: "POST" } });
+    }
+    return await handleMcpServerRequest(c.req.raw, user);
+  });
 
   return async (request) => await app.fetch(request);
 }

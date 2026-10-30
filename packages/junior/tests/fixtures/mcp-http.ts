@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Hono } from "hono";
 import { vi } from "vitest";
 import type { AuthenticatedRoute } from "@/dashboard-routes";
@@ -116,4 +118,23 @@ export async function requestTokens(
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(params),
   });
+}
+
+/** Run one callback with the official MCP SDK client and an access token. */
+export async function withMcpClient<T>(
+  app: Hono,
+  accessToken: string,
+  run: (client: Client) => Promise<T>,
+): Promise<T> {
+  const client = new Client({ name: "junior-mcp-test", version: "1.0.0" });
+  const transport = new StreamableHTTPClientTransport(new URL(MCP_TEST_URL), {
+    fetch: async (input, init) => await app.fetch(new Request(input, init)),
+    requestInit: { headers: { authorization: `Bearer ${accessToken}` } },
+  });
+  await client.connect(transport);
+  try {
+    return await run(client);
+  } finally {
+    await client.close();
+  }
 }
