@@ -796,9 +796,16 @@ export function workspacePath(workspaceId: string): string {
   return `/system/workspaces/${encodeURIComponent(workspaceId)}`;
 }
 
-/** Build the canonical automation detail route for an automation id. */
-export function automationPath(automationId: string): string {
-  return `/automations/${encodeURIComponent(automationId)}`;
+/** Automation page tabs. Overview is the bare Automation path. */
+export type AutomationTab = "overview" | "runs" | "versions" | "edit";
+
+/** Build the route for one Automation page tab, or its edit mode. */
+export function automationPath(
+  automationId: string,
+  tab: AutomationTab = "overview",
+): string {
+  const base = `/automations/${encodeURIComponent(automationId)}`;
+  return tab === "overview" ? base : `${base}/${tab}`;
 }
 
 function normalizeLanguage(language: string | undefined): BundledLanguage {

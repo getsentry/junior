@@ -1,16 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router";
+import { useEffect } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { Globe2, ListChecks, LockKeyhole, UserRound } from "lucide-react";
-import { useAutomationsData, useAutomationData } from "../../api";
+import { useAutomationsData } from "../../api";
 import { Button } from "../../components/ui/button";
 import { AutomationFilters, AutomationSort } from "./AutomationFilters";
 import { InlineError } from "../../components/InlineError";
@@ -31,12 +26,8 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { AutomationDeleteDialog } from "./AutomationDeleteDialog";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
-import { AutomationDetails } from "./AutomationDetails";
-import { PageLayout } from "../../components/layout/PageLayout";
-import { cn } from "../../styles";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
 
 const AUTOMATION_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
@@ -55,12 +46,8 @@ export function AutomationsPage(props: {
   enabled: boolean;
   view: "list" | "overview";
 }) {
-  const [deleteTarget, setDeleteTarget] = useState<AutomationSummary>();
-  const deleteSource = useRef<HTMLButtonElement | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { automationId } = useParams();
   const [rangeParam, setRangeParam] = useSearchParamEnum(
     "range",
     "30",
@@ -95,7 +82,6 @@ export function AutomationsPage(props: {
     props.enabled,
     props.view === "list" ? request.toString() : "",
   );
-  const detail = useAutomationData(props.enabled, automationId);
   const setFilter = (key: string, value: string) => {
     // Consecutive control events can precede the router's next render.
     const next = new URLSearchParams(window.location.search);
@@ -111,10 +97,9 @@ export function AutomationsPage(props: {
       else next.set("page", String(page));
       return next;
     });
-  const listPath = "/automations/list";
-  const tasksPath = (pathname: string) =>
-    pathWithSearch(pathname, location.search);
-  const selectedTaskPath = (id: string) => tasksPath(automationPath(id));
+  // The Automation page keeps the list query, so its back link restores it.
+  const automationPagePath = (id: string) =>
+    pathWithSearch(automationPath(id), location.search);
   const automations = query.data?.automations ?? EMPTY_TASKS;
   const mineCount = query.data?.counts.mine ?? 0;
   const publicCount = query.data?.counts.public ?? 0;
@@ -122,22 +107,8 @@ export function AutomationsPage(props: {
   const visibleTaskCount = query.data?.total ?? 0;
   const totalPages = pageCount(visibleTaskCount, filters.pageSize);
   const page = query.data?.page ?? filters.page;
-  const selectedTask = detail.data;
-  const closeDetails = () => {
-    const trigger = automationId
-      ? listRef.current?.querySelector<HTMLButtonElement>(
-          `[data-automation-id="${CSS.escape(automationId)}"] button`,
-        )
-      : undefined;
-    navigate(tasksPath(listPath));
-    (trigger ?? listRef.current)?.focus();
-  };
   // Overview names the tab through PageHeader; the list has a plain heading.
-  useDocumentTitle(
-    props.view === "list"
-      ? (selectedTask?.title ?? "All automations")
-      : undefined,
-  );
+  useDocumentTitle(props.view === "list" ? "All automations" : undefined);
   // A deletion or a shared URL can leave the requested page past the last page.
   useEffect(() => {
     if (
@@ -182,7 +153,7 @@ export function AutomationsPage(props: {
     : [];
   const showExecutionCharts = executionSeries.length > 0;
 
-  const content = (
+  return (
     <>
       {props.view === "overview" ? (
         <PageHeader
@@ -291,15 +262,9 @@ export function AutomationsPage(props: {
                 return (
                   <AutomationRow
                     key={key}
-                    onSelect={() =>
-                      navigate(
-                        automationId === automation.id
-                          ? tasksPath(listPath)
-                          : selectedTaskPath(automation.id),
-                      )
-                    }
-                    selected={automationId === automation.id}
+                    onSelect={() => navigate(automationPagePath(automation.id))}
                     automation={automation}
+                    to={automationPagePath(automation.id)}
                   />
                 );
               })}
@@ -315,58 +280,5 @@ export function AutomationsPage(props: {
         </>
       ) : null}
     </>
-  );
-  if (props.view === "overview") return content;
-
-  return (
-    <div
-      className={cn(
-        "grid h-full min-h-0 min-w-0",
-        automationId && "xl:grid-cols-[minmax(0,1fr)_25rem]",
-      )}
-    >
-      <div
-        aria-label="Automations list"
-        className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-        ref={listRef}
-        role="region"
-        tabIndex={0}
-      >
-        <PageLayout>{content}</PageLayout>
-      </div>
-      {automationId ? (
-        <AutomationDetails
-          key={automationId}
-          onClose={closeDetails}
-          onDelete={(source) => {
-            if (!selectedTask?.ownedByViewer) return;
-            deleteSource.current = source;
-            setDeleteTarget(selectedTask);
-          }}
-          onRetry={() => void detail.refetch()}
-          error={Boolean(detail.error)}
-          range={range}
-          automation={selectedTask}
-        />
-      ) : null}
-      {deleteTarget ? (
-        <AutomationDeleteDialog
-          automation={deleteTarget}
-          onClose={() => setDeleteTarget(undefined)}
-          onDeleted={() => {
-            if (automationId !== deleteTarget.id) return;
-            // The details unmount after the route change, which can finish
-            // after the dialog closes. Do not return focus to their button.
-            deleteSource.current = null;
-            navigate(tasksPath(listPath));
-          }}
-          returnFocus={() =>
-            deleteSource.current?.isConnected
-              ? deleteSource.current
-              : (listRef.current ?? false)
-          }
-        />
-      ) : null}
-    </div>
   );
 }

@@ -1,13 +1,14 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
-import { ArrowLeft } from "lucide-react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router";
+import { useMemo, type KeyboardEvent, type ReactNode } from "react";
 import type {
   AutomationExecution,
   AutomationExecutionList,
   AutomationRun,
+  AutomationSummary,
 } from "@sentry/junior/api/schema";
 
 import { useAutomationExecutionsData } from "../../api";
+import { Button } from "../../components/ui/button";
+import { FilterTabList } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { SelectableRow } from "../../components/SelectableRow";
@@ -18,19 +19,15 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { PageHeader } from "../../components/layout/PageHeader";
 import {
   formatCompactNumber,
   formatCostSummary,
   formatRuntime,
-  automationPath,
 } from "../../format";
-import { DashboardApiError } from "../../http";
-import { pathWithSearch } from "../../searchParams";
+import { useSearchParamEnum } from "../../searchParams";
 import { cn } from "../../styles";
 import { AutomationExecutionStatusChart } from "./AutomationExecutionStatusChart";
 import {
-  AUTOMATION_RUN_PARAM,
   AutomationRunDetails,
   AutomationRunsFrame,
   RunConversationLink,
@@ -42,139 +39,109 @@ import {
   formatAutomationRunTime,
 } from "./automationFormat";
 
-/** Leading conversation column flexes; metric columns stay equal fixed widths. */
+/** Search param that filters the Runs tab by result. */
+export const AUTOMATION_RESULT_PARAM = "result";
+
+const RESULT_OPTIONS = ["", "completed", "failed", "blocked"] as const;
+
+/** Leading run column flexes; metric columns stay equal fixed widths. */
 const EXECUTION_GRID =
   "grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem_auto_2rem]";
 
-/** Render one automation's terminal executions beside the selected run. */
-export function AutomationExecutionsPage(props: { enabled: boolean }) {
-  const { automationId } = useParams();
-  const [searchParams] = useSearchParams();
-  const query = useAutomationExecutionsData(props.enabled, automationId);
-  const backSearch = new URLSearchParams(searchParams);
-  backSearch.delete(AUTOMATION_RUN_PARAM);
-  const backTo = pathWithSearch(
-    automationId ? automationPath(automationId) : "/automations/list",
-    backSearch,
+/** Render one Automation's terminal runs beside the selected run. */
+export function AutomationRunsTab(props: {
+  automation: AutomationSummary;
+  header: ReactNode;
+  range: TimeRangeDays;
+}) {
+  const { automation } = props;
+  const query = useAutomationExecutionsData(true, automation.id);
+  const [result, setResult] = useSearchParamEnum(
+    AUTOMATION_RESULT_PARAM,
+    "",
+    RESULT_OPTIONS,
   );
+  const executions = useMemo(
+    () =>
+      (query.data?.executions ?? []).filter(
+        (execution) => !result || execution.status === result,
+      ),
+    [query.data, result],
+  );
+  // Details look up every loaded run, so a filter never hides the open run.
   const runs = useMemo(
     () =>
-      query.data
-        ? query.data.executions.map(
-            (execution): AutomationRun => ({
-              ...execution,
-              automationId: query.data.automation.id,
-              automationTitle: query.data.automation.title,
-              kind: query.data.automation.kind,
-            }),
-          )
-        : [],
-    [query.data],
+      (query.data?.executions ?? []).map(
+        (execution): AutomationRun => ({
+          ...execution,
+          automationId: automation.id,
+          automationTitle: automation.title,
+          kind: automation.kind,
+        }),
+      ),
+    [automation, query.data],
   );
   const selection = useAutomationRunSelection(
-    runs.map((run) => run.executionId),
+    executions.map((execution) => execution.executionId),
   );
-
-  if (!automationId) {
-    return <Navigate replace to="/automations" />;
-  }
-  const loading = !query.data && !query.error;
   return (
     <AutomationRunsFrame
       details={
         selection.runId ? (
           <AutomationRunDetails
             key={selection.runId}
-            loading={loading}
+            loading={!query.data && !query.error}
             onClose={selection.close}
             run={runs.find((run) => run.executionId === selection.runId)}
             showAutomation={false}
           />
         ) : null
       }
-      label="Executions list"
+      label="Runs list"
       listRef={selection.listRef}
     >
+      {props.header}
       {query.data ? (
-        <AutomationExecutionsView
-          backTo={backTo}
+        <AutomationRunsView
           data={query.data}
+          executions={executions}
+          onResultChange={setResult}
           onRowsKeyDown={selection.onRowsKeyDown}
           onSelect={selection.toggle}
+          range={props.range}
+          result={result}
           selectedRunId={selection.runId}
         />
+      ) : query.error ? (
+        <InlineError>
+          Runs could not be loaded.{" "}
+          <Button onClick={() => void query.refetch()}>Try again</Button>
+        </InlineError>
       ) : (
-        <>
-          <PageHeader
-            description="Terminal runs for one scheduled or event automation."
-            title="Automation executions"
-          />
-          {loading ? (
-            <PageContentSkeleton
-              label="Loading automation executions"
-              variant="list"
-            />
-          ) : (
-            <Card padding="md">
-              <InlineError>
-                {query.error instanceof DashboardApiError &&
-                query.error.status === 404
-                  ? "This automation was not found or is not visible to you."
-                  : "Automation executions could not be loaded. Try again."}
-              </InlineError>
-              <Link
-                className="mt-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-                to={automationPath(automationId)}
-              >
-                <ArrowLeft aria-hidden="true" size={14} />
-                Back to automations
-              </Link>
-            </Card>
-          )}
-        </>
+        <PageContentSkeleton label="Loading runs" variant="list" />
       )}
     </AutomationRunsFrame>
   );
 }
 
-function AutomationExecutionsView(props: {
-  backTo: string;
+function AutomationRunsView(props: {
   data: AutomationExecutionList;
+  executions: AutomationExecution[];
+  onResultChange(value: (typeof RESULT_OPTIONS)[number]): void;
   onRowsKeyDown(event: KeyboardEvent<HTMLElement>): void;
   onSelect(executionId: string): void;
+  range: TimeRangeDays;
+  result: (typeof RESULT_OPTIONS)[number];
   selectedRunId: string | undefined;
 }) {
-  const { data } = props;
-  const [range, setRange] = useState<TimeRangeDays>(30);
+  const { data, range } = props;
   const counts = useMemo(
     () => countByStatus(data.executions),
     [data.executions],
   );
-  const statusCounts = `${counts.completed} completed · ${counts.failed} failed · ${counts.blocked} blocked`;
-  const statusSummary = data.truncated
-    ? `${data.automation.totalRuns} total · loaded runs: ${statusCounts}`
-    : `${data.automation.totalRuns} total · ${statusCounts}`;
 
   return (
     <>
-      <div>
-        <Link
-          className="mb-3 inline-flex items-center gap-2 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-          to={props.backTo}
-        >
-          <ArrowLeft aria-hidden="true" size={14} />
-          Back to automation
-        </Link>
-        <PageHeader
-          description={`${data.automation.kind} automation · ${data.automation.destination.label} · ${statusSummary}`}
-          {...(data.executionDays.length > 0
-            ? { onRangeChange: setRange, range }
-            : {})}
-          documentTitle={`${data.automation.title} · Executions`}
-          title={data.automation.title}
-        />
-      </div>
-
       {data.executionDays.length > 0 ? (
         <AutomationExecutionStatusChart
           bucketUnit={timeRangeBucketUnit(range)}
@@ -194,18 +161,31 @@ function AutomationExecutionsView(props: {
         />
       ) : null}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border-subtle pb-3">
-        <p className="m-0 text-sm text-dashboard-text-muted">
-          {data.executions.length}{" "}
-          {data.executions.length === 1 ? "run" : "runs"}
-          <span className="text-dashboard-text-muted/70"> · newest first</span>
+      <div className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
+        <FilterTabList
+          ariaLabel="Run result"
+          items={[
+            { count: data.executions.length, label: "All", value: "" },
+            { count: counts.completed, label: "Completed", value: "completed" },
+            { count: counts.failed, label: "Failed", value: "failed" },
+            { count: counts.blocked, label: "Blocked", value: "blocked" },
+          ]}
+          onChange={(value) =>
+            props.onResultChange(value as (typeof RESULT_OPTIONS)[number])
+          }
+          value={props.result}
+        />
+        <p className="m-0 text-xs text-dashboard-text-muted">
+          {data.automation.totalRuns} total · newest first
         </p>
       </div>
 
-      {data.executions.length === 0 ? (
+      {props.executions.length === 0 ? (
         <Card padding="md">
           <p className="m-0 text-sm text-dashboard-text-muted">
-            This automation has not produced any terminal executions yet.
+            {data.executions.length === 0
+              ? "This automation has not run yet."
+              : `No ${props.result} runs in the loaded history.`}
           </p>
         </Card>
       ) : (
@@ -229,7 +209,7 @@ function AutomationExecutionsView(props: {
                 onKeyDown={props.onRowsKeyDown}
                 role="list"
               >
-                {data.executions.map((execution) => (
+                {props.executions.map((execution) => (
                   <ExecutionRow
                     execution={execution}
                     fallbackTitle={data.automation.title}
@@ -246,7 +226,7 @@ function AutomationExecutionsView(props: {
 
       {data.truncated ? (
         <p className="m-0 text-center text-xs text-dashboard-text-muted">
-          Showing the 100 most recent executions.
+          Showing the 100 most recent runs.
         </p>
       ) : null}
     </>
@@ -305,7 +285,18 @@ function ExecutionRow(props: {
           </span>
           <span className="mt-1 block truncate text-xs leading-relaxed text-dashboard-text-muted">
             {formatAutomationRunTime(execution.executedAt)}
+            {execution.automationVersion
+              ? ` · Version ${execution.automationVersion}`
+              : null}
           </span>
+          {execution.error ? (
+            <span
+              className="mt-1 block truncate text-xs leading-relaxed text-rose-300"
+              title={execution.error}
+            >
+              {execution.error}
+            </span>
+          ) : null}
         </button>
         <MetricCell label="Duration" value={durationLabel} />
         <MetricCell label="Tokens" value={tokensLabel} />

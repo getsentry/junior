@@ -10,129 +10,185 @@ import {
 import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { formatRelativeTime } from "../../format";
-import { dashboardInlineLinkClass } from "../../styles";
+import { automationPath, formatRelativeTime } from "../../format";
+import { buttonVariants } from "../../components/ui/button";
+import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
 
-/** Separate the Automation's lifecycle, next trigger, and last execution result. */
+/**
+ * Name the lifecycle state. It is a live region, so Pause and Resume results
+ * are announced.
+ */
+export function AutomationStateChip({
+  automation,
+}: {
+  automation: AutomationSummary;
+}) {
+  const unavailable =
+    automation.kind === "event" && automation.trigger.problems.length > 0;
+  return (
+    <span aria-label="Automation state" aria-live="polite" role="status">
+      <StatusChip
+        size="compact"
+        tone={
+          automation.status === "paused" || automation.status === "completed"
+            ? "neutral"
+            : automation.status === "blocked" || unavailable
+              ? "warning"
+              : "success"
+        }
+      >
+        {automation.status === "active" && unavailable
+          ? "Trigger unavailable"
+          : automation.status}
+      </StatusChip>
+    </span>
+  );
+}
+
+/** Show the next trigger and the last execution result. */
 export function AutomationStatus({
   automation,
 }: {
   automation: AutomationSummary;
 }) {
-  const paused = automation.status === "paused";
-  const blocked = automation.status === "blocked";
-  const completed = automation.status === "completed";
-  const triggerProblems =
-    automation.kind === "event" ? automation.trigger.problems : [];
-  const unavailable = triggerProblems.length > 0;
-  const failed =
-    automation.lastRunStatus === "failed" ||
-    automation.lastRunStatus === "blocked";
-  const needsFix = blocked || (paused && Boolean(automation.statusReason));
-  const showAttention = needsFix || unavailable || failed;
   const lastResult = automation.lastRunStatus
     ? `Last run ${automation.lastRunStatus}`
     : "Last run";
   return (
-    <div className="grid gap-3">
-      <div className="grid gap-1.5">
-        <div aria-label="Automation state" aria-live="polite" role="status">
-          <StatusChip
-            tone={
-              paused || completed
-                ? "neutral"
-                : blocked || unavailable
-                  ? "warning"
-                  : "success"
-            }
-          >
-            {automation.status === "active" && unavailable
-              ? "Trigger unavailable"
-              : automation.status}
-          </StatusChip>
-        </div>
-        <AutomationNextTrigger automation={automation} />
-        <p className="m-0 text-xs text-dashboard-text-muted">
-          {automation.lastRunAt ? (
-            <>
-              {lastResult} ·{" "}
-              <time
-                dateTime={automation.lastRunAt}
-                title={formatAutomationRunTime(automation.lastRunAt)}
-              >
-                {formatRelativeTime(automation.lastRunAt)}
-              </time>
-            </>
-          ) : automation.lastRunStatus ? (
-            `${lastResult} · time not recorded`
-          ) : automation.totalRuns === 0 ? (
-            "No runs yet"
-          ) : (
-            "Last run time not recorded"
-          )}
-        </p>
-      </div>
-      {showAttention ? (
-        <FormNotice
-          title={
-            needsFix
-              ? "Fix this before resuming"
-              : unavailable
-                ? "Trigger unavailable"
-                : "Check the last run"
-          }
-        >
-          {needsFix ? (
-            <p className="m-0 break-words">
-              {automation.statusReason ??
-                "Check the last run to see what needs fixing."}{" "}
-              {!automation.ownedByViewer
-                ? `Ask ${automation.createdBy} to resume after this is fixed.`
-                : null}
-            </p>
-          ) : null}
-          {unavailable ? (
-            <>
-              <ul className="my-1 list-disc pl-5">
-                {triggerProblems.map((problem) => (
-                  <li className="break-words" key={problem}>
-                    {problem}
-                  </li>
-                ))}
-              </ul>
-              <p className="m-0">
-                Edit the trigger, or enable its plugin again.
-              </p>
-            </>
-          ) : null}
-          {failed && !needsFix && !unavailable ? (
-            <p className="m-0">
-              {automation.status === "active"
-                ? "Future runs are still on."
-                : paused
-                  ? "Review the last result before resuming."
-                  : "Review the last result for details."}
-            </p>
-          ) : null}
-          {automation.lastConversationId ? (
-            <Link
-              className={`${dashboardInlineLinkClass} mt-2 inline-block`}
-              to={conversationPath(automation.lastConversationId)}
+    <div className="grid gap-1.5">
+      <AutomationNextTrigger automation={automation} />
+      <p className="m-0 text-xs text-dashboard-text-muted">
+        {automation.lastRunAt ? (
+          <>
+            {lastResult} ·{" "}
+            <time
+              dateTime={automation.lastRunAt}
+              title={formatAutomationRunTime(automation.lastRunAt)}
             >
-              Open last run
-            </Link>
-          ) : automation.totalRuns > 0 ? (
-            <Link
-              className={`${dashboardInlineLinkClass} mt-2 inline-block`}
-              to={`/automations/${encodeURIComponent(automation.id)}/executions`}
-            >
-              View run history
-            </Link>
-          ) : null}
-        </FormNotice>
-      ) : null}
+              {formatRelativeTime(automation.lastRunAt)}
+            </time>
+          </>
+        ) : automation.lastRunStatus ? (
+          `${lastResult} · time not recorded`
+        ) : automation.totalRuns === 0 ? (
+          "No runs yet"
+        ) : (
+          "Last run time not recorded"
+        )}
+      </p>
     </div>
+  );
+}
+
+/** Name the one problem the Overview notice explains, if there is one. */
+function automationProblem(automation: AutomationSummary) {
+  if (
+    automation.status === "blocked" ||
+    (automation.status === "paused" && automation.statusReason)
+  )
+    return "fix";
+  if (automation.kind === "event" && automation.trigger.problems.length > 0)
+    return "trigger";
+  if (
+    automation.lastRunStatus === "failed" ||
+    automation.lastRunStatus === "blocked"
+  )
+    return "last_run";
+  return undefined;
+}
+
+/** True when the Overview shows a notice, so the notice owns the main action. */
+export function automationNeedsAttention(
+  automation: AutomationSummary,
+): boolean {
+  return automationProblem(automation) !== undefined;
+}
+
+/**
+ * Explain one problem that needs action and offer one fix: a block, an
+ * unavailable trigger, or a failed last run. Renders nothing when the
+ * Automation is healthy.
+ */
+export function AutomationAttention({
+  automation,
+  editPath,
+}: {
+  automation: AutomationSummary;
+  editPath: string;
+}) {
+  const problem = automationProblem(automation);
+  if (!problem) return null;
+  const paused = automation.status === "paused";
+  const triggerProblems =
+    automation.kind === "event" ? automation.trigger.problems : [];
+  const needsFix = problem === "fix";
+  // A blocked Automation still lists trigger problems, and Change trigger fixes it.
+  const unavailable = triggerProblems.length > 0;
+  const failed = problem === "last_run";
+  return (
+    <FormNotice
+      title={
+        needsFix
+          ? "Fix this before resuming"
+          : unavailable
+            ? "Trigger unavailable"
+            : "Check the last run"
+      }
+    >
+      {needsFix ? (
+        <p className="m-0 break-words">
+          {automation.statusReason ??
+            "Check the last run to see what needs fixing."}{" "}
+          {!automation.ownedByViewer
+            ? `Ask ${automation.createdBy} to resume after this is fixed.`
+            : null}
+        </p>
+      ) : null}
+      {unavailable ? (
+        <>
+          <ul className="my-1 list-disc pl-5">
+            {triggerProblems.map((problem) => (
+              <li className="break-words" key={problem}>
+                {problem}
+              </li>
+            ))}
+          </ul>
+          <p className="m-0">Edit the trigger, or enable its plugin again.</p>
+        </>
+      ) : null}
+      {failed && !needsFix && !unavailable ? (
+        <p className="m-0">
+          {automation.status === "active"
+            ? "Future runs are still on."
+            : paused
+              ? "Review the last result before resuming."
+              : "Review the last result for details."}
+        </p>
+      ) : null}
+      {unavailable ? (
+        <Link
+          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          to={editPath}
+        >
+          Change trigger
+        </Link>
+      ) : automation.lastConversationId ? (
+        <Link
+          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          to={conversationPath(automation.lastConversationId)}
+        >
+          Open last run
+        </Link>
+      ) : automation.totalRuns > 0 ? (
+        <Link
+          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          to={automationPath(automation.id, "runs")}
+        >
+          View run history
+        </Link>
+      ) : null}
+    </FormNotice>
   );
 }
 

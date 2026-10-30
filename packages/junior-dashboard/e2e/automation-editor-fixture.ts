@@ -38,7 +38,7 @@ export async function mockAutomationEditor(
           nextRunAtMs: Date.parse("2026-08-10T16:00:00Z"),
           schedule: {
             kind: "recurring",
-            description: "Every Monday at 9 AM",
+            description: "Every Monday at 9:00 AM",
             timezone: "America/Los_Angeles",
             recurrence: {
               frequency: "weekly",

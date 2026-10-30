@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
-import { formatRelativeTime, peoplePath } from "../../format";
+import { automationPath, formatRelativeTime, peoplePath } from "../../format";
 import { eventTriggerText } from "@sentry/junior-plugin-api";
 import {
   automationScheduleLabel,
@@ -14,13 +14,13 @@ import {
 
 /**
  * Show one automation as a compact card: what it is, where it posts, who owns
- * it, and when it runs. Instructions, timezones, and event filters stay in
- * the details panel.
+ * it, and when it runs. Instructions, timezones, and event filters stay on
+ * the Automation page. The title links to that page.
  */
 export function AutomationRow(props: {
   onSelect(): void;
-  selected: boolean;
   automation: AutomationSummary;
+  to: string;
 }) {
   const { automation } = props;
   const status = automationStatus(automation);
@@ -43,15 +43,13 @@ export function AutomationRow(props: {
       <SelectableRow
         className="flex items-start gap-3 rounded-lg px-4 py-3.5"
         onSelect={props.onSelect}
-        selected={props.selected}
+        selected={false}
       >
         <div className="min-w-0 flex-1">
-          <button
-            aria-expanded={props.selected}
-            aria-label={`View automation details: ${automation.title}`}
-            className="block w-full min-w-0 cursor-pointer rounded-md border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-            onClick={props.onSelect}
-            type="button"
+          <Link
+            aria-label={`Open automation: ${automation.title}`}
+            className="block w-full min-w-0 rounded-md text-left no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            to={props.to}
           >
             <span className="flex min-w-0 items-center gap-2">
               <span
@@ -75,7 +73,7 @@ export function AutomationRow(props: {
               ) : null}
             </span>
             <AutomationSummaryLine automation={automation} />
-          </button>
+          </Link>
           <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-dashboard-text-muted">
             {automation.createdByEmail ? (
               <Link
@@ -187,7 +185,7 @@ function AutomationTiming({ automation }: { automation: AutomationSummary }) {
         {lastRunFailed ? (
           <Link
             className="text-amber-300 underline"
-            to={`/automations/${encodeURIComponent(automation.id)}/executions`}
+            to={automationPath(automation.id, "runs")}
           >
             Last run {automation.lastRunStatus}
             {automation.lastRunAt

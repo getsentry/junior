@@ -65,7 +65,11 @@ export type AutomationRunWindows = {
   90: number;
 };
 
+/** Linked Conversation cost in USD for each dashboard range. */
+export type AutomationCostWindows = AutomationRunWindows;
+
 export type AutomationExecutionSummary = {
+  costUsd: AutomationCostWindows;
   lastRunStatus?: AutomationExecutionStatus;
   lastConversationId?: string;
   lastExecutedAtMs?: number;
@@ -75,7 +79,7 @@ export type AutomationExecutionSummary = {
 
 const EMPTY_RUN_WINDOWS: AutomationRunWindows = { 1: 0, 7: 0, 30: 0, 90: 0 };
 
-/** Empty run windows for automations with no execution history. */
+/** Empty run or cost windows for automations with no execution history. */
 export function emptyAutomationRunWindows(): AutomationRunWindows {
   return { ...EMPTY_RUN_WINDOWS };
 }
@@ -210,8 +214,15 @@ export async function readAutomationExecutionSummaries(
       desc(juniorAutomationRuns.id),
     )
     .as("latest_task_execution");
+  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
+  const costSince = (sinceMs: number) =>
+    sql<number>`coalesce(sum(${conversationCost}) filter (where ${juniorAutomationRuns.completedAtMs} >= ${sinceMs}), 0)::double precision`;
   const rows = await db
     .select({
+      costLast1Day: costSince(oneDayAgoMs),
+      costLast7Days: costSince(sevenDaysAgoMs),
+      costLast30Days: costSince(thirtyDaysAgoMs),
+      costLast90Days: costSince(ninetyDaysAgoMs),
       lastRunStatus: latest.status,
       lastConversationId: latest.conversationId,
       lastExecutedAtMs: max(juniorAutomationRuns.completedAtMs),
@@ -227,6 +238,7 @@ export async function readAutomationExecutionSummaries(
       latest,
       eq(latest.automationId, juniorAutomationRuns.automationId),
     )
+    .leftJoin(juniorConversations, executionConversation())
     .where(selected)
     .groupBy(
       juniorAutomationRuns.automationId,
@@ -237,6 +249,12 @@ export async function readAutomationExecutionSummaries(
     rows.map((row) => [
       row.automationId,
       {
+        costUsd: {
+          1: addUsd(0, row.costLast1Day),
+          7: addUsd(0, row.costLast7Days),
+          30: addUsd(0, row.costLast30Days),
+          90: addUsd(0, row.costLast90Days),
+        },
         lastRunStatus: row.lastRunStatus as AutomationExecutionStatus,
         ...(row.lastConversationId
           ? { lastConversationId: row.lastConversationId }
