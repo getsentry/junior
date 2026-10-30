@@ -33,17 +33,28 @@ not add tests for migration SQL.
 ## 1. One Actor To Identity Mapping (#2443)
 
 - [ ] `chat/identities/actor.ts` owns the mapping from Actor to Identity.
-      It exports `resolveActorIdentityId(executor, actor)`. The web lookup
-      stays inside the module.
-- [ ] Every `SystemActor` and every `LocalActor` maps to the one system key
-      (`design.md`, Identity Keys).
+      It exports `resolveActorIdentityId(executor, actor, nowMs?)`, which
+      writes the Identity, and `findActorIdentityId(db, actor)`, which only
+      reads. The key for each Actor and the web lookup stay inside the
+      module.
+- [ ] Every `SystemActor` and every `LocalActor` maps to the one system key,
+      `system/junior/""/system` (`design.md`, Identity Keys). No current
+      caller passes one yet, so step 2 creates the row first.
 - [ ] Remove the copies in `sql/event-actor.ts`, `handlers/oauth-callback.ts`,
-      and `plugins/viewer.ts`.
+      and `plugins/viewer.ts`. The viewer uses `findActorIdentityId`, so a
+      read never creates a row.
+- [ ] A Conversation with no Actor keeps the legacy per-name row
+      (`scheduler`, `local-cli`, `event`) through a private fallback in
+      `sql/actor-identity.ts`. This keeps the dashboard labels "Scheduler",
+      "Local CLI", and "Event".
+- [ ] OAuth and message events write `metadata.platform` on an Identity
+      that has no metadata yet.
 
 Backfill: none. No schema change.
 
-Risk: low. It moves code. New system writes use the one system key, so step
-3 merges only legacy rows.
+Risk: low. It moves code. New system writes from an Actor use the one system
+key. The fallback still writes per-name rows until step 2, so step 3 merges
+only legacy rows.
 
 Verify: the actor mapping unit test that #2443 adds, and
 `integration/oauth-identity-link.test.ts`.
@@ -55,7 +66,8 @@ Verify: the actor mapping unit test that #2443 adds, and
       `.strict()`), and `actorIdentityId` next to `actor` in the Turn cursor
       (`.strip()`).
 - [ ] Release B: each ingress calls `resolveActorIdentityId` one time and
-      sets both fields. Ingress paths: Slack, web, fork, event, scheduled automation,
+      sets both fields. The local CLI author creates the one system row
+      first. Ingress paths: Slack, web, fork, event, scheduled automation,
       event automation, plugin dispatch, local CLI, and Agent invocation.
 - [ ] Each ingress sets `authorIdentityId` on each new user Message.
       Assistant output sets no author.
@@ -147,11 +159,16 @@ a web Turn stores its author Identity.
       review the list.
 - [ ] The participant list shows only Identities of kind `user` with a User,
       the same rule as participant rows.
-- [ ] Stop writing new rows for each `SystemActor.name` and for
-      `junior/<email>`.
+- [ ] Stop writing new `junior/<email>` rows. New per-name system rows
+      already stopped: #2443 for Actors, and step 2 for the fallback.
+- [ ] Before the backfill deletes the per-name rows, move the system root
+      labels off `juniorIdentities.displayName` ("Scheduler", "Local CLI",
+      "Event"). `api/conversations/list.ts` and `stats.query.ts` take the
+      label from the Conversation Source, or from the Automation or dispatch
+      record (#2211). No visible label changes to "System".
 
 Backfill: run it in the release after step 3, when no worker writes the old
-keys. Workers from before step 1 keep writing the legacy system rows until
+keys. Workers from before step 2 keep writing the legacy system rows until
 cutover.
 
 1. Dry-run count: every legacy row of kind `system`, by subject, such as

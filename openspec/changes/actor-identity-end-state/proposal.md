@@ -299,8 +299,11 @@ These are the #2439 end state. They follow from the answers above.
   to `input.authorId`. `inboundMessageSchema` has no `actor` field.
 - **Rollout.** The Owner check ships one release after the Owner writer
   (steps 4a and 4b). Each column drop takes two releases (steps 6 and 7). The
-  step 3 merge covers only legacy rows of kind `system`, because #2443 writes
-  the one system key.
+  step 3 merge covers only legacy rows of kind `system`. #2443 writes the one
+  system key for every Actor, and step 2 removes the per-name fallback for a
+  Conversation with no Actor. Before the merge, readers take the system label
+  from the Source or the Automation or dispatch record, so no label changes
+  to "System".
 
 ### Code Facts
 

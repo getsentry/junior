@@ -83,12 +83,29 @@ skipped row also keeps its current Identity.
 - Today `systemIdentityFromSource` (`sql/actor-identity.ts`) writes three
   system rows: provider `junior`, subjects `scheduler`, `local-cli`, and
   `event`.
-- #2443 (step 1) maps every `SystemActor` and every `LocalActor` to the one
-  system key. It exports `resolveActorIdentityId(executor, actor)`. The web
-  lookup stays inside that module. So no new code writes a per-name system
-  row.
-- Step 3 merges only legacy rows: every row of kind `system` that is not the
-  one system Identity.
+- #2443 (step 1) adds `chat/identities/actor.ts`. It exports two functions.
+  The key for each Actor, and the web lookup, stay private in that module.
+  - `resolveActorIdentityId(executor, actor, nowMs?)` writes the Identity and
+    returns its id.
+  - `findActorIdentityId(db, actor)` only reads. The viewer uses it, so a
+    read never creates a row.
+- #2443 maps every `SystemActor` and every `LocalActor` to the one system
+  key, `system/junior/""/system`. No current caller passes one yet. So the
+  row is first created in step 2, when the local CLI sets its author.
+- A Conversation with no Actor still writes a legacy per-name row
+  (`scheduler`, `local-cli`, or `event`). A private fallback in
+  `sql/actor-identity.ts` (`systemIdentityFromSource`) writes it. Their
+  display names, "Scheduler", "Local CLI", and "Event", are the root labels
+  in the dashboard today. `api/conversations/list.ts` and `stats.query.ts`
+  read them from `juniorIdentities.displayName`.
+- With #2443, OAuth and message events write `metadata.platform` on an
+  Identity that has no metadata yet. The upsert keeps existing metadata
+  (`coalesce` in `upsertIdentityRecord`).
+- Step 2 removes the fallback from the write path. Step 3 merges only legacy
+  rows: every row of kind `system` that is not the one system Identity.
+  Before it deletes them, the readers take the system label from the
+  Conversation Source or the Automation or dispatch record (#2211). So no
+  visible label changes to "System".
 
 ### Users And Identities
 
