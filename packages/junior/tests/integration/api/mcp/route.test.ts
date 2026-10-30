@@ -288,6 +288,15 @@ describe("remote MCP HTTP", () => {
     ).json()) as TokenBody;
     const reusedRefresh = await refresh(app, second.refresh_token);
     const afterRefreshReuse = await refresh(app, rotated.refresh_token);
+    const revokedAccess = await app.request(MCP_TEST_URL, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${rotated.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
 
     expect(reusedCode.status).toBe(400);
     await expect(reusedCode.json()).resolves.toMatchObject({
@@ -299,6 +308,7 @@ describe("remote MCP HTTP", () => {
       error: "invalid_grant",
     });
     expect(afterRefreshReuse.status).toBe(400);
+    expect(revokedAccess.status).toBe(401);
   });
 
   it.each([

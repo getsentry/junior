@@ -104,6 +104,29 @@ function grantKey(grantId: string): string {
   return mcpStateKey("grant", grantId);
 }
 
+function revokedGrantKey(grantId: string): string {
+  return `${grantKey(grantId)}:revoked`;
+}
+
+/**
+ * Revoke a grant. The marker outlives every token of the grant, so a racing
+ * request that saves the grant again cannot bring it back.
+ */
+async function revokeGrant(state: McpState, grantId: string): Promise<void> {
+  await state.set(revokedGrantKey(grantId), true, REFRESH_TOKEN_TTL_MS);
+  await state.delete(grantKey(grantId));
+}
+
+/** Read a grant that is not revoked. */
+async function readGrant(
+  state: McpState,
+  grantId: string,
+): Promise<Grant | undefined> {
+  const revoked = await state.get(revokedGrantKey(grantId));
+  if (revoked !== null && revoked !== undefined) return undefined;
+  return await readRecord(state, grantKey(grantId), grantSchema);
+}
+
 function accessTokenKey(token: string): string {
   return mcpStateKey("access", stateKeyHash(token));
 }
@@ -198,7 +221,7 @@ export async function exchangeAuthorizationCode(args: {
     return invalidGrant("The authorization code is not valid.");
   }
   if (!(await args.state.setIfNotExists(`${key}:used`, true, CODE_TTL_MS))) {
-    await args.state.delete(grantKey(code.grantId));
+    await revokeGrant(args.state, code.grantId);
     return invalidGrant("The authorization code was already used.");
   }
   return await issueTokens(args.state, code.grantId, {
@@ -226,9 +249,7 @@ export async function refreshGrant(args: {
   }
   const key = refreshTokenKey(args.refreshToken);
   const token = await readRecord(args.state, key, refreshTokenSchema);
-  const grant = token
-    ? await readRecord(args.state, grantKey(token.grantId), grantSchema)
-    : undefined;
+  const grant = token ? await readGrant(args.state, token.grantId) : undefined;
   if (
     !token ||
     !grant ||
@@ -251,7 +272,7 @@ export async function refreshGrant(args: {
       REFRESH_TOKEN_TTL_MS,
     ))
   ) {
-    await args.state.delete(grantKey(token.grantId));
+    await revokeGrant(args.state, token.grantId);
     return invalidGrant("The refresh token was already used.");
   }
   return await issueTokens(args.state, token.grantId, grant);
@@ -274,11 +295,7 @@ export async function authenticateMcpAccessToken(args: {
     accessTokenSchema,
   );
   if (!token || token.expiresAtMs <= Date.now()) return undefined;
-  const grant = await readRecord(
-    args.state,
-    grantKey(token.grantId),
-    grantSchema,
-  );
+  const grant = await readGrant(args.state, token.grantId);
   if (!grant || grant.resource !== args.resource) return undefined;
   return grant.user;
 }
