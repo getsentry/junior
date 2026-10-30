@@ -30,7 +30,7 @@ const LA = "America/Los_Angeles";
 describe("findFreeSlots", () => {
   it("spreads non-overlapping weekday slots across days inside local working hours", () => {
     // Friday 2026-10-09 through Monday 2026-10-12, Los Angeles (UTC-7).
-    const { slots } = findFreeSlots({
+    const slots = findFreeSlots({
       attendees: [
         {
           // Busy Friday 09:00-12:00 local.
@@ -67,7 +67,7 @@ describe("findFreeSlots", () => {
   it("keeps slots inside each attendee's own working hours", () => {
     // Monday 2026-10-12. With 08:00-17:00 hours, Los Angeles (UTC-7) and
     // London (UTC+1) share only 08:00-09:00 in Los Angeles.
-    const { slots } = findFreeSlots({
+    const slots = findFreeSlots({
       attendees: [
         { busy: [], email: REQUESTER, required: true, timeZone: LA },
         {
@@ -100,47 +100,6 @@ describe("findFreeSlots", () => {
         optionalConflicts: ["dana@example.com"],
       },
     ]);
-  });
-
-  it("names the required attendee who is busy for the whole window when no slot fits", () => {
-    // Monday 2026-10-12, 12:00-17:00 in Los Angeles (UTC-7). The requester
-    // holds the whole afternoon; Bob is free from 13:30.
-    const { blockedBy, slots } = findFreeSlots({
-      attendees: [
-        {
-          busy: [
-            {
-              startMs: Date.parse("2026-10-12T19:00:00Z"),
-              endMs: Date.parse("2026-10-13T00:00:00Z"),
-            },
-          ],
-          email: REQUESTER,
-          required: true,
-          timeZone: LA,
-        },
-        {
-          busy: [
-            {
-              startMs: Date.parse("2026-10-12T19:00:00Z"),
-              endMs: Date.parse("2026-10-12T20:30:00Z"),
-            },
-          ],
-          email: "bob@example.com",
-          required: true,
-          timeZone: LA,
-        },
-      ],
-      durationMinutes: 90,
-      maxResults: 3,
-      timeMaxMs: Date.parse("2026-10-13T00:00:00Z"),
-      timeMinMs: Date.parse("2026-10-12T19:00:00Z"),
-      timeZone: LA,
-      workdayEnd: "17:00",
-      workdayStart: "12:00",
-    });
-
-    expect(slots).toEqual([]);
-    expect(blockedBy).toEqual([REQUESTER]);
   });
 });
 
