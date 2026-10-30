@@ -170,11 +170,13 @@ changes the Owner or the Turn Actor.
 - Event text is untrusted by default. Plugins put it in `untrustedText`.
   `task-input.ts` shows it as "External text". Guardian denies actions that
   follow it (`untrusted_instruction` in `guardian/policy.ts`).
-- End state for trust: event text counts as instructions only from a trusted
-  author. An author is trusted when the plugin says so, or when
-  `findLinkedSlackMember()` returns `linked` for the author's account. #2260
-  adds it in `chat/identities/linked-slack-member.ts`. #2217 runs the same
-  check inline in `agent-dispatch/context.ts`. It requires all of these:
+- End state for trust: text from an untrusted author never counts as
+  instructions. What text from a trusted author may authorize waits on the
+  open question (`proposal.md`, Open Questions). An author is trusted when
+  the plugin says so, or when `findLinkedSlackMember()` returns `linked` for
+  the author's account. #2260 adds it in
+  `chat/identities/linked-slack-member.ts`. #2217 runs the same check inline
+  in `agent-dispatch/context.ts`. It requires all of these:
   - the exact provider account id that the OAuth link stored, never a handle
     or an email;
   - exactly one linked Slack user in the workspace;
@@ -183,7 +185,7 @@ changes the Owner or the Turn Actor.
 
   So a deactivated employee with a linked GitHub account is not trusted.
 
-- Only `doneByText` can count as instructions. The plugin removes the lines
+- Only `doneByText` can be trusted text. The plugin removes the lines
   that the author only quotes (`unquotedCommentText` in
   `junior-github/src/webhooks/events.ts`, #2260). Core renders the text in
   #2260's `Requester instruction` section. It is never a `user:` line. What

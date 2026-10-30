@@ -22,8 +22,8 @@ not add tests for migration SQL.
 - #2441 before step 2. Both change `SqlStore.recordExecution` and
   `task-execution/turn-cursor.ts`.
 - #2260 (stacked on #2217) before step 3. Step 3 builds event authors on its
-  `doneBy.subjectId`, and widens its rule for which event text counts as
-  instructions. Its Watch requester is provenance, not an Owner.
+  `doneBy.subjectId`, and widens which event authors it trusts. Its Watch
+  requester is provenance, not an Owner.
 - #2382 before step 4a. Both add a `junior_conversations` column and change
   the write rule in `SqlStore.upsertConversation`.
 - #2181 before step 5. Both change `agent-invocations/root-conversation.ts` and
@@ -117,9 +117,9 @@ a web Turn stores its author Identity.
       gets `githubPlugin({ trustedAuthors })`, a trusted authors list of
       GitHub logins. It compares logins without case. It sets
       `doneBy.trustedAuthor` when the event login is on the list. Core treats
-      `doneByText` as instructions only when `doneBy.trustedAuthor` is `true`, or
-      when `findLinkedSlackMember()` returns `linked` for the author's
-      account. Core reads no GitHub login for this.
+      `doneByText` as trusted text only when `doneBy.trustedAuthor` is
+      `true`, or when `findLinkedSlackMember()` returns `linked` for the
+      author's account. Core reads no GitHub login for this.
 - [ ] Render trusted text in #2260's `Requester instruction` section, never as
       a `user:` line. #2260's instruction record keeps the author Identity
       id, because a trusted bot has no Slack Actor.

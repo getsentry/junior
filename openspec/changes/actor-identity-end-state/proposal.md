@@ -211,8 +211,8 @@ These are the #2439 end state. They follow from the answers above.
 - **Event author Identity.** Core upserts the author Identity with the OAuth
   link key and no email. The upsert never changes the `kind` or `user_id` of
   an existing row (answer 4).
-- **Event author trust.** The text of an event author counts as
-  instructions when one of these is true:
+- **Event author trust.** An event author is trusted when one of these is
+  true:
   - `findLinkedSlackMember()` returns `linked` for the author's account. This
     is the check that #2260 and #2217 use for the same question. It needs the
     exact linked account id, one linked Slack user, a current human member,
@@ -221,10 +221,11 @@ These are the #2439 end state. They follow from the answers above.
     The plugin compares logins without case (answer 6).
 
   An unknown sender is never trusted. A sender without an allowed-domain
-  email is not trusted, unless the list names them. All other event text is
-  data only. This includes a bot that is not on the list, a person with no
-  linked account, and a deactivated member. #2260 lets only the Watch
-  requester's text count. This rule is wider.
+  email is not trusted, unless the list names them. Text from an untrusted
+  author never counts as instructions. This includes a bot that is not on the
+  list, a person with no linked account, and a deactivated member. What text
+  from a trusted author may authorize waits on the open question. #2260
+  trusts only the Watch requester. This rule trusts more authors.
 
 - **The list can name bots and people.** David said that "bots and or other
   users could be listed". The plan reads this to mean: the list is an
@@ -232,11 +233,12 @@ These are the #2439 end state. They follow from the answers above.
   linked account and no allowed-domain check. The plan adds no bot-only
   restriction.
 
-- **Trusted text stays narrow.** Only `doneByText` counts, with quoted lines
-  removed. Core renders it in #2260's `Requester instruction` section. It is
-  never a `user:` line. What this text may authorize is an open question
-  (Open Questions). #2260's `requesterInstructionSchema` keeps the author
-  Identity id, because a trusted bot has no Slack Actor (answer 14).
+- **Trusted text stays narrow.** Only `doneByText` can be trusted text, with
+  quoted lines removed. Core renders it in #2260's `Requester instruction`
+  section. It is never a `user:` line. What this text may authorize is an
+  open question (Open Questions). #2260's `requesterInstructionSchema` keeps
+  the author Identity id, because a trusted bot has no Slack Actor (answer
+  14).
 - **A bot is an Actor in David's sense.** The plan reads "its still an
   actor" to mean: the bot has its own Identity and is the author of its
   Messages. This needs no `actorSchema` change, so the Non-Goal stands. Gap 3
@@ -332,8 +334,9 @@ These wait for David.
   when it differs from the root.
 - A web user's Messages and Conversations use their `google` Identity. People
   still groups them with the same User.
-- Text from a trusted event author counts as instructions. With #2260, only
-  the Watch requester's text does.
+- Text from an untrusted author never counts as instructions. What text from
+  a trusted author may authorize waits on the open question. With #2260, only
+  the Watch requester is a trusted author.
 - The dashboard participant list stops showing system Identities.
 
 ## Risks

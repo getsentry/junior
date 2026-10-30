@@ -174,28 +174,28 @@ NOT become a participant.
 
 ### Requirement: Trusted Event Authors
 
-Junior SHALL treat the text of an event author as instructions only when the
-author is trusted. An author SHALL be trusted when the plugin marks the author
-as trusted from its config, or when `findLinkedSlackMember()` returns
-`linked` for the author's account. That check SHALL be the same check that
-Identity dispatch and Watch requester instructions use: the exact linked
-account id, one linked Slack user, a current human member, and a Slack email
-on `allowedDomains`. The text of every other author SHALL be data only. The
+Junior SHALL NOT treat text from an untrusted event author as instructions.
+An author SHALL be trusted when the plugin marks the author as trusted from
+its config, or when `findLinkedSlackMember()` returns `linked` for the
+author's account. That check SHALL be the same check that Identity dispatch
+and Watch requester instructions use: the exact linked account id, one linked
+Slack user, a current human member, and a Slack email on `allowedDomains`.
+Every other author SHALL be untrusted, and their text SHALL be data only. The
 GitHub plugin SHALL own its trusted authors list of GitHub logins,
 `githubPlugin({ trustedAuthors })`. Core SHALL NOT read GitHub logins to
 decide trust.
 
-Only `doneByText` SHALL count as instructions, with the lines that the author
-only quotes removed. Junior SHALL render it in the `Requester instruction`
+Only `doneByText` SHALL be trusted text, with the lines that the author only
+quotes removed. Junior SHALL render it in the `Requester instruction`
 section of the task input. Junior SHALL NOT render it as a `user:` line.
-What this text may authorize is an open question (`proposal.md`, Open
-Questions).
+What text from a trusted author may authorize waits on the open question
+(`proposal.md`, Open Questions).
 
 #### Scenario: Linked member on an allowed domain
 
 - **WHEN** a person whose GitHub account links to one current Slack member on
   an allowed domain comments on a watched PR
-- **THEN** Junior treats the comment text as instructions
+- **THEN** Junior treats the comment text as trusted text
 - **AND** renders it in the `Requester instruction` section, not as a
   `user:` line.
 
@@ -220,7 +220,7 @@ Questions).
 #### Scenario: Quoted text from a trusted author
 
 - **WHEN** a trusted author quotes another person's text in a comment
-- **THEN** Junior treats only the author's own lines as instructions
+- **THEN** Junior treats only the author's own lines as trusted text
 - **AND** the quoted lines stay data only.
 
 #### Scenario: Bot on the trusted authors list
@@ -228,7 +228,7 @@ Questions).
 - **WHEN** a bot whose GitHub login is on the GitHub plugin trusted authors
   list comments on a watched PR
 - **THEN** the plugin marks the author as trusted
-- **AND** Junior treats the comment text as instructions
+- **AND** Junior treats the comment text as trusted text
 - **AND** the bot has no User and gets no participant row.
 
 #### Scenario: Person on the trusted authors list
@@ -236,7 +236,7 @@ Questions).
 - **WHEN** a person whose GitHub login is on the GitHub plugin trusted
   authors list, and who has no allowed-domain email, comments on a watched PR
 - **THEN** the plugin marks the author as trusted
-- **AND** Junior treats the comment text as instructions.
+- **AND** Junior treats the comment text as trusted text.
 
 #### Scenario: Unknown sender
 
