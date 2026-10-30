@@ -70,7 +70,7 @@ import {
   type AgentRun,
   type AgentRunState,
 } from "@/chat/agent/types";
-import { upsertActiveSkill } from "@/chat/agent/skills";
+import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
@@ -347,11 +347,6 @@ export async function wireAgentTools(
   const getPendingAuthPause = () =>
     pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
 
-  const loadableSkills = args.availableSkills.filter(
-    (skill) =>
-      skill.disableModelInvocation !== true ||
-      skill.name === args.invokedSkill?.name,
-  );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     ...(args.run.parentConversationId
@@ -481,7 +476,7 @@ export async function wireAgentTools(
     }),
   });
   const tools = createTools(
-    loadableSkills,
+    loadableSkills(args.availableSkills, args.invokedSkill?.name),
     {
       writeGeneratedArtifacts: async (files) => {
         const refs = await agentSandbox.writeGeneratedArtifacts(files);
