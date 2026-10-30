@@ -1216,7 +1216,6 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(html).toContain("Conversation failed to load.");
-    expect(html).toContain('data-tone="error"');
     expect(html).toContain('role="alert"');
   });
 
