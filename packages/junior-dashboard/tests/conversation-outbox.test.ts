@@ -5,6 +5,7 @@ import {
   failConversationOutboxMessage,
   mailboxMessageFromOutbox,
   mergeConversationMailboxMessages,
+  settleConversationOutboxMessages,
   splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
 } from "../src/client/conversations/conversationOutbox";
@@ -189,5 +190,65 @@ describe("conversation outbox", () => {
       inline: [],
       queued: merged,
     });
+  });
+
+  it("keeps inline sends until history reads them or the queue drops them", () => {
+    const inline = conversationOutboxMessageForSubmit({
+      idempotencyKey: "attempt-1",
+      inline: true,
+      messageId: "accepted-1",
+      message: "Continue in Junior",
+      now: "2026-01-01T00:00:00.000Z",
+    });
+    const joined = conversationOutboxMessageForSubmit({
+      idempotencyKey: "attempt-2",
+      inline: true,
+      messageId: "accepted-2",
+      message: "And the rollback owner",
+      now: "2026-01-01T00:00:01.000Z",
+    });
+    const queuedCopy = {
+      ...mailboxMessageFromOutbox(inline),
+      clientStatus: undefined,
+      idempotencyKey: undefined,
+    };
+    const outbox = [inline, joined];
+
+    // Nothing on the server yet: the rows stay as they are.
+    expect(
+      settleConversationOutboxMessages(outbox, { events: [], queued: [] }),
+    ).toBe(outbox);
+
+    // The mailbox lists the first send. It stays inline and is marked seen.
+    const seen = settleConversationOutboxMessages(outbox, {
+      events: [],
+      queued: [queuedCopy],
+    });
+    expect(seen).toEqual([{ ...inline, inlineSeenQueued: true }, joined]);
+
+    // A Turn joined the second send into the first Message, so only its
+    // started event has the second id.
+    expect(
+      settleConversationOutboxMessages(outbox, {
+        events: [
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "turn_lifecycle",
+              turnId: "turn-1",
+              state: "started",
+              inputMessageIds: ["accepted-1", "accepted-2"],
+            },
+          },
+        ],
+        queued: [],
+      }),
+    ).toEqual([]);
+
+    // Another participant removed the seen send from the queue.
+    expect(
+      settleConversationOutboxMessages(seen, { events: [], queued: [] }),
+    ).toEqual([joined]);
   });
 });

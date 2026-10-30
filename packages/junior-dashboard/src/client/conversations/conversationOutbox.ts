@@ -1,6 +1,7 @@
 import type {
   ActorIdentity,
   ConversationPendingMessage,
+  ConversationReportEvent,
   InputImage,
 } from "@sentry/junior/api/schema";
 
@@ -14,6 +15,8 @@ export type ConversationOutboxMessage = {
    * the row in place, so it does not pass through the queue first.
    */
   inline?: boolean;
+  /** A server snapshot listed this inline row in the mailbox. */
+  inlineSeenQueued?: boolean;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -166,6 +169,59 @@ export function isInlineOutboxMessage(
 ): boolean {
   // A failed send moves to the queue, which owns the retry action.
   return Boolean(message.inline) && message.status !== "failed";
+}
+
+/** Message ids that history shows as read, including joined Turn input. */
+function readMessageIds(
+  events: readonly ConversationReportEvent[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const event of events) {
+    if (event.data.type === "message") ids.add(event.data.messageId);
+    // A Turn joins several queued sends into the Message of the first one.
+    if (event.data.type === "turn_lifecycle" && event.data.state === "started")
+      for (const id of event.data.inputMessageIds ?? []) ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * Drop local sends that one server snapshot already shows.
+ *
+ * A queued row leaves when the mailbox or history has it. An inline row stays
+ * until history has it. The snapshot reads the mailbox before history, so an
+ * inline row that the mailbox listed and then lost is in history or was
+ * removed, for example by another participant.
+ */
+export function settleConversationOutboxMessages(
+  current: ConversationOutboxMessage[],
+  snapshot: {
+    events: readonly ConversationReportEvent[];
+    queued: readonly ConversationPendingMessage[];
+  },
+): ConversationOutboxMessage[] {
+  const queuedIds = new Set(
+    snapshot.queued.map((message) => message.messageId),
+  );
+  const readIds = readMessageIds(snapshot.events);
+  const settle = (
+    message: ConversationOutboxMessage,
+  ): ConversationOutboxMessage | undefined => {
+    if (readIds.has(message.messageId)) return undefined;
+    const queued = queuedIds.has(message.messageId);
+    if (!isInlineOutboxMessage(message)) return queued ? undefined : message;
+    if (queued) {
+      return message.inlineSeenQueued
+        ? message
+        : { ...message, inlineSeenQueued: true };
+    }
+    return message.inlineSeenQueued ? undefined : message;
+  };
+  const next = current.flatMap((message) => settle(message) ?? []);
+  const unchanged =
+    next.length === current.length &&
+    next.every((message, index) => message === current[index]);
+  return unchanged ? current : next;
 }
 
 /**

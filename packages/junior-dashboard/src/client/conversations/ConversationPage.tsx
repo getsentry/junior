@@ -707,7 +707,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         // Junior can read the message before the cancel lands. Then it is
         // already in the Conversation and there is nothing to edit.
         if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
-          setQueueActionError("Junior already read that message.");
+          setQueueActionError(ALREADY_READ_ERROR);
           return;
         }
         const restored = { images, text: message.text ?? "" };
@@ -736,13 +736,20 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const onSteerMessage = useCallback((message: ConversationMailboxMessage) => {
     if (steerPendingMessagesRef.current.isPending) return;
     setQueueActionError(undefined);
+    const inboundMessageId = message.inboundMessageId;
     steerPendingMessagesRef.current.mutate(
-      { inboundMessageIds: [message.inboundMessageId] },
+      { inboundMessageIds: [inboundMessageId] },
       {
         onError: () =>
           setQueueActionError(
             "Could not send the queued message now. Try again.",
           ),
+        // Like edit, a steer can land after Junior read the message.
+        onSuccess: (result) => {
+          if (!result.steeredInboundMessageIds.includes(inboundMessageId)) {
+            setQueueActionError(ALREADY_READ_ERROR);
+          }
+        },
       },
     );
   }, []);
@@ -850,3 +857,6 @@ function committedMessageIds(
 }
 
 const EMPTY_MESSAGE_IDS: readonly string[] = [];
+
+// A queue action can land after Junior read the message.
+const ALREADY_READ_ERROR = "Junior already read that message.";
