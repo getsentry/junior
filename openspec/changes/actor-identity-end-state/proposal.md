@@ -38,7 +38,9 @@ the readers, and the known gaps. `tasks.md` has the steps.
 - Change `SystemActor` names or the `Actor` schema. `actorSchema` stays a union
   of `.strict()` objects.
 - Name the human who uses the local CLI. The CLI keeps one shared user id.
-- Change Guardian authority. #2181 and #2260 own it.
+- Change how Guardian labels authors, or which credentials a Turn uses.
+  #2181 and #2260 own those. This plan only widens which event authors
+  #2260 trusts.
 - Change visibility. #2382 owns it.
 
 ## Decisions
@@ -119,14 +121,23 @@ These are the #2439 end state. They follow from the answers above.
   later.
 - **Event author trust.** The text of an event author counts as
   instructions when one of these is true:
-  - the author's `github` Identity links to a User, and the domain of that
-    User's primary email passes `allowedDomains`;
+  - `findLinkedSlackMember()` returns `linked` for the author's account. This
+    is the check that #2260 and #2217 use for the same question. It needs the
+    exact linked account id, one linked Slack user, a current human member,
+    and a Slack email on `allowedDomains` (`design.md`, Event Authors).
   - the author's GitHub login is on the GitHub plugin trusted authors list.
 
   All other event text is data only. This includes a bot that is not on the
-  list and a person with no linked User. #2260 lets only the Watch requester's
-  text count. This rule is wider.
+  list, a person with no linked account, and a deactivated member. #2260 lets
+  only the Watch requester's text count. This rule is wider.
 
+- **Trusted text stays narrow.** Only `doneByText` counts, with quoted lines
+  removed. Core renders it in #2260's `Requester instruction` section. It is
+  never a `user:` line and never an approval.
+- **Guardian labels come from the Actor and provenance.** They never come
+  from the Identity id alone. With one system Identity, an Identity id
+  compare would make every system author match the Turn Actor
+  (`design.md`, Guardian Labels).
 - **The trusted authors list lives in the GitHub plugin.** The option is
   `githubPlugin({ trustedAuthors: [...] })`. It takes GitHub logins, such as
   `some-app[bot]`. David chose the name. No such list exists today.
@@ -135,9 +146,16 @@ These are the #2439 end state. They follow from the answers above.
   covers only Slack ingress. The new list follows the same pattern, but in
   the plugin config. The plugin compares the event login to the list and
   gives core one provider-neutral result: this author is trusted. Core does
-  not read GitHub logins (`policies/provider-boundaries.md`). The domain
-  check reuses `allowedDomains` as it is (`chat/sign-in/allowlist.ts`). An
-  empty `allowedDomains` allows every domain, the same as for Slack.
+  not read GitHub logins (`policies/provider-boundaries.md`).
+- **Identity keys.** An event author uses the key that the OAuth link writes:
+  provider `github`, tenant `""`, subject `String(sender.id)`. A web Actor
+  finds its `google` row through its User, because `WebActor` has no OIDC
+  `sub`. `design.md`, Identity Keys, has every key.
+- **Mailbox field.** The mailbox entry carries `input.authorIdentityId` next
+  to `input.authorId`. `inboundMessageSchema` has no `actor` field.
+- **Rollout.** The Owner check ships one release after the Owner writer
+  (steps 4a and 4b). Each column drop takes two releases (steps 6 and 7). The
+  system merge covers every row of kind `system`.
 
 ### Code Facts
 
@@ -154,31 +172,42 @@ These are not agreed yet.
    Junior's own Service account.
 2. **Local auth bypass.** The bypass viewer (`dev@example.com`) gets a mock
    Identity, the same as the mock viewer.
-3. **Event actor declaration.** Each plugin sets `hasActor: true` on the event
-   types whose payload has text that a person or bot wrote. Examples are PR
-   and issue bodies on `opened`, comments, reviews, and review comments. Other
-   types use the system Identity.
-4. **Event author field.** `doneBy` gets `subjectId` (from #2260), `isBot`,
-   and `trusted`. The plugin sets all three. `trusted` is `true` only when the
-   login is on `trustedAuthors`. When the type has `hasActor`, core rejects an
-   event with no `subjectId`.
-5. **Event author Identity.** Core upserts the Identity from `doneBy` with no
-   email. So the event never links a User. The Identity is verified only when
-   it already links to a User through OAuth or a verified email.
-6. **Event Owner and Turn Actor.** An event changes only the Message author.
+3. **Event author field.** `doneBy` gets `isBot` and `trusted`, next to
+   `subjectId` from #2260. The plugin sets them. `trusted` is `true` only when
+   the login is on `trustedAuthors`. No `hasActor` flag: an event with no
+   `doneBy` or no `subjectId` uses the system Identity, and its text stays
+   data.
+4. **Event author Identity.** Core upserts the author Identity with the OAuth
+   link key and no email. The upsert never changes the `kind` or `user_id` of
+   an existing row. The author is trusted only through
+   `findLinkedSlackMember()` or `trustedAuthors`.
+5. **Event Owner and Turn Actor.** An event changes only the Message author.
    The Owner stays. The Event Turn keeps `EVENT_SYSTEM_ACTOR`.
-7. **Trusted authors match.** The plugin compares each login in
+6. **Trusted authors match.** The plugin compares each login in
    `trustedAuthors` to the event login without case.
-8. **Owner repair.** The Owner backfill can repair a root with a `slack` or
+7. **Owner repair.** The Owner backfill can repair a root with a `slack` or
    `web` Source and a system Identity. These rows got the system Identity
    before #2436. The repair is clearly correct only when the first user
    Message of the root has an author Identity of kind `user` with a User. The
    backfill then uses that Identity. Otherwise it copies the current Identity
    and leaves the row as it is.
-9. **Locations group by User.** The location actor list groups by User, with
+8. **Locations group by User.** The location actor list groups by User, with
    the Identity as fallback.
-10. **Dashboard author shape.** The dashboard `actorIdentitySchema` gets the
-    Identity `kind` and `provider`.
+9. **Dashboard author shape.** The dashboard `actorIdentitySchema` gets the
+   Identity `kind` and `provider`.
+10. **System Identity key.** Kind `system`, provider `junior`, tenant `""`,
+    subject `system`.
+11. **Slack bot subject.** The bot user id (`U…`) when Slack sends it, the
+    same id as `slack.allowedBotUserIds`. Otherwise the `bot_id` (`B…`).
+12. **Mock viewer key.** Kind `user`, provider `mock`, tenant `""`, subject
+    the mock viewer id (`mock-user:<email>`).
+13. **Automation creator.** "Owner" now means the Owner of a Conversation.
+    `TERMINOLOGY.md` also says "owner" for the Automation creator and for the
+    annotation owner. Call the Automation's one "creator". The
+    `TERMINOLOGY.md` lines stay as they are until this is agreed.
+14. **Trusted bot instruction record.** #2260's `requesterInstructionSchema`
+    needs a Slack Actor. A bot on `trustedAuthors` has none. The record keeps
+    the author Identity id instead.
 
 ## Behavior Changes
 
@@ -196,12 +225,13 @@ These are not agreed yet.
 
 ## Risks
 
-- The Owner backfill changes access, the feed, People, and spend. Step 4 runs
+- The Owner backfill changes access, the feed, People, and spend. Step 4b runs
   a dry-run count first. It adds a participant row for each human who was the
   root Identity and is not the Owner.
 - Old workers keep running during a deploy. They can reject new fields in
-  `.strict()` schemas and can write old columns. Each step ships readers
-  before writers and drops a column one release after its last writer.
+  `.strict()` schemas, insert rows without new values, and select every
+  schema column. `tasks.md`, Release Rules, gives the order for fields,
+  checks, and column drops.
 - A human GitHub login can change owners after a rename. A GitHub App login
   ends in `[bot]`, and GitHub keeps that suffix for Apps. The trusted authors
   docs should say to list bot logins.

@@ -88,9 +88,10 @@ in spend, People, or participant access.
 
 ### Requirement: Inbound Event Authors
 
-An inbound event Message from an event with an actor SHALL use the Identity
-of that person or bot. An event with no actor SHALL use the system Identity.
-Junior SHALL verify the author Identity the same way as everywhere else. An
+An inbound event Message SHALL use the Identity of the person or bot that the
+event names by provider account id. An event that names no account SHALL use
+the system Identity. The author Identity SHALL use the same key as the OAuth
+account link. Junior SHALL verify the author the same way as everywhere else. An
 event SHALL NOT change the Owner. An event author SHALL NOT become a
 participant.
 
@@ -110,35 +111,56 @@ participant.
 
 Junior SHALL treat the text of an event author as instructions only when the
 author is trusted. An author SHALL be trusted when the plugin marks the author
-as trusted from its config, or when the author's Identity links to a User
-whose primary email passes `allowedDomains`. The text of every other author
-SHALL be data only. The GitHub plugin SHALL own its trusted authors list of
-GitHub logins, `githubPlugin({ trustedAuthors })`. Core SHALL NOT read
-GitHub logins to decide trust.
+as trusted from its config, or when `findLinkedSlackMember()` returns
+`linked` for the author's account. That check SHALL be the same check that
+Identity dispatch and Watch requester instructions use: the exact linked
+account id, one linked Slack user, a current human member, and a Slack email
+on `allowedDomains`. The text of every other author SHALL be data only. The
+GitHub plugin SHALL own its trusted authors list of GitHub logins,
+`githubPlugin({ trustedAuthors })`. Core SHALL NOT read GitHub logins to
+decide trust.
 
-#### Scenario: Linked user on an allowed domain
+Only `doneByText` SHALL count as instructions, with the lines that the author
+only quotes removed. Junior SHALL render it in the `Requester instruction`
+section of the task input. Junior SHALL NOT render it as a `user:` line, and
+SHALL NOT treat it as an approval.
 
-- **WHEN** a person whose `github` Identity links to a User on an allowed
-  domain comments on a watched PR
-- **THEN** Junior treats the comment text as instructions.
+#### Scenario: Linked member on an allowed domain
 
-#### Scenario: Linked user on another domain
+- **WHEN** a person whose GitHub account links to one current Slack member on
+  an allowed domain comments on a watched PR
+- **THEN** Junior treats the comment text as instructions
+- **AND** renders it in the `Requester instruction` section, not as a
+  `user:` line.
 
-- **WHEN** a person whose `github` Identity links to a User whose primary
-  email is not on an allowed domain comments on a watched PR
+#### Scenario: Linked member on another domain
+
+- **WHEN** a person whose GitHub account links to a Slack member whose email
+  is not on an allowed domain comments on a watched PR
 - **THEN** Junior treats the comment text as data only.
 
-#### Scenario: Author with no User
+#### Scenario: Deactivated linked member
 
-- **WHEN** a person whose `github` Identity has no User comments on a watched
-  PR
+- **WHEN** a person whose GitHub account links to a Slack user who is no
+  longer an active member comments on a watched PR
 - **THEN** Junior treats the comment text as data only.
+
+#### Scenario: Author with no linked account
+
+- **WHEN** a person whose `github` Identity has no linked Slack user comments
+  on a watched PR
+- **THEN** Junior treats the comment text as data only.
+
+#### Scenario: Quoted text from a trusted author
+
+- **WHEN** a trusted author quotes another person's text in a comment
+- **THEN** Junior treats only the author's own lines as instructions
+- **AND** the quoted lines stay data only.
 
 #### Scenario: Bot on the trusted authors list
 
 - **WHEN** a bot whose GitHub login is on the GitHub plugin trusted authors
-  list
-  comments on a watched PR
+  list comments on a watched PR
 - **THEN** the plugin marks the author as trusted
 - **AND** Junior treats the comment text as instructions
 - **AND** the bot has no User and gets no participant row.
@@ -146,9 +168,20 @@ GitHub logins to decide trust.
 #### Scenario: Bot not on the trusted authors list
 
 - **WHEN** a bot whose GitHub login is not on the GitHub plugin trusted
-  authors list
-  comments on a watched PR
+  authors list comments on a watched PR
 - **THEN** Junior treats the comment text as data only.
+
+### Requirement: Guardian Labels Use The Actor
+
+Junior SHALL give Guardian author labels from the Actor and the Message
+provenance. Junior SHALL NOT give a label from the Identity id alone.
+
+#### Scenario: Two system authors
+
+- **WHEN** a Turn runs as one `SystemActor` and a root Message has a system
+  author with a different `SystemActor.name`
+- **THEN** both authors have the one system Identity
+- **AND** Guardian labels the Message `event`, not `automation`.
 
 ### Requirement: Participants Are Users
 
@@ -182,7 +215,7 @@ later. Assistant output is an event and SHALL NOT need an author Identity.
 - **WHEN** code tries to write a new user Message without an author Identity
 - **THEN** the write fails.
 
-#### Scenario: System prompt as a user Message
+#### Scenario: System input as a user Message
 
 - **WHEN** an event, a scheduled automation, a plugin dispatch, or the local
   CLI writes a user Message
