@@ -285,7 +285,12 @@ test("inspects all reporting events and searches full event data", async ({
     forkDialog.getByRole("button", { name: "Fork and send", exact: true }),
   ).toBeDisabled();
   await screenshot(page, "conversation-fork-dialog");
-  await forkDialog.getByRole("button", { name: "Close fork dialog" }).click();
+  await expect(
+    forkDialog.getByRole("textbox", { name: "Message" }),
+  ).toBeFocused();
+  await forkDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(forkDialog).toBeHidden();
+  await expect(forkAction).toBeFocused();
   await page.getByRole("button", { name: "Event log", exact: true }).click();
   const reply = report.events.findLast(
     (event: { data: { type: string; role?: string } }) =>

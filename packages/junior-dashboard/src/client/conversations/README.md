@@ -140,3 +140,12 @@ Standalone transcripts, such as a subagent drawer, keep selection in
 `BottomSheet` on smaller screens. This keeps the main log free of modal behavior
 while a nested transcript retains its parent drawer's focus rules. These event
 details have the same previous and next controls.
+
+`SubagentTranscriptDrawer` uses the wide `Drawer` at all widths. Below 768px
+the drawer fills the screen, so the long transcript gets the most room. Its
+header holds search, view, and copy actions. `BottomSheet` has no place for
+them.
+
+`ForkConversationButton` opens a `ui/dialog` form, not a drawer. The dialog
+stays above event details in a docked panel or a sheet. Cancel returns focus
+to the fork button. A pending fork blocks dismissal until the request ends.

@@ -62,6 +62,9 @@ Rules for adopted components:
 - Use `ui/alert-dialog` for every confirmation. Do not use `window.confirm`.
   Keep the confirmed item in state after close, so the closing dialog keeps its
   text.
+- Use `ui/dialog` for a short task form, such as the fork message. Do not put
+  a form in a `Drawer` or a `DetailsPanel`. On small screens the dialog sits
+  near the top, so the on-screen keyboard does not cover its fields.
 - Use `useSheet` for each app `ui/dialog`, as for sheets. It shares the
   document scroll lock. Only the front modal closes on Escape or a backdrop
   tap. Mount the dialog only while it is open.
