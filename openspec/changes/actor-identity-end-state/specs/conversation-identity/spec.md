@@ -211,6 +211,19 @@ SHALL NOT treat it as an approval.
 - **AND** Junior treats the comment text as instructions
 - **AND** the bot has no User and gets no participant row.
 
+#### Scenario: Person on the trusted authors list
+
+- **WHEN** a person whose GitHub login is on the GitHub plugin trusted
+  authors list, and who has no allowed-domain email, comments on a watched PR
+- **THEN** the plugin marks the author as trusted
+- **AND** Junior treats the comment text as instructions.
+
+#### Scenario: Unknown sender
+
+- **WHEN** a sender with no known Identity link and no entry on the trusted
+  authors list comments on a watched PR
+- **THEN** Junior treats the comment text as data only.
+
 #### Scenario: Bot not on the trusted authors list
 
 - **WHEN** a bot whose GitHub login is not on the GitHub plugin trusted

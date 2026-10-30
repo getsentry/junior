@@ -111,9 +111,10 @@ a web Turn stores its author Identity.
 - [ ] Render trusted text in #2260's `Requester instruction` section, never as
       a `user:` line and never as an approval. #2260's instruction record
       keeps the author Identity id, because a trusted bot has no Slack Actor.
-- [ ] Document `trustedAuthors` in `junior-github/SETUP.md`, with the
-      login reuse risk. The bot-only rule waits for David (`proposal.md`,
-      Open Proposals).
+- [ ] Document `trustedAuthors` in `junior-github/SETUP.md`. It can list
+      bots and people. Warn that GitHub can give a renamed or deleted
+      account's login to a new account. Say to list stable logins and to
+      review the list.
 - [ ] The participant list shows only Identities of kind `user` with a User,
       the same rule as participant rows.
 - [ ] Stop writing new rows for each `SystemActor.name` and for

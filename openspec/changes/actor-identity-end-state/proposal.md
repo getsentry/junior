@@ -80,6 +80,9 @@ These are David Cramer's answers in the Slack thread for #2439.
 - Name the list "trusted authors": "call it trusted authors or sometihng"
 - On the name: "yes "trusted" is what we want here, but you can use the
   suffix that makes sense"
+- On trust: "any sender who doesnt have the allowed domain email address or
+  is unknown isnt trusted. bots and or other users could be listed under
+  trusted"
 
 His answers to the 14 earlier proposals:
 
@@ -212,9 +215,17 @@ These are the #2439 end state. They follow from the answers above.
   - the author's GitHub login is on the GitHub plugin trusted authors list.
     The plugin compares logins without case (answer 6).
 
-  All other event text is data only. This includes a bot that is not on the
-  list, a person with no linked account, and a deactivated member. #2260 lets
-  only the Watch requester's text count. This rule is wider.
+  An unknown sender is never trusted. A sender without an allowed-domain
+  email is not trusted, unless the list names them. All other event text is
+  data only. This includes a bot that is not on the list, a person with no
+  linked account, and a deactivated member. #2260 lets only the Watch
+  requester's text count. This rule is wider.
+
+- **The list can name bots and people.** David said that "bots and or other
+  users could be listed". The plan reads this to mean: the list is an
+  explicit exception to the domain rule. A listed login is trusted with no
+  linked account and no allowed-domain check. The plan adds no bot-only
+  restriction.
 
 - **Trusted text stays narrow.** Only `doneByText` counts, with quoted lines
   removed. Core renders it in #2260's `Requester instruction` section. It is
@@ -272,19 +283,6 @@ These are the #2439 end state. They follow from the answers above.
   participant list already groups by User, with the Identity as fallback
   (`api/conversations/participants.ts`). Only Locations groups by Identity.
 
-## Open Proposals
-
-These still wait for David.
-
-- **Bot logins only on the trusted authors list.** Recommendation: yes. The
-  plugin accepts a login only when it ends in `[bot]` and the webhook
-  `sender.type` is `Bot`. It ignores a human login on the list and logs it.
-  _Risk if no:_ GitHub can give a renamed or deleted user's login to a new
-  account. That new person then passes as a trusted author. GitHub Apps keep
-  the `[bot]` suffix, and a user account cannot take it. Numeric account ids
-  are the other option. They never move to a new account, but they are hard
-  to read in config.
-
 ## Behavior Changes
 
 - Automation-run spend leaves personal spend. A system Owner has no User.
@@ -308,8 +306,9 @@ These still wait for David.
   `.strict()` schemas, insert rows without new values, and select every
   schema column. `tasks.md`, Release Rules, gives the order for fields,
   checks, and column drops.
-- A human GitHub login can move to a new account after a rename. Until David
-  answers the open proposal, the trusted authors docs warn about this.
+- GitHub can give the login of a renamed or deleted account to a new
+  account. That new account then passes as a trusted author. The trusted
+  authors docs say to list stable logins and to review the list.
 - A write with no author Identity fails after step 5. A missed ingress path
   shows up as an error, not as wrong data. The legacy fallback logs first, so
   the logs find missed paths before the constraint ships.
