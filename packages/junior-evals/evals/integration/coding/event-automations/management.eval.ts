@@ -180,11 +180,15 @@ describe("Event automation management", () => {
 
     const creates = completedToolCalls("createEventAutomation", conversation);
     expect(creates).toHaveLength(1);
-    expect(creates[0]!.input).toMatchObject({
-      trigger: {
-        namespace: "github",
-        identifier: "getsentry/junior",
-        resourceType: "repository",
+    // Check the saved trigger, not the call input. A repository identifier
+    // and a repo filter save the same trigger.
+    expect(toolOutput(creates[0]!)).toMatchObject({
+      automation: {
+        trigger: {
+          namespace: "github",
+          identifier: null,
+          match: { repo: "getsentry/junior" },
+        },
       },
     });
     expect(new Set(triggerEvents(creates[0]!))).toEqual(
