@@ -155,13 +155,17 @@ describe("Thread Continuity", () => {
   also accepts a recorded conversation from `src/fixture/recordings/`. Export
   one with `exportRecordedConversation()`.
 - `onProgress` reacts to what the turn does: `model_request`,
-  `tool_request`, `reply`, or `paused`. Its `send(input)` posts an input while
-  the turn waits, so the product decides whether it steers, waits, or stops
-  the turn.
+  `tool_request`, `reply`, `paused`, or `child_agent`. Its `send(input)` posts
+  an input while the turn waits, so the product decides whether it steers,
+  waits, or stops the turn.
   `paused` means that a turn stopped before it finished, for example at its
   deadline, and Junior queued the rest of it. The fixture sees this at the
   queue, which it replaces. The rest of the turn waits until the handler
   finishes, so a sent input arrives before the turn continues.
+  `child_agent` means that Junior is about to run the work of a child agent.
+  The fixture also sees this at the queue. The work waits until the handler
+  finishes. A case that checks only the parent's choice to delegate can stop
+  the child agents before they call the model.
   `sendDuringFirstModelRequest(inputs)` in `src/fixture/progress.ts` sends
   inputs while the first model request waits.
 - Insert functions in `src/fixture/insert.ts` write setup data through the
@@ -324,10 +328,6 @@ cache keeps the file for the later runs of a pull request.
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
   the results for one test.
-- `mockWebPages()` from the same file gives fixed pages to `webFetch` for
-  some origins in one test. Use it when a case does not check the content
-  of a page, so a live page does not make the run slow. Other pages go to
-  Roach. The `bash` tool in the Vercel Sandbox does not use these mocks.
 
 ## Recordings
 

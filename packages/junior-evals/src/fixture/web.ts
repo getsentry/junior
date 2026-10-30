@@ -7,8 +7,7 @@
  * `mockWebSearchResults()`.
  *
  * The pages that the `webFetch` tool reads go to Roach, which
- * replays them. See `src/recording-rules.ts`. A test can answer some origins
- * itself with `mockWebPages()`.
+ * replays them. See `src/recording-rules.ts`.
  */
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
@@ -16,32 +15,12 @@ import { onTestFinished } from "vitest";
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
 
-let mockedPages: Record<string, string> = {};
-
-/**
- * Answer `webFetch` reads of each origin, such as `https://www.sqlite.org`,
- * with its HTML page in this test. Every path of the origin gets the page.
- * Other origins still go to Roach.
- */
-export function mockWebPages(pages: Record<string, string>): void {
-  mockedPages = pages;
-  onTestFinished(() => {
-    mockedPages = {};
-  });
-}
-
 /** Send the pages that `webFetch` reads to Roach. */
 export function installWebReplay(): void {
   mswServer.use(
     http.get("*", ({ request }) => {
       // Only `webFetch` sends this user agent.
       if (request.headers.get("user-agent") !== USER_AGENT) return undefined;
-      const page = mockedPages[new URL(request.url).origin];
-      if (page !== undefined) {
-        return new Response(page, {
-          headers: { "content-type": "text/html; charset=utf-8" },
-        });
-      }
       // `webFetch` uses `node:https`, which does not use the proxy. `fetch`
       // uses the proxy dispatcher of the test. `webFetch` follows redirects
       // itself, so each redirect is its own request.
