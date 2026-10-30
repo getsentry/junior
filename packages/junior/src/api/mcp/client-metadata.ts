@@ -14,7 +14,11 @@ const CLIENT_METADATA_MAX_BYTES = 5 * 1024;
 const CLIENT_METADATA_TIMEOUT_MS = 5_000;
 // A changed document takes effect after this time. It is not configurable.
 const CLIENT_METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
+// The authorize endpoint is public, so a failed fetch is cached too. This
+// limits how often one client ID can make Junior fetch a URL.
+const INVALID_CLIENT_CACHE_TTL_MS = 60 * 1000;
 
+// Not strict: this parses an external document, and CIMD allows more fields.
 const clientMetadataDocumentSchema = z.object({
   client_id: z.string(),
   client_name: z.string().trim().min(1).max(200).optional(),
@@ -31,8 +35,11 @@ const mcpClientSchema = z
   })
   .strict();
 
-/** One validated CIMD client. */
-export type McpClient = z.output<typeof mcpClientSchema>;
+const invalidClientSchema = z.object({ invalid: z.literal(true) }).strict();
+
+const cachedClientSchema = z.union([mcpClientSchema, invalidClientSchema]);
+
+type McpClient = z.output<typeof mcpClientSchema>;
 
 function stripBrackets(hostname: string): string {
   return hostname.replace(/^\[|\]$/g, "");
@@ -79,6 +86,8 @@ function fetchClientMetadataDocument(url: URL): Promise<unknown> {
       url,
       {
         headers: { accept: "application/json" },
+        // A pooled socket skips `lookup`, so each fetch opens its own socket.
+        agent: false,
         lookup: publicAddressLookup,
         method: "GET",
         signal: AbortSignal.timeout(CLIENT_METADATA_TIMEOUT_MS),
@@ -118,7 +127,8 @@ function fetchClientMetadataDocument(url: URL): Promise<unknown> {
 
 /**
  * Resolve a client from its CIMD URL. Return `undefined` when the client ID or
- * its document is invalid. Valid documents are cached for a short time.
+ * its document is invalid. Valid documents are cached for 5 minutes, and
+ * failed fetches for 1 minute.
  */
 export async function resolveMcpClient(
   state: McpState,
@@ -129,13 +139,17 @@ export async function resolveMcpClient(
   const key = mcpStateKey("client", stateKeyHash(clientId));
   const cached = await state.get(key);
   if (cached !== null && cached !== undefined) {
-    return mcpClientSchema.parse(cached);
+    const entry = cachedClientSchema.parse(cached);
+    return "invalid" in entry ? undefined : entry;
   }
 
   const parsed = clientMetadataDocumentSchema.safeParse(
     await fetchClientMetadataDocument(url),
   );
-  if (!parsed.success || parsed.data.client_id !== clientId) return undefined;
+  if (!parsed.success || parsed.data.client_id !== clientId) {
+    await state.set(key, { invalid: true }, INVALID_CLIENT_CACHE_TTL_MS);
+    return undefined;
+  }
   const client = mcpClientSchema.parse({
     clientId,
     ...(parsed.data.client_name

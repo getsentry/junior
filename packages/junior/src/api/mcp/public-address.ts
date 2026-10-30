@@ -28,15 +28,20 @@ const BLOCKED_SUBNETS: ReadonlyArray<
   ["203.0.113.0", 24, "ipv4"],
   ["224.0.0.0", 4, "ipv4"],
   ["240.0.0.0", 4, "ipv4"],
-  ["::", 128, "ipv6"],
-  ["::1", 128, "ipv6"],
+  // Unspecified, loopback, and deprecated IPv4-compatible addresses.
+  ["::", 96, "ipv6"],
   // NAT64 prefixes can reach private IPv4 networks.
   ["64:ff9b::", 96, "ipv6"],
   ["64:ff9b:1::", 48, "ipv6"],
   ["100::", 64, "ipv6"],
+  // Teredo and 6to4 tunnel to an embedded IPv4 address.
+  ["2001::", 32, "ipv6"],
   ["2001:db8::", 32, "ipv6"],
+  ["2002::", 16, "ipv6"],
   ["fc00::", 7, "ipv6"],
   ["fe80::", 10, "ipv6"],
+  // Deprecated site-local addresses.
+  ["fec0::", 10, "ipv6"],
   ["ff00::", 8, "ipv6"],
 ];
 

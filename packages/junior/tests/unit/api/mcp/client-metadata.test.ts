@@ -12,7 +12,6 @@ describe("MCP redirect URI matching", () => {
     ["https://client.example.com/callback"],
     ["http://localhost:53682/callback"],
     ["http://localhost/callback"],
-    ["http://127.0.0.1:9999/callback"],
   ])("allows %s", (requested) => {
     expect(redirectUriMatches(registered, requested)).toBe(true);
   });

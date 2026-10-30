@@ -64,6 +64,7 @@ database table.
 | Record                | TTL               |
 | --------------------- | ----------------- |
 | Client document cache | 5 minutes         |
+| Failed client fetch   | 1 minute          |
 | Pending authorization | 10 minutes        |
 | Authorization code    | 60 seconds        |
 | Access token          | 1 hour            |
@@ -90,10 +91,14 @@ stream or delete.
 
 - Junior stores only SHA-256 hashes of codes, tokens, and consent form tokens.
 - A `client_id` must be an `https:` URL with a path, without a fragment, and
-  without credentials. Other values give `invalid_client`.
+  without credentials. For other values, the authorize endpoint shows an HTML
+  error page with status `400`. It does not redirect.
 - A CIMD fetch does not follow redirects. It has a 5 second timeout and a 5 KB
   limit. It connects only to public addresses. The check runs on each DNS
-  answer when the socket connects.
+  answer when the socket connects. Each fetch opens a new socket, because a
+  pooled socket does not run the check.
+- The authorize endpoint needs no sign-in, and it fetches URLs. Thus Junior
+  caches a failed fetch for 1 minute for each `client_id`.
 - The document `client_id` must equal the requested URL exactly. The document
   must not ask for client authentication.
 - A redirect URI must equal a registered URI. A loopback `http:` URI can use any
