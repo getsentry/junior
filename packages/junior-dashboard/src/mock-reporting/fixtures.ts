@@ -1986,6 +1986,28 @@ export function readMockConversationPendingMessages(
             source: "web" as const,
             text: "Fifth queued message.",
           },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -800),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-sixth`,
+            messageId: `${conversationId}:pending-sixth`,
+            receivedAt: iso(nowMs, -400),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Sixth queued message.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -600),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-seventh`,
+            messageId: `${conversationId}:pending-seventh`,
+            receivedAt: iso(nowMs, -300),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Seventh queued message.",
+          },
         ]
       : [];
 
