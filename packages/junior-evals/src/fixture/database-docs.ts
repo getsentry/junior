@@ -2,11 +2,10 @@
  * Real docs of PostgreSQL, MySQL, and SQLite for tests where agents research
  * databases on the web.
  *
- * There is one real docs page for each database. Each file is the live page
- * with the scripts, styles, and parts that `webFetch` does not read taken
- * out. It is cut after the first 12,000 characters, which is the most that
- * `webFetch` returns. `webFetch` returns the same text for these files as for
- * the live pages.
+ * There is one real docs page for each database. Each file is the full live
+ * page from 2026-10-30, with the scripts, styles, comments, navigation, SVG
+ * shapes, and attributes that `webFetch` does not read taken out. `webFetch`
+ * extracts the same text from these files as from the live pages.
  */
 import { readFileSync } from "node:fs";
 import {
