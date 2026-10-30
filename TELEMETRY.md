@@ -307,6 +307,15 @@ A Slack `chat.turn` span is in the trace of a Slack webhook request:
 - Without stored headers, `chat.turn` is a child of the `queue.process` span.
   Headers that are not valid start a new trace.
 
+A Turn that yields, times out, or waits for auth continues in a resumed slice.
+Each resumed slice has its own `chat.turn` span in the trace of the first slice:
+
+- The first save of the Turn cursor stores the active `sentry-trace` and
+  `baggage` headers. Later saves keep them.
+- A resumed `chat.turn` continues that trace. Its parent is the span that was
+  active at the first save. It has a span link to the `queue.process` span of
+  the worker.
+
 The timing attributes are absent when the value is negative. A negative value
 is clock skew between Slack and Junior hosts, not latency. Resumed `chat.turn`
 spans do not record these attributes.

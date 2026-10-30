@@ -29,7 +29,7 @@ function spanLinks({ sentryTrace }: TraceContext) {
 }
 
 /**
- * Run a `chat.turn` span in the ingress trace of the first trace context.
+ * Run a `chat.turn` span in the trace of the first trace context.
  *
  * The span links to the other trace contexts and to the span that was active,
  * such as the worker span. Without a trace context, the span is a child of the
