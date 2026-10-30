@@ -687,10 +687,7 @@ export function createConversationTurnWorker(
               await maybePostAutomatedTurnLimitNotice({
                 conversationId: context.conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                threadTs:
-                  conversationLocation?.provider === "slack"
-                    ? conversationLocation.threadTs
-                    : undefined,
+                source,
                 update: automatedTurnLimit,
               });
 

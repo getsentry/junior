@@ -12,7 +12,8 @@ import {
   clearAutomatedTurnLimitNoticeClaim,
   type AutomatedTurnLimitUpdate,
 } from "@/chat/services/automated-turn-limit";
-import { postSlackMessage } from "@/chat/slack/outbound";
+import type { Source } from "@sentry/junior-plugin-api";
+import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 
 async function releaseFailedNoticeClaim(args: {
   conversationId: string;
@@ -30,7 +31,8 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
   conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  threadTs?: string;
+  /** Source of the Turn that hit the limit, when a Turn posts the notice. */
+  source?: Source;
 }): Promise<boolean> {
   try {
     const conversation = await getConversationStore().get({
@@ -50,16 +52,17 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
       });
       return false;
     }
-    await postSlackMessage({
-      channelId: location.channelId,
+    await sendSlackReply({
+      // The Location is the only Slack channel this path knows.
+      ...resolveSlackReplyTarget({
+        destination: location,
+        location,
+        source: args.source,
+      }),
+      conversationId: args.conversationId,
       text: buildAutomatedTurnLimitResponse({
         maxTurns: args.maxTurns,
       }),
-      ...(args.threadTs
-        ? { threadTs: args.threadTs }
-        : location.threadTs
-          ? { threadTs: location.threadTs }
-          : undefined),
     });
     return true;
   } catch (error) {
@@ -79,7 +82,7 @@ export async function maybePostAutomatedTurnLimitNotice(args: {
   conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  threadTs?: string;
+  source?: Source;
   update: AutomatedTurnLimitUpdate | undefined;
 }): Promise<void> {
   if (!args.update?.shouldPostNotice) {
@@ -89,6 +92,6 @@ export async function maybePostAutomatedTurnLimitNotice(args: {
     conversationId: args.conversationId,
     maxTurns: args.maxTurns,
     nowMs: args.nowMs,
-    threadTs: args.threadTs,
+    source: args.source,
   });
 }

@@ -15,7 +15,6 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { webUserInputAnswerNote } from "@/chat/slack/user-input";
 import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
-import { parseSlackThreadId } from "@/chat/slack/context";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { throwApiError } from "../http";
 import type {
@@ -152,10 +151,13 @@ export async function appendConversationMessageForViewer(
         note: () => webUserInputAnswerNote(viewer.displayName ?? viewer.email),
         persist: append,
         state,
-        // Destination is the channel. Location keeps the Slack thread.
+        // Destination is the channel. Location keeps the Slack thread. Like
+        // the Slack tool context, fall back to the Slack session Source.
         threadTs:
           conversation.location?.threadTs ??
-          parseSlackThreadId(conversationId)?.threadTs,
+          (conversation.sessionSource?.kind === "slack"
+            ? conversation.sessionSource.threadTs
+            : undefined),
       });
     });
   } catch (error) {

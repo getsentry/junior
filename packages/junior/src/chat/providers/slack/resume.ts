@@ -57,7 +57,6 @@ import {
 import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { actorLogContext } from "@/chat/credentials/context";
-import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import {
   startProcessingReactionForMessage,
   type ProcessingReaction,
@@ -86,26 +85,15 @@ import {
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
 
-async function postSlackMessageBestEffort(
-  channelId: string,
-  threadTs: string | undefined,
-  text: string,
-  conversationId?: string,
-  replyAttribution?: ReplyAttribution,
-): Promise<void> {
+async function postSlackMessageBestEffort(args: {
+  channelId: string;
+  conversationId: string;
+  replyAttribution?: ReplyAttribution;
+  text: string;
+  threadTs?: string;
+}): Promise<void> {
   try {
-    if (conversationId) {
-      await sendSlackReply({
-        channelId,
-        conversationId,
-        replyAttribution,
-        text,
-        threadTs,
-      });
-      return;
-    }
-
-    await postSlackApiMessage({ channelId, threadTs, text });
+    await sendSlackReply(args);
   } catch {
     // Status notices do not decide whether the Turn succeeds.
   }
@@ -210,15 +198,16 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
 }
 
 async function postResumeFailureReply(args: {
-  channelId: string;
-  threadTs?: string;
   eventId: string;
   error: unknown;
+  resume: ResumeSlackTurnArgs;
 }): Promise<void> {
-  await postSlackApiMessage({
-    channelId: args.channelId,
-    threadTs: args.threadTs,
+  await sendSlackReply({
+    channelId: args.resume.channelId,
+    conversationId: args.resume.conversationId,
+    replyAttribution: args.resume.run?.dispatch?.replyAttribution,
     text: buildTurnErrorResponse(args.error, args.eventId),
+    threadTs: args.resume.threadTs,
   });
 }
 
@@ -259,10 +248,9 @@ async function handleResumeFailure(args: {
   }
   try {
     await postResumeFailureReply({
-      channelId: args.resume.channelId,
-      threadTs: args.resume.threadTs,
       eventId,
       error: args.error,
+      resume: args.resume,
     });
   } catch (deliveryError) {
     const deliveryEventId = logException(
@@ -454,11 +442,13 @@ async function resumeSlackTurnInContext(
       });
     }
     if (runArgs.initialText) {
-      await postSlackMessageBestEffort(
-        runArgs.channelId,
-        runArgs.threadTs,
-        runArgs.initialText,
-      );
+      await postSlackMessageBestEffort({
+        channelId: runArgs.channelId,
+        conversationId: runArgs.conversationId,
+        replyAttribution: runArgs.run?.dispatch?.replyAttribution,
+        text: runArgs.initialText,
+        threadTs: runArgs.threadTs,
+      });
     }
     status.update(runArgs.initialStatus);
 
@@ -835,17 +825,17 @@ async function resumeSlackTurnInContext(
     try {
       await deferredPauseHandler();
       if (deferredAuthInfo) {
-        await postSlackMessageBestEffort(
-          runArgs.channelId,
-          runArgs.threadTs,
-          buildAuthPauseResponse(
+        await postSlackMessageBestEffort({
+          channelId: runArgs.channelId,
+          conversationId: runArgs.conversationId,
+          replyAttribution: runArgs.run?.dispatch?.replyAttribution,
+          text: buildAuthPauseResponse(
             deferredAuthInfo.actorId,
             deferredAuthInfo.providerDisplayName,
             deferredAuthInfo.requestText,
           ),
-          runArgs.conversationId,
-          runArgs.run?.dispatch?.replyAttribution,
-        );
+          threadTs: runArgs.threadTs,
+        });
       }
       return true;
     } catch (pauseError) {
