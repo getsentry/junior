@@ -298,7 +298,7 @@ of the event column keep `actor_identity_id`.
 
 ## Decided
 
-These are David Cramer's answers in the #2439 thread.
+These are David Cramer's answers in the Slack thread for #2439.
 
 - **Assistant output** is an event and has no author Identity.
 - **Web users** always have an Identity. The mock viewer mocks one. David
