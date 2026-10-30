@@ -160,9 +160,6 @@ Nested logs and spans inherit them.
 - `app.credential.allowed_when`, `app.task.id`: why delegated credentials were
   allowed, and for which Automation.
 
-`conversation.actor.missing` records a Conversation write that had no Actor.
-The store then used a system Identity from `app.conversation.source`.
-
 Do not add app-specific keys under `user.*`. Put facts about the request in
 `app.*`.
 

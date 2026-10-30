@@ -24,12 +24,10 @@ for the same person.
 
 - A Slack Actor is the Slack Identity in its workspace.
 - A web Actor is the `junior` Identity keyed by its verified email.
-- A local Actor is a `local` user Identity keyed by its user id. It is not the
-  "Local CLI" system Identity.
 - A system Actor is the `junior` system Identity with the Actor name.
 
 A Conversation write without an Actor still uses a system Identity from its
-Source. The log event `conversation.actor.missing` records each such write.
+Source.
 
 ## Native Identities
 

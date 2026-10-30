@@ -1,63 +1,77 @@
 import type { StoredSlackActor } from "@/chat/actor";
-import { identityForStoredActor } from "@/chat/identities/actor";
+import { identityForActor, systemIdentity } from "@/chat/identities/actor";
 import type { IdentityUpsert } from "@/chat/identities/identity";
-import { logWarn } from "@/chat/logging";
 import type { Conversation, ConversationSource } from "../store";
 import type { juniorIdentities } from "@/db/schema";
 
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 
-/** Build a system identity when a conversation has no user actor. */
+/**
+ * Read the Identity key of an Actor in the stored Conversation shape.
+ *
+ * TODO(dcramer): Remove after Conversations store the Identity id instead of
+ * StoredSlackActor.
+ */
+function identityForStoredActor(
+  actor: StoredSlackActor | undefined,
+): IdentityUpsert | undefined {
+  if (actor?.slackUserId) {
+    return identityForActor({
+      ...(actor.email ? { email: actor.email } : undefined),
+      ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+      platform: "slack",
+      // Older stored Slack actors can omit the team. SQL stores a missing
+      // tenant as an empty string.
+      teamId: actor.teamId ?? "",
+      userId: actor.slackUserId,
+      ...(actor.slackUserName ? { userName: actor.slackUserName } : undefined),
+    });
+  }
+  if (!actor?.email) {
+    return undefined;
+  }
+  // A stored web actor keeps only its verified email and name. The web
+  // Identity key does not use the Actor user id.
+  return identityForActor({
+    email: actor.email,
+    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+    platform: "web",
+    userId: actor.email,
+  });
+}
+
+/**
+ * Build a system identity when a conversation has no user actor.
+ *
+ * TODO(dcramer): These names do not match the SystemActor names. The
+ * scheduler source uses `scheduler`, but its SystemActor is
+ * `scheduled-automation`. Other SystemActors use plugin names, `event`,
+ * `conversation-title`, and `workspace-snapshot`. Align them when every
+ * ingress supplies its Actor.
+ */
 export function systemIdentityFromSource(
   source: ConversationSource | undefined,
 ): IdentityUpsert | undefined {
   if (source === "scheduler") {
-    return {
-      kind: "system",
-      provider: "junior",
-      providerSubjectId: "scheduler",
-      displayName: "Scheduler",
-    };
+    return systemIdentity("scheduler", "Scheduler");
   }
   if (source === "local") {
-    return {
-      kind: "system",
-      provider: "junior",
-      providerSubjectId: "local-cli",
-      displayName: "Local CLI",
-    };
+    return systemIdentity("local-cli", "Local CLI");
   }
   if (source === "event") {
-    return {
-      kind: "system",
-      provider: "junior",
-      providerSubjectId: "event",
-      displayName: "Event",
-    };
+    return systemIdentity("event", "Event");
   }
   return undefined;
 }
 
-/**
- * Prefer the user actor identity, else a source-derived system identity.
- *
- * TODO(dcramer): Remove the source fallback after every ingress supplies an
- * Actor. `conversation.actor.missing` shows the writes that still use it.
- */
+/** Prefer the user actor identity, else a source-derived system identity. */
 export function actorIdentityForConversation(
   conversation: Conversation,
 ): IdentityUpsert | undefined {
-  const identity = identityForStoredActor(conversation.actor);
-  if (identity) {
-    return identity;
-  }
-  const fallback = systemIdentityFromSource(conversation.source);
-  if (fallback) {
-    logWarn("conversation.actor.missing", {
-      "app.conversation.source": conversation.source,
-    });
-  }
-  return fallback;
+  return (
+    identityForStoredActor(conversation.actor) ??
+    systemIdentityFromSource(conversation.source)
+  );
 }
 
 /**
