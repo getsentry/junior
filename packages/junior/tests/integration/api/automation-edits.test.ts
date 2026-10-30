@@ -365,15 +365,11 @@ describe("Automation edit API", () => {
       expect(catalog.status).toBe(200);
       // The dashboard parses the JSON body with this same schema.
       const choices = automationEventCatalogSchema.parse(await catalog.json());
-      expect(choices).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            namespace: "github",
-            type: "issue",
-            supportedEvents: expect.arrayContaining(["issue.closed"]),
-          }),
-        ]),
-      );
+      // One entry for each namespace, with the reach of each event once.
+      const github = choices.find((choice) => choice.namespace === "github");
+      expect(github?.events["issue.closed"]).toEqual({
+        reach: { anyOf: ["repo"] },
+      });
       expect(choices.some((choice) => choice.namespace === "junior")).toBe(
         false,
       );
@@ -956,6 +952,43 @@ describe("Automation edit API", () => {
         },
       });
       expect(await unavailableIds()).toEqual([id]);
+
+      // With no identifier, pull request events need a repo filter.
+      const anyResource = {
+        namespace: "github",
+        label: "New pull requests",
+        events: ["pull_request.opened"],
+      };
+      const unscoped = await patch({
+        kind: "event",
+        revision: (await read()).revision,
+        trigger: anyResource,
+      });
+      expect(unscoped.status).toBe(400);
+      expect(await unscoped.json()).toMatchObject({
+        fields: {
+          trigger: [
+            'This GitHub trigger cannot be saved. This trigger needs a "repo" filter (match.repo), because "pull_request.opened" cannot run for every resource.',
+          ],
+        },
+      });
+      const scoped = await patch({
+        kind: "event",
+        revision: (await read()).revision,
+        trigger: { ...anyResource, match: { repo: "getsentry/junior" } },
+      });
+      expect(scoped.status).toBe(200);
+      expect(await unavailableIds()).toEqual([]);
+      expect(
+        await (await app.request(`/api/automations/${id}`)).json(),
+      ).toMatchObject({
+        resource: "New pull requests",
+        trigger: {
+          events: ["pull request opened"],
+          filters: ["repo is getsentry/junior"],
+          problems: [],
+        },
+      });
     } finally {
       await fixture.close();
     }

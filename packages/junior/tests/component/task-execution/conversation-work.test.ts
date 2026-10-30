@@ -26,6 +26,7 @@ import {
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
+  steerWebPendingMessages,
   stopConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
@@ -36,6 +37,7 @@ import {
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
+  type ConversationWorkerContext,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { closeDb } from "@/chat/db";
@@ -1599,22 +1601,45 @@ describe("conversation work execution", () => {
       }),
       nowMs: 2_100,
     });
-    const drained: string[][] = [];
+    await appendInboundMessage({
+      message: inboundMessage("m3", {
+        createdAtMs: 3_000,
+        delivery: "defer",
+        input: { authorId: "dashboard:reader", text: "steer me" },
+        receivedAtMs: 3_100,
+        source: "web",
+      }),
+      nowMs: 3_100,
+    });
+    // Each entry is the run number and the ids that run drained.
+    const drained: string[] = [];
+    let runs = 0;
+    const drain = (context: ConversationWorkerContext) =>
+      context.attempt.drain(async (messages) => {
+        const ids = messages.map((message) => message.inboundMessageId);
+        drained.push(`${runs}:${ids.join(",")}`);
+        return ids;
+      });
 
     await expect(
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.attempt.drain(async (messages) => {
-            drained.push(messages.map((message) => message.inboundMessageId));
-            return messages.map((message) => message.inboundMessageId);
+          runs += 1;
+          await drain(context);
+          // A queued message steered after the attempt started joins it.
+          await steerWebPendingMessages({
+            authorId: "dashboard:reader",
+            conversationId: CONVERSATION_ID,
+            inboundMessageIds: ["m3"],
           });
+          await drain(context);
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
-    expect(drained).toEqual([["m1"]]);
+    expect(drained).toEqual(["1:m1", "1:m3"]);
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
@@ -1624,6 +1649,53 @@ describe("conversation work execution", () => {
         delivery: "defer",
       }),
     ]);
+  });
+
+  it("resumes a yielded Turn before a newly steered web message", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const webMessage = (id: string, authorId: string) =>
+      inboundMessage(id, {
+        delivery: "defer",
+        input: { authorId, text: id },
+        source: "web",
+      });
+    await appendInboundMessage({
+      message: webMessage("a1", "dashboard:a"),
+      nowMs: 1_000,
+    });
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        await appendInboundMessage({
+          message: webMessage("b1", "dashboard:b"),
+        });
+        await steerWebPendingMessages({
+          authorId: "dashboard:b",
+          conversationId: CONVERSATION_ID,
+          inboundMessageIds: ["b1"],
+        });
+        return { status: "yielded" };
+      },
+    });
+
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // A second Turn must not start while the first waits to resume.
+    expect(attempts).toEqual([["a1"], [], ["b1"]]);
   });
 
   it("does not rewrite mailbox state for an empty drain result", async () => {

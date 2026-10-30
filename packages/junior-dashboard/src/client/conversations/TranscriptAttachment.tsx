@@ -1,12 +1,22 @@
 import {
   INPUT_IMAGE_TYPES,
+  type InputImage,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
 import { FileText } from "lucide-react";
 import { ImageAttachment } from "../components/ImageAttachment";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
-function attachmentUrl(conversationId: string, attachmentId: string): string {
+/** Build a data URL that previews an image before the server stores it. */
+export function inputImageSrc(image: InputImage): string {
+  return `data:${image.contentType};base64,${image.data}`;
+}
+
+/** Build the private read route for one stored conversation attachment. */
+export function conversationAttachmentUrl(
+  conversationId: string,
+  attachmentId: string,
+): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
@@ -35,13 +45,38 @@ export function TranscriptAttachments(props: {
   );
 }
 
+/** Show the images of a send before the server stores them. */
+export function TranscriptLocalImages(props: { images: InputImage[] }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-start gap-2">
+      {props.images.map((image, index) => (
+        <ImageAttachment
+          filename={image.filename}
+          imageClassName={TRANSCRIPT_IMAGE_CLASS}
+          key={`${image.filename}:${index}`}
+          src={inputImageSrc(image)}
+          triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
+        />
+      ))}
+    </div>
+  );
+}
+
+const TRANSCRIPT_IMAGE_CLASS =
+  "max-h-48 w-auto max-w-full h-auto rounded-lg object-contain";
+const TRANSCRIPT_IMAGE_TRIGGER_CLASS =
+  "block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+
 /** Render one stored user or assistant attachment using the private read route. */
 function TranscriptAttachment(props: {
   attachment: MessageAttachment;
   conversationId: string;
 }) {
   const search = useTranscriptSearch();
-  const href = attachmentUrl(props.conversationId, props.attachment.id);
+  const href = conversationAttachmentUrl(
+    props.conversationId,
+    props.attachment.id,
+  );
   const size = formatAttachmentBytes(props.attachment.bytes);
   const inline = INPUT_IMAGE_TYPES.some(
     (type) => type === props.attachment.contentType,
@@ -53,10 +88,10 @@ function TranscriptAttachment(props: {
       <ImageAttachment
         context={meta}
         filename={props.attachment.filename}
-        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-lg object-contain"
+        imageClassName={TRANSCRIPT_IMAGE_CLASS}
         loading="lazy"
         src={href}
-        triggerClassName="block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
       />
     );
   }

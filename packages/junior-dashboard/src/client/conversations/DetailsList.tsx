@@ -3,6 +3,39 @@ import { useState, type ReactNode } from "react";
 
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 
+/**
+ * Group one kind of detail in a compact card. Conversation details and event
+ * details share it, so both panels read the same way. A `label` names the
+ * card as a region.
+ */
+export function DetailsCard(props: {
+  children: ReactNode;
+  count?: number;
+  label?: string;
+  title?: string;
+}) {
+  return (
+    <section
+      aria-label={props.label}
+      className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3"
+    >
+      {props.title ? (
+        <h3 className="m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs font-medium text-dashboard-text-muted">
+          {props.title}
+          {props.count ? (
+            <span className="tabular-nums text-dashboard-text-faint">
+              {props.count.toLocaleString("en-US")}
+            </span>
+          ) : null}
+        </h3>
+      ) : null}
+      <div className="min-w-0 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">
+        {props.children}
+      </div>
+    </section>
+  );
+}
+
 /** Rows a details list shows before the reader asks for the rest. */
 const COLLAPSED_ROW_COUNT = 3;
 

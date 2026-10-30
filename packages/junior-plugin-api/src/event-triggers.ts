@@ -6,7 +6,12 @@
  * find saved triggers that can no longer work. The dashboard runs it in the
  * editor, so all of them use the same rules.
  */
-import type { EventMatch, EventMatchFields, PluginEventType } from "./events";
+import {
+  type EventMatch,
+  type EventMatchFields,
+  type EventReach,
+  type PluginEventType,
+} from "./events";
 
 type EventMatchField = EventMatchFields[string];
 
@@ -15,6 +20,10 @@ export interface EventTriggerProblem {
   /**
    * - `unknown_resource_type`: the source has no such enabled resource type.
    * - `unknown_event`: the resource type has no such event.
+   * - `identifier_required`: a trigger with no identifier selects an event
+   *   that cannot run for every resource.
+   * - `filter_required`: a trigger with no identifier selects an event whose
+   *   reach names filters, and the trigger sets none of them.
    * - `unknown_field`: the resource type has no such filter. Saved triggers
    *   get this after a plugin renames or removes a filter.
    * - `field_not_set`: a selected event never sets the filter, so the filter
@@ -24,6 +33,8 @@ export interface EventTriggerProblem {
   reason:
     | "unknown_resource_type"
     | "unknown_event"
+    | "identifier_required"
+    | "filter_required"
     | "unknown_field"
     | "field_not_set"
     | "invalid_value";
@@ -33,11 +44,38 @@ export interface EventTriggerProblem {
   message: string;
 }
 
-/** The selection to check: one resource type, its events, and its filters. */
+/**
+ * The selection to check: one resource type, its events, and its filters.
+ * Leave out the resource type for a trigger with no identifier. It runs for
+ * every resource of the source that its filters match.
+ */
 export interface EventTriggerSelection {
-  resourceType: string;
+  resourceType?: string;
   events: readonly string[];
   match?: EventMatch;
+}
+
+/** The enabled resource types of one source, and the reach of each of its events. */
+export interface EventTriggerSource {
+  resourceTypes: readonly Pick<
+    PluginEventType,
+    "type" | "matchFields" | "supportedEvents"
+  >[];
+  events: Readonly<Record<string, { reach: EventReach }>>;
+  /**
+   * The filters of every resource type, for a trigger with no identifier.
+   * Merge them once with `anyResourceMatchFields` when the catalog is built,
+   * not for each check.
+   */
+  anyResourceFields: EventMatchFields;
+}
+
+/** The events of a source that a trigger with no identifier can select. */
+export function anyResourceEvents(source: EventTriggerSource): string[] {
+  return Object.entries(source.events)
+    .filter(([, declaration]) => declaration.reach !== "resource")
+    .map(([eventType]) => eventType)
+    .sort();
 }
 
 function quoted(values: readonly string[]): string {
@@ -84,61 +122,121 @@ function valueProblem(
   return undefined;
 }
 
+/** The events and filters that one selection can use. */
+function selectionScope(
+  source: EventTriggerSource,
+  selection: Pick<EventTriggerSelection, "resourceType">,
+):
+  | {
+      events: readonly string[];
+      fields: EventMatchFields;
+      owner: "resource type" | "source";
+    }
+  | EventTriggerProblem {
+  if (selection.resourceType === undefined) {
+    const events = anyResourceEvents(source);
+    if (events.length === 0) {
+      return {
+        reason: "identifier_required",
+        message:
+          "This source cannot run for every resource. Set a resource type and an identifier.",
+      };
+    }
+    return { events, fields: source.anyResourceFields, owner: "source" };
+  }
+  const resourceType = source.resourceTypes.find(
+    (candidate) => candidate.type === selection.resourceType,
+  );
+  if (!resourceType) {
+    return {
+      reason: "unknown_resource_type",
+      message: `"${selection.resourceType}" is not an enabled resource type. Use one of: ${quoted(source.resourceTypes.map((candidate) => candidate.type))}.`,
+    };
+  }
+  return {
+    events: resourceType.supportedEvents,
+    fields: resourceType.matchFields ?? {},
+    owner: "resource type",
+  };
+}
+
+/**
+ * Return the events and filters that a selection can use: those of its
+ * resource type, or with no resource type, the events whose reach is not
+ * `"resource"`, with the filters of every resource type. Return nothing when the source
+ * has no such resource type or cannot run for every resource.
+ */
+export function eventTriggerChoices(
+  source: EventTriggerSource,
+  selection: Pick<EventTriggerSelection, "resourceType">,
+): { events: readonly string[]; fields: EventMatchFields } | undefined {
+  if (source.resourceTypes.length === 0) return undefined;
+  const scope = selectionScope(source, selection);
+  return "reason" in scope
+    ? undefined
+    : { events: scope.events, fields: scope.fields };
+}
+
 /**
  * List why a selection cannot work with the resource types of one source. An
  * empty list means the resource type exists, every selected event is
  * supported, and every selected event can match every filter. A filter on a
  * list field (`list: true`) matches when the event list includes the value.
+ * A selection with no resource type can use only events whose reach is not
+ * `"resource"`, with the filters of every resource type, and must set one of
+ * the filters that the reach of each selected event names.
  * Set `inputKeys` for the agent, so messages name the `match.<key>` input.
  */
 export function eventTriggerProblems(
-  resourceTypes: readonly Pick<
-    PluginEventType,
-    "type" | "matchFields" | "supportedEvents"
-  >[],
+  source: EventTriggerSource,
   selection: EventTriggerSelection,
   options: { inputKeys?: boolean } = {},
 ): EventTriggerProblem[] {
-  const resourceType = resourceTypes.find(
-    (candidate) => candidate.type === selection.resourceType,
-  );
-  if (!resourceType) {
+  if (source.resourceTypes.length === 0) {
     return [
       {
         reason: "unknown_resource_type",
-        message:
-          resourceTypes.length === 0
-            ? "The plugin for this source is not enabled."
-            : `"${selection.resourceType}" is not an enabled resource type. Use one of: ${quoted(resourceTypes.map((candidate) => candidate.type))}.`,
+        message: "The plugin for this source is not enabled.",
       },
     ];
   }
+  const scope = selectionScope(source, selection);
+  if ("reason" in scope) return [scope];
+  const filterName = (key: string) =>
+    options.inputKeys ? `Filter "${key}" (match.${key})` : `Filter "${key}"`;
   const problems: EventTriggerProblem[] = [];
   const events = selection.events.filter((eventType) =>
-    resourceType.supportedEvents.includes(eventType),
+    scope.events.includes(eventType),
   );
   for (const eventType of selection.events) {
     if (events.includes(eventType)) continue;
-    problems.push({
-      reason: "unknown_event",
-      message: `"${eventType}" is not an event for this resource type. Use one of: ${quoted(resourceType.supportedEvents)}.`,
-    });
+    const anySupports = source.resourceTypes.some((resourceType) =>
+      resourceType.supportedEvents.includes(eventType),
+    );
+    problems.push(
+      selection.resourceType === undefined && anySupports
+        ? {
+            reason: "identifier_required",
+            message: `"${eventType}" cannot run for every resource. Set a resource type and an identifier, or use one of: ${quoted(scope.events)}.`,
+          }
+        : {
+            reason: "unknown_event",
+            message: `"${eventType}" is not an event for this ${scope.owner}. Use one of: ${quoted(scope.events)}.`,
+          },
+    );
   }
-  const fields = resourceType.matchFields ?? {};
-  const fieldNames = Object.keys(fields);
+  const fieldNames = Object.keys(scope.fields);
   for (const [key, value] of Object.entries(selection.match ?? {})) {
-    const filter = options.inputKeys
-      ? `Filter "${key}" (match.${key})`
-      : `Filter "${key}"`;
-    const field = fields[key];
+    const filter = filterName(key);
+    const field = scope.fields[key];
     if (!field) {
       problems.push({
         reason: "unknown_field",
         field: key,
         message:
           fieldNames.length === 0
-            ? `${filter} does not exist. This resource type has no filters, so remove it.`
-            : `${filter} does not exist for this resource type. Remove it, or use one of: ${quoted(fieldNames)}.`,
+            ? `${filter} does not exist. This ${scope.owner} has no filters, so remove it.`
+            : `${filter} does not exist for this ${scope.owner}. Remove it, or use one of: ${quoted(fieldNames)}.`,
       });
       continue;
     }
@@ -155,7 +253,43 @@ export function eventTriggerProblems(
       problems.push({ reason: "invalid_value", field: key, message: invalid });
     }
   }
+  if (selection.resourceType === undefined) {
+    problems.push(
+      ...requiredFilterProblems(source, events, selection, options),
+    );
+  }
   return problems;
+}
+
+/** Name the filters that the selected events need and the trigger does not set. */
+function requiredFilterProblems(
+  source: EventTriggerSource,
+  events: readonly string[],
+  selection: EventTriggerSelection,
+  options: { inputKeys?: boolean },
+): EventTriggerProblem[] {
+  const missing = new Map<string, { anyOf: string[]; events: string[] }>();
+  for (const eventType of events) {
+    const reach = source.events[eventType]?.reach;
+    if (typeof reach !== "object") continue;
+    if (reach.anyOf.some((filter) => selection.match?.[filter] !== undefined)) {
+      continue;
+    }
+    const key = [...reach.anyOf].sort().join(",");
+    const entry = missing.get(key) ?? { anyOf: reach.anyOf, events: [] };
+    entry.events.push(eventType);
+    missing.set(key, entry);
+  }
+  const inputKey = (filter: string) =>
+    options.inputKeys ? ` (match.${filter})` : "";
+  return [...missing.values()].map(({ anyOf, events: requiredBy }) => ({
+    reason: "filter_required",
+    field: anyOf[0],
+    message:
+      anyOf.length === 1
+        ? `This trigger needs a "${anyOf[0]}" filter${inputKey(anyOf[0]!)}, because ${quoted(requiredBy)} cannot run for every resource.`
+        : `This trigger needs one of these filters: ${anyOf.map((filter) => `"${filter}"${inputKey(filter)}`).join(", ")}, because ${quoted(requiredBy)} cannot run for every resource.`,
+  }));
 }
 
 /** How people see one Event trigger. Each entry is one line of plain text. */
@@ -190,25 +324,20 @@ export function eventMatchFilterText(
 
 /**
  * Describe a selection for the dashboard and Slack, so both show the same
- * words. Pass the resource types of the selection's source, as for
- * `eventTriggerProblems`. Its problems are the messages of that check.
+ * words. Pass the selection's source, as for `eventTriggerProblems`. Its
+ * problems are the messages of that check.
  */
 export function describeEventTrigger(
-  resourceTypes: readonly Pick<
-    PluginEventType,
-    "type" | "matchFields" | "supportedEvents"
-  >[],
+  source: EventTriggerSource,
   selection: EventTriggerSelection,
 ): EventTriggerDescription {
-  const fields =
-    resourceTypes.find((candidate) => candidate.type === selection.resourceType)
-      ?.matchFields ?? {};
+  const fields = eventTriggerChoices(source, selection)?.fields ?? {};
   return {
     events: selection.events.map(eventTypeText),
     filters: Object.entries(selection.match ?? {}).map(([key, value]) =>
       eventMatchFilterText(key, fields[key], value),
     ),
-    problems: eventTriggerProblems(resourceTypes, selection).map(
+    problems: eventTriggerProblems(source, selection).map(
       (problem) => problem.message,
     ),
   };

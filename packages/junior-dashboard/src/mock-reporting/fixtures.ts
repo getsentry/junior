@@ -1944,6 +1944,14 @@ export function readMockConversationPendingMessages(
             role: "user" as const,
             source: "web" as const,
             text: "Keep the reply in Junior. I will paste the dashboard link next.",
+            attachments: [
+              {
+                id: "qa-chart-png",
+                filename: "queued-chart.png",
+                contentType: "image/png",
+                bytes: 18211,
+              },
+            ],
           },
           {
             actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -1977,6 +1985,28 @@ export function readMockConversationPendingMessages(
             role: "user" as const,
             source: "web" as const,
             text: "Fifth queued message.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -800),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-sixth`,
+            messageId: `${conversationId}:pending-sixth`,
+            receivedAt: iso(nowMs, -400),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Sixth queued message.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -600),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-seventh`,
+            messageId: `${conversationId}:pending-seventh`,
+            receivedAt: iso(nowMs, -300),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Seventh queued message.",
           },
         ]
       : [];

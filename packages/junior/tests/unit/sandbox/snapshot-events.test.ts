@@ -65,7 +65,6 @@ describe("Workspace snapshot events", () => {
       eventGuidance(
         catalog,
         WORKSPACE_SNAPSHOT_NAMESPACE,
-        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
         WORKSPACE_SNAPSHOT_READY_EVENT,
       ),
     ).toContain("switchWorkspace");
@@ -73,7 +72,6 @@ describe("Workspace snapshot events", () => {
       eventGuidance(
         catalog,
         WORKSPACE_SNAPSHOT_NAMESPACE,
-        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
         WORKSPACE_SNAPSHOT_FAILED_EVENT,
       ),
     ).toContain("Report the snapshot failure");

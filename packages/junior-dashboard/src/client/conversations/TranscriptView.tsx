@@ -1,10 +1,12 @@
 import { useState } from "react";
+import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDownToLine } from "lucide-react";
 
 import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
+import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Button } from "../components/ui/button";
 import {
   Tooltip,
@@ -20,7 +22,6 @@ import {
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import { transcriptEmptyClass } from "./transcriptStyles";
 import { TranscriptSearchProvider } from "./transcriptSearch";
 import {
   TurnContextPanelProvider,
@@ -37,6 +38,8 @@ export function Transcript(props: {
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
   onSelectedEventSeqChange?(seq: number | undefined): void;
+  /** The reader's own sends to show at the end until history has them. */
+  pendingMessages?: readonly ConversationMailboxMessage[];
   responding?: boolean;
   search?: string;
   onSearchChange?(value: string): void;
@@ -86,9 +89,9 @@ export function Transcript(props: {
 
   if (!props.transcript) {
     return (
-      <div className={transcriptEmptyClass()}>
+      <EmptyTelemetry>
         No transcript is available for this conversation.
-      </div>
+      </EmptyTelemetry>
     );
   }
 
@@ -139,6 +142,7 @@ export function Transcript(props: {
             <ConversationTranscriptView
               onOpenSubagentTranscript={props.onOpenSubagentTranscript}
               conversation={props.transcript}
+              pendingMessages={props.pendingMessages}
               responding={props.responding ?? props.live ?? false}
             />
           </TurnContextPanelProvider>

@@ -605,24 +605,34 @@ describe("github plugin", () => {
   });
 
   it("registers app guidance for pull request events", () => {
-    const pullRequest = githubPlugin({
+    const events = githubPlugin({
       pullRequestEvents: {
         guidance: {
           "pull_request.checks.failed": "Inspect the failed checks.",
         },
       },
-    }).events?.resourceTypes.find(
+    }).events;
+    const pullRequest = events?.resourceTypes.find(
       (resourceType) => resourceType.type === "pull_request",
     );
 
-    expect(pullRequest?.guidance).toMatchObject({
-      "pull_request.checks.failed": "Inspect the failed checks.",
-      "pull_request.comment.created": expect.stringContaining(
-        "exact repo, commentId, and commentKind from Verified details",
-      ),
-      "pull_request.review_comment.created": expect.stringContaining(
-        "github_resolvePullRequestReviewThread",
-      ),
+    // Guidance is declared once for each event, with its reach.
+    expect(events?.events).toMatchObject({
+      "pull_request.checks.failed": {
+        reach: { anyOf: ["repo"] },
+        guidance: "Inspect the failed checks.",
+      },
+      "pull_request.comment.created": {
+        guidance: expect.stringContaining(
+          "exact repo, commentId, and commentKind from Verified details",
+        ),
+      },
+      "pull_request.review_comment.created": {
+        guidance: expect.stringContaining(
+          "github_resolvePullRequestReviewThread",
+        ),
+      },
+      "deployment.failed": { reach: "all" },
     });
     expect(pullRequest?.matchFields).toMatchObject({
       authors: {

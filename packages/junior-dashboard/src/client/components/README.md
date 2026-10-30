@@ -32,7 +32,8 @@ file when every caller needs the same style or variant. App components compose
 
 | App component                  | shadcn source     |
 | ------------------------------ | ----------------- |
-| `Drawer`, `BottomSheet`        | `ui/sheet`        |
+| `Drawer`                       | `ui/drawer`       |
+| `BottomSheet`                  | `ui/sheet`        |
 | `layout/DashboardHeader` (nav) | `ui/sheet`        |
 | `ProfileMenu` (desktop)        | `ui/popover`      |
 | `ActorAvatar`                  | `ui/avatar`       |
@@ -62,6 +63,9 @@ Rules for adopted components:
 - Use `ui/alert-dialog` for every confirmation. Do not use `window.confirm`.
   Keep the confirmed item in state after close, so the closing dialog keeps its
   text.
+- Use `ui/dialog` for a short task form, such as the fork message. Do not put
+  a form in a `Drawer` or a `DetailsPanel`. On small screens the dialog sits
+  near the top, so the on-screen keyboard does not cover its fields.
 - Use `useSheet` for each app `ui/dialog`, as for sheets. It shares the
   document scroll lock. Only the front modal closes on Escape or a backdrop
   tap. Mount the dialog only while it is open.
@@ -149,7 +153,12 @@ Shared class strings live in `src/client/styles.ts`.
   child. Use `ui/accordion` for a set of sections with headings.
 - **Details.** `DetailsPanel` docks an aside at 1280px and above, and uses a
   `BottomSheet` below that width. It owns Escape and the scroll frame for
-  docked panels.
+  docked panels. Docked actions sit beside the close control, so their
+  position does not change with the title width.
+- **Drawer.** `Drawer` is a right-side `ui/drawer`. A `Drawer` opened from
+  inside another `Drawer` stacks in front of it. The parent scales back,
+  shows a thin edge behind the child, and hides its content. Set `flush` when
+  the content owns its insets and sticky headers, such as the event log.
 - **Identity.** `ObjectIcon` owns the native Ticket, Code change, Automation,
   Deployment, and Item icons. Do not replace it with a provider logo or a
   status-only icon.

@@ -58,6 +58,10 @@ describe("Watch Event people", () => {
             resourceTypes: [
               { type: "job", supportedEvents: ["job.failed", "job.succeeded"] },
             ],
+            events: {
+              "job.failed": { reach: "resource" },
+              "job.succeeded": { reach: "resource" },
+            },
           },
           hooks: {
             tools(ctx) {

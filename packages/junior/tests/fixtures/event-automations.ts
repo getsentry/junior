@@ -1,13 +1,14 @@
 import { createSlackSource, type SlackActor } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
+import { eventCatalogEntry, type EventCatalog } from "@/chat/events/catalog";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 export const teamId = `TEVENT${Date.now()}`;
-export const EVENT_CATALOG = {
-  github: {
+export const EVENT_CATALOG: EventCatalog = {
+  github: eventCatalogEntry({
     resourceTypes: [
       {
         type: "pull_request",
@@ -24,11 +25,16 @@ export const EVENT_CATALOG = {
         ],
       },
     ],
+    events: {
+      "pull_request.review.changes_requested": { reach: "resource" },
+      "pull_request.review.commented": { reach: "resource" },
+    },
     normalizeIdentifier: (identifier: string) => identifier.toLowerCase(),
-  },
-  sentry: {
+  }),
+  sentry: eventCatalogEntry({
     resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
-  },
+    events: { "issue.closed": { reach: "resource" } },
+  }),
 };
 
 /** Build the source and actor for an Automation tool call. */

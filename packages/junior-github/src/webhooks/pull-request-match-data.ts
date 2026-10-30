@@ -5,6 +5,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
+import { gitHubRepoDataSchema } from "../events/scope.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { definedValues } from "./event-targets.js";
 import { isBotLogin } from "./ownership.js";
@@ -258,6 +259,9 @@ export async function withGitHubPullRequestMatchData(args: {
   // A match decision needs every value that a filter uses.
   const keys =
     (await args.neededMatchKeys?.({
+      // Every copy sets this repo, so a broad trigger for another repo adds
+      // no lazy keys.
+      data: { repo: gitHubRepoDataSchema.parse(context.repositoryFullName) },
       eventTypes: [...new Set(pullRequestEvents.map((e) => e.eventType))],
       identifiers: [...new Set(pullRequestEvents.map((e) => e.identifier))],
     })) ?? [];

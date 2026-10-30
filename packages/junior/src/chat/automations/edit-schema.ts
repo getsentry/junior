@@ -42,12 +42,13 @@ export const scheduledAutomationEditSchema = automationEditFieldsSchema
 export const eventAutomationEditSchema = automationEditFieldsSchema
   .extend({
     trigger: eventAutomationTriggerSchema
-      .extend({
+      .safeExtend({
         identifier: z
           .string()
           .trim()
           .min(1)
-          .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH),
+          .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
+          .optional(),
         label: z.string().trim().min(1).max(500),
       })
       .optional(),

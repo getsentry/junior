@@ -10,6 +10,8 @@ import {
   eventAutomationEditSchema,
 } from "@/chat/automations/edit-schema";
 import {
+  eventMatchFieldsSchema,
+  eventReachSchema,
   pluginEventTypeSchema,
   taskOutcomeSchema,
   type EventTriggerDescription,
@@ -406,9 +408,22 @@ export const automationEditErrorSchema = z
 export type AutomationEdit = z.output<typeof automationEditSchema>;
 export type AutomationUpdate = z.output<typeof automationUpdateSchema>;
 
-/** Catalog metadata only; callbacks and provider connections stay on the server. */
+/**
+ * Catalog metadata only, one entry for each namespace. Callbacks, guidance,
+ * and provider connections stay on the server. `events` gives the reach of
+ * each event once, and `anyResourceFields` gives the filters of every
+ * resource type, for a trigger with no identifier.
+ */
 export const automationEventCatalogSchema = z.array(
-  pluginEventTypeSchema.safeExtend({ namespace: z.string() }),
+  z
+    .object({
+      namespace: z.string(),
+      displayName: z.string(),
+      events: z.record(z.string(), z.object({ reach: eventReachSchema })),
+      anyResourceFields: eventMatchFieldsSchema,
+      resourceTypes: z.array(pluginEventTypeSchema),
+    })
+    .strict(),
 );
 export const automationScheduleIntentSchema = scheduleIntentSchema;
 export const automationSchedulePreviewSchema = scheduledAutomationSchema

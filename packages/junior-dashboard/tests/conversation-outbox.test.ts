@@ -5,6 +5,7 @@ import {
   failConversationOutboxMessage,
   mailboxMessageFromOutbox,
   mergeConversationMailboxMessages,
+  splitInlineMailboxMessages,
   upsertConversationOutboxMessage,
 } from "../src/client/conversations/conversationOutbox";
 
@@ -155,5 +156,38 @@ describe("conversation outbox", () => {
     );
     expect(second).not.toBe(first);
     expect(second[0]?.actorIdentity?.fullName).toBe("Morgan Lee");
+  });
+
+  it("shows inline sends in the transcript until a failure moves them to the queue", () => {
+    const inline = conversationOutboxMessageForSubmit({
+      idempotencyKey: "attempt-1",
+      inline: true,
+      messageId: "accepted-1",
+      message: "Continue in Junior",
+      now: "2026-01-01T00:00:00.000Z",
+    });
+    const server = [
+      {
+        ...mailboxMessageFromOutbox(inline),
+        clientStatus: undefined,
+        idempotencyKey: undefined,
+        actorIdentity: { fullName: "Morgan Lee" },
+      },
+    ];
+    // The server copy wins, but it stays out of the queue.
+    expect(
+      splitInlineMailboxMessages(
+        mergeConversationMailboxMessages(server, [inline]),
+        server,
+        [inline],
+      ),
+    ).toEqual({ inline: server, queued: [] });
+
+    const failed = failConversationOutboxMessage([inline], "attempt-1");
+    const merged = mergeConversationMailboxMessages([], failed);
+    expect(splitInlineMailboxMessages(merged, [], failed)).toEqual({
+      inline: [],
+      queued: merged,
+    });
   });
 });

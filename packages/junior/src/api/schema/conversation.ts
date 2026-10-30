@@ -203,6 +203,19 @@ export const cancelConversationPendingMessagesResponseSchema = z
   })
   .strict();
 
+/** Queued web messages that the viewer wants Junior to read now. */
+export const steerConversationPendingMessagesBodySchema = z
+  .object({ inboundMessageIds: z.array(z.string().min(1)).min(1) })
+  .strict();
+
+/** Result of steering queued web messages into the conversation. */
+export const steerConversationPendingMessagesResponseSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    steeredInboundMessageIds: z.array(z.string().min(1)),
+  })
+  .strict();
+
 export const conversationAuxiliaryCostsSchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
@@ -933,4 +946,10 @@ export type CancelConversationPendingMessagesBody = z.infer<
 >;
 export type CancelConversationPendingMessagesResponse = z.infer<
   typeof cancelConversationPendingMessagesResponseSchema
+>;
+export type SteerConversationPendingMessagesBody = z.infer<
+  typeof steerConversationPendingMessagesBodySchema
+>;
+export type SteerConversationPendingMessagesResponse = z.infer<
+  typeof steerConversationPendingMessagesResponseSchema
 >;

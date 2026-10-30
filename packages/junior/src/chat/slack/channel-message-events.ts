@@ -11,7 +11,7 @@ import {
   type EventInput,
 } from "@sentry/junior-plugin-api";
 import type { EventAutomation } from "@/chat/event-automations/types";
-import type { EventCatalog } from "@/chat/events/catalog";
+import type { EventRegistrationInput } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /** Core-owned event namespace for Slack Events. Not a plugin publisher. */
@@ -36,7 +36,7 @@ const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
  * Event registration for new top-level Slack channel messages. Only event
  * automations can use it, so watchEvents rejects it.
  */
-export function slackChannelMessageEvents(): EventCatalog[string] {
+export function slackChannelMessageEvents(): EventRegistrationInput {
   return {
     resourceTypes: [
       {
@@ -48,12 +48,17 @@ export function slackChannelMessageEvents(): EventCatalog[string] {
         supportedEvents: [MESSAGE_POSTED_EVENT],
         suggestedEvents: [],
         matchFields: CHANNEL_MESSAGE_MATCH_FIELDS,
-        guidance: {
-          [MESSAGE_POSTED_EVENT]:
-            "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in userId. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
-        },
       },
     ],
+    events: {
+      // A channel automation stays in its own channel, so it needs the
+      // channel identifier until a channel filter can replace it.
+      [MESSAGE_POSTED_EVENT]: {
+        reach: "resource",
+        guidance:
+          "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in userId. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
+      },
+    },
     limits: {
       [CHANNEL_RESOURCE_TYPE]: {
         watch: false,
@@ -134,6 +139,9 @@ export function slackChannelMessageEvent(input: {
 /**
  * Decide whether a channel-message Event may run one automation.
  *
+ * A message runs only automations that post in its own channel, so private
+ * channel text cannot reach another channel. The trigger identifier already
+ * names that channel, and this check keeps the rule when it does not.
  * A bot post runs only automations whose match names its author in `userId`.
  * Bots can post often and would use up the run limit of every other
  * automation in the channel.
@@ -143,6 +151,7 @@ export function slackChannelMessageRunsAutomation(
   automation: EventAutomation,
 ): boolean {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return true;
+  if (event.data?.channelId !== automation.destination.channelId) return false;
   if (event.data?.postedByBot !== true) return true;
   return automation.trigger.match?.userId !== undefined;
 }

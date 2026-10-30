@@ -1,0 +1,2 @@
+ALTER TABLE "junior_automations" DROP CONSTRAINT "junior_automations_trigger_check";--> statement-breakpoint
+ALTER TABLE "junior_automations" ADD CONSTRAINT "junior_automations_trigger_check" CHECK (("junior_automations"."kind" = 'scheduled' and "junior_automations"."namespace" is null and "junior_automations"."identifier" is null) or ("junior_automations"."kind" = 'event' and "junior_automations"."namespace" is not null and "junior_automations"."next_run_at_ms" is null and "junior_automations"."run_now_at_ms" is null and "junior_automations"."status" <> 'completed'));

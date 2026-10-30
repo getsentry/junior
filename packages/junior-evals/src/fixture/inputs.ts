@@ -80,6 +80,8 @@ export interface WebMessageInput {
   kind: "web_message";
   /** Images that the person added to the message. */
   images?: FileInput[];
+  /** After the post, the person steers the queued message into the running turn. */
+  steer?: boolean;
   text: string;
 }
 
@@ -195,7 +197,7 @@ export function slackCommand(
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { images?: FileInput[] } = {},
+  options: { images?: FileInput[]; steer?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }

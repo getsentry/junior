@@ -28,6 +28,15 @@ export function useEventTime() {
         day: "numeric",
         timeZoneName: "short",
       }),
+      // The details header is narrow, so it leaves out milliseconds.
+      shortTimestamp: new Intl.DateTimeFormat(undefined, {
+        ...clock,
+        fractionalSecondDigits: undefined,
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZoneName: "short",
+      }),
       // A log can span both standard time and daylight-saving time.
       zone: new Intl.DateTimeFormat(undefined, {
         timeZone,
@@ -54,7 +63,10 @@ export function useEventTime() {
       return formatters.clock.format(new Date(value));
     },
     formatTimestamp(value: string) {
-      return local ? formatters.timestamp.format(new Date(value)) : value;
+      return formatters.timestamp.format(new Date(value));
+    },
+    formatShortTimestamp(value: string) {
+      return formatters.shortTimestamp.format(new Date(value));
     },
   };
 }

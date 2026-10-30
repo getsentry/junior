@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CORE_EVENT_NAMESPACE,
   automationEventCatalog,
+  eventCatalogEntry,
   eventGuidance,
   requireEventIdentifier,
   type EventCatalog,
@@ -9,7 +10,7 @@ import {
 import {
   describeEventAutomationTrigger,
   registeredEventAutomationTriggerSchema,
-  requireSupportedEventAutomationTrigger,
+  requireEventAutomationTrigger,
 } from "@/chat/event-automations/tool-support";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
@@ -20,47 +21,35 @@ import {
 } from "@/chat/sandbox/snapshot/events";
 
 const catalog: EventCatalog = {
-  github: {
+  github: eventCatalogEntry({
     resourceTypes: [
       {
         type: "pull_request",
         supportedEvents: ["pull_request.comment.created"],
-        guidance: {
-          "pull_request.comment.created": "Address actionable feedback.",
-        },
       },
-      {
-        type: "repository",
-        supportedEvents: ["pull_request.comment.created"],
-      },
+      { type: "repository", supportedEvents: ["pull_request.comment.created"] },
     ],
-  },
-  [CORE_EVENT_NAMESPACE]: workspaceSnapshotEvents(),
+    events: {
+      "pull_request.comment.created": {
+        reach: "resource",
+        guidance: "Address actionable feedback.",
+      },
+    },
+  }),
+  [CORE_EVENT_NAMESPACE]: eventCatalogEntry(workspaceSnapshotEvents()),
 };
 
 describe("event catalog", () => {
-  it("scopes app guidance to the registered resource type", () => {
+  it("gives the declared guidance of an event for every resource type", () => {
     expect(
-      eventGuidance(
-        catalog,
-        "github",
-        "pull_request",
-        "pull_request.comment.created",
-      ),
+      eventGuidance(catalog, "github", "pull_request.comment.created"),
     ).toBe("Address actionable feedback.");
-    expect(
-      eventGuidance(
-        catalog,
-        "github",
-        "repository",
-        "pull_request.comment.created",
-      ),
-    ).toBeUndefined();
+    expect(eventGuidance(catalog, "github", "issue.closed")).toBeUndefined();
   });
 
   it("rejects an identifier that does not fit its resource type", () => {
     const declared: EventCatalog = {
-      github: {
+      github: eventCatalogEntry({
         resourceTypes: [
           {
             type: "issue",
@@ -80,8 +69,12 @@ describe("event catalog", () => {
           },
           { type: "release_source", supportedEvents: ["release.published"] },
         ],
+        events: {
+          "issue.closed": { reach: "resource" },
+          "release.published": { reach: "resource" },
+        },
         normalizeIdentifier: (identifier) => identifier.toLowerCase(),
-      },
+      }),
     };
     const identifier = (resourceType: string, value: string) =>
       requireEventIdentifier(declared, {
@@ -122,9 +115,11 @@ describe("event catalog", () => {
     );
 
     expect(() =>
-      requireSupportedEventAutomationTrigger(catalog, {
+      requireEventAutomationTrigger(catalog, {
         namespace: CORE_EVENT_NAMESPACE,
+        identifier: "11111111-1111-4111-8111-111111111111",
         resourceType: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+        label: "Workspace sentry snapshot",
         events: [WORKSPACE_SNAPSHOT_READY_EVENT],
       }),
     ).toThrow(ToolInputError);
