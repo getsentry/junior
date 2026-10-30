@@ -2,15 +2,17 @@
  * Real docs of PostgreSQL, MySQL, and SQLite for tests where agents research
  * databases on the web.
  *
- * There is one real docs page for each database. Each file is the full live
+ * There is one saved docs page for each database. Each file is the full live
  * page from 2026-10-30, with the scripts, styles, comments, navigation, SVG
  * shapes, and attributes that `webFetch` does not read taken out. `webFetch`
- * extracts the same text from these files as from the live pages.
+ * extracts the same text from these files as from the live pages. Only the
+ * `url` of each page is served from its file. Other pages on these sites are
+ * real pages that Roach records and replays.
  */
 import { readFileSync } from "node:fs";
 import {
   mockWebSearchResults,
-  mockWebSites,
+  mockWebPages,
   type WebSearchResult,
 } from "./web";
 
@@ -65,14 +67,14 @@ function searchDatabaseDocs(query: string): WebSearchResult[] {
 
 /**
  * Serve the database docs in this test. A search finds the three pages, and
- * a read of any path on a docs host gets the page of that host.
+ * a read of the URL of a page gets its saved file.
  */
 export function mockDatabaseDocs(): void {
   mockWebSearchResults(searchDatabaseDocs);
-  mockWebSites(
+  mockWebPages(
     Object.fromEntries(
       DATABASE_DOCS.map((doc) => [
-        doc.host,
+        doc.url,
         readFileSync(
           new URL(`./database-docs/${doc.file}`, import.meta.url),
           "utf8",
