@@ -2,6 +2,8 @@ import type {
   CreateWorkspaceSnapshotBuilderInput,
   WorkspaceSnapshotBuilder,
 } from "@/chat/sandbox/snapshot/workspace";
+import { getChatConfig } from "@/chat/config";
+import { dockerSandboxProvider } from "@/chat/sandbox/docker/provider";
 import { vercelSandboxProvider } from "@/chat/sandbox/vercel/provider";
 import type {
   CreateSandboxSessionInput,
@@ -12,7 +14,8 @@ import type {
 // Module overview: the one place that chooses a sandbox provider.
 //
 // Sandbox code calls `getSandboxProvider()` and uses only this contract.
-// Provider modules, such as `vercel/provider.ts`, implement it. Only this
+// Provider modules, such as `vercel/provider.ts` and `docker/provider.ts`,
+// implement it. `JUNIOR_SANDBOX_PROVIDER` selects one per deployment. Only this
 // module imports a provider module.
 
 /** Provider checks that sort its errors into the cases shared sandbox code handles. */
@@ -56,5 +59,7 @@ export interface SandboxProvider {
 
 /** Return the sandbox provider for this deployment. */
 export function getSandboxProvider(): SandboxProvider {
-  return vercelSandboxProvider;
+  return getChatConfig().sandbox.provider === "docker"
+    ? dockerSandboxProvider
+    : vercelSandboxProvider;
 }
