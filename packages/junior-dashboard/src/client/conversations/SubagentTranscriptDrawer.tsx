@@ -108,6 +108,8 @@ function SubagentTranscriptDrawerContent(props: {
         </>
       }
       closeLabel="Close subagent transcript"
+      // The event log owns its row insets and sticky toolbar, like the page.
+      flush={view === "raw"}
       header={
         <>
           <div className="flex min-w-0 items-center gap-2">

@@ -110,20 +110,19 @@ export function DetailsPanel(props: {
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
     >
       <header className="flex items-center justify-between gap-3 border-b border-dashboard-border py-2 pl-5 pr-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="min-w-0">{props.title}</div>
-          {props.actions ? (
-            <div className="flex items-center gap-0.5">{props.actions}</div>
-          ) : null}
+        <div className="min-w-0 flex-1">{props.title}</div>
+        {/* Keep actions beside close, so they do not move with the title width. */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          {props.actions}
+          <Button
+            ref={closeRef}
+            aria-label={closeLabel}
+            onClick={onClose}
+            size="icon"
+          >
+            <X aria-hidden="true" size={15} />
+          </Button>
         </div>
-        <Button
-          ref={closeRef}
-          aria-label={closeLabel}
-          onClick={onClose}
-          size="icon"
-        >
-          <X aria-hidden="true" size={15} />
-        </Button>
       </header>
       <div className="min-h-0 overflow-y-auto overscroll-contain">
         {props.children}

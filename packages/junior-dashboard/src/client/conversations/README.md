@@ -113,9 +113,12 @@ The timezone toggle uses `useEventTime` to share a UTC/local preference through
 `@uidotdev/usehooks` and browser local storage. It applies to event row clocks
 and detail timestamps. Local mode follows the browser timezone. The button uses
 a generic zone name because a log can span standard and daylight-saving time.
-Detail timestamps use the zone name for each event date. The mode, not
-the timezone identifier, persists across visits and tabs. This hook belongs to
-the client-rendered event viewer. Raw JSON retains the original ISO values.
+Detail timestamps use a readable date to the second and the zone name for each
+event date, in both modes. The header keeps them on one line beside the
+actions. Their tooltip adds milliseconds, and the `time` element keeps the
+original ISO value. The mode, not the timezone identifier, persists across
+visits and tabs. This hook belongs to the client-rendered event viewer. Raw
+JSON retains the original ISO values.
 
 ## Event details
 
@@ -124,10 +127,14 @@ places `ConversationEventDetails` beside the log in the page panel. Selecting
 another row changes the event and resets its scroll position and disclosures.
 Closing returns focus to that row. Switching Conversations removes the panel.
 
-The previous and next controls select the adjacent visible row. They follow
+The previous and next controls select the adjacent visible row. They form one
+`ui/button-group` named "Event navigation". They follow
 the event search, like Up and Down. They are necessary below 1280px, where the
 sheet covers the log. At the ends of the list, the control is disabled but
-keeps focus. The sheet title is the event type.
+keeps focus. The sheet title is the event type. The header shows the event
+type, then the sequence number and timestamp. The body groups fields in the
+same `DetailsCard` that Conversation details use. Groups inside a card, such
+as tool input and output, use a divider, not another card.
 
 A linked event can be older than the loaded pages. While the event loads, the
 panel stays open. Only its header shows placeholders, so it does not compete
@@ -136,7 +143,9 @@ the log toolbar, columns, and row skeletons in the event log view.
 
 Standalone transcripts, such as a subagent drawer, keep selection in
 `ConversationEventLog`. Their event details use a nested drawer on desktop and
-`BottomSheet` on smaller screens. This keeps the main log free of modal behavior
+`BottomSheet` on smaller screens. The nested drawer stacks in front of the
+subagent drawer. The subagent drawer shows its event log without a body inset,
+so rows meet the drawer edges and the toolbar sticks to the top. This keeps the main log free of modal behavior
 while a nested transcript retains its parent drawer's focus rules. These event
 details have the same previous and next controls.
 
