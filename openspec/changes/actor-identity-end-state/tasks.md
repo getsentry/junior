@@ -58,6 +58,8 @@ Each step ships on its own. Each step leaves `main` correct.
       `pluginEventDeclarationSchema` and `isBot` to `doneBy`. Each plugin sets
       them. Core upserts the author Identity from `doneBy.subjectId` with no
       email. Events without an actor use the system Identity.
+- [ ] Proposal (Known Gap 7): the participant list shows only Identities with
+      a linked User.
 - [ ] Stop writing the `scheduler`, `local-cli`, and `event` system rows and the
       synthetic `junior/<email>` web rows.
 - [ ] Migration: move references in `junior_conversations` and
@@ -88,11 +90,17 @@ This is the riskiest step. It changes access, the feed, People, and spend.
   - Slack, web, and fork roots: copy `actor_identity_id`.
   - Roots with a system Source: the one system Identity.
   - Child rows: `null`.
+- [ ] Proposal (Known Gap 19): a root with a human Source and a system
+      Identity takes the author of its first user Message as Owner. These
+      are web roots that got a system Identity before #2436. Count them in
+      the dry run.
 - [ ] Backfill participant rows. Add a participant row for each human whose
       Identity was the root Identity and is no longer the Owner. Then that
       human keeps access and feed membership.
 - [ ] Move every reader in the proposal table to `owner_identity_id`. Read the
       root Owner in `api/people/shared.ts` and `api/code/overview.ts`.
+- [ ] Proposal (Known Gap 8): `api/locations/query.ts` groups actors by User,
+      with the Identity as fallback.
 - [ ] State the behavior changes in the PR: automation-run spend leaves
       personal spend, and a human who replies to an automation Conversation is
       a participant, not the Owner.
@@ -109,6 +117,10 @@ This is the riskiest step. It changes access, the feed, People, and spend.
       (`task-execution/state.ts`). Store the Identity id.
 - [ ] Move Guardian `actionActor` and `messageAuthor` in
       `agent-invocations/root-conversation.ts` to Identity ids.
+- [ ] Proposal (Known Gap 18): Guardian treats text from an author Identity
+      with no User as information only, unless #2260 or a follow-up owns it.
+- [ ] Proposal (Known Gap 14): add the Identity `kind` and `provider` to the
+      dashboard `actorIdentitySchema` (`api/schema/conversation.ts`).
 - [ ] Remove `sessionLogActor` and `recordConversationActivityMetadata`
       Identity guesses in `task-execution/turn-cursor.ts`.
 

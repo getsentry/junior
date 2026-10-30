@@ -317,8 +317,9 @@ change.
     a kind other than `user`. So a bot never gets access as a participant.
 - Today `resolveEventActorIdentityId` stores no author when
   `meta.author.isBot` is true. Guardian's `messageAuthor`
-  (`agent-invocations/root-conversation.ts`) labels a bot as a `SystemActor`
-  with the bot id as its name. Step 5 moves both to the bot Identity.
+  (`agent-invocations/root-conversation.ts`) returns no Actor for a bot
+  author. It makes a `SystemActor` only for the input Message of an Automation
+  run, with the author id as its name. Step 5 moves both to the bot Identity.
 
 ### Participants
 
@@ -381,6 +382,177 @@ of the event column keep `actor_identity_id`.
 - Change `SystemActor` names or the `Actor` schema.
 - Change Guardian authority. #2181 and #2260 own that.
 - Change visibility. #2382 owns that.
+
+## Known Gaps
+
+This list was checked against `main` at `28aeab3`. Each entry gives what
+breaks, where, the step in `tasks.md` that closes it, and the evidence.
+"Confirmed" means the cited code shows the fault directly. "Traced" means it
+follows from reading a path through several files. No entry was reproduced at
+runtime, and no production data was queried.
+
+#2443 is still open, so it fixed nothing on `main` yet. #2436, #2437, and
+#2440 each fixed part of one entry (entries 10, 17, and 19). #2432 fixed web
+Conversations in personal spend, which is not on this list. No entry was
+fully fixed, so none was dropped.
+
+1. **Event authors.** No inbound event Message has an author Identity. Core
+   drops the GitHub sender: the plugin sends `doneBy` with a handle only, and
+   `senderId` stays in trusted `data`.
+   - Where: `gitHubDoneBy` (`junior-github/src/webhooks/events.ts`),
+     `createEventInboundMessage` (`chat/events/notification.ts`),
+     `EVENT_MESSAGE_AUTHOR` (`chat/events/actor.ts`).
+   - Closed by: step 3 (event authors), after #2260.
+   - Evidence: confirmed. See Current State: Event Authors.
+2. **Guardian sees web as local.** `actionActor` sends every web Actor as
+   `platform: "local"`. `ToolActionProposal` has no web variant.
+   - Where: `chat/guardian/gate.ts`, `chat/guardian/proposal.ts`.
+   - Closed by: step 5 (Guardian to Identity ids).
+   - Evidence: confirmed.
+3. **Root Message authors are guessed.** `messageAuthor` takes the author
+   platform from the root Source or Destination. A web Message in a Slack root
+   becomes a Slack Actor with a `dashboard:` user id. A bot author gets no
+   Actor. The Automation input Message is found by an id pattern
+   (`DISPATCH_CONVERSATION_PREFIX`).
+   - Where: `agent-invocations/root-conversation.ts:messageAuthor`.
+   - Closed by: step 5. Read `actor_identity_id` from each Message.
+   - Evidence: confirmed for the platform rule. Traced for the web-in-Slack
+     case.
+4. **Non-Slack Turns record no Actor.** `sessionLogActor` drops every Actor
+   that is not Slack. Web, local, and system Turns pass no Actor to
+   `recordActivity` and `recordExecution`.
+   - Where: `task-execution/turn-cursor.ts:sessionLogActor`.
+   - Closed by: step 2 (Turn carries `actorIdentityId`) and step 5.
+   - Evidence: confirmed.
+5. **Activity Source is guessed.** `recordConversationActivityMetadata` picks
+   `activitySource` from the Turn Source kind, then the Destination platform,
+   then the Turn surface. A web Turn with no saved Source gets `local`,
+   because web delivery uses a local Destination.
+   - Where: `task-execution/turn-cursor.ts`.
+   - Closed by: step 5.
+   - Evidence: traced.
+6. **Event row author inference.** `resolveEventActorIdentityId` picks Slack
+   with a user id regex, takes the Slack workspace from the Destination or
+   Source, writes the synthetic web Identity inline, and matches
+   `dashboard:<hash>` in SQL.
+   - #2443 (open) moves the regex to `isSlackUserId` and the two inline
+     upserts to `upsertActorIdentity`. The regex test, the workspace lookup,
+     the `meta.author` parsing, and the `dashboard:` and email lookups remain.
+   - Where: `chat/conversations/sql/event-actor.ts`.
+   - Closed by: step 1 (one mapping), step 3 (no synthetic web row), step 5
+     (inference only for legacy reads).
+   - Evidence: confirmed.
+7. **System Identities show as participants.** `readConversationParticipants`
+   has no `kind` filter. It lists any root or author Identity with a name or
+   email.
+   - Where: `api/conversations/participants.ts`.
+   - Closed by: not covered. Proposed: step 3 lists only Identities with a
+     linked User (Open Question 2).
+   - Evidence: confirmed.
+8. **Locations count a person twice.** The location actor list groups by
+   `actor_identity_id`, not by User. A person with a Slack and a web Identity
+   shows two times.
+   - Where: `api/locations/query.ts`.
+   - Closed by: not covered. Proposed: step 4 groups by User, with the
+     Identity as fallback, when it moves this reader to the Owner.
+   - Evidence: confirmed.
+9. **Connections are per platform.** Dashboard connections use the web Actor
+   id as the credential subject. Slack grants use the Slack user id. A Slack
+   connection does not show on the web.
+   - Where: `api/connections/routes.ts`, `chat/credentials/README.md`.
+   - Closed by: not covered, by design. The README documents this. Keying
+     credentials by Junior user is a Non-Goal and a separate change.
+   - Evidence: confirmed.
+10. **Root Identity overwrite.** `actorFromIdentityRow` returns no Actor for a
+    system or local Identity. The next write gets the Actor of that Turn.
+    `upsertConversation` then derives an Identity from it and writes
+    `coalesce(excluded, existing)`. A human Slack reply in an automation
+    Conversation replaces the system Identity.
+    - #2436 fixed one case. `recordExecution` now keeps the saved Source, so
+      an event Turn on a web Conversation no longer writes a system
+      Identity. It is an app-side stopgap. `recordActivity` and
+      `recordExecution` both still call `mergeActor(saved, incoming)`, and the
+      saved Actor is empty for a system root.
+    - Race: writes hold a per-Conversation lock in a transaction
+      (`withConversationMutationLock`). This review found no read-write race.
+      The fault is deterministic.
+    - Where: `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`.
+    - Closed by: step 2 (write the stored id) and step 4 (Owner set at insert,
+      never updated).
+    - Evidence: traced.
+11. **System names do not match.** System Identity subjects are `scheduler`,
+    `local-cli`, and `event`. `SystemActor.name` values are
+    `scheduled-automation`, `event`, `conversation-title`,
+    `workspace-snapshot`, and plugin names (`agent-dispatch/store.ts`).
+    - Closed by: step 3. One system Identity. Names stay as provenance.
+    - Evidence: confirmed.
+12. **One shared CLI user.** `local/runner.ts` sets `userId: "local-cli"` for
+    every person. `local/credential-sync.ts` and
+    `local/oauth-callback-server.ts` also store CLI tokens under `local-cli`.
+    - Closed by: step 3 maps the `LocalActor` to the system Identity. Naming
+      the CLI human is not covered and not planned.
+    - Evidence: confirmed.
+13. **Actor schema is closed.** `actorSchema` is a union of `.strict()`
+    objects. A TODO says system Actors should not use `platform: "system"`.
+    - Where: `junior-plugin-api/src/schemas.ts`.
+    - Closed by: not covered, a Non-Goal. The Identity id goes next to the
+      Actor for this reason. Proposed: a separate change after step 6.
+    - Evidence: confirmed.
+14. **Dashboard author shape is Slack only.** `actorIdentitySchema` has
+    `email`, `fullName`, `slackUserId`, and `slackUserName`. It cannot show a
+    system, bot, or GitHub author.
+    - Where: `api/schema/conversation.ts`.
+    - Closed by: not covered. Proposed: step 5 adds the Identity `kind` and
+      `provider` to this schema.
+    - Evidence: confirmed.
+15. **Stored Actors are Slack-shaped.** `Conversation.actor` and Redis work
+    state are `StoredSlackActor`. `storedActorFromWeb` has a TODO to remove
+    the conversion.
+    - Where: `chat/conversations/store.ts`, `task-execution/state.ts`,
+      `chat/conversations/web-input.ts`.
+    - Closed by: step 5.
+    - Evidence: confirmed.
+16. **Dead Identity columns.** `creator_identity_id` and
+    `credential_subject_identity_id` are always `null` on insert. No code
+    reads them.
+    - Where: `SqlStore.upsertConversation`.
+    - Closed by: step 6.
+    - Evidence: confirmed.
+17. **Web Identity is synthetic.** `identityFromActor` writes a `junior` /
+    email Identity, not the `google` sign-in Identity. It treats any stored
+    Actor with an email and no Slack id as web. The mock viewer has
+    `identities: []` and a `mock-user:` id. The local auth bypass
+    (`dev@example.com`) has no Identity.
+    - #2437 fixed the read side: plugin readers now find the same synthetic
+      Identity, so web users get their User. The synthetic row remains.
+    - Where: `sql/actor-identity.ts`, `mockViewerFromSession`
+      (`junior-dashboard/src/app.ts`).
+    - Closed by: step 3.
+    - Evidence: confirmed.
+18. **No trust rule keyed on a verified User.** Event text is untrusted by
+    channel: `untrustedText`, the "External text" block in `task-input.ts`,
+    and `untrusted_instruction` in `guardian/policy.ts`. Guardian lets only
+    the Turn Actor's own Messages authorize (`canAuthorize`). No check asks if
+    an author Identity has a verified User. #2260 adds only the linked Watch
+    requester case.
+    - Closed by: not covered. Proposed for step 5: Guardian treats text from
+      an author Identity with no User as information only. #2260 or a
+      follow-up can own it instead (Open Question 4).
+    - Evidence: traced.
+19. **Existing bad data.** No merged fix repaired rows.
+    - Web roots overwritten with the `local-cli` or `event` system Identity
+      before #2436. #2436 has no migration. The step 4 backfill would copy
+      that wrong id for a web root.
+    - Wrong Destination visibility from Automation runs before #2440. The
+      #2440 body says the next live Slack event fixes a row, and a channel
+      with only Automation runs stays wrong.
+    - Participant rows for humans who lose the Owner in the backfill.
+    - Closed by: step 4 backfills participants. Proposed for step 4: a root
+      with a human Source and a system Identity takes the author of its first
+      user Message, and the dry run counts these rows. Visibility is not
+      covered; #2382 owns it. #2440 proposes a one-time `conversations.info`
+      repair.
+    - Evidence: traced. No production query was run.
 
 ## Open Questions
 
