@@ -12,6 +12,7 @@ import {
   Clock3,
   FileText,
   Pencil,
+  SkipForward,
   Trash2,
   Zap,
   type LucideIcon,
@@ -47,7 +48,10 @@ const COLLAPSED_PENDING_ROW_COUNT = 4;
 const STEER_ICON = Zap;
 
 function pendingDeliveryMeta(
-  message: Pick<ConversationMailboxMessage, "clientStatus" | "delivery">,
+  message: Pick<
+    ConversationMailboxMessage,
+    "clientStatus" | "delivery" | "source"
+  >,
 ): { icon: LucideIcon | typeof Spinner; label: string; tooltip: string } {
   if (message.clientStatus === "failed") {
     return {
@@ -58,6 +62,15 @@ function pendingDeliveryMeta(
   }
   if (message.clientStatus === "sending") {
     return { icon: Spinner, label: "Sending", tooltip: "Sending" };
+  }
+  // Only a dashboard steer turns a web message into an interrupt. Other
+  // sources, such as a Slack mention, arrive as interrupts.
+  if (message.delivery === "interrupt" && message.source !== "web") {
+    return {
+      icon: SkipForward,
+      label: "Next step",
+      tooltip: "Junior reads it at its next step",
+    };
   }
   if (message.delivery === "interrupt") {
     return {
