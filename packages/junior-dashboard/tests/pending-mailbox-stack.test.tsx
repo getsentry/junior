@@ -151,7 +151,7 @@ describe("PendingMailboxStack remove control", () => {
   });
 
   it("uses the queue count on the mobile expand control", () => {
-    const messages = Array.from({ length: 5 }, (_, index) =>
+    const messages = Array.from({ length: 7 }, (_, index) =>
       message({
         inboundMessageId: `accepted-${index + 1}`,
         messageId: `accepted-${index + 1}`,
@@ -165,8 +165,8 @@ describe("PendingMailboxStack remove control", () => {
       />,
     );
 
-    expect(html).toContain("5 queued messages");
+    expect(html).toContain("7 queued messages");
     expect(html).not.toContain("Show queued messages");
-    expect(html.match(/5 queued messages/g)).toHaveLength(1);
+    expect(html.match(/7 queued messages/g)).toHaveLength(1);
   });
 });
