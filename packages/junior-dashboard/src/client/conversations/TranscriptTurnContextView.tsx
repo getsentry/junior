@@ -75,6 +75,9 @@ export function TranscriptTurnContextView(props: {
     <>
       <Tooltip>
         <TooltipTrigger
+          // The open panel keeps focus here. Close the tooltip on click so
+          // Escape reaches the panel.
+          closeOnClick
           render={
             <Button
               aria-haspopup={panel ? undefined : "dialog"}
