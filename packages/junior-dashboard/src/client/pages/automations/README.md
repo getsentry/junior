@@ -52,7 +52,9 @@ other viewers do not see them. The About card names the creator-only actions.
 Completed Automations have no Edit action, and `/edit` returns to Overview.
 
 Overview shows `AutomationAttention` first when something needs action: a
-block, an unavailable trigger, or a failed last run. The saved settings follow
+block, an unavailable trigger, or a failed last run. The notice has one main
+action, such as Change trigger or Open last run. While it shows, the header
+Edit button becomes a secondary button. The saved settings follow
 in the same `AutomationFormSection` rows as the editor, so edit mode changes
 them in place. The side column shows the next trigger, the last result, runs,
 failures, and spend for the range, and About. Spend is `costUsd` from the
@@ -66,8 +68,9 @@ titles that repeat the Automation name. Its loading,
 empty, and retry states do not replace Automation settings. It does not infer
 queued or running work from terminal records.
 
-In edit mode, "Your changes" lists each changed field with its own Undo. Undo
-remounts the fields, so fields with local state show the saved value again.
+In edit mode, "Your changes" lists each changed field with the saved value, the
+new value, and its own Undo. It is beside the form on wide screens and below
+the form on small screens when there are changes. Undo remounts the fields, so fields with local state show the saved value again.
 Changed sections get an accent mark. Save and Cancel return to Overview.
 
 The Runs tab filters loaded runs by result through the `result` param. Rows

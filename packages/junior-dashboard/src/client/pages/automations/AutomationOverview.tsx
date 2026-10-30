@@ -32,13 +32,17 @@ import {
 /** Settings on the left; status, activity, and ownership on the right. */
 export function AutomationOverview(props: {
   automation: AutomationSummary;
+  editPath: string;
   range: TimeRangeDays;
 }) {
   const { automation } = props;
   return (
     <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-10">
       <div className="grid min-w-0 content-start gap-6">
-        <AutomationAttention automation={automation} />
+        <AutomationAttention
+          automation={automation}
+          editPath={props.editPath}
+        />
         <AutomationSettings automation={automation} />
         <Card padding="sm">
           <AutomationRecentRuns automation={automation} />

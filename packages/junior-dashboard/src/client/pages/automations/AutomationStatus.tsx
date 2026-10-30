@@ -11,7 +11,8 @@ import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { automationPath, formatRelativeTime } from "../../format";
-import { dashboardInlineLinkClass } from "../../styles";
+import { buttonVariants } from "../../components/ui/button";
+import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
 
 /**
@@ -80,25 +81,51 @@ export function AutomationStatus({
   );
 }
 
+/** Name the one problem the Overview notice explains, if there is one. */
+function automationProblem(automation: AutomationSummary) {
+  if (
+    automation.status === "blocked" ||
+    (automation.status === "paused" && automation.statusReason)
+  )
+    return "fix";
+  if (automation.kind === "event" && automation.trigger.problems.length > 0)
+    return "trigger";
+  if (
+    automation.lastRunStatus === "failed" ||
+    automation.lastRunStatus === "blocked"
+  )
+    return "last_run";
+  return undefined;
+}
+
+/** True when the Overview shows a notice, so the notice owns the main action. */
+export function automationNeedsAttention(
+  automation: AutomationSummary,
+): boolean {
+  return automationProblem(automation) !== undefined;
+}
+
 /**
- * Explain one problem that needs action: a block, an unavailable trigger, or
- * a failed last run. Renders nothing when the Automation is healthy.
+ * Explain one problem that needs action and offer one fix: a block, an
+ * unavailable trigger, or a failed last run. Renders nothing when the
+ * Automation is healthy.
  */
 export function AutomationAttention({
   automation,
+  editPath,
 }: {
   automation: AutomationSummary;
+  editPath: string;
 }) {
+  const problem = automationProblem(automation);
+  if (!problem) return null;
   const paused = automation.status === "paused";
-  const blocked = automation.status === "blocked";
   const triggerProblems =
     automation.kind === "event" ? automation.trigger.problems : [];
+  const needsFix = problem === "fix";
+  // A blocked Automation still lists trigger problems, and Change trigger fixes it.
   const unavailable = triggerProblems.length > 0;
-  const failed =
-    automation.lastRunStatus === "failed" ||
-    automation.lastRunStatus === "blocked";
-  const needsFix = blocked || (paused && Boolean(automation.statusReason));
-  if (!needsFix && !unavailable && !failed) return null;
+  const failed = problem === "last_run";
   return (
     <FormNotice
       title={
@@ -139,16 +166,23 @@ export function AutomationAttention({
               : "Review the last result for details."}
         </p>
       ) : null}
-      {automation.lastConversationId ? (
+      {unavailable ? (
         <Link
-          className={`${dashboardInlineLinkClass} mt-2 inline-block`}
+          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
+          to={editPath}
+        >
+          Change trigger
+        </Link>
+      ) : automation.lastConversationId ? (
+        <Link
+          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
           to={conversationPath(automation.lastConversationId)}
         >
           Open last run
         </Link>
       ) : automation.totalRuns > 0 ? (
         <Link
-          className={`${dashboardInlineLinkClass} mt-2 inline-block`}
+          className={cn(buttonVariants({ variant: "primary" }), "mt-3")}
           to={automationPath(automation.id, "runs")}
         >
           View run history

@@ -15,8 +15,8 @@ import { Field, FieldError, FieldLabel } from "../../components/ui/field";
 import { useToastManager } from "../../components/ui/toast";
 import { FormNotice } from "../../components/FormNotice";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
-import { Card } from "../../components/layout/Card";
 import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
+import { AutomationDraftChanges } from "./AutomationDraftChanges";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
 import { AutomationEventFields } from "./AutomationEventFields";
@@ -439,6 +439,8 @@ export function AutomationEditor(props: {
           changes={changes}
           disabled={save.isPending}
           onUndo={undo}
+          original={original}
+          summary={props.summary}
         />
       </div>
       <p className="mb-5 text-xs leading-relaxed text-dashboard-text-muted sm:hidden">
@@ -477,64 +479,6 @@ export function AutomationEditor(props: {
         </div>
       </div>
     </form>
-  );
-}
-
-const CHANGE_LABELS: Record<keyof AutomationDraft, string> = {
-  credentialMode: "Credentials",
-  instruction: "Instruction",
-  outcomes: "Where results go",
-  schedule: "Schedule",
-  title: "Title",
-  trigger: "Trigger",
-};
-
-/** List unsaved fields beside the form, each with its own Undo. */
-function AutomationDraftChanges(props: {
-  changes: Partial<AutomationDraft>;
-  disabled: boolean;
-  onUndo(key: keyof AutomationDraft): void;
-}) {
-  const keys = (Object.keys(CHANGE_LABELS) as (keyof AutomationDraft)[]).filter(
-    (key) => props.changes[key] !== undefined,
-  );
-  return (
-    <aside
-      aria-label="Your changes"
-      className="min-w-0 lg:sticky lg:top-4 lg:self-start max-lg:hidden"
-    >
-      <Card padding="sm">
-        <h2 className="m-0 mb-3 font-sans text-xs font-medium text-dashboard-text-muted">
-          Your changes
-        </h2>
-        {keys.length === 0 ? (
-          <p className="m-0 text-sm text-dashboard-text-muted">
-            No changes yet. Edit a section to see it here.
-          </p>
-        ) : (
-          <ul className="m-0 grid list-none gap-1 p-0">
-            {keys.map((key) => (
-              <li
-                className="flex items-center justify-between gap-3 text-sm"
-                key={key}
-              >
-                <span>{CHANGE_LABELS[key]}</span>
-                <Button
-                  aria-label={`Undo ${CHANGE_LABELS[key].toLowerCase()} change`}
-                  disabled={props.disabled}
-                  onClick={() => props.onUndo(key)}
-                >
-                  Undo
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-3 mb-0 text-xs leading-relaxed text-dashboard-text-muted">
-          Saving creates a new version. It does not run this automation.
-        </p>
-      </Card>
-    </aside>
   );
 }
 

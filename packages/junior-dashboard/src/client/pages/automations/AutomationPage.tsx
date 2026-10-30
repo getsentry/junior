@@ -33,6 +33,7 @@ import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation
 import { automationPath, type AutomationTab } from "../../format";
 import { DashboardApiError, fetchDashboardJson } from "../../http";
 import { pathWithSearch, useSearchParamEnum } from "../../searchParams";
+import { cn } from "../../styles";
 import { AutomationActions } from "./AutomationActions";
 import { AutomationDeleteDialog } from "./AutomationDeleteDialog";
 import { AutomationEditor } from "./AutomationEditor";
@@ -43,7 +44,10 @@ import {
   AutomationRunsTab,
   AUTOMATION_RESULT_PARAM,
 } from "./AutomationRunsTab";
-import { AutomationStateChip } from "./AutomationStatus";
+import {
+  AutomationStateChip,
+  automationNeedsAttention,
+} from "./AutomationStatus";
 import {
   AUTOMATION_VERSION_PARAM,
   AutomationVersionsTab,
@@ -163,6 +167,10 @@ function AutomationPageContent(props: {
       />
     );
   }
+  const editPath = pathWithSearch(
+    automationPath(automation.id, "edit"),
+    location.search,
+  );
   const header = (
     <>
       <BackLink to={props.listPath} />
@@ -178,10 +186,12 @@ function AutomationPageContent(props: {
               ) : null}
               <AutomationActions
                 automation={automation}
-                editPath={pathWithSearch(
-                  automationPath(automation.id, "edit"),
-                  location.search,
-                )}
+                editPath={editPath}
+                editVariant={
+                  tab === "overview" && automationNeedsAttention(automation)
+                    ? "default"
+                    : "primary"
+                }
                 onDelete={(source) => {
                   deleteSource.current = source;
                   setDeleting(true);
@@ -229,7 +239,11 @@ function AutomationPageContent(props: {
     <PageLayout>
       {header}
       {tab === "overview" ? (
-        <AutomationOverview automation={automation} range={props.range} />
+        <AutomationOverview
+          automation={automation}
+          editPath={editPath}
+          range={props.range}
+        />
       ) : null}
       {tab === "edit" ? <AutomationEditMode automation={automation} /> : null}
       {tab === "versions" ? (
@@ -288,19 +302,30 @@ function AutomationHeaderLine(props: { automation: AutomationSummary }) {
     automation.destination.label,
     `Created by ${automation.ownedByViewer ? "you" : automation.createdBy}`,
   ];
+  // Each part starts with its separator. The negative margin and the clip
+  // hide the separator of any part that starts a line.
   return (
-    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-      <AutomationStateChip automation={automation} />
-      {parts.map((part, index) => (
-        <span className="min-w-0 break-words" key={index}>
-          {index > 0 ? (
-            <span aria-hidden="true" className="mr-2 opacity-45">
+    <span className="block min-w-0 overflow-hidden">
+      <span className="-ml-4 flex min-w-0 flex-wrap items-center gap-y-1">
+        <span className="flex items-center">
+          <span aria-hidden="true" className="inline-block w-4" />
+          <AutomationStateChip automation={automation} />
+        </span>
+        {parts.map((part, index) => (
+          <span className="min-w-0 break-words" key={index}>
+            <span
+              aria-hidden="true"
+              className={cn(
+                "inline-block w-4 text-center opacity-45",
+                index === 0 && "invisible",
+              )}
+            >
               ·
             </span>
-          ) : null}
-          {part}
-        </span>
-      ))}
+            {part}
+          </span>
+        ))}
+      </span>
     </span>
   );
 }

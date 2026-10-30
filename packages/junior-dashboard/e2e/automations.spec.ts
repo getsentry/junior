@@ -853,4 +853,7 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await expect(
     page.getByText("Edit the trigger, or enable its plugin again."),
   ).toBeVisible();
+  // The notice owns the fix, so it opens edit mode.
+  await page.getByRole("link", { name: "Change trigger", exact: true }).click();
+  await expect(page).toHaveURL(/\/automations\/event-2\/edit/);
 });

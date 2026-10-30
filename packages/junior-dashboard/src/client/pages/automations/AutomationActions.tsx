@@ -29,10 +29,13 @@ import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 export function AutomationActions({
   automation,
   editPath,
+  editVariant,
   onDelete,
 }: {
   automation: AutomationSummary;
   editPath: string;
+  /** Use "default" when a notice on the page owns the main action. */
+  editVariant: "default" | "primary";
   onDelete(source: HTMLButtonElement): void;
 }) {
   const toast = useToastManager();
@@ -90,7 +93,7 @@ export function AutomationActions({
       >
         {completed ? null : (
           <Link
-            className={buttonVariants({ variant: "primary" })}
+            className={buttonVariants({ variant: editVariant })}
             to={editPath}
           >
             <Pencil aria-hidden="true" size={14} />

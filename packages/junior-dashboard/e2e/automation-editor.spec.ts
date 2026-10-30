@@ -30,6 +30,9 @@ test("edits an Automation in place, preserves list state, and protects the draft
   });
   await page.getByLabel("Title", { exact: true }).fill("Temporary title");
   await expect(yourChanges.getByText("Title", { exact: true })).toBeVisible();
+  // Each change shows the saved value and the new value.
+  await expect(yourChanges).toContainText("Saved: Weekly project summary");
+  await expect(yourChanges).toContainText("New: Temporary title");
   await yourChanges
     .getByRole("button", { name: "Undo title change", exact: true })
     .click();
