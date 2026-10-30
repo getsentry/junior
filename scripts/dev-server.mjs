@@ -67,7 +67,10 @@ function stopChild(child, signal) {
     return;
   }
   stoppedChildren.add(child);
+  signalChild(child, signal);
+}
 
+function signalChild(child, signal) {
   // Long-lived commands launch wrappers. Stop their process group so a
   // restarted wrapper cannot leave the server that owns its port behind.
   if (useProcessGroups && child.pid) {
@@ -86,7 +89,11 @@ function stopChild(child, signal) {
 
 function terminateChildren(signal = "SIGTERM") {
   for (const child of children) {
-    stopChild(child, signal);
+    if (child === queueWorkerChild) {
+      stopQueueWorker(child);
+    } else {
+      stopChild(child, signal);
+    }
   }
 }
 
@@ -252,6 +259,11 @@ function startNitroDev({ openLocalUi = false } = {}) {
       return;
     }
 
+    // Wait for the queue worker, which can take its stop timeout to exit.
+    if (queueWorkerChild) {
+      queueWorkerChild.once("exit", () => process.exit(code ?? 1));
+      return;
+    }
     process.exit(code ?? 1);
   });
 }
@@ -277,6 +289,9 @@ function restartNitroDev() {
 
 let queueWorkerChild;
 let restartingQueueWorker = false;
+// The worker waits for running jobs when it stops. After this time, the dev
+// server kills it, so that a long job cannot block a restart or shutdown.
+const queueWorkerStopTimeoutMs = 10_000;
 
 function startQueueWorker() {
   const child = spawnChild(
@@ -316,7 +331,21 @@ function restartQueueWorker() {
     restartingQueueWorker = false;
     startQueueWorker();
   });
-  stopChild(queueWorkerChild, "SIGTERM");
+  stopQueueWorker(queueWorkerChild);
+}
+
+function stopQueueWorker(child) {
+  if (stoppedChildren.has(child)) {
+    return;
+  }
+  const timer = setTimeout(() => {
+    console.error(
+      `Queue worker did not stop within ${queueWorkerStopTimeoutMs / 1000} seconds. Killing it.`,
+    );
+    signalChild(child, "SIGKILL");
+  }, queueWorkerStopTimeoutMs);
+  child.once("exit", () => clearTimeout(timer));
+  stopChild(child, "SIGTERM");
 }
 
 function watchForRestart(paths, restart, options = {}) {

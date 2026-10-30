@@ -420,40 +420,49 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   }
 }
 
-// The queue consumers of each app from `createApp()`, for `startQueueWorker()`.
-const appQueueConsumers = new WeakMap<Hono, () => QueueConsumer[]>();
+/** A Hono app from `createApp()` that can also run its queue consumers. */
+export type JuniorApp = Hono & {
+  /**
+   * Pull this app's queue messages in this process until `close()`.
+   *
+   * Only for a queue provider whose consumers pull messages, such as the
+   * local BullMQ queue. The dev server runs it in its own worker process, so
+   * the Nitro process only sends messages. `close()` also closes the database
+   * and state connections of this process.
+   */
+  startQueueWorker(): Promise<QueueWorker>;
+};
 
-/**
- * Pull this app's queue messages in this process until `close()`.
- *
- * Only for a queue provider whose consumers pull messages, such as the
- * local BullMQ queue. The dev server runs it in its own worker process, so
- * the Nitro process only sends messages. `close()` also closes the database
- * and state connections of this process.
- */
-export async function startQueueWorker(app: Hono): Promise<QueueWorker> {
-  const consumers = appQueueConsumers.get(app);
-  if (!consumers) {
-    throw new Error("startQueueWorker() needs an app from createApp()");
-  }
+async function startQueueWorker(
+  consumers: QueueConsumer[],
+): Promise<QueueWorker> {
   const provider = getQueueProvider();
   if (!provider.startWorker) {
     throw new Error(
       `The ${provider.messagingSystem} queue provider has no queue worker`,
     );
   }
-  const worker = await provider.startWorker(consumers());
+  const worker = await provider.startWorker(consumers);
   return {
+    // Try every step, so one failure does not leave the other resources open.
     close: async () => {
-      await worker.close();
-      await disconnectStateAdapter();
-      await closeDb();
+      try {
+        await worker.close();
+      } finally {
+        try {
+          await disconnectStateAdapter();
+        } finally {
+          await closeDb();
+        }
+      }
     },
   };
 }
 
 /** Create a Hono app with all Junior routes. */
-export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
+export async function createApp(
+  options?: JuniorAppOptions,
+): Promise<JuniorApp> {
   const virtualConfig = await resolveVirtualConfig();
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
@@ -743,11 +752,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  appQueueConsumers.set(app, () => [
-    conversationWorkQueueConsumer(getConversationWorkOptions()),
-    pluginTaskQueueConsumer(),
-    workspaceSnapshotJobQueueConsumer(),
-  ]);
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
@@ -789,5 +793,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     });
   });
 
-  return app;
+  return Object.assign(app, {
+    startQueueWorker: () =>
+      startQueueWorker([
+        conversationWorkQueueConsumer(getConversationWorkOptions()),
+        pluginTaskQueueConsumer(),
+        workspaceSnapshotJobQueueConsumer(),
+      ]),
+  });
 }

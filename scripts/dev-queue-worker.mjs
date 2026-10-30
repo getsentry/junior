@@ -2,8 +2,8 @@
 // `pnpm dev` uses the BullMQ queue. Nitro only sends jobs. This process
 // creates the example app, pulls its jobs, and owns every connection it
 // opens. The dev server passes the environment and restarts this process
-// when the Junior build or the example app's runtime files change.
-import { createRequire } from "node:module";
+// when the Junior build or the example app's runtime files change. If this
+// process does not exit within 10 seconds of `SIGTERM`, the dev server kills it.
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -14,16 +14,10 @@ const exampleDir = path.resolve(
   "example",
 );
 
-// Import `@sentry/junior` from the path that the example app resolves.
-// Another copy would hold other app state and find no app consumers.
-const juniorEntry = createRequire(path.join(exampleDir, "server.ts")).resolve(
-  "@sentry/junior",
-);
-const { startQueueWorker } = await import(pathToFileURL(juniorEntry).href);
 const { default: app } = await import(
   pathToFileURL(path.join(exampleDir, "server.ts")).href
 );
-const worker = await startQueueWorker(app);
+const worker = await app.startQueueWorker();
 
 let stopping = false;
 async function stop(signal) {
