@@ -126,8 +126,6 @@ function resolveDashboardOptions(
 ): DashboardRuntimeOptions {
   return {
     ...options,
-    authRequired:
-      options.authRequired ?? readEnvFlag("JUNIOR_DASHBOARD_AUTH_REQUIRED"),
     mockConversations:
       options.mockConversations ??
       readEnvFlag("JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"),

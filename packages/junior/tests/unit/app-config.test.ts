@@ -924,11 +924,13 @@ describe("createApp plugin config", () => {
       "/api/*",
       "/:slug",
       "/api/:section/*",
+      "/api/mcp/*",
+      "/.well-known/*",
     ]) {
       await expect(
         createApp({
           dashboard: {
-            authRequired: false,
+            authRequired: true,
           },
           plugins: defineJuniorPlugins([
             defineJuniorPlugin({

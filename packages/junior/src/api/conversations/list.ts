@@ -505,7 +505,11 @@ export async function readConversationFeedFromSql(
 
 /**
  * Load a bounded feed with an optional viewer-primary linked-user filter.
- * This filter is not an authorization boundary.
+ *
+ * With `viewer` and without `codeRepositoryId`, the feed holds only root
+ * Conversations that the viewer started or takes part in, for every `q` and
+ * `status`. The `actorEmail` filter and `codeRepositoryId` give no such
+ * guarantee, so they are not an authorization boundary.
  */
 export async function readConversationFeed(
   options: {

@@ -1,5 +1,6 @@
-// Core owns host-level route ordering for Junior. ACP mounts before plugin
-// routes, and plugin routes mount before the dashboard (see dashboard-routes).
+// Core owns host-level route ordering for Junior. ACP and MCP mount before
+// plugin routes, and plugin routes mount before the dashboard (see
+// dashboard-routes).
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,
@@ -121,6 +122,9 @@ import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { createAcpHttpHandler } from "@/api/acp/route";
+import { handleMcpConsentPage } from "@/api/mcp/oauth/consent-page";
+import { MCP_CONSENT_PATH } from "@/api/mcp/oauth/metadata";
+import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
 import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
@@ -138,6 +142,7 @@ import {
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
+  dashboardRequiresSignIn,
   validateDashboardRouteOwnership,
   type AuthenticatedRoute,
   type CreateDashboardApp,
@@ -243,8 +248,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   waitUntil?: WaitUntilFn;
 }
 
-/** Resolve the public deployment URL used by ACP browser authorization. */
-function resolveAcpBaseURL(
+/** Resolve the public deployment URL used by ACP and MCP browser authorization. */
+function resolvePublicBaseURL(
   dashboard: JuniorDashboardOptions | undefined,
 ): string | undefined {
   const configured =
@@ -634,7 +639,7 @@ export async function createApp(
     acpRuntime = {
       handleRequest: createAcpHttpHandler({
         ...(dashboard && !dashboard.disabled
-          ? { browserAuth: { baseURL: resolveAcpBaseURL(dashboard) } }
+          ? { browserAuth: { baseURL: resolvePublicBaseURL(dashboard) } }
           : undefined),
         conversations: createAcpConversations({
           conversationStore: work.conversationStore,
@@ -651,6 +656,21 @@ export async function createApp(
     };
     return acpRuntime;
   };
+  const mcpEnabled = dashboardRequiresSignIn(dashboard);
+  const getMcpState = () =>
+    options?.conversationWork?.state ?? getStateAdapter();
+  const mcpConsentRoute: AuthenticatedRoute = {
+    handler: (request, user) =>
+      handleMcpConsentPage({
+        agentName: botConfig.userName,
+        baseURL: resolvePublicBaseURL(dashboard),
+        request,
+        state: getMcpState(),
+        user,
+      }),
+    method: ["GET", "POST"],
+    path: MCP_CONSENT_PATH,
+  };
   const authenticatedRoutes: AuthenticatedRoute[] =
     dashboard && !dashboard.disabled
       ? [
@@ -665,11 +685,13 @@ export async function createApp(
             method: ["GET", "POST"],
             path: ACP_AUTHORIZATION_PATH,
           },
+          ...(mcpEnabled ? [mcpConsentRoute] : []),
         ]
       : [];
   try {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
+      coreRoutePaths: mcpEnabled ? MCP_ROUTE_PATHS : [],
       dashboard,
       routes: pluginRoutes,
     });
@@ -708,6 +730,17 @@ export async function createApp(
   app.on(["GET", "POST", "DELETE"], "/api/acp", (c) =>
     getAcpRuntime().handleRequest(c.req.raw),
   );
+  if (mcpEnabled) {
+    let handleMcpRequest: ReturnType<typeof createMcpHttpHandler> | undefined;
+    app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
+      handleMcpRequest ??= createMcpHttpHandler({
+        allowedDomains,
+        baseURL: resolvePublicBaseURL(dashboard),
+        state: getMcpState(),
+      });
+      return handleMcpRequest(c.req.raw);
+    });
+  }
   mountRoutes(app, pluginRoutes);
   mountRoutes(
     app,
