@@ -3,6 +3,7 @@ import {
   slackMention,
   person,
   slackThreadMessage,
+  webMessage,
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
@@ -146,5 +147,38 @@ describe("Slack Turn Steering", () => {
       slackThreadMessage("what about the regions?"),
     );
     expect(next.turns).toEqual([]);
+  });
+});
+
+describe("Dashboard Turn Steering", () => {
+  test("when the author steers a queued dashboard message, the running turn takes it", async ({
+    run,
+  }) => {
+    const conversation = await run(webMessage(INCIDENT_REQUEST), {
+      onProgress: sendDuringFirstModelRequest([
+        webMessage("include the rollback owner: Dana", { steer: true }),
+      ]),
+    });
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The summary names Dana as the rollback owner."],
+      }),
+    );
+
+    // Without the steer, the queued message would wait for its own turn.
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+    expect(
+      conversation.session.events.filter(
+        (event) => event.type === "message" && event.role === "user",
+      ),
+    ).toEqual([
+      expect.objectContaining({ content: INCIDENT_REQUEST }),
+      expect.objectContaining({
+        content: "include the rollback owner: Dana",
+      }),
+    ]);
   });
 });

@@ -519,6 +519,18 @@ export async function cancelHumanFacingPendingMessages(args: {
   return result;
 }
 
+/** Mark one author's queued web messages as interrupts. */
+export async function steerWebPendingMessages(args: {
+  authorId: string;
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  // Delivery mode is not part of execution metadata, so there is nothing to record.
+  return await workState.steerWebPendingMessages(args);
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;

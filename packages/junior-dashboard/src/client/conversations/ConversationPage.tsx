@@ -19,6 +19,7 @@ import {
   useAppendConversationMessage,
   useArchiveConversation,
   useCancelConversationPendingMessages,
+  useSteerConversationPendingMessages,
   useConversationData,
   useStopConversationTurn,
   type PendingArchiveConversationUpdate,
@@ -565,7 +566,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   );
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
-  const [editError, setEditError] = useState<string>();
+  const [queueActionError, setQueueActionError] = useState<string>();
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -616,7 +617,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancelPendingMessagesRef.current.reset();
     }
     if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
-    setEditError(undefined);
+    setQueueActionError(undefined);
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
@@ -654,7 +655,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       if (!receivedBefore || editCancelRef.current.isPending) return;
       const inboundMessageId = message.inboundMessageId;
       setEditTargetInboundMessageId(inboundMessageId);
-      setEditError(undefined);
+      setQueueActionError(undefined);
       try {
         // Read images first. A failed read must leave the message queued.
         const images = await readStoredComposerImages(
@@ -668,7 +669,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         // Junior can read the message before the cancel lands. Then it is
         // already in the Conversation and there is nothing to edit.
         if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
-          setEditError("Junior already read that message.");
+          setQueueActionError("Junior already read that message.");
           return;
         }
         composerRef.current?.restoreMessage({
@@ -676,13 +677,35 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           text: message.text ?? "",
         });
       } catch {
-        setEditError("Could not edit the queued message. Try again.");
+        setQueueActionError("Could not edit the queued message. Try again.");
       } finally {
         setEditTargetInboundMessageId(undefined);
       }
     },
     [props.conversationId, props.pendingGeneratedAtRef],
   );
+
+  const steerPendingMessages = useSteerConversationPendingMessages(
+    props.conversationId,
+  );
+  const steerPendingMessagesRef = useRef(steerPendingMessages);
+  steerPendingMessagesRef.current = steerPendingMessages;
+  const onSteerMessage = useCallback((message: ConversationMailboxMessage) => {
+    if (steerPendingMessagesRef.current.isPending) return;
+    setQueueActionError(undefined);
+    steerPendingMessagesRef.current.mutate(
+      { inboundMessageIds: [message.inboundMessageId] },
+      {
+        onError: () =>
+          setQueueActionError(
+            "Could not send the queued message now. Try again.",
+          ),
+      },
+    );
+  }, []);
+  const steerTargetInboundMessageId = steerPendingMessages.isPending
+    ? steerPendingMessages.variables?.inboundMessageIds[0]
+    : undefined;
 
   const onStop = useCallback(async () => {
     const result = await stopTurnRef.current.mutateAsync();
@@ -720,6 +743,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             onEditMessage={onEditMessage}
             onLayoutChange={onMailboxLayoutChange}
             onRetry={onRetry}
+            onSteerMessage={props.stoppable ? onSteerMessage : undefined}
+            steerTargetInboundMessageId={steerTargetInboundMessageId}
             viewerEmail={viewerEmail}
           />
         </>
@@ -728,7 +753,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       <ConversationComposer
         draftId={props.conversationId}
         error={
-          editError ??
+          queueActionError ??
           (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
         }
         ref={composerRef}

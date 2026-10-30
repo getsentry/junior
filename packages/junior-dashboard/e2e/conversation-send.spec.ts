@@ -698,8 +698,9 @@ test("edits a queued message back into the composer", async ({
     source: "web",
     text: "Queued follow-up",
   };
-  // Junior reads this one before the edit lands, so the cancel finds nothing.
-  const readMessage = {
+  // The reader steers this one. Junior reads it before the edit lands, so the
+  // cancel finds nothing.
+  const readMessage: ConversationPendingMessage & { text: string } = {
     ...queuedMessage,
     attachments: undefined,
     inboundMessageId: "queued-read",
@@ -707,6 +708,19 @@ test("edits a queued message back into the composer", async ({
     text: "Already read",
   };
   let queued: ConversationPendingMessage[] = [queuedMessage, readMessage];
+  const steerRequests: string[][] = [];
+  await page.route(`${path}/pending-messages/steer`, async (route) => {
+    const ids = route.request().postDataJSON().inboundMessageIds as string[];
+    steerRequests.push(ids);
+    queued = queued.map((message) =>
+      ids.includes(message.inboundMessageId)
+        ? { ...message, delivery: "interrupt" }
+        : message,
+    );
+    await route.fulfill({
+      json: { conversationId, steeredInboundMessageIds: ids },
+    });
+  });
   await page.route(`${path}/pending-messages`, async (route) => {
     if (route.request().method() !== "DELETE") {
       await route.fulfill({
@@ -746,6 +760,18 @@ test("edits a queued message back into the composer", async ({
     pending.getByRole("img", { name: "queued-chart.png" }),
   ).toBeVisible();
   await screenshot(page, "conversation-queue-compact");
+
+  const readRow = pending.getByRole("article").filter({
+    hasText: readMessage.text,
+  });
+  await readRow.getByRole("button", { name: "Steer queued message" }).click();
+  await expect(readRow.getByLabel("Interrupt")).toBeVisible();
+  await expect(
+    readRow.getByRole("button", { name: "Steer queued message" }),
+  ).toBeHidden();
+  expect(steerRequests).toEqual([[readMessage.inboundMessageId]]);
+  // Close the delivery tooltip that opened under the pointer.
+  await page.mouse.move(0, 0);
 
   // Text goes ahead of the draft and the image comes back with it.
   await composer.fill("Draft in progress");

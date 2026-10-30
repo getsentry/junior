@@ -97,12 +97,18 @@ describe("PendingMailboxStack remove control", () => {
     expect(html).toContain('aria-label="Could not remove. Try again."');
   });
 
-  it("shows edit only on the viewer's own accepted web rows", () => {
+  it("shows edit and steer only on the viewer's own accepted web rows", () => {
     const own = { email: "Reader@example.com" };
     const html = renderToStaticMarkup(
       <PendingMailboxStack
         messages={[
           message({ actorIdentity: own }),
+          message({
+            actorIdentity: own,
+            delivery: "interrupt",
+            inboundMessageId: "steered-4",
+            messageId: "steered-4",
+          }),
           message({
             actorIdentity: { email: "other@example.com" },
             inboundMessageId: "accepted-2",
@@ -122,11 +128,14 @@ describe("PendingMailboxStack remove control", () => {
           }),
         ]}
         onEditMessage={() => undefined}
+        onSteerMessage={() => undefined}
         viewerEmail="reader@example.com"
       />,
     );
 
-    expect(html.match(/aria-label="Edit queued message"/g)).toHaveLength(1);
+    expect(html.match(/aria-label="Edit queued message"/g)).toHaveLength(2);
+    // A steered row is already an interrupt, so it cannot be steered again.
+    expect(html.match(/aria-label="Steer queued message"/g)).toHaveLength(1);
   });
 
   it("hides mailbox rows already present in committed history", () => {

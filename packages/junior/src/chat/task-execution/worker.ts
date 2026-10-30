@@ -470,7 +470,7 @@ async function processConversationWorkInContext(
       getChatConfig().conversationWorkSoftYieldAfterMs);
   let attemptMessageIds: string[] = [];
   let attemptSelectedMessageIds = new Set<string>();
-  let attemptStartMessageIds = new Set<string>();
+  let attemptStartInterruptIds = new Set<string>();
   let failedWithoutProgress = false;
   let leaseLost = false;
   const markLeaseLost = (): void => {
@@ -496,17 +496,17 @@ async function processConversationWorkInContext(
       leaseToken: lease.leaseToken,
       conversationStore: options.conversationStore,
       handle: async (messages) => {
-        // Pending work that was not selected when the attempt started belongs
-        // to a later actor-scoped attempt. Selected or newly arrived
-        // interrupts remain eligible for this attempt's drain. A `deferred`
-        // drain scopes the messages itself.
+        // Interrupts that were pending but not selected when the attempt
+        // started belong to a later actor-scoped attempt. Selected, newly
+        // arrived, and newly steered interrupts remain eligible for this
+        // attempt's drain. A `deferred` drain scopes the messages itself.
         const candidates = drainOptions?.deferred
           ? messages
           : messages.filter(
               (message) =>
                 message.delivery === "interrupt" &&
                 (attemptSelectedMessageIds.has(message.inboundMessageId) ||
-                  !attemptStartMessageIds.has(message.inboundMessageId)),
+                  !attemptStartInterruptIds.has(message.inboundMessageId)),
             );
         if (candidates.length === 0) {
           return [];
@@ -601,8 +601,10 @@ async function processConversationWorkInContext(
       if (!runId) {
         throw new Error(`Conversation run is missing for ${conversationId}`);
       }
-      attemptStartMessageIds = new Set(
-        leasedWork.messages.map((message) => message.inboundMessageId),
+      attemptStartInterruptIds = new Set(
+        leasedWork.messages
+          .filter((message) => message.delivery === "interrupt")
+          .map((message) => message.inboundMessageId),
       );
 
       if (hasRun && shouldYield()) {

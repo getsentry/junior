@@ -111,7 +111,9 @@ function PendingMetaIcons(props: {
   message: ConversationMailboxMessage;
   onCancel?: () => void;
   onEdit?: () => void;
+  onSteer?: () => void;
   showSlack: boolean;
+  steerPending: boolean;
 }) {
   const delivery = pendingDeliveryMeta(props.message);
   const DeliveryIcon = delivery.icon;
@@ -137,6 +139,16 @@ function PendingMetaIcons(props: {
           strokeWidth={2.2}
         />
       </PendingMetaIcon>
+      {props.onSteer ? (
+        <PendingActionButton
+          disabled={props.actionsDisabled}
+          icon={SkipForward}
+          label="Steer queued message"
+          onClick={props.onSteer}
+          pending={props.steerPending}
+          tooltip="Steer: send it to Junior now"
+        />
+      ) : null}
       {props.onEdit ? (
         <PendingActionButton
           disabled={props.actionsDisabled}
@@ -232,12 +244,15 @@ function PendingRow(props: {
   cancelError: boolean;
   cancelPending: boolean;
   canEdit: boolean;
+  canSteer: boolean;
   conversationId?: string;
   editPending: boolean;
   message: ConversationMailboxMessage;
   onCancel?(message: ConversationMailboxMessage): void;
   onEdit?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
+  onSteer?(message: ConversationMailboxMessage): void;
+  steerPending: boolean;
 }) {
   const text = props.message.text ?? "";
   const redacted = Boolean(props.message.redacted);
@@ -291,7 +306,13 @@ function PendingRow(props: {
                 ? () => props.onEdit?.(props.message)
                 : undefined
             }
+            onSteer={
+              props.canSteer && props.onSteer
+                ? () => props.onSteer?.(props.message)
+                : undefined
+            }
             showSlack={showSlack}
+            steerPending={props.steerPending}
           />
         }
       />
@@ -379,6 +400,10 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   /** Fires after expand/collapse changes the stack height above the composer. */
   onLayoutChange?: () => void;
   onRetry?(message: ConversationMailboxMessage): void;
+  /** Ask Junior to read the viewer's own queued web message now. */
+  onSteerMessage?: (message: ConversationMailboxMessage) => void;
+  /** Inbound id of the row that a steer is sending now. */
+  steerTargetInboundMessageId?: string;
   /** Email of the signed-in reader. Only their own web rows can be edited. */
   viewerEmail?: string;
 }): ReactNode {
@@ -411,23 +436,26 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   const hiddenCount = Math.max(0, rows.length - COLLAPSED_PENDING_ROW_COUNT);
   const toggleExpanded = () => setExpanded((value) => !value);
   const actionsDisabled =
-    Boolean(props.cancelPending) || Boolean(props.editTargetInboundMessageId);
+    Boolean(props.cancelPending) ||
+    Boolean(props.editTargetInboundMessageId) ||
+    Boolean(props.steerTargetInboundMessageId);
   const renderRow = (message: ConversationMailboxMessage) => {
     const isTarget =
       props.cancelTargetInboundMessageId === message.inboundMessageId;
     // Only accepted server rows can leave the queue. Local rows are still sending.
     const accepted = message.clientStatus === undefined;
+    const ownWebRow =
+      accepted &&
+      message.source === "web" &&
+      !message.redacted &&
+      sameEmail(message.actorIdentity?.email, props.viewerEmail);
     return (
       <PendingRow
         actionsDisabled={actionsDisabled}
         cancelError={Boolean(props.cancelError && isTarget)}
         cancelPending={Boolean(props.cancelPending && isTarget)}
-        canEdit={
-          accepted &&
-          message.source === "web" &&
-          !message.redacted &&
-          sameEmail(message.actorIdentity?.email, props.viewerEmail)
-        }
+        canEdit={ownWebRow}
+        canSteer={ownWebRow && message.delivery === "defer"}
         conversationId={props.conversationId}
         editPending={
           props.editTargetInboundMessageId === message.inboundMessageId
@@ -437,6 +465,10 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
         onCancel={accepted ? props.onCancelMessage : undefined}
         onEdit={props.onEditMessage}
         onRetry={props.onRetry}
+        onSteer={props.onSteerMessage}
+        steerPending={
+          props.steerTargetInboundMessageId === message.inboundMessageId
+        }
       />
     );
   };
