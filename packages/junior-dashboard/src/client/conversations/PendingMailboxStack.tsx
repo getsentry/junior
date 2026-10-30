@@ -13,7 +13,7 @@ import {
   FileText,
   Pencil,
   SkipForward,
-  X,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -162,15 +162,15 @@ function PendingMetaIcons(props: {
       {props.onCancel ? (
         <PendingActionButton
           disabled={props.actionsDisabled}
-          icon={X}
+          icon={Trash2}
           label={
             props.cancelError
-              ? "Could not remove. Try again."
-              : "Remove queued message"
+              ? "Could not delete. Try again."
+              : "Delete queued message"
           }
           onClick={props.onCancel}
           pending={props.cancelPending}
-          tooltip="Remove queued message"
+          tooltip="Delete queued message"
         />
       ) : null}
     </TranscriptHeadingMeta>
@@ -332,7 +332,7 @@ function PendingRow(props: {
       ) : null}
       {props.cancelError ? (
         <p className="m-0 font-sans text-xs text-amber-100/75">
-          Could not remove. Try again.
+          Could not delete. Try again.
         </p>
       ) : null}
     </article>

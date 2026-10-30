@@ -453,7 +453,7 @@ test("hands web and external messages from queue to history without gaps", async
   historyHeld = undefined;
   queued = [web];
   await expect(
-    pending.getByRole("button", { name: "Remove queued message" }),
+    pending.getByRole("button", { name: "Delete queued message" }),
   ).toBeVisible();
   await expect(thinking).toBeHidden();
 
@@ -518,7 +518,7 @@ test("hands web and external messages from queue to history without gaps", async
   await composer.fill(second.text);
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(
-    pending.getByRole("button", { name: "Remove queued message" }),
+    pending.getByRole("button", { name: "Delete queued message" }),
   ).toBeVisible();
   await expect(page.getByText(second.text, { exact: true })).toHaveCount(1);
   committed = [web, second];
@@ -554,11 +554,11 @@ test("hands web and external messages from queue to history without gaps", async
     timeout: 15_000,
   });
   await expect(thinking).toBeHidden();
-  await pending.getByRole("button", { name: "Remove queued message" }).click();
-  await expect(pending.getByText("Could not remove. Try again.")).toBeVisible();
+  await pending.getByRole("button", { name: "Delete queued message" }).click();
+  await expect(pending.getByText("Could not delete. Try again.")).toBeVisible();
   failCancel = false;
   await pending
-    .getByRole("button", { name: "Could not remove. Try again." })
+    .getByRole("button", { name: "Could not delete. Try again." })
     .click();
   await expect(pending).toBeHidden();
 });

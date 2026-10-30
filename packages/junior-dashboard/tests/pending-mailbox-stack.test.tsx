@@ -41,8 +41,8 @@ describe("PendingMailboxStack remove control", () => {
       />,
     );
 
-    expect(accepted).toContain("Remove queued message");
-    expect(localOnly).not.toContain("Remove queued message");
+    expect(accepted).toContain("Delete queued message");
+    expect(localOnly).not.toContain("Delete queued message");
   });
 
   it("keeps remove available for accepted rows while a local send is pending", () => {
@@ -60,7 +60,7 @@ describe("PendingMailboxStack remove control", () => {
       />,
     );
 
-    expect(html.match(/aria-label="Remove queued message"/g)).toHaveLength(1);
+    expect(html.match(/aria-label="Delete queued message"/g)).toHaveLength(1);
   });
 
   it("does not show remove for failed local outbox rows", () => {
@@ -79,8 +79,8 @@ describe("PendingMailboxStack remove control", () => {
       />,
     );
 
-    expect(html).not.toContain("Remove queued message");
-    expect(html).not.toContain("Could not remove. Try again.");
+    expect(html).not.toContain("Delete queued message");
+    expect(html).not.toContain("Could not delete. Try again.");
   });
 
   it("shows an inline remove error on the target accepted row", () => {
@@ -93,8 +93,8 @@ describe("PendingMailboxStack remove control", () => {
       />,
     );
 
-    expect(html).toContain("Could not remove. Try again.");
-    expect(html).toContain('aria-label="Could not remove. Try again."');
+    expect(html).toContain("Could not delete. Try again.");
+    expect(html).toContain('aria-label="Could not delete. Try again."');
   });
 
   it("shows edit and steer only on the viewer's own accepted web rows", () => {
