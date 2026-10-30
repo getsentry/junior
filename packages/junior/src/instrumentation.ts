@@ -55,6 +55,12 @@ export function initSentry(): void {
       process.env.NODE_ENV,
     release: serviceVersion,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
+    ignoreSpans: [
+      // Vercel sends health check and latency probes to `/_vercel/ping`. They
+      // are not Junior work. Match `url.path` because a streamed server span
+      // starts with only the method as its name, and `ignoreSpans` runs then.
+      { op: "http.server", attributes: { "url.path": "/_vercel/ping" } },
+    ],
     dataCollection: {
       // Outgoing calls carry model prompts and provider responses that the
       // payload filter cannot see. Keep only incoming request bodies.
