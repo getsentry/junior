@@ -1,10 +1,6 @@
 /**
  * Own the remote MCP HTTP edge: discovery metadata, OAuth endpoints, and the
  * Streamable HTTP route at `/api/mcp`.
- *
- * The app mounts this handler only when the dashboard requires Google
- * sign-in (`dashboardRequiresSignIn`), because consent needs a signed-in
- * Junior user. A dashboard without required sign-in serves a local viewer.
  */
 import { Hono } from "hono";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
@@ -37,7 +33,7 @@ export const MCP_ROUTE_PATHS = [
 ];
 
 type McpHttpHandlerOptions = {
-  /** The app's `allowedDomains`. Each MCP request checks them again. */
+  /** The app's `allowedDomains`. */
   allowedDomains: readonly string[];
   /** Configured public origin. Unset allows only loopback request origins. */
   baseURL?: string;
@@ -89,10 +85,8 @@ export function createMcpHttpHandler(
   app.post(MCP_TOKEN_PATH, mcpTokenBodyLimit, (c) =>
     handleMcpToken({ request: c.req.raw, state: options.state }),
   );
-  // Only MCP access tokens for this exact resource pass. Personal tokens and
-  // dashboard sessions do not, because MCP grants are a separate consent.
-  // Like the dashboard, each request checks the allowed domains and resolves
-  // the user again.
+  // Personal tokens and dashboard sessions do not pass, because an MCP grant
+  // is a separate consent.
   app.on(["GET", "POST", "DELETE"], MCP_PATH, async (c) => {
     const requestUrls = urls(c.req.raw);
     const token = bearerToken(c.req.raw);

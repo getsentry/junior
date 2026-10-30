@@ -69,7 +69,6 @@ The tool is read-only. It has no pagination.
 - Access tokens last 1 hour. Your client refreshes them for you. Each refresh token works once.
 - A connection ends 30 days after you allow it, even when the client refreshes its tokens. Then connect the client again.
 - Each request checks the [allowed domains](/reference/config-and-env/#allowed-domains) again. If your domain is removed, the connection stops working.
-- If someone uses an old refresh token again more than one minute after it was replaced, Junior revokes the whole connection. Connect the client again.
 - Personal tokens do not work on `/api/mcp`. Only tokens from this OAuth flow work.
 
 ## Troubleshooting

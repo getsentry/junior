@@ -49,7 +49,7 @@ routes:
 - `GET /.well-known/oauth-authorization-server`
 - `GET /api/mcp/oauth/authorize`
 - `POST /api/mcp/oauth/token`
-- `GET` and `POST /_junior/mcp/authorize/:requestId` (dashboard consent page)
+- `GET` and `POST /_junior/mcp/authorize/:authorizationId` (dashboard consent page)
 
 Personal tokens do not grant MCP access. See [MCP Server](/operate/mcp-server/).
 

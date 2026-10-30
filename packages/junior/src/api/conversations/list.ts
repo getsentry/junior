@@ -508,9 +508,8 @@ export async function readConversationFeedFromSql(
  *
  * With `viewer` and without `codeRepositoryId`, the feed holds only root
  * Conversations that the viewer started or takes part in, for every `q` and
- * `status`. Remote MCP callers rely on this membership guarantee. The
- * `actorEmail` filter and `codeRepositoryId` give no such guarantee, so they
- * are not an authorization boundary.
+ * `status`. The `actorEmail` filter and `codeRepositoryId` give no such
+ * guarantee, so they are not an authorization boundary.
  */
 export async function readConversationFeed(
   options: {

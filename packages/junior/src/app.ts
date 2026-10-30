@@ -656,8 +656,6 @@ export async function createApp(
     };
     return acpRuntime;
   };
-  // MCP consent needs a Google-signed-in user. A dashboard without required
-  // sign-in serves a local viewer, so MCP routes are not mounted then.
   const mcpEnabled = dashboardRequiresSignIn(dashboard);
   const getMcpState = () =>
     options?.conversationWork?.state ?? getStateAdapter();

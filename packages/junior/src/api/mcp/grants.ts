@@ -1,11 +1,8 @@
 /**
  * Own MCP OAuth grants: authorization codes, access tokens, and refresh
  * tokens. Every secret is random, opaque, and stored only as a SHA-256 hash
- * in shared state with a TTL.
- *
- * A grant ends `GRANT_MAX_AGE_MS` after consent. Refresh does not extend it.
- * Records store the user email, not a user snapshot, so each request resolves
- * the user again and checks the allowed domains.
+ * in shared state with a TTL. A grant ends `GRANT_MAX_AGE_MS` after consent,
+ * and refresh does not extend it.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -15,11 +12,7 @@ import { mcpStateKey, readRecord, sha256Hex, type McpState } from "./state";
 
 const CODE_TTL_MS = 60 * 1000;
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
-// Personal tokens last 90 days. A grant is shorter, because a third-party
-// client holds its tokens and no page can revoke a grant yet.
 const GRANT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-// Clients that run in many processes can refresh one token at the same time.
-// A reuse in this window fails without revoking the grant.
 const REFRESH_REUSE_GRACE_MS = 60 * 1000;
 // Prefixes let secret scanners find leaked tokens. They carry no authority.
 const ACCESS_TOKEN_PREFIX = "jr_mcp_at_";
@@ -292,8 +285,7 @@ export async function refreshGrant(args: {
 /**
  * Return the user email of one MCP access token for one resource. Personal
  * tokens and other bearer values never match, because only this module
- * stores MCP access tokens. The caller resolves the user and checks the
- * allowed domains.
+ * stores MCP access tokens.
  */
 export async function authenticateMcpAccessToken(args: {
   resource: string;

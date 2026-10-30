@@ -66,9 +66,7 @@ export function isAllowedDomain(
 
 /**
  * Return whether a verified sign-in email is on an allowed domain. Sign-in
- * needs a configured list, so an empty list allows no email. The dashboard
- * and MCP apply this check on each request, so a changed list also applies
- * to existing sessions and tokens.
+ * needs a configured list, so an empty list allows no email.
  */
 export function isAllowedSignInEmail(
   email: string,
