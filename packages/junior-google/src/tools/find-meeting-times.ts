@@ -34,22 +34,7 @@ const inputSchema = z
     optionalAttendees: emailListSchema(20)
       .default([])
       .describe(
-        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first.',
-      ),
-    statedAvailability: z
-      .array(
-        z
-          .object({
-            email: z.string().trim().toLowerCase().pipe(z.email()),
-            start: clockTimeSchema,
-            end: clockTimeSchema,
-          })
-          .strict(),
-      )
-      .max(20)
-      .default([])
-      .describe(
-        "Daily hours when people are free that their own calendar does not show. Use it when a person says blocks on their calendar are placeholders or defensive blocks they will move, or when they give the hours they are free. Pass the window they describe, such as the part of the day they asked for. For this search, a person's stated hours replace their calendar: their busy times are ignored, and only slots inside these hours count. 24-hour HH:MM in their own calendar time zone. They stay required attendees. Use the requester's own email when the requester says this about their own calendar.",
+        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first. Put the requester here when their own calendar must not block a slot, such as when they say some events are only holds.',
       ),
     durationMinutes: z.number().int().min(15).max(480).default(30),
     timeMin: z.iso
@@ -195,8 +180,6 @@ interface Interval {
 export interface SlotAttendee {
   busy: Interval[];
   email: string;
-  /** Hours the person said they are free. They replace working hours. */
-  hours?: { end: string; start: string };
   required: boolean;
   /** IANA time zone used for this person's working hours. */
   timeZone: string;
@@ -285,6 +268,8 @@ export function findFreeSlots(input: {
 }): Array<Interval & { optionalConflicts: string[] }> {
   const durationMs = input.durationMinutes * 60_000;
   const stepMs = (input.durationMinutes < 30 ? 15 : 30) * 60_000;
+  const dayStart = clockMinutes(input.workdayStart);
+  const dayEnd = clockMinutes(input.workdayEnd);
   const formats = new Map<string, Intl.DateTimeFormat>();
   const partsIn = (ms: number, timeZone: string) => {
     let format = formats.get(timeZone);
@@ -305,9 +290,8 @@ export function findFreeSlots(input: {
       start.weekday !== "Sat" &&
       start.weekday !== "Sun" &&
       start.date === end.date &&
-      start.minutes >=
-        clockMinutes(attendee.hours?.start ?? input.workdayStart) &&
-      end.minutes <= clockMinutes(attendee.hours?.end ?? input.workdayEnd) &&
+      start.minutes >= dayStart &&
+      end.minutes <= dayEnd &&
       attendee.busy.every((busy) => !overlaps(busy, startMs, endMs))
     );
   };
@@ -423,24 +407,11 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           "workdayEnd must be after workdayStart.",
         );
       }
-      if (
-        input.statedAvailability.some(
-          (hours) => clockMinutes(hours.end) <= clockMinutes(hours.start),
-        )
-      ) {
-        throw new PluginToolInputError(
-          "Each statedAvailability end must be after its start.",
-        );
-      }
-      const stated = new Map(
-        input.statedAvailability.map(({ email, ...hours }) => [email, hours]),
-      );
-      // People who stated their hours attend. An explicit optional entry for
-      // the requester wins over the automatic add.
-      const named = [...input.attendees, ...stated.keys()];
+      // An explicit optional entry for the requester wins over the automatic add.
       const optionalEmails = new Set(input.optionalAttendees);
-      const attendees = (await withRequester(ctx, named)).filter(
-        (email) => named.includes(email) || !optionalEmails.has(email),
+      const attendees = (await withRequester(ctx, input.attendees)).filter(
+        (email) =>
+          input.attendees.includes(email) || !optionalEmails.has(email),
       );
       const required = new Set(attendees);
       const optionalAttendees = [...optionalEmails].filter(
@@ -481,17 +452,12 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           email,
           ...(calendarZone ? { timeZone: calendarZone } : undefined),
         });
-        const hours = stated.get(email);
         slotAttendees.push({
-          // Stated hours replace the person's calendar for this search.
-          busy: hours
-            ? []
-            : calendar.busy.map((interval) => ({
-                endMs: Date.parse(interval.end),
-                startMs: Date.parse(interval.start),
-              })),
+          busy: calendar.busy.map((interval) => ({
+            endMs: Date.parse(interval.end),
+            startMs: Date.parse(interval.start),
+          })),
           email,
-          ...(hours ? { hours } : undefined),
           required: required.has(email),
           timeZone: calendarZone ?? timeZone,
         });

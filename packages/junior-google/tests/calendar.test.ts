@@ -129,33 +129,30 @@ describe("Google Calendar tools", () => {
     const { fetch, tools } = calendarTools(
       Response.json({
         calendars: {
-          // The requester blocks all of Tuesday, but says they are free
-          // 10:30-12:00.
+          // The requester says this block over the whole search is a hold.
           [REQUESTER]: {
             busy: [
-              { start: "2026-10-27T16:00:00Z", end: "2026-10-28T00:00:00Z" },
+              { start: "2026-10-26T16:00:00Z", end: "2026-11-09T17:00:00Z" },
             ],
           },
           "bob@example.com": {
             busy: [
-              { start: "2026-10-27T16:00:00Z", end: "2026-10-27T17:00:00Z" },
+              { start: "2026-10-27T13:00:00Z", end: "2026-10-27T17:00:00Z" },
             ],
           },
           "carol@example.com": { busy: [], errors: [{ reason: "notFound" }] },
         },
       }),
-      Response.json({ timeZone: LA }),
       Response.json({ timeZone: "America/New_York" }),
       Response.json({}, { status: 404 }),
+      Response.json({ timeZone: LA }),
     );
 
     const result = await tools.findMeetingTimes!.execute!(
       tools.findMeetingTimes!.prepareArguments!({
         attendees: ["Bob@example.com", "carol@example.com"],
         maxResults: 1,
-        statedAvailability: [
-          { email: REQUESTER, start: "10:30", end: "12:00" },
-        ],
+        optionalAttendees: [REQUESTER],
         // 14 days on the Los Angeles clock, from Monday 09:00 PDT to Monday
         // 09:00 PST. Daylight saving ends inside it, so it is 14 days and
         // one hour long.
@@ -171,12 +168,12 @@ describe("Google Calendar tools", () => {
     expect(freeBusy.operation).toBe("google.calendar.freebusy.query");
     expect(freeBusy.provider).toBe("google");
     expect((await freeBusy.request.json()).items).toEqual([
-      { id: REQUESTER },
       { id: "bob@example.com" },
       { id: "carol@example.com" },
+      { id: REQUESTER },
     ]);
-    const bobZone = new URL(timeZones[1].request.url);
-    expect(timeZones[1].operation).toBe("google.calendar.events.list");
+    const bobZone = new URL(timeZones[0].request.url);
+    expect(timeZones[0].operation).toBe("google.calendar.events.list");
     expect(bobZone.pathname).toBe(
       "/calendar/v3/calendars/bob%40example.com/events",
     );
@@ -184,16 +181,17 @@ describe("Google Calendar tools", () => {
     expect(bobZone.searchParams.has("timeZone")).toBe(false);
     expect(result).toMatchObject({
       checked: [
-        { email: REQUESTER, timeZone: LA },
         { email: "bob@example.com", timeZone: "America/New_York" },
+        { email: REQUESTER, timeZone: LA },
       ],
-      // Tuesday 10:30 in Los Angeles: the start of the requester's stated
-      // hours, which replace their calendar, and after Bob's 12:00-13:00 in
-      // New York. Monday 10:30 is free too, but only Tuesday was asked for.
+      // Tuesday 10:00 in Los Angeles, after Bob's 09:00-13:00 in New York.
+      // The requester listed themselves as optional, so the hold does not
+      // block it. Monday is open earlier, but only Tuesdays were asked for.
       slots: [
         {
-          otherTimeZoneLabels: ["Tue, Oct 27, 13:30 – 14:00 EDT"],
-          start: "2026-10-27T17:30:00.000Z",
+          optionalConflicts: [REQUESTER],
+          otherTimeZoneLabels: ["Tue, Oct 27, 13:00 – 13:30 EDT"],
+          start: "2026-10-27T17:00:00.000Z",
         },
       ],
       unavailable: [{ email: "carol@example.com", reason: "notFound" }],

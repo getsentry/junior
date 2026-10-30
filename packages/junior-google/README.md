@@ -15,14 +15,11 @@ Gmail and Drive writes are out of scope.
   own calendar. It reads free/busy data and calendar time zones only. It never
   reads event titles or details. Optional attendees do not block a slot.
   Slots where they are free come first, and each slot names the optional
-  attendees who are busy or off hours. Free/busy cannot tell a real meeting
-  from a block that a person keeps only so others do not book over it. When a
-  person says when they are free, such as "I'm free 1-5pm", their stated hours
-  replace their calendar for that search. Their busy times are ignored, they
-  stay required, and only slots inside their stated hours count. A search can
-  be limited to some weekdays, such as Wednesdays and Fridays for a weekly
-  meeting. Slots are spread across days and across each day, so the requester
-  gets a real choice.
+  attendees who are busy or off hours. A search can be limited to some
+  weekdays, such as Wednesdays and Fridays for a weekly meeting. A search
+  covers at most 14 days, counted on the local clock, so a daylight-saving
+  change does not shorten it. Slots are spread across days and across each
+  day, so the requester gets a real choice.
 - Every Calendar tool takes an optional `timeZone` for the times it reads and
   shows. Without it, the tool uses the requester's timezone from
   `ctx.users.resolveTimezone()`, so Junior does not have to ask for one.
