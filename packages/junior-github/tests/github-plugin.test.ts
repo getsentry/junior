@@ -1732,7 +1732,9 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("asks an unlinked requester to connect GitHub once a day", async () => {
-    const requestConnection = vi.fn(async () => true);
+    const requestConnection = vi
+      .fn(async () => true)
+      .mockRejectedValueOnce(new Error("Slack unavailable"));
     const ctx = githubToolsContext({
       requestConnection,
       actor: { platform: "slack", teamId: "T1", userId: "U039RR91S" },
@@ -1758,18 +1760,24 @@ Conversation: \`local:test:old-conversation\`
       base: "main",
     };
 
+    // A failed ask sends no link, so the next pull request asks again.
+    const failed = await tool?.execute?.(input, {
+      toolCallId: "call-unlinked-1",
+    });
     await expect(
-      tool?.execute?.(input, { toolCallId: "call-unlinked-1" }),
+      tool?.execute?.(input, { toolCallId: "call-unlinked-2" }),
     ).resolves.toMatchObject({
       number: 660,
       assignmentNotice: expect.stringContaining("link to connect GitHub"),
     });
-    const second = await tool?.execute?.(input, {
-      toolCallId: "call-unlinked-2",
+    const deduped = await tool?.execute?.(input, {
+      toolCallId: "call-unlinked-3",
     });
 
-    expect(second).not.toHaveProperty("assignmentNotice");
-    expect(requestConnection).toHaveBeenCalledTimes(1);
+    expect(failed).toMatchObject({ number: 660 });
+    expect(failed).not.toHaveProperty("assignmentNotice");
+    expect(deduped).not.toHaveProperty("assignmentNotice");
+    expect(requestConnection).toHaveBeenCalledTimes(2);
     expect(
       ctx.egressRequests().map(({ operation }) => operation),
     ).not.toContain("github.pull.assign");

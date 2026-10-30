@@ -28,12 +28,12 @@ export async function requestPluginConnection(
   ) {
     return false;
   }
-  const slack = getSlackToolContext(context);
+  // Omit threadTs like `/jr link`: with a thread and no paused Turn, the
+  // OAuth callback posts a public "connected" message in that thread.
   const result = await startOAuthFlow(provider, {
     actorId: context.actor.userId,
     actor: context.actor,
-    channelId: slack?.locationChannelId,
-    threadTs: slack?.threadTs,
+    channelId: getSlackToolContext(context)?.locationChannelId,
     resumeConversationId: context.conversationId,
   });
   if (!result.ok) {

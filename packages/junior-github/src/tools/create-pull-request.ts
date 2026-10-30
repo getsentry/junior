@@ -424,25 +424,34 @@ async function requestRequesterConnection(
   const identityId = requester?.identity?.id;
   if (!identityId || linkedGitHubLogin(requester?.user)) return false;
   const key = `connectionRequest:${identityId}`;
+  let reserved = false;
   try {
-    if (
-      !(await ctx.state.setIfNotExists(
-        key,
-        true,
-        GITHUB_CONNECTION_REQUEST_TTL_MS,
-      ))
-    ) {
-      return false;
-    }
+    reserved = await ctx.state.setIfNotExists(
+      key,
+      true,
+      GITHUB_CONNECTION_REQUEST_TTL_MS,
+    );
+    if (!reserved) return false;
     if (await ctx.users.requestConnection()) return true;
+    // No link was sent, so let a later pull request ask again.
     await ctx.state.delete(key);
-    return false;
+    reserved = false;
   } catch (error) {
     ctx.log.warn("github.pull_request.connection_request.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return false;
+    if (reserved) {
+      await ctx.state.delete(key).catch((deleteError: unknown) => {
+        ctx.log.warn("github.pull_request.connection_request.release_failed", {
+          error:
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError),
+        });
+      });
+    }
   }
+  return false;
 }
 
 function gitHubPullRequestToolResult(

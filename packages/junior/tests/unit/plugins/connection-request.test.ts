@@ -42,7 +42,7 @@ describe("requestPluginConnection", () => {
     startOAuthFlow.mockResolvedValue({ ok: true, delivery: "in_context" });
   });
 
-  it("privately sends the Slack actor a link in the conversation thread", async () => {
+  it("privately sends the Slack actor a link without a thread confirmation", async () => {
     await expect(requestPluginConnection("github", slackTurn())).resolves.toBe(
       true,
     );
@@ -51,7 +51,6 @@ describe("requestPluginConnection", () => {
       actorId: "U123",
       actor,
       channelId: "C123",
-      threadTs: "1700000000.000000",
       resumeConversationId: "slack:C123:1700000000.000000",
     });
   });
