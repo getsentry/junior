@@ -57,6 +57,7 @@ import { createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
+import { requestPluginConnection } from "@/chat/plugins/connection-request";
 import {
   readActorIdentity,
   readIdentityById,
@@ -732,6 +733,7 @@ export function getPluginTools(
       state: createPluginState(pluginName),
       users: {
         resolveActor,
+        requestConnection: () => requestPluginConnection(pluginName, context),
         async resolveTimezone() {
           const actor = context.actor;
           const resolved = await resolveActor();

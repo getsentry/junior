@@ -366,6 +366,7 @@ function githubToolsContext(input?: {
     provider: string;
     request: Request;
   }) => Promise<Response>;
+  requestConnection?: ToolRegistrationHookContext["users"]["requestConnection"];
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
   source?: ToolRegistrationHookContext["source"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
@@ -424,6 +425,7 @@ function githubToolsContext(input?: {
         })),
     },
     users: {
+      requestConnection: input?.requestConnection ?? (async () => false),
       resolveActor: input?.resolveActor ?? (async () => undefined),
     },
     state: {
@@ -1653,7 +1655,9 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("assigns pull requests to the linked requester and mentions them in attribution", async () => {
+    const requestConnection = vi.fn(async () => true);
     const ctx = githubToolsContext({
+      requestConnection,
       actor: {
         platform: "slack",
         teamId: "T1",
@@ -1720,10 +1724,55 @@ Conversation: \`local:test:old-conversation\`
     await expect(assignment.request.json()).resolves.toEqual({
       assignees: ["dcramer_sentry"],
     });
+    expect(requestConnection).not.toHaveBeenCalled();
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
+  });
+
+  it("asks an unlinked requester to connect GitHub once a day", async () => {
+    const requestConnection = vi.fn(async () => true);
+    const ctx = githubToolsContext({
+      requestConnection,
+      actor: { platform: "slack", teamId: "T1", userId: "U039RR91S" },
+      resolveActor: async () => ({
+        identity: {
+          id: "identity-1",
+          provider: "slack",
+          providerSubjectId: "U039RR91S",
+          providerTenantId: "T1",
+        },
+        user: {
+          displayName: "David Cramer",
+          id: "user-1",
+          identities: [],
+        },
+      }),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed PR",
+      head: "dcramer/gh-660-pr-create",
+      base: "main",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-unlinked-1" }),
+    ).resolves.toMatchObject({
+      number: 660,
+      assignmentNotice: expect.stringContaining("link to connect GitHub"),
+    });
+    const second = await tool?.execute?.(input, {
+      toolCallId: "call-unlinked-2",
+    });
+
+    expect(second).not.toHaveProperty("assignmentNotice");
+    expect(requestConnection).toHaveBeenCalledTimes(1);
+    expect(
+      ctx.egressRequests().map(({ operation }) => operation),
+    ).not.toContain("github.pull.assign");
   });
 
   it("omits requester attribution when identity and actor names are unresolved", async () => {

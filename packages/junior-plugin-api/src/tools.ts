@@ -605,6 +605,12 @@ interface BaseToolRegistrationHookContext extends PluginContext {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
     /**
+     * Privately send the current actor a link to connect this plugin's
+     * account. The Turn continues. Returns false when Junior sent no link,
+     * such as in a Turn that did not start from a Slack message.
+     */
+    requestConnection(): Promise<boolean>;
+    /**
      * Resolve the current actor's IANA timezone. Uses their profile when
      * Junior knows it, else the install default. Always returns a timezone.
      */
