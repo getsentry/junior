@@ -16,6 +16,9 @@ shared controls and overlays.
   `flush` when the text already sits on the transcript edge. It extends the
   padded control around that text. Do not repeat negative margins at call sites.
   The caller owns the native `details` element and its content.
+  `TranscriptSummaryTrigger` gives a `ui/collapsible` trigger the same look.
+  Its caller owns the `Collapsible` and its content. Transcript search holds
+  event and context rows open.
 - Activity rows (tools, reasoning, and grouped rail events) share one
   layout: a 1rem icon column, an 8px gap, then the title and metadata.
   Tool and reasoning rows use `ui/trace`. Transcript search forces them open.

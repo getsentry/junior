@@ -43,12 +43,17 @@ export function MentionPeopleProvider(props: {
 
 /** Render one line of display text with the people the API resolved for it. */
 export function MentionText(props: {
+  /**
+   * Link people to their page. Set false inside a button, which cannot hold
+   * a link.
+   */
+  links?: boolean;
   mentions: readonly ActorIdentity[];
   text: string;
 }) {
   return (
     <MentionPeopleProvider mentions={props.mentions}>
-      {renderMentionText(props.text, "mention-text")}
+      {renderMentionText(props.text, "mention-text", props.links)}
     </MentionPeopleProvider>
   );
 }
@@ -57,7 +62,11 @@ export function MentionText(props: {
  * Render text with Slack `<@U123>` and `<#C123|name>` tokens as readable
  * mentions. It reads people from the nearest `MentionPeopleProvider`.
  */
-export function renderMentionText(text: string, keyBase: string): ReactNode[] {
+export function renderMentionText(
+  text: string,
+  keyBase: string,
+  links = true,
+): ReactNode[] {
   const nodes: ReactNode[] = [];
   let cursor = 0;
   for (const mention of findMentions(text)) {
@@ -70,7 +79,11 @@ export function renderMentionText(text: string, keyBase: string): ReactNode[] {
       );
     }
     nodes.push(
-      <MentionView key={`${keyBase}-m-${mention.start}`} mention={mention} />,
+      <MentionView
+        key={`${keyBase}-m-${mention.start}`}
+        links={links}
+        mention={mention}
+      />,
     );
     cursor = mention.end;
   }
@@ -95,13 +108,13 @@ function findMentions(text: string): TranscriptMention[] {
   }));
 }
 
-function MentionView(props: { mention: TranscriptMention }) {
+function MentionView(props: { links: boolean; mention: TranscriptMention }) {
   const people = useContext(TranscriptMentionPeople);
   const { id, label, sigil } = props.mention;
   const person = sigil === "@" ? people.get(id) : undefined;
   const name = person?.fullName ?? person?.slackUserName ?? label ?? id;
   const text = <HighlightText text={`${sigil}${name.replace(/^[@#]/, "")}`} />;
-  if (person?.email) {
+  if (props.links && person?.email) {
     return (
       <Link
         // Previews sit in cards that disable pointer events on their text.

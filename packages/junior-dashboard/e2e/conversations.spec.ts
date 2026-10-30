@@ -116,7 +116,6 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   const image = page
     .locator('a[href*="/attachments/qa-chart-png"]')
     .filter({ has: page.locator('img[alt="chart.png"]') })
-    .filter({ hasNot: page.locator("dialog") })
     .first();
   await image.waitFor({ state: "visible" });
   await image.evaluate((element) =>
@@ -125,8 +124,11 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await screenshot(page, "conversation-attachment");
 
   await image.click();
-  await expect(page.locator("dialog[open]")).toBeVisible();
+  const preview = page.getByRole("dialog", { name: "chart.png" });
+  await expect(preview).toBeVisible();
   await screenshot(page, "conversation-attachment-modal");
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
 });
 
 test("reuses the fresh conversation feed after window focus", async ({
