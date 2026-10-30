@@ -112,8 +112,9 @@ Junior SHALL treat the text of an event author as instructions only when the
 author is trusted. An author SHALL be trusted when the plugin marks the author
 as trusted from its config, or when the author's Identity links to a User
 whose primary email passes `allowedDomains`. The text of every other author
-SHALL be data only. The GitHub plugin SHALL own its allow list of GitHub
-logins. Core SHALL NOT read GitHub logins to decide trust.
+SHALL be data only. The GitHub plugin SHALL own its trusted authors list of
+GitHub logins, `githubPlugin({ trustedAuthors })`. Core SHALL NOT read
+GitHub logins to decide trust.
 
 #### Scenario: Linked user on an allowed domain
 
@@ -133,17 +134,19 @@ logins. Core SHALL NOT read GitHub logins to decide trust.
   PR
 - **THEN** Junior treats the comment text as data only.
 
-#### Scenario: Allow-listed bot
+#### Scenario: Bot on the trusted authors list
 
-- **WHEN** a bot whose GitHub login is on the GitHub plugin allow list
+- **WHEN** a bot whose GitHub login is on the GitHub plugin trusted authors
+  list
   comments on a watched PR
 - **THEN** the plugin marks the author as trusted
 - **AND** Junior treats the comment text as instructions
 - **AND** the bot has no User and gets no participant row.
 
-#### Scenario: Bot not on the allow list
+#### Scenario: Bot not on the trusted authors list
 
-- **WHEN** a bot whose GitHub login is not on the GitHub plugin allow list
+- **WHEN** a bot whose GitHub login is not on the GitHub plugin trusted
+  authors list
   comments on a watched PR
 - **THEN** Junior treats the comment text as data only.
 

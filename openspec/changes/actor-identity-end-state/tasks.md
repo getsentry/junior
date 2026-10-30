@@ -73,13 +73,14 @@ a web Turn stores its author Identity.
 - [ ] Event authors do not become participants. `sql/history.ts` skips
       `recordConversationParticipant` for event Messages.
 - [ ] Event author trust (`proposal.md`, Plan Decisions). The GitHub plugin
-      gets an allow list of GitHub logins (Proposal 7). It sets
+      gets `githubPlugin({ trustedAuthors })`, a trusted authors list of
+      GitHub logins. It compares logins without case (Proposal 7). It sets
       `doneBy.trusted` when the event login is on the list (Proposal 4).
       Core treats the text as instructions only when `doneBy.trusted` is
       `true`, or when the author's `github` Identity links to a User whose
       primary email passes `allowedDomains`. All other event text stays in
       `untrustedText`. Core reads no GitHub login for this.
-- [ ] Document the allow list in `junior-github/SETUP.md` and say to list
+- [ ] Document `trustedAuthors` in `junior-github/SETUP.md` and say to list
       bot logins.
 - [ ] The participant list shows only Identities of kind `user` with a User,
       the same rule as participant rows.
@@ -94,14 +95,14 @@ every other `junior/<email>` row and reference as it is.
 
 Risk: medium. Wrong merges move Conversations between People. Run each
 migration as a dry-run count first. The trust rule changes which event text
-Junior follows. Only allow-listed logins and linked Users on an allowed
-domain gain this.
+Junior follows. Only logins on the trusted authors list and linked Users on
+an allowed domain gain this.
 
 Verify: `component/identity-read.test.ts`,
 `integration/api/conversations/detail.test.ts` (participants),
 `integration/local-agent-runner.test.ts`, and the review and comment scenario in
-`packages/junior-github/tests/webhook-outcomes.test.ts`: an allow-listed bot's
-comment is trusted, a bot that is not on the list is data only, and the
+`packages/junior-github/tests/webhook-outcomes.test.ts`: a bot on the trusted
+authors list is trusted, a bot that is not on the list is data only, and the
 commenter gets no participant row.
 
 ## 4. Add The Owner

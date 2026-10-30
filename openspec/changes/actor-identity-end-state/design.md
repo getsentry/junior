@@ -89,8 +89,9 @@ gives the model, the schema, the readers, and the known gaps.
   author. An author is trusted when the plugin says so, or when the author's
   Identity links to a User whose primary email passes `allowedDomains`
   (`chat/sign-in/allowlist.ts`, `junior_users.primary_email_normalized`).
-- The GitHub plugin owns its allow list of logins. It sets
-  `doneBy.trusted`. Core sees only that boolean. This is the same split as
+- The GitHub plugin owns its trusted authors list of logins,
+  `githubPlugin({ trustedAuthors })`. It sets `doneBy.trusted`. Core sees
+  only that boolean. This is the same split as
   `slack.allowedBotUserIds`, which lets a listed Slack bot pass the domain
   check (`chat/ingress/slack-allowed-domain.ts`). Today no GitHub author list
   exists.

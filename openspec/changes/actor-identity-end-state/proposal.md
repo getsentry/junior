@@ -75,6 +75,7 @@ These are David Cramer's answers in the Slack thread for #2439.
   they pass the `allowedDomains` check and Junior knows their GitHub Identity.
 - "also we'd allow list usernames in juniors config for github events (so we
   could allow list some bots)"
+- Name the list "trusted authors": "call it trusted authors or sometihng"
 
 ### Plan Decisions
 
@@ -120,13 +121,15 @@ These are the #2439 end state. They follow from the answers above.
   instructions when one of these is true:
   - the author's `github` Identity links to a User, and the domain of that
     User's primary email passes `allowedDomains`;
-  - the author's GitHub login is on the GitHub plugin allow list.
+  - the author's GitHub login is on the GitHub plugin trusted authors list.
 
   All other event text is data only. This includes a bot that is not on the
   list and a person with no linked User. #2260 lets only the Watch requester's
   text count. This rule is wider.
 
-- **The allow list lives in the GitHub plugin.** No such list exists today.
+- **The trusted authors list lives in the GitHub plugin.** The option is
+  `githubPlugin({ trustedAuthors: [...] })`. It takes GitHub logins, such as
+  `some-app[bot]`. David chose the name. No such list exists today.
   `GitHubPluginOptions` (`junior-github/src/plugin.ts`) has no author list.
   `slack.allowedBotUserIds` (`app.ts`, `chat/ingress/slack-allowed-domain.ts`)
   covers only Slack ingress. The new list follows the same pattern, but in
@@ -157,16 +160,15 @@ These are not agreed yet.
    types use the system Identity.
 4. **Event author field.** `doneBy` gets `subjectId` (from #2260), `isBot`,
    and `trusted`. The plugin sets all three. `trusted` is `true` only when the
-   plugin allow list has the author. When the type has `hasActor`, core
-   rejects an event with no `subjectId`.
+   login is on `trustedAuthors`. When the type has `hasActor`, core rejects an
+   event with no `subjectId`.
 5. **Event author Identity.** Core upserts the Identity from `doneBy` with no
    email. So the event never links a User. The Identity is verified only when
    it already links to a User through OAuth or a verified email.
 6. **Event Owner and Turn Actor.** An event changes only the Message author.
    The Owner stays. The Event Turn keeps `EVENT_SYSTEM_ACTOR`.
-7. **Allow list option.** `githubPlugin({ allowedEventAuthors: [...] })` takes
-   GitHub logins, such as `some-app[bot]`. The plugin compares logins without
-   case.
+7. **Trusted authors match.** The plugin compares each login in
+   `trustedAuthors` to the event login without case.
 8. **Owner repair.** The Owner backfill can repair a root with a `slack` or
    `web` Source and a system Identity. These rows got the system Identity
    before #2436. The repair is clearly correct only when the first user
@@ -201,8 +203,8 @@ These are not agreed yet.
   `.strict()` schemas and can write old columns. Each step ships readers
   before writers and drops a column one release after its last writer.
 - A human GitHub login can change owners after a rename. A GitHub App login
-  ends in `[bot]`, and GitHub keeps that suffix for Apps. The allow list docs
-  should say to list bot logins.
+  ends in `[bot]`, and GitHub keeps that suffix for Apps. The trusted authors
+  docs should say to list bot logins.
 - A write with no author Identity fails after step 5. A missed ingress path
   shows up as an error, not as wrong data. The legacy fallback logs first, so
   the logs find missed paths before the constraint ships.
