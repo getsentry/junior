@@ -41,7 +41,7 @@ function DrawerContent(props: DrawerProps) {
         aria-labelledby={props.titleId}
         data-dashboard-modal=""
         className={cn(
-          "[--drawer-content-width:100%] data-[swipe-axis=x]:sm:[--drawer-content-width:100%]",
+          "data-[swipe-axis=x]:[--drawer-content-width:100%] data-[swipe-axis=x]:sm:[--drawer-content-width:100%]",
           props.width === "wide"
             ? "data-[swipe-axis=x]:md:[--drawer-content-width:min(760px,94vw)]"
             : props.width === "narrow"
