@@ -171,18 +171,19 @@ export function isInlineOutboxMessage(
   return Boolean(message.inline) && message.status !== "failed";
 }
 
-/** Message ids that history shows as read, including joined Turn input. */
-function readMessageIds(
-  events: readonly ConversationReportEvent[],
-): Set<string> {
-  const ids = new Set<string>();
+/** Ids of history Messages and of the input that started each Turn. */
+function historyMessageIds(events: readonly ConversationReportEvent[]): {
+  messageIds: Set<string>;
+  turnInputIds: Set<string>;
+} {
+  const messageIds = new Set<string>();
+  const turnInputIds = new Set<string>();
   for (const event of events) {
-    if (event.data.type === "message") ids.add(event.data.messageId);
-    // A Turn joins several queued sends into the Message of the first one.
+    if (event.data.type === "message") messageIds.add(event.data.messageId);
     if (event.data.type === "turn_lifecycle" && event.data.state === "started")
-      for (const id of event.data.inputMessageIds ?? []) ids.add(id);
+      for (const id of event.data.inputMessageIds ?? []) turnInputIds.add(id);
   }
-  return ids;
+  return { messageIds, turnInputIds };
 }
 
 /**
@@ -203,12 +204,19 @@ export function settleConversationOutboxMessages(
   const queuedIds = new Set(
     snapshot.queued.map((message) => message.messageId),
   );
-  const readIds = readMessageIds(snapshot.events);
+  const { messageIds, turnInputIds } = historyMessageIds(snapshot.events);
   const settle = (
     message: ConversationOutboxMessage,
   ): ConversationOutboxMessage | undefined => {
-    if (readIds.has(message.messageId)) return undefined;
     const queued = queuedIds.has(message.messageId);
+    // A Turn joins several sends into the Message of the first one, so a
+    // joined send has only its Turn input id. The Turn starts before the
+    // mailbox drops the send. Until then, keep the row, or the mailbox copy
+    // would show in the queue.
+    const read =
+      messageIds.has(message.messageId) ||
+      (!queued && turnInputIds.has(message.messageId));
+    if (read) return undefined;
     if (!isInlineOutboxMessage(message)) return queued ? undefined : message;
     if (queued) {
       return message.inlineSeenQueued

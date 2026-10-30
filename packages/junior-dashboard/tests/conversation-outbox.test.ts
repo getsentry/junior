@@ -227,21 +227,37 @@ describe("conversation outbox", () => {
     expect(seen).toEqual([{ ...inline, inlineSeenQueued: true }, joined]);
 
     // A Turn joined the second send into the first Message, so only its
-    // started event has the second id.
+    // started event has the second id. The Turn starts before the mailbox
+    // drops the send, so the row stays inline until then.
+    const turnStarted = [
+      {
+        seq: 1,
+        createdAt: "2026-01-01T00:00:02.000Z",
+        data: {
+          type: "turn_lifecycle" as const,
+          turnId: "turn-1",
+          state: "started" as const,
+          inputMessageIds: ["accepted-1", "accepted-2"],
+        },
+      },
+    ];
+    const joinedCopy = {
+      ...mailboxMessageFromOutbox(joined),
+      clientStatus: undefined,
+      idempotencyKey: undefined,
+    };
     expect(
       settleConversationOutboxMessages(outbox, {
-        events: [
-          {
-            seq: 1,
-            createdAt: "2026-01-01T00:00:02.000Z",
-            data: {
-              type: "turn_lifecycle",
-              turnId: "turn-1",
-              state: "started",
-              inputMessageIds: ["accepted-1", "accepted-2"],
-            },
-          },
-        ],
+        events: turnStarted,
+        queued: [queuedCopy, joinedCopy],
+      }),
+    ).toEqual([
+      { ...inline, inlineSeenQueued: true },
+      { ...joined, inlineSeenQueued: true },
+    ]);
+    expect(
+      settleConversationOutboxMessages(outbox, {
+        events: turnStarted,
         queued: [],
       }),
     ).toEqual([]);
