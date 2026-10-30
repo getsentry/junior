@@ -359,15 +359,20 @@ describe("durable queue contract", () => {
     });
 
     it("publishes a resource wake from a channel-level Slack Location", async () => {
+      // Watch Conversations have their own id, not a Slack thread id.
+      const watchConversationId = "agent-dispatch:watch-1";
       const q = await slack({
         modelStream: createModelStream([
           { type: "text", text: "The subscribed check failed." },
           { type: "text", text: "The subscribed check recovered." },
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Deploy checked.", waitFor: "abort" },
+          { type: "text", text: "Deploy checked." },
         ]),
       });
       const store = getConversationStore();
       await store.recordActivity({
-        conversationId: CONVERSATION_ID,
+        conversationId: watchConversationId,
         destination: SLACK_DESTINATION,
         nowMs: 1_000,
         sessionSource: createSlackSource({
@@ -389,7 +394,7 @@ describe("durable queue contract", () => {
         },
         receivedAtMs: 1_100,
         subscription: {
-          conversationId: CONVERSATION_ID,
+          conversationId: watchConversationId,
           id: "resource-subscription-channel-1",
         },
         text: "The subscribed check failed.",
@@ -413,7 +418,7 @@ describe("durable queue contract", () => {
       });
       expect(posts[0]?.params).not.toHaveProperty("thread_ts");
       await expect(
-        getTurnRecord(CONVERSATION_ID, turnId),
+        getTurnRecord(watchConversationId, turnId),
       ).resolves.toMatchObject({
         actors: [{ platform: "system", name: "event" }],
         state: "completed",
@@ -426,13 +431,13 @@ describe("durable queue contract", () => {
           providerTenantId: SLACK_DESTINATION.teamId,
           providerConversationId: "1712345.0042",
         }),
-      ).resolves.toBe(CONVERSATION_ID);
+      ).resolves.toBe(watchConversationId);
       const conversation = coerceThreadConversationState(
-        await getPersistedThreadState(CONVERSATION_ID),
+        await getPersistedThreadState(watchConversationId),
       );
       await hydrateConversationMessages({
         conversation,
-        conversationId: CONVERSATION_ID,
+        conversationId: watchConversationId,
       });
       expect(conversation.messages).toEqual(
         expect.arrayContaining([
@@ -460,7 +465,7 @@ describe("durable queue contract", () => {
         },
         receivedAtMs: 200_000,
         subscription: {
-          conversationId: CONVERSATION_ID,
+          conversationId: watchConversationId,
           id: "resource-subscription-channel-1",
         },
         text: "The subscribed check recovered.",
@@ -481,7 +486,33 @@ describe("durable queue contract", () => {
         channel: SLACK_DESTINATION.channelId,
         thread_ts: "1712345.0042",
       });
-    }, 10_000);
+
+      // JUNIOR-9D: a human reply in that thread runs in the Watch Conversation.
+      // Its resume must find the reply and answer in the same thread.
+      await q.send({ threadTs: "1712345.0042", ts: "1712345.0050" });
+      await expect(q.next(almostSpentStartedAtMs(10_000))).resolves.toEqual({
+        status: "yielded",
+      });
+      const replyTurnId = "turn_1712345_0050";
+      await expect(
+        getTurnRecord(watchConversationId, replyTurnId),
+      ).resolves.toMatchObject({ state: "paused", resumeReason: "timeout" });
+
+      queueSlackApiResponse("chat.postMessage", {
+        body: chatPostMessageOk({ ts: "1712345.0051" }),
+      });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expect(
+        getTurnRecord(watchConversationId, replyTurnId),
+      ).resolves.toMatchObject({ state: "completed" });
+      const replyPosts = slackApiOutbox.messages();
+      expect(replyPosts).toHaveLength(3);
+      expect(replyPosts[2]?.params).toMatchObject({
+        channel: SLACK_DESTINATION.channelId,
+        text: "Deploy checked.",
+        thread_ts: "1712345.0042",
+      });
+    }, 30_000);
   });
 
   describe("long turn survives host limit", () => {
