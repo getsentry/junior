@@ -59,7 +59,11 @@ function editErrorResponse(error: unknown): Response {
   if (error instanceof AutomationConflictError) {
     return jsonResponse(
       automationEditErrorSchema,
-      { error: error.message, code: "conflict" },
+      {
+        error: error.message,
+        code: "conflict",
+        ...(error.changedBy ? { changedBy: error.changedBy } : undefined),
+      },
       { status: 409 },
     );
   }

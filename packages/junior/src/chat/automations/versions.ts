@@ -13,6 +13,11 @@ import { canonicalJson } from "./revision";
 
 type VersionedAutomation = ScheduledAutomation | EventAutomation;
 
+/** The person who saves a version, or `"junior"` when Junior saves it. */
+export type AutomationVersionEditor = NonNullable<
+  AutomationVersion["editedBy"]
+>;
+
 /** Return the versioned part of an Automation. Lifecycle and run state are excluded. */
 export function automationDefinition(task: VersionedAutomation) {
   const common = {
@@ -43,7 +48,7 @@ export async function recordAutomationVersion(
   db: JuniorDatabase,
   task: VersionedAutomation,
   current: VersionedAutomation | undefined,
-  editedBy?: EventAutomation["createdBy"],
+  editedBy?: AutomationVersionEditor,
 ): Promise<void> {
   const definition = automationDefinition(task);
   if (current && sameDefinitionValue(automationDefinition(current), definition))

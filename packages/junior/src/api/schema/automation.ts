@@ -410,6 +410,8 @@ export const automationEditErrorSchema = z
     error: z.string(),
     code: z.enum(["invalid_edit", "conflict", "not_found"]),
     fields: z.record(z.string(), z.array(z.string())).optional(),
+    /** Set on a conflict when Junior made the only newer change. */
+    changedBy: z.literal("junior").optional(),
   })
   .strict();
 

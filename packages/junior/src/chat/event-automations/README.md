@@ -68,12 +68,18 @@ After a conversion the scope lives in `match`, so replacing the whole object
 would make the trigger broader. The dashboard sends the whole trigger from
 its form, which shows every saved filter.
 
-Saved rows keep their identifiers until a later change converts them. Saved
-versions keep their old triggers, and the version schema still reads
-`identifier` and `resourceType`. The version schema also reads
-`editedBy: "junior"` for a version that Junior saves when it changes a trigger
-itself. Nothing writes it yet. The reader comes first, so a release that
-writes it can roll back to this one and keep version history readable.
+Each heartbeat checks at most 50 saved rows that have an identifier, no
+saved reason, and the same identifier in the row and the trigger. It saves
+each row with the revision that it read, under the row lock, and records a
+version with `editedBy: "junior"`. A row that changed after the read is left
+for the next heartbeat. A row that cannot convert keeps its identifier, stays
+active, and saves the reason, so later heartbeats skip it. A dashboard edit
+that read the row before the conversion fails as a conflict, and the dashboard
+says that Junior changed the trigger. The edit API checks this by giving the
+saved row the trigger of the version before Junior's and comparing its
+revision. Slice D of #2362 decides what happens to kept rows before the
+identifier column goes away. Saved versions keep their old triggers, and the
+version schema still reads `identifier` and `resourceType`.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by
 watches and event automations. Create and update tools accept only

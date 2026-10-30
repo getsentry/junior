@@ -4,12 +4,21 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 
+/**
+ * A stale edit. `changedBy` is `"junior"` when the only newer change is
+ * Junior's own trigger change, so the editor can say who changed it.
+ */
 export class AutomationConflictError extends ToolInputError {
-  constructor() {
+  readonly changedBy?: "junior";
+
+  constructor(changedBy?: "junior") {
     super(
-      "This Automation changed after it was loaded. Reload it before saving.",
+      changedBy === "junior"
+        ? "Junior changed this Automation's trigger to filters that select the same events after it was loaded. Reload it before saving."
+        : "This Automation changed after it was loaded. Reload it before saving.",
     );
     this.name = "AutomationConflictError";
+    if (changedBy) this.changedBy = changedBy;
   }
 }
 

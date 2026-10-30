@@ -13,10 +13,17 @@ import {
   type EventMatch,
 } from "@sentry/junior-plugin-api";
 import {
+  AutomationConflictError,
+  automationRevision,
+} from "@/chat/automations/revision";
+import {
   automationEventCatalog,
   registeredEventTriggerProblems,
   type EventCatalog,
 } from "@/chat/events/catalog";
+import { logException, logInfo } from "@/chat/logging";
+import type { JuniorDatabase } from "@/db/db";
+import { listEventAutomationsToConvert, saveEventAutomation } from "./store";
 import type { EventAutomation } from "./types";
 
 type EventAutomationTrigger = EventAutomation["trigger"];
@@ -120,4 +127,51 @@ export function triggerWithoutIdentifier(
   }
   if (problems.length > 0) return keep("no filters select the same events");
   return { converted: true, trigger: { ...rest, match } };
+}
+
+/** Most saved triggers that one heartbeat checks. */
+const CONVERSION_BATCH_LIMIT = 50;
+
+/**
+ * Check saved event automation triggers that have an identifier and no saved
+ * reason, at most `CONVERSION_BATCH_LIMIT` in one call. Save each one with
+ * no identifier when `triggerWithoutIdentifier` can convert it. Otherwise
+ * save the reason, so later calls skip it and people can see why. Each save
+ * locks the row, checks that the row did not change after it was read, and
+ * records a new version with Junior as its editor. A row that changed is
+ * left for the next call. Every trigger stays active.
+ */
+export async function convertSavedEventAutomationTriggers(
+  db: JuniorDatabase,
+  catalog: EventCatalog,
+): Promise<{ converted: string[]; kept: string[] }> {
+  const converted: string[] = [];
+  const kept: string[] = [];
+  const tasks = await listEventAutomationsToConvert(db, CONVERSION_BATCH_LIMIT);
+  for (const task of tasks) {
+    try {
+      const conversion = triggerWithoutIdentifier(catalog, task.trigger);
+      const saved = await saveEventAutomation(
+        db,
+        { ...task, trigger: conversion.trigger },
+        automationRevision(task),
+        "junior",
+      );
+      if (!saved) continue;
+      (conversion.converted ? converted : kept).push(task.id);
+      logInfo(
+        conversion.converted
+          ? "event_automation.trigger.converted"
+          : "event_automation.trigger.identifier_kept",
+        { "app.task.id": task.id, "app.task.type": "event" },
+      );
+    } catch (error) {
+      if (error instanceof AutomationConflictError) continue;
+      logException(error, "event_automation.trigger.conversion_failed", {
+        "app.task.id": task.id,
+        "app.task.type": "event",
+      });
+    }
+  }
+  return { converted, kept };
 }

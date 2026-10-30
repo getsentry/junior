@@ -6,18 +6,25 @@ export class DashboardApiError extends Error {
   readonly status: number;
   readonly fields?: Record<string, string[]>;
   readonly code?: string;
+  /** Who made the newer change on a conflict, when the API knows. */
+  readonly changedBy?: string;
   readonly apiError?: string;
 
   constructor(
     path: string,
     status: number,
     apiError?: string,
-    detail?: { fields?: Record<string, string[]>; code?: string },
+    detail?: {
+      fields?: Record<string, string[]>;
+      code?: string;
+      changedBy?: string;
+    },
   ) {
     super(`${path} returned ${status}`);
     this.status = status;
     this.fields = detail?.fields;
     this.code = detail?.code;
+    this.changedBy = detail?.changedBy;
     if (apiError?.trim()) this.apiError = apiError.trim();
   }
 }
@@ -29,14 +36,17 @@ async function throwDashboardApiError(
   let apiError: string | undefined;
   let fields: Record<string, string[]> | undefined;
   let code: string | undefined;
+  let changedBy: string | undefined;
   try {
     const body = (await response.json()) as {
       error?: unknown;
       code?: unknown;
       fields?: unknown;
+      changedBy?: unknown;
     };
     if (typeof body.error === "string") apiError = body.error;
     if (typeof body.code === "string") code = body.code;
+    if (typeof body.changedBy === "string") changedBy = body.changedBy;
     if (body.fields && typeof body.fields === "object") {
       fields = Object.fromEntries(
         Object.entries(body.fields).filter(
@@ -52,6 +62,7 @@ async function throwDashboardApiError(
   throw new DashboardApiError(path, response.status, apiError, {
     fields,
     code,
+    changedBy,
   });
 }
 
