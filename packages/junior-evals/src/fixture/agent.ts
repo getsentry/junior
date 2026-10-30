@@ -103,12 +103,7 @@ export type TurnProgress =
    * Junior queued the rest of it. The rest waits until the handler finishes,
    * so a sent input arrives before the turn continues.
    */
-  | { type: "paused" }
-  /**
-   * Junior is about to run the work of a child agent that the Conversation
-   * started. The work waits until the handler finishes.
-   */
-  | { type: "child_agent" };
+  | { type: "paused" };
 
 export interface CallOptions {
   /** Earlier turns as items, or a recorded conversation. */
@@ -586,11 +581,10 @@ export async function createFixtureAgent(
       };
       gateway.setProgressHook(report);
       queue.setRequeueHook(async (conversationId) => {
-        if (typeof target === "function") return;
-        if (conversationId !== target.conversationId) {
-          // During a call, the worker queues work for another Conversation
-          // only when it runs a child agent.
-          await report({ type: "child_agent" });
+        if (
+          typeof target === "function" ||
+          conversationId !== target.conversationId
+        ) {
           return;
         }
         // The worker also queues work for a message that waits for its own
