@@ -255,6 +255,11 @@ When Guardian reviews an action of a child, `root-conversation.ts` walks
 rewrite these events. Nothing is copied into the child, and nothing new is
 stored.
 
+The root messages and the child's evidence are separate logs. So each root
+message keeps the time of its event, and each evidence entry keeps the time of
+its message. Guardian uses these times to see that a user's approval came after
+a rejection in the child, and then the retry can go ahead.
+
 A root Run of a person reads its own Conversation the same way, with the same
 labels, so the Actor's earlier messages can authorize an action. The evidence
 still has the unlabeled messages. It is the only place that shows the order of

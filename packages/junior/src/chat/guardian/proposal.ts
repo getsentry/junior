@@ -42,6 +42,11 @@ export interface ToolActionReviewDecision {
 /** Bounded transcript entries of the Run, without aligned authors. */
 export interface ToolActionEvidence {
   entries: Array<{
+    /**
+     * ISO time of the transcript message. A child agent's evidence and its
+     * root Conversation are separate logs, so only times put them in order.
+     */
+    at?: string;
     role:
       | "assistant"
       | "user"
@@ -80,6 +85,8 @@ export interface RootConversationMessage {
     | "other person"
     | "event"
     | "system";
+  /** ISO time of the message. A note that core adds has no time. */
+  at?: string;
   text: string;
 }
 

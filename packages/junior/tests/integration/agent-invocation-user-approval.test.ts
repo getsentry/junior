@@ -6,6 +6,7 @@ import {
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import { getConversationEventStore } from "@/chat/db";
+import type { RootConversation } from "@/chat/guardian/proposal";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
@@ -48,6 +49,14 @@ async function recordRootMessage(
       createdAtMs: 1_000 + messageCount,
     },
   ]);
+}
+
+/** Drop message times. Only the case about message order checks them. */
+function withoutTimes(root: RootConversation) {
+  return {
+    ...root,
+    messages: root.messages.map(({ at: _at, ...message }) => message),
+  };
 }
 
 describe("user approval for child agents", () => {
@@ -110,7 +119,7 @@ describe("user approval for child agents", () => {
       // Action review reads the root, not the task. Only the user's own
       // message is labeled `user`.
       const read = async (conversationId: string, actor?: Actor) =>
-        await readRootConversation({ actor, conversationId });
+        withoutTimes(await readRootConversation({ actor, conversationId }));
       await expect(read(child.childConversationId, user)).resolves.toEqual({
         messages: [
           { author: "user", text: "Which images did we publish here?" },
@@ -166,6 +175,20 @@ describe("user approval for child agents", () => {
 
       const fromGrandchild = await read(grandchild.childConversationId, user);
       expect(fromGrandchild.messages.slice(-3)).toEqual(latest);
+
+      // The child's own log is separate from the root, so each root message
+      // keeps the time that it was written. Review orders the two by time.
+      const timed = await readRootConversation({
+        actor: user,
+        conversationId: child.childConversationId,
+      });
+      const times = timed.messages.map((message) => message.at);
+      expect(times).toEqual(
+        Array.from({ length: 6 }, () =>
+          expect.stringMatching(/^\d{4}-\d\d-\d\dT[\d:.]+Z$/),
+        ),
+      );
+      expect(times).toEqual([...times].sort());
     } finally {
       await fixture.close();
     }
@@ -239,7 +262,7 @@ describe("user approval for child agents", () => {
         author: "system",
         text: expect.stringMatching(/^\[\d+ messages are not shown here\./),
       };
-      expect(read.messages).toEqual([
+      expect(withoutTimes(read).messages).toEqual([
         { author: "user", text: "Unpublish abc.png and def.png." },
         gap,
         { author: "user", text: "Stop. Don't unpublish anything." },
@@ -294,7 +317,7 @@ describe("user approval for child agents", () => {
         readRootConversation({
           actor: eventActor,
           conversationId: child.childConversationId,
-        }),
+        }).then(withoutTimes),
       ).resolves.toEqual({
         messages: [{ author: "automation", text: instruction }],
         truncated: false,
@@ -321,12 +344,13 @@ describe("user approval for child agents", () => {
         actor: eventActor,
         conversationId: child.childConversationId,
       });
-      expect(long.messages[0]).toEqual({
+      const untimed = withoutTimes(long);
+      expect(untimed.messages[0]).toEqual({
         author: "automation",
         text: instruction,
       });
       // Steps 1 to 54 are not shown. The steps in the read page get a note.
-      expect(long.messages.slice(1)).toEqual([
+      expect(untimed.messages.slice(1)).toEqual([
         {
           author: "system",
           text: expect.stringMatching(/^\[48 messages are not shown here\./),

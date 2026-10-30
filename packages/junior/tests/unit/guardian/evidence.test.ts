@@ -13,6 +13,7 @@ describe("tool action review evidence", () => {
       {
         role: "user",
         content: [{ type: "text", text: "Create the weekly report." }],
+        timestamp: Date.parse("2026-10-30T18:40:00.000Z"),
       },
       {
         role: "assistant",
@@ -26,6 +27,7 @@ describe("tool action review evidence", () => {
             arguments: { cadence: "weekly" },
           },
         ],
+        timestamp: Date.parse("2026-10-30T18:40:05.000Z"),
       },
       {
         role: "toolResult",
@@ -37,14 +39,22 @@ describe("tool action review evidence", () => {
     ].map((value) => piMessage(value));
     const evidence = buildToolActionEvidence(transcript);
 
+    // Each entry has the time of its message, so review can order it
+    // against another log.
     expect(evidence).toEqual({
       entries: [
-        { role: "user", text: "Create the weekly report." },
         {
+          at: "2026-10-30T18:40:00.000Z",
+          role: "user",
+          text: "Create the weekly report.",
+        },
+        {
+          at: "2026-10-30T18:40:05.000Z",
           role: "assistant",
           text: "I will inspect the report first.",
         },
         {
+          at: "2026-10-30T18:40:05.000Z",
           role: "tool readReport call",
           text: '{"cadence":"weekly"}',
         },

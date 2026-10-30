@@ -131,7 +131,8 @@ function messageLabel(
 /** Characters of one message as Guardian reads it, with a label per line. */
 function renderedChars(message: RootConversationMessage): number {
   const lines = message.text.split("\n").length;
-  return message.text.length + lines * (message.author.length + 2);
+  const time = message.at ? message.at.length + 3 : 0;
+  return message.text.length + lines * (message.author.length + 2) + time;
 }
 
 /** Only these labels can authorize an action. */
@@ -161,7 +162,7 @@ function truncate(text: string, maxChars: number): string {
 async function readOpeningMessage(
   root: Conversation,
   page: ReadonlyMap<string, MessageData>,
-): Promise<{ data: MessageData; seq?: number } | undefined> {
+): Promise<{ at: string; data: MessageData; seq?: number } | undefined> {
   const store = getConversationEventStore();
   const event = root.conversationId.startsWith(DISPATCH_CONVERSATION_PREFIX)
     ? // Each message event uses this key, as written by conversation ingress.
@@ -181,7 +182,10 @@ async function readOpeningMessage(
   }
   // The read page has the newest edit when the message is in it.
   const inPage = page.get(event.data.messageId);
-  return inPage ? { data: inPage } : { data: event.data, seq: event.seq };
+  const at = new Date(event.createdAtMs).toISOString();
+  return inPage
+    ? { at, data: inPage }
+    : { at, data: event.data, seq: event.seq };
 }
 
 /**
@@ -205,13 +209,16 @@ export async function readRootConversation(args: {
   });
   // Each message keeps the position of its original event. An edit changes
   // only the text, never the author. An edit of a message older than the page
-  // has no position, so it is left out like the original.
+  // has no position, so it is left out like the original. It keeps the time
+  // of the original too.
   const byId = new Map<string, MessageData>();
+  const times = new Map<string, string>();
   const orphanEdits = new Map<string, string>();
   for (const event of page.events) {
     const data = event.data as MessageData;
     if (data.type === "message") {
       byId.set(data.messageId, data);
+      times.set(data.messageId, new Date(event.createdAtMs).toISOString());
       continue;
     }
     const original = byId.get(data.messageId);
@@ -244,6 +251,7 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
+      at: times.get(data.messageId),
       author: messageLabel(root, data, args.actor),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
@@ -256,6 +264,7 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
+            at: pinnedRead?.at,
             author: messageLabel(root, opening, args.actor),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
@@ -311,7 +320,11 @@ export async function readRootConversation(args: {
       continue;
     }
     addGapNote();
-    messages.push({ author: message.author, text: message.text });
+    messages.push({
+      at: message.at,
+      author: message.author,
+      text: message.text,
+    });
   }
   addGapNote();
   // When the opening message is older than the page, only messages between
