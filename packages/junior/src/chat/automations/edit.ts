@@ -10,6 +10,7 @@ import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import {
+  getEventAutomation,
   saveEventAutomation,
   setEventAutomationStatus,
   type StoredEventAutomation,
@@ -24,7 +25,11 @@ import {
   type ScheduleIntent,
 } from "@/chat/scheduled-automations/schedule-intent";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
-import { automationRevision, requireAutomationRevision } from "./revision";
+import {
+  AutomationConflictError,
+  automationRevision,
+  requireAutomationRevision,
+} from "./revision";
 import {
   resolveViewerTaskCandidate,
   ViewerTaskNotFoundError,
@@ -32,6 +37,7 @@ import {
 } from "./read";
 import {
   automationDefinition,
+  listAutomationVersions,
   readAutomationVersion,
   sameDefinitionValue,
 } from "./versions";
@@ -130,6 +136,26 @@ export async function readViewerAutomationEdit(
   return editView(automation, automation.ownedByViewer);
 }
 
+/**
+ * Return whether the only change after `revision` is Junior's trigger change:
+ * the newest version is Junior's, and the event automation with the trigger
+ * of the version before it has that revision.
+ */
+async function changedOnlyByJunior(
+  id: string,
+  revision: string,
+): Promise<boolean> {
+  const db = getDb();
+  const task = await getEventAutomation(db, id);
+  const [latest, previous] = await listAutomationVersions(db, id, 2);
+  if (!task || latest?.editedBy !== "junior" || previous?.kind !== "event")
+    return false;
+  return (
+    automationRevision({ ...task, trigger: previous.definition.trigger }) ===
+    revision
+  );
+}
+
 /** Save a partial edit against the read revision, without dispatching work. */
 export async function updateViewerAutomation(
   user: User,
@@ -139,8 +165,19 @@ export async function updateViewerAutomation(
   const current = await requireEditableAutomation(user, id);
   if (input.kind !== current.kind)
     throw new AutomationEditError("The trigger type cannot change.", "kind");
-  requireAutomationRevision(current.task, input.revision);
-  return saveViewerEdit(user, current, input);
+  try {
+    requireAutomationRevision(current.task, input.revision);
+    return await saveViewerEdit(user, current, input);
+  } catch (error) {
+    if (
+      error instanceof AutomationConflictError &&
+      input.kind === "event" &&
+      (await changedOnlyByJunior(id, input.revision))
+    ) {
+      throw new AutomationConflictError("junior");
+    }
+    throw error;
+  }
 }
 
 /** `restored` carries version values that edit input cannot express, such as a cleared title. */

@@ -1,14 +1,27 @@
 import { githubPlugin } from "@sentry/junior-github";
+import type { EventMatch } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { getConversationStore } from "@/chat/db";
+import {
+  readViewerAutomationEdit,
+  updateViewerAutomation,
+} from "@/chat/automations/edit";
+import { listAutomationVersions } from "@/chat/automations/versions";
+import { getConversationStore, getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
+import {
+  createEventAutomation,
+  getEventAutomation,
+} from "@/chat/event-automations/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
+import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -305,6 +318,148 @@ describe("event automations with no identifier", () => {
       expect(repoOnly.automation.trigger.match).toEqual({
         repo: "getsentry/junior",
       });
+
+      // Rows saved before this change still name one resource. The heartbeat
+      // converts each one under its row lock and saves a version that names
+      // Junior. A saved list that has the identifier's value becomes that
+      // value. A row whose saved filter never matches its identifier never
+      // ran, so it keeps its identifier, saves the reason, and stays active.
+      const base = (await getEventAutomation(getDb(), created.automation.id))!;
+      const savePullRequest = (id: string, match?: EventMatch) =>
+        createEventAutomation(getDb(), {
+          ...base,
+          id,
+          trigger: {
+            ...base.trigger,
+            identifier: "getsentry/junior#8",
+            resourceType: "pull_request",
+            match,
+          },
+        });
+      await savePullRequest("evt_saved_pull_request");
+      await savePullRequest("evt_saved_list_filter", { pullRequest: [8, 9] });
+      await savePullRequest("evt_saved_conflict", { pullRequest: 5 });
+      // Its saved trigger has no identifier, so ingest never runs it.
+      // Conversion must not save it as a broad row.
+      await fixture.sql
+        .db()
+        .insert(juniorAutomations)
+        .values({
+          ...row!,
+          id: "evt_saved_column_only",
+          identifier: "getsentry/junior#8",
+        });
+      // A dashboard edit that read the row before the heartbeat.
+      await getConversationStore().recordActivity({
+        conversationId: `slack:${teamId}:U123:edit`,
+        actor: {
+          platform: "slack",
+          slackUserId: "U123",
+          email: "creator@example.com",
+          teamId,
+        },
+        destination: { platform: "slack", channelId: "C123", teamId },
+        channelName: "automations",
+        visibility: "public",
+      });
+      const viewer = (await resolveViewerUser("creator@example.com"))!;
+      const read = await readViewerAutomationEdit(
+        viewer,
+        "evt_saved_pull_request",
+      );
+
+      await runHeartbeat({ nowMs: Date.now(), conversationWorkQueue: queue });
+      const saved = (id: string) => getEventAutomation(getDb(), id);
+      const versions = (id: string) => listAutomationVersions(getDb(), id, 5);
+      expect((await saved("evt_saved_pull_request"))?.trigger).toMatchObject({
+        match: { repo: "getsentry/junior", pullRequest: 8 },
+      });
+      expect((await saved("evt_saved_list_filter"))?.trigger).toMatchObject({
+        match: { repo: "getsentry/junior", pullRequest: 8 },
+      });
+      expect(await versions("evt_saved_pull_request")).toMatchObject([
+        { version: 2, editedBy: "junior" },
+        {
+          version: 1,
+          definition: { trigger: { identifier: "getsentry/junior#8" } },
+        },
+      ]);
+      const reason =
+        "Kept its exact pull request because its pullRequest filter never matches its events.";
+      expect(await saved("evt_saved_conflict")).toMatchObject({
+        status: "active",
+        trigger: { identifier: "getsentry/junior#8", identifierReason: reason },
+      });
+      expect(
+        (await saved("evt_saved_column_only"))?.trigger.identifier,
+      ).toBeUndefined();
+      // The saved reason is a note on the trigger, not a problem. Listing
+      // reads every row of the team, so remove the row that does not parse.
+      await fixture.sql
+        .db()
+        .delete(juniorAutomations)
+        .where(eq(juniorAutomations.id, "evt_bad_record"));
+      const listed = (await execute(
+        createListEventAutomationsTool(context(), catalog),
+        {},
+        "list-kept",
+      )) as {
+        automations: { id: string; trigger: Record<string, unknown> }[];
+      };
+      expect(
+        listed.automations.find(({ id }) => id === "evt_saved_conflict")
+          ?.trigger,
+      ).toMatchObject({ available: true, notes: [reason] });
+      // The next heartbeat does not save the kept row again.
+      await runHeartbeat({ nowMs: Date.now(), conversationWorkQueue: queue });
+      expect(await versions("evt_saved_conflict")).toHaveLength(2);
+      expect(await versions("evt_saved_column_only")).toEqual([]);
+
+      // The stale dashboard edit fails and says that Junior changed the
+      // trigger.
+      await expect(
+        updateViewerAutomation(viewer, "evt_saved_pull_request", {
+          kind: "event",
+          revision: read.revision,
+          title: "Renamed",
+        }),
+      ).rejects.toMatchObject({ changedBy: "junior" });
+
+      // Both converted rows run once for their pull request, and not for
+      // another pull request.
+      const dispatchedIds = async (pullRequest: number) => {
+        const before = queue.sentRecords().length;
+        for (const identifier of [
+          `getsentry/junior#${pullRequest}`,
+          "getsentry/junior",
+        ]) {
+          await ingestEventAutomations(
+            {
+              eventKey: `github:saved-${pullRequest}`,
+              eventType: "pull_request.opened",
+              occurredAtMs: Date.now(),
+              namespace: "github",
+              identifier,
+              trustedSummary: "A pull request was opened.",
+              data: { pullRequest, repo: "getsentry/junior" },
+            },
+            { queue, teamId },
+          );
+        }
+        const ids = [];
+        for (const sentRecord of queue.sentRecords().slice(before)) {
+          const dispatched = await getDispatchRecord(
+            sentRecord.conversationId.replace(/^agent-dispatch:/, ""),
+          );
+          ids.push(dispatched?.metadata?.eventAutomationId);
+        }
+        return ids.filter((id) => id?.startsWith("evt_saved_")).sort();
+      };
+      expect(await dispatchedIds(8)).toEqual([
+        "evt_saved_list_filter",
+        "evt_saved_pull_request",
+      ]);
+      expect(await dispatchedIds(9)).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
     }

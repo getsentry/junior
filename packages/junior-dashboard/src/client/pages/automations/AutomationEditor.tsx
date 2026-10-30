@@ -114,6 +114,10 @@ export function AutomationEditor(props: {
   });
   const conflict =
     save.error instanceof DashboardApiError && save.error.code === "conflict";
+  const changedByJunior =
+    conflict &&
+    save.error instanceof DashboardApiError &&
+    save.error.changedBy === "junior";
   const change = (value: Partial<AutomationDraft>) =>
     setDraft((current) => ({ ...current, ...value }));
   const fieldError = (key: string) =>
@@ -171,18 +175,22 @@ export function AutomationEditor(props: {
           <FormNotice
             tone={conflict ? "warning" : "error"}
             title={
-              conflict
-                ? "This automation changed while you were editing."
-                : "Changes could not be saved."
+              changedByJunior
+                ? "Junior changed this trigger while you were editing."
+                : conflict
+                  ? "This automation changed while you were editing."
+                  : "Changes could not be saved."
             }
           >
             <p className="mt-1">
               Your edits are still here.{" "}
-              {conflict
-                ? "Review the latest version before saving again."
-                : save.error instanceof DashboardApiError
-                  ? save.error.apiError
-                  : "Check the fields below, or try again."}
+              {changedByJunior
+                ? "It now uses filters that select the same events. Review the latest version before saving again."
+                : conflict
+                  ? "Review the latest version before saving again."
+                  : save.error instanceof DashboardApiError
+                    ? save.error.apiError
+                    : "Check the fields below, or try again."}
             </p>
             {conflict ? (
               <Button

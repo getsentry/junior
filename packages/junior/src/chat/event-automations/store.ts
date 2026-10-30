@@ -1,5 +1,8 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
-import { recordAutomationVersion } from "@/chat/automations/versions";
+import {
+  recordAutomationVersion,
+  type AutomationVersionEditor,
+} from "@/chat/automations/versions";
 import {
   eventMatches,
   type Event,
@@ -7,7 +10,18 @@ import {
   type EventMatch,
   type User,
 } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
@@ -200,13 +214,14 @@ export async function createEventAutomation(
 
 /**
  * Replace an existing non-deleted event automation under a row lock.
- * Pass `editedBy` when a person changes the definition so its version names them.
+ * Pass `editedBy` when a person or Junior changes the definition so its
+ * version names them.
  */
 export async function saveEventAutomation(
   db: JuniorDatabase,
   task: EventAutomation,
   expectedRevision?: string,
-  editedBy?: EventAutomation["createdBy"],
+  editedBy?: AutomationVersionEditor,
 ): Promise<StoredEventAutomation | undefined> {
   const columns = eventAutomationColumns(task);
   return db.transaction(async (tx) => {
@@ -282,6 +297,38 @@ export async function listDeletedEventAutomationsCreatedBy(
     .orderBy(desc(juniorAutomations.createdAtMs), desc(juniorAutomations.id))
     .limit(limit);
   return rows.map(parseEventAutomationRow);
+}
+
+/**
+ * List up to `limit` live event automations whose trigger still has an
+ * identifier and no saved reason to keep it. Skip a row whose identifier
+ * column and saved trigger disagree, because ingest never runs it and a save
+ * could make it broad. Skip a row that does not parse; ingest logs it when an
+ * event reaches it.
+ */
+export async function listEventAutomationsToConvert(
+  db: JuniorDatabase,
+  limit: number,
+): Promise<StoredEventAutomation[]> {
+  const rows = await db
+    .select()
+    .from(juniorAutomations)
+    .where(
+      and(
+        activeEventAutomationWhere(),
+        isNotNull(juniorAutomations.identifier),
+        sql`${juniorAutomations.record}->'trigger'->>'identifier' = ${juniorAutomations.identifier}`,
+        sql`${juniorAutomations.record}->'trigger'->'identifierReason' is null`,
+      ),
+    )
+    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id))
+    .limit(limit);
+  return rows.flatMap((row) => {
+    const parsed = eventAutomationSchema.safeParse(
+      eventAutomationRowInput(row),
+    );
+    return parsed.success ? [withRowFields(row, parsed.data)] : [];
+  });
 }
 
 /**
