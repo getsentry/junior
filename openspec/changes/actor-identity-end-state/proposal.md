@@ -59,7 +59,8 @@ These are David Cramer's answers in the Slack thread for #2439.
 - Assistant output is just an event. It needs no author Identity.
 - Web users always have an Identity. The mock viewer mocks one.
 - Child spend rolls up to the root Owner.
-- Slack bots have an Identity but no User. A bot is still an Actor.
+- Slack bots: "they have an identity, but not a user (does that make
+  sense?) its still an actor"
 - For an inbound event, Junior finds the correct Identity. It verifies that
   Identity the same way as everywhere else. The author can be a bot, a person
   whose GitHub account is also a Slack user (such as `dcramer`), or someone
@@ -130,8 +131,8 @@ correct.
   that only core may write (`isNativeIdentityProvider`).
   _Why:_ `junior_identities` is unique on provider, tenant, and subject.
   Plugin registration already reserves the name `junior`. The only other
-  `junior` rows use an email or a name from `SystemActor` as the subject, and
-  step 3 merges all of these.
+  `junior` rows use an email as the subject (it has `@`), or they are legacy
+  system rows that step 3 merges.
 - **Mock viewer key (12).** Kind `user`, provider `mock`, tenant `""`,
   subject the viewer email. In mock reporting mode, the Identity is in
   memory only, in `viewer.identities`, with id `mock-identity:<email>`. Junior
@@ -229,9 +230,24 @@ These are the #2439 end state. They follow from the answers above.
 
 - **Trusted text stays narrow.** Only `doneByText` counts, with quoted lines
   removed. Core renders it in #2260's `Requester instruction` section. It is
-  never a `user:` line and never an approval. #2260's
-  `requesterInstructionSchema` keeps the author Identity id, because a
-  trusted bot has no Slack Actor (answer 14).
+  never a `user:` line. What this text may authorize is an open question
+  (Open Questions). #2260's `requesterInstructionSchema` keeps the author
+  Identity id, because a trusted bot has no Slack Actor (answer 14).
+- **A bot is an Actor in David's sense.** The plan reads "its still an
+  actor" to mean: the bot has its own Identity and is the author of its
+  Messages. This needs no `actorSchema` change, so the Non-Goal stands. Gap 3
+  (a bot author gets no Actor in `messageAuthor`) closes in step 5, when
+  `messageAuthor` uses the stored author Identity.
+- **Event batches.** A batch of events is one Message
+  (`task-execution/conversation-turn.ts`, `renderEventBatchText`). When every
+  event in the batch has the same author, that author is the Message author.
+  Otherwise the Message author is the system Identity. Trust is decided per
+  event, from each entry's `authorIdentityId`.
+- **Event author provider.** The author Identity provider is the event
+  `namespace`, and `doneBy.provider` must equal it. This is the check that
+  #2260's `resolveEventDoerSlackUserId` makes. A namespace that is a core
+  provider (`slack`, `google`, `junior`, `mock`) gets the system Identity.
+  So a plugin cannot write an Identity for another provider.
 - **Guardian labels come from the Actor and provenance.** They never come
   from the Identity id alone. With one system Identity, an Identity id
   compare would make every system author match the Turn Actor
@@ -256,14 +272,16 @@ These are the #2439 end state. They follow from the answers above.
   creator, not an owner (answer 13). "Owner" means only the Owner of a
   Conversation.
 - **Identity keys.** An event author uses the key that the OAuth link writes:
-  provider `github`, tenant `""`, subject `String(sender.id)`. A web Actor
+  provider the event `namespace`, tenant `""`, subject `doneBy.subjectId`
+  (for GitHub, `String(sender.id)`). A web Actor
   finds its `google` row through its User, because `WebActor` has no OIDC
   `sub`. `design.md`, Identity Keys, has every key.
 - **Mailbox field.** The mailbox entry carries `input.authorIdentityId` next
   to `input.authorId`. `inboundMessageSchema` has no `actor` field.
 - **Rollout.** The Owner check ships one release after the Owner writer
   (steps 4a and 4b). Each column drop takes two releases (steps 6 and 7). The
-  system merge covers every row of kind `system`.
+  step 3 merge covers only legacy rows of kind `system`, because #2443 writes
+  the one system key.
 
 ### Code Facts
 
@@ -282,6 +300,23 @@ These are the #2439 end state. They follow from the answers above.
   when its Identity has a verified email (`verifiedActorWhere`). The
   participant list already groups by User, with the Identity as fallback
   (`api/conversations/participants.ts`). Only Locations groups by Identity.
+
+## Open Questions
+
+These wait for David.
+
+- **What may trusted event text authorize?** #2260's Guardian rule
+  (`REQUESTER_INSTRUCTION_RULES` in `guardian/reviewer.ts`) says that
+  `requester:` lines "authorize the actions, targets, and outputs that they
+  name ... the same as a chat message from that person". It also says that
+  the writer created the Watch. A trusted author who is not the Watch
+  requester did not create the Watch, and a bot has no Slack mention.
+  _Question:_ when a trusted author's comment asks Junior to do something,
+  may that text authorize the action, or is it only context?
+  _Recommended answer:_ text from a trusted author authorizes the actions
+  that it asks for, the same as a chat message from that author. It can never
+  answer a pending action-review approval prompt. Text from an untrusted
+  author authorizes nothing.
 
 ## Behavior Changes
 

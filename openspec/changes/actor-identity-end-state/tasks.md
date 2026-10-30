@@ -7,7 +7,10 @@ not add tests for migration SQL.
 ## Release Rules
 
 - A new field in a `.strict()` schema ships in a reader release before any
-  writer sets it.
+  writer sets it. This covers the mailbox entry (`agentInputSchema`),
+  `eventDoerSchema` (`junior-plugin-api/src/events.ts`, #2260), and
+  `requesterInstructionSchema` (`chat/events/requester.ts`, #2260, with
+  `actor: slackActorSchema`).
 - A `NOT VALID` check ships one release after every writer sets the value.
   `junior upgrade` runs migrations while old workers still run.
 - A dropped column takes two releases (`design.md`, Schema). Release N stops
@@ -30,13 +33,17 @@ not add tests for migration SQL.
 ## 1. One Actor To Identity Mapping (#2443)
 
 - [ ] `chat/identities/actor.ts` owns the mapping from Actor to Identity.
+      It exports `resolveActorIdentityId(executor, actor)`. The web lookup
+      stays inside the module.
+- [ ] Every `SystemActor` and every `LocalActor` maps to the one system key
+      (`design.md`, Identity Keys).
 - [ ] Remove the copies in `sql/event-actor.ts`, `handlers/oauth-callback.ts`,
       and `plugins/viewer.ts`.
 
 Backfill: none. No schema change.
 
-Risk: low. It moves code. A mapping change would move rows to new Identities.
-Step 3 changes two of its mappings on purpose: web and system.
+Risk: low. It moves code. New system writes use the one system key, so step
+3 merges only legacy rows.
 
 Verify: the actor mapping unit test that #2443 adds, and
 `integration/oauth-identity-link.test.ts`.
@@ -47,8 +54,8 @@ Verify: the actor mapping unit test that #2443 adds, and
       `input.authorIdentityId` in the mailbox entry (`agentInputSchema`,
       `.strict()`), and `actorIdentityId` next to `actor` in the Turn cursor
       (`.strip()`).
-- [ ] Release B: each ingress resolves the Identity one time and sets both
-      fields. Ingress paths: Slack, web, fork, event, scheduled automation,
+- [ ] Release B: each ingress calls `resolveActorIdentityId` one time and
+      sets both fields. Ingress paths: Slack, web, fork, event, scheduled automation,
       event automation, plugin dispatch, local CLI, and Agent invocation.
 - [ ] Each ingress sets `authorIdentityId` on each new user Message.
       Assistant output sets no author.
@@ -74,15 +81,14 @@ a web Turn stores its author Identity.
 
 ## 3. One System Identity And Real Identities
 
-- [ ] Change two #2443 mappings in `identityForActor`
-      (`chat/identities/actor.ts`): `system` uses one key for every name
-      (`design.md`, Identity Keys), and `web` looks up the viewer User's `google` row
-      (`design.md`, Identity Keys) instead of building `junior/<email>`.
-      `local` maps to the system Identity. Keep `SystemActor.name` as
-      provenance.
+- [ ] Change the web lookup inside `resolveActorIdentityId`: a web Actor
+      uses the viewer User's newest `google` row (`design.md`, Identity
+      Keys), not `junior/<email>`. Keep `SystemActor.name` as provenance.
 - [ ] A web Actor never falls back to the system Identity.
 - [ ] Add `junior` and `mock` to `isNativeIdentityProvider`, so an OAuth
       link never writes either provider.
+- [ ] Reserve the plugin name `mock` in
+      `junior-plugin-api/src/registration.ts`, next to `junior`.
 - [ ] Give the mock viewer an in-memory `mock` Identity in
       `viewer.identities`. Write no row for it.
 - [ ] The local auth bypass writes one `mock` Identity for its User, with the
@@ -96,6 +102,12 @@ a web Turn stores its author Identity.
       `trustedAuthor`. Core upserts the author Identity with the OAuth link key,
       kind `bot` when `isBot` is true, and no email. An event with no
       `doneBy` or no `subjectId` uses the system Identity.
+- [ ] The author Identity provider is the event `namespace`. Require
+      `doneBy.provider === namespace`. Refuse the core providers `slack`,
+      `google`, `junior`, and `mock`, and use the system Identity.
+- [ ] An event batch is one Message. Its author is the shared author
+      Identity when every event has the same one, else the system Identity.
+      Decide trust per event, from each entry's `authorIdentityId`.
 - [ ] An event upsert never changes the `kind` or `user_id` of an existing
       row. Change the conflict update in `upsertIdentityRecord`
       (`chat/identities/sql.ts`), which sets `kind = excluded.kind` today.
@@ -109,8 +121,23 @@ a web Turn stores its author Identity.
       when `findLinkedSlackMember()` returns `linked` for the author's
       account. Core reads no GitHub login for this.
 - [ ] Render trusted text in #2260's `Requester instruction` section, never as
-      a `user:` line and never as an approval. #2260's instruction record
-      keeps the author Identity id, because a trusted bot has no Slack Actor.
+      a `user:` line. #2260's instruction record keeps the author Identity
+      id, because a trusted bot has no Slack Actor.
+- [ ] What trusted text may authorize waits for David (`proposal.md`, Open
+      Questions). If he takes the recommended answer:
+  - Rewrite `REQUESTER_INSTRUCTION_RULES` (`guardian/reviewer.ts`, #2260).
+    It says that a trusted author's lines authorize the actions they ask
+    for, the same as a chat message from that author. It drops the claim
+    that the writer created the Watch. It says that the lines never answer a
+    pending action-review approval prompt.
+  - Let a Watch with no requester receive trusted author text. Today
+    `events/ingest.ts` resolves the doer only when a subscription has a
+    requester.
+  - Make `requesterInstruction.mention` in `eventTaskFactsSchema`
+    (`chat/events/notification.ts`) optional, and give a bot an Identity
+    label instead.
+  - Give a bot author its own Guardian label, from its `bot` Identity and
+    the Message provenance.
 - [ ] Document `trustedAuthors` in `junior-github/SETUP.md`. It can list
       bots and people. Warn that GitHub can give a renamed or deleted
       account's login to a new account. Say to list stable logins and to
@@ -121,15 +148,19 @@ a web Turn stores its author Identity.
       `junior/<email>`.
 
 Backfill: run it in the release after step 3, when no worker writes the old
-keys. Old workers keep writing per-name system rows until cutover.
+keys. Workers from before step 1 keep writing the legacy system rows until
+cutover.
 
-1. Dry-run count: every row of kind `system`, by subject. This includes
-   `scheduler`, `local-cli`, `event`, and the rows that step 2 release B
-   wrote through `systemIdentity(actor.name)`, such as
-   `scheduled-automation` and plugin names.
-2. Move references in `junior_conversations` and
-   `junior_conversation_events` from each of these rows to the one system
-   Identity. Then delete the old rows.
+1. Dry-run count: every legacy row of kind `system`, by subject, such as
+   `scheduler`, `local-cli`, and `event`. For each row, count the references
+   in every foreign key that points at `junior_identities`. Read the list
+   from `pg_constraint`, not from this plan. Today it is
+   `junior_conversations` (`actor_identity_id`, `creator_identity_id`,
+   `credential_subject_identity_id`), `junior_conversation_events`
+   (`actor_identity_id`), and `junior_automations` (`creator_identity_id`,
+   `NOT NULL`).
+2. Move every counted reference to the one system Identity. Then delete the
+   old rows. Delete no row that still has a reference.
 3. Move references from a `junior/<email>` row to a `google` row only when
    both rows link the same `user_id`. Leave every other `junior/<email>` row
    and reference as it is.

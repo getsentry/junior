@@ -72,11 +72,12 @@ also keeps its current Identity.
 - Today `systemIdentityFromSource` (`sql/actor-identity.ts`) writes three
   system rows: provider `junior`, subjects `scheduler`, `local-cli`, and
   `event`.
-- #2443 adds `systemIdentity(actor.name)` in `chat/identities/actor.ts`. Once
-  step 2 release B carries the Identity id, it writes one more row per
-  `SystemActor.name`, such as `scheduled-automation` and each plugin name.
-- Step 3 changes that mapping to one key for every name. Its merge covers
-  every row of kind `system`, not only the three rows above.
+- #2443 (step 1) maps every `SystemActor` and every `LocalActor` to the one
+  system key. It exports `resolveActorIdentityId(executor, actor)`. The web
+  lookup stays inside that module. So no new code writes a per-name system
+  row.
+- Step 3 merges only legacy rows: every row of kind `system` that is not the
+  one system Identity.
 
 ### Users And Identities
 
@@ -174,8 +175,18 @@ changes the Owner or the Turn Actor.
 - Only `doneByText` can count as instructions. The plugin removes the lines
   that the author only quotes (`unquotedCommentText` in
   `junior-github/src/webhooks/events.ts`, #2260). Core renders the text in
-  #2260's `Requester instruction` section. It is never a `user:` line, and it
-  is never an approval.
+  #2260's `Requester instruction` section. It is never a `user:` line. What
+  it may authorize is an open question (`proposal.md`, Open Questions).
+- A batch of events is one Message (`task-execution/conversation-turn.ts`:
+  `renderEventBatchText`, and `userMessageId` from the first entry). When
+  every event in the batch has the same author Identity, that Identity is
+  the Message author. Otherwise the Message author is the system Identity.
+  Trust is decided per event, from each entry's `authorIdentityId`.
+- The author Identity provider is the event `namespace`. `doneBy.provider`
+  must equal it, as #2260's `resolveEventDoerSlackUserId` requires. When the
+  namespace is a core provider (`slack`, `google`, `junior`, `mock`), or the
+  two values differ, the event uses the system Identity and its text stays
+  data.
 - The GitHub plugin owns its trusted authors list of logins,
   `githubPlugin({ trustedAuthors })`. It sets `doneBy.trustedAuthor`. Core
   sees only that boolean. This is the same split as
@@ -196,15 +207,16 @@ the key. Each row says who decided it.
 | Identity     | Key                                                                                             | Status                         |
 | ------------ | ----------------------------------------------------------------------------------------------- | ------------------------------ |
 | System       | kind `system`, provider `junior`, tenant `""`, subject `system`                                 | Delegated decision (answer 10) |
-| Event author | provider `github`, tenant `""`, subject `String(sender.id)`; kind `bot` for a bot, else `user`  | Plan decision                  |
+| Event author | provider the event `namespace`, tenant `""`, subject `doneBy.subjectId`; kind `bot` or `user`   | Plan decision                  |
 | Slack bot    | kind `bot`, provider `slack`, tenant the team id, subject the bot user id (`U…`), else `bot_id` | Decided (answers 1 and 11)     |
 | Web user     | the viewer User's `google` row with the newest `signed_in_at`                                   | Plan decision                  |
 | Mock viewer  | kind `user`, provider `mock`, tenant `""`, subject the viewer email; in memory only             | Delegated decision (answer 12) |
 | Auth bypass  | kind `user`, provider `mock`, tenant `""`, subject the viewer email; written only by the bypass | Delegated decision (answer 2)  |
 
 - The event author key must match the row that the OAuth link writes.
-  `linkOAuthAccountIdentity` (`handlers/oauth-callback.ts`) upserts provider
-  `github`, the default tenant `""`, and the account id. The GitHub plugin
+  `linkOAuthAccountIdentity` (`handlers/oauth-callback.ts`) upserts the
+  plugin provider, the default tenant `""`, and the account id. For GitHub
+  that is provider `github`. The GitHub plugin
   sets that id with `String(id)` (`junior-github/src/credential-support.ts`).
   An event upsert never changes the `kind` or `user_id` of an existing row.
 - An event upsert never changes the `kind` of an existing row. Today
@@ -215,12 +227,13 @@ the key. Each row says who decided it.
   Identity uses it too when Slack sends it.
 - No other row can take the system key or a `mock` key:
   - Plugin registration reserves the name `junior`
-    (`junior-plugin-api/src/registration.ts`).
+    (`junior-plugin-api/src/registration.ts`). Step 3 reserves `mock` there
+    too.
   - Step 3 adds `junior` and `mock` to `isNativeIdentityProvider`
     (`chat/identities/identity.ts`), so an OAuth link never writes them.
-  - The other `junior` rows use an email (it has `@`) or a
-    `SystemActor.name` as the subject. Step 3 merges every row of kind
-    `system` into the system Identity.
+  - The other `junior` rows use an email (it has `@`), or they are legacy
+    system rows (`scheduler`, `local-cli`, `event`). Step 3 merges the
+    legacy system rows into the system Identity.
 
 ### Guardian Labels
 

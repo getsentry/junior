@@ -138,8 +138,27 @@ NOT become a participant.
 - **WHEN** a person comments on a watched PR
 - **THEN** the event is a user Message
 - **AND** its author is that person's `github` Identity
-- **AND** the Identity is verified only when it links to a User
+- **AND** the author is trusted only when `findLinkedSlackMember()` returns
+  `linked` for the account, or the login is on `trustedAuthors`
 - **AND** the person gets no participant row.
+
+#### Scenario: Event batch with two authors
+
+- **WHEN** one Turn takes a batch of two events from two different authors
+- **THEN** the batch Message author is the system Identity
+- **AND** Junior decides trust for each event from its own author Identity.
+
+#### Scenario: Event batch with one author
+
+- **WHEN** one Turn takes a batch of events that all have the same author
+- **THEN** the batch Message author is that author Identity.
+
+#### Scenario: Event names another provider
+
+- **WHEN** an event's `doneBy.provider` differs from its `namespace`, or the
+  namespace is `slack`, `google`, `junior`, or `mock`
+- **THEN** the event Message author is the system Identity
+- **AND** its text stays data only.
 
 #### Scenario: Status event
 
@@ -168,8 +187,9 @@ decide trust.
 
 Only `doneByText` SHALL count as instructions, with the lines that the author
 only quotes removed. Junior SHALL render it in the `Requester instruction`
-section of the task input. Junior SHALL NOT render it as a `user:` line, and
-SHALL NOT treat it as an approval.
+section of the task input. Junior SHALL NOT render it as a `user:` line.
+What this text may authorize is an open question (`proposal.md`, Open
+Questions).
 
 #### Scenario: Linked member on an allowed domain
 
