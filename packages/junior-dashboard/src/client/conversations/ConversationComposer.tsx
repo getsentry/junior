@@ -67,7 +67,7 @@ export function conversationAttemptForSubmit(
 export type ConversationComposerHandle = {
   /** True when the draft has room for these images right now. */
   canRestoreImages(images: readonly InputImage[]): boolean;
-  /** Put queued text ahead of the draft and add its images when they fit. */
+  /** Put queued text and images ahead of the draft. Queued images win. */
   restoreMessage(message: { images?: InputImage[]; text: string }): void;
 };
 
@@ -373,14 +373,16 @@ export const ConversationComposer = memo(function ConversationComposer(
       if (message.text.trim()) prependDraftText(message.text);
       const restoredImages = message.images ?? [];
       if (restoredImages.length) {
-        const merged = [...restoredImages, ...imagesRef.current];
-        if (!imagesFit(merged)) {
-          setImageError(
-            "The edited message images did not fit. Add them again.",
-          );
-        } else {
-          replaceImages(merged);
+        // The queued images already left the queue, so they win. A draft
+        // image added during the cancel stays only while it still fits.
+        const merged = [...restoredImages];
+        for (const image of imagesRef.current) {
+          if (imagesFit([...merged, image])) merged.push(image);
         }
+        if (merged.length < restoredImages.length + imagesRef.current.length) {
+          setImageError("Some draft images did not fit. Add them again.");
+        }
+        replaceImages(merged);
       }
       textareaRef.current?.focus({ preventScroll: true });
     },
