@@ -34,6 +34,7 @@ import {
   peopleTreeConversation,
   peopleTreeMetricsJoin,
   recentActorRows,
+  slackActorColumns,
   statsItems,
   verifiedActorWhere,
 } from "./shared";
@@ -150,10 +151,7 @@ export async function readPeopleProfileFromSql(
         .select({
           email: juniorUsers.primaryEmailNormalized,
           fullName: juniorUsers.displayName,
-          slackUserId: sql<
-            string | null
-          >`MAX(${juniorIdentities.providerSubjectId})`,
-          slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
+          ...slackActorColumns(),
           activeDays: conversationActiveDaysColumn(),
           ...peopleTreeAggregateColumns,
         })
