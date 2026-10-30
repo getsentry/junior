@@ -133,12 +133,12 @@ describe("Google Calendar tools", () => {
           // 10:30-12:00.
           [REQUESTER]: {
             busy: [
-              { start: "2026-10-13T16:00:00Z", end: "2026-10-14T00:00:00Z" },
+              { start: "2026-10-27T16:00:00Z", end: "2026-10-28T00:00:00Z" },
             ],
           },
           "bob@example.com": {
             busy: [
-              { start: "2026-10-13T16:00:00Z", end: "2026-10-13T17:00:00Z" },
+              { start: "2026-10-27T16:00:00Z", end: "2026-10-27T17:00:00Z" },
             ],
           },
           "carol@example.com": { busy: [], errors: [{ reason: "notFound" }] },
@@ -156,9 +156,11 @@ describe("Google Calendar tools", () => {
         statedAvailability: [
           { email: REQUESTER, start: "10:30", end: "12:00" },
         ],
-        // Monday 09:00 through Tuesday 17:00 in Los Angeles.
-        timeMax: "2026-10-14T00:00:00Z",
-        timeMin: "2026-10-12T16:00:00Z",
+        // 14 days on the Los Angeles clock, from Monday 09:00 PDT to Monday
+        // 09:00 PST. Daylight saving ends inside it, so it is 14 days and
+        // one hour long.
+        timeMax: "2026-11-09T17:00:00Z",
+        timeMin: "2026-10-26T16:00:00Z",
         timeZone: LA,
         weekdays: ["Tue"],
       }),
@@ -190,8 +192,8 @@ describe("Google Calendar tools", () => {
       // New York. Monday 10:30 is free too, but only Tuesday was asked for.
       slots: [
         {
-          otherTimeZoneLabels: ["Tue, Oct 13, 13:30 – 14:00 EDT"],
-          start: "2026-10-13T17:30:00.000Z",
+          otherTimeZoneLabels: ["Tue, Oct 27, 13:30 – 14:00 EDT"],
+          start: "2026-10-27T17:30:00.000Z",
         },
       ],
       unavailable: [{ email: "carol@example.com", reason: "notFound" }],

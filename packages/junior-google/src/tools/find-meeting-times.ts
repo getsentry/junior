@@ -49,7 +49,7 @@ const inputSchema = z
       .max(20)
       .default([])
       .describe(
-        `Hours that people said they are free each day, such as "I'm free 1-5pm", when they say their calendar does not show it. For this search, a person's stated hours replace their calendar: their busy times are ignored, and only slots inside these hours count. 24-hour HH:MM in their own calendar time zone. They stay required attendees. Use the requester's own email when the requester says this.`,
+        "Daily hours when people are free that their own calendar does not show. Use it when a person says blocks on their calendar are placeholders or defensive blocks they will move, or when they give the hours they are free. Pass the window they describe, such as the part of the day they asked for. For this search, a person's stated hours replace their calendar: their busy times are ignored, and only slots inside these hours count. 24-hour HH:MM in their own calendar time zone. They stay required attendees. Use the requester's own email when the requester says this about their own calendar.",
       ),
     durationMinutes: z.number().int().min(15).max(480).default(30),
     timeMin: z.iso
@@ -169,6 +169,21 @@ function localFormat(timeZone: string): Intl.DateTimeFormat {
 function clockMinutes(value: string): number {
   const [hours = 0, minutes = 0] = value.split(":").map(Number);
   return hours * 60 + minutes;
+}
+
+/**
+ * Length of a window on the clock of `timeZone`, so a daylight-saving change
+ * inside it does not add or remove an hour.
+ */
+function wallClockMs(startMs: number, endMs: number, timeZone: string): number {
+  const format = localFormat(timeZone);
+  const start = localParts(startMs, format);
+  const end = localParts(endMs, format);
+  return (
+    Date.parse(`${end.date}T00:00:00Z`) -
+    Date.parse(`${start.date}T00:00:00Z`) +
+    (end.minutes - start.minutes) * 60_000
+  );
 }
 
 interface Interval {
@@ -400,7 +415,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           "timeMax must be after timeMin and now.",
         );
       }
-      if (timeMaxMs - timeMinMs > MAX_WINDOW_MS) {
+      if (wallClockMs(timeMinMs, timeMaxMs, timeZone) > MAX_WINDOW_MS) {
         throw new PluginToolInputError("Search at most 14 days at a time.");
       }
       if (clockMinutes(input.workdayEnd) <= clockMinutes(input.workdayStart)) {
