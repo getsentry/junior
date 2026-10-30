@@ -95,7 +95,7 @@ Rules:
   `/api/connections`. The credential subject is the viewer's web actor id
   (`webActorFromEmail`), which is the subject of the viewer's web
   Conversations. Slack grants stay keyed by Slack user id and are managed from
-  Slack App Home or the slash command.
+  Slack App Home.
 - A dashboard connection has no Conversation to resume. The callback stores the
   token, links the provider identity to the viewer's user, and does not publish
   Slack App Home. Disconnect removes that provider identity. See

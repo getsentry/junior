@@ -1,10 +1,9 @@
-/** Slack slash command and interactive payload forms. */
+/** Slack interactive payload forms. */
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { ChannelImpl, type StateAdapter } from "chat";
+import type { StateAdapter } from "chat";
 import { parseActorUserId } from "@/chat/actor";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
-import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { logException, withLogContext, withSpan } from "@/chat/logging";
 import {
   runWithSlackInstallation,
@@ -19,9 +18,7 @@ import {
 import type { WaitUntilFn } from "@/handlers/types";
 import {
   slackInteractivePayloadSchema,
-  slackSlashCommandSchema,
   type SlackInteractivePayload,
-  type SlackSlashCommandForm,
 } from "./slack-payload";
 
 function parseJson(body: string): unknown {
@@ -41,33 +38,6 @@ function requireSlackPayloadUserId(
     throw new Error(`${source} is missing a Slack user id`);
   }
   return userId;
-}
-
-async function handleSlashCommandForm(args: {
-  adapter: SlackAdapter;
-  form: SlackSlashCommandForm;
-  state: StateAdapter;
-}): Promise<void> {
-  const { channel_id: channelId, team_id: teamId, user_id: userId } = args.form;
-  const channel = new ChannelImpl({
-    id: `slack:${channelId}`,
-    adapter: args.adapter,
-    stateAdapter: args.state,
-  });
-  await withSpan(
-    "chat.slash_command",
-    "chat.slash_command",
-    { userId: userId },
-    async () => {
-      await handleSlashCommand({
-        channel,
-        channelId,
-        teamId,
-        text: args.form.text,
-        userId,
-      });
-    },
-  );
 }
 
 async function handleInteractivePayload(args: {
@@ -126,7 +96,7 @@ function installationFromInteractive(
   };
 }
 
-/** Handle a Slack slash command or interactive payload form. */
+/** Handle a Slack interactive payload form. */
 export async function handleSlackForm(args: {
   adapter: SlackAdapter;
   body: string;
@@ -137,46 +107,6 @@ export async function handleSlackForm(args: {
   const params = new URLSearchParams(args.body);
   const { adapter, state } = args;
   await state.connect();
-
-  if (params.has("command") && !params.has("payload")) {
-    const result = slackSlashCommandSchema.safeParse(
-      Object.fromEntries(params),
-    );
-    if (!result.success) {
-      return new Response("Invalid slash command payload", { status: 400 });
-    }
-    const form = result.data;
-    const installation: SlackInstallationContext = {
-      teamId: form.team_id,
-      enterpriseId: form.enterprise_id,
-      isEnterpriseInstall: form.is_enterprise_install === "true",
-    };
-    args.waitUntil(
-      withLogContext(
-        {
-          platform: "slack",
-          userId: form.user_id,
-        },
-        () =>
-          runWithWorkspaceTeamId(installation.teamId, () =>
-            runWithSlackInstallation({
-              adapter,
-              installation,
-              state,
-              task: () =>
-                handleSlashCommandForm({
-                  adapter,
-                  form,
-                  state,
-                }),
-            }),
-          ).catch((error) => {
-            logException(error, "slash_command.failed");
-          }),
-      ),
-    );
-    return new Response("", { status: 200 });
-  }
 
   const rawPayload = params.get("payload");
   if (!rawPayload) {

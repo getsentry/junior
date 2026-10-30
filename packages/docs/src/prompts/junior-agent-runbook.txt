@@ -134,7 +134,7 @@ Stop and send the human:
   Create the Slack app using:
   https://junior.sentry.dev/start-here/slack-app-setup/
 
-  Before configuring Event Subscriptions, Interactivity, or the slash command:
+  Before configuring Event Subscriptions or Interactivity:
   1. Configure the required bot scopes and install the app to the workspace.
   2. In Vercel, add SLACK_SIGNING_SECRET and SLACK_BOT_TOKEN to Production,
      Preview, and Development for this project.
@@ -161,7 +161,7 @@ Success:
 ## Phase 8 — HUMAN GATE: connect and verify Slack
 
 Stop and ask the human to finish the Slack setup guide using this request URL
-for Event Subscriptions, Interactivity, and the configured slash command:
+for Event Subscriptions and Interactivity:
 
   <STABLE_URL>/api/webhooks/slack
 

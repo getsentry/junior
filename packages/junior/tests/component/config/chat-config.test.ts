@@ -294,28 +294,6 @@ describe("chat config", () => {
     expect(botConfig.imageGenerationModelId).toBe("openai/dall-e-3");
   });
 
-  it("uses the default slash command when JUNIOR_SLASH_COMMAND is unset", async () => {
-    delete process.env.JUNIOR_SLASH_COMMAND;
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().slack.slashCommand).toBe("/jr");
-  });
-
-  it("uses JUNIOR_SLASH_COMMAND when configured", async () => {
-    process.env.JUNIOR_SLASH_COMMAND = " /junior ";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().slack.slashCommand).toBe("/junior");
-  });
-
-  it("throws when JUNIOR_SLASH_COMMAND is invalid", async () => {
-    process.env.JUNIOR_SLASH_COMMAND = "junior command";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_SLASH_COMMAND must start with / and contain no whitespace",
-    );
-  });
-
   it("reads the standard database URL", async () => {
     process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 

@@ -56,7 +56,6 @@ const MAX_EVENT_AUTOMATION_RUNS = 10;
 /** Length of the rolling window for the Event automation run limit. */
 const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 1000;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
-const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
 const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
@@ -148,7 +147,6 @@ export interface ChatConfig {
     completedReactionEmoji: string;
     processingReactionEmoji: string;
     signingSecret?: string;
-    slashCommand: string;
   };
   sandbox: {
     /** Sandbox provider for this deployment. `docker` is for local development. */
@@ -236,16 +234,6 @@ function parseOptionalPositiveInteger(
     throw new Error(`${envName} must be a positive integer`);
   }
   return value;
-}
-
-function parseSlashCommand(rawValue: string | undefined): string {
-  const command = toOptionalTrimmed(rawValue) ?? DEFAULT_SLACK_SLASH_COMMAND;
-  if (!command.startsWith("/") || /\s/.test(command)) {
-    throw new Error(
-      "JUNIOR_SLASH_COMMAND must start with / and contain no whitespace",
-    );
-  }
-  return command;
 }
 
 function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
@@ -636,7 +624,6 @@ export function readChatConfig(
       completedReactionEmoji: DEFAULT_COMPLETED_REACTION_EMOJI,
       processingReactionEmoji: DEFAULT_PROCESSING_REACTION_EMOJI,
       signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
-      slashCommand: parseSlashCommand(env.JUNIOR_SLASH_COMMAND),
     },
     sandbox: {
       provider:
