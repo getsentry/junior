@@ -12,6 +12,7 @@ import {
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
+  // Instructions saved before "the creator" rule can still say "me".
   test("when a due reminder says me, mention its creator", async ({ run }) => {
     await insertScheduledAutomation({
       credentialMode: "system",
@@ -19,6 +20,23 @@ describe("Scheduled Delivery", () => {
       due: true,
       once: true,
       task: "Remind me to do healthchecks.",
+    });
+
+    const delivery = await run(heartbeat());
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).toContain("<@U0TEST>");
+  });
+
+  test("when a due reminder names the creator, mention its creator", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: "Remind the creator to do healthchecks.",
     });
 
     const delivery = await run(heartbeat());

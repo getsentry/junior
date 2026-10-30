@@ -76,7 +76,7 @@ describe("Schedule Creation", () => {
     expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  test("when a reminder for the requester posts to the channel, keep their own words for them", async ({
+  test("when a reminder for the requester posts to the channel, save it for the creator", async ({
     run,
   }) => {
     const conversation = await run(
@@ -90,10 +90,11 @@ describe("Schedule Creation", () => {
       conversation,
     );
     expect(creates).toHaveLength(1);
-    // Each run binds "me" and "my" to the creator identity, so the saved
-    // instruction keeps the requester's words instead of a stored mention.
+    // The run does not see this request, so "me" would mean nothing. Each run
+    // binds "the creator" to the creator identity, so no mention is saved.
     const { instruction } = creates[0]!.input as { instruction?: string };
-    expect(instruction).toMatch(/\b(?:me|my)\b/i);
+    expect(instruction).toMatch(/\bcreator\b/i);
+    expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
     expect(instruction).not.toContain("<@U0TEST>");
   });
 
