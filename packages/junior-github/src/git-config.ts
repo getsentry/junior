@@ -3,6 +3,7 @@
  */
 import type {
   Actor,
+  PluginEnv,
   SandboxPrepareHookContext,
   User,
 } from "@sentry/junior-plugin-api";
@@ -147,10 +148,11 @@ export function additionalActorCoauthorTrailers(args: {
 /**
  * Client hooks that Junior's hooks directory passes to the repository.
  *
- * The global `core.hooksPath` hides `.git/hooks`. Tools such as
- * simple-git-hooks and Git LFS install their hooks there, so Git would skip
- * them without these pass-through hooks. `prepare-commit-msg` is not in the
- * list because Junior's own hook runs the repository hook first.
+ * Junior's `core.hooksPath` replaces the repository hooks directory: the
+ * repository's own `core.hooksPath` (husky) or `.git/hooks` (simple-git-hooks,
+ * Git LFS). Git would skip those hooks without these pass-through hooks.
+ * `prepare-commit-msg` is not in the list because Junior's own hook runs the
+ * repository hook first.
  */
 export const REPOSITORY_HOOK_NAMES = [
   "applypatch-msg",
@@ -168,12 +170,41 @@ export const REPOSITORY_HOOK_NAMES = [
   "pre-auto-gc",
 ] as const;
 
-/** Bash that sets `repository_hook` to the repository's own hook, if any. */
+/** Directory for Junior's Git hooks under the sandbox Junior root. */
+export function gitHooksPath(juniorRoot: string): string {
+  return `${juniorRoot}/git-hooks`;
+}
+
+/**
+ * Point Git at Junior's hooks for one command.
+ *
+ * Command env config has a higher priority than every config file, so it
+ * also wins over a repository `core.hooksPath` such as husky's.
+ */
+export function setGitHooksPathEnv(env: PluginEnv, hooksPath: string): void {
+  const index = Number.parseInt(env.get("GIT_CONFIG_COUNT") ?? "0", 10) || 0;
+  env.set(`GIT_CONFIG_KEY_${index}`, "core.hooksPath");
+  env.set(`GIT_CONFIG_VALUE_${index}`, hooksPath);
+  env.set("GIT_CONFIG_COUNT", String(index + 1));
+}
+
+/**
+ * Bash that sets `repository_hook` to the repository's own hook, if any.
+ * `git config --local` reads only the repository config file, so Junior's
+ * env config does not hide the repository value. Hooks run from the top of
+ * the worktree, so a relative path works as Git resolves it.
+ */
 function findRepositoryHook(name: string): string {
   return `repository_hook=""
-git_common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || git_common_dir=""
-if [ -n "$git_common_dir" ] && [ -x "$git_common_dir/hooks/${name}" ] && ! [ "$git_common_dir/hooks/${name}" -ef "$0" ]; then
-  repository_hook="$git_common_dir/hooks/${name}"
+repository_hooks_dir=$(git config --local --type=path core.hooksPath 2>/dev/null) || repository_hooks_dir=""
+if [ -z "$repository_hooks_dir" ]; then
+  git_common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || git_common_dir=""
+  if [ -n "$git_common_dir" ]; then
+    repository_hooks_dir="$git_common_dir/hooks"
+  fi
+fi
+if [ -n "$repository_hooks_dir" ] && [ -x "$repository_hooks_dir/${name}" ] && ! [ "$repository_hooks_dir/${name}" -ef "$0" ]; then
+  repository_hook="$repository_hooks_dir/${name}"
 fi`;
 }
 

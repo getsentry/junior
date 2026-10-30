@@ -17,7 +17,7 @@ import {
   vi,
 } from "vitest";
 import { githubPlugin } from "../src/index";
-import { REPOSITORY_HOOK_NAMES } from "../src/git-config";
+import { gitHooksPath, REPOSITORY_HOOK_NAMES } from "../src/git-config";
 import { gitHubDeploymentSourceResource } from "../src/events/deployment";
 import { gitHubIssueResource } from "../src/events/issue";
 import { gitHubPullRequestResource } from "../src/events/pull-request";
@@ -109,6 +109,7 @@ function beforeToolContext(
         },
         replaceInput() {},
       },
+      juniorRoot: "/vercel/sandbox/.junior",
       env: {
         get(key: string) {
           return env[key];
@@ -182,7 +183,7 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
   }
 
   const dir = mkdtempSync(join(tmpdir(), "junior-github-hook-"));
-  const hooksDir = join(dir, "hooks");
+  const hooksDir = gitHooksPath(dir);
   mkdirSync(hooksDir);
   for (const [name, script] of hookScripts) {
     writeFileSync(join(hooksDir, name), script, { mode: 0o755 });
@@ -204,7 +205,7 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
   return {
     dir,
     hookPath,
-    hooksDir,
+    juniorRoot: dir,
     messagePath,
     runHook: () =>
       spawnSync("bash", [hookPath, messagePath], { cwd: dir, env }),
@@ -3999,14 +4000,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("records Junior as Git author and committer with human attribution", async () => {
-    const {
-      copyFileSync,
-      mkdirSync,
-      mkdtempSync,
-      readFileSync,
-      rmSync,
-      writeFileSync,
-    } = await import("node:fs");
+    const { mkdtempSync, readFileSync, rmSync, writeFileSync } =
+      await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const { spawnSync } = await import("node:child_process");
@@ -4014,17 +4009,17 @@ Conversation: \`local:test:old-conversation\`
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
+    const hook = await prepareCommitMsgHookFixture("unused\n");
     const before = beforeToolContext({
       email: "david@example.com",
       fullName: "David Cramer",
       userId: "U039RR91S",
       userName: "dcramer",
     });
+    before.ctx.juniorRoot = hook.juniorRoot;
     await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
-    const hook = await prepareCommitMsgHookFixture("unused\n");
     const repoDir = mkdtempSync(join(tmpdir(), "junior-github-commit-"));
-    mkdirSync(join(repoDir, ".git", "hooks"), { recursive: true });
 
     const runGit = (...args: string[]) =>
       spawnSync("git", args, {
@@ -4034,10 +4029,6 @@ Conversation: \`local:test:old-conversation\`
 
     try {
       expect(runGit("init").status).toBe(0);
-      copyFileSync(
-        hook.hookPath,
-        join(repoDir, ".git", "hooks", "prepare-commit-msg"),
-      );
       writeFileSync(join(repoDir, "README.md"), "test\n");
       expect(runGit("add", "README.md").status).toBe(0);
 
@@ -4070,76 +4061,88 @@ Conversation: \`local:test:old-conversation\`
     }
   });
 
-  it("runs repository hooks that the Junior hooks path hides", async () => {
-    const { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } =
-      await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const { spawnSync } = await import("node:child_process");
+  it.each([
+    ["simple-git-hooks in .git/hooks", ".git/hooks", false],
+    ["husky in a repository core.hooksPath", ".husky/_", true],
+  ])(
+    "runs repository hooks from %s",
+    async (_name, repositoryHooksDir, setsHooksPath) => {
+      const {
+        chmodSync,
+        existsSync,
+        mkdirSync,
+        mkdtempSync,
+        rmSync,
+        writeFileSync,
+      } = await import("node:fs");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const { spawnSync } = await import("node:child_process");
 
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
-    const before = beforeToolContext({
-      email: "david@example.com",
-      fullName: "David Cramer",
-      userId: "U039RR91S",
-      userName: "dcramer",
-    });
-    await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+      const hook = await prepareCommitMsgHookFixture("unused\n");
+      const before = beforeToolContext({
+        email: "david@example.com",
+        fullName: "David Cramer",
+        userId: "U039RR91S",
+        userName: "dcramer",
+      });
+      before.ctx.juniorRoot = hook.juniorRoot;
+      await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
-    const hook = await prepareCommitMsgHookFixture("unused\n");
-    const repoDir = mkdtempSync(join(tmpdir(), "junior-github-commit-"));
-    const runGit = (...args: string[]) =>
-      spawnSync(
-        "git",
-        [
-          "-c",
-          `core.hooksPath=${hook.hooksDir}`,
-          "-c",
-          "commit.gpgsign=false",
-        ].concat(args),
-        { cwd: repoDir, env: { ...process.env, ...before.env } },
-      );
-    const writeRepositoryHook = (name: string, script: string) => {
-      const path = join(repoDir, ".git", "hooks", name);
-      writeFileSync(path, `#!/bin/sh\n${script}\n`);
-      chmodSync(path, 0o755);
-    };
+      const repoDir = mkdtempSync(join(tmpdir(), "junior-github-commit-"));
+      const runGit = (...args: string[]) =>
+        spawnSync("git", ["-c", "commit.gpgsign=false", ...args], {
+          cwd: repoDir,
+          env: { ...process.env, ...before.env },
+        });
+      const writeRepositoryHook = (name: string, script: string) => {
+        const path = join(repoDir, repositoryHooksDir, name);
+        writeFileSync(path, `#!/bin/sh\n${script}\n`);
+        chmodSync(path, 0o755);
+      };
 
-    try {
-      expect(runGit("init").status).toBe(0);
-      writeRepositoryHook(
-        "pre-commit",
-        'touch "$(git rev-parse --git-dir)/pre-commit-ran"',
-      );
-      writeRepositoryHook(
-        "prepare-commit-msg",
-        'printf "[repo] %s\\n" "$(cat "$1")" > "$1.tmp" && mv "$1.tmp" "$1"',
-      );
-      writeFileSync(join(repoDir, "README.md"), "test\n");
-      expect(runGit("add", "README.md").status).toBe(0);
+      try {
+        expect(runGit("init").status).toBe(0);
+        const configured = setsHooksPath
+          ? runGit("config", "core.hooksPath", repositoryHooksDir).status
+          : 0;
+        expect(configured).toBe(0);
+        mkdirSync(join(repoDir, repositoryHooksDir), { recursive: true });
+        writeRepositoryHook("pre-commit", "touch .pre-commit-ran");
+        writeRepositoryHook(
+          "prepare-commit-msg",
+          'printf "[repo] %s\\n" "$(cat "$1")" > "$1.tmp" && mv "$1.tmp" "$1"',
+        );
+        writeFileSync(join(repoDir, "README.md"), "test\n");
+        expect(runGit("add", "README.md").status).toBe(0);
 
-      const commit = runGit("commit", "-m", "test commit");
-      expect(commit.stderr.toString()).toBe("");
-      expect(commit.status).toBe(0);
-      expect(existsSync(join(repoDir, ".git", "pre-commit-ran"))).toBe(true);
-      expect(runGit("log", "-1", "--format=%B").stdout.toString()).toBe(
-        "[repo] test commit\n" +
-          "\n" +
-          "Co-Authored-By: David Cramer <david@example.com>\n" +
-          "\n",
-      );
+        const commit = runGit("commit", "-m", "test commit");
+        expect(commit.stderr.toString()).toBe("");
+        expect(commit.status).toBe(0);
+        expect(existsSync(join(repoDir, ".pre-commit-ran"))).toBe(true);
+        expect(runGit("log", "-1", "--format=%B").stdout.toString()).toBe(
+          "[repo] test commit\n" +
+            "\n" +
+            "Co-Authored-By: David Cramer <david@example.com>\n" +
+            "\n",
+        );
 
-      writeRepositoryHook("pre-commit", 'echo "repo check failed" >&2; exit 1');
-      const blocked = runGit("commit", "--allow-empty", "-m", "blocked");
-      expect(blocked.status).not.toBe(0);
-      expect(blocked.stderr.toString()).toContain("repo check failed");
-    } finally {
-      rmSync(hook.dir, { recursive: true, force: true });
-      rmSync(repoDir, { recursive: true, force: true });
-    }
-  });
+        writeRepositoryHook(
+          "pre-commit",
+          'echo "repo check failed" >&2; exit 1',
+        );
+        const blocked = runGit("commit", "--allow-empty", "-m", "blocked");
+        expect(blocked.status).not.toBe(0);
+        expect(blocked.stderr.toString()).toContain("repo check failed");
+      } finally {
+        rmSync(hook.dir, { recursive: true, force: true });
+        rmSync(repoDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("credits the primary and additional run actors as co-author trailers", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";

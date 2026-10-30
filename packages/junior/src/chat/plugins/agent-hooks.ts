@@ -46,7 +46,10 @@ import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_JUNIOR_ROOT,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
@@ -1519,7 +1522,7 @@ function createSandboxCapability(
 ): PluginSandbox {
   return {
     root: SANDBOX_WORKSPACE_ROOT,
-    juniorRoot: `${SANDBOX_WORKSPACE_ROOT}/.junior`,
+    juniorRoot: SANDBOX_JUNIOR_ROOT,
     async readFile(filePath) {
       return (await workspace.readFileToBuffer({ path: filePath })) ?? null;
     },
@@ -1712,6 +1715,7 @@ export function createPluginHookRunner(
             resolveActor: async () =>
               input.actor ? await readActorIdentity(input.actor) : undefined,
           },
+          juniorRoot: SANDBOX_JUNIOR_ROOT,
           env: {
             get(key) {
               return env[key] ?? normalizeEnv(nextInput.env)[key];
