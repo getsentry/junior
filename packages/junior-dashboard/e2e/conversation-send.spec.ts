@@ -765,7 +765,7 @@ test("edits a queued message back into the composer", async ({
     hasText: readMessage.text,
   });
   await readRow.getByRole("button", { name: "Steer queued message" }).click();
-  await expect(readRow.getByLabel("Interrupt")).toBeVisible();
+  await expect(readRow.getByLabel("Steered", { exact: true })).toBeVisible();
   await expect(
     readRow.getByRole("button", { name: "Steer queued message" }),
   ).toBeHidden();
