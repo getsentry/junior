@@ -66,6 +66,8 @@ import {
 } from "./pages/user/PluginUserPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
+import { ReviewDeskPage } from "./review-desk/ReviewDeskPage";
+import { useReviewItemCountData } from "./review-desk/queries";
 import type { DashboardCoreData } from "./types";
 
 const dashboardNoise = {
@@ -111,11 +113,13 @@ export function DashboardShell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
+  const reviewCountQuery = useReviewItemCountData(loggedIn);
   const primaryNavItems = buildPrimaryNavItems({
     loading,
     loggedIn,
     pathname: location.pathname,
     primaryUserPages,
+    reviewCount: reviewCountQuery.data?.mine,
     userPagesPending: userPagesQuery.isPending,
   });
 
@@ -361,6 +365,22 @@ export function DashboardShell() {
               )
             }
             path="/"
+          />
+          <Route
+            element={
+              loading ? (
+                <PageRouteLoading
+                  description="Items that need a person, and who can act on them."
+                  label="Loading review desk"
+                  title="Review desk"
+                />
+              ) : loggedIn ? (
+                <ReviewDeskPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/review"
           />
           <Route element={<CodePage />} path="/code" />
           {codeRepositoryTabs.map((tab) => (
