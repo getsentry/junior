@@ -1,20 +1,14 @@
 /** Slack interactive payload forms. */
 import type { SlackAdapter } from "@chat-adapter/slack";
-import type { StateAdapter } from "chat";
-import { parseActorUserId } from "@/chat/actor";
+import type { Message, StateAdapter } from "chat";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { unlinkProvider } from "@/chat/credentials/unlink-provider";
-import { logException, withLogContext, withSpan } from "@/chat/logging";
+import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
+import { logException, withLogContext } from "@/chat/logging";
 import {
   runWithSlackInstallation,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { publishAppHomeView } from "@/chat/slack/app-home";
-import { getSlackClient } from "@/chat/slack/client";
-import {
-  getWorkspaceTeamId,
-  runWithWorkspaceTeamId,
-} from "@/chat/slack/workspace-context";
+import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import type { WaitUntilFn } from "@/handlers/types";
 import {
   slackInteractivePayloadSchema,
@@ -27,65 +21,6 @@ function parseJson(body: string): unknown {
   } catch {
     return undefined;
   }
-}
-
-function requireSlackPayloadUserId(
-  value: string | null | undefined,
-  source: string,
-): string {
-  const userId = parseActorUserId(value);
-  if (!userId) {
-    throw new Error(`${source} is missing a Slack user id`);
-  }
-  return userId;
-}
-
-async function handleInteractivePayload(args: {
-  payload: SlackInteractivePayload;
-  userTokenStore: UserTokenStore;
-}): Promise<void> {
-  if (args.payload.type !== "block_actions") {
-    return;
-  }
-  const action = args.payload.actions?.find(
-    (candidate) => candidate.action_id === "app_home_disconnect",
-  );
-  const provider = action?.selected_option?.value ?? action?.value;
-  if (!provider) {
-    return;
-  }
-  const userId = requireSlackPayloadUserId(
-    args.payload.user?.id,
-    "Slack app home disconnect payload",
-  );
-
-  await withSpan(
-    "chat.app_home_disconnect",
-    "chat.app_home_disconnect",
-    { userId: userId },
-    async () => {
-      try {
-        await unlinkProvider(
-          userId,
-          provider,
-          args.userTokenStore,
-          getWorkspaceTeamId(),
-        );
-      } catch (error) {
-        logException(error, "app_home.disconnect_unlink.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-
-      try {
-        await publishAppHomeView(getSlackClient(), userId, args.userTokenStore);
-      } catch (error) {
-        logException(error, "app_home.disconnect_publish.failed", {
-          "app.credential.provider": provider,
-        });
-      }
-    },
-  );
 }
 
 function installationFromInteractive(
@@ -101,6 +36,16 @@ export async function handleSlackForm(args: {
   adapter: SlackAdapter;
   body: string;
   getUserTokenStore: () => UserTokenStore;
+  /** Return whether a Slack author may start a Turn, such as by an answer. */
+  isAuthorAllowed: (
+    userId: string,
+    installation: SlackInstallationContext,
+  ) => Promise<boolean>;
+  /** Save one Slack input, such as a user input answer, as a mention. */
+  persistMessage: (
+    message: Message,
+    installation: SlackInstallationContext,
+  ) => Promise<void>;
   state: StateAdapter;
   waitUntil: WaitUntilFn;
 }): Promise<Response> {
@@ -132,8 +77,14 @@ export async function handleSlackForm(args: {
             installation,
             state,
             task: () =>
-              handleInteractivePayload({
+              handleSlackInteractivePayload({
+                adapter,
                 payload,
+                isAuthorAllowed: (userId) =>
+                  args.isAuthorAllowed(userId, installation),
+                persistMessage: (message) =>
+                  args.persistMessage(message, installation),
+                state,
                 userTokenStore: args.getUserTokenStore(),
               }),
           }),

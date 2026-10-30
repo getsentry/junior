@@ -3,6 +3,7 @@ import {
   createEventSource,
   createLocalSource,
   createSlackSource,
+  createWebSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
@@ -149,6 +150,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
+    expect(tools).toHaveProperty("requestUserInput");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
     expect(tools).toHaveProperty("searchConversationBriefs");
@@ -276,7 +278,9 @@ describe("Slack tool registration", () => {
       expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools.createEventAutomation?.disabledReason).toBeDefined();
       expect(tools.addReaction?.disabledReason).toBeDefined();
+      expect(tools.requestUserInput?.disabledReason).toBeDefined();
     }
+    expect(messageTurn.requestUserInput?.disabledReason).toBeUndefined();
     expect(messageTurn.createEventAutomation?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
@@ -313,6 +317,39 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("sendFiles");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).not.toHaveProperty("addReaction");
+  });
+
+  it("enables user input only where a person can answer it", () => {
+    const webTools = createTools(
+      [],
+      {},
+      {
+        conversationId: "web:test:user-input",
+        destination: {
+          platform: "local",
+          conversationId: "web:test:user-input",
+        },
+        egress: noopEgress,
+        source: createWebSource("web:test:user-input", "private"),
+        workspace: noopSandbox,
+      },
+    );
+
+    expect(webTools).toHaveProperty("requestUserInput");
+    expect(webTools.requestUserInput?.disabledReason).toBeUndefined();
+    expect(
+      createTools([], {}, ctx()).requestUserInput?.disabledReason,
+    ).toBeDefined();
+
+    // A child agent reports the need to its parent, even in a Slack message
+    // Turn of its own.
+    const childTools = createTools([], {}, {
+      ...ctx("C12345"),
+      parentConversationId: "slack:C12345:1700000000.000",
+    } as ToolRuntimeContext);
+    expect(childTools.requestUserInput?.disabledReason).toContain(
+      "reportBlocked",
+    );
   });
 
   it("does not register Slack tools for local destinations", () => {

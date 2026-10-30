@@ -5,6 +5,18 @@ export {
 } from "../chat/attachments/input";
 export type { InputImage, MessageAttachment } from "../chat/attachments/input";
 export { webMessageId } from "../chat/conversations/web-message-id";
+export {
+  buttonUserInputField,
+  formatUserInputAnswer,
+  isEmptyUserInputAnswer,
+  normalizeUserInputAnswer,
+  userInputRequestSchema,
+} from "../chat/tools/runtime/user-input-request";
+export type {
+  UserInputAnswer,
+  UserInputField,
+  UserInputRequest,
+} from "../chat/tools/runtime/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export {

@@ -1,7 +1,7 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { setSpanAttributes } from "@/chat/logging";
 import { captureSlackPostWarning } from "./post-warning";
-import type { KnownBlock } from "@slack/types";
+import type { KnownBlock, ModalView } from "@slack/types";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
@@ -208,6 +208,63 @@ export async function deleteSlackMessage(input: {
         "app.slack.message_ts": timestamp,
       },
     },
+  );
+}
+
+/** Replace the text and blocks of a message that Junior posted. */
+export async function updateSlackMessage(input: {
+  blocks: KnownBlock[];
+  channelId: string;
+  text: string;
+  timestamp: SlackMessageTs;
+}): Promise<void> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Slack message update",
+  );
+  const timestamp = requireSlackMessageTimestamp(
+    input.timestamp,
+    "Slack message update",
+  );
+  const text = requireSlackMessageText(input.text, "Slack message update");
+
+  await withSlackRetries(
+    () =>
+      getSlackClient().chat.update({
+        blocks: input.blocks,
+        channel: channelId,
+        text,
+        ts: timestamp,
+      }),
+    3,
+    {
+      action: "chat.update",
+      idempotent: true,
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": timestamp,
+      },
+    },
+  );
+}
+
+/**
+ * Open a modal for the person who clicked. A `trigger_id` works once and
+ * only for three seconds, so this makes one attempt.
+ * https://docs.slack.dev/reference/methods/views.open
+ */
+export async function openSlackModal(input: {
+  triggerId: string;
+  view: ModalView;
+}): Promise<void> {
+  await withSlackRetries(
+    () =>
+      getSlackClient().views.open({
+        trigger_id: input.triggerId,
+        view: input.view,
+      }),
+    1,
+    { action: "views.open" },
   );
 }
 

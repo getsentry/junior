@@ -64,6 +64,9 @@ import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
+import { slackUserInputAnswerNote } from "@/chat/slack/user-input";
+import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -119,16 +122,6 @@ const IGNORED_MESSAGE_SUBTYPES = new Set([
   "ekm_access_denied",
   "tombstone",
 ]);
-
-class SlackEventPersistenceError extends Error {
-  override readonly cause: unknown;
-
-  constructor(cause: unknown) {
-    super("Slack event durable persistence failed");
-    this.name = "SlackEventPersistenceError";
-    this.cause = cause;
-  }
-}
 
 export interface SlackWebhookServices {
   getUserTokenStore?: () => UserTokenStore;
@@ -309,12 +302,13 @@ async function persistSlackMessage(args: {
       conversationId,
       state: args.state,
     });
-    if (
-      !saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
-    ) {
+    const kept =
+      saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId) ===
+      true;
+    if (!kept) {
       await receipt?.stop();
     }
-    throw new SlackEventPersistenceError(error);
+    throw new SlackEventPersistenceError(error, kept);
   });
 }
 
@@ -575,16 +569,33 @@ async function routeParsedMessage(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
-  await persistSlackMessage({
-    adapter: args.adapter,
-    installation: args.installation,
-    message,
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    receivedAtMs: args.receivedAtMs,
-    route,
+  const persist = () =>
+    persistSlackMessage({
+      adapter: args.adapter,
+      installation: args.installation,
+      message,
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      receivedAtMs: args.receivedAtMs,
+      route,
+      state: args.state,
+    });
+  if (route !== "mention") {
+    await persist();
+    return;
+  }
+  // A message to Junior answers an open question in its thread, like a click.
+  await persistSlackUserInputReply({
+    channelId: args.event.channel,
+    claimedBy: message.author.userId,
+    isSaved: (error) =>
+      error instanceof SlackEventPersistenceError && error.saved,
+    note: (request) =>
+      slackUserInputAnswerNote({ request, userId: message.author.userId }),
+    persist,
     state: args.state,
+    threadTs: args.event.thread_ts,
   });
 }
 
@@ -739,6 +750,48 @@ async function handleSlackEvent(args: {
   );
 }
 
+/**
+ * Persist one Slack input as a mention under the thread's ingress lock.
+ * Slack does not retry interactions. Saved input still runs through heartbeat
+ * recovery, so a failed queue send after the append does not reject it.
+ */
+async function persistSlackMentionWithLock(args: {
+  adapter: SlackAdapter;
+  installation: SlackInstallationContext;
+  message: Message;
+  services: SlackWebhookServices;
+  state: StateAdapter;
+}): Promise<void> {
+  const { message, threadId } = normalizeMessageThreadId(args.message);
+  try {
+    const routed = await withLock(
+      args.state,
+      `slack:ingress:${threadId}`,
+      () =>
+        persistSlackMessage({
+          adapter: args.adapter,
+          installation: args.installation,
+          message,
+          conversationStore: args.services.conversationStore,
+          queue: args.services.queue,
+          receivedAtMs: Date.now(),
+          route: "mention",
+          state: args.state,
+        }),
+      { keepAlive: true, waitMs: 10_000 },
+    );
+    if (!routed.acquired) {
+      throw new Error("Could not acquire Slack ingress lock");
+    }
+  } catch (error) {
+    if (error instanceof SlackEventPersistenceError && error.saved) {
+      logException(error.cause, "slack.event.wake.failed");
+      return;
+    }
+    throw error;
+  }
+}
+
 /** Handle Slack webhooks by enqueueing durable conversation work. */
 export async function handleSlackWebhook(args: {
   request: Request;
@@ -754,11 +807,28 @@ export async function handleSlackWebhook(args: {
 
   const contentType = args.request.headers.get("content-type") || "";
   if (contentType.includes("application/x-www-form-urlencoded")) {
+    const state = args.services.state ?? getStateAdapter();
     return await handleSlackForm({
       adapter,
       body,
       getUserTokenStore: () => getUserTokenStore(args.services),
-      state: args.services.state ?? getStateAdapter(),
+      isAuthorAllowed: (userId, installation) =>
+        isSlackAuthorDomainAllowed({
+          allowedBotUserIds: args.services.allowedBotUserIds ?? [],
+          allowedDomains: args.services.allowedDomains ?? [],
+          state,
+          teamId: installation.teamId,
+          user: userId,
+        }),
+      persistMessage: (message, installation) =>
+        persistSlackMentionWithLock({
+          adapter,
+          installation,
+          message,
+          services: args.services,
+          state,
+        }),
+      state,
       waitUntil: args.waitUntil,
     });
   }
