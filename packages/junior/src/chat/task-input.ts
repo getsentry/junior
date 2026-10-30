@@ -107,10 +107,10 @@ export function renderTaskInput(args: {
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
     // Bind "me" to the creator, then say what to write. With only the
-    // meaning, the model often writes "your" and drops the mention.
+    // binding, the model often writes "your" and drops the mention.
     ...(creator
       ? [
-          `Created by: ${oneLine(creator)}. "Me" and "my" in the instructions mean this person. Where the message addresses them, write this mention. If the instructions do not say "me" or "my", do not mention this person.`,
+          `Created by: ${oneLine(creator)}. "Me" and "my" in the instructions mean this person. Where the instructions say "me" or "my", write this mention. If they do not say "me" or "my", do not mention this person.`,
         ]
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),
