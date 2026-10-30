@@ -1,10 +1,10 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { actorLabel } from "../format";
-import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ActorAvatar } from "./ActorAvatar";
-import { Tooltip } from "./Tooltip";
+import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const MAX_VISIBLE_PARTICIPANTS = 3;
 
@@ -51,28 +51,34 @@ function ParticipantTooltipContent(props: { participant: ActorIdentity }) {
   );
 }
 
-function Avatar(props: {
+/** Show one actor avatar with their name and email on hover or focus. */
+export function ParticipantAvatar(props: {
   participant: ActorIdentity;
   size: ParticipantAvatarStackProps["size"];
 }) {
   const label = participantDescription(props.participant);
   return (
-    <Tooltip
-      content={<ParticipantTooltipContent participant={props.participant} />}
-      focusable
-      triggerClassName="-ml-1 first:ml-0 pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
-    >
-      <span
-        aria-label={label}
-        className="relative inline-flex rounded-full focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-        onKeyDown={(event) => event.stopPropagation()}
-        tabIndex={0}
-      >
-        <ActorAvatar
-          name={participantName(props.participant)}
-          size={props.size}
-        />
-      </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={label}
+            // A name on a generic span is often skipped by screen readers.
+            role="img"
+            className="relative -ml-1 inline-flex rounded-full first:ml-0 pointer-events-none focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
+            onKeyDown={(event) => event.stopPropagation()}
+            tabIndex={0}
+          >
+            <ActorAvatar
+              name={participantName(props.participant)}
+              size={props.size}
+            />
+          </span>
+        }
+      />
+      <TooltipContent>
+        <ParticipantTooltipContent participant={props.participant} />
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -98,15 +104,32 @@ export function ParticipantAvatarStack(props: ParticipantAvatarStackProps) {
       role="group"
     >
       {visible.map((participant, index) => (
-        <Avatar
+        <ParticipantAvatar
           key={participantKey(participant, index)}
           participant={participant}
           size={props.size}
         />
       ))}
       {hidden.length > 0 ? (
-        <Tooltip
-          content={
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Avatar
+                aria-label={`${hidden.length} more participants: ${hidden
+                  .map(participantDescription)
+                  .join("; ")}`}
+                className="-ml-1 pointer-events-none bg-dashboard-surface-active shadow-none focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
+                onKeyDown={(event) => event.stopPropagation()}
+                size={props.size === "list" ? "sm" : "default"}
+                tabIndex={0}
+              >
+                <AvatarFallback className="tabular-nums tracking-normal text-dashboard-text-muted">
+                  +{hidden.length}
+                </AvatarFallback>
+              </Avatar>
+            }
+          />
+          <TooltipContent>
             <span className="grid gap-1 font-sans">
               {hidden.map((participant, index) => (
                 <span key={participantKey(participant, index)}>
@@ -114,23 +137,7 @@ export function ParticipantAvatarStack(props: ParticipantAvatarStackProps) {
                 </span>
               ))}
             </span>
-          }
-          focusable
-          triggerClassName="-ml-1 pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
-        >
-          <span
-            aria-label={`${hidden.length} more participants: ${hidden
-              .map(participantDescription)
-              .join("; ")}`}
-            className={cn(
-              "relative inline-grid shrink-0 place-items-center rounded-full border-2 border-dashboard-bg bg-dashboard-surface-active font-sans font-semibold tabular-nums leading-none text-dashboard-text-muted focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
-              props.size === "list" ? "size-6 text-2xs" : "size-7 text-xs",
-            )}
-            onKeyDown={(event) => event.stopPropagation()}
-            tabIndex={0}
-          >
-            +{hidden.length}
-          </span>
+          </TooltipContent>
         </Tooltip>
       ) : null}
     </span>

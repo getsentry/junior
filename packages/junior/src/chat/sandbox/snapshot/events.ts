@@ -1,9 +1,8 @@
-import type {
-  PluginEvents,
-  Event,
-  SubscribableResource,
-} from "@sentry/junior-plugin-api";
-import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
+import type { Event, SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  CORE_EVENT_NAMESPACE,
+  type EventRegistrationInput,
+} from "@/chat/events/catalog";
 
 export const WORKSPACE_SNAPSHOT_NAMESPACE = CORE_EVENT_NAMESPACE;
 export const WORKSPACE_SNAPSHOT_RESOURCE_TYPE = "workspace_snapshot";
@@ -14,9 +13,10 @@ export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
  * Core catalog entry for Workspace snapshot ready and failed events.
  *
  * Uses the same registration shape as plugins so search, guidance, and tool
- * schemas treat these events like any other resource type.
+ * schemas treat these events like any other resource type. Snapshot finish
+ * does not run event-automation ingest, so only watches can use these events.
  */
-export function workspaceSnapshotEvents(): PluginEvents {
+export function workspaceSnapshotEvents(): EventRegistrationInput {
   return {
     resourceTypes: [
       {
@@ -27,14 +27,21 @@ export function workspaceSnapshotEvents(): PluginEvents {
         ],
         // switchWorkspace already creates the temporary subscription.
         suggestedEvents: [],
-        guidance: {
-          [WORKSPACE_SNAPSHOT_READY_EVENT]:
-            "Call switchWorkspace again with the same Workspace name. Do not create another watch when switchWorkspace already returned a subscription.",
-          [WORKSPACE_SNAPSHOT_FAILED_EVENT]:
-            "Report the snapshot failure. Do not keep waiting for this Workspace unless the user asks to retry.",
-        },
       },
     ],
+    events: {
+      [WORKSPACE_SNAPSHOT_READY_EVENT]: {
+        reach: "resource",
+        guidance:
+          "Call switchWorkspace again with the same Workspace name. Do not create another watch when switchWorkspace already returned a subscription.",
+      },
+      [WORKSPACE_SNAPSHOT_FAILED_EVENT]: {
+        reach: "resource",
+        guidance:
+          "Report the snapshot failure. Do not keep waiting for this Workspace unless the user asks to retry.",
+      },
+    },
+    limits: { [WORKSPACE_SNAPSHOT_RESOURCE_TYPE]: { automation: false } },
   };
 }
 

@@ -26,6 +26,7 @@ import {
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
+  steerWebPendingMessages,
   stopConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
@@ -36,6 +37,7 @@ import {
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
+  type ConversationWorkerContext,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { closeDb } from "@/chat/db";
@@ -666,6 +668,127 @@ describe("conversation work execution", () => {
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
+  });
+
+  it("keeps stored trace context and strips unknown trace keys through rewrites", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const traceContext = {
+      sentryTrace: "0123456789abcdef0123456789abcdef-0123456789abcdef-1",
+      baggage: "sentry-trace_id=0123456789abcdef0123456789abcdef",
+    };
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 2,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: ["m1", "m2", "m3"],
+        pendingCount: 3,
+        pendingMessages: [
+          { ...inboundMessage("m1"), publishExternally: true },
+          {
+            ...inboundMessage("m2", { createdAtMs: 1_500 }),
+            publishExternally: true,
+            traceContext,
+          },
+          {
+            ...inboundMessage("m3", { createdAtMs: 1_600 }),
+            publishExternally: true,
+            traceContext: { ...traceContext, futureKey: "value" },
+          },
+        ],
+        status: "pending",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await appendInboundMessage({
+      message: inboundMessage("m4", { createdAtMs: 2_000 }),
+      nowMs: 2_000,
+      state,
+    });
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.messages.map((message) => message.traceContext)).toEqual([
+      undefined,
+      traceContext,
+      traceContext,
+      undefined,
+    ]);
+    const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+    };
+    expect(
+      stored.execution.pendingMessages.map((message) => message.traceContext),
+    ).toEqual([undefined, traceContext, traceContext, undefined]);
+  });
+
+  it("drops malformed trace context and still processes the message", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 2,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: ["m1", "m2"],
+        pendingCount: 2,
+        pendingMessages: [
+          {
+            ...inboundMessage("m1"),
+            publishExternally: true,
+            traceContext: { baggage: "sentry-trace_id=abc" },
+          },
+          {
+            ...inboundMessage("m2", { createdAtMs: 1_500 }),
+            publishExternally: true,
+            traceContext: "not-an-object",
+          },
+        ],
+        status: "pending",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+
+    await appendInboundMessage({
+      message: inboundMessage("m3", { createdAtMs: 2_000 }),
+      nowMs: 2_000,
+      state,
+    });
+
+    const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+    };
+    for (const message of stored.execution.pendingMessages) {
+      expect(message).not.toHaveProperty("traceContext");
+    }
+
+    const attempted: string[] = [];
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          attempted.push(
+            ...context.attempt.messages.map(
+              (message) => message.inboundMessageId,
+            ),
+          );
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(attempted).toEqual(["m1", "m2", "m3"]);
   });
 
   it("appends destinationless work onto a provider conversation", async () => {
@@ -1478,22 +1601,45 @@ describe("conversation work execution", () => {
       }),
       nowMs: 2_100,
     });
-    const drained: string[][] = [];
+    await appendInboundMessage({
+      message: inboundMessage("m3", {
+        createdAtMs: 3_000,
+        delivery: "defer",
+        input: { authorId: "dashboard:reader", text: "steer me" },
+        receivedAtMs: 3_100,
+        source: "web",
+      }),
+      nowMs: 3_100,
+    });
+    // Each entry is the run number and the ids that run drained.
+    const drained: string[] = [];
+    let runs = 0;
+    const drain = (context: ConversationWorkerContext) =>
+      context.attempt.drain(async (messages) => {
+        const ids = messages.map((message) => message.inboundMessageId);
+        drained.push(`${runs}:${ids.join(",")}`);
+        return ids;
+      });
 
     await expect(
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.attempt.drain(async (messages) => {
-            drained.push(messages.map((message) => message.inboundMessageId));
-            return messages.map((message) => message.inboundMessageId);
+          runs += 1;
+          await drain(context);
+          // A queued message steered after the attempt started joins it.
+          await steerWebPendingMessages({
+            authorId: "dashboard:reader",
+            conversationId: CONVERSATION_ID,
+            inboundMessageIds: ["m3"],
           });
+          await drain(context);
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
 
-    expect(drained).toEqual([["m1"]]);
+    expect(drained).toEqual(["1:m1", "1:m3"]);
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
@@ -1503,6 +1649,53 @@ describe("conversation work execution", () => {
         delivery: "defer",
       }),
     ]);
+  });
+
+  it("resumes a yielded Turn before a newly steered web message", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const webMessage = (id: string, authorId: string) =>
+      inboundMessage(id, {
+        delivery: "defer",
+        input: { authorId, text: id },
+        source: "web",
+      });
+    await appendInboundMessage({
+      message: webMessage("a1", "dashboard:a"),
+      nowMs: 1_000,
+    });
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        await appendInboundMessage({
+          message: webMessage("b1", "dashboard:b"),
+        });
+        await steerWebPendingMessages({
+          authorId: "dashboard:b",
+          conversationId: CONVERSATION_ID,
+          inboundMessageIds: ["b1"],
+        });
+        return { status: "yielded" };
+      },
+    });
+
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // A second Turn must not start while the first waits to resume.
+    expect(attempts).toEqual([["a1"], [], ["b1"]]);
   });
 
   it("does not rewrite mailbox state for an empty drain result", async () => {

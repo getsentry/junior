@@ -27,11 +27,16 @@ import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins.ts";
 
 const app = await createApp({
+  allowedDomains: ["example.com"],
   plugins,
 });
 
 export default app;
 ```
+
+Replace `example.com` with your company's email domain. Only Slack users and
+dashboard sign-ins on [allowed domains](/reference/config-and-env/#allowed-domains)
+can use Junior.
 
 `createApp()` mounts the supported Junior routes listed in [Route & Handler Surface](/reference/handler-surface/).
 
@@ -49,9 +54,9 @@ export const plugins = defineJuniorPlugins([sentryPlugin()]);
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
-import { juniorNitro } from "@sentry/junior/nitro";
+import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";
 
-export default defineConfig({
+const config = defineConfig({
   modules: [
     juniorNitro({
       plugins: "./plugins",
@@ -61,14 +66,31 @@ export default defineConfig({
     "/**": { handler: "./server.ts" },
   },
 });
+
+export default withSentryConfig(config, {
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+});
 ```
+
+`withSentryConfig` uploads source maps to Sentry when the build has
+`SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT`. Import it from
+`@sentry/junior/nitro`. Do not add `@sentry/nitro` or `@sentry/node` to your
+app. Junior pins their versions, and a different version cannot use the Sentry
+client that `initSentry()` creates.
+
+Your app owns the `nitro` dependency. `@sentry/junior` lists the Nitro versions
+that it supports as a peer dependency. Use one of those versions. If your
+version is not in that list, your package manager shows a peer dependency
+warning.
 
 If your existing app already owns routes, make sure the Junior Hono app still receives the paths under `/api/webhooks`, `/api/oauth/callback`, `/api/internal/agent-dispatch`, `/api/internal/agent/continue`, `/api/internal/plugin/tasks`, `/api/internal/heartbeat`, and `/health`. Do not split those routes across independent runtime instances. When mounted, `@sentry/junior-dashboard` owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`.
 
 Some packages export runtime hooks instead of `plugin.yaml`. Add those
 plugin factories to the same `plugins.ts` set. For example, see
-[Scheduler Plugin](/extend/scheduler-plugin/) for scheduled automations and
 [GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` setup.
+Scheduled automations are built in; see [Automations](/concepts/automations/).
 
 ## Add app files
 

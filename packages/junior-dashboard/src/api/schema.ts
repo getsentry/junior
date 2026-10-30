@@ -33,12 +33,10 @@ export const dashboardProfileUpdateSchema = z
 
 export const dashboardConfigSchema = z
   .object({
-    allowedEmailCount: z.number(),
-    allowedGoogleDomainCount: z.number(),
+    allowedDomainCount: z.number(),
     authRequired: z.boolean(),
     authPath: z.string(),
     basePath: z.string(),
-    componentGallery: z.boolean(),
     sentryConversationLinks: z.boolean(),
     timeZone: z.string().optional(),
     version: z.string().min(1),

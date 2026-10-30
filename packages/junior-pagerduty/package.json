@@ -1,0 +1,18 @@
+{
+  "name": "@sentry/junior-pagerduty",
+  "version": "0.266.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-pagerduty"
+  },
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}

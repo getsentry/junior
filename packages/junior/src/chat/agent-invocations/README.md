@@ -25,6 +25,14 @@ stores the terminal result for its parent to read later.
 - `parentConversationId` is immutable. Bindings and invocation content are
   purged with their root Conversation tree. A child cannot hand off its own
   active model profile or otherwise change its run policy.
+- An invocation may store an **agent type** (`agent-types.ts`). A child keeps
+  its type for later agent invocations, the same as its profile. A type is
+  data; runtime code reads its fields, never its name. A stored name with no
+  type, for example after a type is removed, is read as no type. A type with
+  `startsWithParentHistory` starts the child with the parent's history before
+  the spawn call (`fork-history.ts`), and the child commits that history as its
+  own in its first checkpoint. Types do not limit tools: Guardian reviews each
+  child action against the root user's messages.
 - `limits.maxAgentDepth` is the number of child levels that can start their
   own children. The default, 0, lets only the root start children. The worker
   hides `spawnAgent` from deeper children.
@@ -58,6 +66,10 @@ conversation tree.
    `parentMailboxStatus: "pending"`.
 7. The worker appends the result to the parent mailbox before it acknowledges
    the child work. Then it sets `parentMailboxStatus: "appended"`.
+   The result names the parent's other child agents whose results have not
+   reached it: those still running and those whose result is still
+   `parentMailboxStatus: "pending"`. A parent that started several children
+   can wait for all of them before it reports.
 8. The heartbeat repairs invocations left in `mailboxStatus: "pending"` or
    `parentMailboxStatus: "pending"`.
 
@@ -127,6 +139,9 @@ child calls it when missing access, input, or a decision stops its task. The
 tool ends the run, like `finishAutomationRun` ends an Automation run. The
 agent invocation then ends as `blocked`, and the parent result shows what is
 missing. A child that cannot get authorization also ends as `blocked`.
+
+A blocked child Turn is not a failure. It records `turn_completed` with the
+`blocked` outcome, so the dashboard does not show it as a model failure.
 
 The worker and the recovery of a completed child Turn read the report only
 from the messages of that Turn. A named child keeps its history, so a report
@@ -240,6 +255,14 @@ When Guardian reviews an action of a child, `root-conversation.ts` walks
 rewrite these events. Nothing is copied into the child, and nothing new is
 stored.
 
+A root Run of a person reads its own Conversation the same way, with the same
+labels, so the Actor's earlier messages can authorize an action. The evidence
+still has the unlabeled messages. It is the only place that shows the order of
+the messages and the tool calls, such as a push that came after a request.
+Guardian takes the author of a message only from the root section. A root Run of a system Actor,
+such as an Event Turn, does not read it. The person's messages would get the
+`other person` label there, so it keeps the unlabeled evidence.
+
 - Only a root message whose author has the same Actor identity as the child
   is labeled `user`. It is compared by platform, team, and user id. When
   either Actor is not known, the message does not count.
@@ -261,10 +284,18 @@ stored.
   revocation, counts.
 - Grandchildren and children started by a result Turn read the same root,
   with no special case.
-- The read is bounded: the newest 16 messages and 24,000 characters. A cut
+- The read is bounded to 24,000 characters, with the label of each line
+  counted. Messages that can authorize come first, newest first, so a later
+  restriction or revocation stays when older messages are cut. The newest 16
+  context messages fill the rest. Each gap gets a note in its place, so a
+  reply is not read as the answer to a message that is not shown. A cut also
   adds an explicit notice.
-- The instruction of an Automation run root is always in the read. It is
-  loaded by its message id and comes first. It is not one of the 16 messages.
+- Every kind of line break becomes one line break, so text cannot hide a
+  second label inside one line.
+- The opening message of the root is always in the read and comes first. For
+  an Automation run root, it is the run's instruction, loaded by its message
+  id. For another root, it is the oldest message, which usually holds the
+  original request. It is not one of the 16 context messages.
 - A message keeps the position of its original event. An edit changes only
   its text. An edit of a message older than the read is left out, so an edit
   never moves a message after a newer one, such as a revocation.
@@ -272,7 +303,7 @@ stored.
 Guardian renders the projection outside the untrusted proposal JSON, in a
 `<root_user_instructions key="...">` section with a new random key for each
 request. Each line has its real author as a prefix. The rules for a child
-action are in `services/guardian-action-review.ts`. They are adapted from
+action are in `guardian/reviewer.ts`. They are adapted from
 Codex multi_agent_v2 (`openai/codex` at `f0c5077`,
 `guardian-context/src/authorization.rs`) and the Claude Code auto-mode
 classifier.
@@ -283,11 +314,8 @@ question and then tells the child to try again.
 
 ## Current Boundary
 
-`spawnAgent` exposes durable creation to a parent agent when the experimental
-`subagents` feature is enabled via
-`createApp({ experimental: { subagents: true } })` (or automatically in
-`junior chat`, the local createApp-equivalent entrypoint). It is off by default
-so deployments can ship the runtime without advertising the model-facing tool.
+`spawnAgent` exposes durable creation to every parent agent whose app wires
+the child-agent worker. It is not an experimental feature.
 The tool receives the delegated task, optional child name, optional model
 profile, and optional per-task reasoning level. The parent should normally
 choose a profile that fits the task, using the configured profile descriptions.

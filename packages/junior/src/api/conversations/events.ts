@@ -12,6 +12,7 @@ import {
 } from "./event-model";
 import {
   conversationReportEventSchema,
+  conversationReportMessageEventSchema,
   type ConversationReportEvent,
   type ConversationReportEventData,
 } from "../schema/conversation";
@@ -301,6 +302,27 @@ export function conversationReportToolResultIds(
   ];
 }
 
+const storedMessageEventsSchema = z.array(conversationReportMessageEventSchema);
+
+/** Read the Events listed on a message that holds several Events. */
+function reportMessageEvents(
+  meta: Record<string, unknown> | undefined,
+): { events: z.output<typeof storedMessageEventsSchema> } | undefined {
+  const parsed = storedMessageEventsSchema.safeParse(meta?.events);
+  return parsed.success ? { events: parsed.data } : undefined;
+}
+
+// The report has no `cancelled` state. A cancelled Turn has no reply.
+const TURN_COMPLETED_STATES = {
+  success: "succeeded",
+  no_reply: "no_reply",
+  cancelled: "no_reply",
+  blocked: "blocked",
+} as const satisfies Record<
+  Extract<ConversationEvent["data"], { type: "turn_completed" }>["outcome"],
+  string
+>;
+
 function reportEventData(args: {
   canExposePayload: boolean;
   data: ConversationEvent["data"];
@@ -335,6 +357,9 @@ function reportEventData(args: {
           ? { source: data.meta.source }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
+        ...(typeof data.meta?.agentInvocationId === "string"
+          ? { agentInvocationId: data.meta.agentInvocationId }
+          : undefined),
         eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
           .data,
         ...(typeof data.meta?.eventType === "string"
@@ -347,6 +372,7 @@ function reportEventData(args: {
         typeof data.meta?.trustedSummary === "string"
           ? { trustedSummary: data.meta.trustedSummary }
           : undefined),
+        ...(args.canExposePayload ? reportMessageEvents(data.meta) : undefined),
         ...(args.canExposePayload &&
         (data.meta?.cards || data.meta?.objectCards)
           ? { cards: readMessageCardRefs(data.meta) }
@@ -422,7 +448,7 @@ function reportEventData(args: {
       return {
         type: "turn_lifecycle",
         turnId: data.turnId,
-        state: data.outcome === "success" ? "succeeded" : "no_reply",
+        state: TURN_COMPLETED_STATES[data.outcome],
       };
     case "turn_failed": {
       const eventId = data.eventId;

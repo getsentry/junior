@@ -13,6 +13,11 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import {
+  createConversationId,
+  recordWebConversationActivity,
+  webActorFromEmail,
+} from "@/chat/conversations/web-input";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
@@ -20,6 +25,7 @@ import { runUpgrade } from "@/cli/upgrade";
 import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 import {
   createSlackSource,
+  createWebSource,
   defineJuniorPlugin,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
@@ -470,13 +476,55 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "slack:D999:1718800099.000000",
           locationId: "other-location",
           userId: "U123",
-        }).memory_listMemories.execute!({}, {}),
+        }).memory_listMemories!.execute!({}, {}),
       ).resolves.toEqual({
         memories: [
           expect.objectContaining({ id: privateMemory.memory.id }),
           expect.objectContaining({ id: publicMemory.memory.id }),
         ],
         target: "listMemories",
+      });
+
+      // The same User on the dashboard resolves through the web identity.
+      const webActor = webActorFromEmail("memory-viewer@example.com");
+      const webConversationId = createConversationId({
+        actorEmail: "memory-viewer@example.com",
+        idempotencyKey: "web-memory",
+      });
+      const webDestination = await recordWebConversationActivity({
+        actor: webActor,
+        conversationId: webConversationId,
+        conversationStore: createSqlStore(fixture.sql),
+        nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
+        rootVisibility: "private",
+      });
+      await expect(readActorIdentity(webActor)).resolves.toMatchObject({
+        identity: {
+          provider: "junior",
+          providerSubjectId: "memory-viewer@example.com",
+        },
+        user: { id: viewer.user.id },
+      });
+      const webTools = getPluginTools({
+        actor: webActor,
+        conversationId: webConversationId,
+        destination: webDestination,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        resolveActorIdentity: () => readActorIdentity(webActor),
+        source: createWebSource(webConversationId, "private"),
+        userText: "what do you remember about me?",
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+      });
+      await expect(
+        webTools.memory_listMemories!.execute!({}, {}),
+      ).resolves.toMatchObject({
+        memories: expect.arrayContaining([
+          expect.objectContaining({ id: privateMemory.memory.id }),
+        ]),
       });
     } finally {
       await fixture.close();
@@ -556,7 +604,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       expect(tools).toHaveProperty("memory_createMemory");
       await expect(
-        tools.memory_listMemories.execute!({}, {}),
+        tools.memory_listMemories!.execute!({}, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -568,7 +616,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_searchMemories.execute!({ query: "personal recall" }, {}),
+        tools.memory_searchMemories!.execute!({ query: "personal recall" }, {}),
       ).resolves.toMatchObject({
         memories: [
           expect.objectContaining({
@@ -577,7 +625,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
       });
       await expect(
-        tools.memory_createMemory.execute!(
+        tools.memory_createMemory!.execute!(
           {
             content: "I prefer terse status updates.",
             scope: "public",

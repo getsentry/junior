@@ -1,5 +1,13 @@
 import { createHmac } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
+import {
+  eventMatches,
+  type EventInput,
+  type EventMatch,
+} from "@sentry/junior-plugin-api";
+import {
+  filterEventMismatches,
+  identifierMatchMismatches,
+} from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linearPlugin } from "../src";
 import { createLinearWebhookRoute } from "../src/webhooks/handler";
@@ -84,31 +92,47 @@ afterEach(() => {
 });
 
 describe("Linear webhook events", () => {
-  it("registers teamKey match fields on issue and team resources", () => {
-    const resourceTypes = linearPlugin().events?.resourceTypes ?? [];
+  it("declares filter events that match the data the webhooks set", () => {
+    expect(
+      filterEventMismatches({
+        resourceTypes: linearPlugin().events?.resourceTypes ?? [],
+        events: normalizeLinearEvents({
+          body: issueBody(),
+          linearEvent: "Issue",
+        }),
+      }),
+    ).toEqual([]);
+  });
 
-    expect(resourceTypes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: "issue",
-          matchFields: {
-            teamKey: {
-              kind: "string",
-              description: "Linear team key for the issue, such as SRE",
-            },
-          },
-        }),
-        expect.objectContaining({
-          type: "team",
-          matchFields: {
-            teamKey: {
-              kind: "string",
-              description: "Linear team key for the issue, such as SRE",
-            },
-          },
-        }),
-      ]),
-    );
+  it("turns each identifier into filters that select only its events", () => {
+    // Another issue in the same team, and the same number in another team.
+    const events = [
+      ["sre-123", "sre"],
+      ["SRE-124", "SRE"],
+      ["OPS-123", "OPS"],
+    ].flatMap(([identifier, teamKey]) => {
+      const body = issueBody();
+      body.data.id = `issue-${identifier}`;
+      body.data.identifier = identifier!;
+      body.data.team.key = teamKey!;
+      return normalizeLinearEvents({ body, linearEvent: "Issue" });
+    });
+    const toMatch = (event: { identifier: string }): EventMatch => {
+      // Saved identifiers went through the plugin's `normalizeIdentifier`.
+      const identifier = event.identifier.toUpperCase();
+      return /-\d+$/.test(identifier)
+        ? { issueIdentifier: identifier }
+        : { teamKey: identifier };
+    };
+
+    expect(
+      identifierMatchMismatches({
+        resourceTypes: linearPlugin().events?.resourceTypes ?? [],
+        events,
+        matches: eventMatches,
+        toMatch,
+      }),
+    ).toEqual([]);
   });
 
   it("normalizes a created issue for the issue and team", () => {

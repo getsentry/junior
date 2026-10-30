@@ -6,6 +6,7 @@ import {
   type Actor,
   type PluginLogger,
   type PluginEgress,
+  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -15,7 +16,12 @@ import {
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import {
+  appendGitHubRequesterAttribution,
+  resolveGitHubRequester,
+} from "../tool-support/attribution.js";
+import type { GitHubDb } from "../db/database.js";
+import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 
 const inputSchema = z
@@ -181,11 +187,14 @@ function githubGraphqlErrorMessage(payload: unknown): string {
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdatePullRequestTool(ctx: {
   actor?: Actor;
+  automationLink?: { url: string };
   conversationId?: string;
+  db: unknown;
   egress: PluginEgress;
   log: PluginLogger;
   events: { canSubscribe: boolean };
   slack?: { conversationLink?: { url?: string } };
+  source?: Source;
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
   };
@@ -211,12 +220,13 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       }
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
+      const requester = await resolveGitHubRequester(ctx);
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                await appendGitHubRequesterAttribution(update.body, ctx),
+                appendGitHubRequesterAttribution(update.body, ctx, requester),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),
@@ -274,12 +284,20 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           repo: repo.ref,
         });
       }
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubPullRequestSubscribable({
-            number: providerResult.number,
-            repo: repo.ref,
-          })
-        : undefined;
+      // Like attribution, each person who asks Junior to change the pull
+      // request becomes one of its requesters.
+      if (requester?.identity) {
+        await recordGitHubPullRequestRequester(ctx.db as GitHubDb, {
+          identityId: requester.identity.id,
+          number: providerResult.number,
+          repositoryFullName: repo.ref,
+        });
+      }
+      const subscribable = gitHubPullRequestSubscribable({
+        canSubscribe: ctx.events.canSubscribe,
+        number: providerResult.number,
+        repo: repo.ref,
+      });
       const data: PullRequest = {
         base: providerResult.base.ref,
         body: providerResult.body,

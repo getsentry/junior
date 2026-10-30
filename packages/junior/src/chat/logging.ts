@@ -180,8 +180,10 @@ const CONSOLE_PRIORITY_INDEX: Map<string, number> = new Map(
 const CONSOLE_ALWAYS_HIDDEN_KEYS = new Set([
   "gen_ai.agent.name",
   "app.platform",
-  "enduser.id",
-  "enduser.pseudo.id",
+  "user.id",
+  "user.name",
+  "user.email",
+  "user.full_name",
   "http.request.method",
   "messaging.system",
   "url.full",
@@ -217,8 +219,18 @@ function getSentryEnvironment(): string {
     .toLowerCase();
 }
 
-function shouldSuppressInfoLog(level: LogLevel): boolean {
-  return getSentryEnvironment() === "production" && level === "info";
+/** Marks an audit event. Sentry keeps it in production. */
+const AUDIT_LOG_ATTRIBUTE = "app.log.audit";
+
+function shouldSuppressInfoLog(
+  level: LogLevel,
+  attributes: LogAttributes,
+): boolean {
+  return (
+    getSentryEnvironment() === "production" &&
+    level === "info" &&
+    attributes[AUDIT_LOG_ATTRIBUTE] !== true
+  );
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
@@ -643,7 +655,7 @@ function emitSentry(
   body: string,
   attributes: LogAttributes,
 ): void {
-  if (shouldSuppressInfoLog(level)) {
+  if (shouldSuppressInfoLog(level, attributes)) {
     return;
   }
 
@@ -697,9 +709,7 @@ function formatConsoleValue(value: AttributeValue): string {
 }
 
 function shouldShowConsoleDestinationName(eventName: string): boolean {
-  return /^(app_home|oauth|queue|slash_command|slack|webhook)\./.test(
-    eventName,
-  );
+  return /^(app_home|oauth|queue|slack|webhook)\./.test(eventName);
 }
 
 function shouldShowConsoleModel(level: LogLevel, eventName: string): boolean {
@@ -1360,17 +1370,10 @@ export function getLogContextAttributes(): LogAttributes {
 /** Return inherited log context filtered to attributes valid for the span operation. */
 export function getLogContextAttributesForSpan(op: string): LogAttributes {
   const attributes = { ...getLogContextAttributes() };
-  if (op === "gen_ai.invoke_agent" || op === "gen_ai.execute_tool") {
-    delete attributes["gen_ai.request.model"];
-    return attributes;
-  }
-  if (op === "gen_ai.chat" || op === "gen_ai.embeddings") {
-    delete attributes["gen_ai.agent.name"];
-    delete attributes["gen_ai.request.model"];
-    return attributes;
-  }
-  delete attributes["gen_ai.agent.name"];
   delete attributes["gen_ai.request.model"];
+  if (op !== "gen_ai.invoke_agent" && op !== "gen_ai.execute_tool") {
+    delete attributes["gen_ai.agent.name"];
+  }
   return attributes;
 }
 
@@ -1512,11 +1515,7 @@ function setAttributesOnSpan(
   span: Sentry.Span,
   attributes: Record<string, unknown>,
 ): void {
-  for (const [key, value] of Object.entries(
-    normalizeSpanAttributes(attributes),
-  )) {
-    span.setAttribute(key, value);
-  }
+  span.setAttributes(normalizeSpanAttributes(attributes));
 }
 
 /**
@@ -1539,6 +1538,20 @@ export function logInfo(
   attributes: Record<string, unknown> = {},
 ): void {
   log.info(eventName, attributes);
+}
+
+/**
+ * Emit an audit event: an info event that Sentry also keeps in production.
+ *
+ * Use it only to record who caused an external side effect and why. Other
+ * info events stay out of Sentry in production. Sentry log retention is not
+ * durable audit storage.
+ */
+export function logAudit(
+  eventName: string,
+  attributes: Record<string, unknown> = {},
+): void {
+  log.info(eventName, { ...attributes, [AUDIT_LOG_ATTRIBUTE]: true });
 }
 
 /**
@@ -1627,36 +1640,37 @@ export async function withSpan<T>(
   callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   attributes: Record<string, unknown> = {},
 ): Promise<T> {
-  const normalizedAttributes = normalizeSpanAttributes(attributes);
-
-  return withLogContext(context, () => {
-    // Child spans inherit the active log context so nested GenAI spans keep
-    // conversation/session correlation even when callers pass only delta
-    // context such as modelId or tool metadata.
-    const inheritedAttributes = getLogContextAttributesForSpan(op);
-    return Sentry.startSpan(
+  return withLogContext(context, () =>
+    Sentry.startSpan(
       {
         name,
         op,
         attributes: {
-          ...inheritedAttributes,
-          ...normalizedAttributes,
+          // Child spans inherit the active log context so nested GenAI spans
+          // keep conversation correlation when callers pass only delta context.
+          ...getLogContextAttributesForSpan(op),
+          ...normalizeSpanAttributes(attributes),
         },
       },
-      async (span: Sentry.Span) => {
+      async (span) => {
         try {
           return await callback((attributes) =>
             setAttributesOnSpan(span, attributes),
           );
         } catch (error) {
-          setAttributesOnSpan(span, {
-            "error.type": error instanceof Error ? error.name : typeof error,
-          });
+          // Sentry sets the error status but not `error.type`. Keep a more
+          // specific type that the callback already set.
+          if (spanToJSON(span).attributes?.["error.type"] === undefined) {
+            span.setAttribute(
+              "error.type",
+              error instanceof Error ? error.name : typeof error,
+            );
+          }
           throw error;
         }
       },
-    );
-  });
+    ),
+  );
 }
 
 /** Return Sentry-standard trace propagation headers for the active span. */
@@ -1674,6 +1688,14 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
     }
   }
   return headers;
+}
+
+/** Return the active trace as a durable trace context, if there is one. */
+export function getActiveTraceContext():
+  | { baggage?: string; sentryTrace: string }
+  | undefined {
+  const { "sentry-trace": sentryTrace, baggage } = getTracePropagationHeaders();
+  return sentryTrace ? { baggage, sentryTrace } : undefined;
 }
 
 /** Set attributes on the currently active Sentry span. */

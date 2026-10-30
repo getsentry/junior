@@ -82,10 +82,7 @@ test("opens a registered plugin page from primary navigation", async ({
   expect(navLinks.at(-1)?.trim()).toBe("System");
 });
 
-test("opens memory details in a slide-out drawer", async ({
-  page,
-  dashboard,
-}) => {
+test("opens memory details beside the library", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto(`${dashboard.baseURL}/memories/library`);
 
@@ -94,51 +91,37 @@ test("opens memory details in a slide-out drawer", async ({
   });
   await memory.click();
   await expect(page).toHaveURL(/\/memories\/memory-1/);
+  const details = page.getByRole("complementary", { name: "Memory details" });
+  await expect(
+    details.getByRole("heading", { name: "Private preference" }),
+  ).toBeVisible();
+  await expect(details.getByText("From a Slack conversation")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // The docked panel is not modal: the list stays usable beside it.
+  await expect(memory).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(page).toHaveURL(/\/memories\/library$/);
+  await expect(memory).toBeFocused();
   await expect(
     page
       .getByRole("navigation", { name: "Memory navigation" })
       .getByRole("link", { name: "Memories" }),
   ).toHaveAttribute("aria-current", "page");
-  const details = page.getByRole("dialog", { name: "What Junior remembers" });
-  await expect(details).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("hidden");
-  const closeMemoryDetails = details.getByRole("button", {
-    name: "Close memory details",
-  });
-  await expect(closeMemoryDetails).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(closeMemoryDetails).not.toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(closeMemoryDetails).toBeFocused();
-  await expect(details.getByText("Why Junior remembers this")).toBeVisible();
-  await expect(details.getByText(/Preference · Private ·/)).toBeVisible();
-  await expect(
-    details.getByText(/Junior learned this from a Slack conversation/),
-  ).toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("");
-  await expect(memory).toBeFocused();
 
   await page.setViewportSize({ height: 844, width: 390 });
   await memory.click();
   const mobileDetails = page.getByRole("dialog", {
-    name: "What Junior remembers",
+    name: "Private preference",
   });
   await expect(mobileDetails).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("hidden");
   await expect(
-    mobileDetails.getByText("Why Junior remembers this"),
+    mobileDetails.getByRole("button", { name: "Forget this memory" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(memory).toBeFocused();
 });
 
 test("renders an empty registered plugin page", async ({ page, dashboard }) => {
@@ -313,15 +296,18 @@ test("searches, paginates, and forgets plugin page records", async ({
     }),
   ).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page
     .getByRole("button", {
       name: /^View memory details: Deploy runbooks live in Notion/,
     })
     .click();
   await page
-    .getByRole("dialog", { name: "What Junior remembers" })
+    .getByRole("complementary", { name: "Memory details" })
     .getByRole("button", { name: "Forget this memory" })
+    .click();
+  await page
+    .getByRole("alertdialog", { name: "Forget this memory?" })
+    .getByRole("button", { name: "Forget" })
     .evaluate((button) => {
       button.click();
       button.click();

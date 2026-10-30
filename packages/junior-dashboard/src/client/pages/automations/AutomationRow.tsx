@@ -1,38 +1,28 @@
 import type { AutomationSummary } from "@sentry/junior/api/schema";
-import {
-  CalendarClock,
-  LockKeyhole,
-  MoreHorizontal,
-  Trash2,
-  Zap,
-} from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { CalendarClock, LockKeyhole, Zap } from "lucide-react";
+import { type ReactNode } from "react";
+import { Link } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
-import { formatRelativeTime, peoplePath } from "../../format";
+import { automationPath, formatRelativeTime, peoplePath } from "../../format";
+import { eventTriggerText } from "@sentry/junior-plugin-api";
 import {
-  automationEventConditions,
-  automationEventNames,
   automationScheduleLabel,
   formatAutomationRunTime,
 } from "./automationFormat";
 
 /**
  * Show one automation as a compact card: what it is, where it posts, who owns
- * it, and when it runs. Instructions, timezones, and event conditions stay in
- * the details drawer.
+ * it, and when it runs. Instructions, timezones, and event filters stay on
+ * the Automation page. The title links to that page.
  */
 export function AutomationRow(props: {
-  deleting: boolean;
-  onDelete(): void;
   onSelect(): void;
-  selected: boolean;
   automation: AutomationSummary;
+  to: string;
 }) {
   const { automation } = props;
-  const location = useLocation();
   const status = automationStatus(automation);
   const creator = (
     <>
@@ -47,20 +37,19 @@ export function AutomationRow(props: {
   return (
     <article
       className="min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint"
+      data-automation-id={automation.id}
       role="listitem"
     >
       <SelectableRow
         className="flex items-start gap-3 rounded-lg px-4 py-3.5"
         onSelect={props.onSelect}
-        selected={props.selected}
+        selected={false}
       >
         <div className="min-w-0 flex-1">
-          <button
-            aria-expanded={props.selected}
-            aria-label={`View automation details: ${automation.title}`}
-            className="block w-full min-w-0 cursor-pointer rounded-md border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-            onClick={props.onSelect}
-            type="button"
+          <Link
+            aria-label={`Open automation: ${automation.title}`}
+            className="block w-full min-w-0 rounded-md text-left no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            to={props.to}
           >
             <span className="flex min-w-0 items-center gap-2">
               <span
@@ -84,7 +73,7 @@ export function AutomationRow(props: {
               ) : null}
             </span>
             <AutomationSummaryLine automation={automation} />
-          </button>
+          </Link>
           <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-dashboard-text-muted">
             {automation.createdByEmail ? (
               <Link
@@ -105,16 +94,6 @@ export function AutomationRow(props: {
             <AutomationTiming automation={automation} />
           </div>
         </div>
-        {automation.ownedByViewer ? (
-          <div className="-mr-2 -mt-1.5 shrink-0">
-            <AutomationActions
-              editPath={`/automations/${encodeURIComponent(automation.id)}/edit${location.search}`}
-              deleting={props.deleting}
-              onDelete={props.onDelete}
-              title={automation.title}
-            />
-          </div>
-        ) : null}
       </SelectableRow>
     </article>
   );
@@ -126,7 +105,9 @@ function automationStatus(automation: AutomationSummary): string | undefined {
     return automation.status === "active" ? undefined : automation.status;
   }
   if (automation.status !== "active") return automation.status;
-  return automation.triggerAvailable ? undefined : "Trigger unavailable";
+  return automation.trigger.problems.length === 0
+    ? undefined
+    : "Trigger unavailable";
 }
 
 /** Combine the trigger and Destination into one muted line under the title. */
@@ -140,15 +121,11 @@ function AutomationSummaryLine({
   const trigger =
     automation.kind === "scheduled"
       ? automation.schedule
-      : `${automation.resource} · ${automationEventNames(automation)}`;
-  const conditions =
-    automation.kind === "event" ? automationEventConditions(automation) : "";
+      : eventTriggerText(automation.resource, automation.trigger);
   const triggerDetail =
     automation.kind === "scheduled"
       ? automationScheduleLabel(automation)
-      : conditions
-        ? `${trigger} · ${conditions}`
-        : trigger;
+      : trigger;
   return (
     <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-dashboard-text-muted">
       <Icon
@@ -208,7 +185,7 @@ function AutomationTiming({ automation }: { automation: AutomationSummary }) {
         {lastRunFailed ? (
           <Link
             className="text-amber-300 underline"
-            to={`/automations/${encodeURIComponent(automation.id)}/executions`}
+            to={automationPath(automation.id, "runs")}
           >
             Last run {automation.lastRunStatus}
             {automation.lastRunAt
@@ -234,110 +211,5 @@ function MetaItem(props: { children: ReactNode; title?: string }) {
       </span>
       {props.children}
     </span>
-  );
-}
-
-function AutomationActions(props: {
-  editPath: string;
-  deleting: boolean;
-  onDelete(): void;
-  title: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const item = useRef<HTMLButtonElement>(null);
-  const menuId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    item.current?.focus();
-    function closeOutside(event: PointerEvent) {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("pointerdown", closeOutside);
-    return () => document.removeEventListener("pointerdown", closeOutside);
-  }, [open]);
-
-  function close() {
-    setOpen(false);
-    trigger.current?.focus();
-  }
-
-  return (
-    <div
-      className="relative"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          close();
-        } else if (
-          ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
-        ) {
-          event.preventDefault();
-          setOpen(true);
-          const items = Array.from(
-            root.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ??
-              [],
-          );
-          const index = items.indexOf(document.activeElement as HTMLElement);
-          const next =
-            event.key === "Home"
-              ? 0
-              : event.key === "End"
-                ? items.length - 1
-                : (index + (event.key === "ArrowUp" ? -1 : 1) + items.length) %
-                  items.length;
-          items[next]?.focus();
-        }
-      }}
-      ref={root}
-    >
-      <button
-        aria-controls={open ? menuId : undefined}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label={`Actions: ${props.title}`}
-        className="grid size-11 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-50 xl:size-9"
-        disabled={props.deleting}
-        onClick={() => setOpen(!open)}
-        ref={trigger}
-        type="button"
-      >
-        <MoreHorizontal aria-hidden="true" size={18} />
-      </button>
-      {open ? (
-        <div
-          aria-label={`Actions: ${props.title}`}
-          className="absolute right-0 top-full z-20 min-w-36 rounded-md border border-dashboard-border bg-dashboard-surface-raised p-1 shadow-lg"
-          id={menuId}
-          onClick={(event) => event.stopPropagation()}
-          role="menu"
-        >
-          <Link
-            role="menuitem"
-            to={props.editPath}
-            className="flex min-h-11 items-center rounded-md px-3 text-sm text-dashboard-text no-underline hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-dashboard-focus"
-          >
-            Edit automation
-          </Link>
-          <button
-            className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-3 text-sm text-rose-300 hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-            onClick={() => {
-              close();
-              props.onDelete();
-            }}
-            ref={item}
-            role="menuitem"
-            type="button"
-          >
-            <Trash2 aria-hidden="true" size={15} /> Delete
-          </button>
-        </div>
-      ) : null}
-    </div>
   );
 }

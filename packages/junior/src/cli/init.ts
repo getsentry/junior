@@ -18,21 +18,12 @@ const [
 ]);
 
 const app = await createApp({
+  allowedDomains: ["example.com"],
   briefs: { enabled: true },
   plugins,
 });
 
 export default app;
-`,
-  );
-}
-
-function writeInstrumentFile(targetDir: string): void {
-  fs.writeFileSync(
-    path.join(targetDir, "instrument.mjs"),
-    `import { initSentry } from "@sentry/junior/instrumentation";
-
-initSentry();
 `,
   );
 }
@@ -54,9 +45,8 @@ export const plugins = defineJuniorPlugins([
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
-    `import { withSentryConfig } from "@sentry/nitro";
-import { defineConfig } from "nitro";
-import { juniorNitro } from "@sentry/junior/nitro";
+    `import { defineConfig } from "nitro";
+import { juniorNitro, withSentryConfig } from "@sentry/junior/nitro";
 
 const config = defineConfig({
   preset: "vercel",
@@ -99,8 +89,6 @@ function writePnpmWorkspace(targetDir: string): void {
     `minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
-allowBuilds:
-  "@sentry/cli": true
 `,
   );
 }
@@ -172,27 +160,23 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
+      dev: "nitro dev",
       check: "junior check",
       build: "junior snapshot create && nitro build",
-      preview: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
+      preview: "nitro preview",
       typecheck: "tsc --noEmit",
     },
     dependencies: {
-      "@opentelemetry/api": "1.9.1",
-      "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
-      "@sentry/nitro": "10.65.0",
-      hono: "^4.12.27",
+      hono: "^4.13.11",
     },
     devDependencies: {
       "@types/node": "^25.9.1",
-      "cross-env": "^10.1.0",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
-      typescript: "^6.0.3",
+      typescript: "^7.0.2",
     },
   };
   fs.writeFileSync(
@@ -239,7 +223,6 @@ export async function runInit(
 SLACK_SIGNING_SECRET=
 JUNIOR_SECRET=
 JUNIOR_BOT_NAME=
-JUNIOR_SLASH_COMMAND=
 JUNIOR_CROSS_ACTOR_MID_RUN_MODE=
 AI_MODEL=
 AI_FAST_MODEL=
@@ -266,7 +249,6 @@ SENTRY_AUTH_TOKEN=
   );
 
   writeServerEntry(target);
-  writeInstrumentFile(target);
   writePluginsFile(target);
   writeNitroConfig(target);
   writeTsConfig(target);

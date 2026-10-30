@@ -32,6 +32,7 @@ import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
 import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
 import { createListCalendarEventsTool } from "./tools/list-events";
 import { createReadGoogleDocTool } from "./tools/read-doc";
+import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript";
 import { createReadGoogleSheetTool } from "./tools/read-sheet";
 import { createReadGoogleSlidesTool } from "./tools/read-slides";
 import { createSearchGoogleFilesTool } from "./tools/search-files";
@@ -45,7 +46,7 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling and Google Docs, Sheets, and Slides reading as Junior's own Google Workspace account",
+        "Google Calendar scheduling, Meet transcripts, and Google Docs, Sheets, and Slides reading as your own Google Workspace account",
       domains: GOOGLE_API_DOMAINS,
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
@@ -76,6 +77,7 @@ export function googlePlugin(): PluginRegistration {
           accountEmail: config.accountEmail,
           allowedDomains: config.allowedDomains,
           egress: ctx.egress,
+          sandbox: ctx.sandbox,
           users: ctx.users,
         };
         return {
@@ -87,6 +89,7 @@ export function googlePlugin(): PluginRegistration {
           readGoogleDoc: createReadGoogleDocTool(toolContext),
           readGoogleSheet: createReadGoogleSheetTool(toolContext),
           readGoogleSlides: createReadGoogleSlidesTool(toolContext),
+          readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
           searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };

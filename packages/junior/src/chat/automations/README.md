@@ -42,6 +42,10 @@ An Automation run is one dispatch of an Automation. Each run is one row in
 - Dispatch sets `conversation_id` when the dispatch Conversation exists. A
   later write of the same run fills a missing link. A skipped run, or a run
   that fails before dispatch, has no Conversation.
+- Dispatch sets `automation_version` to the newest version whose definition
+  is the same as the dispatched definition. Later writes keep it. It is null
+  when the run was not dispatched, and when no version matches. This shows
+  which instruction a run used, and who saved it, after later edits.
 - The heartbeat settles running runs of both kinds from their dispatch record,
   also when the Automation was deleted during the run. A run whose dispatch
   record is gone becomes `failed`.
@@ -82,10 +86,17 @@ instruction or event selector switches creator credential use to system
 credentials. The edit read returns `ownedByViewer` so the editor can show
 these rules before a save.
 
-An Automation runs later without the request that created it. The agent tools
-that create or update an Automation reject an instruction that names the
-requester by display name without their Slack mention. A name does not notify
-the person.
+An Automation runs later without the request that created it. So the agent
+tools tell the agent to write exact targets, such as a channel mention or a
+link. The agent calls the creator "the Automation creator". It names every
+other person with their Slack mention, also a requester who did not create the
+Automation. Each run puts the creator mention in the `Created by:` task input
+line. That line also says that "me" and "my" mean the creator. People can
+write these words in the dashboard editor.
+
+The agent tools that create or update an Automation reject an instruction that
+names the requester by display name without their Slack mention. A name does
+not notify the person.
 
 ## Versions
 

@@ -77,6 +77,7 @@ import {
 } from "@/deployment";
 import {
   consumeConversationQueueMessage,
+  conversationWorkQueueConsumer,
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
@@ -89,6 +90,7 @@ import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
+  pluginTaskQueueConsumer,
   registerVercelPluginTaskDevConsumer,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
@@ -96,14 +98,22 @@ import { processPluginTask } from "@/chat/plugins/task-runner";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
+  workspaceSnapshotJobQueueConsumer,
 } from "@/chat/sandbox/snapshot/job-callback";
+import {
+  getQueueProvider,
+  type QueueConsumer,
+  type QueueWorker,
+} from "@/chat/queue/provider";
+import { closeDb } from "@/chat/db";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
 } from "@/chat/app/production";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
-import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
+import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
@@ -115,6 +125,16 @@ import {
   ACP_AUTHORIZATION_PATH,
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
+import {
+  createSignInAuth,
+  resolveSignInAuthConfig,
+  type SignInAuth,
+  type SignInAuthConfig,
+} from "@/chat/sign-in/auth";
+import {
+  assertNoLegacyAllowedDomains,
+  resolveAllowedDomains,
+} from "@/chat/sign-in/allowlist";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -140,6 +160,14 @@ export interface JuniorAppOptions extends BotModelConfig {
    * default-model call per completed Turn. Disabled by default.
    */
   briefs?: { enabled?: boolean };
+  /**
+   * Domains that may use Junior. Slack checks the email domain of the
+   * author's Slack profile. Dashboard Google sign-in checks the `hd` claim of
+   * the Google Workspace account. Defaults to `JUNIOR_ALLOWED_DOMAINS`.
+   * Recommended. Dashboard auth requires at least one. Empty lets every
+   * Slack workspace member use Junior.
+   */
+  allowedDomains?: string[];
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -170,6 +198,11 @@ export interface JuniorAppOptions extends BotModelConfig {
      * `JUNIOR_CROSS_ACTOR_MID_RUN_MODE` or `follow_up`.
      */
     crossActorMidRunMode?: CrossActorMidRunMode;
+    /**
+     * Slack user IDs of bots that may start a Turn from a mention or DM. Bots
+     * have no profile email, so `allowedDomains` blocks them otherwise.
+     */
+    allowedBotUserIds?: string[];
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
@@ -387,8 +420,55 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   }
 }
 
+/** A Hono app from `createApp()` that can also run its queue consumers. */
+export type JuniorApp = Hono & {
+  /**
+   * Pull this app's queue messages in this process until `close()`.
+   *
+   * Only for a queue provider whose consumers pull messages, such as the
+   * local BullMQ queue. The dev server runs it in its own worker process, so
+   * the Nitro process only sends messages. `close()` also closes the database
+   * and state connections of this process.
+   */
+  startQueueWorker(): Promise<QueueWorker>;
+};
+
+async function startQueueWorker(
+  consumers: QueueConsumer[],
+  backgroundWork: Set<Promise<unknown>>,
+): Promise<QueueWorker> {
+  const provider = getQueueProvider();
+  if (!provider.startWorker) {
+    throw new Error(
+      `The ${provider.messagingSystem} queue provider has no queue worker`,
+    );
+  }
+  const worker = await provider.startWorker(consumers);
+  return {
+    // Try every step, so one failure does not leave the other resources open.
+    close: async () => {
+      try {
+        await worker.close();
+      } finally {
+        // A job can end before the work it started with `waitUntil`, such
+        // as title work. Let that work finish before its connections close.
+        while (backgroundWork.size > 0) {
+          await Promise.allSettled(backgroundWork);
+        }
+        try {
+          await disconnectStateAdapter();
+        } finally {
+          await closeDb();
+        }
+      }
+    },
+  };
+}
+
 /** Create a Hono app with all Junior routes. */
-export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
+export async function createApp(
+  options?: JuniorAppOptions,
+): Promise<JuniorApp> {
   const virtualConfig = await resolveVirtualConfig();
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
@@ -435,6 +515,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }),
   });
   let sandboxEgressTracePropagationDomains: string[] = [];
+  let signInConfig: SignInAuthConfig | undefined;
+  let allowedDomains: string[] = [];
   try {
     sandboxEgressTracePropagationDomains =
       normalizeSandboxEgressTracePropagationDomains(
@@ -455,6 +537,22 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setSlackReactionConfig(options?.slack ?? {});
     if (options?.slack?.crossActorMidRunMode) {
       setCrossActorMidRunMode(options.slack.crossActorMidRunMode);
+    }
+    // One domain list for Slack authors and dashboard sign-ins.
+    assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
+    allowedDomains = resolveAllowedDomains(options?.allowedDomains);
+    if (allowedDomains.length === 0) {
+      logWarn("app.allowed_domains.unset", {
+        "app.reason":
+          "allowedDomains is empty, so any Slack workspace member can use Junior",
+      });
+    }
+    if (dashboard && !dashboard.disabled) {
+      signInConfig = resolveSignInAuthConfig(
+        botConfig.userName,
+        allowedDomains,
+        dashboard,
+      );
     }
     if (shouldValidatePluginCatalog) {
       pluginCatalogRuntime.getSignature();
@@ -484,7 +582,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
-  const attachmentStorage = createVercelAttachmentStorage();
+  const attachmentStorage = getAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
     bindMessageAgent: (request) =>
@@ -498,6 +596,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     sandbox: { tracePropagation },
     visionContext: { attachmentStorage },
   };
+  // Background work that Conversation work starts. A queue worker waits for
+  // it before it closes its connections.
+  const backgroundWork = new Set<Promise<unknown>>();
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = (): ConversationWorkCallbackOptions => {
     conversationWorkOptions ??=
@@ -509,7 +610,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
           ? { sendPluginTask: (message) => pluginTaskQueue.send(message) }
           : undefined),
         services: runtimeServiceOverrides,
-        waitUntil: (task) => waitUntil(task),
+        waitUntil: (task) => {
+          backgroundWork.add(task);
+          void task
+            .finally(() => backgroundWork.delete(task))
+            .catch(() => undefined);
+          waitUntil(task);
+        },
       });
     return conversationWorkOptions;
   };
@@ -570,10 +677,18 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     restoreRuntimeConfig();
     throw error;
   }
-  const slackWebhookServices = createProductionSlackWebhookServices({
-    queue: conversationWorkQueue,
-    services: runtimeServiceOverrides,
-  });
+  // The Google sign-in session of the dashboard.
+  const signInAuth: SignInAuth | undefined = signInConfig
+    ? createSignInAuth(signInConfig)
+    : undefined;
+  const slackWebhookServices = {
+    ...createProductionSlackWebhookServices({
+      queue: conversationWorkQueue,
+      services: runtimeServiceOverrides,
+    }),
+    allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
+    allowedDomains,
+  };
 
   const app = new Hono();
 
@@ -597,9 +712,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   mountRoutes(
     app,
     await createDashboardRouteRegistrations({
+      allowedDomains,
+      auth: signInAuth,
       authenticatedRoutes,
       conversationWorkQueue,
-      dashboard,
+      // Keep dashboard redirects on the origin of the sign-in callback.
+      dashboard:
+        dashboard && signInConfig
+          ? { ...dashboard, baseURL: signInConfig.baseURL }
+          : dashboard,
       createDashboardApp: virtualConfig?.createDashboardApp,
       pluginRoutes: pluginApiRoutes,
     }),
@@ -687,5 +808,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     });
   });
 
-  return app;
+  return Object.assign(app, {
+    startQueueWorker: () =>
+      startQueueWorker(
+        [
+          conversationWorkQueueConsumer(getConversationWorkOptions()),
+          pluginTaskQueueConsumer(),
+          workspaceSnapshotJobQueueConsumer(),
+        ],
+        backgroundWork,
+      ),
+  });
 }

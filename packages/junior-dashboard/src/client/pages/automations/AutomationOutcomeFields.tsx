@@ -3,8 +3,9 @@ import type {
   AutomationEdit,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { Button } from "../../components/Button";
-import { Select } from "../../components/Select";
+import { Button } from "../../components/ui/button";
+import { NativeSelect } from "../../components/ui/native-select";
+import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { cn } from "../../styles";
 import type { AutomationDraft } from "./automationDraft";
 import { automationOutcomeLabel } from "./automationOutcomes";
@@ -17,7 +18,7 @@ export function AutomationOutcomeList(props: {
   if (!props.outcomes.length)
     return <p className="m-0 text-sm">No success message</p>;
   return (
-    <ol className="m-0 grid gap-2 pl-5 text-sm">
+    <ol className="m-0 grid list-decimal gap-2 pl-5 text-sm">
       {props.outcomes.map((outcome, index) => (
         <li key={index}>
           {automationOutcomeLabel(outcome, props.destination)}
@@ -32,6 +33,8 @@ export function AutomationOutcomeFields(props: {
   value: AutomationDraft["outcomes"];
   original: AutomationEdit["outcomes"];
   destination: AutomationSummary["destination"];
+  /** Base UI radios do not inherit a native fieldset's disabled state. */
+  disabled?: boolean;
   onChange(value: AutomationDraft["outcomes"]): void;
 }) {
   const defaultOutcomes: AutomationDraft["outcomes"] = props.original.length
@@ -65,26 +68,25 @@ export function AutomationOutcomeFields(props: {
   ];
   return (
     <>
-      <fieldset>
-        <legend className="sr-only">Success messages</legend>
-        <div className="flex flex-wrap gap-x-6 gap-y-3">
-          {[true, false].map((send) => (
-            <label
-              key={String(send)}
-              className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm"
-            >
-              <input
-                type="radio"
-                name="messages"
-                className="size-4 accent-dashboard-focus"
-                checked={Boolean(props.value.length) === send}
-                onChange={() => props.onChange(send ? defaultOutcomes : [])}
-              />
-              {send ? "Send a message" : "No success message"}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <RadioGroup
+        aria-label="Success messages"
+        disabled={props.disabled}
+        className="flex flex-wrap gap-x-6 gap-y-3"
+        onValueChange={(send: boolean) =>
+          props.onChange(send ? defaultOutcomes : [])
+        }
+        value={props.value.length > 0}
+      >
+        {[true, false].map((send) => (
+          <label
+            key={String(send)}
+            className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm"
+          >
+            <RadioGroupItem value={send} />
+            {send ? "Send a message" : "No success message"}
+          </label>
+        ))}
+      </RadioGroup>
       {props.value.length ? (
         <div className="grid gap-4 sm:gap-2">
           {props.value.map((outcome, index) => {
@@ -106,7 +108,7 @@ export function AutomationOutcomeFields(props: {
                       "order-last basis-full sm:order-none sm:basis-auto",
                   )}
                 >
-                  <Select
+                  <NativeSelect
                     aria-label={`Message ${index + 1} destination`}
                     value={
                       typeof outcome.destination === "string"
@@ -130,7 +132,7 @@ export function AutomationOutcomeFields(props: {
                         {option.label}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </div>
                 {props.value.length > 1 ? (
                   <>
@@ -141,10 +143,10 @@ export function AutomationOutcomeFields(props: {
                       disabled={index === 0}
                       onClick={() => {
                         const next = [...props.value];
-                        [next[index - 1], next[index]] = [
-                          next[index],
-                          next[index - 1],
-                        ];
+                        const previous = next[index - 1];
+                        if (!previous) return;
+                        next[index - 1] = outcome;
+                        next[index] = previous;
                         props.onChange(next);
                       }}
                     >

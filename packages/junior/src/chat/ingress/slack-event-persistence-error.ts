@@ -1,6 +1,6 @@
 /** A Slack input that Junior could not fully save and wake a worker for. */
 export class SlackEventPersistenceError extends Error {
-  readonly cause: unknown;
+  override readonly cause: unknown;
   /** True when the mailbox kept the input and only the queue send failed. */
   readonly saved: boolean;
 

@@ -1,4 +1,5 @@
 import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import { GITHUB_DEPLOYMENT_EVENTS } from "./deployment.js";
 import { GITHUB_ISSUE_EVENTS, GITHUB_ISSUE_SUGGESTED_EVENTS } from "./issue.js";
 import {
   GITHUB_PULL_REQUEST_EVENTS,
@@ -8,7 +9,7 @@ import {
 /** The identifier shape that `gitHubRepositoryResource` builds. */
 export const GITHUB_REPOSITORY_IDENTIFIER = {
   format: "owner/repo",
-  pattern: /^[^\s/:#]+\/[^\s/:#]+$/,
+  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+$`,
 };
 
 /** Build the stable repository identity shared by tools and webhooks. */
@@ -22,20 +23,35 @@ export function gitHubRepositoryResource(input: {
   };
 }
 
-/** Describe a repository as a resource when webhook subscriptions are enabled. */
+/** Events that a repository Watch gets: deployments, issues, and pull requests. */
+export const GITHUB_REPOSITORY_EVENTS = [
+  ...GITHUB_DEPLOYMENT_EVENTS,
+  ...GITHUB_ISSUE_EVENTS,
+  ...GITHUB_PULL_REQUEST_EVENTS,
+] as const;
+
+/** Repository events to suggest when a conversation starts a Watch. */
+export const GITHUB_REPOSITORY_SUGGESTED_EVENTS = [
+  "issue.opened",
+  "pull_request.opened",
+  ...GITHUB_ISSUE_SUGGESTED_EVENTS,
+  ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+] as const;
+
+/**
+ * Describe a repository as a resource that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
+ */
 export function gitHubRepositorySubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   repo: string;
 }): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubRepositoryResource(input),
-    suggestedEvents: [
-      "issue.opened",
-      "pull_request.opened",
-      ...GITHUB_ISSUE_SUGGESTED_EVENTS,
-      ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-    ],
-    supportedEvents: [...GITHUB_ISSUE_EVENTS, ...GITHUB_PULL_REQUEST_EVENTS],
+    suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+    supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
     type: "repository",
   };
 }

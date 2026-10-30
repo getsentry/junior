@@ -1,18 +1,12 @@
 import { useEffect } from "react";
-import {
-  useLocation,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { Globe2, ListChecks, LockKeyhole, UserRound } from "lucide-react";
-import { useAutomationsData, useAutomationData } from "../../api";
-import { Button } from "../../components/Button";
+import { useAutomationsData } from "../../api";
+import { Button } from "../../components/ui/button";
 import { AutomationFilters, AutomationSort } from "./AutomationFilters";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -25,7 +19,6 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import { deleteDashboardResource } from "../../http";
 import { automationPath } from "../../format";
 import { useDocumentTitle } from "../../documentTitle";
 import {
@@ -35,7 +28,6 @@ import {
 } from "../../searchParams";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
-import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
 
 const AUTOMATION_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
@@ -54,10 +46,8 @@ export function AutomationsPage(props: {
   enabled: boolean;
   view: "list" | "overview";
 }) {
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { automationId } = useParams();
   const [rangeParam, setRangeParam] = useSearchParamEnum(
     "range",
     "30",
@@ -92,18 +82,14 @@ export function AutomationsPage(props: {
     props.enabled,
     props.view === "list" ? request.toString() : "",
   );
-  const detail = useAutomationData(props.enabled, automationId);
-  const setFilter = (key: string, value: string) =>
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete("page");
-        if (value) next.set(key, value);
-        else next.delete(key);
-        return next;
-      },
-      { replace: true },
-    );
+  const setFilter = (key: string, value: string) => {
+    // Consecutive control events can precede the router's next render.
+    const next = new URLSearchParams(window.location.search);
+    next.delete("page");
+    if (value) next.set(key, value);
+    else next.delete(key);
+    setSearchParams(next, { replace: true });
+  };
   const setPage = (page: number) =>
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -111,10 +97,9 @@ export function AutomationsPage(props: {
       else next.set("page", String(page));
       return next;
     });
-  const listPath = "/automations/list";
-  const tasksPath = (pathname: string) =>
-    pathWithSearch(pathname, location.search);
-  const selectedTaskPath = (id: string) => tasksPath(automationPath(id));
+  // The Automation page keeps the list query, so its back link restores it.
+  const automationPagePath = (id: string) =>
+    pathWithSearch(automationPath(id), location.search);
   const automations = query.data?.automations ?? EMPTY_TASKS;
   const mineCount = query.data?.counts.mine ?? 0;
   const publicCount = query.data?.counts.public ?? 0;
@@ -122,13 +107,8 @@ export function AutomationsPage(props: {
   const visibleTaskCount = query.data?.total ?? 0;
   const totalPages = pageCount(visibleTaskCount, filters.pageSize);
   const page = query.data?.page ?? filters.page;
-  const selectedTask = detail.data;
   // Overview names the tab through PageHeader; the list has a plain heading.
-  useDocumentTitle(
-    props.view === "list"
-      ? (selectedTask?.title ?? "All automations")
-      : undefined,
-  );
+  useDocumentTitle(props.view === "list" ? "All automations" : undefined);
   // A deletion or a shared URL can leave the requested page past the last page.
   useEffect(() => {
     if (
@@ -155,18 +135,6 @@ export function AutomationsPage(props: {
     query.isPlaceholderData,
     setSearchParams,
   ]);
-  const deletion = useMutation({
-    mutationFn: async (automation: AutomationSummary) => {
-      await deleteDashboardResource(
-        `/api/automations/${encodeURIComponent(automation.id)}`,
-      );
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "automations"],
-      });
-    },
-  });
 
   const loading = !query.data && !query.error;
   const executionSeries = query.data?.executionDays?.length
@@ -187,11 +155,6 @@ export function AutomationsPage(props: {
 
   return (
     <>
-      {location.state?.automationSaved ? (
-        <p role="status" className="m-0 text-sm text-emerald-300">
-          Automation saved. Changes apply to future work.
-        </p>
-      ) : null}
       {props.view === "overview" ? (
         <PageHeader
           description="Scheduled and event-driven work created by users."
@@ -223,16 +186,6 @@ export function AutomationsPage(props: {
         <InlineError>
           Automations could not be loaded.{" "}
           <Button onClick={() => void query.refetch()}>Try again</Button>
-        </InlineError>
-      ) : null}
-      {automationId && detail.isPending ? (
-        <p role="status">Loading automation details…</p>
-      ) : null}
-      {automationId && detail.error ? (
-        <InlineError>
-          Automation details could not be loaded. It may be unavailable or you
-          may not have access.{" "}
-          <Button onClick={() => void detail.refetch()}>Try again</Button>
         </InlineError>
       ) : null}
       {query.data && props.view === "overview" ? (
@@ -308,29 +261,10 @@ export function AutomationsPage(props: {
                 const key = `${automation.kind}:${automation.id}`;
                 return (
                   <AutomationRow
-                    deleting={
-                      deletion.isPending &&
-                      deletion.variables?.id === automation.id
-                    }
                     key={key}
-                    onDelete={() => {
-                      if (
-                        window.confirm(
-                          `Delete this ${automation.kind} automation?`,
-                        )
-                      ) {
-                        deletion.mutate(automation);
-                      }
-                    }}
-                    onSelect={() =>
-                      navigate(
-                        automationId === automation.id
-                          ? tasksPath(listPath)
-                          : selectedTaskPath(automation.id),
-                      )
-                    }
-                    selected={automationId === automation.id}
+                    onSelect={() => navigate(automationPagePath(automation.id))}
                     automation={automation}
+                    to={automationPagePath(automation.id)}
                   />
                 );
               })}
@@ -343,18 +277,8 @@ export function AutomationsPage(props: {
             pageSize={filters.pageSize}
             total={visibleTaskCount}
           />
-          {deletion.error ? (
-            <InlineError className="text-center">
-              The automation could not be deleted. Try again.
-            </InlineError>
-          ) : null}
         </>
       ) : null}
-      <AutomationDetailsDrawer
-        onClose={() => navigate(tasksPath(listPath))}
-        range={range}
-        automation={selectedTask}
-      />
     </>
   );
 }

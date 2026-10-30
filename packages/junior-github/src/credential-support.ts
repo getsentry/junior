@@ -121,7 +121,7 @@ export const GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES = 64 * 1024;
 export const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
 export const CREATE_TOOL_ROUTING_GUIDANCE =
-  "This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.";
+  "This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.";
 export const USER_WRITE_REQUIREMENTS = [
   "requesting GitHub user permission to perform this operation",
 ];
@@ -457,7 +457,9 @@ function createCredentialLease(
     type: "lease",
     lease: {
       ...(input.account ? { account: input.account } : undefined),
-      ...(input.authorization ? { authorization: input.authorization } : undefined),
+      ...(input.authorization
+        ? { authorization: input.authorization }
+        : undefined),
       expiresAt: new Date(input.expiresAtMs).toISOString(),
       headerTransforms: (
         input.domains ??
@@ -596,6 +598,42 @@ export async function resolveUserAccount(
   };
 }
 
+/**
+ * List the email addresses GitHub verified for the user OAuth token.
+ *
+ * GitHub App user tokens need the App's "Email addresses" user permission.
+ * Return an empty list when the App does not have it.
+ */
+export async function listVerifiedUserEmails(
+  tokens: PluginStoredTokens,
+): Promise<string[]> {
+  let emails: unknown;
+  try {
+    emails = await githubRequest("https://api.github.com", "/user/emails", {
+      token: tokens.accessToken,
+    });
+  } catch (error) {
+    if (
+      error instanceof GitHubRequestError &&
+      (error.status === 403 || error.status === 404)
+    ) {
+      return [];
+    }
+    throw error;
+  }
+  if (!Array.isArray(emails)) {
+    throw new Error("GitHub user emails response is invalid");
+  }
+  return emails.flatMap((entry) =>
+    isRecord(entry) &&
+    entry.verified === true &&
+    typeof entry.email === "string" &&
+    entry.email.trim()
+      ? [entry.email.trim()]
+      : [],
+  );
+}
+
 async function tokensWithAccount(
   tokenSlot: PluginUserTokenSlot,
   stored: PluginStoredTokens,
@@ -712,7 +750,7 @@ async function refreshUserTokensWithLock(
 }
 
 /** Issue a bounded GitHub user credential for an approved grant. */
-export async function issueUserCredential(
+async function issueUserCredential(
   ctx: IssueCredentialHookContext,
   options: UserCredentialOptions,
 ): Promise<PluginCredentialResult> {
@@ -826,7 +864,7 @@ export async function issueInstallationToken(
 }
 
 /** Issue a bounded GitHub App installation credential. */
-export async function issueInstallationCredential(
+async function issueInstallationCredential(
   options: InstallationCredentialOptions,
 ): Promise<PluginCredentialResult> {
   const token = await issueInstallationToken(options);
@@ -834,6 +872,54 @@ export async function issueInstallationCredential(
     token: token.token,
     expiresAtMs: token.expiresAtMs,
   });
+}
+
+interface GitHubCredentialOptions
+  extends InstallationCredentialBaseOptions, UserCredentialOptions {
+  /** Declared read permissions, or a loader for the installed ones. */
+  readPermissions:
+    | { permissions: GitHubAppPermissions }
+    | { loadPermissions: LoadInstallationReadPermissions };
+}
+
+/**
+ * Issue the credential for one GitHub grant that host egress selected. Only
+ * the `issueCredential` hook may call this. Other code reads and writes GitHub
+ * through host egress.
+ */
+export async function issueGitHubCredential(
+  ctx: IssueCredentialHookContext,
+  options: GitHubCredentialOptions,
+): Promise<PluginCredentialResult> {
+  const installation = {
+    appIdEnv: options.appIdEnv,
+    installationIdEnv: options.installationIdEnv,
+    privateKeyEnv: options.privateKeyEnv,
+  };
+  try {
+    if (ctx.grant.name === "installation-read") {
+      return await issueInstallationCredential({
+        ...installation,
+        ...options.readPermissions,
+      });
+    }
+    if (ctx.grant.name === "installation-write") {
+      // Use the full installed App permissions. Repo allowlisting stays in
+      // egress policy, not in per-request token minting.
+      return await issueInstallationCredential(installation);
+    }
+    if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
+      return await issueUserCredential(ctx, options);
+    }
+  } catch (error) {
+    if (error instanceof GitHubPluginSetupError) {
+      return credentialUnavailable(error.message);
+    }
+    throw error;
+  }
+  throw new Error(
+    `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,
+  );
 }
 
 /** Cache the installation's read permissions for one lease period. */

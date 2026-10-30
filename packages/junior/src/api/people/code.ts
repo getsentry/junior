@@ -9,6 +9,7 @@ export async function readPeopleCode(email: string) {
     const now = new Date();
     return codePersonReportSchema.parse({
       activityDays: [],
+      changes: [],
       generatedAt: now.toISOString(),
       summary: {
         closed: 0,

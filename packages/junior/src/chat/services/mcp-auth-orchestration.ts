@@ -8,13 +8,19 @@
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import { serviceAccountOnly } from "@/chat/credentials/service-account";
 import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
   patchMcpAuthSession,
 } from "@/chat/mcp/auth-store";
+import {
+  createMcpServiceAccountClientProvider,
+  getMcpServiceAccountCredentials,
+} from "@/chat/mcp/service-account";
 import {
   authorizationId,
   type OAuthAuthorization,
@@ -73,6 +79,10 @@ export interface McpAuthOrchestration {
   authProviderFactory: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
+  /** Return the plugin's service account when the actor has no connection of their own. */
+  serviceAccountProviderFactory: (
+    plugin: PluginDefinition,
+  ) => Promise<OAuthClientProvider | undefined>;
   onAuthorizationRequired: (
     provider: string,
     context?: McpAuthorizationContext,
@@ -127,6 +137,28 @@ export function createMcpAuthOrchestration(
     });
     authSessionIdsByProvider.set(plugin.manifest.name, provider.authSessionId);
     return provider;
+  };
+
+  const serviceAccountProviderFactory = async (
+    plugin: PluginDefinition,
+  ): Promise<OAuthClientProvider | undefined> => {
+    const provider = plugin.manifest.name;
+    if (!plugin.manifest.accounts?.serviceAccount) {
+      return undefined;
+    }
+    // An actor's own connection can see and do more, so it wins unless the
+    // plugin uses only its service account.
+    if (
+      !serviceAccountOnly(plugin.manifest) &&
+      input.actorId &&
+      (await getMcpStoredOAuthCredentials(input.actorId, provider))?.tokens
+    ) {
+      return undefined;
+    }
+    const credentials = await getMcpServiceAccountCredentials(provider);
+    return credentials
+      ? createMcpServiceAccountClientProvider(provider, credentials)
+      : undefined;
   };
 
   const onAuthorizationRequired = async (
@@ -204,8 +236,7 @@ export function createMcpAuthOrchestration(
       const authorizationRequest = {
         authorizationUrl: authSession.authorizationUrl,
         label: `Connect your ${providerLabel} account`,
-        completionText:
-          "Once you've authorized, Junior will continue automatically.",
+        completionText: "Once you've authorized, I'll continue automatically.",
       };
       const delivery = await deliverOAuthAuthorization(authorizationRequest, {
         authorization: input.authorization,
@@ -255,6 +286,7 @@ export function createMcpAuthOrchestration(
 
   return {
     authProviderFactory,
+    serviceAccountProviderFactory,
     onAuthorizationRequired,
     getPendingPause: () => pendingPause,
   };

@@ -25,6 +25,7 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
         | "toolActivity",
     },
     compactionState: {
+      checkpointTurnStartMessageIndex: undefined as number | undefined,
       nextProviderContextChars: 0,
       nextProviderContextText: "",
       preflightContextText: "",
@@ -245,6 +246,13 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         await this.prepareNextTurn?.({
           context: { messages: this.state.messages },
         });
+        // The compaction checkpoint is the resume point if this slice stops.
+        compactionState.checkpointTurnStartMessageIndex = (
+          await turnSessionState.getTurnRecord(
+            "conversation-active-compaction",
+            "turn-active-compaction",
+          )
+        )?.turnStartMessageIndex;
         compactionState.nextProviderContextText = JSON.stringify(
           this.state.messages,
         );
@@ -663,6 +671,7 @@ describe("agent run continuation", () => {
     counters.abortCalls = 0;
     counters.continueCalls = 0;
     counters.promptCalls = 0;
+    compactionState.checkpointTurnStartMessageIndex = undefined;
     compactionState.nextProviderContextChars = 0;
     compactionState.nextProviderContextText = "";
     compactionState.preflightContextText = "";
@@ -692,6 +701,23 @@ describe("agent run continuation", () => {
         instruction: {
           text: "Make a large generated-file edit.",
         },
+        history: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "previous question" }],
+            timestamp: 1,
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "previous answer" }],
+            api: "responses",
+            provider: "openai",
+            model: "gpt-5.3",
+            usage: TEST_USAGE,
+            stopReason: "stop",
+            timestamp: 2,
+          },
+        ] satisfies PiMessage[],
         source: TEST_SOURCE,
         destination: TEST_DESTINATION,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -700,6 +726,7 @@ describe("agent run continuation", () => {
 
     expect(result.text).toBe("Finished the requested edit.");
     expect(compactionState.summaryCalls).toBe(1);
+    expect(compactionState.checkpointTurnStartMessageIndex).toBe(0);
     expect(compactionState.nextProviderContextChars).toBeLessThan(20_000);
     expect(compactionState.nextProviderContextText).toContain(
       "Make a large generated-file edit.",

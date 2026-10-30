@@ -34,6 +34,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   getMcpAwareTelemetryMessage,
   getMcpProviderErrorAttributes,
+  McpServiceAccountRequiredError,
 } from "@/chat/mcp/errors";
 import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
@@ -69,16 +70,16 @@ import {
   type AgentRun,
   type AgentRunState,
 } from "@/chat/agent/types";
-import { upsertActiveSkill } from "@/chat/agent/skills";
+import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/pi/client";
-import { createGuardianActionReviewer } from "@/chat/services/guardian-action-review";
-import { createToolActionReview } from "@/chat/tool-support/action-review";
-import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
-import { restoreToolActionRejections } from "@/chat/tool-support/action-review-history";
+import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
+import { createToolActionReview } from "@/chat/guardian/gate";
+import { buildToolActionEvidence } from "@/chat/guardian/evidence";
+import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -266,6 +267,7 @@ export async function wireAgentTools(
     traceContext: args.spanContext,
     tracePropagation: args.run.environment?.sandboxTracePropagation,
     egressSignals: args.run.environment?.sandboxEgressSignals,
+    conversationId: args.run.conversationId,
     credentialEgress: args.run.credentialContext,
     actor: args.currentActor,
     locationConfiguration: args.run.environment?.locationConfiguration,
@@ -331,6 +333,7 @@ export async function wireAgentTools(
     pluginCatalogRuntime.getMcpProviders(),
     {
       authProviderFactory: mcpAuth.authProviderFactory,
+      serviceAccountProviderFactory: mcpAuth.serviceAccountProviderFactory,
       onAuthorizationRequired: (provider, _error, context) =>
         mcpAuth.onAuthorizationRequired(provider, context),
       onToolSuccess: async (input) => {
@@ -344,11 +347,6 @@ export async function wireAgentTools(
   const getPendingAuthPause = () =>
     pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
 
-  const loadableSkills = args.availableSkills.filter(
-    (skill) =>
-      skill.disableModelInvocation !== true ||
-      skill.name === args.invokedSkill?.name,
-  );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     ...(args.run.parentConversationId
@@ -408,11 +406,10 @@ export async function wireAgentTools(
       ? {
           // A dispatch record from before #1788 has no outcomes and sends to
           // its Destination.
-          // TODO(dcramer): Remove this fallback, the "legacy default" line in
-          // `formatOutcomeLines`, and the same check in `finishedRunReply`
-          // when automation dispatches require `outcomes`. Automations have
-          // stored outcomes since #1788, and older dispatch records have
-          // passed the 7-day state TTL.
+          // TODO(dcramer): Remove this fallback and the same check in
+          // `finishedRunReply` when automation dispatches require `outcomes`.
+          // Automations have stored outcomes since #1788, and older dispatch
+          // records have passed the 7-day state TTL.
           automation: {
             sendsMessage: args.run.dispatch.outcomes?.length !== 0,
           },
@@ -444,9 +441,13 @@ export async function wireAgentTools(
       userIntent: args.currentUserIntent,
       evidence: () =>
         buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
-      // A child has no message from a person. Its authority is in the root
-      // Conversation, read again for each action.
-      ...(childAgent
+      // The root Conversation labels each message with its real author, so
+      // the Actor's earlier messages can authorize. A child has no message
+      // from a person, so this is its only authority. A root Run of a system
+      // Actor, such as an event Turn, is not the author of the person's
+      // messages, so it keeps only the unlabeled evidence. Read for each
+      // action.
+      ...(childAgent || args.currentActor?.platform !== "system"
         ? {
             rootConversation: async () =>
               await readRootConversation({
@@ -475,7 +476,7 @@ export async function wireAgentTools(
     }),
   });
   const tools = createTools(
-    loadableSkills,
+    loadableSkills(args.availableSkills, args.invokedSkill?.name),
     {
       writeGeneratedArtifacts: async (files) => {
         const refs = await agentSandbox.writeGeneratedArtifacts(files);
@@ -542,8 +543,16 @@ export async function wireAgentTools(
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
       }
-      if (await mcpToolManager.activateProvider(provider)) {
-        await args.recordConnectedMcpProvider(provider);
+      try {
+        if (await mcpToolManager.activateProvider(provider)) {
+          await args.recordConnectedMcpProvider(provider);
+        }
+      } catch (error) {
+        // An Admin disconnected a required service account since the last
+        // turn. Leave the provider off; searchMcpTools reports why on use.
+        if (!(error instanceof McpServiceAccountRequiredError)) {
+          throw error;
+        }
       }
       if (mcpAuth.getPendingPause()) {
         args.resume.captureHistoryBeforePrompt(args.preAgentPromptMessages());

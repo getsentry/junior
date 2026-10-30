@@ -10,6 +10,8 @@ import {
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -19,12 +21,13 @@ import {
   conversationFeedSchema,
   conversationParamsSchema,
   conversationPendingMessagesReportSchema,
-  conversationStatsReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
+import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
@@ -43,9 +46,11 @@ import { forkConversationForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
+import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
+import { requireConversationWatches } from "./watches";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
@@ -246,6 +251,23 @@ export function createConversationRoutes(
   );
 
   app.get(
+    "/:conversationId/watches",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      return jsonResponse(
+        conversationWatchesReportSchema,
+        await requireConversationWatches(conversationId, { viewer }),
+      );
+    },
+  );
+
+  app.get(
     "/:conversationId/pending-messages",
     validateRequest(
       "param",
@@ -260,6 +282,34 @@ export function createConversationRoutes(
         await requireConversationPendingMessages(conversationId, {
           viewer,
         }),
+      );
+    },
+  );
+
+  app.post(
+    "/:conversationId/pending-messages/steer",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      steerConversationPendingMessagesBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        steerConversationPendingMessagesResponseSchema,
+        await steerConversationPendingMessagesForViewer(
+          viewer,
+          conversationId,
+          body,
+        ),
       );
     },
   );

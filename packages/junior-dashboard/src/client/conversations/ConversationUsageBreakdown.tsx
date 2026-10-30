@@ -13,6 +13,16 @@ import {
   totalConversationCost,
 } from "../format";
 import { ShimmerText } from "../components/ShimmerText";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { liveModelId } from "./ConversationMeta";
 import {
@@ -70,7 +80,7 @@ function tokenTypeParts(
   return parts.length ? parts : undefined;
 }
 
-const CELL = "text-right align-top font-sans tabular-nums";
+const CELL = "px-0 text-right align-top font-sans tabular-nums";
 
 /**
  * One usage table. Every table in the breakdown shares column widths, so the
@@ -85,85 +95,131 @@ function BreakdownTable(props: {
   total?: { cost: string; count: string; label: string };
 }) {
   return (
-    <div className="min-w-0 overflow-x-auto">
-      <table
-        aria-label={props.label}
-        className="w-full min-w-72 table-fixed border-collapse text-xs leading-relaxed"
-      >
-        <colgroup>
-          <col />
-          <col className="w-20" />
-          <col className="w-20" />
-        </colgroup>
-        <thead>
-          <tr className="border-b border-dashboard-border text-dashboard-text-muted">
-            <th scope="col" className="py-2 text-left font-normal">
-              {props.label}
-            </th>
-            <th scope="col" className="py-2 text-right font-normal">
-              {props.countLabel}
-            </th>
-            <th scope="col" className="py-2 text-right font-normal">
-              Cost
-            </th>
-          </tr>
-        </thead>
-        {props.rows.map((row) => (
-          <tbody
+    <Table
+      aria-label={props.label}
+      className="min-w-72 table-fixed text-xs leading-relaxed"
+    >
+      <colgroup>
+        <col />
+        <col className="w-20" />
+        <col className="w-20" />
+      </colgroup>
+      <TableHeader>
+        <TableRow className="border-dashboard-border">
+          <TableHead
+            scope="col"
+            className="px-0 py-2 leading-relaxed font-normal"
+          >
+            {props.label}
+          </TableHead>
+          <TableHead
+            scope="col"
+            className="px-0 py-2 text-right leading-relaxed font-normal"
+          >
+            {props.countLabel}
+          </TableHead>
+          <TableHead
+            scope="col"
+            className="px-0 py-2 text-right leading-relaxed font-normal"
+          >
+            Cost
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      {props.rows.map((row) => {
+        const padding = row.parts ? "pt-2 pb-0.5" : "py-2";
+        return (
+          <TableBody
             className="border-b border-dashboard-border-subtle last-of-type:border-b-0"
             key={row.key}
           >
-            <tr className="text-dashboard-text">
-              <th
+            {/* The tbody draws the group border, so its rows have none. */}
+            <TableRow className="border-0">
+              <TableHead
                 scope="row"
-                className={`pr-3 text-left font-normal ${row.parts ? "pt-2 pb-0.5" : "py-2"}`}
+                className={cn(
+                  "pl-0 pr-3 align-top leading-relaxed font-normal text-dashboard-text",
+                  padding,
+                )}
               >
                 <span className="block truncate">{row.label}</span>
-              </th>
-              <td className={`${CELL} ${row.parts ? "pt-2 pb-0.5" : "py-2"}`}>
-                {row.count}
-              </td>
-              <td className={`${CELL} ${row.parts ? "pt-2 pb-0.5" : "py-2"}`}>
-                {row.cost}
-              </td>
-            </tr>
+              </TableHead>
+              <TableCell className={cn(CELL, padding)}>{row.count}</TableCell>
+              <TableCell className={cn(CELL, padding)}>{row.cost}</TableCell>
+            </TableRow>
             {row.parts?.map((part, index, parts) => {
-              const padding = index === parts.length - 1 ? "pb-2" : "";
+              const partPadding =
+                index === parts.length - 1 ? "pt-0 pb-2" : "py-0";
               return (
-                <tr
-                  className="text-2xs leading-5 text-dashboard-text-faint"
+                <TableRow
+                  className="border-0 text-2xs leading-5"
                   key={part.label}
                 >
-                  <th
+                  <TableHead
                     scope="row"
-                    className={`truncate pl-3 pr-3 text-left font-normal ${padding}`}
+                    className={cn(
+                      "truncate pl-3 pr-3 align-top text-2xs leading-5 font-normal text-dashboard-text-faint",
+                      partPadding,
+                    )}
                   >
                     {part.label}
-                  </th>
-                  <td className={`${CELL} ${padding}`}>{part.count}</td>
-                  <td className={`${CELL} ${padding}`}>{part.cost}</td>
-                </tr>
+                  </TableHead>
+                  <TableCell
+                    className={cn(
+                      CELL,
+                      "text-dashboard-text-faint",
+                      partPadding,
+                    )}
+                  >
+                    {part.count}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      CELL,
+                      "text-dashboard-text-faint",
+                      partPadding,
+                    )}
+                  >
+                    {part.cost}
+                  </TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        ))}
-        {props.total ? (
-          <tfoot>
-            <tr className="border-t border-dashboard-border font-semibold text-dashboard-text">
-              <th scope="row" className="py-2 text-left font-semibold">
-                {props.total.label}
-              </th>
-              <td className="py-2 text-right font-sans tabular-nums">
-                {props.total.count}
-              </td>
-              <td className="py-2 text-right font-sans tabular-nums">
-                {props.total.cost}
-              </td>
-            </tr>
-          </tfoot>
-        ) : null}
-      </table>
-    </div>
+          </TableBody>
+        );
+      })}
+      {props.total ? (
+        <TableFooter className="font-semibold">
+          <TableRow>
+            <TableHead
+              scope="row"
+              className="px-0 py-2 leading-relaxed font-semibold text-dashboard-text"
+            >
+              {props.total.label}
+            </TableHead>
+            <TableCell className="px-0 py-2 text-right font-sans tabular-nums">
+              {props.total.count}
+            </TableCell>
+            <TableCell className="px-0 py-2 text-right font-sans tabular-nums">
+              {props.total.cost}
+            </TableCell>
+          </TableRow>
+        </TableFooter>
+      ) : null}
+    </Table>
+  );
+}
+
+/** True when the Conversation has model or auxiliary usage to break down. */
+export function hasConversationUsageBreakdown(props: {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+}): boolean {
+  if (!props.conversation) return false;
+  const auxiliaryCosts =
+    props.detail?.auxiliaryCosts ?? props.conversation.auxiliaryCosts;
+  return Boolean(
+    props.detail?.modelUsage?.length || auxiliaryCosts?.operations?.length,
   );
 }
 
@@ -177,7 +233,9 @@ export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
 }) {
-  if (!props.conversation) return null;
+  if (!hasConversationUsageBreakdown(props) || !props.conversation) {
+    return null;
+  }
   const modelUsage = props.detail?.modelUsage ?? [];
   const auxiliaryCosts =
     props.detail?.auxiliaryCosts ?? props.conversation.auxiliaryCosts;
@@ -193,8 +251,6 @@ export function ConversationUsageBreakdown(props: {
   const operations = [...(auxiliaryCosts?.operations ?? [])].sort(
     (a, b) => b.costUsd - a.costUsd,
   );
-  if (!modelUsage.length && !operations.length) return null;
-
   const formatCost = costFormatter(cost ?? 0);
   const formatTokens = (value: number | undefined) =>
     value === undefined ? NOT_RECORDED : formatCompactNumber(value);

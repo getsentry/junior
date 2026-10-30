@@ -60,6 +60,12 @@ narrow write tokens.
    - Metadata: Read
    - Pull requests: Read and write
    - Workflows: Write
+
+   Optional: grant the account permission Email addresses: Read. Junior then
+   reads the verified emails of a connected GitHub account to link it to a
+   person. Without it, Junior links the account only through the person who
+   connected it.
+
 3. Install the App on the organization or repositories Junior should reach.
 4. Copy the App ID, OAuth client ID and secret, installation ID, bot name, and
    bot noreply email into your deployment environment.
@@ -171,7 +177,7 @@ export const plugins = defineJuniorPlugins([
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user.
+This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
 
 `guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
 
@@ -309,7 +315,26 @@ Set `GITHUB_WEBHOOK_SECRET` to enable events. See
 automations.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
-every item of that kind in a repository with `owner/repo`.
+every item of that kind in a repository with `owner/repo`. Deployment events can
+target one commit with `deployment_source`, or every deployment in a repository
+with `owner/repo`.
+
+Deployment events carry `repo`, `commitSha`, `deploymentId`, `environment`,
+and, when GitHub Actions made the deployment for a job with `environment:`,
+`workflowId`, `workflowPath`, and `workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
+repository automation to one environment or one workflow. For example, an
+automation on `getsentry/toolkit` for `deployment.failed` can match
+`environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.
+
+An event automation can also run for every repository, with no identifier.
+Deployment events (`deployment.created`, `deployment.queued`,
+`deployment.pending`, `deployment.in_progress`, `deployment.succeeded`,
+`deployment.failed`, `deployment.error`) can run that way with no filter.
+Release, issue, and pull request events need a `repo` filter, because they
+carry text from repositories that can be private. Junior saves `repo` in
+lowercase. The filter does not check that the creator can see the repository,
+so a broad deployment automation can post private repository names in its
+channel. See [Automations](/concepts/automations/).
 
 To always watch selected events after Junior creates a pull request in this
 app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
@@ -367,18 +392,21 @@ The deployment failed.
 <details class="event">
 <summary><code>deployment.error</code></summary>
 
-The deployment reported an error.
+The deploy tool set the GitHub status to `error`. For a deployment that ran
+and failed, use `deployment.failed`. Vercel `deployment.error` is the same as
+GitHub `deployment.failed`.
 
 </details>
 
 #### `issue`
 
-One issue: `owner/repo#number`.
+One issue: `owner/repo#number`. Every issue event has `repo` and `issue` in
+trusted data.
 
 <details class="event">
 <summary><code>issue.comment.created</code></summary>
 
-A comment was added.
+A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines and code do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue, pull request, and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
 
 </details>
 
@@ -405,26 +433,27 @@ The issue was reopened.
 
 #### `pull_request`
 
-One pull request: `owner/repo#number`.
+One pull request: `owner/repo#number`. Every pull request event has `repo` and
+`pullRequest` in trusted data.
 
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `openerUsername`, `openerEmail`, or `openerRole`, Junior loads those pull request fields for same-repo pull requests only. `authors` loads from the pull request commits. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.comment.created</code></summary>
 
-A conversation comment was added.
+A conversation comment was added. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
@@ -445,28 +474,28 @@ The pull request became ready for review.
 <details class="event">
 <summary><code>pull_request.review.approved</code></summary>
 
-A reviewer approved the pull request.
+A reviewer approved the pull request. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.review.changes_requested</code></summary>
 
-A reviewer requested changes.
+A reviewer requested changes. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.review.commented</code></summary>
 
-A reviewer submitted a comment-only review, or approved with a comment.
+A reviewer submitted a comment-only review, or approved with a comment. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.review_comment.created</code></summary>
 
-An inline review comment was added.
+An inline review comment was added. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
@@ -498,8 +527,8 @@ A release was published.
 
 #### `repository`
 
-Every issue and pull request in `owner/repo`. Supports the same `issue` and
-`pull_request` events listed above. Check suites with no pull request also
+Every deployment, issue, and pull request in `owner/repo`. Supports the same
+`deployment`, `issue`, and `pull_request` events listed above. Check suites with no pull request also
 publish here, so you can match branch builds with `headBranch`.
 
 ## Verify

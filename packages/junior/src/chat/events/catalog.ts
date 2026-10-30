@@ -1,19 +1,78 @@
 import {
+  anyResourceMatchFields,
+  describeEventTrigger,
+  eventTriggerChoices,
+  eventTriggerProblems,
   normalizeEventIdentifier,
+  normalizeEventMatch,
   eventMatchSchema,
+  type EventMatchFields,
+  type EventTriggerDescription,
+  type EventTriggerProblem,
+  type EventTriggerSelection,
+  type EventTriggerSource,
   type PluginEvents,
   type EventMatch,
-  type EventMatchFields,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-type EventRegistration = Pick<
+/**
+ * How core limits one of its own resource types. Limits sit beside the
+ * plugin-api resource type, not on it, so plugins cannot set them and API
+ * responses never carry them.
+ */
+export type EventResourceTypeLimits = {
+  /** False when event automations cannot use the resource type. */
+  automation?: false;
+} & (
+  | { watch?: undefined }
+  | {
+      /** False when watchEvents cannot watch the resource type. */
+      watch: false;
+      /** Tells the agent what to use instead of watchEvents. */
+      watchUnavailableMessage: string;
+    }
+);
+
+/** One source as a plugin or core registers it, before the catalog adds merged filters. */
+export type EventRegistrationInput = Pick<
   PluginEvents,
-  "resourceTypes" | "normalizeIdentifier"
->;
+  "events" | "resourceTypes" | "normalizeIdentifier"
+> & {
+  /** Name people see for the source, such as GitHub. Defaults to the namespace. */
+  displayName?: string;
+  /** Core-only limits, by resource type. */
+  limits?: Readonly<Record<string, EventResourceTypeLimits>>;
+};
+
+type EventRegistration = EventRegistrationInput & {
+  /** The filters of every resource type, merged once when the catalog is built. */
+  anyResourceFields: EventMatchFields;
+};
 
 export type EventCatalog = Readonly<Record<string, EventRegistration>>;
+
+/** A source with nothing enabled, for a namespace that the catalog lacks. */
+const NO_SOURCE: EventTriggerSource = {
+  resourceTypes: [],
+  events: {},
+  anyResourceFields: {},
+};
+
+/**
+ * Build one catalog entry. It merges the filters of every resource type here,
+ * once, so trigger checks for each event copy and each row do not merge them
+ * again.
+ */
+export function eventCatalogEntry(
+  registration: EventRegistrationInput,
+): EventRegistration {
+  return {
+    ...registration,
+    anyResourceFields: anyResourceMatchFields(registration.resourceTypes),
+  };
+}
 
 /** Core-owned event namespace. Not a plugin publisher. */
 export const CORE_EVENT_NAMESPACE = "junior";
@@ -26,17 +85,50 @@ export function hasEventCatalogEntries(catalog: EventCatalog): boolean {
 /**
  * Catalog entries that durable event automations may select.
  *
- * Core Workspace snapshot events only wake temporary watches. Snapshot finish
- * does not run event-automation ingest, so those namespaces stay out of create/update
- * schemas and trigger availability. The core `slack` namespace stays in: Slack
- * ingress runs event-automation ingest for channel messages.
+ * Resource types with `automation: false` stay out of create/update schemas
+ * and trigger availability. A namespace with no such resource type left is
+ * removed.
  */
 export function automationEventCatalog(catalog: EventCatalog): EventCatalog {
   return Object.fromEntries(
-    Object.entries(catalog).filter(
-      ([namespace]) => namespace !== CORE_EVENT_NAMESPACE,
-    ),
+    Object.entries(catalog).flatMap(([namespace, registration]) => {
+      const resourceTypes = registration.resourceTypes.filter(
+        (resourceType) =>
+          registration.limits?.[resourceType.type]?.automation !== false,
+      );
+      if (resourceTypes.length === 0) return [];
+      if (resourceTypes.length === registration.resourceTypes.length) {
+        return [[namespace, registration]];
+      }
+      const supported = new Set(
+        resourceTypes.flatMap((resourceType) => resourceType.supportedEvents),
+      );
+      return [
+        [
+          namespace,
+          eventCatalogEntry({
+            ...registration,
+            resourceTypes,
+            events: Object.fromEntries(
+              Object.entries(registration.events).filter(([eventType]) =>
+                supported.has(eventType),
+              ),
+            ),
+          }),
+        ],
+      ];
+    }),
   );
+}
+
+/** Return why watchEvents cannot watch one resource type, if it cannot. */
+export function eventWatchUnavailable(
+  catalog: EventCatalog,
+  namespace: string,
+  resourceType: string,
+): string | undefined {
+  const limits = catalog[namespace]?.limits?.[resourceType];
+  return limits?.watch === false ? limits.watchUnavailableMessage : undefined;
 }
 
 function enumSchema(values: string[], unavailableMessage: string) {
@@ -84,41 +176,17 @@ export function registeredResourceTypeSchema(catalog: EventCatalog) {
   );
 }
 
-/** Return whether one enabled plugin declared an event type. */
-export function pluginSupportsEvent(
-  catalog: EventCatalog,
-  namespace: string,
-  resourceType: string,
-  eventType: string,
-): boolean {
-  return (
-    catalog[namespace]?.resourceTypes
-      .find((candidate) => candidate.type === resourceType)
-      ?.supportedEvents.includes(eventType) ?? false
-  );
-}
-
-/** Return app guidance for one registered resource type and event type. */
+/**
+ * Return app guidance for one event of a namespace. The source declares it
+ * once for the event, so every resource type and a trigger with no resource
+ * type get the same guidance.
+ */
 export function eventGuidance(
   catalog: EventCatalog,
   namespace: string,
-  resourceType: string,
   eventType: string,
 ): string | undefined {
-  return catalog[namespace]?.resourceTypes.find(
-    (candidate) => candidate.type === resourceType,
-  )?.guidance?.[eventType];
-}
-
-/** Return declared match keys for one registered resource type. */
-export function eventMatchFields(
-  catalog: EventCatalog,
-  namespace: string,
-  resourceType: string,
-): EventMatchFields | undefined {
-  return catalog[namespace]?.resourceTypes.find(
-    (candidate) => candidate.type === resourceType,
-  )?.matchFields;
+  return catalog[namespace]?.events[eventType]?.guidance;
 }
 
 /** Build the match object the tools accept for one resource type. */
@@ -126,77 +194,93 @@ export function registeredEventMatchSchema() {
   return eventMatchSchema
     .optional()
     .describe(
-      "Optional exact values from the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
+      "Optional filters: exact values for the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. For a field with list: true, the event value is a list, and it matches when it includes the value or any entry. A field with events is set only on those events, so every selected event must be in that list. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
     );
 }
 
-/** Reject match keys the resource type does not list. */
-export function requireSupportedEventMatch(
+/** One selection of events and filters, with the source that owns it. */
+type RegisteredEventSelection = EventTriggerSelection & {
+  namespace: string;
+};
+
+/**
+ * List why a selection cannot work with the enabled plugins. Use it for new
+ * selections and for saved triggers, which can go stale after a plugin renames
+ * or removes a resource type, event, or filter.
+ */
+export function registeredEventTriggerProblems(
   catalog: EventCatalog,
-  input: {
-    match?: EventMatch;
-    namespace: string;
-    resourceType: string;
-  },
-): EventMatch | undefined {
-  const match = input.match;
+  selection: RegisteredEventSelection,
+  options?: { inputKeys?: boolean },
+): EventTriggerProblem[] {
+  return eventTriggerProblems(
+    catalog[selection.namespace] ?? NO_SOURCE,
+    selection,
+    options,
+  );
+}
+
+/**
+ * Describe a selection with the enabled plugins, for the dashboard and Slack.
+ * Its problems are the same as `registeredEventTriggerProblems`.
+ */
+export function describeRegisteredEventTrigger(
+  catalog: EventCatalog,
+  selection: RegisteredEventSelection,
+): EventTriggerDescription {
+  return describeEventTrigger(
+    catalog[selection.namespace] ?? NO_SOURCE,
+    selection,
+  );
+}
+
+function uniqueMatchValues(match: EventMatch | undefined) {
   if (!match || Object.keys(match).length === 0) return undefined;
-  const fields = eventMatchFields(catalog, input.namespace, input.resourceType);
-  if (!fields || Object.keys(fields).length === 0) {
+  return Object.fromEntries(
+    Object.entries(match).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? [...new Set(value)] : value,
+    ]),
+  ) as EventMatch;
+}
+
+/**
+ * Reject an event automation trigger or a Watch that cannot work, with every
+ * problem in one message for the agent. Return its match as it is saved:
+ * each text value in the case that its plugin declares, with no repeated
+ * list values.
+ */
+export function requireValidEventTrigger(
+  catalog: EventCatalog,
+  selection: RegisteredEventSelection,
+  target: "event_automation" | "watch",
+): EventMatch | undefined {
+  const fields =
+    eventTriggerChoices(catalog[selection.namespace] ?? NO_SOURCE, selection)
+      ?.fields ?? {};
+  const normalized = {
+    ...selection,
+    match: normalizeEventMatch(fields, selection.match),
+  };
+  const problems = registeredEventTriggerProblems(catalog, normalized, {
+    inputKeys: true,
+  });
+  if (problems.length > 0) {
+    const source =
+      catalog[selection.namespace]?.displayName ?? selection.namespace;
+    const resource = selection.resourceType
+      ? `${source} ${selection.resourceType.replaceAll("_", " ")}`
+      : source;
     throw new ToolInputError(
-      `Resource type "${input.namespace}:${input.resourceType}" does not support match.`,
+      [
+        target === "watch"
+          ? `This ${resource} watch cannot be created.`
+          : `This ${resource} trigger cannot be saved.`,
+        ...problems.map((problem) => problem.message),
+      ].join(" "),
     );
   }
-  const normalized: EventMatch = {};
-  for (const [key, value] of Object.entries(match)) {
-    const field = fields[key];
-    if (!field) {
-      throw new ToolInputError(
-        `Resource type "${input.namespace}:${input.resourceType}" does not support match key "${key}".`,
-      );
-    }
-    if (Array.isArray(value)) {
-      if (field.kind === "boolean") {
-        throw new ToolInputError(
-          `Match key "${key}" is boolean and cannot use a list.`,
-        );
-      }
-      for (const entry of value) {
-        if (typeof entry !== field.kind) {
-          throw new ToolInputError(
-            `Match key "${key}" expects ${field.kind} values.`,
-          );
-        }
-        if (
-          field.enum &&
-          typeof entry === "string" &&
-          !field.enum.includes(entry)
-        ) {
-          throw new ToolInputError(
-            `Match key "${key}" does not allow value "${entry}".`,
-          );
-        }
-      }
-      normalized[key] = [...new Set(value)] as typeof value;
-      continue;
-    }
-    if (typeof value !== field.kind) {
-      throw new ToolInputError(
-        `Match key "${key}" expects a ${field.kind} value.`,
-      );
-    }
-    if (
-      field.enum &&
-      typeof value === "string" &&
-      !field.enum.includes(value)
-    ) {
-      throw new ToolInputError(
-        `Match key "${key}" does not allow value "${value}".`,
-      );
-    }
-    normalized[key] = value;
-  }
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
+  return uniqueMatchValues(normalized.match);
 }
 
 /**
@@ -214,7 +298,7 @@ export function requireEventIdentifier(
   const resourceTypes = registration?.resourceTypes ?? [];
   const fits = (resourceType: (typeof resourceTypes)[number]) =>
     resourceType.identifier !== undefined &&
-    identifier.search(resourceType.identifier.pattern) !== -1;
+    new RegExp(resourceType.identifier.pattern).test(identifier);
   const resourceType = resourceTypes.find(
     (candidate) => candidate.type === input.resourceType,
   );

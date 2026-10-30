@@ -166,7 +166,7 @@ describe("event automations", () => {
           key: created.automation.id,
           label: "Review fixes.",
           title: "Review fixes.",
-          trigger: "Review feedback · pull_request.review.commented",
+          trigger: "Review feedback · pull request review commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
       ]);
@@ -182,7 +182,7 @@ describe("event automations", () => {
       const posted =
         getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
       expect(posted?.text).toContain(
-        "Review feedback · pull_request.review.commented",
+        "Review feedback · pull request review commented",
       );
       expect(posted?.attachments).toBeUndefined();
       expect(posted?.metadata).toMatchObject({
@@ -201,7 +201,7 @@ describe("event automations", () => {
                   key: "trigger",
                   label: "When",
                   type: "string",
-                  value: "Review feedback · pull_request.review.commented",
+                  value: "Review feedback · pull request review commented",
                   long: true,
                 },
               ],
@@ -343,6 +343,14 @@ describe("event automations", () => {
         }),
       ]),
     );
+    // Each dispatch Source names its Automation and run.
+    for (const dispatch of dispatches) {
+      expect(dispatch!.source).toEqual({
+        kind: "event_automation",
+        automationId: expect.any(String),
+        automationRunId: dispatch!.id,
+      });
+    }
     // Each dispatch starts one run that links its Conversation.
     const readRuns = () =>
       db
@@ -354,6 +362,7 @@ describe("event automations", () => {
       runIds.map((id) =>
         expect.objectContaining({
           id,
+          automationVersion: 1,
           conversationId: `agent-dispatch:${id}`,
           status: "running",
         }),
@@ -397,7 +406,7 @@ describe("event automations", () => {
       This is a task, not a message from a person.
 
       About: GitHub PR getsentry/junior#1174
-      Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.
+      Created by: <@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.
       Instructions: Address the requested changes.
 
       Trusted summary: A reviewer requested changes.
@@ -464,7 +473,7 @@ describe("event automations", () => {
         { queue, teamId },
       );
 
-      const [{ conversationId }] = queue.sentRecords();
+      const { conversationId } = queue.sentRecords()[0]!;
       expect(conversationId).toBeDefined();
       const dispatch = await getDispatchRecord(
         conversationId!.replace(/^agent-dispatch:/, ""),
@@ -521,7 +530,9 @@ describe("event automations", () => {
         },
         "unsupported-event",
       ),
-    ).rejects.toThrow(/github:issue.*does not support event.*issue\.closed/);
+    ).rejects.toThrow(
+      'This github issue trigger cannot be saved. "issue" is not an enabled resource type. Use one of: "pull_request", "review_target".',
+    );
 
     const listed = (await execute(
       createListEventAutomationsTool(context(), EVENT_CATALOG),
@@ -682,7 +693,7 @@ describe("event automations", () => {
       ),
     ).resolves.toEqual({ dispatched: 1 });
 
-    const [{ conversationId }] = queue.sentRecords();
+    const { conversationId } = queue.sentRecords()[0]!;
     const dispatch = await getDispatchRecord(
       conversationId!.replace(/^agent-dispatch:/, ""),
     );
@@ -708,7 +719,6 @@ describe("event automations", () => {
       automations: Array<{
         createdBy: { slackUserId: string };
         id: string;
-        triggerAvailable: boolean;
       }>;
     };
     expect(listed).not.toHaveProperty("data");
@@ -777,7 +787,10 @@ describe("event automations", () => {
     expect(listed.automations).toEqual([
       expect.objectContaining({
         id: created.automation.id,
-        trigger: expect.objectContaining({ available: false }),
+        trigger: expect.objectContaining({
+          available: false,
+          problems: ["The plugin for this source is not enabled."],
+        }),
       }),
     ]);
   });

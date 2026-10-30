@@ -2,6 +2,8 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { gitHubCommentMatchFields } from "./comment.js";
+import { gitHubCommitMatchFields, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
@@ -97,30 +99,80 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.closed_unmerged",
 ] as const;
 
-/** Exact values GitHub may set on pull request event data. Missing keys do not match. */
+/** Pull request events that a comment or review starts. */
+const GITHUB_PULL_REQUEST_COMMENT_EVENTS = [
+  "pull_request.comment.created",
+  "pull_request.review.approved",
+  "pull_request.review.changes_requested",
+  "pull_request.review.commented",
+  "pull_request.review_comment.created",
+] as const satisfies readonly GitHubPullRequestEvent[];
+
+/** Pull request events that a check suite result starts. */
+const GITHUB_PULL_REQUEST_CHECK_EVENTS = [
+  "pull_request.checks.failed",
+  "pull_request.checks.recovered",
+] as const satisfies readonly GitHubPullRequestEvent[];
+
+/**
+ * Exact values GitHub may set on pull request event data. Missing keys do not
+ * match. The opener and author values load in
+ * `webhooks/pull-request-match-data.ts` for every pull request event. The
+ * pull request comment webhook has no head branch. A check suite result that
+ * GitHub links to no pull request has no `pullRequest`.
+ */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = eventMatchFieldsSchema.parse({
-  authorEmail: {
-    kind: "string",
-    description: "pull request author email when GitHub sends it",
+  ...gitHubCommentMatchFields(GITHUB_PULL_REQUEST_COMMENT_EVENTS),
+  ...gitHubRepoMatchFields(GITHUB_PULL_REQUEST_EVENTS),
+  ...gitHubCommitMatchFields(GITHUB_PULL_REQUEST_CHECK_EVENTS),
+  pullRequest: {
+    kind: "number",
+    description: "pull request number, such as 946",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
-  authorUsername: {
+  authors: {
     kind: "string",
-    description: "pull request author login",
+    list: true,
+    description:
+      "GitHub logins of the commit authors and Co-authored-by people, including bots such as this GitHub App",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
   headBranch: {
     kind: "string",
     description: "head branch name from the webhook",
+    events: GITHUB_PULL_REQUEST_EVENTS.filter(
+      (eventType) => eventType !== "pull_request.comment.created",
+    ),
   },
   isDraft: {
     kind: "boolean",
     description: "true when the pull request is a draft",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
+  },
+  openerEmail: {
+    kind: "string",
+    description:
+      "opener email when GitHub sends it; missing on pull requests that this GitHub App opened",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
+  },
+  openerUsername: {
+    kind: "string",
+    description:
+      "login of who opened the pull request; on pull requests that this GitHub App opened, the person who asked for it, missing until that person is saved",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
+  },
+  openerRole: {
+    kind: "string",
+    description:
+      "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+    events: [...GITHUB_PULL_REQUEST_EVENTS],
   },
 });
 
 /** The identifier shape that `gitHubPullRequestResource` builds. */
 export const GITHUB_PULL_REQUEST_IDENTIFIER = {
   format: "owner/repo#number",
-  pattern: /^[^\s/:#]+\/[^\s/:#]+#\d+$/,
+  pattern: String.raw`^[^\s/:#]+\/[^\s/:#]+#\d+$`,
 };
 
 /** Build the stable pull request identity shared by tools and webhooks. */
@@ -135,14 +187,19 @@ export function gitHubPullRequestResource(input: {
   };
 }
 
-/** Describe a pull request as a resource when webhook subscriptions are enabled. */
+/**
+ * Describe a pull request as a resource that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
+ */
 export function gitHubPullRequestSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   number: number;
   repo: string;
   /** Events already covered by a forced subscription; omit them from suggestions. */
   omitSuggestedEvents?: readonly string[];
 }): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+  if (!input.canSubscribe) return undefined;
   const omitted = new Set(input.omitSuggestedEvents ?? []);
   const suggestedEvents = GITHUB_PULL_REQUEST_SUGGESTED_EVENTS.filter(
     (eventType) => !omitted.has(eventType),

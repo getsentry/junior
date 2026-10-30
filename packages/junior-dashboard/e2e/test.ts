@@ -24,7 +24,7 @@ export const test = base.extend<DashboardFixtures, DashboardWorkerFixtures>({
   controlTimers: [false, { option: true }],
   dashboard: [
     async ({}, use) => {
-      const server = await startDashboardE2eServer({ componentGallery: true });
+      const server = await startDashboardE2eServer();
       await use(server);
       await server.close();
     },

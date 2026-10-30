@@ -1,4 +1,8 @@
-import type { StoredSlackActor } from "@/chat/actor";
+import {
+  toStoredSlackActor,
+  type Actor,
+  type StoredSlackActor,
+} from "@/chat/actor";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import type { Conversation, ConversationSource } from "../store";
 import type { juniorIdentities } from "@/db/schema";
@@ -39,6 +43,23 @@ export function identityFromActor(
   };
 }
 
+/**
+ * Build the identity observation for one runtime actor with the same key the
+ * Conversation write path stores. Local and system actors have no user
+ * identity.
+ */
+export function identityFromRuntimeActor(
+  actor: Actor,
+): IdentityUpsert | undefined {
+  if (actor.platform === "slack") {
+    return identityFromActor(toStoredSlackActor(actor));
+  }
+  if (actor.platform === "web") {
+    return identityFromActor(actor.email ? { email: actor.email } : undefined);
+  }
+  return undefined;
+}
+
 /** Build a system identity when a conversation has no user actor. */
 export function systemIdentityFromSource(
   source: ConversationSource | undefined,
@@ -48,7 +69,7 @@ export function systemIdentityFromSource(
       kind: "system",
       provider: "junior",
       providerSubjectId: "scheduler",
-      displayName: "Junior Scheduler",
+      displayName: "Scheduler",
     };
   }
   if (source === "local") {

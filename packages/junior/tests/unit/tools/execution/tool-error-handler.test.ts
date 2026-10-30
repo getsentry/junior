@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const logExceptionMock = vi.fn();
@@ -23,7 +24,7 @@ import { McpToolError } from "@/chat/mcp/errors";
 import {
   ToolActionRejectedError,
   ToolActionReviewUnavailableError,
-} from "@/chat/tool-support/action-review";
+} from "@/chat/guardian/gate";
 
 describe("handleToolExecutionError", () => {
   beforeEach(() => {
@@ -52,6 +53,19 @@ describe("handleToolExecutionError", () => {
     expect(logWarnMock).toHaveBeenCalledTimes(1);
     expect(setSpanAttributesMock).toHaveBeenCalledWith(
       expect.objectContaining({ "error.type": "tool_input_error" }),
+    );
+  });
+
+  it("does not report plugin policy denials to Sentry", () => {
+    const error = new PluginToolDeniedError("blocked by plugin");
+    expect(() =>
+      handleToolExecutionError(error, "bash", "call_1", true),
+    ).toThrow(error);
+
+    expect(logExceptionMock).not.toHaveBeenCalled();
+    expect(logWarnMock).toHaveBeenCalledTimes(1);
+    expect(setSpanAttributesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ "error.type": "plugin_tool_denied" }),
     );
   });
 

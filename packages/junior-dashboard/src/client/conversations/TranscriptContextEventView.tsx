@@ -1,3 +1,11 @@
+import { ChevronRight } from "lucide-react";
+
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
+import { dashboardDisclosureChevronClass } from "../styles";
 import { formatCompactNumber, formatMessageTimestamp } from "../format";
 import type { TranscriptViewContextEventPart } from "../types";
 import { TranscriptText } from "./TranscriptText";
@@ -39,14 +47,24 @@ export function TranscriptContextEventView(props: {
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
-        <details className="mt-2">
-          <summary className="cursor-pointer select-none text-xs font-medium text-dashboard-text-muted">
+        <Collapsible className="mt-2">
+          <CollapsibleTrigger className="group flex cursor-pointer select-none items-center gap-1 text-xs font-medium text-dashboard-text-muted focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+            <ChevronRight
+              aria-hidden="true"
+              className={dashboardDisclosureChevronClass}
+            />
             Continuation summary
-          </summary>
-          <div className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted">
-            <TranscriptText role="system" text={event.summary} />
-          </div>
-        </details>
+          </CollapsibleTrigger>
+          <CollapsibleContent hiddenUntilFound>
+            <div className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted">
+              <TranscriptText
+                mentions={props.part.mentions ?? []}
+                role="system"
+                text={event.summary}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
     </article>
   );

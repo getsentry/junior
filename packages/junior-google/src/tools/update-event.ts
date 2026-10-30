@@ -119,7 +119,7 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
       return `Update Google Calendar event ${input.eventId}: ${changes.join("; ")}. Attendees get an email about the change.`;
     },
     description:
-      "Change a Google Calendar event organized by Junior's own Google account: title, description, time, location, video call, or attendees. Use it to reschedule, add or remove people, or fix details. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. Junior cannot change events other people organize. For a repeating event, an occurrence id changes only that occurrence; its seriesEventId changes every occurrence. Confirm the change with the requester first unless they already stated it exactly.",
+      "Change a Google Calendar event organized by your own Google account: title, description, time, location, video call, or attendees. Use it to reschedule, add or remove people, or fix details. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. You cannot change events other people organize. For a repeating event, an occurrence id changes only that occurrence; its seriesEventId changes every occurrence. Confirm the change with the requester first unless they already stated it exactly.",
     inputSchema,
     outputSchema,
     async execute(input) {

@@ -41,6 +41,18 @@ pnpm dev
 
 This starts the example app on `http://localhost:3000` by default. It also rebuilds and watches the workspace packages that the example app consumes, so dashboard and runtime package edits are reflected without manually rebuilding first.
 
+Before the app starts, `pnpm dev` runs `docker compose up -d --wait`. This starts Postgres, Redis and S3 from `compose.yaml` and waits until they are healthy. Docker must be running. Services that already run are left as they are. Then `pnpm dev` runs `junior upgrade` to apply missing database migrations to `DATABASE_URL`. Migrations that already ran are skipped. If either step fails, `pnpm dev` stops.
+
+`pnpm dev` delivers background work through BullMQ on the Redis in `compose.yaml` (`redis://localhost:6382`), which `pnpm dev` starts. Local work then needs no Vercel Queues access. To use Vercel Queues, set `JUNIOR_QUEUE_PROVIDER=vercel` and run `pnpm dev:env` for the Vercel token. To use another Redis, set `JUNIOR_QUEUE_REDIS_URL`.
+
+With BullMQ, `pnpm dev` starts one queue worker process next to Nitro. Nitro accepts requests and sends jobs. The worker runs them. A new Junior build restarts both processes. A change to `apps/example/server.ts`, `plugins.ts`, `dashboard.ts` or `apps/example/app/` restarts only the worker. The worker and Nitro must share state, so `pnpm dev` keeps state in that Redis unless you set `JUNIOR_STATE_ADAPTER`. `JUNIOR_STATE_ADAPTER=memory` does not work with BullMQ. Each queue topic runs up to 4 jobs at the same time. Set `JUNIOR_QUEUE_WORKER_CONCURRENCY` to change that number.
+
+To also open the Sentry Local UI in your browser, set `OPEN_SPOTLIGHT_WEB=1`:
+
+```bash
+OPEN_SPOTLIGHT_WEB=1 pnpm dev
+```
+
 For dashboard visual QA without generating real Slack traffic, replace conversation API responses with sample fixtures:
 
 ```bash
@@ -48,6 +60,33 @@ JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
 ```
 
 The fixtures are read-only dashboard data; mock mode does not query or merge real conversation records.
+
+## Run sandboxes in local Docker
+
+By default, Junior runs agent sandboxes in Vercel Sandbox. To run them in a local Docker daemon instead, set the provider in `.env`:
+
+```bash
+JUNIOR_SANDBOX_PROVIDER=docker
+```
+
+The Docker provider needs a Docker daemon on a unix socket. It uses `/var/run/docker.sock`, or the unix socket in `DOCKER_HOST`. On macOS, the daemon runs in a VM, so each sandbox sends its web traffic through an egress relay container. Each sandbox is a privileged container, so do not run untrusted workloads with it.
+
+The first sandbox builds the `junior-sandbox-runtime` image. This takes a few minutes. Later sandboxes start in seconds. `pnpm dev` and `pnpm cli -- chat ...` both use the provider. Each process runs its own egress proxy, and the process that last acquired a sandbox carries its web traffic.
+
+Optional settings:
+
+- `JUNIOR_DOCKER_SANDBOX_DIR` sets the directory of the local egress CA. The default is `~/.cache/junior/docker-sandbox`.
+- `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` names a PEM file that each sandbox also trusts. Set it when your machine is behind a TLS proxy.
+
+To remove all Docker sandboxes and snapshots:
+
+```bash
+docker rm -f -v $(docker ps -aq --filter label=dev.junior.sandbox)
+docker network prune -f --filter label=dev.junior.sandbox
+docker image prune -a -f --filter label=dev.junior.sandbox=snapshot
+```
+
+The limits of this provider are in `packages/junior/src/chat/sandbox/README.md`.
 
 ## Work in isolated branches
 

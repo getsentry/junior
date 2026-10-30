@@ -14,6 +14,7 @@ import {
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
+  GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   HTTP_READ_METHODS,
   USER_WRITE_REQUIREMENTS,
   githubRepositoryFromUrl,
@@ -179,7 +180,7 @@ function githubGraphqlAccess(
   return "write";
 }
 
-export function githubGraphqlPermissionDeniedMessage(
+function githubGraphqlPermissionDeniedMessage(
   bodyText: string,
 ): string | undefined {
   let parsed: unknown;
@@ -209,7 +210,7 @@ export function githubGraphqlPermissionDeniedMessage(
   return undefined;
 }
 
-export function shouldInspectGitHubGraphqlResponse(
+function shouldInspectGitHubGraphqlResponse(
   ctx: EgressResponseHookContext,
 ): boolean {
   if (
@@ -229,6 +230,79 @@ export function shouldInspectGitHubGraphqlResponse(
   }
   const contentType = ctx.response.headers.get("content-type");
   return contentType ? /\bjson\b/i.test(contentType) : false;
+}
+
+const GITHUB_ERROR_BODY_LIMIT_BYTES = 4 * 1024;
+
+// GitHub also returns 403 for requests it refuses for other reasons, such as
+// a run that cannot be retried or a secondary rate limit. Only this message
+// means that the App or user token lacks access.
+const GITHUB_ACCESS_DENIED_MESSAGE = "Resource not accessible by integration";
+
+// GitHub sends this header on most responses. It lists the permissions that
+// the endpoint accepts. It does not say which permission is missing.
+const GITHUB_ACCEPTED_PERMISSIONS_PATTERN =
+  /^[a-z_]+=[a-z]+(?:\s*[,;]\s*[a-z_]+=[a-z]+)*$/;
+
+function githubErrorMessage(bodyText: string | undefined): string | undefined {
+  if (!bodyText) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(bodyText);
+    return isRecord(parsed) && typeof parsed.message === "string"
+      ? parsed.message.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function githubForbiddenPermissionDeniedMessage(
+  ctx: EgressResponseHookContext,
+): Promise<string | undefined> {
+  const sso = ctx.response.headers.get("x-github-sso");
+  if (sso?.startsWith("required")) {
+    const url = sso.match(/\burl=(https:\/\/github\.com\/\S+)/)?.[1];
+    return `GitHub requires SAML SSO authorization for this credential.${url ? ` Authorize it at ${url}` : ""}`;
+  }
+  const message = githubErrorMessage(
+    await ctx.response.readText(GITHUB_ERROR_BODY_LIMIT_BYTES),
+  );
+  if (message !== GITHUB_ACCESS_DENIED_MESSAGE) {
+    return undefined;
+  }
+  const accepted = ctx.response.headers
+    .get("x-accepted-github-permissions")
+    ?.trim();
+  return [
+    `GitHub denied access: ${message}.`,
+    ...(accepted && GITHUB_ACCEPTED_PERMISSIONS_PATTERN.test(accepted)
+      ? [`This endpoint accepts these GitHub permissions: ${accepted}.`]
+      : []),
+  ].join(" ");
+}
+
+/**
+ * Classify a GitHub response as a permission denial.
+ *
+ * Returns a message only when GitHub says that the credential lacks access.
+ * Other GitHub refusals return undefined, so the runtime does not call them
+ * permission problems.
+ */
+export async function githubPermissionDeniedMessage(
+  ctx: EgressResponseHookContext,
+): Promise<string | undefined> {
+  if (ctx.response.status === 403) {
+    return await githubForbiddenPermissionDeniedMessage(ctx);
+  }
+  if (!shouldInspectGitHubGraphqlResponse(ctx)) {
+    return undefined;
+  }
+  const bodyText = await ctx.response.readText(
+    GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
+  );
+  return bodyText ? githubGraphqlPermissionDeniedMessage(bodyText) : undefined;
 }
 
 /** GitHub body writes that must go through a typed tool. */
@@ -255,14 +329,14 @@ const PULL_REQUEST_COMMENT_REACTIONS_PATH =
 
 const GITHUB_BODY_WRITES = [
   {
-    denialMessage: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub issue creation must use the github_createIssue tool, which owns idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "createIssue",
     method: "POST",
     operation: "github.issue.create",
     restPath: /^\/repos\/[^/]+\/[^/]+\/issues$/,
   },
   {
-    denialMessage: `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub pull request creation must use the github_createPullRequest tool, which owns idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "createPullRequest",
     method: "POST",
     operation: "github.pull.create",
@@ -276,14 +350,14 @@ const GITHUB_BODY_WRITES = [
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews$/,
   },
   {
-    denialMessage: `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub issue updates must use the github_updateIssue tool, which owns requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "updateIssue",
     method: "PATCH",
     operation: "github.issue.update",
     restPath: /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/,
   },
   {
-    denialMessage: `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub pull request updates must use the github_updatePullRequest tool, which owns requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "updatePullRequest",
     method: "PATCH",
     operation: "github.pull.update",
@@ -624,7 +698,7 @@ export async function githubGrantForEgress(
   const access = HTTP_READ_METHODS.has(method) ? "read" : "write";
   if (access === "write") {
     throw new EgressPolicyDenied(
-      "Junior does not support this GitHub write request. Use the matching GitHub tool or a supported REST endpoint.",
+      "This GitHub write request is not supported. Use the matching GitHub tool or a supported REST endpoint.",
     );
   }
   return grantForAccess(access, "github.api-read", "installation-read");

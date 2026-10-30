@@ -2,6 +2,7 @@ import { resolveMessageCards } from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   ConversationReportEvent,
+  InputImage,
 } from "@sentry/junior/api/schema";
 
 import type {
@@ -9,6 +10,11 @@ import type {
   TranscriptViewMessage,
   TranscriptViewPart,
 } from "../types";
+
+/** A mailbox row, or a local send that can still carry its own images. */
+type PendingTranscriptInput = ConversationPendingMessage & {
+  images?: InputImage[];
+};
 
 type ToolCall =
   | Extract<
@@ -37,6 +43,7 @@ function eventMessage(
     role,
     sourceSeq: event.seq,
     timestamp: eventTimestamp(event),
+    ...(event.mentions ? { mentions: event.mentions } : undefined),
   };
 }
 
@@ -66,7 +73,7 @@ function historyMessageIds(
 
 /** Project one accepted mailbox row into a pending transcript message. */
 export function pendingTranscriptMessage(
-  message: ConversationPendingMessage,
+  message: PendingTranscriptInput,
   index: number,
 ): TranscriptViewMessage {
   return {
@@ -76,6 +83,7 @@ export function pendingTranscriptMessage(
       ? [{ type: "text", redacted: true }]
       : [{ type: "text", text: message.text ?? "" }],
     ...(message.attachments ? { attachments: message.attachments } : undefined),
+    ...(message.images?.length ? { images: message.images } : undefined),
     pending: true,
     role: "user",
     source: message.source,
@@ -96,7 +104,7 @@ export function pendingTranscriptMessage(
  */
 export function mergePendingTranscriptMessages(
   messages: TranscriptViewMessage[],
-  pending: readonly ConversationPendingMessage[] | undefined,
+  pending: readonly PendingTranscriptInput[] | undefined,
 ): TranscriptViewMessage[] {
   if (!pending?.length) return messages;
   const extras = unresolvedPendingTranscriptMessages(messages, pending);
@@ -111,7 +119,7 @@ export function mergePendingTranscriptMessages(
  */
 export function unresolvedPendingTranscriptMessages(
   messages: readonly TranscriptViewMessage[],
-  pending: readonly ConversationPendingMessage[] | undefined,
+  pending: readonly PendingTranscriptInput[] | undefined,
 ): TranscriptViewMessage[] {
   if (!pending?.length) return [];
   const committedIds = historyMessageIds(messages);
@@ -123,7 +131,7 @@ export function unresolvedPendingTranscriptMessages(
 /** Reduce the ordered reporting event API into dashboard-only transcript rows. */
 export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
-  pendingMessages?: readonly ConversationPendingMessage[],
+  pendingMessages?: readonly PendingTranscriptInput[],
 ): TranscriptViewMessage[] {
   return transcriptMessagesFromEvents(
     conversation.events,
@@ -136,7 +144,7 @@ export function conversationTranscriptMessages(
 export function transcriptMessagesFromEvents(
   events: ConversationReportEvent[],
   annotations: ConversationTranscript["annotations"],
-  pendingMessages?: readonly ConversationPendingMessage[],
+  pendingMessages?: readonly PendingTranscriptInput[],
 ): TranscriptViewMessage[] {
   const replacedToolIds = specialToolIds(events);
   const tools = new Map<
@@ -213,11 +221,15 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),
+        ...(data.agentInvocationId
+          ? { agentInvocationId: data.agentInvocationId }
+          : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),
+        ...(data.events ? { events: data.events } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),
@@ -387,6 +399,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "structured_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             namespace: data.namespace,
             name: data.name,
             version: data.version,
@@ -414,6 +427,7 @@ export function transcriptMessagesFromEvents(
         eventMessage(event, "system", [
           {
             type: "context_event",
+            ...(event.mentions ? { mentions: event.mentions } : undefined),
             event:
               data.type === "handoff"
                 ? {

@@ -29,12 +29,15 @@ import {
 } from "@/chat/event-automations/run-limit";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import { botConfig } from "@/chat/config";
-import { slackChannelMessageReplyThreadTs } from "@/chat/slack/channel-message-events";
+import {
+  slackChannelMessageReplyThreadTs,
+  slackChannelMessageRunsAutomation,
+} from "@/chat/slack/channel-message-events";
 import { logWarn } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { eventGuidance } from "@/chat/events/catalog";
+import { eventGuidance, type EventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 
 /** Bind provider delivery identity to one automation's durable dispatch. */
@@ -54,13 +57,9 @@ function eventInput(
   task: EventAutomation,
   event: Event,
   outcomes: TaskOutcome[],
+  catalog: EventCatalog,
 ): string {
-  const guidance = eventGuidance(
-    getEventCatalog(),
-    event.namespace,
-    task.trigger.resourceType,
-    event.eventType,
-  );
+  const guidance = eventGuidance(catalog, event.namespace, event.eventType);
   return renderTaskInput({
     about: task.trigger.label,
     creator: slackMention(task.createdBy.slackUserId),
@@ -75,7 +74,14 @@ function eventInput(
   });
 }
 
-/** Match a normalized event and dispatch every matching automation. */
+/**
+ * Match a normalized event and dispatch every matching automation.
+ *
+ * Plugins publish one copy of an occurrence for each scope, such as a pull
+ * request and its repository. All copies share one event key. An automation
+ * with no identifier matches every copy, and the dispatch key and the run
+ * limit both use the event key, so it runs and counts once.
+ */
 export async function ingestEventAutomations(
   input: unknown,
   options: {
@@ -87,7 +93,10 @@ export async function ingestEventAutomations(
   const event = eventSchema.parse(input);
   const db = getDb();
   const nowMs = options.nowMs ?? Date.now();
-  const tasks = await findMatchingEventAutomations(db, event, options.teamId);
+  const catalog = getEventCatalog();
+  const tasks = (
+    await findMatchingEventAutomations(db, event, options.teamId, catalog)
+  ).filter((task) => slackChannelMessageRunsAutomation(event, task));
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {
@@ -120,9 +129,11 @@ export async function ingestEventAutomations(
             },
             extra: {
               "app.event.event_type": event.eventType,
-              "app.event_automation.max_runs_per_hour":
-                botConfig.maxEventAutomationRunsPerHour,
-              "app.event_automation.resource_type": task.trigger.resourceType,
+              "app.event_automation.max_runs": botConfig.maxEventAutomationRuns,
+              "app.event_automation.run_window_ms":
+                botConfig.eventAutomationRunWindowMs,
+              "app.event_automation.resource_type":
+                task.trigger.resourceType ?? "any",
               "app.task.id": task.id,
             },
           });
@@ -149,6 +160,7 @@ export async function ingestEventAutomations(
             }
           : undefined;
       const dispatch = await dispatchEventAutomation({
+        automationId: task.id,
         conversationWorkQueue: options.queue,
         nowMs,
         options: {
@@ -156,14 +168,14 @@ export async function ingestEventAutomations(
           ...(credentialSubject ? { credentialSubject } : undefined),
           destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event, outcomes),
+          input: eventInput(task, event, outcomes, catalog),
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
         },
       });
       await recordEventAutomationRunStarted(db, {
-        automationId: task.id,
+        automation: task,
         dispatchId: dispatch.id,
         nowMs,
       });

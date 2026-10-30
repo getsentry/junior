@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
@@ -11,6 +19,7 @@ import {
   useAppendConversationMessage,
   useArchiveConversation,
   useCancelConversationPendingMessages,
+  useSteerConversationPendingMessages,
   useConversationData,
   useStopConversationTurn,
   type PendingArchiveConversationUpdate,
@@ -18,17 +27,39 @@ import {
 import { conversationIsResponding } from "./transcript";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
-import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import { CopyButton } from "../components/CopyButton";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   CONVERSATION_EVENT_PARAM,
   parseConversationEventSeq,
 } from "./conversationRoutes";
-import { ConversationComposer } from "./ConversationComposer";
+import {
+  ConversationComposer,
+  restoreStoredDraftText,
+  type ConversationComposerHandle,
+} from "./ConversationComposer";
+import { readStoredComposerImages } from "./ComposerImages";
+import { useDashboardCoreData } from "../api";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationDetails } from "./ConversationDetails";
+import { ConversationEventDetails } from "./ConversationEventDetails";
+import { ConversationEventLogLoading } from "./ConversationEventLog";
+import {
+  adjacentEventLogSeqs,
+  eventLogRows,
+  filterEventLogRows,
+} from "./eventLog";
+import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TurnContextDetails,
+  type TurnContextPanel,
+  type TurnContextSelection,
+} from "./TranscriptTurnContextView";
+import { cn } from "../styles";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
+import { conversationLinks } from "./ConversationLinkedWork";
 import {
   ConversationAnnotations,
   ConversationPrivacyChip,
@@ -37,7 +68,10 @@ import {
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
-import { ConversationUsageBreakdown } from "./ConversationUsageBreakdown";
+import {
+  ConversationUsageBreakdown,
+  hasConversationUsageBreakdown,
+} from "./ConversationUsageBreakdown";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import { UserInputRequestCard } from "./UserInputRequestCard";
 import {
@@ -74,6 +108,14 @@ import type {
 
 export { liveModelId } from "./ConversationMeta";
 
+const detailsDefaultOpenQuery = "(min-width: 1440px)";
+
+function subscribeToDetailsLayout(onChange: () => void) {
+  const media = window.matchMedia(detailsDefaultOpenQuery);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
@@ -81,6 +123,12 @@ export function ConversationPage(props: {
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
+  const detailsDefaultOpen = useSyncExternalStore(
+    subscribeToDetailsLayout,
+    () => window.matchMedia(detailsDefaultOpenQuery).matches,
+    () => false,
+  );
+  const pageRef = useRef<HTMLDivElement>(null);
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -88,6 +136,16 @@ export function ConversationPage(props: {
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
   );
+  // Event details and turn context show over Conversation details. Closing
+  // them shows details again when details are open. A linked event starts
+  // with details closed, so closing it does not open a panel nobody chose.
+  const [detailsChoice, setDetailsChoice] = useState<boolean | undefined>(() =>
+    selectedEventSeq === undefined ? undefined : false,
+  );
+  const detailsOpen = detailsChoice ?? detailsDefaultOpen;
+  const [turnContext, setTurnContext] = useState<TurnContextSelection>();
+  const eventOpen = selectedEventSeq !== undefined;
+  const showDetails = detailsOpen && !eventOpen && !turnContext;
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     selectedEventSeq === undefined ? "rich" : "raw",
   );
@@ -123,6 +181,10 @@ export function ConversationPage(props: {
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
   const transcript = detail.data;
+  const selectedEvent =
+    transcript?.eventHistory.status === "expired"
+      ? undefined
+      : transcript?.events.find((event) => event.seq === selectedEventSeq);
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
@@ -163,6 +225,8 @@ export function ConversationPage(props: {
       if (value !== "raw" && selectedEventSeq !== undefined) {
         setSelectedEventSeq(undefined);
       }
+      // Turn context belongs to a message in the Conversation view.
+      setTurnContext(undefined);
       setView(value);
     },
     [selectedEventSeq, setSelectedEventSeq],
@@ -184,6 +248,35 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (loadLinkedEvent) loadPreviousPageRef.current();
   }, [loadLinkedEvent, oldestLoadedSeq]);
+  // Keep the panel while the transcript or a linked event loads.
+  const eventLoading =
+    eventOpen &&
+    !selectedEvent &&
+    (detail.isPending ||
+      (linkedEventMissing &&
+        (detail.hasPreviousPage || detail.isLoadingPreviousPage) &&
+        !detail.historyError));
+  const showEvent = Boolean(selectedEvent) || eventLoading;
+  // Step through the same filtered rows that the event log shows.
+  const events = transcript?.events;
+  const normalizedSearch = search.trim().toLowerCase();
+  const eventRows = useMemo(
+    () =>
+      eventOpen && events
+        ? filterEventLogRows(eventLogRows(events), normalizedSearch)
+        : [],
+    [eventOpen, events, normalizedSearch],
+  );
+  const turnContextPanel = useMemo<TurnContextPanel>(
+    () => ({
+      openId: turnContext?.id,
+      onToggle: (selection) =>
+        setTurnContext((current) =>
+          current?.id === selection.id ? undefined : selection,
+        ),
+    }),
+    [turnContext?.id],
+  );
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -204,138 +297,139 @@ export function ConversationPage(props: {
     [],
   );
 
+  const closeEventDetails = () => {
+    const trigger = pageRef.current?.querySelector<HTMLButtonElement>(
+      `[data-event-seq="${selectedEventSeq}"] button`,
+    );
+    setSelectedEventSeq(undefined);
+    trigger?.focus({ preventScroll: true });
+  };
+  const closeTurnContext = () => {
+    // A message can have one context control per layout. Focus the visible one.
+    const trigger = [
+      ...(pageRef.current?.querySelectorAll<HTMLButtonElement>(
+        `[data-turn-context-id="${CSS.escape(turnContext?.id ?? "")}"]`,
+      ) ?? []),
+    ].find((button) => button.getClientRects().length > 0);
+    setTurnContext(undefined);
+    trigger?.focus({ preventScroll: true });
+  };
+
   return (
-    <>
+    <div
+      ref={pageRef}
+      className={cn(
+        "grid h-full min-h-0 min-w-0",
+        (showDetails || showEvent || turnContext) &&
+          "xl:grid-cols-[minmax(0,1fr)_25rem]",
+      )}
+    >
       <ChatLayout
-        scrollMinTall
-        scrollAriaLabel="Conversation transcript"
-        scrollClassName="px-4 pb-4 md:px-7 md:pb-6"
-        scroll={
-          <section className="min-w-0">
-            <ConversationHeader
-              agentTree={
-                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
-              }
-              conversationId={conversationId}
-              forks={
-                detail.data?.forkedFromConversationId ||
-                detail.data?.forks?.length ? (
-                  <ConversationForkLinks
-                    forkedFromConversationId={
-                      detail.data.forkedFromConversationId
-                    }
-                    forkedFromTitle={detail.data.forkedFromTitle}
-                    forks={detail.data.forks}
-                  />
-                ) : null
-              }
-              lastActivityAt={conversation?.lastSeenAt}
-              sentryConversationUrl={detail.data?.sentryConversationUrl}
-              copyAction={
-                <CopyMarkdownButton
-                  key={conversationDetail?.conversationId ?? "loading"}
-                  getMarkdown={
-                    conversationDetail
-                      ? async () =>
-                          buildConversationMarkdown(
-                            await detail.loadCompleteTranscript(),
-                            conversation,
-                          )
-                      : undefined
+        header={
+          <ConversationHeader
+            agentTree={
+              agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+            }
+            conversationId={conversationId}
+            detailsOpen={showDetails}
+            onDetailsClick={() => {
+              if (eventOpen) setSelectedEventSeq(undefined);
+              setTurnContext(undefined);
+              setDetailsChoice(!showDetails);
+            }}
+            forks={
+              detail.data?.forkedFromConversationId ||
+              detail.data?.forks?.length ? (
+                <ConversationForkLinks
+                  forkedFromConversationId={
+                    detail.data.forkedFromConversationId
                   }
+                  forkedFromTitle={detail.data.forkedFromTitle}
+                  forks={detail.data.forks}
                 />
-              }
-              annotations={
-                hasConversationAnnotations(detail.data?.annotations) ? (
-                  <ConversationAnnotations detail={detail.data} />
-                ) : null
-              }
-              linkedWork={
-                hasConversationAnnotations(detail.data?.annotations) ? (
-                  <ConversationAnnotations
-                    detail={detail.data}
-                    layout="strip"
-                  />
-                ) : null
-              }
-              archive={{
-                archived: Boolean(conversation?.archivedAt),
-                disabled: !conversation || archive.isPending,
-                error: Boolean(archive.error),
-                onClick: () =>
-                  archive.mutate({
-                    archived: !conversation?.archivedAt,
-                    lastSeenAt: conversation!.lastSeenAt,
-                  }),
-                pending: archive.isPending,
-              }}
-              brief={
-                detail.data?.brief ? (
-                  <ConversationBrief
-                    brief={detail.data.brief}
-                    variant="summary"
-                  />
-                ) : null
-              }
-              identity={identity}
-              live={live}
-              meta={
-                <ConversationHeaderMeta
-                  identity={identity}
-                  stats={
-                    hasConversationStats({
-                      conversation,
-                      detail: detail.data,
-                      variant: "compact",
-                    }) ? (
-                      <ConversationStats
-                        conversation={conversation}
-                        detail={detail.data}
-                        variant="compact"
-                      />
-                    ) : null
-                  }
-                />
-              }
-              onOpenSubagent={setSubagentTarget}
-              onSearchChange={setSearch}
-              onViewChange={onViewChange}
-              privacy={
-                <ConversationPrivacyChip
-                  visibility={conversation?.visibility}
-                />
-              }
-              search={search}
-              stats={
-                hasConversationStats({
-                  conversation,
-                  detail: detail.data,
-                }) ? (
-                  <div className="grid min-w-0 gap-5">
+              ) : null
+            }
+            copyAction={
+              <CopyButton
+                label="Copy as Markdown"
+                copyingLabel="Preparing Markdown"
+                key={conversationDetail?.conversationId ?? "loading"}
+                getText={
+                  conversationDetail
+                    ? async () =>
+                        buildConversationMarkdown(
+                          await detail.loadCompleteTranscript(),
+                          conversation,
+                        )
+                    : undefined
+                }
+              />
+            }
+            linkedWork={
+              hasConversationAnnotations(detail.data?.annotations) ? (
+                <ConversationAnnotations detail={detail.data} />
+              ) : null
+            }
+            archive={{
+              archived: Boolean(conversation?.archivedAt),
+              disabled: !conversation || archive.isPending,
+              error: Boolean(archive.error),
+              onClick: () =>
+                archive.mutate({
+                  archived: !conversation?.archivedAt,
+                  lastSeenAt: conversation!.lastSeenAt,
+                }),
+              pending: archive.isPending,
+            }}
+            live={live}
+            meta={
+              <ConversationHeaderMeta
+                identity={identity}
+                stats={
+                  hasConversationStats({
+                    conversation,
+                    detail: detail.data,
+                    variant: "compact",
+                  }) ? (
                     <ConversationStats
                       conversation={conversation}
                       detail={detail.data}
+                      variant="compact"
                     />
-                    <ConversationUsageBreakdown
-                      conversation={conversation}
-                      detail={detail.data}
-                    />
-                  </div>
-                ) : null
-              }
-              title={title}
-              view={view}
-            />
-
+                  ) : null
+                }
+              />
+            }
+            onSearchChange={setSearch}
+            onViewChange={onViewChange}
+            privacy={
+              <ConversationPrivacyChip visibility={conversation?.visibility} />
+            }
+            search={search}
+            title={title}
+            view={view}
+          />
+        }
+        scrollMinTall
+        scrollAriaLabel="Conversation transcript"
+        scrollClassName={
+          view === "raw" ? undefined : "px-4 pb-4 md:px-7 md:pb-6"
+        }
+        scroll={
+          <section className="min-w-0">
             <div
               className={
                 view === "raw"
-                  ? "w-full pt-5 md:pt-7"
+                  ? "w-full"
                   : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
               }
             >
               {detail.isPending ? (
-                <TranscriptLoading />
+                view === "raw" ? (
+                  <ConversationEventLogLoading />
+                ) : (
+                  <TranscriptLoading />
+                )
               ) : detail.error && !detail.data ? (
                 <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
                   {detail.error.message}
@@ -356,14 +450,17 @@ export function ConversationPage(props: {
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
                     onSelectedEventSeqChange={setSelectedEventSeq}
+                    pendingMessages={detail.inlineMessages}
                     pinRequestVersion={pinRequestVersion}
                     responding={
                       !detail.error && conversationIsResponding(transcript)
                     }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
+                    onSearchChange={setSearch}
                     selectedEventSeq={selectedEventSeq}
                     transcript={transcript}
+                    turnContextPanel={turnContextPanel}
                     view={view}
                   />
                 </>
@@ -386,17 +483,81 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              // Without live history, an inline send would never leave the
+              // transcript tail. A started Turn reads a new send only later.
+              // Keep those sends in the queue. An earlier inline send that
+              // history does not have yet can start that Turn first.
+              sendsInline={
+                detail.data.eventHistory.status === "available" &&
+                !conversationIsResponding(detail.data) &&
+                detail.inlineMessages.length === 0
+              }
               stoppable={live}
               userInputRequest={userInputRequest}
             />
           ) : undefined
         }
       />
+      {showDetails ? (
+        <ConversationDetails
+          conversationId={conversationId}
+          identity={identity}
+          sentryConversationUrl={detail.data?.sentryConversationUrl}
+          onClose={() => setDetailsChoice(false)}
+          onOpenSubagent={setSubagentTarget}
+          links={conversationLinks(detail.data)}
+          brief={
+            detail.data?.brief ? (
+              <ConversationBrief brief={detail.data.brief} variant="summary" />
+            ) : null
+          }
+          overview={
+            hasConversationStats({
+              conversation,
+              detail: detail.data,
+            }) ? (
+              <ConversationStats
+                conversation={conversation}
+                detail={detail.data}
+              />
+            ) : null
+          }
+          usage={
+            hasConversationUsageBreakdown({
+              conversation,
+              detail: detail.data,
+            }) ? (
+              <ConversationUsageBreakdown
+                conversation={conversation}
+                detail={detail.data}
+              />
+            ) : null
+          }
+        />
+      ) : null}
+      {showEvent ? (
+        <ConversationEventDetails
+          conversation={transcript}
+          event={selectedEvent}
+          onClose={closeEventDetails}
+          onSelect={setSelectedEventSeq}
+          {...adjacentEventLogSeqs(eventRows, selectedEventSeq)}
+        />
+      ) : null}
+      {turnContext ? (
+        <TranscriptSearchProvider query={search}>
+          <TurnContextDetails
+            contexts={turnContext.contexts}
+            key={turnContext.id}
+            onClose={closeTurnContext}
+          />
+        </TranscriptSearchProvider>
+      ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-    </>
+    </div>
   );
 }
 
@@ -414,6 +575,11 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /**
+   * True when history is live and no Turn has started, so the next Turn will
+   * read a new send at once.
+   */
+  sendsInline: boolean;
   /** True while the conversation has a Turn that a stop can end. */
   stoppable: boolean;
   /** Junior's open question, if no user message answers it yet. */
@@ -426,6 +592,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
+  const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
+    useState<string>();
+  const [queueActionError, setQueueActionError] = useState<string>();
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -451,10 +620,21 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
+  // No Turn runs and nothing waits in the queue, so the next send would
+  // leave the queue almost at once. Show it in the transcript instead. A
+  // conversation can be active before its Turn starts; that still counts.
+  const committedIds = new Set(props.committedMessageIds);
+  const sendInlineRef = useRef(false);
+  sendInlineRef.current =
+    props.sendsInline &&
+    !props.pendingMessages.some(
+      (message) => !committedIds.has(message.messageId),
+    );
   const onSubmit = useCallback(
     async (message: string, idempotencyKey: string, images?: InputImage[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
+        inline: sendInlineRef.current,
         message,
         images,
       });
@@ -476,6 +656,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancelPendingMessagesRef.current.reset();
     }
     if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
+    setQueueActionError(undefined);
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
@@ -507,6 +688,86 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancellableMessageIds.includes(id),
     ),
   );
+
+  // Edit uses its own cancel mutation so remove errors stay on remove.
+  const editCancel = useCancelConversationPendingMessages(props.conversationId);
+  const editCancelRef = useRef(editCancel);
+  editCancelRef.current = editCancel;
+  const editingRef = useRef(false);
+  const composerRef = useRef<ConversationComposerHandle>(null);
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
+  const onEditMessage = useCallback(
+    async (message: ConversationMailboxMessage) => {
+      const receivedBefore = props.pendingGeneratedAtRef.current;
+      // The image read runs before the cancel starts, so isPending alone does
+      // not stop a second click.
+      if (!receivedBefore || editingRef.current) return;
+      editingRef.current = true;
+      const inboundMessageId = message.inboundMessageId;
+      setEditTargetInboundMessageId(inboundMessageId);
+      setQueueActionError(undefined);
+      try {
+        // Read images first. A failed read must leave the message queued.
+        const images = await readStoredComposerImages(
+          props.conversationId,
+          message.attachments,
+        );
+        // The reader left during the read. Keep the message in the queue.
+        if (!composerRef.current) return;
+        // Check before the cancel. After it, images that do not fit are lost.
+        if (!composerRef.current.canRestoreImages(images)) {
+          setQueueActionError("Remove some draft images to edit that message.");
+          return;
+        }
+        const result = await editCancelRef.current.mutateAsync({
+          inboundMessageIds: [inboundMessageId],
+          receivedBefore,
+        });
+        // Junior can read the message before the cancel lands. Then it is
+        // already in the Conversation and there is nothing to edit.
+        if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
+          setQueueActionError("Junior already read that message.");
+          return;
+        }
+        const restored = { images, text: message.text ?? "" };
+        if (composerRef.current) {
+          composerRef.current.restoreMessage(restored);
+        } else {
+          // The reader left during the cancel. Keep the text in the saved
+          // draft so it is there when they come back.
+          restoreStoredDraftText(props.conversationId, restored.text);
+        }
+      } catch {
+        setQueueActionError("Could not edit the queued message. Try again.");
+      } finally {
+        editingRef.current = false;
+        setEditTargetInboundMessageId(undefined);
+      }
+    },
+    [props.conversationId, props.pendingGeneratedAtRef],
+  );
+
+  const steerPendingMessages = useSteerConversationPendingMessages(
+    props.conversationId,
+  );
+  const steerPendingMessagesRef = useRef(steerPendingMessages);
+  steerPendingMessagesRef.current = steerPendingMessages;
+  const onSteerMessage = useCallback((message: ConversationMailboxMessage) => {
+    if (steerPendingMessagesRef.current.isPending) return;
+    setQueueActionError(undefined);
+    steerPendingMessagesRef.current.mutate(
+      { inboundMessageIds: [message.inboundMessageId] },
+      {
+        onError: () =>
+          setQueueActionError(
+            "Could not send the queued message now. Try again.",
+          ),
+      },
+    );
+  }, []);
+  const steerTargetInboundMessageId = steerPendingMessages.isPending
+    ? steerPendingMessages.variables?.inboundMessageIds[0]
+    : undefined;
 
   const onStop = useCallback(async () => {
     const result = await stopTurnRef.current.mutateAsync();
@@ -545,17 +806,27 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             cancelPending={cancelPendingMessages.isPending}
             cancelTargetInboundMessageId={cancelTargetInboundMessageId}
             committedMessageIds={props.committedMessageIds}
+            conversationId={props.conversationId}
+            editTargetInboundMessageId={editTargetInboundMessageId}
             messages={props.pendingMessages}
             onCancelMessage={onCancelMessage}
+            onEditMessage={onEditMessage}
             onLayoutChange={onMailboxLayoutChange}
             onRetry={onRetry}
+            onSteerMessage={props.stoppable ? onSteerMessage : undefined}
+            steerTargetInboundMessageId={steerTargetInboundMessageId}
+            viewerEmail={viewerEmail}
           />
         </>
       }
     >
       <ConversationComposer
         draftId={props.conversationId}
-        error={stopTurn.error ? "Could not stop Junior. Try again." : undefined}
+        error={
+          queueActionError ??
+          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+        }
+        ref={composerRef}
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}

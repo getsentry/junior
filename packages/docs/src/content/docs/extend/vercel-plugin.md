@@ -142,7 +142,8 @@ The deployment completed successfully.
 <details class="event">
 <summary><code>deployment.error</code></summary>
 
-The deployment failed.
+The deployment failed. This is the same as GitHub `deployment.failed`, not
+GitHub `deployment.error`.
 
 </details>
 
@@ -152,6 +153,13 @@ The deployment failed.
 The deployment was canceled.
 
 </details>
+
+An event automation can also run for every project, with no identifier.
+`deployment.succeeded`, `deployment.error`, and `deployment.canceled` can run
+that way with no filter. Use the `projectId` or `target` filter to limit one.
+Junior does not check that the creator can see the projects, so a broad
+automation can post private project names in its channel. See
+[Automations](/concepts/automations/).
 
 Create the watch or event automation before the deployment finishes. Junior does
 not replay earlier webhooks. Project- and target-scoped watches keep

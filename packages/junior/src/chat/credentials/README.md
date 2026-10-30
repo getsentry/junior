@@ -32,6 +32,51 @@ sandbox.
   sandbox session, and expiry as applicable.
 - Real credentials remain in host storage and host-applied request headers.
 
+## Service Accounts
+
+A plugin can declare an optional install-wide provider account, often a bot.
+The model is the same for every provider:
+
+1. Per-Actor OAuth is the default. An Actor's own connection always wins.
+2. An Admin can connect one service account per plugin from the dashboard
+   Admin page. The `junior service-account connect <plugin>` CLI is a
+   fallback. Until then, it has no effect.
+3. The plugin's `accounts.service-account` lists what the account may use.
+   Today that is `tools`, a list of MCP tools. The service account serves an
+   Actor without their own connection, but only for what it lists. Other
+   requests still ask the Actor to connect.
+4. A plugin can set `accounts.user-oauth: false`. Then Junior uses only the
+   service account. It ignores Actor connections, never asks an Actor to
+   connect, and hides what the account does not list. Until an Admin
+   connects the account, the plugin is not available.
+
+A deployment can change the `accounts` block with `plugins.manifests`. For
+example, `accounts: { userOAuth: false }` turns off per-Actor OAuth without
+repeating the tool list.
+
+Rules:
+
+- `service-account.ts` owns the check, `serviceAccountAllows`. A surface
+  must ask it before it uses the shared account.
+- `serviceAccountOnly` reports `accounts.user-oauth: false`. A surface must
+  check it before it falls back to Actor auth or asks an Actor to connect.
+- Each surface enforces the list where it sees the request. MCP calls run
+  on the host, so the tool manager checks each tool call.
+- A new surface adds one list to `accounts.service-account` and one request
+  kind to `serviceAccountAllows`. For sandbox egress, the list would name
+  egress grants, so the proxy never signs a request with the shared account
+  that the list does not name.
+- The service account usually has fewer provider permissions than a person.
+  Everyone who can talk to Junior can use what it allows, so the provider
+  account should see only what all of them may see.
+- Unknown `accounts` keys fail manifest validation.
+- `service-account.ts` also owns the connect flow. The dashboard routes in
+  `api/service-accounts/` and the CLI both call it. Whoever signs in picks
+  the account that everyone falls back to, so every dashboard route,
+  including the OAuth callback, requires an Admin. A pending sign-in is
+  single-use, expires after 10 minutes, and finishes only for the Admin who
+  started it.
+
 ## OAuth Flow
 
 1. A provider reports that a user-bound grant is required.
@@ -50,9 +95,11 @@ sandbox.
   `/api/connections`. The credential subject is the viewer's web actor id
   (`webActorFromEmail`), which is the subject of the viewer's web
   Conversations. Slack grants stay keyed by Slack user id and are managed from
-  Slack App Home or the slash command.
+  Slack App Home.
 - A dashboard connection has no Conversation to resume. The callback stores the
-  token and does not publish Slack App Home.
+  token, links the provider identity to the viewer's user, and does not publish
+  Slack App Home. Disconnect removes that provider identity. See
+  `../identities/README.md`.
 - MCP plugins are not listed yet. Their authorization attempts are bound to a
   Conversation.
 

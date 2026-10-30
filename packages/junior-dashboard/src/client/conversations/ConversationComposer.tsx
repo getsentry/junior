@@ -1,23 +1,32 @@
 import { INPUT_IMAGE_TYPES, type InputImage } from "@sentry/junior/api/schema";
-import { ComposerImages, readComposerImages } from "./ComposerImages";
+import {
+  ComposerImages,
+  composerImagesFit,
+  readComposerImages,
+} from "./ComposerImages";
 import {
   memo,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import { ImagePlus, Send, Square } from "lucide-react";
 
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 
-const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
-const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
@@ -53,6 +62,14 @@ export function conversationAttemptForSubmit(
   };
 }
 
+/** Imperative composer actions for the reply footer. */
+export type ConversationComposerHandle = {
+  /** True when the draft has room for these images right now. */
+  canRestoreImages(images: readonly InputImage[]): boolean;
+  /** Put queued text and images ahead of the draft. Queued images win. */
+  restoreMessage(message: { images?: InputImage[]; text: string }): void;
+};
+
 type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
@@ -70,6 +87,8 @@ type ConversationComposerProps = {
    * the pending queue instead.
    */
   restoreDraftOnError?: boolean;
+  /** Lets the parent put a message taken out of the queue back in the draft. */
+  ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   onFocus?: () => void;
   onSubmit(
@@ -90,7 +109,7 @@ type ConversationComposerProps = {
 export const ConversationComposer = memo(function ConversationComposer(
   props: ConversationComposerProps,
 ) {
-  const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
+  const storageKey = draftStorageKey(props.draftId);
   const [initialDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
@@ -137,35 +156,31 @@ export const ConversationComposer = memo(function ConversationComposer(
     };
   }, [storageKey]);
 
+  // Grow with wrapped and explicit lines. CSS `max-height` caps the box, and
+  // longer drafts scroll inside it. Width changes rewrap the text, so measure
+  // again when the textarea gets narrower or wider.
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-
-    const syncHeight = () => {
-      if (window.matchMedia(DESKTOP_MEDIA_QUERY).matches) {
-        if (textarea.style.height) textarea.style.height = "";
-        return;
-      }
-      // Measure from auto height only when the value changed. Avoid layout work
-      // on parent re-renders that leave the draft text alone.
-      const previous = textarea.style.height;
-      textarea.style.height = "auto";
-      const nextHeight = Math.min(
-        textarea.scrollHeight,
-        MOBILE_COMPOSER_MAX_HEIGHT_PX,
-      );
-      const next = `${nextHeight}px`;
-      if (previous === next) {
-        textarea.style.height = previous;
-        return;
-      }
-      textarea.style.height = next;
+    syncComposerHeight(textarea);
+    let width = textarea.clientWidth;
+    let frame: number | undefined;
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      // A height change inside this callback starts a ResizeObserver loop
+      // error. Measure in the next frame instead.
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = undefined;
+        syncComposerHeight(textarea);
+      });
+    });
+    observer.observe(textarea);
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-
-    syncHeight();
-    const media = window.matchMedia(DESKTOP_MEDIA_QUERY);
-    media.addEventListener("change", syncHeight);
-    return () => media.removeEventListener("change", syncHeight);
   }, []);
 
   const updateCanSend = (text: string) => {
@@ -185,7 +200,18 @@ export const ConversationComposer = memo(function ConversationComposer(
     setReadingImages(true);
     setImageError(undefined);
     try {
-      replaceImages(await readComposerImages(files, imagesRef.current));
+      const before = imagesRef.current;
+      const added = (await readComposerImages(files, before)).slice(
+        before.length,
+      );
+      // An edit can restore images during the read. Add to those images
+      // instead of replacing them.
+      const next = [...imagesRef.current, ...added];
+      if (!composerImagesFit(next)) {
+        setImageError("Attach up to 3 images that total 3 MB or less.");
+      } else {
+        replaceImages(next);
+      }
       textareaRef.current?.focus({ preventScroll: true });
     } catch (error) {
       setImageError(
@@ -210,12 +236,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   const syncTextareaHeight = () => {
-    const textarea = textareaRef.current;
-    if (!textarea || window.matchMedia(DESKTOP_MEDIA_QUERY).matches) return;
-    const previous = textarea.style.height;
-    textarea.style.height = "auto";
-    const next = `${Math.min(textarea.scrollHeight, MOBILE_COMPOSER_MAX_HEIGHT_PX)}px`;
-    textarea.style.height = previous === next ? previous : next;
+    if (textareaRef.current) syncComposerHeight(textareaRef.current);
   };
 
   const setMessage = (text: string) => {
@@ -312,6 +333,12 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   // Put queued text back ahead of anything the reader already typed.
+  const prependDraftText = (text: string) => {
+    const next = withPrependedText(draftRef.current, text);
+    replaceMessage(next);
+    storeDraft(storageKey, next);
+  };
+
   const stopTurn = async () => {
     if (!props.onStop || stoppingRef.current) return;
     stoppingRef.current = true;
@@ -325,15 +352,32 @@ export const ConversationComposer = memo(function ConversationComposer(
       stoppingRef.current = false;
     }
     if (!restored) return;
-    const current = draftRef.current.text;
-    const next: ConversationDraft = {
-      ...draftRef.current,
-      text: current.trim() ? `${restored}\n${current}` : restored,
-    };
-    replaceMessage(next);
-    storeDraft(storageKey, next);
+    prependDraftText(restored);
     textareaRef.current?.focus({ preventScroll: true });
   };
+
+  useImperativeHandle(props.ref, () => ({
+    canRestoreImages: (images) =>
+      !images.length || composerImagesFit([...images, ...imagesRef.current]),
+    restoreMessage: (message) => {
+      // An image-only message has no text to put ahead of the draft.
+      if (message.text.trim()) prependDraftText(message.text);
+      const restoredImages = message.images ?? [];
+      if (restoredImages.length) {
+        // The queued images already left the queue, so they win. A draft
+        // image added during the cancel stays only while it still fits.
+        const merged = [...restoredImages];
+        for (const image of imagesRef.current) {
+          if (composerImagesFit([...merged, image])) merged.push(image);
+        }
+        if (merged.length < restoredImages.length + imagesRef.current.length) {
+          setImageError("Some draft images did not fit. Add them again.");
+        }
+        replaceImages(merged);
+      }
+      textareaRef.current?.focus({ preventScroll: true });
+    },
+  }));
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -431,7 +475,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-none md:overflow-visible md:px-4 md:py-3"
+          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-[min(calc(12lh_+_1.5rem),40dvh)] md:px-4 md:py-3"
           disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
           id={id}
@@ -458,16 +502,25 @@ export const ConversationComposer = memo(function ConversationComposer(
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <Button
-              aria-label="Attach images"
-              disabled={sendLocked || readingImages}
-              onClick={() => fileInputRef.current?.click()}
-              size="icon"
-              title="Attach images (up to 3 MB total)"
-              type="button"
-            >
-              <ImagePlus aria-hidden="true" size={16} />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    focusableWhenDisabled
+                    aria-label="Attach images"
+                    disabled={sendLocked || readingImages}
+                    onClick={() => fileInputRef.current?.click()}
+                    size="icon"
+                    type="button"
+                  >
+                    <ImagePlus aria-hidden="true" size={16} />
+                  </Button>
+                }
+              />
+              <TooltipContent size="compact">
+                Attach images (up to 3 MB total)
+              </TooltipContent>
+            </Tooltip>
             {props.footerStart}
             {props.footerStart ? null : (
               <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
@@ -481,7 +534,6 @@ export const ConversationComposer = memo(function ConversationComposer(
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
-                title="Stop Junior"
               >
                 <Square aria-hidden="true" fill="currentColor" size={12} />
                 <span className="hidden md:inline">
@@ -498,8 +550,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 sendLocked ||
                 readingImages
               }
-              title={sendLocked ? "Sending message" : props.submitLabel}
-              tone="primary"
+              variant="primary"
               type="submit"
             >
               <Send aria-hidden="true" size={14} />
@@ -513,6 +564,15 @@ export const ConversationComposer = memo(function ConversationComposer(
     </div>
   );
 });
+
+/** Fit the textarea to its text. CSS `max-height` sets the scroll limit. */
+function syncComposerHeight(textarea: HTMLTextAreaElement): void {
+  // Measure from auto height so the box can also shrink after deletes.
+  const previous = textarea.style.height;
+  textarea.style.height = "auto";
+  const next = `${textarea.scrollHeight}px`;
+  textarea.style.height = previous === next ? previous : next;
+}
 
 function emptyDraft(): ConversationDraft {
   return {
@@ -557,6 +617,30 @@ function readStoredDraft(storageKey: string): ConversationDraft {
     // Storage can be unavailable in private browsing or contain stale data.
   }
   return emptyDraft();
+}
+
+function draftStorageKey(draftId: string): string {
+  return `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(draftId)}`;
+}
+
+function withPrependedText(
+  draft: ConversationDraft,
+  text: string,
+): ConversationDraft {
+  return {
+    ...draft,
+    text: draft.text.trim() ? `${text}\n${draft.text}` : text,
+  };
+}
+
+/**
+ * Put queued text ahead of the saved draft when the composer is not mounted.
+ * The composer reads the saved draft the next time it opens.
+ */
+export function restoreStoredDraftText(draftId: string, text: string): void {
+  if (!text.trim()) return;
+  const storageKey = draftStorageKey(draftId);
+  storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
 }
 
 function storeDraft(storageKey: string, draft: ConversationDraft): void {

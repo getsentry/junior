@@ -1,5 +1,5 @@
-import type { SendOptions, SendResult } from "@vercel/queue";
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
+import { withSpan } from "@/chat/logging";
+import { getQueueProvider, type QueueProvider } from "@/chat/queue/provider";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -14,17 +14,8 @@ import {
 export const DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC = "junior_conversation_work";
 export const CONVERSATION_WORK_QUEUE_RETENTION_SECONDS =
   CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
-
-interface QueueSender {
-  send<T = unknown>(
-    topicName: string,
-    payload: T,
-    options?: SendOptions,
-  ): Promise<SendResult>;
-}
-
 export interface VercelConversationWorkQueueOptions {
-  client?: QueueSender;
+  client?: Pick<QueueProvider, "send">;
   retentionSeconds?: number;
   topic?: string;
 }
@@ -57,25 +48,41 @@ export function createVercelConversationWorkQueue(
   options: VercelConversationWorkQueueOptions = {},
 ): ConversationWorkQueue {
   const topic = resolveConversationWorkQueueTopic(options);
-  const client = options.client ?? createVercelQueueClient();
+  const client = options.client ?? getQueueProvider();
 
   return {
     async send(
       message: ConversationQueueMessage,
       sendOptions?: ConversationQueueSendOptions,
     ): Promise<ConversationQueueSendResult> {
-      const result = await client.send(
-        topic,
-        signConversationQueueMessage(message),
+      const payload = signConversationQueueMessage(message);
+      return await withSpan(
+        "conversation.work.publish",
+        "queue.publish",
+        { conversationId: message.conversationId },
+        async (setSpanAttributes) => {
+          const result = await client.send(topic, payload, {
+            idempotencyKey: sendOptions?.idempotencyKey,
+            delaySeconds: toDelaySeconds(sendOptions),
+            retentionSeconds:
+              options.retentionSeconds ??
+              CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
+          });
+          if (!result.messageId) {
+            return {};
+          }
+          setSpanAttributes({ "messaging.message.id": result.messageId });
+          return { messageId: result.messageId };
+        },
         {
-          idempotencyKey: sendOptions?.idempotencyKey,
-          delaySeconds: toDelaySeconds(sendOptions),
-          retentionSeconds:
-            options.retentionSeconds ??
-            CONVERSATION_WORK_QUEUE_RETENTION_SECONDS,
+          "messaging.destination.name": topic,
+          // The queue provider sends the payload as these UTF-8 JSON bytes.
+          "messaging.message.body.size": Buffer.byteLength(
+            JSON.stringify(payload),
+          ),
+          "messaging.system": getQueueProvider().messagingSystem,
         },
       );
-      return result.messageId ? { messageId: result.messageId } : {};
     },
   };
 }

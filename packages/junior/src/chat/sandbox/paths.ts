@@ -14,6 +14,17 @@ export const SANDBOX_WORKSPACE_ROOT = normalizeWorkspaceRoot(
 export const SANDBOX_REPOS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/repos`;
 export const SANDBOX_SKILLS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/skills`;
 export const SANDBOX_DATA_ROOT = `${SANDBOX_WORKSPACE_ROOT}/data`;
+/** Runtime-owned files inside the sandbox, outside every repository. */
+export const SANDBOX_JUNIOR_ROOT = `${SANDBOX_WORKSPACE_ROOT}/.junior`;
+const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_JUNIOR_ROOT}/bin`;
+
+/**
+ * PATH for sandbox commands. Plugin runtime binaries come last so they never
+ * shadow repo or Workspace tools with the same name. Repo tools often start
+ * child processes through PATH, so only PATH order can protect them. Plugin
+ * binaries stay reachable by name or by absolute path.
+ */
+export const SANDBOX_COMMAND_PATH = `$PATH:${SANDBOX_RUNTIME_BIN_DIR}`;
 
 export function sandboxSkillDir(skillName: string): string {
   return `${SANDBOX_SKILLS_ROOT}/${skillName}`;

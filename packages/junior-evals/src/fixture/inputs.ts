@@ -67,12 +67,12 @@ export interface ThreadMessageInput {
   text: string;
 }
 
-/** A slash command of Junior through the Slack webhook, with a valid signature. */
-export interface SlackCommandInput {
-  kind: "slack_command";
+/** A click on "Unlink" in Slack App Home, through the signed Slack webhook. */
+export interface AppHomeUnlinkInput {
+  kind: "app_home_unlink";
   author?: SlackAuthor;
-  /** The text after the command name, such as `unlink github`. */
-  text: string;
+  /** The plugin name, such as `github`. */
+  provider: string;
 }
 
 /** A dashboard message through `POST /api/conversations`. */
@@ -80,6 +80,8 @@ export interface WebMessageInput {
   kind: "web_message";
   /** Images that the person added to the message. */
   images?: FileInput[];
+  /** After the post, the person steers the queued message into the running turn. */
+  steer?: boolean;
   text: string;
 }
 
@@ -119,7 +121,7 @@ export type Input =
   | MessageInput
   | AutomationInput
   | CompleteAuthInput
-  | SlackCommandInput;
+  | AppHomeUnlinkInput;
 
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
@@ -181,21 +183,20 @@ export function slackThreadMessage(
 }
 
 /**
- * Run the slash command of Junior in the Slack channel of the Conversation,
- * such as `slackCommand("unlink github")`. Junior answers the person in
- * private and starts no turn.
+ * Click "Unlink" for a provider in the Slack App Home of the person, such as
+ * `appHomeUnlink("github")`. Junior removes the account and starts no turn.
  */
-export function slackCommand(
-  text: string,
+export function appHomeUnlink(
+  provider: string,
   options: { author?: SlackAuthor } = {},
-): SlackCommandInput {
-  return { kind: "slack_command", text, ...options };
+): AppHomeUnlinkInput {
+  return { kind: "app_home_unlink", provider, ...options };
 }
 
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { images?: FileInput[] } = {},
+  options: { images?: FileInput[]; steer?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }

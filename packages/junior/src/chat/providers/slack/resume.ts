@@ -34,9 +34,10 @@ import {
   logException,
   setSpanAttributes,
   setTags,
-  withLogContext,
   type LogContext,
 } from "@/chat/logging";
+import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import type { TraceContext } from "@/chat/task-execution/state";
 import {
   finalizeFailedTurnReplyWithEvent,
   getAgentTurnDiagnosticsAttributes,
@@ -55,6 +56,7 @@ import {
 } from "@/chat/slack/assistant-thread/status";
 import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { actorLogContext } from "@/chat/credentials/context";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import {
   startProcessingReactionForMessage,
@@ -83,7 +85,6 @@ import {
 } from "@/chat/services/conversation-memory";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
-import { getConversationStore } from "@/chat/db";
 
 async function postSlackMessageBestEffort(
   channelId: string,
@@ -152,6 +153,8 @@ interface ResumeSlackTurnArgs {
   messageText: string;
   conversationId: string;
   turnId: string;
+  /** Trace of the first slice of the Turn. */
+  traceContext?: TraceContext;
   /** Active durable execution slice being resumed. */
   sliceId?: number;
   channelId: string;
@@ -196,12 +199,10 @@ interface ResumePreparedTurn {
 }
 
 function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
-  const actor = args.run?.actor;
   return {
     conversationId: args.conversationId,
     messageConversationId: args.conversationId,
-    userId: isUserActor(actor) ? actor.userId : undefined,
-    userName: isUserActor(actor) ? actor.userName : undefined,
+    ...actorLogContext(args.run?.actor, args.run?.credentialContext),
     destinationName: args.channelId,
     assistantUserName: botConfig.userName,
     modelId: defaultModelId(botConfig),
@@ -374,8 +375,10 @@ function buildResumedRun(
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  return withLogContext(getResumeLogContext(args), () =>
-    resumeSlackTurnInContext(args),
+  return await withTurnSpan(
+    getResumeLogContext(args),
+    args.traceContext && { traceContexts: [args.traceContext] },
+    () => resumeSlackTurnInContext(args),
   );
 }
 
@@ -460,8 +463,6 @@ async function resumeSlackTurnInContext(
     status.update(runArgs.initialStatus);
 
     const conversationId = runArgs.conversationId;
-    const visibility = (await getConversationStore().get({ conversationId }))
-      ?.visibility;
     const visibleConversationId = args.conversationId;
     const sessionId = runArgs.turnId;
     let deliveryConversation:
@@ -598,7 +599,6 @@ async function resumeSlackTurnInContext(
             recordTurnSummary({
               conversationId: runArgs.conversationId,
               destination: savedRun.destination,
-              destinationVisibility: visibility,
               dispatchId,
               resultMessageId: messageTs,
               turnId: runArgs.turnId,
@@ -659,7 +659,6 @@ async function resumeSlackTurnInContext(
           durationMs: reply.diagnostics.durationMs,
           usage: reply.diagnostics.usage,
           destination: run.destination,
-          destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
           ...(dispatchErrorMessage
@@ -677,7 +676,6 @@ async function resumeSlackTurnInContext(
         await recordTurnSummary({
           conversationId: runArgs.conversationId,
           destination: run.destination,
-          destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
           ...(acceptedDeliveryId

@@ -1,6 +1,7 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
+  InputImage,
   MessageAttachment,
   MessageCard,
   PluginOperationalReportFeed,
@@ -9,6 +10,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import type {
   ActorIdentity,
+  ConversationReportMessageEvent,
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
@@ -51,6 +53,8 @@ export type TranscriptViewSubagentPart = {
 };
 
 export type TranscriptViewContextEventPart = {
+  /** People mentioned in the summary, resolved by the API. */
+  mentions?: ActorIdentity[];
   event:
     | {
         createdAt: string;
@@ -81,6 +85,8 @@ export type TranscriptViewContextEventPart = {
 };
 
 export type TranscriptViewStructuredEventPart = {
+  /** People mentioned in the preview and details, resolved by the API. */
+  mentions?: ActorIdentity[];
   name: string;
   namespace: string;
   presentation: ConversationEventPresentation;
@@ -113,6 +119,8 @@ export type TranscriptViewTurnContext = {
 export type TranscriptViewMessage = {
   cards?: MessageCard[];
   actorIdentity?: ActorIdentity;
+  /** Agent invocation whose input this is. An agent wrote it, not a person. */
+  agentInvocationId?: string;
   contexts?: TranscriptViewTurnContext[];
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
@@ -120,8 +128,12 @@ export type TranscriptViewMessage = {
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
+  /** Every Event when several arrived together in one message. */
+  events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
+  /** People mentioned in the event text, resolved by the API. */
+  mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */
   context?: boolean;
   /** Stable history/message id used to drop pending rows after commit. */
@@ -140,6 +152,8 @@ export type TranscriptViewMessage = {
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
   attachments?: MessageAttachment[];
+  /** Local images of a pending send that the server has not stored yet. */
+  images?: InputImage[];
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

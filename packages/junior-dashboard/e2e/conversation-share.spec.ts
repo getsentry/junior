@@ -42,7 +42,7 @@ for (const touch of [false, true]) {
           .getByRole("button", { name: "Conversation details", exact: true })
           .click();
         const details = page.getByRole("dialog", {
-          name: "Investigate checkout latency",
+          name: "Conversation details",
         });
         await page.evaluate(() => navigator.clipboard.writeText("unchanged"));
         const shareButton = details.getByRole("button", {

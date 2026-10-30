@@ -10,10 +10,13 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   private savepointId = 0;
   private isolatedQueryId = 0;
 
-  constructor(
-    private readonly client: PoolClient,
-    private readonly closeTransaction: () => Promise<void>,
-  ) {}
+  private readonly client: PoolClient;
+  private readonly closeTransaction: () => Promise<void>;
+
+  constructor(client: PoolClient, closeTransaction: () => Promise<void>) {
+    this.client = client;
+    this.closeTransaction = closeTransaction;
+  }
 
   db(): JuniorDatabase {
     return drizzle(this.client, {

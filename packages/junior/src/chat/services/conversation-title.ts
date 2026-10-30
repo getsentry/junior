@@ -1,12 +1,16 @@
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationStore } from "@/chat/db";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { readLocationConfigurationValues } from "@/chat/configuration/sql";
+import { getConversationStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
+import { getPluginConversationTitleContext } from "@/chat/plugins/conversation-title-context";
 import { getThreadTitleSourceMessage } from "@/chat/services/conversation-memory";
 import {
   fallbackShortTitle,
   generateShortTitle,
 } from "@/chat/services/short-title";
+import type { Destination } from "@sentry/junior-plugin-api";
 import type {
   ConversationMessage,
   ThreadConversationState,
@@ -62,6 +66,29 @@ function getRunInputMessage(
   return earliest;
 }
 
+/**
+ * Read config values for title context, such as a default repository. A
+ * failed Location read keeps the install defaults, so the title still works.
+ */
+async function resolveTitleConfiguration(
+  destination: Destination | undefined,
+): Promise<Record<string, unknown>> {
+  const defaults = getConfigDefaults();
+  if (destination?.platform !== "slack") return defaults;
+  try {
+    return {
+      ...defaults,
+      ...(await readLocationConfigurationValues({ db: getDb(), destination })),
+    };
+  } catch (error) {
+    logWarn("conversation.title.configuration.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    return defaults;
+  }
+}
+
 async function ensureConversationTitleOnce(args: {
   conversation: ThreadConversationState;
   conversationId: string;
@@ -99,7 +126,22 @@ async function ensureConversationTitleOnce(args: {
     const kind = humanMessage ? "conversation" : "run";
     let title: string | undefined;
     try {
-      title = await generateShortTitle({ completeText, kind, sourceText });
+      // Run input is task boilerplate; only human messages link objects.
+      const context =
+        kind === "conversation"
+          ? await getPluginConversationTitleContext({
+              configuration: await resolveTitleConfiguration(
+                stored?.destination,
+              ),
+              text: sourceText,
+            })
+          : undefined;
+      title = await generateShortTitle({
+        completeText,
+        context,
+        kind,
+        sourceText,
+      });
     } catch (error) {
       logWarn("conversation.title.generation.failed", {
         "exception.message":

@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
@@ -5,6 +6,7 @@ import {
   pluginEventsSchema,
   promptContextSchema,
   promptMessageSchema,
+  eventDataSchema,
   eventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
@@ -21,6 +23,7 @@ import type {
   PluginRouteApp,
   Platform,
   Event,
+  EventData,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -43,15 +46,27 @@ import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_JUNIOR_ROOT,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import {
+  getDashboardConversationLink,
+  getDashboardTaskLink,
+} from "@/chat/dashboard-link";
 import { createWatch } from "@/chat/events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  readActorIdentity,
+  readIdentityById,
+  resolveViewerUser,
+} from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -62,17 +77,12 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
-import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
+import {
+  getWorkspace,
+  listWorkspaceNamesByRepository,
+} from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
-
-/** Signal that a plugin intentionally denied a tool execution. */
-export class PluginHookDeniedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PluginHookDeniedError";
-  }
-}
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -153,6 +163,7 @@ function basePluginContext(plugin: PluginRegistration) {
   const name = plugin.manifest.name;
   return {
     plugin: { name },
+    cache: createPluginCache(name),
     log: createPluginLogger(name),
     db: getDb(),
   };
@@ -701,9 +712,18 @@ export function getPluginTools(
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
+    const automationUrl =
+      (context.source.kind === "event_automation" ||
+        context.source.kind === "scheduled_automation") &&
+      context.source.automationId
+        ? getDashboardTaskLink(context.source.automationId)
+        : undefined;
     const common = {
       ...basePluginContext(plugin),
       annotations,
+      ...(automationUrl
+        ? { automationLink: { url: automationUrl } }
+        : undefined),
       conversationId: context.conversationId,
       locationId: context.locationId,
       ...(slackContext ? { slack: slackContext } : undefined),
@@ -731,6 +751,12 @@ export function getPluginTools(
         },
       },
       workspaces: {
+        async active() {
+          const id = context.workspaces?.activeWorkspaceId();
+          if (!id) return undefined;
+          const workspace = await getWorkspace(getDb(), id);
+          return workspace ? { name: workspace.name } : {};
+        },
         async findByRepository(input: { provider: string; repo: string }) {
           return await listWorkspaceNamesByRepository(getDb(), input);
         },
@@ -891,6 +917,7 @@ export function getPluginRoutes(options: {
   events: {
     hasMatch?(event: Event): Promise<boolean>;
     neededMatchKeys?(input: {
+      data?: EventData;
       eventTypes: string[];
       identifiers: string[];
       namespace: string;
@@ -919,6 +946,7 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      users: { readIdentity: readIdentityById },
       events: {
         async hasMatch(event) {
           if (!options.events.hasMatch) return false;
@@ -948,6 +976,9 @@ export function getPluginRoutes(options: {
             return [];
           }
           return await options.events.neededMatchKeys({
+            ...(input.data
+              ? { data: eventDataSchema.parse(input.data) }
+              : undefined),
             eventTypes: input.eventTypes,
             identifiers,
             namespace: pluginName,
@@ -1292,12 +1323,13 @@ function sanitizeOperationalReport(args: {
               OPERATIONAL_REPORT_MAX_LABEL_LENGTH,
             ) ?? String(categoryIndex + 1),
           values: Object.fromEntries(
-            seriesEntries.map(({ sanitizedSeries, sourceKey }) => [
-              sanitizedSeries.key,
-              Number.isFinite(category.values[sourceKey])
-                ? category.values[sourceKey]
-                : 0,
-            ]),
+            seriesEntries.map(({ sanitizedSeries, sourceKey }) => {
+              const value = category.values[sourceKey];
+              return [
+                sanitizedSeries.key,
+                value !== undefined && Number.isFinite(value) ? value : 0,
+              ];
+            }),
           ),
         }));
       const sanitizedWidget: NonNullable<
@@ -1490,7 +1522,7 @@ function createSandboxCapability(
 ): PluginSandbox {
   return {
     root: SANDBOX_WORKSPACE_ROOT,
-    juniorRoot: `${SANDBOX_WORKSPACE_ROOT}/.junior`,
+    juniorRoot: SANDBOX_JUNIOR_ROOT,
     async readFile(filePath) {
       return (await workspace.readFileToBuffer({ path: filePath })) ?? null;
     },
@@ -1670,7 +1702,7 @@ export function createPluginHookRunner(
           continue;
         }
         let replacement: Record<string, unknown> | undefined;
-        let denied: string | undefined;
+        let blocked: PluginToolDeniedError | ToolInputError | undefined;
         await hook({
           ...basePluginContext(plugin),
           actor: input.actor,
@@ -1683,6 +1715,7 @@ export function createPluginHookRunner(
             resolveActor: async () =>
               input.actor ? await readActorIdentity(input.actor) : undefined,
           },
+          juniorRoot: SANDBOX_JUNIOR_ROOT,
           env: {
             get(key) {
               return env[key] ?? normalizeEnv(nextInput.env)[key];
@@ -1692,8 +1725,11 @@ export function createPluginHookRunner(
             },
           },
           decision: {
-            deny(message) {
-              denied = message;
+            deny(reason) {
+              blocked = new PluginToolDeniedError(reason);
+            },
+            redirect(message) {
+              blocked = new ToolInputError(message);
             },
             replaceInput(input) {
               replacement = input;
@@ -1701,8 +1737,8 @@ export function createPluginHookRunner(
           },
         });
 
-        if (denied) {
-          throw new PluginHookDeniedError(denied);
+        if (blocked) {
+          throw blocked;
         }
         if (replacement !== undefined) {
           if (!isRecord(replacement)) {

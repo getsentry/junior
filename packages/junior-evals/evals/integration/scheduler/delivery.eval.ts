@@ -27,6 +27,23 @@ describe("Scheduled Delivery", () => {
     expect(delivery.replies[0]!.text).toContain("<@U0TEST>");
   });
 
+  test("when a due reminder names the Automation creator, mention its creator", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: "Remind the Automation creator to do healthchecks.",
+    });
+
+    const delivery = await run(heartbeat());
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).toContain("<@U0TEST>");
+  });
+
   test("when a person replies to a delivered reminder, answer in its thread as a normal chat reply", async ({
     run,
   }) => {

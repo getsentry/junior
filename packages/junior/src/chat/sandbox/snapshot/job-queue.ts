@@ -6,7 +6,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
+import { getQueueProvider } from "@/chat/queue/provider";
 
 const SIGNATURE_CONTEXT = "junior.workspace_snapshot_queue.v1";
 const SIGNATURE_VERSION = "v1" as const;
@@ -68,7 +68,7 @@ async function send(
     retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
   };
   if (idempotencyKey) options.idempotencyKey = idempotencyKey;
-  await createVercelQueueClient().send(
+  await getQueueProvider().send(
     WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
     signWorkspaceSnapshotJobMessage(message),
     options,

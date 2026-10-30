@@ -4,7 +4,31 @@ import {
   MAX_INPUT_IMAGE_BYTES,
   MAX_INPUT_IMAGES,
   type InputImage,
+  type MessageAttachment,
 } from "@sentry/junior/api/schema";
+import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
+import {
+  conversationAttachmentUrl,
+  inputImageSrc,
+} from "./TranscriptAttachment";
+
+/** Decoded size of base64 image data, as the server limit counts it. */
+function inputImageBytes(images: readonly InputImage[]): number {
+  return images.reduce((sum, image) => sum + (image.data.length * 3) / 4, 0);
+}
+
+/** True when these images fit the message image count and size limits. */
+export function composerImagesFit(images: readonly InputImage[]): boolean {
+  return (
+    images.length <= MAX_INPUT_IMAGES &&
+    inputImageBytes(images) <= MAX_INPUT_IMAGE_BYTES
+  );
+}
 
 /** Read a bounded image selection for the message request and local previews. */
 export async function readComposerImages(
@@ -13,10 +37,7 @@ export async function readComposerImages(
 ): Promise<InputImage[]> {
   if (current.length + files.length > MAX_INPUT_IMAGES)
     throw new Error("Attach up to 3 images.");
-  const currentBytes = current.reduce(
-    (sum, image) => sum + (image.data.length * 3) / 4,
-    0,
-  );
+  const currentBytes = inputImageBytes(current);
   if (
     currentBytes + files.reduce((sum, file) => sum + file.size, 0) >
     MAX_INPUT_IMAGE_BYTES
@@ -51,6 +72,28 @@ export async function readComposerImages(
   return [...current, ...images];
 }
 
+/** Read stored image attachments back into composer images for an edit. */
+export async function readStoredComposerImages(
+  conversationId: string,
+  attachments: readonly MessageAttachment[] | undefined,
+): Promise<InputImage[]> {
+  const images = (attachments ?? []).filter((attachment) =>
+    INPUT_IMAGE_TYPES.some((type) => type === attachment.contentType),
+  );
+  const files = await Promise.all(
+    images.map(async (attachment) => {
+      const response = await fetch(
+        conversationAttachmentUrl(conversationId, attachment.id),
+      );
+      if (!response.ok) throw new Error("Could not read the queued image.");
+      return new File([await response.blob()], attachment.filename, {
+        type: attachment.contentType,
+      });
+    }),
+  );
+  return await readComposerImages(files, []);
+}
+
 /** Show removable images before sending; bytes stay in memory until submit. */
 export function ComposerImages(props: {
   images: InputImage[];
@@ -67,17 +110,26 @@ export function ComposerImages(props: {
           <img
             alt={image.filename}
             className="h-20 w-24 rounded-md object-contain"
-            src={`data:${image.contentType};base64,${image.data}`}
+            src={inputImageSrc(image)}
           />
-          <button
-            aria-label={`Remove ${image.filename}`}
-            disabled={props.disabled}
-            className="absolute right-0 top-0 grid size-7 cursor-pointer place-items-center rounded-full border border-dashboard-border bg-dashboard-surface-raised text-dashboard-text hover:bg-dashboard-fill-hover disabled:cursor-default disabled:opacity-50"
-            onClick={() => props.onRemove(index)}
-            type="button"
-          >
-            <X aria-hidden="true" size={14} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label={`Remove ${image.filename}`}
+                  className="absolute right-0 top-0 size-7 rounded-full border border-dashboard-border bg-dashboard-surface-raised text-dashboard-text data-disabled:hover:!bg-dashboard-surface-raised data-disabled:hover:!text-dashboard-text"
+                  disabled={props.disabled}
+                  focusableWhenDisabled
+                  onClick={() => props.onRemove(index)}
+                  size="icon"
+                  type="button"
+                >
+                  <X aria-hidden="true" size={14} />
+                </Button>
+              }
+            />
+            <TooltipContent size="compact">Remove image</TooltipContent>
+          </Tooltip>
         </div>
       ))}
     </div>

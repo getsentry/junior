@@ -22,6 +22,7 @@ export type SecondaryNavigationItem = SegmentedNavItem;
  */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
+  className?: string;
   children: ReactNode;
   items: SecondaryNavigationItem[];
 }) {
@@ -34,7 +35,7 @@ export function SecondaryNavigation(props: {
     );
 
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", props.className)}>
       <SecondaryNavigationPortal
         desktop={
           <div className={cn(dashboardContainerClass, "min-w-0 px-4 md:px-8")}>

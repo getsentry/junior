@@ -146,11 +146,9 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
   const command = stringField(value, "command");
   const stderr = stringField(value, "stderr").trim();
   const stdout = stringField(value, "stdout").trim();
-  const acceptedPermissions = stringField(signal, "acceptedPermissions");
-  const sso = stringField(signal, "sso");
 
   return [
-    "Upstream permission denied.",
+    "Upstream provider rejected the request.",
     message,
     "",
     `Provider: ${provider}`,
@@ -164,13 +162,10 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
       : []),
     `Upstream: ${upstreamHost}${upstreamPath}`,
     `Status: ${status}`,
-    ...(acceptedPermissions
-      ? [`Accepted provider permissions: ${acceptedPermissions}`]
-      : []),
-    ...(sso ? [`Provider SSO: ${sso}`] : []),
     ...(command ? [`Command: ${command}`] : []),
     "",
-    "Junior had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local Junior runtime block; diagnose provider-side permissions, installation scope, SSO, or actor-provider account access.",
+    "The runtime had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local runtime block.",
+    "Read the provider's error in the command output before you choose a cause. A provider can reject a request because of permissions, installation scope, SSO, or account access. It can also reject a valid credential because of the target's state, a rate limit, or another provider rule.",
     ...(stderr ? ["", `stderr:\n${stderr}`] : []),
     ...(stdout ? ["", `stdout:\n${stdout}`] : []),
   ].join("\n");

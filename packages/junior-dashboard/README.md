@@ -9,8 +9,9 @@ name, through dashboard settings.
 
 - `createDashboardApp` mounts the dashboard routes and receives host
   configuration through `JuniorDashboardOptions`.
-- Better Auth owns authentication; dashboard routes fail closed when identity
-  or required configuration is missing.
+- Core owns the Better Auth session and passes it in as `auth`. Core accepts
+  only Google Workspace accounts on the allowed domains. Dashboard routes fail
+  closed when identity or required configuration is missing.
 - The installable shell is static only: a public web app manifest, theme color,
   and install icon. There is no service worker and no offline app shell cache.
 - API schemas under `src/api/` define the client/server boundary.
@@ -65,21 +66,24 @@ Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
 stubs. Keep one Playwright spec per user-facing route. Split by journey when the file
 length limit requires it. After the page has loaded,
 call `screenshot(page, name)` from `e2e/screenshot.ts` so visual review has a
-desktop and mobile image. Page behavior does not belong in a cross-page aggregate
-spec. Tests under `tests/` cover modules and component integration without
-standing in for browser E2E.
+desktop and mobile image. Browser tests run in the dark theme. Pass
+`lightTheme: true` when a page also needs light theme images.
+Page behavior does not belong in a cross-page aggregate spec. Tests under
+`tests/` cover modules and component integration without standing in for
+browser E2E.
 
 Mock reports and browser tests use one fixed current time: `NOW`
 (`2026-08-07T12:00:00.000Z`). History in the mocks is relative to that time, so
 labels like "5 minutes ago" stay stable.
 
-Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
-and open `/dev` to inspect the typed component fixtures.
-
 Dashboard E2E writes screenshots to
 `.playwright/junior-dashboard/screenshots/`. Frameshift saves this complete set
 on the default branch. On a pull request, it compares the new set with the
 saved set and links the report from the pull request.
+
+Frameshift saves each report as a `frameshift-report/*` Git tag. The nightly
+`frameshift-cleanup.yml` workflow deletes reports older than 7 days. It keeps
+the report for the current head of each open pull request.
 
 ## Browser assets
 

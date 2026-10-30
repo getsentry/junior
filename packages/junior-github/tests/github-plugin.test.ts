@@ -7,18 +7,39 @@ import {
   type WorkspacePrepareHookContext,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { githubPlugin } from "../src/index";
+import { gitHooksPath, REPOSITORY_HOOK_NAMES } from "../src/git-config";
 import { gitHubDeploymentSourceResource } from "../src/events/deployment";
 import { gitHubIssueResource } from "../src/events/issue";
 import { gitHubPullRequestResource } from "../src/events/pull-request";
 import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
+import type { GitHubDb } from "../src/db/database";
+import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
 
-const db = {};
+let dbFixture: GitHubFixture;
+let db: GitHubDb;
+
+beforeAll(async () => {
+  dbFixture = await createGitHubFixture();
+  db = dbFixture.db();
+});
+
+afterAll(async () => {
+  await dbFixture.close();
+});
 
 class TestTokenStore {
   private refreshLock = Promise.resolve();
@@ -62,6 +83,7 @@ class TestTokenStore {
 type TestActor = {
   email?: string;
   fullName?: string;
+  name?: string;
   platform?: string;
   teamId?: string;
   userId?: string;
@@ -74,16 +96,20 @@ function beforeToolContext(
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"],
 ) {
   const env: Record<string, string> = {};
-  let denial: string | undefined;
+  let blocked: { kind: "deny" | "redirect"; message: string } | undefined;
 
   return {
     ctx: {
       decision: {
         deny(message: string) {
-          denial = message;
+          blocked = { kind: "deny", message };
+        },
+        redirect(message: string) {
+          blocked = { kind: "redirect", message };
         },
         replaceInput() {},
       },
+      juniorRoot: "/vercel/sandbox/.junior",
       env: {
         get(key: string) {
           return env[key];
@@ -110,8 +136,8 @@ function beforeToolContext(
       },
     },
     env,
-    get denial() {
-      return denial;
+    get blocked() {
+      return blocked;
     },
   };
 }
@@ -123,17 +149,17 @@ const pluginLog = {
 };
 
 /**
- * Recover the exact prepare-commit-msg script sandboxPrepare writes and stage
- * it with a seeded commit message file, so tests execute the real generated
- * bash instead of asserting on script text.
+ * Recover the exact hook scripts sandboxPrepare writes and stage them with a
+ * seeded commit message file, so tests execute the real generated bash
+ * instead of asserting on script text.
  */
 async function prepareCommitMsgHookFixture(initialMessage: string) {
-  const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
+  const { mkdirSync, mkdtempSync, writeFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
+  const { basename, join } = await import("node:path");
   const { spawnSync } = await import("node:child_process");
 
-  let hookScript: string | undefined;
+  const hookScripts = new Map<string, string>();
   await githubPlugin().hooks?.sandboxPrepare?.({
     db,
     log: pluginLog,
@@ -148,19 +174,22 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
         return { exitCode: 0, stderr: "", stdout: "" };
       },
       async writeFile(input) {
-        hookScript = String(input.content);
+        hookScripts.set(basename(input.path), String(input.content));
       },
     },
   } as SandboxPrepareHookContext);
-  if (!hookScript) {
+  if (!hookScripts.has("prepare-commit-msg")) {
     throw new Error("prepare-commit-msg hook was not written");
   }
 
   const dir = mkdtempSync(join(tmpdir(), "junior-github-hook-"));
-  const hookPath = join(dir, "prepare-commit-msg");
+  const hooksDir = gitHooksPath(dir);
+  mkdirSync(hooksDir);
+  for (const [name, script] of hookScripts) {
+    writeFileSync(join(hooksDir, name), script, { mode: 0o755 });
+  }
+  const hookPath = join(hooksDir, "prepare-commit-msg");
   const messagePath = join(dir, "COMMIT_EDITMSG");
-  writeFileSync(hookPath, hookScript);
-  chmodSync(hookPath, 0o755);
   writeFileSync(messagePath, initialMessage);
 
   const env = {
@@ -176,8 +205,10 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
   return {
     dir,
     hookPath,
+    juniorRoot: dir,
     messagePath,
-    runHook: () => spawnSync("bash", [hookPath, messagePath], { env }),
+    runHook: () =>
+      spawnSync("bash", [hookPath, messagePath], { cwd: dir, env }),
   };
 }
 
@@ -263,6 +294,37 @@ function mockGitHubUserApi(input?: {
   return requests;
 }
 
+function mockGitHubUserEmailsApi(input: {
+  payload: unknown;
+  status?: number;
+}): CapturedRequest[] {
+  const requests: CapturedRequest[] = [];
+  mswServer.use(
+    http.get("https://api.github.com/user/emails", async ({ request }) => {
+      requests.push(await captureRequest(request));
+      return HttpResponse.json(input.payload as Record<string, unknown>, {
+        status: input.status ?? 200,
+      });
+    }),
+  );
+  return requests;
+}
+
+async function resolveGitHubOAuthAccount(
+  plugin: ReturnType<typeof githubPlugin>,
+) {
+  return await plugin.hooks?.resolveOAuthAccount?.({
+    db,
+    log: pluginLog,
+    plugin: { name: "github" },
+    tokenResponse: {},
+    tokens: {
+      accessToken: "user-token",
+      refreshToken: "refresh-token",
+    },
+  });
+}
+
 function mockGitHubRefresh(
   status: number,
   payload: Record<string, unknown>,
@@ -312,6 +374,7 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
+  source?: ToolRegistrationHookContext["source"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
   subscribe?: ToolRegistrationHookContext["events"]["subscribe"];
 }) {
@@ -329,7 +392,7 @@ function githubToolsContext(input?: {
     ...(input?.actor ? { actor: input.actor } : undefined),
     conversationId,
     destination: { platform: "local" as const, conversationId },
-    source: {
+    source: input?.source ?? {
       kind: "local" as const,
       visibility: "private" as const,
       conversationId,
@@ -518,6 +581,7 @@ describe("github plugin", () => {
 
     expect(repository).toMatchObject({
       supportedEvents: expect.arrayContaining([
+        "deployment.failed",
         "issue.opened",
         "pull_request.opened",
         "pull_request.ready_for_review",
@@ -530,14 +594,8 @@ describe("github plugin", () => {
         "pull_request.merged",
       ]),
       matchFields: {
-        authorEmail: {
-          kind: "string",
-          description: "pull request author email when GitHub sends it",
-        },
-        authorUsername: {
-          kind: "string",
-          description: "pull request author login",
-        },
+        authors: { kind: "string", list: true },
+        environment: { kind: "string" },
         headBranch: {
           kind: "string",
           description: "head branch name from the webhook",
@@ -546,38 +604,49 @@ describe("github plugin", () => {
           kind: "boolean",
           description: "true when the pull request is a draft",
         },
+        openerUsername: { kind: "string" },
+        workflowId: { kind: "number" },
+        workflowPath: { kind: "string" },
       },
     });
   });
 
   it("registers app guidance for pull request events", () => {
-    const pullRequest = githubPlugin({
+    const events = githubPlugin({
       pullRequestEvents: {
         guidance: {
           "pull_request.checks.failed": "Inspect the failed checks.",
         },
       },
-    }).events?.resourceTypes.find(
+    }).events;
+    const pullRequest = events?.resourceTypes.find(
       (resourceType) => resourceType.type === "pull_request",
     );
 
-    expect(pullRequest?.guidance).toMatchObject({
-      "pull_request.checks.failed": "Inspect the failed checks.",
-      "pull_request.comment.created": expect.stringContaining(
-        "exact repo, commentId, and commentKind from Verified details",
-      ),
-      "pull_request.review_comment.created": expect.stringContaining(
-        "github_resolvePullRequestReviewThread",
-      ),
-    });
-    expect(pullRequest?.matchFields).toEqual({
-      authorEmail: {
-        kind: "string",
-        description: "pull request author email when GitHub sends it",
+    // Guidance is declared once for each event, with its reach.
+    expect(events?.events).toMatchObject({
+      "pull_request.checks.failed": {
+        reach: { anyOf: ["repo"] },
+        guidance: "Inspect the failed checks.",
       },
-      authorUsername: {
+      "pull_request.comment.created": {
+        guidance: expect.stringContaining(
+          "exact repo, commentId, and commentKind from Verified details",
+        ),
+      },
+      "pull_request.review_comment.created": {
+        guidance: expect.stringContaining(
+          "github_resolvePullRequestReviewThread",
+        ),
+      },
+      "deployment.failed": { reach: "all" },
+    });
+    expect(pullRequest?.matchFields).toMatchObject({
+      authors: {
         kind: "string",
-        description: "pull request author login",
+        list: true,
+        description:
+          "GitHub logins of the commit authors and Co-authored-by people, including bots such as this GitHub App",
       },
       headBranch: {
         kind: "string",
@@ -586,6 +655,21 @@ describe("github plugin", () => {
       isDraft: {
         kind: "boolean",
         description: "true when the pull request is a draft",
+      },
+      openerEmail: {
+        kind: "string",
+        description:
+          "opener email when GitHub sends it; missing on pull requests that this GitHub App opened",
+      },
+      openerRole: {
+        kind: "string",
+        description:
+          "opener's repository role: admin, maintain, write, triage, read, none (no access, such as most bots), or a custom role name",
+      },
+      openerUsername: {
+        kind: "string",
+        description:
+          "login of who opened the pull request; on pull requests that this GitHub App opened, the person who asked for it, missing until that person is saved",
       },
     });
   });
@@ -619,7 +703,9 @@ describe("github plugin", () => {
         type,
         githubPlugin()
           .events!.resourceTypes.filter((resourceType) =>
-            resourceType.identifier!.pattern.test(resource.identifier),
+            new RegExp(resourceType.identifier!.pattern).test(
+              resource.identifier,
+            ),
           )
           .map((resourceType) => resourceType.type),
       ]),
@@ -729,7 +815,7 @@ describe("github plugin", () => {
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/forks",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
@@ -751,7 +837,7 @@ describe("github plugin", () => {
         method: "POST",
         url: "https://uploads.github.com/unrelated",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("allows workflow dispatch, rerun, and cancellation", async () => {
@@ -825,7 +911,7 @@ describe("github plugin", () => {
         method: "DELETE",
         url: "https://api.github.com/repos/getsentry/junior/stacks/12",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("creates issues with deterministic requester attribution", async () => {
@@ -998,6 +1084,38 @@ describe("github plugin", () => {
     });
   });
 
+  it("attributes automation writes to the Automation run", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = {
+      ...githubToolsContext({
+        actor: { platform: "system", name: "junior" },
+        conversationId: "agent-dispatch:dispatch_1",
+        source: {
+          kind: "event_automation",
+          automationId: "evt_1",
+          automationRunId: "dispatch_1",
+        },
+      }),
+      automationLink: { url: "https://junior.example.com/automations/evt_1" },
+    };
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-automation" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia [automation `evt_1`](https://junior.example.com/automations/evt_1) · Run ID `dispatch_1`.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
   it("keeps issue annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext();
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
@@ -1041,7 +1159,7 @@ describe("github plugin", () => {
 
 --
 
-[View Junior Session](https://junior.example.com/conversations/session) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+[View Session](https://junior.example.com/conversations/session) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });
@@ -1805,7 +1923,7 @@ Conversation: \`local:test:old-conversation\`
 
 --
 
-[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });
@@ -2435,7 +2553,7 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/git/blobs",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("treats pull request review writes as bot-owned installation identity", async () => {
@@ -2528,7 +2646,7 @@ Conversation: \`local:test:old-conversation\`
         method: "PUT",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/merge",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("denies GitHub pull request approvals while allowing non-approve reviews", async () => {
@@ -2538,14 +2656,14 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
       }),
-    ).rejects.toThrow("Junior cannot approve GitHub pull requests");
+    ).rejects.toThrow("You cannot approve GitHub pull requests");
     await expect(
       grantForEgress({
         bodyText: JSON.stringify({ event: "approve" }),
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
       }),
-    ).rejects.toThrow("Junior cannot approve GitHub pull requests");
+    ).rejects.toThrow("You cannot approve GitHub pull requests");
     await expect(
       grantForEgress({
         method: "POST",
@@ -2808,25 +2926,25 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("resolves the GitHub account for user OAuth tokens", async () => {
+  it("resolves the GitHub account and verified emails for user OAuth tokens", async () => {
     const requests = mockGitHubUserApi();
+    const emailRequests = mockGitHubUserEmailsApi({
+      payload: [
+        { email: "actor@example.com", primary: true, verified: true },
+        { email: "actor@users.noreply.github.com", verified: true },
+        { email: "unverified@example.com", verified: false },
+      ],
+    });
 
     const plugin = githubPlugin();
-    const account = await plugin.hooks?.resolveOAuthAccount?.({
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {
-        accessToken: "user-token",
-        refreshToken: "refresh-token",
-      },
-    });
+    const account = await resolveGitHubOAuthAccount(plugin);
 
     expect(account).toEqual({
       handle: "actor",
       id: "12345",
       label: "actor",
       url: "https://github.com/actor",
+      verifiedEmails: ["actor@example.com", "actor@users.noreply.github.com"],
     });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -2834,7 +2952,28 @@ Conversation: \`local:test:old-conversation\`
       method: "GET",
     });
     expect(requests[0]?.headers.authorization).toBe("Bearer user-token");
+    expect(emailRequests[0]?.headers.authorization).toBe("Bearer user-token");
   });
+
+  it.each([
+    [403, { message: "Resource not accessible by integration" }],
+    [500, { message: "server error" }],
+  ])(
+    "resolves the GitHub account without emails when the emails lookup returns %i",
+    async (status, payload) => {
+      mockGitHubUserApi();
+      mockGitHubUserEmailsApi({ payload, status });
+
+      const account = await resolveGitHubOAuthAccount(githubPlugin());
+
+      expect(account).toEqual({
+        handle: "actor",
+        id: "12345",
+        label: "actor",
+        url: "https://github.com/actor",
+      });
+    },
+  );
 
   it("surfaces operational failures while lazily resolving GitHub account identity", async () => {
     mockGitHubUserApi({
@@ -3318,16 +3457,17 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.sandboxPrepare?.(ctx);
 
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.path).toBe(
-      "/vercel/sandbox/.junior/git-hooks/prepare-commit-msg",
+    expect(writes.map((write) => write.path)).toEqual(
+      ["prepare-commit-msg", ...REPOSITORY_HOOK_NAMES].map(
+        (name) => `/vercel/sandbox/.junior/git-hooks/${name}`,
+      ),
     );
     expect(String(writes[0]?.content)).toContain(
       "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
     );
     expect(String(writes[0]?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
     expect(String(writes[0]?.content)).toContain(
-      "Git author was not set to the Junior identity",
+      "Git author was not set to the configured identity",
     );
     expect(started).toEqual([
       "core.hooksPath",
@@ -3773,7 +3913,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env).toMatchObject({
       GIT_AUTHOR_NAME: "sentry-junior[bot]",
       GIT_AUTHOR_EMAIL: "bot@example.com",
@@ -3786,6 +3926,36 @@ Conversation: \`local:test:old-conversation\`
       "Co-Authored-By: David Cramer <david@example.com>",
     );
   });
+
+  it.each([
+    ["git clone https://github.com/getsentry/junior.git", true],
+    ["cd /tmp && git -C repos clone git@github.com:getsentry/junior.git", true],
+    ["GIT_TERMINAL_PROMPT=0 gh repo clone getsentry/junior", true],
+    ["gh repo fork getsentry/junior --clone", true],
+    ["git clone /vercel/sandbox/repos/junior /tmp/junior", false],
+    ["git clone https://example.com/github.com/getsentry/junior", false],
+    ["git fetch origin main", false],
+  ])(
+    "redirects GitHub clones in bash on a best-effort basis: %s",
+    async (command, redirected) => {
+      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+      const before = beforeToolContext({
+        fullName: "David Cramer",
+        userId: "U039RR91S",
+        userName: "dcramer",
+      });
+      before.ctx.tool.input.command = command;
+
+      await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+      expect(before.blocked?.kind).toBe(redirected ? "redirect" : undefined);
+      expect(
+        before.blocked?.message.includes("github_cloneRepository") ?? false,
+      ).toBe(redirected);
+    },
+  );
 
   it("prefers linked GitHub noreply emails for the current actor", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
@@ -3830,14 +4000,8 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("records Junior as Git author and committer with human attribution", async () => {
-    const {
-      copyFileSync,
-      mkdirSync,
-      mkdtempSync,
-      readFileSync,
-      rmSync,
-      writeFileSync,
-    } = await import("node:fs");
+    const { mkdtempSync, readFileSync, rmSync, writeFileSync } =
+      await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const { spawnSync } = await import("node:child_process");
@@ -3845,17 +4009,17 @@ Conversation: \`local:test:old-conversation\`
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
+    const hook = await prepareCommitMsgHookFixture("unused\n");
     const before = beforeToolContext({
       email: "david@example.com",
       fullName: "David Cramer",
       userId: "U039RR91S",
       userName: "dcramer",
     });
+    before.ctx.juniorRoot = hook.juniorRoot;
     await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
-    const hook = await prepareCommitMsgHookFixture("unused\n");
     const repoDir = mkdtempSync(join(tmpdir(), "junior-github-commit-"));
-    mkdirSync(join(repoDir, ".git", "hooks"), { recursive: true });
 
     const runGit = (...args: string[]) =>
       spawnSync("git", args, {
@@ -3865,10 +4029,6 @@ Conversation: \`local:test:old-conversation\`
 
     try {
       expect(runGit("init").status).toBe(0);
-      copyFileSync(
-        hook.hookPath,
-        join(repoDir, ".git", "hooks", "prepare-commit-msg"),
-      );
       writeFileSync(join(repoDir, "README.md"), "test\n");
       expect(runGit("add", "README.md").status).toBe(0);
 
@@ -3900,6 +4060,89 @@ Conversation: \`local:test:old-conversation\`
       rmSync(repoDir, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["simple-git-hooks in .git/hooks", ".git/hooks", false],
+    ["husky in a repository core.hooksPath", ".husky/_", true],
+  ])(
+    "runs repository hooks from %s",
+    async (_name, repositoryHooksDir, setsHooksPath) => {
+      const {
+        chmodSync,
+        existsSync,
+        mkdirSync,
+        mkdtempSync,
+        rmSync,
+        writeFileSync,
+      } = await import("node:fs");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const { spawnSync } = await import("node:child_process");
+
+      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+      const hook = await prepareCommitMsgHookFixture("unused\n");
+      const before = beforeToolContext({
+        email: "david@example.com",
+        fullName: "David Cramer",
+        userId: "U039RR91S",
+        userName: "dcramer",
+      });
+      before.ctx.juniorRoot = hook.juniorRoot;
+      await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+      const repoDir = mkdtempSync(join(tmpdir(), "junior-github-commit-"));
+      const runGit = (...args: string[]) =>
+        spawnSync("git", ["-c", "commit.gpgsign=false", ...args], {
+          cwd: repoDir,
+          env: { ...process.env, ...before.env },
+        });
+      const writeRepositoryHook = (name: string, script: string) => {
+        const path = join(repoDir, repositoryHooksDir, name);
+        writeFileSync(path, `#!/bin/sh\n${script}\n`);
+        chmodSync(path, 0o755);
+      };
+
+      try {
+        expect(runGit("init").status).toBe(0);
+        const configured = setsHooksPath
+          ? runGit("config", "core.hooksPath", repositoryHooksDir).status
+          : 0;
+        expect(configured).toBe(0);
+        mkdirSync(join(repoDir, repositoryHooksDir), { recursive: true });
+        writeRepositoryHook("pre-commit", "touch .pre-commit-ran");
+        writeRepositoryHook(
+          "prepare-commit-msg",
+          'printf "[repo] %s\\n" "$(cat "$1")" > "$1.tmp" && mv "$1.tmp" "$1"',
+        );
+        writeFileSync(join(repoDir, "README.md"), "test\n");
+        expect(runGit("add", "README.md").status).toBe(0);
+
+        const commit = runGit("commit", "-m", "test commit");
+        expect(commit.stderr.toString()).toBe("");
+        expect(commit.status).toBe(0);
+        expect(existsSync(join(repoDir, ".pre-commit-ran"))).toBe(true);
+        expect(runGit("log", "-1", "--format=%B").stdout.toString()).toBe(
+          "[repo] test commit\n" +
+            "\n" +
+            "Co-Authored-By: David Cramer <david@example.com>\n" +
+            "\n",
+        );
+
+        writeRepositoryHook(
+          "pre-commit",
+          'echo "repo check failed" >&2; exit 1',
+        );
+        const blocked = runGit("commit", "--allow-empty", "-m", "blocked");
+        expect(blocked.status).not.toBe(0);
+        expect(blocked.stderr.toString()).toContain("repo check failed");
+      } finally {
+        rmSync(hook.dir, { recursive: true, force: true });
+        rmSync(repoDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("credits the primary and additional run actors as co-author trailers", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
@@ -3937,7 +4180,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>\nCo-Authored-By: Carol Steer <carol@example.com>",
     );
@@ -3975,7 +4218,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
@@ -4050,7 +4293,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>",
     );
@@ -4074,7 +4317,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
@@ -4176,7 +4419,7 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toBeUndefined();
+    expect(before.blocked).toBeUndefined();
     expect(before.env).toMatchObject({
       GIT_COMMITTER_NAME: "sentry-junior[bot]",
       GIT_COMMITTER_EMAIL: "bot@example.com",

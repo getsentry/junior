@@ -95,17 +95,6 @@ Internal integration token with read-only scopes. Junior uses it for Sentry API 
 </details>
 
 <details class="plugin-config">
-<summary><code>SENTRY_WEBHOOK_ORG</code></summary>
-
-Organization slug allowed to send webhooks.
-
-- **Define:** Set `SENTRY_WEBHOOK_ORG` in the deployment environment
-- **Required:** Yes for events; otherwise no
-- **Environment override:** `SENTRY_WEBHOOK_ORG`
-
-</details>
-
-<details class="plugin-config">
 <summary><code>SENTRY_WEBHOOK_SECRET</code></summary>
 
 Internal integration client secret used to verify webhooks.
@@ -160,11 +149,10 @@ Create a **Sentry internal integration** in the organization that should send is
 https://<junior-host>/api/webhooks/sentry
 ```
 
-4. Set `SENTRY_WEBHOOK_ORG` to the organization slug.
-5. Set `SENTRY_WEBHOOK_SECRET` to the integration's client secret.
-6. Redeploy Junior.
+4. Set `SENTRY_WEBHOOK_SECRET` to the integration's client secret.
+5. Redeploy Junior.
 
-Junior verifies each webhook signature and accepts webhooks only from the configured organization.
+Junior verifies each webhook signature. An internal integration belongs to one organization, so a valid signature also identifies the organization. Junior reads the organization slug from the signed payload.
 
 ### Metric alert webhooks
 
@@ -184,7 +172,7 @@ Sentry sends metric alerts only to an integration that is an action on the alert
 
 ## Watches
 
-Set `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` to enable watches. See [Watches](/concepts/watches/) for the difference between temporary watches and durable event automations.
+Set `SENTRY_WEBHOOK_SECRET` to enable watches. See [Watches](/concepts/watches/) for the difference between temporary watches and durable event automations.
 
 ### `issue`
 
@@ -199,12 +187,19 @@ The issue was created.
 
 ### `project`
 
-Subscribe to all new issues in a project with `org/project`.
+Subscribe to all new issues and metric alerts in a project with `org/project`.
 
 <details class="event">
 <summary><code>issue.created</code></summary>
 
 An issue was created in the project.
+
+</details>
+
+<details class="event">
+<summary><code>metric_alert.critical</code>, <code>metric_alert.warning</code>, <code>metric_alert.resolved</code></summary>
+
+A metric alert on the project changed state. Junior uses the projects on the alert rule. The alert must still have Junior as a trigger action.
 
 </details>
 
@@ -235,6 +230,14 @@ The alert resolved.
 
 Junior publishes each state once for each alert incident.
 
+An event automation can also run for every project in the Sentry org, with no
+identifier. `issue.created`, `metric_alert.critical`, `metric_alert.warning`,
+and `metric_alert.resolved` can run that way with no filter. Use the
+`projects` filter to limit one to some projects. Junior saves project slugs in
+lowercase. Junior does not check that the creator can see the projects, so a
+broad automation can post private project names in its channel. See
+[Automations](/concepts/automations/).
+
 Create the watch or event automation before the webhook arrives. Junior does not replay earlier webhooks.
 
 ## Verify
@@ -259,7 +262,7 @@ Create the watch or event automation before the webhook arrives. Junior does not
 - **Sentry reports a missing scope:** Reconnect Sentry to grant the current scopes.
 - **Sentry returns `403`:** Connect an account with access to the requested organization and project. With org read access, also check the integration's read permissions.
 - **A scheduled task cannot read Sentry:** Set `SENTRY_READ_TOKEN`. Confirm the request targets the organization that installed the integration.
-- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists. For metric alerts, also confirm the integration is a trigger action on the alert.
+- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists. For metric alerts, also confirm the integration is a trigger action on the alert.
 - **Authorization links use the wrong host:** Set `JUNIOR_BASE_URL` to Junior's public URL.
 
 ## Next step

@@ -27,8 +27,8 @@ the agent. A test touches the product in three places only:
 1. Inputs through app routes: `slackMention()` and `slackThreadMessage()` post
    signed Slack Events API webhooks, `webMessage()` posts to the conversations API,
    `heartbeat()` calls the heartbeat route, `githubWebhook()` posts a
-   signed GitHub webhook to the GitHub plugin route, `slackCommand()` posts a
-   signed slash command to the Slack webhook, and `completeAuth()` calls the
+   signed GitHub webhook to the GitHub plugin route, `appHomeUnlink()` posts a
+   signed App Home "Unlink" click to the Slack webhook, and `completeAuth()` calls the
    OAuth or MCP OAuth callback route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
@@ -99,6 +99,8 @@ describe("Thread Continuity", () => {
   Conversation again after 15 seconds. The fixture starts a delayed delivery
   at once when nothing else runs. The 60 seconds start when the last delivery
   is due.
+- A failed call keeps its partial transcript and original error in the eval
+  report. This includes calls that exceed the idle limit.
 - A channel `slackMention()` arrives as Slack sends it: an `app_mention` event
   without a channel type, then a `message` event with the same `ts` and the
   channel type. Slack does not fix the order, and Junior stores the first
@@ -189,9 +191,9 @@ describe("Thread Continuity", () => {
   there and sends no Slack link. `conversation.authorizationPrompt` is the
   label of that prompt after the call. `completeAuth(provider)` opens the
   prompt when the dashboard shows one.
-- `conversation.continue(slackCommand("unlink <provider>"))` runs the slash
-  command of Junior as a Slack person. Junior answers in private and starts
-  no turn.
+- `conversation.continue(appHomeUnlink("<provider>"))` clicks "Unlink" in the
+  Slack App Home of a Slack person. Junior removes the account and starts no
+  turn.
 - `insertCredential()` stores the OAuth credential that a Slack person has
   for a plugin. `expired: true` makes its next use refresh it.
   Credentials and authorization attempts are in the state store, which tests
@@ -282,6 +284,12 @@ Not in scope:
 - Guardian harness: `src/guardian-harness.ts`
 - Router harness: `src/router-harness.ts`
 
+`src/fixture/docs.ts` defines an `eval-docs` plugin for the eval MCP server.
+Its file comment describes the pages. Cases in `evals/skills/providers.eval.ts`
+and `evals/memory/user.eval.ts` use it. They check that a reply bases a failure
+cause on the error, keeps its answer when a person disagrees without new
+evidence, prefers a tool result to an old memory, and treats page text as data.
+
 The ticket lookup in `evals/conversation/actors.eval.ts` defines an
 `eval-tracker` plugin for the eval MCP server. The server supplies two tickets
 with different causes and exposes a write operation. The case requires a
@@ -315,7 +323,14 @@ cache keeps the file for the later runs of a pull request.
 - The fixture always mocks the search provider of `webSearch`. No test turns
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
-  the results for one test.
+  the results for one test. Give it a list for the same results on every
+  query, or a function that gets the query, so that each search can find the
+  page that it asks for.
+- `mockWebSites()` from the same file gives `webFetch` one page for each host
+  in one test. Every path on the host, with or without `www.`, gets that page.
+  Use a real page of the site, so the agent reads what a real user's agent
+  would read. Other hosts go to Roach. The `bash` tool in the Vercel Sandbox
+  does not use these mocks.
 
 ## Recordings
 
@@ -501,7 +516,8 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Adding a trigger label fires immediately; unrelated labels do not.
 - Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,memory,scheduler,sentry,skills}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
-- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
+- Behavioral and integration path triggers also cover the system prompt (`packages/junior/src/chat/prompt.ts` and `packages/junior/src/chat/system-prompt-rules.ts`) and the file that loads `SOUL.md` and `WORLD.md` (`packages/junior/src/chat/discovery.ts`).
+- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/guardian/**`.
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard, Guardian job, and Router job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
@@ -525,6 +541,7 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep a rubric only when the case still needs light quality scoring.
 - Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`. Put a case that needs the plugins or skills of a suite in the directory of that suite.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
+- In a Guardian case, set `tool` to the name of the agent tool, as the agent calls it. MCP tools go through `callMcpTool`. `proposal()` then builds the `tool` field from the agent's own tools with the production builder, so the case sends what production sends, including the tool's own `proposalDescription`. `src/guardian-tools.ts` builds those tools and holds the copied MCP tool descriptors. Pass an object only for a made-up tool that the agent does not have.
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Keep each case focused on one primary behavior.
 - Put semantic, model-dependent expectations in a rubric for `RubricJudge`.

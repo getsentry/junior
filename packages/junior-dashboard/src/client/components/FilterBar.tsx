@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { cn } from "../styles";
 import { Card } from "./layout/Card";
 import { SearchInput } from "./SearchInput";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 /** Lay out labeled filter groups and an optional search field. */
 export function FilterBar(props: {
@@ -69,43 +70,27 @@ export function FilterTabList(props: {
   value: string;
 }) {
   return (
-    <div
-      aria-label={props.ariaLabel}
-      className="grid min-w-0 grid-cols-3 gap-1 border-b border-dashboard-border-subtle sm:flex sm:overflow-x-auto"
-      role="tablist"
-    >
-      {props.items.map((item) => {
-        const selected = props.value === item.value;
-        return (
-          <button
-            aria-selected={selected}
-            className={cn(
-              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-sans font-medium text-xs transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
-              selected
-                ? "text-dashboard-accent-text after:bg-dashboard-accent"
-                : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
-            )}
+    <Tabs onValueChange={props.onChange} value={props.value}>
+      <TabsList
+        aria-label={props.ariaLabel}
+        className="grid grid-cols-3 sm:flex sm:overflow-x-auto"
+        variant="line"
+      >
+        {props.items.map((item) => (
+          <TabsTrigger
+            className="group/tab justify-between sm:shrink-0 sm:justify-start"
             key={item.value || "all"}
-            onClick={() => props.onChange(item.value)}
-            role="tab"
-            type="button"
+            value={item.value}
           >
             {item.label}
             {item.count !== undefined ? (
-              <span
-                className={cn(
-                  "rounded-sm border px-1.5 py-0.5 text-xs",
-                  selected
-                    ? "border-dashboard-accent/20 bg-dashboard-accent/10 text-dashboard-accent-text"
-                    : "border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted",
-                )}
-              >
+              <span className="rounded-sm border border-dashboard-border bg-dashboard-fill-soft px-1.5 py-0.5 text-xs text-dashboard-text-muted group-data-active/tab:border-dashboard-accent/20 group-data-active/tab:bg-dashboard-accent/10 group-data-active/tab:text-dashboard-accent-text">
                 {item.count.toLocaleString("en-US")}
               </span>
             ) : null}
-          </button>
-        );
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }

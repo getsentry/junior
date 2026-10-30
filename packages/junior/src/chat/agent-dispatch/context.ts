@@ -1,3 +1,4 @@
+import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   HeartbeatHookContext,
   PluginRegistration,
@@ -12,6 +13,7 @@ import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
+  buildDispatchId,
   createOrGetDispatch,
   getPluginDispatchProjection,
   isTerminalDispatchStatus,
@@ -95,6 +97,7 @@ export function createHeartbeatContext(args: {
   let dispatchCount = 0;
   return {
     plugin: { name: pluginName },
+    cache: createPluginCache(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
     state: createPluginState(pluginName),
@@ -130,6 +133,7 @@ export function createHeartbeatContext(args: {
 
 /** Create and enqueue one core-owned event automation dispatch. */
 export async function dispatchEventAutomation(args: {
+  automationId: string;
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
@@ -157,7 +161,12 @@ export async function dispatchEventAutomation(args: {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
-    source: { kind: "event_automation" },
+    source: {
+      kind: "event_automation",
+      automationId: args.automationId,
+      // An event automation run id is its dispatch id.
+      automationRunId: buildDispatchId(plugin, unboundOptions.idempotencyKey),
+    },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,
@@ -169,6 +178,7 @@ export async function dispatchEventAutomation(args: {
 
 /** Create and enqueue one core-owned scheduled automation dispatch. */
 export async function dispatchScheduledAutomation(args: {
+  automationId: string;
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
@@ -196,7 +206,12 @@ export async function dispatchScheduledAutomation(args: {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
-    source: { kind: "scheduled_automation" },
+    source: {
+      kind: "scheduled_automation",
+      automationId: args.automationId,
+      // A scheduled automation run id is its idempotency key.
+      automationRunId: unboundOptions.idempotencyKey,
+    },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,

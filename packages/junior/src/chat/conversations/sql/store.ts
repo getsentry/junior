@@ -338,7 +338,11 @@ function assertSameConversationDestination(args: {
 }
 
 export class SqlStore implements ConversationStore {
-  constructor(private readonly executor: JuniorSqlDatabase) {}
+  private readonly executor: JuniorSqlDatabase;
+
+  constructor(executor: JuniorSqlDatabase) {
+    this.executor = executor;
+  }
 
   async getConversationIdByProviderConversation(
     args: ProviderConversationReference,
@@ -506,6 +510,11 @@ export class SqlStore implements ConversationStore {
       const execution = incomingIsFresh
         ? args.execution
         : (existing?.execution ?? args.execution);
+      // Root Actor and origin Source come from the saved Conversation, as in
+      // recordActivity. A later Turn, such as an event on a web Conversation,
+      // must not derive a system Actor from its own Source.
+      const actor = mergeActor(existing?.actor, args.actor);
+      const source = existing?.source ?? args.source;
       await this.upsertConversation({
         conversation: {
           schemaVersion: 1,
@@ -519,8 +528,8 @@ export class SqlStore implements ConversationStore {
           ...(existing?.location ? { location: existing.location } : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
           ...(args.destination ? { destination: args.destination } : undefined),
-          ...(args.actor ? { actor: args.actor } : undefined),
-          ...(args.source ? { source: args.source } : undefined),
+          ...(actor ? { actor } : undefined),
+          ...(source ? { source } : undefined),
           ...(args.title ? { title: args.title } : undefined),
           ...(args.visibility ? { visibility: args.visibility } : undefined),
           execution,

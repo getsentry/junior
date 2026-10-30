@@ -42,16 +42,14 @@ describe("renderVirtualConfig", () => {
   it("imports the dashboard app factory when dashboard config is present", () => {
     const code = renderVirtualConfig({
       dashboard: {
-        allowedGoogleDomains: ["sentry.io"],
+        basePath: "/ops",
       },
     });
 
     expect(code).toContain(
       'import { createDashboardApp as juniorCreateDashboardApp } from "@sentry/junior-dashboard";',
     );
-    expect(code).toContain(
-      'export const dashboard = {"allowedGoogleDomains":["sentry.io"]};',
-    );
+    expect(code).toContain('export const dashboard = {"basePath":"/ops"};');
   });
 
   it("does not import the dashboard route factory when dashboard config is disabled", () => {

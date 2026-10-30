@@ -38,7 +38,7 @@ export async function mockAutomationEditor(
           nextRunAtMs: Date.parse("2026-08-10T16:00:00Z"),
           schedule: {
             kind: "recurring",
-            description: "Every Monday at 9 AM",
+            description: "Every Monday at 9:00 AM",
             timezone: "America/Los_Angeles",
             recurrence: {
               frequency: "weekly",
@@ -52,7 +52,6 @@ export async function mockAutomationEditor(
       : {
           ...common,
           kind,
-          triggerAvailable: true,
           status: "active",
           trigger: {
             namespace: "github",
@@ -87,15 +86,42 @@ export async function mockAutomationEditor(
       json: [
         {
           namespace: "github",
-          type: "issue",
-          supportedEvents: ["issue.closed", "issue.opened"],
-          matchFields: {
+          displayName: "GitHub",
+          events: {
+            "issue.closed": { reach: { anyOf: ["state"] } },
+            "issue.opened": { reach: "all" },
+          },
+          anyResourceFields: {
             state: {
               kind: "string",
               description: "Issue state",
               enum: ["open", "closed"],
+              events: ["issue.closed", "issue.opened"],
+            },
+            closedBy: {
+              kind: "string",
+              description: "Login of who closed the issue",
+              events: ["issue.closed"],
             },
           },
+          resourceTypes: [
+            {
+              type: "issue",
+              supportedEvents: ["issue.closed", "issue.opened"],
+              matchFields: {
+                state: {
+                  kind: "string",
+                  description: "Issue state",
+                  enum: ["open", "closed"],
+                },
+                closedBy: {
+                  kind: "string",
+                  description: "Login of who closed the issue",
+                  events: ["issue.closed"],
+                },
+              },
+            },
+          ],
         },
       ],
     }),

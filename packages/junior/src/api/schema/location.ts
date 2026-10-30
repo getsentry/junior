@@ -1,9 +1,9 @@
 import { z } from "zod";
 import {
   actorIdentitySchema,
-  conversationStatsItemSchema,
   conversationSummaryReportSchema,
 } from "./conversation";
+import { conversationStatsItemSchema } from "./conversation-stats";
 import { dailyConversationActivitySchema } from "../activity";
 import { juniorDestinationKindSchema } from "@/db/schema/destinations";
 

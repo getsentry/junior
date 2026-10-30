@@ -547,6 +547,9 @@ describe("oauth callback handler", () => {
     expect(stored.scope).toBeUndefined();
     expect(resolvePluginOAuthAccountMock).toHaveBeenCalledWith({
       provider: "github",
+      tokenResponse: expect.objectContaining({
+        access_token: "github-user-token",
+      }),
       tokens: expect.objectContaining({
         accessToken: "github-user-token",
         refreshToken: "github-refresh-token",
@@ -620,7 +623,7 @@ describe("oauth callback handler", () => {
 
     expect(response.status).toBe(400);
     const body = await response.text();
-    expect(body).toContain("did not grant the access Junior requires");
+    expect(body).toContain("did not grant the required access");
     expect(await getStoredTokens("U456", "sentry")).toBeUndefined();
     expect(waitUntilCallbacks).toHaveLength(0);
   });

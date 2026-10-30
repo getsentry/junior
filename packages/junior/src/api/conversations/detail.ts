@@ -6,7 +6,9 @@ import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
+import { readFirstHumanMessageTexts } from "./first-message";
 import { readConversationEventPage } from "./event-page";
+import { attachConversationMentions } from "./mentions";
 import { readConversationRecordFromSql } from "./list";
 import {
   conversationEventHistory,
@@ -42,6 +44,7 @@ function projectConversationDetail(args: {
   childAgentTotals?: ConversationDetailReport["childAgentTotals"];
   conversation: Conversation;
   durationMs: number;
+  firstHumanMessageText?: string;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
   sidebarAnnotations?: ConversationDetailReport["sidebarAnnotations"];
   events: ConversationDetailReport["events"];
@@ -73,6 +76,7 @@ function projectConversationDetail(args: {
         : undefined),
       conversation,
       durationMs: args.durationMs,
+      firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
@@ -127,6 +131,7 @@ async function readConversationDetailFromSql(
     automationTitleByConversation,
     auxiliaryCostsByConversation,
     briefVersion,
+    firstHumanMessageTextByConversation,
     modelUsage,
     metricsByConversation,
     participantsByConversation,
@@ -138,6 +143,7 @@ async function readConversationDetailFromSql(
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
     readLatestConversationBrief(getDb(), conversationId),
+    readFirstHumanMessageTexts(getDb(), [record.conversation]),
     record.conversation.transcriptPurgedAtMs === undefined
       ? readConversationModelUsageFromSql(executor, { conversationId })
       : Promise.resolve([]),
@@ -170,6 +176,15 @@ async function readConversationDetailFromSql(
           limit: options.limit,
         })
       : { events: [] };
+  // The Brief is shown only to viewers who can see private content.
+  const brief = access?.canViewPrivateContent
+    ? briefVersion?.content
+    : undefined;
+  const { briefMentions, events } = await attachConversationMentions(
+    executor,
+    conversationId,
+    { ...(brief ? { brief } : undefined), events: page.events },
+  );
   const metrics = metricsByConversation.get(conversationId);
   const auxiliaryCosts = auxiliaryCostsByConversation.get(conversationId);
   const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
@@ -186,13 +201,18 @@ async function readConversationDetailFromSql(
       ? {
           brief: {
             content: briefVersion.content,
+            ...(briefMentions.length > 0
+              ? { mentions: briefMentions }
+              : undefined),
             updatedAt: briefVersion.createdAt.toISOString(),
             version: briefVersion.version,
           },
         }
       : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
-    events: page.events,
+    events,
+    firstHumanMessageText:
+      firstHumanMessageTextByConversation.get(conversationId),
     modelUsage,
     participants: participantsByConversation.get(conversationId) ?? [],
     ...(sourceTask ? { sourceTask } : undefined),

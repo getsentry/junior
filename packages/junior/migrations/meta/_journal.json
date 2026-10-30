@@ -414,6 +414,48 @@
       "when": 1792331274207,
       "tag": "0058_automation_creator_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792739994091,
+      "tag": "0059_automation_run_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792971097553,
+      "tag": "0060_identity_signed_in_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793144595064,
+      "tag": "0061_workspace_vcpus",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793191362504,
+      "tag": "0062_plugin_report_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793202150781,
+      "tag": "0063_agent_invocation_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793326683095,
+      "tag": "0064_any_resource_event_triggers",
+      "breakpoints": true
     }
   ]
 }

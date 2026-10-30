@@ -1,73 +1,160 @@
 import { Brain, Braces, ChevronRight, Layers } from "lucide-react";
-import { useId, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useId,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
+import { DetailsPanel } from "../components/DetailsPanel";
+import { Button } from "../components/ui/button";
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { Drawer } from "../components/Drawer";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp, formatTime } from "../format";
 import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
-import { cn } from "../styles";
+import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { HighlightText } from "./transcriptSearch";
-import { TranscriptSummary } from "./TranscriptSummary";
+import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
-/** Show structured context attached to one transcript user message. */
+/** The turn context that a page panel shows, keyed by its message. */
+export type TurnContextSelection = {
+  contexts: TranscriptViewTurnContext[];
+  id: string;
+};
+
+/** Let the page that owns a panel show turn context there. */
+export type TurnContextPanel = {
+  openId?: string;
+  onToggle(selection: TurnContextSelection): void;
+};
+
+const TurnContextPanelContext = createContext<TurnContextPanel | undefined>(
+  undefined,
+);
+
+/**
+ * Route turn context in one transcript to its owner's panel. Without a
+ * `panel`, turn context opens in a modal drawer. Each transcript sets this, so
+ * a nested transcript does not use the panel of the page behind it.
+ */
+export function TurnContextPanelProvider(props: {
+  children: ReactNode;
+  panel?: TurnContextPanel;
+}) {
+  return (
+    <TurnContextPanelContext value={props.panel}>
+      {props.children}
+    </TurnContextPanelContext>
+  );
+}
+
+/**
+ * Show structured context attached to one transcript user message. The panel
+ * keys context by `messageId`, so every control for one message, including a
+ * remounted one, shows the same open state.
+ */
 export function TranscriptTurnContextView(props: {
   contexts: TranscriptViewTurnContext[];
+  messageId?: string;
 }) {
+  const panel = useContext(TurnContextPanelContext);
   const [open, setOpen] = useState(false);
-  const titleId = useId();
+  const instanceId = useId();
+  const id = props.messageId ?? instanceId;
+  const expanded = panel ? panel.openId === id : open;
 
   return (
     <>
-      <button
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label="View turn context"
-        className={cn(
-          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-          open && "bg-dashboard-fill-hover text-dashboard-text",
-        )}
-        onClick={() => setOpen(true)}
-        title="View context"
-        type="button"
-      >
-        <Layers aria-hidden="true" size={14} strokeWidth={1.8} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          // The open panel keeps focus here. Close the tooltip on click so
+          // Escape reaches the panel.
+          closeOnClick
+          render={
+            <Button
+              aria-haspopup={panel ? undefined : "dialog"}
+              aria-expanded={expanded}
+              aria-label="View turn context"
+              className={cn(
+                "size-6 shrink-0",
+                expanded && "bg-dashboard-fill-strong text-dashboard-text",
+              )}
+              data-turn-context-id={id}
+              onClick={() => {
+                if (!panel) return setOpen(true);
+                panel.onToggle({ contexts: props.contexts, id });
+              }}
+              size="icon"
+            >
+              <Layers aria-hidden="true" size={14} strokeWidth={1.8} />
+            </Button>
+          }
+        />
+        <TooltipContent size="compact">View turn context</TooltipContent>
+      </Tooltip>
 
-      {open
+      {!panel && open
         ? createPortal(
             <Drawer
               closeLabel="Close turn context"
-              dismissLabel="Dismiss turn context"
               header={
-                <>
-                  <h2
-                    className="m-0 text-sm font-semibold text-dashboard-text"
-                    id={titleId}
-                  >
-                    Turn context
-                  </h2>
-                  <p className="m-0 mt-1 text-xs text-dashboard-text-muted">
-                    Context supplied with this message
-                  </p>
-                </>
+                <h2
+                  className="m-0 text-sm font-semibold text-dashboard-text"
+                  id={instanceId}
+                >
+                  Turn context
+                </h2>
               }
               onClose={() => setOpen(false)}
-              openKey={titleId}
-              titleId={titleId}
+              openKey={instanceId}
+              titleId={instanceId}
             >
-              {props.contexts.map((context, index) => (
-                <TurnContext
-                  context={context}
-                  key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
-                />
-              ))}
+              <TurnContextList contexts={props.contexts} />
             </Drawer>,
             document.body,
           )
         : null}
     </>
   );
+}
+
+/** Show turn context in the page panel: an aside, or a sheet on small screens. */
+export function TurnContextDetails(props: {
+  contexts: TranscriptViewTurnContext[];
+  onClose(): void;
+}) {
+  return (
+    <DetailsPanel
+      label="Turn context"
+      onClose={props.onClose}
+      title={
+        <h2 className="m-0 text-base font-semibold text-dashboard-text">
+          Turn context
+        </h2>
+      }
+    >
+      <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <TurnContextList contexts={props.contexts} />
+      </div>
+    </DetailsPanel>
+  );
+}
+
+function TurnContextList(props: { contexts: TranscriptViewTurnContext[] }) {
+  return props.contexts.map((context, index) => (
+    <TurnContext
+      context={context}
+      key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
+    />
+  ));
 }
 
 function TurnContext(props: { context: TranscriptViewTurnContext }) {
@@ -118,15 +205,17 @@ function MemoryRecall(props: {
   return (
     <div className="overflow-hidden rounded-lg border border-dashboard-border-strong">
       {props.memories.map((memory, index) => (
-        <details
-          className="group/memory border-t border-dashboard-border-strong first:border-t-0"
+        <Collapsible
+          className="border-t border-dashboard-border-strong first:border-t-0"
           key={memory.id}
         >
-          <TranscriptSummary className="flex items-start gap-2.5">
+          <TranscriptSummaryTrigger className="group flex items-start gap-2.5">
             <ChevronRight
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-dashboard-text-muted transition-transform group-open/memory:rotate-90"
-              size={15}
+              className={cn(
+                dashboardDisclosureChevronClass,
+                "mt-0.5 text-dashboard-text-muted",
+              )}
             />
             <span className="min-w-0 flex-1">
               <span className="flex items-center justify-between gap-3">
@@ -141,39 +230,43 @@ function MemoryRecall(props: {
                 <HighlightText text={memory.content} />
               </span>
             </span>
-          </TranscriptSummary>
+          </TranscriptSummaryTrigger>
 
-          <div className="border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-4">
-            <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
-              <HighlightText text={memory.content} />
+          <CollapsibleContent hiddenUntilFound>
+            <div className="border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-4">
+              <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
+                <HighlightText text={memory.content} />
+              </div>
+
+              <dl className="mt-4 grid gap-2 text-xs">
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Memory ID</dt>
+                  <dd className="m-0 break-all font-mono text-dashboard-text-muted">
+                    <HighlightText text={memory.id} />
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Observed</dt>
+                  <dd className="m-0 text-dashboard-text-muted">
+                    {formatTime(new Date(memory.observedAtMs).toISOString())}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Scope</dt>
+                  <dd className="m-0 text-dashboard-text-muted">
+                    {memory.scope}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Kind</dt>
+                  <dd className="m-0 text-dashboard-text-muted">
+                    {memory.kind}
+                  </dd>
+                </div>
+              </dl>
             </div>
-
-            <dl className="mt-4 grid gap-2 text-xs">
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Memory ID</dt>
-                <dd className="m-0 break-all font-mono text-dashboard-text-muted">
-                  <HighlightText text={memory.id} />
-                </dd>
-              </div>
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Observed</dt>
-                <dd className="m-0 text-dashboard-text-muted">
-                  {formatTime(new Date(memory.observedAtMs).toISOString())}
-                </dd>
-              </div>
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Scope</dt>
-                <dd className="m-0 text-dashboard-text-muted">
-                  {memory.scope}
-                </dd>
-              </div>
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Kind</dt>
-                <dd className="m-0 text-dashboard-text-muted">{memory.kind}</dd>
-              </div>
-            </dl>
-          </div>
-        </details>
+          </CollapsibleContent>
+        </Collapsible>
       ))}
       <p className="m-0 border-t border-dashboard-border-strong px-3 py-2 text-xs text-dashboard-text-muted">
         {props.memories.length}{" "}

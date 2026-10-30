@@ -1,7 +1,7 @@
 id: no-eval-slack-actions-imports
 language: TypeScript
 severity: error
-message: Evals must not import Slack action internals. Use eval harness boundaries instead.
+message: Evals must not import Slack action internals. Send input through @junior-evals/fixture/inputs and assert the replies, tool calls, reactions, or turn states of the returned Conversation. See "Agent Test Fixture" in packages/junior-evals/README.md.
 files:
   - packages/junior-evals/evals/**/*.ts
   - packages/junior-evals/evals/**/*.tsx

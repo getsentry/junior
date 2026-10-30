@@ -51,7 +51,8 @@ export function fileReferenceSchema(name: string) {
     );
 }
 
-const FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,200}$/;
+/** A Drive file id, as the file tools accept it. */
+export const FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,200}$/;
 
 /** One Drive file, and the resource key that a link-shared file can need. */
 export interface FileReference {
@@ -112,7 +113,7 @@ export async function googleFileRequest(
   // Google returns 404 for a file that Junior's account cannot open.
   if (response.status === 404) {
     throw new PluginToolInputError(
-      `Junior's Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
+      `Your Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
     );
   }
   if (response.status !== 200) {

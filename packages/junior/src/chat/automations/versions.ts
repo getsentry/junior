@@ -1,5 +1,5 @@
 /** Automation versions keep each saved definition so people can see how it changed. */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import {
   automationVersionSchema,
   type AutomationVersion,
@@ -59,6 +59,22 @@ export async function recordAutomationVersion(
     editedBy: editedBy ?? (current ? null : task.createdBy),
     definition,
   });
+}
+
+/**
+ * Select the newest saved version with the same definition as `task`.
+ *
+ * An Automation run stores this version so that a reader can see the
+ * instruction that ran after the definition changes. The value is null when
+ * no saved version has this definition.
+ */
+export function automationVersionOf(task: VersionedAutomation): SQL {
+  return sql`(
+    SELECT max(${juniorAutomationVersions.version})
+    FROM ${juniorAutomationVersions}
+    WHERE ${juniorAutomationVersions.automationId} = ${task.id}
+      AND ${juniorAutomationVersions.definition} = ${JSON.stringify(automationDefinition(task))}::jsonb
+  )`;
 }
 
 const versionColumns = {

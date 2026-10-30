@@ -13,7 +13,7 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior, but its Better Auth session only protects dashboard routes.
+Use `@sentry/junior-dashboard` when you want browser access to Junior runtime diagnostics without exposing plugin, skill, or filesystem discovery publicly. The dashboard mounts into the same Nitro deployment as Junior. Junior core owns its Better Auth session. The allowed Google domains also limit who can use Junior in Slack. See [Allowed domains](/reference/config-and-env/#allowed-domains).
 
 ## Install
 
@@ -23,18 +23,21 @@ Install the dashboard package next to `@sentry/junior`:
 pnpm add @sentry/junior-dashboard
 ```
 
+The dashboard uses the `@sentry/junior` package that your app installs. It is a peer dependency, so install the same version of both packages.
+
 ## Configure the dashboard
 
-Pass `dashboard` to `createApp()`. Configure the Google Workspace domain that
-should be allowed to view the dashboard:
+Pass `dashboard` to `createApp()`. Dashboard sign-in requires at least one
+[allowed domain](/reference/config-and-env/#allowed-domains). The same list
+also gates who can use Junior in Slack:
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins";
 
 export default await createApp({
+  allowedDomains: ["example.com"],
   dashboard: {
-    allowedGoogleDomains: ["sentry.io"],
     trustedOrigins: ["https://<your-domain>"],
   },
   plugins,
@@ -52,7 +55,6 @@ export default defineConfig({
   modules: [
     juniorNitro({
       dashboard: {
-        allowedGoogleDomains: ["sentry.io"],
         trustedOrigins: ["https://<your-domain>"],
       },
       plugins: "./plugins",
@@ -68,8 +70,7 @@ You can also provide the same authorization policy through deployment environmen
 
 | Variable                           | Purpose                                                       |
 | ---------------------------------- | ------------------------------------------------------------- |
-| `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`  | Comma-separated or JSON array of allowed Google domains.      |
-| `JUNIOR_DASHBOARD_ALLOWED_EMAILS`  | Comma-separated or JSON array of explicit email allowlist.    |
+| `JUNIOR_ALLOWED_DOMAINS`           | Comma-separated or JSON array of allowed domains.             |
 | `JUNIOR_DASHBOARD_TRUSTED_ORIGINS` | Comma-separated or JSON array of Better Auth trusted origins. |
 | `JUNIOR_DASHBOARD_AUTH_REQUIRED`   | Set to `false` only for explicit local dashboard auth bypass. |
 
@@ -90,6 +91,8 @@ The dashboard package owns these routes:
 | `/system/locations`             | Public location activity directory.               |
 | `/system/locations/:location`   | Public location activity detail.                  |
 | `/system/workspaces`            | Install-wide repository Workspace recipes.        |
+| `/system/workspaces/:id`        | Workspace list with one Workspace's details.      |
+| `/system/workspaces/:id/edit`   | Full-page Workspace editor.                       |
 | `/system/plugins`               | Loaded plugin and skill inventory.                |
 | `/system/plugins/:plugin`       | Plugin details and operational reports.           |
 | `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.           |

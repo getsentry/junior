@@ -1,0 +1,16 @@
+name: figma
+display-name: Figma
+description: Read-only Figma frame, layout, style, and comment lookups through the Figma REST API
+
+# Junior injects a deployment-level Figma token on sandbox requests to the
+# REST API host. Use a read-only plan access token. The sandbox never sees the
+# real token. Figma's hosted MCP server accepts only approved clients, so this
+# plugin uses the REST API.
+env-vars:
+  FIGMA_ACCESS_TOKEN:
+
+domains:
+  - api.figma.com
+
+api-headers:
+  X-Figma-Token: ${FIGMA_ACCESS_TOKEN}

@@ -5,10 +5,7 @@ import {
   createRequestContext,
   logException,
   logWarn,
-  setSpanAttributes,
-  setSpanStatus,
   withContext,
-  withSpan,
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -68,62 +65,38 @@ function parseJson(body: string): unknown {
   }
 }
 
-/** Run a platform webhook with shared request tracing and error logging. */
+/** Run a platform webhook with shared request log context and error logging. */
 export async function handleWebhookRequest(
   request: Request,
   platform: string,
   run: WebhookRunner,
 ): Promise<Response> {
   const requestContext = createRequestContext(request, { platform });
-  const requestUrl = new URL(request.url);
 
   return await withContext(requestContext, async () => {
     try {
-      return await withSpan(
-        "http.server.request",
-        "http.server",
-        requestContext,
-        async () => {
-          try {
-            const response = await run();
+      const response = await run();
 
-            if (response.status >= 400) {
-              let responseBodySnippet: string | undefined;
-              try {
-                responseBodySnippet = (await response.clone().text()).slice(
-                  0,
-                  300,
-                );
-              } catch {
-                responseBodySnippet = undefined;
-              }
-              logWarn("webhook.response.unsuccessful", {
-                "http.response.status_code": response.status,
-                "http.request.header.x_slack_signature":
-                  request.headers.get("x-slack-signature") ?? undefined,
-                "http.request.header.x_slack_request_timestamp":
-                  request.headers.get("x-slack-request-timestamp") ?? undefined,
-                ...(responseBodySnippet
-                  ? { "app.webhook.response_body": responseBodySnippet }
-                  : undefined),
-              });
-            }
+      if (response.status >= 400) {
+        let responseBodySnippet: string | undefined;
+        try {
+          responseBodySnippet = (await response.clone().text()).slice(0, 300);
+        } catch {
+          responseBodySnippet = undefined;
+        }
+        logWarn("webhook.response.unsuccessful", {
+          "http.response.status_code": response.status,
+          "http.request.header.x_slack_signature":
+            request.headers.get("x-slack-signature") ?? undefined,
+          "http.request.header.x_slack_request_timestamp":
+            request.headers.get("x-slack-request-timestamp") ?? undefined,
+          ...(responseBodySnippet
+            ? { "app.webhook.response_body": responseBodySnippet }
+            : undefined),
+        });
+      }
 
-            setSpanAttributes({
-              "http.response.status_code": response.status,
-            });
-            setSpanStatus(response.status >= 500 ? "error" : "ok");
-            return response;
-          } catch (error) {
-            setSpanStatus("error");
-            throw error;
-          }
-        },
-        {
-          "http.request.method": request.method,
-          "url.path": requestUrl.pathname,
-        },
-      );
+      return response;
     } catch (error) {
       logException(error, "webhook.handler.failed");
       throw error;

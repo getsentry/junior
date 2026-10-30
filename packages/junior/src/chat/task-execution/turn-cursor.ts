@@ -41,6 +41,7 @@ import type {
   ConversationExecution,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { traceContextSchema, type TraceContext } from "./state";
 import {
   turnCursorIndexKey,
   turnCursorKey,
@@ -125,6 +126,8 @@ export interface TurnRecord {
   cumulativeUsage?: AgentTurnUsage;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean;
+  /** Times recovery resumed this turn after its worker stopped checking in. */
+  lostWorkerResumeCount?: number;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   /** Provider-owned identifier returned after visible delivery is accepted. */
@@ -150,7 +153,8 @@ export interface TurnRecord {
   startedAtMs: number;
   state: TurnStatus;
   surface?: AgentTurnSurface;
-  traceId?: string;
+  /** Trace of the first saved slice. Resumed slices continue it. */
+  traceContext?: TraceContext;
   turnStartMessageIndex?: number;
   updatedAtMs: number;
 }
@@ -268,13 +272,14 @@ const storedTurnRecordSchema = z
     startedAtMs: nonNegativeNumberSchema,
     state: turnStatusSchema,
     surface: turnSurfaceSchema.optional(),
-    traceId: z.string().optional(),
+    traceContext: traceContextSchema,
     updatedAtMs: nonNegativeNumberSchema,
     committedSeq: seqCursorSchema,
     historyVersion: z.number().int().nonnegative().optional(),
     errorMessage: z.string().optional(),
     cumulativeToolCallCount: z.number().int().nonnegative().optional(),
     turnLimitWrappedUp: z.boolean().optional(),
+    lostWorkerResumeCount: z.number().int().nonnegative().optional(),
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
@@ -461,6 +466,7 @@ function materializeTurnRecord(
       credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
       turnLimitWrappedUp: stored.turnLimitWrappedUp,
+      lostWorkerResumeCount: stored.lostWorkerResumeCount,
       cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
       dispatchOutcome: stored.dispatchOutcome,
@@ -470,7 +476,7 @@ function materializeTurnRecord(
       resultMessageId: stored.resultMessageId,
       resumedFromSliceId: stored.resumedFromSliceId,
       surface: stored.surface,
-      traceId: stored.traceId,
+      traceContext: stored.traceContext,
       turnStartMessageIndex,
     }),
   };
@@ -575,9 +581,10 @@ function buildStoredRecord(args: {
   source?: Source;
   errorMessage?: string;
   resumedFromSliceId?: number;
-  traceId?: string;
+  traceContext?: TraceContext;
   cumulativeToolCallCount?: number;
   turnLimitWrappedUp?: boolean;
+  lostWorkerResumeCount?: number;
   turnStartSeq?: number;
 }): StoredTurnRecord {
   const nowMs = Date.now();
@@ -597,6 +604,7 @@ function buildStoredRecord(args: {
       credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp,
+      lostWorkerResumeCount: args.lostWorkerResumeCount,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
       errorMessage: args.errorMessage,
@@ -607,7 +615,7 @@ function buildStoredRecord(args: {
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
       surface: args.surface,
-      traceId: args.traceId,
+      traceContext: args.traceContext,
       turnStartSeq: args.turnStartSeq,
     }),
   };
@@ -727,6 +735,7 @@ async function updateTurnState(args: {
         credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         turnLimitWrappedUp: args.existing.turnLimitWrappedUp,
+        lostWorkerResumeCount: args.existing.lostWorkerResumeCount,
         dispatchId: args.existing.dispatchId,
         dispatchOutcome: args.existing.dispatchOutcome,
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
@@ -737,7 +746,7 @@ async function updateTurnState(args: {
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
         surface: args.existing.surface,
-        traceId: args.existing.traceId,
+        traceContext: args.existing.traceContext,
         turnStartSeq: parsed.turnStartSeq,
       }),
     }),
@@ -753,6 +762,7 @@ export async function upsertTurnRecord(args: {
   cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
   turnLimitWrappedUp?: boolean;
+  lostWorkerResumeCount?: number;
   destination?: Destination;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
@@ -773,7 +783,7 @@ export async function upsertTurnRecord(args: {
   resumeReason?: TurnPauseReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
-  traceId?: string;
+  traceContext?: TraceContext;
   turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
   ttlMs?: number;
@@ -905,6 +915,8 @@ async function upsertTurnRecordLocked(
           existingRecord?.cumulativeToolCallCount,
         turnLimitWrappedUp:
           args.turnLimitWrappedUp ?? existingRecord?.turnLimitWrappedUp,
+        lostWorkerResumeCount:
+          args.lostWorkerResumeCount ?? existingRecord?.lostWorkerResumeCount,
         dispatchId,
         dispatchOutcome:
           args.dispatchOutcome ?? existingRecord?.dispatchOutcome,
@@ -918,7 +930,7 @@ async function upsertTurnRecordLocked(
         resumedFromSliceId: args.resumedFromSliceId,
         startedAtMs: existingRecord?.startedAtMs,
         surface: args.surface ?? existingRecord?.surface,
-        traceId: args.traceId ?? existingRecord?.traceId,
+        traceContext: args.traceContext ?? existingRecord?.traceContext,
         turnStartSeq,
       }),
     }),

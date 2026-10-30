@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
+import { http, HttpResponse } from "msw";
 import { Message, type SerializedMessage } from "chat";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
@@ -18,11 +19,13 @@ import {
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
 } from "../../fixtures/conversation-work";
-import { memoryAttachmentStorage } from "../../fixtures/attachment-storage";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { usersInfoOk } from "../../fixtures/slack/factories/api";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { testViewer } from "../../fixtures/user";
+import { mswServer } from "../../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };
 const THREAD_TS = "1712345.0001";
@@ -111,7 +114,7 @@ describe("Slack webhook: user input clicks", () => {
     await closeDb();
   });
 
-  function clickHarness() {
+  function clickHarness(options: { allowedDomains?: string[] } = {}) {
     // Dashboard messages use the default state adapter, so clicks do too.
     const state = getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
@@ -128,6 +131,7 @@ describe("Slack webhook: user input clicks", () => {
         ),
         waitUntil: waitUntil.fn,
         services: {
+          allowedDomains: options.allowedDomains,
           getSlackAdapter: () => slackAdapter,
           queue,
           runtime: createNoopSlackWebhookRuntime(),
@@ -207,7 +211,7 @@ describe("Slack webhook: user input clicks", () => {
       app.route(
         "/api/conversations",
         createConversationRoutes({
-          attachmentStorage: memoryAttachmentStorage(),
+          attachmentStorage: createMemoryAttachmentStorage(),
           queue,
         }),
       );
@@ -284,6 +288,39 @@ describe("Slack webhook: user input clicks", () => {
       channel: "C123",
       ts: QUESTION_TS,
     });
+  });
+
+  it("ignores a click from a person outside the allowed domains", async () => {
+    const { click, queue, recordQuestion, state } = clickHarness({
+      allowedDomains: ["example.com"],
+    });
+    const emails: Record<string, string> = {
+      U123: "someone@contractor.dev",
+      U456: "testuser@example.com",
+    };
+    mswServer.use(
+      http.post("https://slack.com/api/users.info", async ({ request }) => {
+        const user = new URLSearchParams(await request.text()).get("user")!;
+        return HttpResponse.json(
+          usersInfoOk({ userId: user, email: emails[user] }),
+        );
+      }),
+    );
+    await recordQuestion();
+
+    // The rejected click must not claim the question.
+    await click("U123", "1712345.0003");
+    expect(queue.queuedMessages()).toHaveLength(0);
+    expect(slackApiOutbox.calls("chat.update")).toHaveLength(0);
+
+    await click("U456", "1712345.0004");
+    const work = await getConversationWorkState({
+      conversationId: `slack:C123:${THREAD_TS}`,
+      state,
+    });
+    expect(work?.messages).toHaveLength(1);
+    expect(work?.messages[0]?.input.authorId).toBe("U456");
+    expect(queue.queuedMessages()).toHaveLength(1);
   });
 
   it("keeps the first click when only the queue wake fails", async () => {

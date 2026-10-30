@@ -39,7 +39,11 @@ import {
   COMPACTION_SUMMARY_PREFIX,
   isCompactionSummaryText,
 } from "@/chat/services/context-compaction-marker";
-import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
+import {
+  REQUEST_CONTEXT_SECTION_TAG,
+  SESSION_CONTEXT_SECTION_TAG,
+  TURN_CONTEXT_TAG,
+} from "@/chat/turn-context-tag";
 import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
@@ -109,17 +113,21 @@ interface ActiveContextCompactionArgs {
   piMessages: PiMessage[];
   runtimeContextMessages?: PiMessage[];
   signal?: AbortSignal;
+  /** Index in the runtime context messages where the current Turn starts. */
+  turnStartMessageIndex?: number;
 }
 
 /** Raised when Junior cannot compact history below the active model's hard ceiling. */
 export class ContextInputLimitExceededError extends Error {
-  constructor(
-    readonly estimatedTokens: number,
-    readonly inputLimitTokens: number,
-  ) {
+  readonly estimatedTokens: number;
+  readonly inputLimitTokens: number;
+
+  constructor(estimatedTokens: number, inputLimitTokens: number) {
     super(
       `Agent context is ${estimatedTokens} estimated input tokens, above the ${inputLimitTokens} token limit`,
     );
+    this.estimatedTokens = estimatedTokens;
+    this.inputLimitTokens = inputLimitTokens;
     this.name = "ContextInputLimitExceededError";
   }
 }
@@ -205,6 +213,42 @@ function hasTurnBootstrap(message: PiMessage): boolean {
   );
 }
 
+function isSessionTurnContext(text: string | undefined): text is string {
+  return (
+    text?.startsWith(`<${TURN_CONTEXT_TAG}>`) === true &&
+    text.includes(`\n<${SESSION_CONTEXT_SECTION_TAG}>\n`)
+  );
+}
+
+/** Remove the sections that only the Turn that received them can use. */
+function withoutRequestContext(text: string): string {
+  return Object.values(REQUEST_CONTEXT_SECTION_TAG).reduce(
+    (result, tag) =>
+      result.replace(
+        new RegExp(`\\n\\n<${tag}>\\n[\\s\\S]*?\\n</${tag}>`, "g"),
+        "",
+      ),
+    text,
+  );
+}
+
+/** Find the latest session context and keep only its session sections. */
+function latestSessionContext(messages: PiMessage[]): PiMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    const text = userMessageContent(message)
+      .map(textPart)
+      .find(isSessionTurnContext);
+    if (text) {
+      return {
+        ...message,
+        content: [{ type: "text", text: withoutRequestContext(text) }],
+      } as PiMessage;
+    }
+  }
+  return undefined;
+}
+
 function effectiveRuntimeContext(messages: PiMessage[]): {
   content: unknown[];
   timestamp: number;
@@ -218,14 +262,24 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   }
   const effectiveMessages =
     latestBootstrapIndex < 0 ? messages : messages.slice(latestBootstrapIndex);
-  const allContent = effectiveMessages.flatMap(userMessageContent);
+  return runtimeContextContent(effectiveMessages, effectiveMessages);
+}
+
+function runtimeContextContent(
+  messages: PiMessage[],
+  agentsMessages: PiMessage[],
+): {
+  content: unknown[];
+  timestamp: number;
+} {
+  const allContent = messages.flatMap(userMessageContent);
   const firstAgentsIndex = allContent.findIndex(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
   );
   const content = allContent.filter(
     (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
   );
-  const visibleAgents = findVisibleAgentsInstructions(effectiveMessages);
+  const visibleAgents = findVisibleAgentsInstructions(agentsMessages);
   if (visibleAgents?.active === true) {
     const insertionIndex =
       firstAgentsIndex < 0
@@ -240,7 +294,7 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
     });
   }
   const latestTimestamp = (
-    effectiveMessages.at(-1) as { timestamp?: unknown } | undefined
+    messages.at(-1) as { timestamp?: unknown } | undefined
   )?.timestamp;
   return {
     content,
@@ -249,11 +303,10 @@ function effectiveRuntimeContext(messages: PiMessage[]): {
   };
 }
 
-function runtimeContextMessage(
-  messages: PiMessage[],
+function toRuntimeContextMessage(
+  runtimeContext: { content: unknown[]; timestamp: number },
   timestamp?: number,
 ): PiMessage | undefined {
-  const runtimeContext = effectiveRuntimeContext(messages);
   if (runtimeContext.content.length === 0) {
     return undefined;
   }
@@ -262,6 +315,49 @@ function runtimeContextMessage(
     content: runtimeContext.content,
     timestamp: timestamp ?? runtimeContext.timestamp,
   } as PiMessage;
+}
+
+function runtimeContextMessage(
+  messages: PiMessage[],
+  timestamp?: number,
+): PiMessage | undefined {
+  return toRuntimeContextMessage(effectiveRuntimeContext(messages), timestamp);
+}
+
+/**
+ * Build the runtime context that the current Turn can use after an in-turn
+ * replacement.
+ *
+ * Request context, such as plugin context and disabled tools, is true only for
+ * the Turn that received it. From earlier Turns, keep only the latest session
+ * context and AGENTS.md instructions.
+ */
+function turnRuntimeContextMessage(
+  messages: PiMessage[],
+  turnStartMessageIndex: number | undefined,
+  timestamp?: number,
+): PiMessage | undefined {
+  if (turnStartMessageIndex === undefined) {
+    return runtimeContextMessage(retainRuntimeTurnContext(messages), timestamp);
+  }
+  const earlierContext = retainRuntimeTurnContext(
+    messages.slice(0, turnStartMessageIndex),
+  );
+  const turnContext = retainRuntimeTurnContext(
+    messages.slice(turnStartMessageIndex),
+  );
+  const sessionContext = turnContext.some((message) =>
+    userMessageContent(message).map(textPart).some(isSessionTurnContext),
+  )
+    ? undefined
+    : latestSessionContext(earlierContext);
+  return toRuntimeContextMessage(
+    runtimeContextContent(
+      sessionContext ? [sessionContext, ...turnContext] : turnContext,
+      [...earlierContext, ...turnContext],
+    ),
+    timestamp,
+  );
 }
 
 interface RetainedUserMessage {
@@ -718,11 +814,9 @@ export async function compactActiveContextIfNeeded(
   const instructionTimestamp = (
     instructionMessages[0] as { timestamp?: unknown } | undefined
   )?.timestamp;
-  const retainedRuntimeContext = retainRuntimeTurnContext(
+  const contextMessage = turnRuntimeContextMessage(
     args.runtimeContextMessages ?? args.piMessages,
-  );
-  const contextMessage = runtimeContextMessage(
-    retainedRuntimeContext,
+    args.turnStartMessageIndex,
     typeof instructionTimestamp === "number" ? instructionTimestamp : undefined,
   );
   const replacement = [

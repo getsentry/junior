@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Card } from "./layout/Card";
-import { Skeleton } from "./Skeleton";
+import { Skeleton } from "./ui/skeleton";
 import { cn } from "../styles";
 
 export type PageContentSkeletonVariant =

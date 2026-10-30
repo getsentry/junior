@@ -21,9 +21,9 @@ related:
 
 ## Key spans
 
-- `http.server.request`
-- `queue.enqueue_message`
-- `queue.process_message`
+- `http.server`
+- `queue.publish`
+- `queue.process`
 - `chat.turn`
 - `gen_ai.invoke_agent`
 - `gen_ai.execute_tool`
@@ -33,6 +33,7 @@ related:
 - `http.response.status_code`
 - `url.path`
 - `app.queue.delivery_count`
+- `messaging.message.receive.latency`
 - `messaging.message.conversation_id`
 - `gen_ai.request.model`
 - `error.type`

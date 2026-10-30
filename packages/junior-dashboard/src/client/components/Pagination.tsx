@@ -1,7 +1,12 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-
 import { cn } from "../styles";
-import { Button } from "./Button";
+import { Button } from "./ui/button";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "./ui/pagination";
 
 /** Render a centered load-more control for cursor or progressive lists. */
 export function LoadMorePagination(props: {
@@ -54,10 +59,9 @@ export function PagePagination(props: {
   const end = Math.min(props.total, current * props.pageSize);
 
   return (
-    <div
-      aria-label="Pagination"
+    <Pagination
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3",
+        "flex-wrap items-center justify-between gap-3",
         props.className,
       )}
     >
@@ -65,27 +69,23 @@ export function PagePagination(props: {
         Showing {start.toLocaleString("en-US")}-{end.toLocaleString("en-US")} of{" "}
         {props.total.toLocaleString("en-US")}
       </p>
-      <div className="flex items-center gap-2">
-        <Button
-          aria-label="Previous page"
-          disabled={current <= 1}
-          onClick={() => props.onPageChange(current - 1)}
-          size="icon"
-        >
-          <ChevronLeft aria-hidden="true" size={16} />
-        </Button>
-        <span className="min-w-16 text-center font-sans tabular-nums text-xs text-dashboard-text-muted">
+      <PaginationContent>
+        <PaginationItem>
+          <PaginationPrevious
+            disabled={current <= 1}
+            onClick={() => props.onPageChange(current - 1)}
+          />
+        </PaginationItem>
+        <PaginationItem className="min-w-16 text-center font-sans tabular-nums text-xs text-dashboard-text-muted">
           {current} / {props.pageCount}
-        </span>
-        <Button
-          aria-label="Next page"
-          disabled={current >= props.pageCount}
-          onClick={() => props.onPageChange(current + 1)}
-          size="icon"
-        >
-          <ChevronRight aria-hidden="true" size={16} />
-        </Button>
-      </div>
-    </div>
+        </PaginationItem>
+        <PaginationItem>
+          <PaginationNext
+            disabled={current >= props.pageCount}
+            onClick={() => props.onPageChange(current + 1)}
+          />
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }

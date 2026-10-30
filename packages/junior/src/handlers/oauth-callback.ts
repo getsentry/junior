@@ -48,7 +48,15 @@ import {
 
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 import { getSqlExecutor } from "@/chat/db";
-import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
+import {
+  findUserByVerifiedEmails,
+  upsertIdentity,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
+import { identityFromActor } from "@/chat/conversations/sql/actor-identity";
+import { isNativeIdentityProvider } from "@/chat/identities/identity";
+import type { SlackActor, WebActor } from "@/chat/actor";
+import type { PluginProviderAccount } from "@sentry/junior-plugin-api";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
@@ -87,6 +95,77 @@ function pluginAuthorizationId(args: {
   sessionId: string;
 }): string {
   return `${args.sessionId}:plugin:${args.provider}`;
+}
+
+/** Return the Junior user of the person who started the OAuth connection. */
+async function resolveOAuthActorUserId(
+  actor: SlackActor | WebActor,
+): Promise<string | undefined> {
+  if (actor.platform === "web") {
+    // Dashboard sign-in verified the web actor email.
+    const observation = identityFromActor(
+      actor.email
+        ? {
+            email: actor.email,
+            ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+          }
+        : undefined,
+    );
+    return observation
+      ? (await upsertIdentity(getSqlExecutor(), observation)).userId
+      : undefined;
+  }
+  const slackUserId = parseSlackUserId(actor.userId);
+  if (!slackUserId) {
+    throw new Error("OAuth Slack actor user id is invalid");
+  }
+  const profile = await lookupSlackUserProfile(slackUserId);
+  const slackIdentity = await upsertIdentity(getSqlExecutor(), {
+    kind: "user",
+    provider: "slack",
+    providerTenantId: actor.teamId,
+    providerSubjectId: profile.id,
+    displayName: profile.real_name || profile.display_name,
+    handle: profile.name,
+    ...(profile.email
+      ? { email: profile.email, emailVerified: true }
+      : undefined),
+  });
+  return slackIdentity.userId;
+}
+
+/**
+ * Link a connected provider account to the person who connected it.
+ *
+ * The actor's user wins. A provider-verified email that matches exactly one
+ * user links the account when the actor has no user, and is saved on the
+ * identity when it matches the actor's user.
+ */
+async function linkOAuthAccountIdentity(args: {
+  account: PluginProviderAccount;
+  actor: SlackActor | WebActor;
+  provider: string;
+  verifiedEmails: string[];
+}): Promise<void> {
+  const executor = getSqlExecutor();
+  const actorUserId = await resolveOAuthActorUserId(args.actor);
+  const emailMatch = await findUserByVerifiedEmails(
+    executor,
+    args.verifiedEmails,
+  );
+  const userId = actorUserId ?? emailMatch?.userId;
+  if (!userId) {
+    throw new Error("OAuth account has no Junior user to link");
+  }
+  const email = emailMatch?.userId === userId ? emailMatch.email : undefined;
+  await upsertLinkedIdentity(executor, userId, {
+    kind: "user",
+    provider: args.provider,
+    providerSubjectId: args.account.id,
+    displayName: args.account.displayName,
+    handle: args.account.handle ?? args.account.label,
+    ...(email ? { email, emailVerified: true } : undefined),
+  });
 }
 
 /** Queue the pending Turn, including a newer Turn that reused this auth link. */
@@ -164,13 +243,13 @@ export async function GET(
     if (errorParam === "access_denied") {
       return htmlErrorResponse(
         "Authorization declined",
-        `You declined the ${providerLabel} authorization request. Return to Junior and connect your ${providerLabel} account again if you change your mind.`,
+        `You declined the ${providerLabel} authorization request. Return to the conversation and connect your ${providerLabel} account again if you change your mind.`,
         400,
       );
     }
     return htmlErrorResponse(
       "Authorization failed",
-      `${providerLabel} returned an error: ${errorParam}. Return to Junior and try again.`,
+      `${providerLabel} returned an error: ${errorParam}. Return to the conversation and try again.`,
       400,
     );
   }
@@ -189,7 +268,7 @@ export async function GET(
   if (!stored) {
     return htmlErrorResponse(
       "Link expired",
-      `This authorization link has expired (links are valid for 10 minutes). Return to Junior and connect your ${providerLabel} account again to get a new link.`,
+      `This authorization link has expired (links are valid for 10 minutes). Return to the conversation and connect your ${providerLabel} account again to get a new link.`,
       400,
     );
   }
@@ -273,8 +352,9 @@ export async function GET(
   }
 
   let parsedTokenResponse;
+  let tokenData: Record<string, unknown>;
   try {
-    const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
+    tokenData = (await tokenResponse.json()) as Record<string, unknown>;
     parsedTokenResponse = parseOAuthTokenResponse(tokenData, requestedScope, {
       treatEmptyScopeAsUnreported: providerConfig.treatEmptyScopeAsUnreported,
     });
@@ -297,22 +377,30 @@ export async function GET(
   if (!hasRequiredOAuthScope(parsedTokenResponse.scope, requestedScope)) {
     return htmlErrorResponse(
       "Connection failed",
-      `The ${providerLabel} authorization did not grant the access Junior requires. Return to Junior and connect your ${providerLabel} account again.`,
+      `The ${providerLabel} authorization did not grant the required access. Return to the conversation and connect your ${providerLabel} account again.`,
       400,
     );
   }
 
   const userTokenStore = createUserTokenStore();
-  let account: Awaited<ReturnType<typeof resolvePluginOAuthAccount>>;
+  let account: PluginProviderAccount | undefined;
+  let verifiedEmails: string[] = [];
   try {
-    account = await resolvePluginOAuthAccount({
+    const resolved = await resolvePluginOAuthAccount({
       provider,
+      tokenResponse: tokenData,
       tokens: parsedTokenResponse,
     });
+    if (resolved) {
+      // Verified emails only link the account. They are not stored with tokens.
+      const { verifiedEmails: emails, ...rest } = resolved;
+      account = rest;
+      verifiedEmails = emails ?? [];
+    }
   } catch {
     return htmlErrorResponse(
       "Connection failed",
-      `Junior could not verify the connected ${providerLabel} account. Please try again.`,
+      `The connected ${providerLabel} account could not be verified. Please try again.`,
       500,
     );
   }
@@ -320,36 +408,19 @@ export async function GET(
     ...parsedTokenResponse,
     ...(account ? { account } : undefined),
   });
-  const slackActor =
-    stored.actor?.platform === "slack" ? stored.actor : undefined;
-  if (account && slackActor) {
+  const linkActor = stored.actor;
+  if (
+    account &&
+    !isNativeIdentityProvider(provider) &&
+    (linkActor?.platform === "slack" || linkActor?.platform === "web")
+  ) {
     await runBestEffort(
       async () => {
-        const slackUserId = parseSlackUserId(slackActor.userId);
-        if (!slackUserId) {
-          throw new Error("OAuth Slack actor user id is invalid");
-        }
-        const profile = await lookupSlackUserProfile(slackUserId);
-        const slackIdentity = await upsertIdentity(getSqlExecutor(), {
-          kind: "user",
-          provider: "slack",
-          providerTenantId: slackActor.teamId,
-          providerSubjectId: profile.id,
-          displayName: profile.real_name || profile.display_name,
-          handle: profile.name,
-          ...(profile.email
-            ? { email: profile.email, emailVerified: true }
-            : undefined),
-        });
-        if (!slackIdentity.userId) {
-          throw new Error("OAuth Slack identity is not linked to a user");
-        }
-        await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
-          kind: "user",
+        await linkOAuthAccountIdentity({
+          account,
+          actor: linkActor,
           provider,
-          providerSubjectId: account.id,
-          displayName: account.displayName,
-          handle: account.handle ?? account.label,
+          verifiedEmails,
         });
       },
       "oauth.callback.identity_link.failed",

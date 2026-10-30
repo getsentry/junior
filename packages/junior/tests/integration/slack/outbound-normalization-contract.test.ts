@@ -46,7 +46,7 @@ describe("Slack contract: outbound normalization", () => {
     });
     client?.on("spanEnd", (span) => {
       const json = Sentry.spanToJSON(span);
-      if (json.description === "POST slack.com/api/chat.postMessage") {
+      if (json.name === "POST slack.com/api/chat.postMessage") {
         spans.push(json);
       }
     });
@@ -158,7 +158,7 @@ describe("Slack contract: outbound normalization", () => {
       expect(JSON.stringify(events)).not.toContain("private-");
       expect(JSON.stringify(events)).not.toContain("private.example");
       expect(spans).toHaveLength(1);
-      const attributes = spans[0]?.data;
+      const attributes = spans[0]?.attributes;
       expect(attributes).toMatchObject({
         "app.slack.channel_id": "C123",
         "app.slack.thread_ts": "1700000000.000100",
@@ -182,8 +182,8 @@ describe("Slack contract: outbound normalization", () => {
     ).rejects.toMatchObject({ apiError: "invalid_metadata_schema" });
 
     expect(spans).toHaveLength(1);
-    expect(spans[0]?.status).not.toBe("ok");
-    expect(spans[0]?.data).toMatchObject({
+    expect(spans[0]?.status).toBe("error");
+    expect(spans[0]?.attributes).toMatchObject({
       "app.slack.work_object.count": 0,
       "app.slack.api_error_code": "invalid_metadata_schema",
     });

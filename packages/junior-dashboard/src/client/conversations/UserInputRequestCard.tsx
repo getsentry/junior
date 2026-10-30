@@ -8,8 +8,8 @@ import {
   type UserInputField,
 } from "@sentry/junior/api/schema";
 
-import { Button } from "../components/Button";
-import { TextArea } from "../components/TextInput";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import { TranscriptText } from "./TranscriptText";
 import type { OpenUserInputRequest } from "./userInputRequest";
 
@@ -86,12 +86,11 @@ function TextField(props: {
           {props.description}
         </p>
       ) : null}
-      <TextArea
-        className="min-h-16"
+      <Textarea
+        className="min-h-16 leading-relaxed"
         disabled={props.disabled}
         id={id}
         onChange={(event) => props.onChange(event.target.value)}
-        prose
         value={props.value}
       />
     </div>
@@ -146,7 +145,11 @@ export function UserInputRequestCard(props: {
       className="mb-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text"
     >
       <div className="max-h-48 overflow-y-auto">
-        <TranscriptText role="assistant" text={props.request.question} />
+        <TranscriptText
+          mentions={[]}
+          role="assistant"
+          text={props.request.question}
+        />
       </div>
       {buttonField ? (
         <>
@@ -219,7 +222,7 @@ export function UserInputRequestCard(props: {
             value={other}
           />
           <div>
-            <Button disabled={sending} tone="primary" type="submit">
+            <Button disabled={sending} type="submit" variant="primary">
               Send
             </Button>
           </div>

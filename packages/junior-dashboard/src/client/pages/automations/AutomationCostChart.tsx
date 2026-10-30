@@ -4,21 +4,27 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import type { AutomationExecutionDay } from "@sentry/junior/api/schema";
+import { Bar, BarChart, CartesianGrid } from "recharts";
 import {
   ActivityChartAverageLine,
-  ActivityChartDateLabels,
-  ActivityChartGrid,
   activityChartAverage,
-  ActivityChartTooltip,
-  ActivityTooltipRows,
-  ChartSvg,
-  createActivityChartLayout,
+  activityChartMargin,
+  ActivityChartTooltipContent,
+  ActivityChartXAxis,
+  ActivityChartYAxis,
 } from "../../components/charts/ActivityChart";
+import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
 
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 
-const COST_COLOR = "#67e8f9";
+const chartConfig = {
+  costUsd: { color: "var(--color-cyan-300)", label: "Spend" },
+};
+
+function formatSpend(value: number): string {
+  return formatCostSummary({ total: value });
+}
 
 /** Render linked conversation spend for completed automation executions. */
 export function AutomationCostChart(props: {
@@ -28,11 +34,6 @@ export function AutomationCostChart(props: {
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const days = props.days;
-  // Cost charts need a wider left gutter for currency tick labels.
-  const layout = createActivityChartLayout(200, { left: 112 });
-  const step =
-    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
-  const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const totals = days.map((day) => day.costUsd);
   const total = totals.reduce((sum, value) => sum + value, 0);
   const maximum = Math.max(0.01, ...totals);
@@ -51,66 +52,44 @@ export function AutomationCostChart(props: {
       </div>
 
       <div className="relative mt-5 overflow-hidden">
-        <ChartSvg
-          aria-label={`Automation execution spend during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
-          className="min-h-40"
-          layout={layout}
+        <ChartContainer
+          className="aspect-auto h-50 w-full"
+          config={chartConfig}
         >
-          <ActivityChartGrid
-            format={(value) => formatCostSummary({ total: value })}
-            layout={layout}
-            maximum={maximum}
-          />
-          {days.map((day, dayIndex) => {
-            const x = layout.left + dayIndex * step + (step - barWidth) / 2;
-            const value = totals[dayIndex] ?? 0;
-            const height = (value / maximum) * layout.plotHeight;
-            return (
-              <ActivityChartTooltip
-                key={day.date}
-                content={
-                  <ActivityTooltipRows
-                    rows={[["spend", formatCostSummary({ total: value })]]}
-                  />
-                }
-                date={day.date}
-                summary={`${formatCostSummary({ total: value })}`}
-              >
-                <g tabIndex={0}>
-                  <rect
-                    fill={COST_COLOR}
-                    height={height}
-                    opacity={value > 0 ? 0.82 : 0.1}
-                    rx="1"
-                    width={barWidth}
-                    x={x}
-                    y={layout.top + layout.plotHeight - height}
-                  />
-                  <rect
-                    fill="transparent"
-                    height={layout.plotHeight}
-                    width={Math.max(barWidth, 8)}
-                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
-                    y={layout.top}
-                  />
-                </g>
-              </ActivityChartTooltip>
-            );
-          })}
-          <ActivityChartAverageLine
-            unit={timeRangeBucketAverageUnit(bucketUnit)}
-            average={average}
-            format={(value) => formatCostSummary({ total: value })}
-            layout={layout}
-            maximum={maximum}
-            stroke="#e2e8f0"
-          />
-          <ActivityChartDateLabels
-            dates={days.map((day) => day.date)}
-            layout={layout}
-            xPosition={(index) => layout.left + index * step + step / 2}
-          />
-        </ChartSvg>
+          <BarChart
+            aria-label={`Automation execution spend during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
+            data={days}
+            margin={activityChartMargin}
+            role="img"
+          >
+            <CartesianGrid strokeDasharray="3 5" vertical={false} />
+            <ActivityChartYAxis format={formatSpend} maximum={maximum} />
+            <ActivityChartXAxis keys={days.map((day) => day.date)} />
+            <ChartTooltip
+              content={
+                <ActivityChartTooltipContent
+                  rows={(day: AutomationExecutionDay) => [
+                    ["spend", formatSpend(day.costUsd)],
+                  ]}
+                />
+              }
+            />
+            <Bar
+              dataKey="costUsd"
+              fill="var(--color-costUsd)"
+              fillOpacity={0.82}
+              isAnimationActive={false}
+              maxBarSize={13}
+              radius={1}
+            />
+            <ActivityChartAverageLine
+              unit={timeRangeBucketAverageUnit(bucketUnit)}
+              average={average}
+              format={formatSpend}
+              stroke="var(--color-slate-200)"
+            />
+          </BarChart>
+        </ChartContainer>
         {!hasCost ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-sans text-xs text-dashboard-text-muted">
             No linked spend in this period.

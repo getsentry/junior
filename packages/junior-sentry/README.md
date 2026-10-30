@@ -43,14 +43,16 @@ Use a **Sentry internal integration** (not a public app install flow):
 
 1. Subscribe to the **issue** webhook resource.
 2. Point it at `https://<junior-host>/api/webhooks/sentry`.
-3. Set the org slug as `SENTRY_WEBHOOK_ORG` and the integration client secret as `SENTRY_WEBHOOK_SECRET`, then redeploy.
+3. Set the integration client secret as `SENTRY_WEBHOOK_SECRET`, then redeploy.
 
 For metric alerts, also enable **Alert Rule Action** on the integration and add it as a `sentry_app` trigger action on each alert. Sentry sends metric alerts only to alert actions.
 
-Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes:
+Junior verifies `Sentry-Hook-Signature`, reads the org slug from the signed payload, and publishes:
 
 - `issue.created` for `org/project#issueId` and `org/project`.
-- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId`.
+- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId` and for `org/project` of each project on the alert rule.
+
+Each event has trusted data from Sentry. Issue events have `issueId`, `level`, `priority`, `issueCategory`, `issueType`, and `url` when Sentry sends them. Metric alert events have `alertRuleId`, `incidentId`, and `url`. On `org/project`, watches and event automations can filter issue events on `level`, `priority`, and `issueCategory`, and metric alert events on `alertRuleId`. The issue title, culprit, and alert description stay untrusted text.
 
 Create watches/event automations before the webhook arrives; unmatched deliveries are not replayed.
 

@@ -12,7 +12,6 @@ import {
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 import { personalSpendRefreshDelay } from "../src/client/api";
-import { fetchDashboardJson } from "../src/client/http";
 import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
 import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
@@ -117,7 +116,7 @@ describe("dashboard client API", () => {
       user: { email: "dev@example.com", emailVerified: true },
     });
     const app = createDashboardApp({
-      allowedEmails: ["dev@example.com"],
+      allowedDomains: ["example.com"],
       mockConversations: true,
       auth: {
         ...sessionAuth,

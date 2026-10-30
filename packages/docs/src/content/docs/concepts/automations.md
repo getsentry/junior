@@ -52,11 +52,22 @@ whenever a new issue is created in Linear team SRE, investigate it and comment f
 when someone posts a new message in this channel, answer it if you can, otherwise tag me
 ```
 
-A Slack channel-message automation runs for each new top-level message in the channel where you create it. It does not run for thread replies, for messages that mention Junior, or for bot messages. Junior replies in the thread of the message. Junior must be a member of the channel. The automation can watch only its own channel, and it always runs with Junior's own credentials, because anyone in the channel can write the message. Tell the channel that Junior reads every new message there.
+An event automation can also run for every resource of a plugin, with no exact resource. Filters then narrow it:
+
+```text
+whenever any Sentry metric alert for project javascript goes critical, summarize it here
+whenever a pull request opens in getsentry/junior, review it
+```
+
+Each plugin decides which events can run this way, and each plugin page lists them. Some events need a filter. For example, GitHub issue, pull request, and release events need a `repo` filter, and Linear issue events need a `teamKey` or `issueIdentifier` filter. Junior names the missing filter when it cannot save the automation. Junior saves filter values in the case that event data uses, so `getsentry/Junior` matches `getsentry/junior`. One event runs the automation once, even when the plugin publishes the event for more than one resource, such as each project of a metric alert. Slack channel-message automations always need their own channel.
+
+A required filter limits how much an automation covers and how noisy it is. It is not access control. Junior does not check that the person who creates the automation can see the repository, project, or team in the filter. An automation with no exact resource posts what it receives to its destination channel. For example, a broad Sentry trigger or GitHub deployment trigger can post private project or repository names in that channel. Create broad automations only in channels where everyone can see those resources.
+
+A Slack channel-message automation runs for each new top-level message in the channel where you create it. It does not run for thread replies or for messages that mention Junior. It runs for a bot message, such as a Sentry alert, only when the automation names that bot's Slack user ID in `match.userId`. Junior replies in the thread of the message. Junior must be a member of the channel. The automation can watch only its own channel, and it always runs with Junior's own credentials, because anyone in the channel can write the message. Tell the channel that Junior reads every new message there.
 
 If the plugin is disabled, the automation remains visible but cannot receive events until a compatible plugin is enabled again. Each plugin page lists the resources and events it can publish.
 
-Each event automation can start at most 10 runs in an hour. Set `limits.maxEventAutomationRunsPerHour` in `createApp()` to change this number. The limit applies to that one automation, so other automations on the same trigger keep running. When an automation reaches the limit, Junior blocks it and sends its creator a direct message. Resume the automation after you narrow its trigger.
+Each event automation can start at most 10 runs in a rolling minute. Set `limits.eventAutomationRunLimit` in `createApp()` to change the count (`maxRuns`) and the window (`windowMs`), for example 100 runs per hour. The limit applies to that one automation, so other automations on the same trigger keep running. When an automation reaches the limit, Junior blocks it and sends its creator a direct message. Resume the automation after you narrow its trigger.
 
 ## Access and Delivery
 

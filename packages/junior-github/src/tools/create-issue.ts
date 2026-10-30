@@ -18,7 +18,10 @@ import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import { gitHubIssueSubscribable } from "../events/issue.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import {
+  appendGitHubRequesterAttribution,
+  resolveGitHubRequester,
+} from "../tool-support/attribution.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -134,12 +137,11 @@ function gitHubIssueToolResult(
   canSubscribe: boolean,
 ): GitHubIssueToolResult {
   const repo = parseRepo(input.repo);
-  const subscribable = canSubscribe
-    ? gitHubIssueSubscribable({
-        number: result.number,
-        repo: `${repo.owner}/${repo.name}`,
-      })
-    : undefined;
+  const subscribable = gitHubIssueSubscribable({
+    canSubscribe,
+    number: result.number,
+    repo: `${repo.owner}/${repo.name}`,
+  });
   const data = {
     number: result.number,
     url: result.url,
@@ -260,7 +262,11 @@ async function createGitHubIssueRequest(
   const payload = {
     title: nonEmptyString(input.title, "title"),
     body: appendGitHubFooter(
-      await appendGitHubRequesterAttribution(input.body ?? "", ctx),
+      appendGitHubRequesterAttribution(
+        input.body ?? "",
+        ctx,
+        await resolveGitHubRequester(ctx),
+      ),
       conversationId,
       dashboardUrl,
     ),

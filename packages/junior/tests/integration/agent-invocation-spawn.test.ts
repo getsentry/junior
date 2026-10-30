@@ -5,7 +5,9 @@ import {
   getAgentInvocation,
   getAgentInvocationId,
   getAgentInvocationIdForResult,
+  getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
+  getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
@@ -25,7 +27,16 @@ import {
   recoverPendingAgentInvocationResults,
 } from "@/chat/agent-dispatch/heartbeat";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
-import { createLocalSource } from "@sentry/junior-plugin-api";
+import {
+  createLocalSource,
+  type ObjectAnnotation,
+} from "@sentry/junior-plugin-api";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getConversationEventStore, getDb } from "@/chat/db";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
   destination,
   invocationInput,
@@ -439,6 +450,15 @@ describe("agent invocation spawn and result delivery", () => {
         },
         2_000,
       );
+      // A sibling that the same parent started is still running.
+      await createAgentInvocation(
+        {
+          ...slackInvocationInput,
+          agentName: "scout",
+          idempotencyKey: "parent-result-repair-sibling",
+        },
+        2_500,
+      );
       // The worker stopped after the terminal write and before the parent append.
       await completeAgentInvocation({
         errorMessage: "GitHub authorization is required",
@@ -483,6 +503,8 @@ describe("agent invocation spawn and result delivery", () => {
       expect(parentWork?.messages[0]?.input.text).toContain(
         "GitHub authorization is required",
       );
+      // The parent can wait for the open sibling instead of reporting early.
+      expect(parentWork?.messages[0]?.input.text).toContain('"scout"');
       await expect(
         loadSubagentEvents(slackParentConversationId),
       ).resolves.toEqual([
@@ -492,6 +514,140 @@ describe("agent invocation spawn and result delivery", () => {
           outcome: "blocked",
         },
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+  it("delivers a child's Message cards with the parent's result reply and shows its annotations on the root", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const events = getConversationEventStore();
+    const lifecycle = new ConversationTurnLifecycleService(events);
+    const change: ObjectAnnotation = {
+      kind: "object",
+      objectType: "code_change",
+      key: "getsentry/junior#1",
+      label: "getsentry/junior#1",
+      title: "Fix the parser",
+      url: "https://github.com/getsentry/junior/pull/1",
+      status: "open",
+    };
+    try {
+      const created = await createAgentInvocation(
+        { ...slackInvocationInput, idempotencyKey: "open-change" },
+        2_000,
+      );
+      const child = created.childConversationId;
+      const childTurnId = getAgentInvocationTurnId(created.invocationId);
+      // The child's Turn selects a card, as a plugin tool result does.
+      await lifecycle.start({
+        conversationId: child,
+        createdAtMs: 2_000,
+        inputMessageIds: [getAgentInvocationMessageId(created.invocationId)],
+        surface: "internal",
+        turnId: childTurnId,
+      });
+      const objectCards = await saveObjectAnnotations(child, "github", [
+        change,
+      ]);
+      await events.append(child, [
+        {
+          createdAtMs: 2_001,
+          data: {
+            type: "tool_result",
+            toolName: "github_createPullRequest",
+            details: { objectCards },
+            isError: false,
+          },
+        },
+      ]);
+      await lifecycle.complete({
+        conversationId: child,
+        createdAtMs: 2_002,
+        outcome: "success",
+        turnId: childTurnId,
+      });
+      const terminal = await completeAgentInvocation({
+        invocationId: created.invocationId,
+        result: "Opened getsentry/junior#1.",
+        status: "completed",
+      });
+      await enqueueAgentInvocationResult(terminal as TerminalAgentInvocation, {
+        queue,
+        state,
+      });
+
+      // The result starts a parent Turn. Its reply delivers the child's card.
+      await lifecycle.start({
+        conversationId: slackParentConversationId,
+        createdAtMs: 40_000,
+        inputMessageIds: [
+          getAgentInvocationResultMessageId(created.invocationId),
+        ],
+        surface: "slack",
+        turnId: "parent-result-turn",
+      });
+      await expect(
+        loadPendingMessageCards(slackParentConversationId),
+      ).resolves.toEqual([{ ...change, plugin: "github" }]);
+      await expect(
+        listConversationAnnotations(getDb(), slackParentConversationId),
+      ).resolves.toMatchObject([{ plugin: "github", key: change.key }]);
+      const feed = await readConversationFeedFromSql();
+      expect(
+        feed.conversations.find(
+          (item) => item.conversationId === slackParentConversationId,
+        )?.annotations,
+      ).toMatchObject([{ plugin: "github", key: change.key }]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("names a finished sibling whose result has not reached the parent", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      const first = await createAgentInvocation(
+        { ...slackInvocationInput, idempotencyKey: "fan-out-first" },
+        2_000,
+      );
+      const sibling = await createAgentInvocation(
+        {
+          ...slackInvocationInput,
+          agentName: "analyst",
+          idempotencyKey: "fan-out-sibling",
+        },
+        2_500,
+      );
+      // Both children finish before either result reaches the parent.
+      const result = await completeAgentInvocation({
+        invocationId: first.invocationId,
+        result: "First finding.",
+        status: "completed",
+      });
+      await completeAgentInvocation({
+        invocationId: sibling.invocationId,
+        result: "Second finding.",
+        status: "completed",
+      });
+
+      await enqueueAgentInvocationResult(result as TerminalAgentInvocation, {
+        queue,
+        state,
+      });
+
+      const parentWork = await getConversationWorkState({
+        conversationId: slackParentConversationId,
+        state,
+      });
+      expect(parentWork?.messages[0]?.input.text).toContain(
+        'have not reported yet: "analyst"',
+      );
     } finally {
       await fixture.close();
     }

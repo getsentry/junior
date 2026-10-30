@@ -2,7 +2,7 @@ import { test, expect } from "./test";
 import { screenshot } from "./screenshot";
 import { mockAutomationEditor } from "./automation-editor-fixture";
 
-test("edits an Automation from its drawer, preserves list state, and protects the draft", async ({
+test("edits an Automation in place, preserves list state, and protects the draft", async ({
   page,
   dashboard,
 }) => {
@@ -16,9 +16,32 @@ test("edits an Automation from its drawer, preserves list state, and protects th
   await expect(page).toHaveURL(
     /\/automations\/scheduled-1\/edit\?scope=mine&q=weekly/,
   );
+  // Edit mode is part of the Overview tab.
+  await expect(
+    page
+      .getByLabel("Automation navigation")
+      .getByRole("link", { name: "Overview", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Weekly project summary",
   );
+  const yourChanges = page.getByRole("complementary", {
+    name: "Your changes",
+  });
+  await page.getByLabel("Title", { exact: true }).fill("Temporary title");
+  await expect(yourChanges.getByText("Title", { exact: true })).toBeVisible();
+  // Each change shows the saved value and the new value.
+  await expect(yourChanges).toContainText("Saved: Weekly project summary");
+  await expect(yourChanges).toContainText("New: Temporary title");
+  await yourChanges
+    .getByRole("button", { name: "Undo title change", exact: true })
+    .click();
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
+    "Weekly project summary",
+  );
+  await expect(
+    yourChanges.getByText("No changes yet. Edit a section to see it here."),
+  ).toBeVisible();
   await screenshot(page, "automation-editor");
   const previewRequest = page.waitForRequest((request) =>
     request.url().endsWith("/api/automations/scheduled-1/preview"),
@@ -61,10 +84,10 @@ test("edits an Automation from its drawer, preserves list state, and protects th
     .click();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page).toHaveURL(
-    `${dashboard.baseURL}/automations/list?scope=mine&q=weekly`,
+    `${dashboard.baseURL}/automations/scheduled-1?scope=mine&q=weekly`,
   );
   await expect(
-    page.getByText("Automation saved. Changes apply to future work."),
+    page.getByText("Automation saved", { exact: true }),
   ).toBeVisible();
   expect(state.writes).toEqual([
     {
@@ -107,9 +130,12 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     "getsentry/junior#42",
   );
   await screenshot(page, "automation-event-editor");
+  // Only issue.closed sets closedBy, so the filter hides for issue.opened.
+  await expect(page.getByLabel("closedBy", { exact: true })).toBeVisible();
   await page
-    .getByRole("checkbox", { name: "issue · opened", exact: true })
+    .getByRole("checkbox", { name: "issue opened", exact: true })
     .check();
+  await expect(page.getByLabel("closedBy", { exact: true })).toHaveCount(0);
   await page.getByLabel("state", { exact: true }).selectOption("closed");
   await page.getByLabel("Instruction", { exact: true }).fill("");
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -139,7 +165,7 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     "Changed in Slack",
   );
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/list`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/event-1`);
   expect(state.writes).toEqual([
     {
       kind: "event",
@@ -157,12 +183,53 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
   ]);
 });
 
+test("replaces an Event trigger with one for any resource", async ({
+  page,
+  dashboard,
+}) => {
+  const state = await mockAutomationEditor(page, "event");
+  await page.goto(`${dashboard.baseURL}/automations/event-1/edit`);
+  await page.getByLabel("Resource type").selectOption("github:*");
+  await page.getByRole("button", { name: "Replace trigger" }).click();
+  await expect(page.getByLabel("Resource identifier")).toHaveCount(0);
+  // A trigger with no identifier names no resource.
+  await page.getByLabel("Trigger name").fill("Closed issues");
+  await page.getByRole("checkbox", { name: /^issue closed/ }).check();
+  await screenshot(page, "automation-event-editor-any-resource");
+  // The shared check names the filter that this event needs.
+  await expect(
+    page.getByText('This trigger needs a "state" filter'),
+  ).toBeVisible();
+  await page.getByLabel("state", { exact: true }).selectOption("closed");
+  await expect(
+    page.getByText('This trigger needs a "state" filter'),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/event-1`);
+  expect(state.writes).toEqual([
+    expect.objectContaining({
+      kind: "event",
+      trigger: {
+        namespace: "github",
+        label: "Closed issues",
+        events: ["issue.closed"],
+        match: { state: "closed" },
+      },
+    }),
+  ]);
+});
+
 test("public non-creators edit settings without creator-only controls", async ({
   page,
   dashboard,
 }) => {
   const state = await mockAutomationEditor(page, "event", "event-2");
-  await page.goto(`${dashboard.baseURL}/automations/event-2/edit`);
+  await page.goto(`${dashboard.baseURL}/automations/event-2/edit/`);
+  await expect(
+    page
+      .getByLabel("Automation navigation")
+      .getByRole("link", { name: "Overview", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(
     page.getByText(/You can edit it because it is in a public channel/),
   ).toBeVisible();
@@ -180,7 +247,7 @@ test("public non-creators edit settings without creator-only controls", async ({
   ).toBeDisabled();
   await screenshot(page, "automation-editor-public");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/list`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/event-2`);
   expect(state.writes).toEqual([
     {
       kind: "event",
@@ -241,22 +308,31 @@ test("makes an earlier version active from version history", async ({
     },
   );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
-  await page.getByRole("link", { name: "Version history" }).click();
+  await page
+    .getByRole("complementary", { name: "Automation status" })
+    .getByRole("link", { name: "Version 2" })
+    .click();
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);
-  await expect(page.getByText("Changed instruction")).toBeVisible();
+  const versionList = page.getByRole("navigation", { name: "Versions" });
+  await expect(versionList.getByText("Changed what to do")).toBeVisible();
+  // The newest version is compared with the one before it.
+  await expect(page.getByText("Compared with version 1")).toBeVisible();
+  await expect(page.getByText("Added: Post a shorter summary")).toBeAttached();
   await screenshot(page, "automation-versions");
-  page.once("dialog", (dialog) => {
-    expect(dialog.message()).toContain("Make version 1 active?");
-    void dialog.accept();
-  });
+  await versionList.getByRole("button", { name: /^Version 1/ }).click();
+  await expect(page).toHaveURL(/[?&]version=1(?:&|$)/);
   await page
     .getByRole("button", { name: "Make version 1 active", exact: true })
+    .click();
+  await page
+    .getByRole("alertdialog", { name: "Make version 1 active?" })
+    .getByRole("button", { name: "Make active" })
     .click();
   await expect(
     page.getByText("Version 1 is active again. It was saved as a new version."),
   ).toBeVisible();
   await expect(
-    page.getByRole("listitem", { name: "Version 3" }).getByText("Active"),
-  ).toBeVisible();
+    versionList.getByRole("button", { name: /^Version 3/ }),
+  ).toContainText("Active");
   expect(activations).toEqual([{ revision: "a".repeat(64) }]);
 });

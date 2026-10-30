@@ -1,4 +1,4 @@
-import { ToggleButton } from "../Button";
+import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 
 /**
  * Fixed dashboard reporting window.
@@ -124,9 +124,7 @@ function sumHoursIntoSixHours<T extends { date: string }>(args: {
   // Fill the trailing 28 six-hour buckets when enough hour rows exist.
   if (args.hours.length >= 24) {
     const lastHour = args.hours[args.hours.length - 1]?.date;
-    const endMs = lastHour
-      ? Date.parse(`${lastHour}:00:00.000Z`)
-      : Date.now();
+    const endMs = lastHour ? Date.parse(`${lastHour}:00:00.000Z`) : Date.now();
     const end = new Date(endMs);
     end.setUTCMinutes(0, 0, 0);
     end.setUTCHours(Math.floor(end.getUTCHours() / 6) * 6, 0, 0, 0);
@@ -155,21 +153,18 @@ export function TimeRangeSelector(props: {
   value: TimeRangeDays;
 }) {
   return (
-    <div
+    <ToggleGroup
       aria-label="Reporting period"
-      className="flex items-center gap-1"
-      role="group"
+      onValueChange={([next]) => {
+        if (next) props.onChange(Number(next) as TimeRangeDays);
+      }}
+      value={[String(props.value)]}
     >
       {(props.options ?? DEFAULT_OPTIONS).map((days) => (
-        <ToggleButton
-          key={days}
-          onClick={() => props.onChange(days)}
-          pressed={props.value === days}
-          variant="segment"
-        >
+        <ToggleGroupItem key={days} value={String(days)}>
           {timeRangeLabel(days)}
-        </ToggleButton>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }

@@ -58,7 +58,10 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
-import { credentialUserSubjectId } from "@/chat/credentials/context";
+import {
+  actorLogContext,
+  credentialUserSubjectId,
+} from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
@@ -137,7 +140,7 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
-import { CHILD_AGENT_USER_INTENT } from "@/chat/tool-support/action-review";
+import { CHILD_AGENT_USER_INTENT } from "@/chat/guardian/proposal";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {
@@ -183,8 +186,11 @@ async function readRunConversationVisibility(
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
-  constructor(readonly originalError: unknown) {
+  readonly originalError: unknown;
+
+  constructor(originalError: unknown) {
     super("Assistant message delivery failed");
+    this.originalError = originalError;
   }
 }
 
@@ -240,9 +246,7 @@ export async function executeAgentRun(
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
   });
-  const credentialActor = run.credentialContext?.actor;
   const actor = actorFromRun(run);
-  const userActor = actor && "userId" in actor ? actor : undefined;
   const runLogContext: LogContext = {
     conversationId: run.conversationId,
     platform:
@@ -264,20 +268,8 @@ export async function executeAgentRun(
         : run.source.kind === "web" || run.source.kind === "local"
           ? run.source.conversationId
           : run.conversationId),
-    userId: userActor?.userId,
-    userName: userActor?.userName,
-    userEmail: userActor?.email,
+    ...actorLogContext(actor, run.credentialContext),
     runId: run.runId,
-    actorType: credentialActor
-      ? "type" in credentialActor
-        ? credentialActor.type
-        : "system"
-      : undefined,
-    actorId: credentialActor
-      ? "type" in credentialActor
-        ? credentialActor.userId
-        : credentialActor.name
-      : undefined,
     assistantUserName: botConfig.userName,
   };
   return withLogContext(runLogContext, () =>
@@ -997,6 +989,7 @@ async function executeAgentRunInPrivacyContext(
               }
             : undefined),
           signal: hookSignal,
+          turnStartMessageIndex: runResume.turnStartMessageIndex,
         },
         {
           completeText: (args) => completeText(args),
@@ -1011,10 +1004,18 @@ async function executeAgentRunInPrivacyContext(
         usageSinceCurrentBoundary(messages),
       );
       const replacement = [...compaction.piMessages];
-      await runResume.requireDurableInputCheckpoint(replacement);
+      // The whole replacement belongs to this Turn. Set the Turn start first,
+      // so the checkpoint does not keep an index into the old history.
+      const previousTurnStartMessageIndex = runResume.turnStartMessageIndex;
+      runResume.setTurnStartMessageIndex(0);
+      try {
+        await runResume.requireDurableInputCheckpoint(replacement);
+      } catch (error) {
+        runResume.setTurnStartMessageIndex(previousTurnStartMessageIndex);
+        throw error;
+      }
       agent!.state.messages = replacement;
       runResume.setBeforeMessageCount(replacement.length);
-      runResume.setTurnStartMessageIndex(0);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
         agent!.clearSteeringQueue();
@@ -1290,6 +1291,7 @@ async function executeAgentRunInPrivacyContext(
         }
         return deliverAssistantMessage(event.message);
       }
+      return undefined;
     });
 
     let newMessages: PiMessage[] = [];
@@ -1662,6 +1664,7 @@ async function executeAgentRunInPrivacyContext(
             }
             throw error;
           }
+          return undefined;
         },
         {
           "gen_ai.operation.name": "invoke_agent",

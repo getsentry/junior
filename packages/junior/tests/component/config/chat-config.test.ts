@@ -22,6 +22,15 @@ describe("chat config", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_DRIVER;
     delete process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS;
+    for (const name of Object.keys(process.env)) {
+      if (
+        name === "JUNIOR_ATTACHMENT_STORAGE_PROVIDER" ||
+        name.startsWith("JUNIOR_S3_") ||
+        name.startsWith("JUNIOR_QUEUE_")
+      ) {
+        delete process.env[name];
+      }
+    }
   });
 
   afterEach(() => {
@@ -285,28 +294,6 @@ describe("chat config", () => {
     expect(botConfig.imageGenerationModelId).toBe("openai/dall-e-3");
   });
 
-  it("uses the default slash command when JUNIOR_SLASH_COMMAND is unset", async () => {
-    delete process.env.JUNIOR_SLASH_COMMAND;
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().slack.slashCommand).toBe("/jr");
-  });
-
-  it("uses JUNIOR_SLASH_COMMAND when configured", async () => {
-    process.env.JUNIOR_SLASH_COMMAND = " /junior ";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().slack.slashCommand).toBe("/junior");
-  });
-
-  it("throws when JUNIOR_SLASH_COMMAND is invalid", async () => {
-    process.env.JUNIOR_SLASH_COMMAND = "junior command";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_SLASH_COMMAND must start with / and contain no whitespace",
-    );
-  });
-
   it("reads the standard database URL", async () => {
     process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 
@@ -352,6 +339,89 @@ describe("chat config", () => {
 
     await expect(loadConfig()).rejects.toThrow(
       "JUNIOR_DATABASE_DRIVER must be postgres or neon",
+    );
+  });
+
+  it("uses Vercel Blob attachment storage by default", async () => {
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().attachmentStorage).toEqual({
+      provider: "vercel-blob",
+    });
+  });
+
+  it("reads S3 attachment storage settings", async () => {
+    process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = " s3 ";
+    process.env.JUNIOR_S3_ENDPOINT = "http://localhost:7070";
+    process.env.JUNIOR_S3_BUCKET = "junior-attachments";
+    process.env.JUNIOR_S3_ACCESS_KEY_ID = "junior";
+    process.env.JUNIOR_S3_SECRET_ACCESS_KEY = "secret";
+
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().attachmentStorage).toEqual({
+      provider: "s3",
+      s3: {
+        accessKeyId: "junior",
+        bucket: "junior-attachments",
+        endpoint: "http://localhost:7070",
+        region: "us-east-1",
+        secretAccessKey: "secret",
+      },
+    });
+  });
+
+  it("throws when S3 attachment storage is missing a setting", async () => {
+    process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "s3";
+    process.env.JUNIOR_S3_ENDPOINT = "http://localhost:7070";
+    process.env.JUNIOR_S3_ACCESS_KEY_ID = "junior";
+    process.env.JUNIOR_S3_SECRET_ACCESS_KEY = "secret";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_S3_BUCKET is required when JUNIOR_ATTACHMENT_STORAGE_PROVIDER is s3",
+    );
+  });
+
+  it("throws when the attachment storage provider is invalid", async () => {
+    process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "gcs";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_ATTACHMENT_STORAGE_PROVIDER must be vercel-blob, s3, or memory",
+    );
+  });
+
+  it("uses Vercel Queues by default and reads BullMQ settings", async () => {
+    expect((await loadConfig()).getChatConfig().queue).toEqual({
+      provider: "vercel",
+    });
+
+    process.env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+    process.env.JUNIOR_QUEUE_REDIS_URL = "redis://localhost:6382";
+    expect((await loadConfig()).getChatConfig().queue).toEqual({
+      provider: "bullmq",
+      redisUrl: "redis://localhost:6382",
+      workerConcurrency: 4,
+    });
+
+    process.env.JUNIOR_QUEUE_WORKER_CONCURRENCY = "2";
+    expect((await loadConfig()).getChatConfig().queue).toMatchObject({
+      workerConcurrency: 2,
+    });
+  });
+
+  it("throws when the BullMQ queue has no Redis URL", async () => {
+    process.env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_QUEUE_REDIS_URL is required when JUNIOR_QUEUE_PROVIDER is bullmq",
+    );
+  });
+
+  it("throws when the BullMQ worker concurrency is not a positive integer", async () => {
+    process.env.JUNIOR_QUEUE_PROVIDER = "bullmq";
+    process.env.JUNIOR_QUEUE_REDIS_URL = "redis://localhost:6382";
+    process.env.JUNIOR_QUEUE_WORKER_CONCURRENCY = "0";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_QUEUE_WORKER_CONCURRENCY must be a positive integer",
     );
   });
 
@@ -536,9 +606,10 @@ describe("chat config", () => {
     expect(botConfig.maxConsecutiveAutomatedTurns).toBe(25);
   });
 
-  it("sets max event automation runs per hour from core config", async () => {
+  it("sets the event automation run limit from core config", async () => {
     const { botConfig } = await loadConfig();
-    expect(botConfig.maxEventAutomationRunsPerHour).toBe(10);
+    expect(botConfig.maxEventAutomationRuns).toBe(10);
+    expect(botConfig.eventAutomationRunWindowMs).toBe(60_000);
   });
 
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {

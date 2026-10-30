@@ -1,0 +1,2 @@
+ALTER TABLE "junior_automation_runs" ADD COLUMN "automation_version" integer;--> statement-breakpoint
+ALTER TABLE "junior_automation_runs" ADD CONSTRAINT "junior_automation_runs_automation_version_fk" FOREIGN KEY ("automation_id","automation_version") REFERENCES "public"."junior_automation_versions"("automation_id","version") ON DELETE no action ON UPDATE no action;

@@ -251,6 +251,7 @@ describe("agent invocation conversation work", () => {
           messageId: getAgentInvocationMessageId(created.invocationId),
           role: "user",
           text: slackInvocationInput.input,
+          meta: { agentInvocationId: created.invocationId },
         },
         {
           type: "message",
@@ -307,74 +308,97 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("finishes a failed child Turn after saving its result", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const created = await createAndEnqueueAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "failed-result-1",
-        },
-        { conversationStore, queue, state },
-      );
-      const route = routeAgentInvocationWork({
-        fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker: createAgentInvocationWorker(
-          createModelAgentRunner(
-            createModelStream([
-              { type: "error", errorMessage: "model unavailable" },
-            ]),
+  const blockedMissing = "Approval to open the PR. Ask the user.";
+  it.each([
+    {
+      name: "failed",
+      output: { type: "error" as const, errorMessage: "model unavailable" },
+      invocation: { errorMessage: "model unavailable", status: "failed" },
+      terminal: { failureCode: "model_execution_failed", type: "turn_failed" },
+      subagentOutcome: "error",
+    },
+    {
+      // A blocked report is a result, not a model failure.
+      name: "blocked",
+      output: {
+        type: "toolCall" as const,
+        name: "reportBlocked",
+        arguments: { missing: blockedMissing },
+      },
+      invocation: { errorMessage: blockedMissing, status: "blocked" },
+      terminal: { outcome: "blocked", type: "turn_completed" },
+      subagentOutcome: "blocked",
+    },
+  ])(
+    "finishes a $name child Turn after saving its result",
+    async ({
+      invocation: expectedInvocation,
+      output,
+      subagentOutcome,
+      terminal,
+    }) => {
+      const { conversationStore, fixture } = await prepareParentConversation();
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      try {
+        const created = await createAndEnqueueAgentInvocation(
+          {
+            ...invocationInput,
+            idempotencyKey: "failed-result-1",
+          },
+          { conversationStore, queue, state },
+        );
+        const route = routeAgentInvocationWork({
+          fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
+          invocationWorker: createAgentInvocationWorker(
+            createModelAgentRunner(createModelStream([output])),
           ),
-        ),
-      });
+        });
 
-      await expect(
-        processConversationQueueMessage(queue.takeMessage(), {
-          conversationStore,
-          queue,
-          run: route,
-          state,
-        }),
-      ).resolves.toMatchObject({ status: "completed" });
+        await expect(
+          processConversationQueueMessage(queue.takeMessage(), {
+            conversationStore,
+            queue,
+            run: route,
+            state,
+          }),
+        ).resolves.toMatchObject({ status: "completed" });
 
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({
-        errorMessage: "model unavailable",
-        status: "failed",
-      });
-      await expect(
-        loadTurnEvents(created.childConversationId),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          data: expect.objectContaining({
-            type: "turn_started",
-            turnId: getAgentInvocationTurnId(created.invocationId),
+        await expect(
+          getAgentInvocation(created.invocationId),
+        ).resolves.toMatchObject(expectedInvocation);
+        await expect(
+          loadTurnEvents(created.childConversationId),
+        ).resolves.toEqual([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              type: "turn_started",
+              turnId: getAgentInvocationTurnId(created.invocationId),
+            }),
           }),
-        }),
-        expect.objectContaining({
-          data: expect.objectContaining({
-            failureCode: "model_execution_failed",
-            type: "turn_failed",
-            turnId: getAgentInvocationTurnId(created.invocationId),
+          expect.objectContaining({
+            data: expect.objectContaining({
+              ...terminal,
+              turnId: getAgentInvocationTurnId(created.invocationId),
+            }),
           }),
-        }),
-      ]);
-      await expect(loadSubagentEvents(parentConversationId)).resolves.toEqual([
-        expect.objectContaining({ type: "subagent_started" }),
-        {
-          type: "subagent_ended",
-          subagentInvocationId: created.invocationId,
-          outcome: "error",
-        },
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
+        ]);
+        await expect(loadSubagentEvents(parentConversationId)).resolves.toEqual(
+          [
+            expect.objectContaining({ type: "subagent_started" }),
+            {
+              type: "subagent_ended",
+              subagentInvocationId: created.invocationId,
+              outcome: subagentOutcome,
+            },
+          ],
+        );
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   it("resumes a yielded invocation from durable child state", async () => {
     const { conversationStore, fixture } = await prepareParentConversation();
@@ -488,6 +512,7 @@ describe("agent invocation conversation work", () => {
         },
       ],
       expected: { result: "Recovered visible result", status: "completed" },
+      turnOutcome: "success",
     },
     {
       name: "a blocked report",
@@ -513,10 +538,11 @@ describe("agent invocation conversation work", () => {
         },
       ],
       expected: { errorMessage: missing, status: "blocked" },
+      turnOutcome: "blocked",
     },
   ])(
     "recovers a completed child turn that ends with $name through production routing",
-    async ({ expected, tail }) => {
+    async ({ expected, tail, turnOutcome }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const queue = createConversationWorkQueueTestAdapter();
       const state = getStateAdapter();
@@ -583,6 +609,16 @@ describe("agent invocation conversation work", () => {
         await expect(
           getAgentInvocation(created.invocationId),
         ).resolves.toMatchObject(expected);
+        await expect(
+          loadTurnEvents(created.childConversationId),
+        ).resolves.toEqual([
+          expect.objectContaining({
+            data: expect.objectContaining({
+              outcome: turnOutcome,
+              type: "turn_completed",
+            }),
+          }),
+        ]);
       } finally {
         await fixture.close();
       }

@@ -20,8 +20,23 @@ export interface PluginEnv {
   set(key: string, value: string): void;
 }
 
+/**
+ * Decide what happens to one tool call in `beforeToolExecute`.
+ *
+ * `redirect` and `deny` both stop the tool before it runs. Neither ends the
+ * turn: the agent gets the message as the tool result.
+ */
 export interface PluginDecision {
-  deny(message: string): void;
+  /**
+   * Block the call as a policy refusal. The agent is told not to retry or
+   * reach the same result another way, and to explain the block.
+   */
+  deny(reason: string): void;
+  /**
+   * Block the call because a different path is correct, such as another
+   * tool. The message tells the agent what to do instead.
+   */
+  redirect(message: string): void;
   replaceInput(input: Record<string, unknown>): void;
 }
 
@@ -164,6 +179,8 @@ export interface SandboxPrepareHookContext extends PluginContext {
 export interface BeforeToolExecuteHookContext extends PluginContext {
   decision: PluginDecision;
   env: PluginEnv;
+  /** Same directory as `PluginSandbox.juniorRoot` from `sandboxPrepare`. */
+  juniorRoot: string;
   actor?: Actor;
   /** All actors who contributed instructions to the run so far; see `multi-actor-runs.md`. */
   actors?: Actor[];
@@ -555,6 +572,11 @@ export interface PluginEventToolContext {
 }
 
 export interface PluginWorkspaceToolContext {
+  /**
+   * Workspace that the current Sandbox started from. Returns undefined for
+   * the default Sandbox. `name` is missing when the recipe no longer exists.
+   */
+  active(): Promise<{ name?: string } | undefined>;
   /** Find named Workspaces that include one provider repository. */
   findByRepository(input: {
     provider: string;
@@ -571,6 +593,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    */
   conversationId?: string;
   annotations?: PluginAnnotations;
+  /** Host-owned dashboard link to the Automation that started this run. */
+  automationLink?: { url: string };
   embedder: PluginEmbedder;
   egress: PluginEgress;
   mcp?: PluginMcp;

@@ -7,8 +7,10 @@ an event. Plugins do not know which conversations or automations consume it.
 
 Slack ingress also publishes core `slack` / `channel` / `message.posted` events
 (`slack/channel-message-events.ts`) for new top-level messages that no other
-route handles. Bot posts and thread replies do not publish. A Watch cannot select
-these events. An automation can watch only the channel where it posts, so
+route handles. Thread replies and Slackbot posts do not publish. Other bot posts
+publish with `postedByBot`, but they run only automations whose `match` names
+the bot in `userId`. Bots can post often and would use up the run limit of
+every other automation in the channel. A Watch cannot select these events. An automation can watch only the channel where it posts, so
 private channel text stays in that channel. Runs always use system credentials,
 because anyone in the channel writes the Event text. Each run replies in the
 thread of the source message.
@@ -19,9 +21,21 @@ Watch delivers into the Conversation that created it, so this needs a decision
 about which credentials those Turns use. The consecutive automated-turn limit
 also stops a Watch on a busy channel.
 
-One selector has one Slack workspace, namespace, identifier, and one or more
-event types. Multiple automations can use the same selector.
-`resourceType` and `label` are presentation metadata, not match keys.
+One selector has one Slack workspace, namespace, and one or more event types.
+It has one identifier, or none. A selector with no identifier and no resource
+type runs for every resource of its namespace that its `match` filters accept.
+It can select only events whose Event reach allows it, and it must set the
+filters that the reach names. Its `identifier` column is null. Multiple
+automations can use the same selector. `resourceType` and `label` are
+presentation metadata, not match keys.
+
+The runtime gate checks each row before it runs. A saved trigger with an
+identifier must have the same identifier in its row. A row with no identifier
+must have a trigger that the enabled catalog accepts, so a plugin change that
+narrows an event also stops old broad rows. Core logs and skips a row that does
+not parse or that the gate rejects, so one bad row cannot stop ingest for its
+namespace. The update tool keeps the saved identifier and resource type when
+they are left out. Only an explicit `null` removes them.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by
 watches and event automations. Create and update tools accept only
@@ -56,20 +70,20 @@ Paused rows do not match new events. Resume does not replay events received duri
 the pause. Provider retries still use the event key to prevent duplicate runs.
 Deletion keeps the row and execution history.
 
-Each Event automation can start at most
-`botConfig.maxEventAutomationRunsPerHour` runs in a rolling hour
-(`run-limit.ts`). The default is 10. A host sets it with
-`createApp({ limits: { maxEventAutomationRunsPerHour } })`. The one-hour
-window is fixed. The limit applies to one Automation, not to its trigger or
+Each Event automation can start at most `botConfig.maxEventAutomationRuns`
+runs in a rolling `botConfig.eventAutomationRunWindowMs` window
+(`run-limit.ts`). The defaults are 10 runs and one minute. A host sets them with
+`createApp({ limits: { eventAutomationRunLimit: { maxRuns, windowMs } } })`.
+The limit applies to one Automation, not to its trigger or
 namespace. Another Automation on the same trigger keeps its own count. Event
 automations do not use the consecutive automated-turn limit, so this limit is
 what stops a noisy trigger from starting a full agent Turn for every Event.
 Ingest counts a run before dispatch. Each run appends one entry with its
 dispatch idempotency key to a short list in the state adapter. Then it counts
-the keys from the last hour up to the first entry with its own key. The append
+the keys from the last window up to the first entry with its own key. The append
 is atomic, so the list order decides which runs fit when Events arrive at the
 same moment. No lock is needed. A provider retry has the same key, so it gets
-the same answer and does not count again. When the hour is full, ingest skips the dispatch and blocks
+the same answer and does not count again. When the window is full, ingest skips the dispatch and blocks
 the Automation with a reason, and its creator gets the blocked notice. Each
 block also captures one Sentry issue event with the fingerprint
 `event_automation.run_limit.blocked` and the `app.task.id` of the Automation.
@@ -106,6 +120,9 @@ user clears it. Event execution remains a system actor, with creator
 credentials bound to the exact event automation.
 
 Management results include creator attribution and whether the registered
-trigger is currently available from the enabled plugin catalog. An unavailable
-trigger remains stored and may be deleted or edited, but it cannot receive
-events until its plugin registration is enabled again.
+trigger is currently available from the enabled plugin catalog. A trigger is
+unavailable when `eventTriggerProblems` finds a problem: its plugin is off, or
+its resource type, an event, or a filter changed after it was saved. Results
+list the problems. An unavailable trigger remains stored and may be deleted or
+edited. Until it is fixed, it does not receive the events that its problems
+name.

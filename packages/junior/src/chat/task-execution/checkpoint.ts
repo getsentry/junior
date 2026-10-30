@@ -12,7 +12,7 @@
  */
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
-import { getActiveTraceId, logException } from "@/chat/logging";
+import { getActiveTraceContext, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
@@ -89,6 +89,8 @@ interface TurnCheckpointWrite {
   cumulativeToolCallCount?: number;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean;
+  /** Times recovery resumed this turn after a lost worker; survives later writes. */
+  lostWorkerResumeCount?: number;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];
   durationMs?: number;
@@ -197,12 +199,14 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
       dispatchId: args.dispatchId ?? latest?.dispatchId,
       source: args.source,
       surface: args.surface ?? latest?.surface,
-      traceId: getActiveTraceId() ?? latest?.traceId,
+      traceContext: latest?.traceContext ?? getActiveTraceContext(),
       turnStartMessageIndex:
         args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
+      lostWorkerResumeCount:
+        args.lostWorkerResumeCount ?? latest?.lostWorkerResumeCount,
     }),
   };
 }

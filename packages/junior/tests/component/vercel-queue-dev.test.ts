@@ -112,7 +112,6 @@ afterEach(async () => {
   vi.doUnmock("@vercel/queue");
   vi.doUnmock("@/chat/plugins/task-runner");
   vi.doUnmock("@/chat/sandbox/snapshot/job-runner");
-  vi.doUnmock("@/chat/vercel-queue-client");
   vi.resetModules();
 });
 
@@ -136,12 +135,11 @@ describe("Workspace snapshot Vercel queue integration", () => {
     );
 
     vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
+      QueueClient: vi.fn(function QueueClientMock() {
+        return { send };
+      }),
       handleCallback,
       registerDevConsumer,
-    }));
-    vi.doMock("@/chat/vercel-queue-client", () => ({
-      createVercelQueueClient: () => ({ send }),
     }));
     vi.doMock("@/chat/sandbox/snapshot/job-runner", () => ({
       processWorkspaceSnapshotJob,
@@ -256,7 +254,6 @@ describe("plugin task Vercel queue integration", () => {
       region: "iad1",
       topicName: "topic",
     };
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const call = handleCallback.mock.calls[0] as PluginQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
@@ -427,7 +424,6 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       region: "iad1",
       topicName: "topic",
     };
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const call = handleCallback.mock.calls[0] as ConversationQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
@@ -536,7 +532,6 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
     createVercelConversationWorkCallback({ run });
 
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const call = handleCallback.mock.calls[0] as
       | [
           (

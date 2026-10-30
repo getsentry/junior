@@ -9,7 +9,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
-import { Skeleton } from "../components/Skeleton";
+import { Skeleton } from "../components/ui/skeleton";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
@@ -22,6 +22,7 @@ import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
+import { MentionText } from "./transcriptMentions";
 import {
   buildConversationSections,
   type ConversationSection,
@@ -265,7 +266,12 @@ function ConversationCard(props: {
       </div>
       {conversation.activityPreview ? (
         <p className="relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle pointer-events-none">
-          {formatConversationActivityPreview(conversation.activityPreview.text)}
+          <MentionText
+            mentions={conversation.activityPreview.mentions ?? []}
+            text={formatConversationActivityPreview(
+              conversation.activityPreview.text,
+            )}
+          />
         </p>
       ) : (
         <p className="relative z-[1] m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted pointer-events-none">

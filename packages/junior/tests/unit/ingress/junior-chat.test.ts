@@ -39,26 +39,4 @@ describe("JuniorChat ingress overrides", () => {
     await expect(task).resolves.toBeUndefined();
     await expect(tasks[0]).resolves.toBeUndefined();
   });
-
-  it("forwards webhook options to slash command handling", async () => {
-    const handleSlashCommandEvent = vi.fn(async () => {});
-    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const runtime = {
-      handleSlashCommandEvent,
-      logger: { error: vi.fn() },
-    } as JuniorChat;
-    const { options, tasks } = createWebhookOptions();
-    const event = {
-      adapter: { name: "slack" } as Adapter,
-      channelId: "C123",
-      command: "/junior",
-      text: "help",
-    } as Parameters<JuniorChat["processSlashCommand"]>[0];
-
-    JuniorChat.prototype.processSlashCommand.call(runtime, event, options);
-
-    expect(handleSlashCommandEvent).toHaveBeenCalledWith(event, options);
-    expect(tasks).toHaveLength(1);
-    await expect(tasks[0]).resolves.toBeUndefined();
-  });
 });

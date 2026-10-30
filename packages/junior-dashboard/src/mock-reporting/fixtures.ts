@@ -168,7 +168,7 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
-  metadata?: Pick<ConversationReportEvent, "model" | "modelCall">,
+  metadata?: Pick<ConversationReportEvent, "mentions" | "model" | "modelCall">,
 ): ConversationReportEvent {
   return { seq, createdAt, data, ...metadata };
 }
@@ -1002,6 +1002,9 @@ function advisorConversation(
   const conversation = detail(nowMs, {
     conversationId,
     displayTitle: "Advisor review",
+    // A child keeps the Actor who started it, but that person did not write
+    // its agent invocation input.
+    actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 18_000),
     lastProgressAt: iso(Date.parse(startedAt), 18_000),
@@ -1011,6 +1014,7 @@ function advisorConversation(
         type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
+        agentInvocationId: `${conversationId}:invocation`,
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 18_000), {
@@ -1397,6 +1401,13 @@ function simpleConversation(
   });
 }
 
+const MOCK_MENTION_MORGAN: ActorIdentity = {
+  email: "dev@example.com",
+  fullName: "Morgan Lee",
+  slackUserId: "U123",
+  slackUserName: "morgan",
+};
+
 function eventAutomationRunConversation(
   nowMs: number,
 ): ConversationDetailReport {
@@ -1421,42 +1432,58 @@ function eventAutomationRunConversation(
       credentialUser: "Alex Rivera",
     },
     events: [
-      reportEvent(0, startedAt, {
-        type: "message",
-        messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
-        role: "user",
-        // Dispatch input is authored by the dispatch owner, not a person.
-        actorIdentity: {
-          fullName: "junior",
-          slackUserId: "junior",
-          slackUserName: "junior",
+      reportEvent(
+        0,
+        startedAt,
+        {
+          type: "message",
+          messageId: EVENT_AUTOMATION_RUN_CONVERSATION_ID,
+          role: "user",
+          // Dispatch input is authored by the dispatch owner, not a person.
+          actorIdentity: {
+            fullName: "junior",
+            slackUserId: "junior",
+            slackUserName: "junior",
+          },
+          text: [
+            "[task]",
+            "",
+            "This is a task, not a message from a person.",
+            "",
+            "About: Issue · ACME-42",
+            'Created by: <@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.',
+            "Instructions: Summarize the closed issue",
+            "",
+            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
+            "",
+            "End with `finishAutomationRun`.",
+          ].join("\n"),
         },
-        text: [
-          "[task]",
-          "",
-          "This is a task, not a message from a person.",
-          "",
-          "About: Issue · ACME-42",
-          'Created by: <@U123>. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.',
-          "Instructions: Summarize the closed issue",
-          "",
-          "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
-          "",
-          "End with `finishAutomationRun`.",
-        ].join("\n"),
-      }),
+        { mentions: [MOCK_MENTION_MORGAN] },
+      ),
       reportEvent(1, at(1_000), {
         type: "turn_lifecycle",
         turnId: "dispatch:event-1",
         state: "started",
         inputMessageIds: [EVENT_AUTOMATION_RUN_CONVERSATION_ID],
       }),
-      reportEvent(2, at(13_000), {
-        type: "message",
-        messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
-        role: "assistant",
-        text: "ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production.",
-      }),
+      reportEvent(
+        2,
+        at(13_000),
+        {
+          type: "message",
+          messageId: `${EVENT_AUTOMATION_RUN_CONVERSATION_ID}:reply`,
+          role: "assistant",
+          text: "<@U123> ACME-42 is closed. The saved-card checkout failure was fixed by the token refresh change and verified in production. cc <@U456> and <@U999> in <#C42|proj-checkout>.",
+        },
+        // U456 has no People profile, and U999 is not resolved.
+        {
+          mentions: [
+            MOCK_MENTION_MORGAN,
+            { fullName: "Casey Nguyen", slackUserId: "U456" },
+          ],
+        },
+      ),
       reportEvent(3, at(14_000), {
         type: "turn_lifecycle",
         turnId: "dispatch:event-1",
@@ -1588,6 +1615,9 @@ function summaryFromConversation(
     activityEvent?.data.type === "message" && activityEvent.data.text
       ? {
           createdAt: activityEvent.createdAt,
+          ...(activityEvent.mentions
+            ? { mentions: activityEvent.mentions }
+            : undefined),
           role: activityEvent.data.role as "assistant" | "user",
           text: activityEvent.data.text,
         }
@@ -1914,6 +1944,14 @@ export function readMockConversationPendingMessages(
             role: "user" as const,
             source: "web" as const,
             text: "Keep the reply in Junior. I will paste the dashboard link next.",
+            attachments: [
+              {
+                id: "qa-chart-png",
+                filename: "queued-chart.png",
+                contentType: "image/png",
+                bytes: 18211,
+              },
+            ],
           },
           {
             actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -1947,6 +1985,28 @@ export function readMockConversationPendingMessages(
             role: "user" as const,
             source: "web" as const,
             text: "Fifth queued message.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -800),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-sixth`,
+            messageId: `${conversationId}:pending-sixth`,
+            receivedAt: iso(nowMs, -400),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Sixth queued message.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -600),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-seventh`,
+            messageId: `${conversationId}:pending-seventh`,
+            receivedAt: iso(nowMs, -300),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Seventh queued message.",
           },
         ]
       : [];
@@ -2682,6 +2742,7 @@ export function readMockPeopleCode(
   const overview = readMockCodeOverview();
   return {
     activityDays: overview.activityDays,
+    changes: overview.changes,
     generatedAt: overview.generatedAt,
     summary: overview.summary,
     windowEnd: overview.windowEnd,
@@ -2918,6 +2979,7 @@ function mockTasks(): AutomationSummary[] {
       nextRunAt: "2026-08-10T16:00:00.000Z",
       credentialMode: "creator",
       ownedByViewer: true,
+      costUsd: { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 },
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
@@ -2941,7 +3003,6 @@ function mockTasks(): AutomationSummary[] {
         teamId: "T123",
         visibility: "public",
       },
-      events: ["issue.closed"],
       id: "event-1",
       instruction: "Summarize the closed issue",
       kind: "event",
@@ -2950,12 +3011,17 @@ function mockTasks(): AutomationSummary[] {
       credentialMode: "creator",
       ownedByViewer: true,
       resource: "Issue · ACME-42",
+      costUsd: { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
       outcomes: [],
       title: "Closed issue summary",
       totalRuns: 7,
-      triggerAvailable: true,
+      trigger: {
+        events: ["issue closed"],
+        filters: ["labels includes bug", "repository is api or web"],
+        problems: [],
+      },
       status: "active",
     },
     {
@@ -2968,13 +3034,13 @@ function mockTasks(): AutomationSummary[] {
         teamId: "T123",
         visibility: "public",
       },
-      events: ["incident.updated"],
       id: "event-2",
       instruction: "Notify responders when the incident changes",
       kind: "event",
       credentialMode: "creator",
       ownedByViewer: false,
       resource: "Incident · INC-17",
+      costUsd: { 1: 0, 7: 0, 30: 0, 90: 0 },
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
       outcomes: [
@@ -2985,7 +3051,11 @@ function mockTasks(): AutomationSummary[] {
       ],
       title: "Incident change alerts",
       totalRuns: 0,
-      triggerAvailable: false,
+      trigger: {
+        events: ["incident updated"],
+        filters: [],
+        problems: ["The plugin for this source is not enabled."],
+      },
       status: "active",
     },
   ];
@@ -3084,7 +3154,19 @@ export function readMockAutomationExecutions(
     const costUsd = costs[index % costs.length];
     const durationMs = durations[index % durations.length];
     const totalTokens = tokens[index % tokens.length];
+    const executedAtMs = nowMs - index * 86_400_000 - 3_600_000;
     return {
+      automationVersion: index < 3 ? 2 : 1,
+      credentialMode: task.credentialMode,
+      ...(status === "failed"
+        ? { error: "Slack rejected the result message: channel_not_found." }
+        : status === "blocked"
+          ? { error: "GitHub needs the creator to reconnect their account." }
+          : undefined),
+      ...(task.kind === "scheduled"
+        ? { scheduledFor: new Date(executedAtMs - 60_000).toISOString() }
+        : undefined),
+      startedAt: new Date(executedAtMs - (durationMs ?? 5_000)).toISOString(),
       ...(hasConversation
         ? {
             conversationId:
@@ -3097,9 +3179,7 @@ export function readMockAutomationExecutions(
             ...(totalTokens !== undefined ? { totalTokens } : undefined),
           }
         : undefined),
-      executedAt: new Date(
-        nowMs - index * 86_400_000 - 3_600_000,
-      ).toISOString(),
+      executedAt: new Date(executedAtMs).toISOString(),
       executionId: `${id}-run-${index + 1}`,
       status,
     };

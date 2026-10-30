@@ -1,6 +1,9 @@
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { createApp } from "@/app";
 import { closeDb, getConversationEventStore } from "@/chat/db";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -15,15 +18,17 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
+import { SUITE_EXPERIMENTAL } from "../../fixtures/experimental-setup";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
-import { usersInfoOk } from "../../fixtures/slack/factories/api";
+import { authTestOk, usersInfoOk } from "../../fixtures/slack/factories/api";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
   queueSlackApiError,
 } from "../../msw/handlers/slack-api";
+import { mswServer } from "../../msw/server";
 
 const SIGNING_SECRET = "test-signing-secret";
 
@@ -31,6 +36,7 @@ describe("Slack webhook auth boundary", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     vi.useRealTimers();
+    await disconnectStateAdapter();
     await closeDb();
   });
 
@@ -255,6 +261,70 @@ describe("Slack webhook auth boundary", () => {
     await state.disconnect();
   });
 
+  it("lets only Slack authors on the allowed domains or allowed bots start a Turn", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const slack = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = slack.waitUntil();
+    const app = await createApp({
+      allowedDomains: ["example.com", "example.org"],
+      conversationWorkQueue: () => queue,
+      experimental: SUITE_EXPERIMENTAL,
+      slack: { allowedBotUserIds: ["UBOT"] },
+      waitUntil: waitUntil.fn,
+    });
+    await getStateAdapter().connect();
+    // Membership and the domain check can both look up the author.
+    const emails: Record<string, string> = {
+      U123: "testuser@example.com",
+      UCONTRACTOR: "someone@contractor.dev",
+      // Bot profiles have no email.
+      UBOT: "",
+      UOTHERBOT: "",
+    };
+    mswServer.use(
+      http.post("https://slack.com/api/users.info", async ({ request }) => {
+        const user = new URLSearchParams(await request.text()).get("user")!;
+        return HttpResponse.json(
+          usersInfoOk({
+            userId: user,
+            email: emails[user],
+            isBot: emails[user] === "",
+          }),
+        );
+      }),
+    );
+    let sequence = 1;
+    const mention = async (user: string) => {
+      const envelope = slackEventsApiEnvelope({
+        eventType: "app_mention",
+        channel: "C123",
+        user,
+        ts: `1712345.${String(sequence++).padStart(6, "0")}`,
+        text: `<@${authTestOk().user_id}> hello`,
+      });
+      expect((await app.fetch(slack.event(envelope))).status).toBe(200);
+      await waitUntil.flush();
+    };
+
+    // Slack verifies the profile email, so its domain decides.
+    await mention("U123");
+    expect(queue.queuedMessages()).toHaveLength(1);
+
+    // Junior drops the message and does not reply.
+    await mention("UCONTRACTOR");
+    expect(queue.queuedMessages()).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
+    expect(slackApiOutbox.messages()).toEqual([]);
+
+    // Bots have no profile email. Only an allowed bot starts a Turn.
+    await mention("UOTHERBOT");
+    expect(queue.queuedMessages()).toHaveLength(1);
+    await mention("UBOT");
+    expect(queue.queuedMessages()).toHaveLength(2);
+  });
+
   it.each(["message", "factory"] as const)(
     "checks membership before SDK routing for a %s",
     async (mode) => {
@@ -418,73 +488,6 @@ describe("Slack webhook auth boundary", () => {
         },
       ],
     });
-    await state.disconnect();
-  });
-
-  it("validates slash commands before replying with configured usage", async () => {
-    vi.stubEnv("JUNIOR_SLASH_COMMAND", "/team");
-    vi.resetModules();
-    const { handleSlackWebhook } = await import("@/chat/ingress/slack-webhook");
-    const client = createSlackWebhookTestClient({
-      signingSecret: SIGNING_SECRET,
-    });
-    const state = createMemoryState();
-    const adapter = createJuniorSlackAdapter({
-      signingSecret: SIGNING_SECRET,
-      botToken: "xoxb-test-token",
-      botUserId: "U0BOT",
-    });
-    const queue = createConversationWorkQueueTestAdapter();
-    const waitUntil = client.waitUntil();
-    const form = {
-      command: "/junior",
-      text: "help",
-      user_id: "U123",
-      team_id: "T123",
-      channel_id: "C123",
-    };
-    const services = {
-      getSlackAdapter: () => adapter,
-      queue,
-      runtime: createNoopSlackWebhookRuntime(),
-      state,
-    };
-    for (const invalid of [
-      { team_id: "" },
-      { channel_id: "" },
-      { user_id: "" },
-      { user_id: "unknown" },
-    ]) {
-      const response = await handleSlackWebhook({
-        request: client.form(new URLSearchParams({ ...form, ...invalid })),
-        services,
-        waitUntil: waitUntil.fn,
-      });
-      expect(response.status).toBe(400);
-    }
-    expect(waitUntil.pendingCount()).toBe(0);
-    expect(slackApiOutbox.messages()).toEqual([]);
-
-    for (const text of ["help", "link"]) {
-      const accepted = await handleSlackWebhook({
-        request: client.form(new URLSearchParams({ ...form, text })),
-        services,
-        waitUntil: waitUntil.fn,
-      });
-      expect(accepted.status).toBe(200);
-      await waitUntil.flush();
-    }
-    expect(
-      slackApiOutbox.calls("chat.postEphemeral").map((call) => call.params),
-    ).toMatchObject([
-      {
-        channel: "C123",
-        user: "U123",
-        text: "Usage: `/team link <provider>` or `/team unlink <provider>`",
-      },
-      { channel: "C123", user: "U123", text: "Usage: `/team link <provider>`" },
-    ]);
-    expect(queue.sentRecords()).toEqual([]);
     await state.disconnect();
   });
 

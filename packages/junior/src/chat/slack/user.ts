@@ -90,7 +90,7 @@ export async function lookupSlackUser(
 
     if (!response.ok) {
       logWarn("slack.user.lookup.failed", {
-        "enduser.id": userId,
+        "app.slack.user_id": userId,
         "app.slack.team_id": teamId,
         "http.response.status_code": response.status,
       });
@@ -115,7 +115,7 @@ export async function lookupSlackUser(
     return result;
   } catch (error) {
     logWarn("slack.user.lookup.failed", {
-      "enduser.id": userId,
+      "app.slack.user_id": userId,
       "app.slack.team_id": teamId,
       "exception.message":
         error instanceof Error ? error.message : String(error),

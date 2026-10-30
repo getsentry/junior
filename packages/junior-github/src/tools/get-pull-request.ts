@@ -110,12 +110,11 @@ export function createGitHubGetPullRequestTool(ctx: {
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubPullRequestSubscribable({
-            number: providerResult.number,
-            repo: repo.ref,
-          })
-        : undefined;
+      const subscribable = gitHubPullRequestSubscribable({
+        canSubscribe: ctx.events.canSubscribe,
+        number: providerResult.number,
+        repo: repo.ref,
+      });
       const data: PullRequest = {
         base: providerResult.base.ref,
         draft: providerResult.draft,

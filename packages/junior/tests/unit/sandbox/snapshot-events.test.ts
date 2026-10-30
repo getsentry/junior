@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { eventGuidance, pluginSupportsEvent } from "@/chat/events/catalog";
+import {
+  eventGuidance,
+  registeredEventTriggerProblems,
+} from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   WORKSPACE_SNAPSHOT_FAILED_EVENT,
@@ -52,18 +55,16 @@ describe("Workspace snapshot events", () => {
     const catalog = getEventCatalog();
 
     expect(
-      pluginSupportsEvent(
-        catalog,
-        WORKSPACE_SNAPSHOT_NAMESPACE,
-        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
-        WORKSPACE_SNAPSHOT_READY_EVENT,
-      ),
-    ).toBe(true);
+      registeredEventTriggerProblems(catalog, {
+        events: [WORKSPACE_SNAPSHOT_READY_EVENT],
+        namespace: WORKSPACE_SNAPSHOT_NAMESPACE,
+        resourceType: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+      }),
+    ).toEqual([]);
     expect(
       eventGuidance(
         catalog,
         WORKSPACE_SNAPSHOT_NAMESPACE,
-        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
         WORKSPACE_SNAPSHOT_READY_EVENT,
       ),
     ).toContain("switchWorkspace");
@@ -71,7 +72,6 @@ describe("Workspace snapshot events", () => {
       eventGuidance(
         catalog,
         WORKSPACE_SNAPSHOT_NAMESPACE,
-        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
         WORKSPACE_SNAPSHOT_FAILED_EVENT,
       ),
     ).toContain("Report the snapshot failure");

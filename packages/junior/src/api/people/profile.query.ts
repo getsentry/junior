@@ -15,6 +15,7 @@ import {
   surfaceLabel,
 } from "../conversations/reporting";
 import { readConversationAccessFromSql } from "../conversations/access";
+import { readFirstHumanMessageTexts } from "../conversations/first-message";
 import { readConversationTreeMetricsFromSql } from "../conversations/usage";
 import type {
   ConversationStatsItem,
@@ -33,6 +34,7 @@ import {
   peopleTreeConversation,
   peopleTreeMetricsJoin,
   recentActorRows,
+  slackActorColumns,
   statsItems,
   verifiedActorWhere,
 } from "./shared";
@@ -92,6 +94,8 @@ function surfaceExpression() {
   return sql<string>`CASE
     WHEN ${juniorConversations.source} IN ('api', 'scheduler', 'slack')
       THEN ${juniorConversations.source}
+    -- Dashboard web conversations share the product api surface label.
+    WHEN ${juniorConversations.source} = 'web' THEN 'api'
     WHEN ${juniorConversations.conversationId} LIKE 'slack:%' THEN 'slack'
     WHEN ${juniorConversations.conversationId} LIKE 'scheduler:%' THEN 'scheduler'
     WHEN ${juniorConversations.conversationId} LIKE 'api:%' THEN 'api'
@@ -149,10 +153,7 @@ export async function readPeopleProfileFromSql(
         .select({
           email: juniorUsers.primaryEmailNormalized,
           fullName: juniorUsers.displayName,
-          slackUserId: sql<
-            string | null
-          >`MAX(${juniorIdentities.providerSubjectId})`,
-          slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
+          ...slackActorColumns(),
           activeDays: conversationActiveDaysColumn(),
           ...peopleTreeAggregateColumns,
         })
@@ -285,16 +286,21 @@ export async function readPeopleProfileFromSql(
     );
   }
   const recentConversationIds = recentRows.map((row) => row.conversationId);
-  const [accessByConversation, metricsByRoot, automationTitleByConversation] =
-    await Promise.all([
-      readConversationAccessFromSql(
-        getDb(),
-        recentConversationIds,
-        options.viewer,
-      ),
-      readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
-      readAutomationTitlesByConversationId(recentRows),
-    ]);
+  const [
+    accessByConversation,
+    metricsByRoot,
+    automationTitleByConversation,
+    firstHumanMessageTextByConversation,
+  ] = await Promise.all([
+    readConversationAccessFromSql(
+      getDb(),
+      recentConversationIds,
+      options.viewer,
+    ),
+    readConversationTreeMetricsFromSql(getDb(), recentConversationIds),
+    readAutomationTitlesByConversationId(recentRows),
+    readFirstHumanMessageTexts(getDb(), recentRows),
+  ]);
 
   return {
     activityDays: activityDays(days, nowMs),
@@ -306,6 +312,9 @@ export async function readPeopleProfileFromSql(
       summaryFromRow(row, {
         access: accessByConversation.get(row.conversationId),
         automationTitle: automationTitleByConversation.get(row.conversationId),
+        firstHumanMessageText: firstHumanMessageTextByConversation.get(
+          row.conversationId,
+        ),
         metrics: metricsByRoot.get(row.conversationId),
       }),
     ),

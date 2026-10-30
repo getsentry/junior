@@ -37,6 +37,14 @@ Canonical words used across Junior's code and documentation.
 - **Admin**: a user with the Junior-wide admin role. Only the `junior admin`
   CLI grants or revokes it. Plugins use it for setup that other users must not
   reach. Do not add plugin-specific admin lists.
+- **Service account**: an optional provider account, often a bot, that Junior
+  itself uses for one plugin. An Admin connects it on the dashboard Admin
+  page, or with `junior service-account connect`. The plugin's
+  `accounts.service-account` block allows it and lists what it may use. By
+  default, per-Actor OAuth stays on. Junior uses the service account only for
+  an Actor who has not connected their own account, and only for what it
+  lists. With `accounts.user-oauth: false`, Junior uses only
+  the service account and never asks an Actor to connect.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are
@@ -63,6 +71,12 @@ Canonical words used across Junior's code and documentation.
   its outcome. It is not a Run.
 - **Scheduled automation**: an Automation that has a Schedule trigger.
 - **Event automation**: an Automation that has an Event trigger.
+- **Event reach**: which event automation triggers can select one event type.
+  Each source declares it once for each of its event types. `"all"` lets a
+  trigger with no identifier run for every resource of the source.
+  `{ anyOf }` lets such a trigger run only when it sets one of the named
+  filters. `"resource"` needs a trigger with an identifier. Reach limits scope
+  and noise. It is not access control.
 - **Inbound message**: one normalized source event made available to the agent.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.
@@ -134,6 +148,11 @@ Canonical words used across Junior's code and documentation.
   message as a steering message. A message to the parent is an Event Inbound
   message, the same as a child result. An agent message is not from a person,
   so it does not give user approval.
+- **Agent type**: a named preset that a parent picks for a child agent with
+  `spawnAgent`. It says when to pick it, whether the child starts with a copy
+  of the parent's agent history (a fork), and what instructions the child reads
+  with each task. A type does not limit tools. A child keeps its type for later
+  agent invocations.
 - **Reasoning level**: the configured or selected amount of model reasoning for
   a turn: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Reply**: a destination-visible message owned by delivery or reply-policy

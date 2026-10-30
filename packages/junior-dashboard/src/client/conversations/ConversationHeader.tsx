@@ -10,6 +10,7 @@ import {
 import { Ellipsis, Menu } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
+import { Button } from "../components/ui/button";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
@@ -22,43 +23,54 @@ import {
   TranscriptViewToggle,
   type ConversationArchiveAction,
 } from "./ConversationHeaderActions";
-import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
 /** Show the conversation title, search, and details. */
 export function ConversationHeader(props: {
   /** Parent chain of a child Conversation. Root Conversations omit it. */
   agentTree?: ReactNode;
   copyAction?: ReactNode;
-  annotations: ReactNode;
   archive: ConversationArchiveAction;
-  brief?: ReactNode;
   conversationId: string;
+  detailsOpen: boolean;
+  onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
-  identity: ReactNode;
   linkedWork?: ReactNode;
-  lastActivityAt?: string;
-  sentryConversationUrl?: string;
   live: boolean;
   meta?: ReactNode;
-  onOpenSubagent(target: SubagentTranscriptTarget): void;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
   search: string;
-  stats: ReactNode;
   title: string;
   view: TranscriptViewMode;
 }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsOpen = props.detailsOpen;
+  const detailsButtonRef = useRef<HTMLButtonElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const searchOpenVisible = searchOpen || props.search.length > 0;
+  const searchOpenVisible =
+    props.view === "rich" && (searchOpen || props.search.length > 0);
   const openMobileNavigation = useOpenMobileNavigation();
+
+  useEffect(() => {
+    if (
+      wasDetailsOpen.current &&
+      !detailsOpen &&
+      document.activeElement === document.body
+    ) {
+      const trigger = window.matchMedia("(max-width: 767px)").matches
+        ? menuButtonRef.current
+        : detailsButtonRef.current;
+      trigger?.focus({ preventScroll: true });
+    }
+    wasDetailsOpen.current = detailsOpen;
+  }, [detailsOpen]);
 
   useEffect(() => {
     if (!searchOpenVisible) return;
@@ -107,6 +119,7 @@ export function ConversationHeader(props: {
   const mobileOverflow = (
     <div className="relative" ref={mobileMenuRef}>
       <HeaderIconButton
+        ref={menuButtonRef}
         label={mobileMenuOpen ? "Close conversation menu" : "Conversation menu"}
         onClick={() => setMobileMenuOpen((open) => !open)}
         pressed={mobileMenuOpen}
@@ -123,7 +136,7 @@ export function ConversationHeader(props: {
             layout="menu"
             onDetailsClick={() => {
               setMobileMenuOpen(false);
-              setDetailsOpen(true);
+              props.onDetailsClick();
             }}
             onSearchClick={() => {
               setMobileMenuOpen(false);
@@ -137,17 +150,17 @@ export function ConversationHeader(props: {
             view={props.view}
           />
           {openMobileNavigation ? (
-            <button
-              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none"
+            <Button
+              className="mt-0.5"
               onClick={() => {
                 setMobileMenuOpen(false);
                 openMobileNavigation();
               }}
-              type="button"
+              size="menu"
             >
               <Menu aria-hidden="true" size={16} strokeWidth={2} />
               App menu
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -175,7 +188,7 @@ export function ConversationHeader(props: {
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
         className={cn(
-          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border bg-dashboard-bg md:-mx-7",
+          "relative z-10 border-b border-dashboard-border bg-dashboard-bg",
           !showMobileHeader && "hidden md:block",
         )}
       >
@@ -205,7 +218,8 @@ export function ConversationHeader(props: {
             conversationId={props.conversationId}
             copyAction={props.copyAction}
             detailsOpen={detailsOpen}
-            onDetailsClick={() => setDetailsOpen(true)}
+            detailsButtonRef={detailsButtonRef}
+            onDetailsClick={props.onDetailsClick}
             onSearchClick={toggleSearch}
             onViewChange={props.onViewChange}
             searchOpen={searchOpenVisible}
@@ -252,22 +266,6 @@ export function ConversationHeader(props: {
           </div>
         ) : null}
       </header>
-
-      {detailsOpen ? (
-        <ConversationDetailsDrawer
-          annotations={props.annotations}
-          brief={props.brief}
-          conversationId={props.conversationId}
-          identity={props.identity}
-          lastActivityAt={props.lastActivityAt}
-          sentryConversationUrl={props.sentryConversationUrl}
-          onClose={() => setDetailsOpen(false)}
-          onOpenSubagent={props.onOpenSubagent}
-          privacy={props.privacy}
-          stats={props.stats}
-          title={props.title}
-        />
-      ) : null}
     </>
   );
 }

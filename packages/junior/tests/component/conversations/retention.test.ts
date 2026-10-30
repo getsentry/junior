@@ -26,7 +26,11 @@ import {
   collectAttachmentGarbage,
   storeAttachment,
 } from "@/chat/attachments/store";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
+import {
+  createMemoryAttachmentStorage,
+  type MemoryAttachmentStorage,
+} from "@/chat/attachments/memory";
+import type { AttachmentWrite } from "@/chat/attachments/storage";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -34,6 +38,18 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASE_MS = Date.UTC(2026, 0, 1);
+
+/** Write one placeholder object so tests can check that cleanup removed it. */
+async function putObject(
+  storage: MemoryAttachmentStorage,
+  key: string,
+): Promise<void> {
+  await storage.put({
+    body: Buffer.from(key),
+    contentType: "text/plain",
+    key,
+  });
+}
 
 async function seedDestination(
   executor: JuniorSqlDatabase,
@@ -195,7 +211,7 @@ describe("retention purge job", () => {
       .values({
         id: "attachment-1",
         conversationId: "with-attachment",
-        storageProvider: "test",
+        storageProvider: "memory",
         storageKey: "key-1",
         filename: "report.txt",
         contentType: "text/plain",
@@ -203,15 +219,8 @@ describe("retention purge job", () => {
         sha256: "digest",
         createdAt: new Date(BASE_MS),
       });
-    const deleted: string[][] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async () => undefined,
-      delete: async (keys) => {
-        deleted.push(keys);
-      },
-    };
+    const storage = createMemoryAttachmentStorage();
+    await putObject(storage, "key-1");
 
     const result = await runRetentionPurge(fixture.sql, {
       attachmentStorage: storage,
@@ -219,7 +228,7 @@ describe("retention purge job", () => {
     });
 
     expect(result.attachments).toBe(1);
-    expect(deleted).toEqual([["key-1"]]);
+    expect([...storage.objects.keys()]).toEqual([]);
     expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
   });
 
@@ -237,7 +246,7 @@ describe("retention purge job", () => {
         {
           id: "expired-attachment",
           conversationId: "active-with-attachments",
-          storageProvider: "test",
+          storageProvider: "memory",
           storageKey: "expired-key",
           filename: "old.txt",
           contentType: "text/plain",
@@ -248,7 +257,7 @@ describe("retention purge job", () => {
         {
           id: "current-attachment",
           conversationId: "active-with-attachments",
-          storageProvider: "test",
+          storageProvider: "memory",
           storageKey: "current-key",
           filename: "new.txt",
           contentType: "text/plain",
@@ -257,15 +266,9 @@ describe("retention purge job", () => {
           createdAt: new Date(BASE_MS + 2 * DAY_MS),
         },
       ]);
-    const deleted: string[][] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async () => undefined,
-      delete: async (keys) => {
-        deleted.push(keys);
-      },
-    };
+    const storage = createMemoryAttachmentStorage();
+    await putObject(storage, "expired-key");
+    await putObject(storage, "current-key");
 
     const result = await runRetentionPurge(fixture.sql, {
       attachmentStorage: storage,
@@ -274,7 +277,7 @@ describe("retention purge job", () => {
 
     expect(result.purged).toBe(0);
     expect(result.attachments).toBe(1);
-    expect(deleted).toEqual([["expired-key"]]);
+    expect([...storage.objects.keys()]).toEqual(["current-key"]);
     expect(
       await fixture.sql.db().select().from(juniorAttachments),
     ).toMatchObject([{ id: "current-attachment" }]);
@@ -293,7 +296,7 @@ describe("retention purge job", () => {
       .values({
         id: "attachment-1",
         conversationId: "with-attachment",
-        storageProvider: "test",
+        storageProvider: "memory",
         storageKey: "key-1",
         filename: "report.txt",
         contentType: "text/plain",
@@ -302,10 +305,8 @@ describe("retention purge job", () => {
         createdAt: new Date(BASE_MS),
         deleteRequestedAt: new Date(BASE_MS + DAY_MS),
       });
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async () => undefined,
+    const storage = {
+      ...createMemoryAttachmentStorage(),
       delete: async () => {
         throw new Error("blob delete failed");
       },
@@ -346,7 +347,7 @@ describe("retention purge job", () => {
       .values({
         id: "orphan-attachment",
         conversationId: "purged-owner",
-        storageProvider: "test",
+        storageProvider: "memory",
         storageKey: "orphan-key",
         filename: "late.txt",
         contentType: "text/plain",
@@ -354,15 +355,8 @@ describe("retention purge job", () => {
         sha256: "orphan",
         createdAt: new Date(BASE_MS + DAY_MS),
       });
-    const deleted: string[][] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async () => undefined,
-      delete: async (keys) => {
-        deleted.push(keys);
-      },
-    };
+    const storage = createMemoryAttachmentStorage();
+    await putObject(storage, "orphan-key");
 
     const result = await collectAttachmentGarbage({
       db: fixture.sql,
@@ -371,7 +365,7 @@ describe("retention purge job", () => {
     });
 
     expect(result.deleted).toBe(1);
-    expect(deleted).toEqual([["orphan-key"]]);
+    expect([...storage.objects.keys()]).toEqual([]);
     expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
   });
 
@@ -387,18 +381,7 @@ describe("retention purge job", () => {
       .update(juniorConversations)
       .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
       .where(eq(juniorConversations.conversationId, "purged-owner"));
-    const puts: string[] = [];
-    const deleted: string[] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async (input) => {
-        puts.push(input.key);
-      },
-      delete: async (keys) => {
-        deleted.push(...keys);
-      },
-    };
+    const storage = createMemoryAttachmentStorage();
 
     await expect(
       storeAttachment({
@@ -415,8 +398,7 @@ describe("retention purge job", () => {
       }),
     ).rejects.toThrow(/purged conversation/);
 
-    expect(puts).toEqual([]);
-    expect(deleted).toEqual([]);
+    expect([...storage.objects.keys()]).toEqual([]);
     expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
   });
 
@@ -427,21 +409,19 @@ describe("retention purge job", () => {
       destinationId,
       lastActivityAtMs: BASE_MS,
     });
+    const memoryStorage = createMemoryAttachmentStorage();
     const puts: string[] = [];
-    const deleted: string[] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async (input) => {
+    // Purge the conversation after the object is written, before the SQL row.
+    const storage = {
+      ...memoryStorage,
+      put: async (input: AttachmentWrite) => {
+        await memoryStorage.put(input);
         puts.push(input.key);
         await fixture.sql
           .db()
           .update(juniorConversations)
           .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
           .where(eq(juniorConversations.conversationId, "race-owner"));
-      },
-      delete: async (keys) => {
-        deleted.push(...keys);
       },
     };
 
@@ -463,7 +443,7 @@ describe("retention purge job", () => {
     const rows = await fixture.sql.db().select().from(juniorAttachments);
     expect(rows).toHaveLength(1);
     expect(puts).toEqual([rows[0]?.storageKey]);
-    expect(deleted).toEqual(puts);
+    expect([...memoryStorage.objects.keys()]).toEqual([]);
     expect(rows[0]?.deleteRequestedAt).toEqual(expect.any(Date));
   });
 
@@ -482,18 +462,14 @@ describe("retention purge job", () => {
       mimeType: "text/plain",
       path: "/tmp/late.txt",
     };
-    const firstStorage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async () => undefined,
-      delete: async () => undefined,
-    };
+    const storage = createMemoryAttachmentStorage();
     const stored = await storeAttachment({
       conversationId: "purged-owner",
       db: fixture.sql,
       file,
-      storage: firstStorage,
+      storage,
     });
+    const storedKeys = [...storage.objects.keys()];
     await fixture.sql
       .db()
       .update(juniorConversations)
@@ -506,19 +482,6 @@ describe("retention purge job", () => {
       .set({ deleteRequestedAt: null, storageKey: liveKey })
       .where(eq(juniorAttachments.id, stored.id));
 
-    const puts: string[] = [];
-    const deleted: string[] = [];
-    const storage: AttachmentStorage = {
-      provider: "test",
-      get: async () => null,
-      put: async (input) => {
-        puts.push(input.key);
-      },
-      delete: async (keys) => {
-        deleted.push(...keys);
-      },
-    };
-
     await expect(
       storeAttachment({
         conversationId: "purged-owner",
@@ -528,9 +491,8 @@ describe("retention purge job", () => {
       }),
     ).rejects.toThrow(/purged conversation/);
 
-    // Early live-row reuse rejects before writing another object.
-    expect(puts).toEqual([]);
-    expect(deleted).toEqual([]);
+    // Early live-row reuse rejects before writing or deleting an object.
+    expect([...storage.objects.keys()]).toEqual(storedKeys);
     const rows = await fixture.sql.db().select().from(juniorAttachments);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({

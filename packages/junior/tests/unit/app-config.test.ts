@@ -758,6 +758,7 @@ describe("createApp plugin config", () => {
         },
         events: {
           resourceTypes: [{ type: "issue", supportedEvents: ["closed"] }],
+          events: { closed: { reach: "resource" } },
         },
       }),
     ).toThrow('Junior plugin "event-demo" events is invalid.');
@@ -776,6 +777,27 @@ describe("createApp plugin config", () => {
               supportedEvents: ["issue.closed", "issue.closed"],
             },
           ],
+          events: { "issue.closed": { reach: "resource" } },
+        },
+      }),
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
+
+    expect(() =>
+      defineJuniorPlugin({
+        manifest: {
+          name: "event-demo",
+          displayName: "Event Demo",
+          description: "Invalid identifier pattern",
+        },
+        events: {
+          resourceTypes: [
+            {
+              type: "issue",
+              identifier: { format: "owner/repo#number", pattern: "(" },
+              supportedEvents: ["issue.closed"],
+            },
+          ],
+          events: { "issue.closed": { reach: "resource" } },
         },
       }),
     ).toThrow('Junior plugin "event-demo" events is invalid.');
@@ -806,8 +828,6 @@ describe("createApp plugin config", () => {
       functionMaxDurationSeconds: undefined,
       dashboard: {
         authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
-        componentGallery: true,
       },
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -850,15 +870,9 @@ describe("createApp plugin config", () => {
     expect(pluginSystemPage.status).toBe(200);
     await expect(pluginSystemPage.text()).resolves.toBe("dashboard");
 
-    const componentGallery = await app.fetch(
-      new Request("http://localhost/dev"),
-    );
-    expect(componentGallery.status).toBe(200);
-    await expect(componentGallery.text()).resolves.toBe("dashboard");
     expect(createDashboardApp).toHaveBeenCalledWith(
       expect.objectContaining({
         agentName: botConfig.userName,
-        componentGallery: true,
       }),
     );
 
@@ -915,7 +929,6 @@ describe("createApp plugin config", () => {
         createApp({
           dashboard: {
             authRequired: false,
-            allowedGoogleDomains: ["sentry.io"],
           },
           plugins: defineJuniorPlugins([
             defineJuniorPlugin({
@@ -959,7 +972,6 @@ describe("createApp plugin config", () => {
 
     await createApp({
       dashboard: {
-        allowedGoogleDomains: ["sentry.io"],
         authRequired: false,
         basePath: "/ops",
         baseURL: "https://junior.example.com",

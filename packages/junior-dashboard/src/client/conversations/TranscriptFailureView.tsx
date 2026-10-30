@@ -4,6 +4,7 @@ import type {
   ConversationTurnFailureReason,
 } from "@sentry/junior/api/schema";
 
+import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { formatMessageTimestamp } from "../format";
 import {
   transcriptFailureDescription,
@@ -35,25 +36,21 @@ export function TranscriptFailureView(props: {
   ) : null;
 
   return (
-    <div
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg bg-rose-300/[0.1] px-4 py-3 text-rose-100 max-md:grid-cols-[auto_minmax(0,1fr)]"
+    <Alert
+      className="min-w-0 gap-3 rounded-lg border-0 bg-rose-300/[0.1] px-4 py-3 text-rose-100 *:[svg]:row-span-1 has-[>svg]:grid-cols-[auto_minmax(0,1fr)_auto] has-[>svg]:gap-x-3 max-md:has-[>svg]:grid-cols-[auto_minmax(0,1fr)] *:[svg]:text-rose-300"
       data-transcript-failure={props.failureCode}
       data-transcript-failure-event-id={props.eventId}
       data-transcript-failure-reason={props.failureReason}
-      role="alert"
+      variant="destructive"
     >
-      <CircleAlert
-        aria-hidden="true"
-        className="mt-0.5 text-rose-300"
-        size={16}
-      />
+      <CircleAlert aria-hidden="true" size={16} />
       <div className="min-w-0">
-        <div className="font-display text-base font-semibold leading-tight">
+        <AlertTitle className="font-display text-base font-semibold leading-tight">
           {transcriptFailureTitle(props.failureCode, props.failureReason)}
-        </div>
-        <div className="mt-1 text-sm leading-relaxed text-rose-100/70">
+        </AlertTitle>
+        <AlertDescription className="mt-1 leading-relaxed text-rose-100/70">
           {transcriptFailureDescription(props.failureCode, props.failureReason)}
-        </div>
+        </AlertDescription>
         {eventReference ? (
           <div className="mt-2 text-xs leading-relaxed text-rose-100/65">
             Reference: {eventReference}
@@ -65,6 +62,6 @@ export function TranscriptFailureView(props: {
           {timestamp}
         </span>
       ) : null}
-    </div>
+    </Alert>
   );
 }

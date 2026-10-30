@@ -11,12 +11,13 @@ export const automationTitleSchema = z.string().trim().min(1).max(60);
 export const automationInstructionSchema = z.string().trim().min(1).max(4000);
 
 /**
- * Instruction input for agent tools. An Automation runs later without the
- * request around it, so the instruction must name each person exactly.
+ * Instruction input for agent tools. The run does not see the request, so the
+ * instruction names exact targets. It calls the creator "the Automation
+ * creator". It names every other person with their mention.
  */
 export const automationInstructionToolSchema =
   automationInstructionSchema.describe(
-    "Work to perform when the Automation runs. It runs later without this conversation, so write it to stand alone: name each person with their Slack mention, such as <@U123>, instead of me, my, or you. Preserve the user's scope, targets, and constraints. Do not add permissions or side effects the user did not request.",
+    'Work to perform when the Automation runs. The run does not see this conversation, so words like "this channel" or "here" will mean nothing then. Write the exact target instead, such as a channel mention or a link. Call the person who created the Automation "the Automation creator", not "me"; each run knows who that is. Name every other person with their Slack mention, such as <@U123>, including a requester who did not create the Automation. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
   );
 
 export const automationEditFieldsSchema = z.object({
@@ -42,12 +43,13 @@ export const scheduledAutomationEditSchema = automationEditFieldsSchema
 export const eventAutomationEditSchema = automationEditFieldsSchema
   .extend({
     trigger: eventAutomationTriggerSchema
-      .extend({
+      .safeExtend({
         identifier: z
           .string()
           .trim()
           .min(1)
-          .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH),
+          .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
+          .optional(),
         label: z.string().trim().min(1).max(500),
       })
       .optional(),

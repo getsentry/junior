@@ -11,15 +11,10 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import {
-  serializeError,
-  type HarnessRun,
-  type TranscriptEvent,
-} from "vitest-evals/harness";
+import { type HarnessRun, type TranscriptEvent } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { acceptedConversationMessageSchema } from "@/api/schema";
 import { forkConversationResponseSchema } from "@/api/schema";
 import {
   createConversationId,
@@ -31,11 +26,16 @@ import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import {
+  expectAccepted,
+  jsonRequest,
+  steerQueuedWebMessage,
+  webImage,
+} from "./dashboard-requests";
 import { fixtureId } from "./ids";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
-  FileInput,
   HistoryItem,
   HistoryReply,
   Input,
@@ -57,6 +57,7 @@ import {
   combinedRun,
   readAuthorizationPrompt,
   readCallEvents,
+  readFailedCallRun,
   readConversationDetail,
   slackCallReplies,
   toHarnessRun,
@@ -72,7 +73,7 @@ import {
   installSlackMock,
   isAppMention,
   postSlackAssistantThreadStarted,
-  postSlackCommand,
+  postSlackAppHomeUnlink,
   postSlackMessageEvent,
   slackAuthorEmail,
   SLACK_APP,
@@ -375,16 +376,15 @@ export async function createFixtureAgent(
       });
       return;
     }
-    if (input.kind === "slack_command") {
+    if (input.kind === "app_home_unlink") {
       if (record.surface !== "slack") {
-        throw new Error("slackCommand() continues a Slack Conversation");
+        throw new Error("appHomeUnlink() continues a Slack Conversation");
       }
       const { userId } = slack.registerAuthor(
         input.author ?? DEFAULT_SLACK_AUTHOR,
       );
-      await postSlackCommand(app, {
-        channel: record.channelId,
-        text: input.text,
+      await postSlackAppHomeUnlink(app, {
+        provider: input.provider,
         user: userId,
       });
       return;
@@ -395,7 +395,7 @@ export async function createFixtureAgent(
       const path = started
         ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
         : "/api/conversations";
-      await expectAccepted(
+      const accepted = await expectAccepted(
         await api.request(
           path,
           jsonRequest(record.viewerEmail, {
@@ -409,6 +409,13 @@ export async function createFixtureAgent(
           }),
         ),
       );
+      if (input.steer) {
+        await steerQueuedWebMessage(api, {
+          conversationId: record.conversationId,
+          inboundMessageId: accepted.messageId,
+          viewerEmail: record.viewerEmail,
+        });
+      }
       return;
     }
     if (record.surface !== "slack") {
@@ -603,16 +610,23 @@ export async function createFixtureAgent(
       await send();
       await waitForIdle();
     } catch (error) {
+      // Keep the partial transcript before cleanup removes the test identities.
+      // A timeout must show the work that was still running, not an empty run.
+      const failedRun = await readFailedCallRun({
+        api,
+        target,
+        calls,
+        error,
+        usage: currentUsage(),
+        startedAtMs,
+      });
       // Work must not outlive the test and reach closed stores.
       await close();
       // Record the run, so the eval report counts the test as a failed eval.
       // Without a run, the report gate fails hard, as for a broken setup.
       context.task.meta.harness = {
         name: "junior",
-        run: {
-          ...combinedRun(calls, currentUsage(), startedAtMs),
-          errors: [serializeError(error)],
-        },
+        run: failedRun,
       };
       throw error;
     } finally {
@@ -900,8 +914,8 @@ export async function createFixtureAgent(
     if (first.kind === "complete_auth") {
       throw new Error("completeAuth() continues a Conversation");
     }
-    if (first.kind === "slack_command") {
-      throw new Error("slackCommand() continues a Slack Conversation");
+    if (first.kind === "app_home_unlink") {
+      throw new Error("appHomeUnlink() continues a Slack Conversation");
     }
     return await converse(
       newConversation(first, options.history),
@@ -958,35 +972,4 @@ function heartbeatSecret(): string {
     throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
   }
   return secret;
-}
-
-/** An image as the dashboard sends it with a message. */
-function webImage(image: FileInput) {
-  if (!image.content) throw new Error(`Image ${image.name} needs content`);
-  return {
-    contentType: image.mimeType,
-    data: image.content.toString("base64"),
-    filename: image.name,
-  };
-}
-
-/** A JSON POST signed in as `viewerEmail`. */
-function jsonRequest(viewerEmail: string, body: unknown): RequestInit {
-  return {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      [VIEWER_HEADER]: viewerEmail,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-async function expectAccepted(response: Response) {
-  if (response.status !== 200) {
-    throw new Error(
-      `Web message returned ${response.status}: ${await response.text()}`,
-    );
-  }
-  return acceptedConversationMessageSchema.parse(await response.json());
 }

@@ -1,15 +1,13 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "strict": true,
     "jsx": "react-jsx",
     "esModuleInterop": true,
-    "skipLibCheck": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
     "allowJs": false,
     "noEmit": true,
     "paths": {
@@ -18,7 +16,8 @@
       "@sentry/junior/api/schema": ["../junior/src/api/schema.ts"],
       "@sentry/junior/instrumentation": ["../junior/src/instrumentation.ts"],
       "@sentry/junior-dashboard": ["./src/index.ts"],
-      "@/*": ["../junior/src/*"]
+      "@/*": ["../junior/src/*"],
+      "@dashboard/*": ["./src/client/*"]
     },
     "types": ["node", "vitest/globals"]
   },

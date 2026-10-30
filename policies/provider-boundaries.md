@@ -35,5 +35,8 @@ runtime and the provider-neutral contracts that plugins use.
   must not perform the provider action itself.
 - Slack runtime and delivery code remains in core until Slack is a plugin. Keep
   Slack behavior in Slack-owned modules and out of shared services.
+- Core owns the native Slack and Google identities and the Google sign-in that
+  links a Google identity. Plugins must not link identities under these
+  provider names. See `packages/junior/src/chat/identities/README.md`.
 - Existing domain-specific core behavior is debt, not a pattern for new code.
   Move it to the owning plugin when the touched contract makes that practical.

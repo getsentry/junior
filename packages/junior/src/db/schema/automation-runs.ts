@@ -2,11 +2,13 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  foreignKey,
   index,
   integer,
   pgTable,
   text,
 } from "drizzle-orm/pg-core";
+import { juniorAutomationVersions } from "./automation-versions";
 import { juniorAutomations } from "./automations";
 import { juniorConversations } from "./conversations";
 
@@ -25,6 +27,10 @@ export type AutomationRunStatus =
  * automation run id is its dispatch id. Automation code sets
  * `conversation_id` when it dispatches the run. A run that was skipped, or
  * that failed before dispatch, has no Conversation.
+ *
+ * `automation_version` is the Automation version that the run dispatched. It
+ * shows which instruction ran and who saved it after the definition changes.
+ * It is null before dispatch, and when no saved version matched.
  */
 export const juniorAutomationRuns = pgTable(
   "junior_automation_runs",
@@ -37,6 +43,7 @@ export const juniorAutomationRuns = pgTable(
       .unique()
       .references(() => juniorConversations.conversationId),
     status: text("status").$type<AutomationRunStatus>().notNull(),
+    automationVersion: integer("automation_version"),
     // Only Scheduled automation runs set these four columns.
     scheduledForMs: bigint("scheduled_for_ms", { mode: "number" }),
     attempt: integer("attempt"),
@@ -48,6 +55,14 @@ export const juniorAutomationRuns = pgTable(
     resultMessageTs: text("result_message_ts"),
   },
   (table) => [
+    foreignKey({
+      name: "junior_automation_runs_automation_version_fk",
+      columns: [table.automationId, table.automationVersion],
+      foreignColumns: [
+        juniorAutomationVersions.automationId,
+        juniorAutomationVersions.version,
+      ],
+    }),
     check(
       "junior_automation_runs_status_check",
       sql`${table.status} in ('pending', 'running', 'completed', 'failed', 'blocked', 'skipped')`,

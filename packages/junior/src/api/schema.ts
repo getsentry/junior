@@ -54,6 +54,8 @@ export {
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -72,11 +74,18 @@ export {
   conversationReportEventSchema,
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
-  conversationStatsReportSchema,
   conversationSummaryReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { conversationStatsReportSchema } from "./schema/conversation-stats";
+export type {
+  ConversationMetricDay,
+  ConversationStatsItem,
+  ConversationStatsReport,
+  GuardianMetricDay,
+  GuardianStats,
+} from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export type {
@@ -85,6 +94,8 @@ export type {
   ArchiveConversationResponse,
   CancelConversationPendingMessagesBody,
   CancelConversationPendingMessagesResponse,
+  SteerConversationPendingMessagesBody,
+  SteerConversationPendingMessagesResponse,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,
@@ -99,22 +110,18 @@ export type {
   ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
+  ConversationReportMessageEvent,
   ConversationReportStatus,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
-  ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
   ConversationSourceTask,
-  ConversationStatsItem,
-  ConversationStatsReport,
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
   CreateConversationBody,
   CreateConversationMessageBody,
-  GuardianMetricDay,
-  GuardianStats,
 } from "./schema/conversation";
 export {
   conversationChildAgentSchema,
@@ -124,6 +131,14 @@ export type {
   ConversationChildAgent,
   ConversationChildAgentsReport,
 } from "./schema/child-agent";
+export {
+  conversationWatchSchema,
+  conversationWatchesReportSchema,
+} from "./schema/watch";
+export type {
+  ConversationWatch,
+  ConversationWatchesReport,
+} from "./schema/watch";
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
@@ -166,6 +181,13 @@ export {
   startConnectionResponseSchema,
 } from "./schema/connection";
 export {
+  disconnectServiceAccountResponseSchema,
+  serviceAccountListSchema,
+  serviceAccountParamsSchema,
+  serviceAccountSchema,
+  startServiceAccountSignInResponseSchema,
+} from "./schema/service-account";
+export {
   createPersonalTokenBodySchema,
   createdPersonalTokenSchema,
   personalTokenListSchema,
@@ -185,6 +207,7 @@ export {
 } from "./schema/workspace";
 export type {
   BaselineSnapshotReport,
+  WorkspaceListReport,
   WorkspaceReport,
 } from "./schema/workspace";
 export {
@@ -226,8 +249,8 @@ export type {
   AutomationRunList,
   AutomationRunWindows,
   AutomationSummary,
-  AutomationVersion,
   AutomationVersionList,
+  ListedAutomationVersion,
 } from "./schema/automation";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";

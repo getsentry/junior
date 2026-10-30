@@ -308,12 +308,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       channelName,
       channelType: slackChannelType,
     });
-    const destinationVisibility = await resolveDestinationVisibility({
-      destination,
-      visibility:
-        options.execution?.destinationVisibility ??
-        conversationVisibilityFromSlackChannelType(slackChannelType),
-    });
+    // Persist only the live Slack signal. It refreshes the Destination row that
+    // every Conversation in the channel shares. Dispatch messages carry no
+    // channel type, so their stale saved visibility never reaches that row.
+    const destinationVisibility =
+      conversationVisibilityFromSlackChannelType(slackChannelType);
     const assistantThreadContext = getAssistantThreadContext(message);
     const threadTs = getThreadTs(threadId) ?? assistantThreadContext?.threadTs;
     const messageTs = getMessageTs(message);
@@ -325,7 +324,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         messageTs,
         teamId,
         threadTs,
-        visibility: destinationVisibility ?? "private",
+        visibility:
+          (await resolveDestinationVisibility({
+            destination,
+            visibility: destinationVisibility,
+          })) ?? "private",
       });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);

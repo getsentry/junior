@@ -11,6 +11,8 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   automationEditSchema,
+  automationEventCatalogSchema,
+  automationListSchema,
   automationVersionListSchema,
 } from "@/api/schema/automation";
 import { getDb, getConversationStore } from "@/chat/db";
@@ -20,6 +22,7 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   createEventAutomation,
   getEventAutomation,
+  saveEventAutomation,
 } from "@/chat/event-automations/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
@@ -50,7 +53,7 @@ async function setup(kind: "scheduled" | "event") {
     ["U123", "creator@example.com", "T123"],
     ["U456", "reader@example.com", "T123"],
     ["U123", "foreign@example.com", "TFOREIGN"],
-  ]) {
+  ] as const) {
     await getConversationStore().recordActivity({
       conversationId: `slack:${teamId}:${slackUserId}:edit`,
       actor: { platform: "slack", slackUserId, email, teamId },
@@ -360,21 +363,16 @@ describe("Automation edit API", () => {
       setPlugins([githubPlugin()]);
       const catalog = await app.request("/api/automations/event-catalog");
       expect(catalog.status).toBe(200);
-      const choices = await catalog.json();
-      expect(choices).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            namespace: "github",
-            type: "issue",
-            supportedEvents: expect.arrayContaining(["issue.closed"]),
-          }),
-        ]),
+      // The dashboard parses the JSON body with this same schema.
+      const choices = automationEventCatalogSchema.parse(await catalog.json());
+      // One entry for each namespace, with the reach of each event once.
+      const github = choices.find((choice) => choice.namespace === "github");
+      expect(github?.events["issue.closed"]).toEqual({
+        reach: { anyOf: ["repo"] },
+      });
+      expect(choices.some((choice) => choice.namespace === "junior")).toBe(
+        false,
       );
-      expect(
-        choices.some(
-          (choice: { namespace: string }) => choice.namespace === "junior",
-        ),
-      ).toBe(false);
       const summary = await app.request(`/api/automations/${initial.id}`, {
         headers: { "test-viewer": "reader@example.com" },
       });
@@ -839,7 +837,7 @@ describe("Automation edit API", () => {
   test("validates replacement event selectors through the registered plugin", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     setPlugins([githubPlugin()]);
-    const { fixture, read, patch } = await setup("event");
+    const { app, fixture, id, read, patch, url } = await setup("event");
     try {
       const initial = await read();
       if (initial.kind !== "event")
@@ -860,14 +858,40 @@ describe("Automation edit API", () => {
         events: ["pull_request.merged"],
         match: { headBranch: "main" },
       };
-      const invalid = await patch({
+      // authorUsername is a GitHub filter that was renamed to openerUsername.
+      const removed = await patch({
         kind: "event",
         revision: current.revision,
-        trigger: { ...trigger, match: { unknownField: "not allowed" } },
+        trigger: { ...trigger, match: { authorUsername: "dcramer" } },
       });
-      expect(invalid.status).toBe(400);
-      expect(await invalid.json()).toMatchObject({
-        fields: { trigger: expect.any(Array) },
+      expect(removed.status).toBe(400);
+      expect(await removed.json()).toMatchObject({
+        fields: {
+          trigger: [
+            expect.stringContaining(
+              'Filter "authorUsername" (match.authorUsername) does not exist for this resource type.',
+            ),
+          ],
+        },
+      });
+      // GitHub sends no head branch with pull request comments.
+      const neverRuns = await patch({
+        kind: "event",
+        revision: current.revision,
+        trigger: {
+          ...trigger,
+          events: ["pull_request.merged", "pull_request.comment.created"],
+        },
+      });
+      expect(neverRuns.status).toBe(400);
+      expect(await neverRuns.json()).toMatchObject({
+        fields: {
+          trigger: [
+            expect.stringContaining(
+              'Filter "headBranch" (match.headBranch) is not set on "pull_request.comment.created"',
+            ),
+          ],
+        },
       });
       const response = await patch({
         kind: "event",
@@ -877,7 +901,93 @@ describe("Automation edit API", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
         trigger: { ...trigger, identifier: "getsentry/junior#42" },
-        triggerAvailable: true,
+      });
+      // Version history shows each saved trigger in the shared words.
+      const { versions } = automationVersionListSchema.parse(
+        await (await app.request(`${url}/versions`)).json(),
+      );
+      const saved = {
+        events: ["issue closed"],
+        filters: ["retainedCondition is one or two"],
+        problems: ["The plugin for this source is not enabled."],
+      };
+      expect(
+        versions.map((version) =>
+          version.kind === "event" ? version.trigger : undefined,
+        ),
+      ).toEqual([
+        {
+          events: ["pull request merged"],
+          filters: ["headBranch is main"],
+          problems: [],
+        },
+        saved,
+        saved,
+      ]);
+      const unavailableIds = async () =>
+        automationListSchema
+          .parse(
+            await (
+              await app.request("/api/automations?state=unavailable")
+            ).json(),
+          )
+          .automations.map((automation) => automation.id);
+      expect(await unavailableIds()).toEqual([]);
+      // A saved filter that the plugin renamed never matches, so the
+      // Automation reports an unavailable trigger and says why.
+      const stored = await getEventAutomation(getDb(), id);
+      if (!stored) throw new Error("Missing event Automation");
+      await saveEventAutomation(getDb(), {
+        ...stored,
+        trigger: { ...stored.trigger, match: { authorUsername: "dcramer" } },
+      });
+      const summary = await app.request(`/api/automations/${id}`);
+      expect(summary.status).toBe(200);
+      expect(await summary.json()).toMatchObject({
+        trigger: {
+          filters: ["authorUsername is dcramer"],
+          problems: [
+            expect.stringContaining('Filter "authorUsername" does not exist'),
+          ],
+        },
+      });
+      expect(await unavailableIds()).toEqual([id]);
+
+      // With no identifier, pull request events need a repo filter.
+      const anyResource = {
+        namespace: "github",
+        label: "New pull requests",
+        events: ["pull_request.opened"],
+      };
+      const unscoped = await patch({
+        kind: "event",
+        revision: (await read()).revision,
+        trigger: anyResource,
+      });
+      expect(unscoped.status).toBe(400);
+      expect(await unscoped.json()).toMatchObject({
+        fields: {
+          trigger: [
+            'This GitHub trigger cannot be saved. This trigger needs a "repo" filter (match.repo), because "pull_request.opened" cannot run for every resource.',
+          ],
+        },
+      });
+      const scoped = await patch({
+        kind: "event",
+        revision: (await read()).revision,
+        trigger: { ...anyResource, match: { repo: "getsentry/junior" } },
+      });
+      expect(scoped.status).toBe(200);
+      expect(await unavailableIds()).toEqual([]);
+      expect(
+        await (await app.request(`/api/automations/${id}`)).json(),
+      ).toMatchObject({
+        resource: "New pull requests",
+        trigger: {
+          events: ["pull request opened"],
+          filters: ["repo is getsentry/junior"],
+          problems: [],
+        },
       });
     } finally {
       await fixture.close();

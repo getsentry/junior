@@ -3,6 +3,8 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 
+import { Toaster } from "./client/components/ui/toast";
+import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
 
@@ -22,18 +24,18 @@ class DashboardErrorBoundary extends Component<
   { children: ReactNode },
   ErrorBoundaryState
 > {
-  state: ErrorBoundaryState = { error: null };
+  override state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     const stack = error.stack ?? errorInfo.componentStack;
     window.__JUNIOR_DASHBOARD_SHOW_ERROR__?.(stack ? new Error(stack) : error);
   }
 
-  render() {
+  override render() {
     if (this.state.error) {
       return <DashboardErrorPanel error={this.state.error} />;
     }
@@ -87,7 +89,11 @@ const router = createBrowserRouter(
 createRoot(root).render(
   <DashboardErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <Toaster>
+        <TooltipProvider>
+          <RouterProvider router={router} />
+        </TooltipProvider>
+      </Toaster>
     </QueryClientProvider>
   </DashboardErrorBoundary>,
 );

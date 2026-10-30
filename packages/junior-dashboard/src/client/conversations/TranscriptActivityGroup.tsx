@@ -2,13 +2,18 @@ import { Fragment, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
-import { Tooltip } from "../components/Tooltip";
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
-import { TranscriptSummary } from "./TranscriptSummary";
+import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -101,9 +106,10 @@ export function activityGroupSummary(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
   const eventCount = entries.filter((entry) => entry.kind === "message").length;
+  const [onlyHandoff] = handoffs;
   const handoffSummary =
-    handoffs.length === 1
-      ? `model handoff to ${handoffs[0].modelId} (${handoffs[0].modelProfile})`
+    handoffs.length === 1 && onlyHandoff
+      ? `model handoff to ${onlyHandoff.modelId} (${onlyHandoff.modelProfile})`
       : handoffs.length > 1
         ? countLabel(handoffs.length, "model handoff", "model handoffs")
         : undefined;
@@ -167,37 +173,44 @@ export function TranscriptActivityGroup(props: {
   const open = activityGroupOpen(userOpen);
 
   return (
-    <details className="group/activity-run min-w-0 py-0.5" open={open}>
-      <TranscriptSummary
+    <Collapsible
+      className="min-w-0 py-0.5"
+      onOpenChange={setUserOpen}
+      open={open}
+    >
+      <TranscriptSummaryTrigger
         flush
         className={cn(
-          "flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
+          "group/activity-run flex items-center gap-1 text-xs leading-tight text-dashboard-text-muted",
           live && "text-dashboard-accent-text/80",
         )}
-        onClick={(event) => {
-          event.preventDefault();
-          setUserOpen(!open);
-        }}
       >
-        <Tooltip content={summary} placement="above">
-          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-            <span className="min-w-0 truncate group-open/activity-run:hidden">
-              <ShimmerText active={live}>{label}</ShimmerText>
-            </span>
-            <span className="hidden min-w-0 truncate group-open/activity-run:inline">
-              <ShimmerText active={live}>Hide {label}</ShimmerText>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1" />
+            }
+          >
+            <span className="min-w-0 truncate">
+              <ShimmerText active={live}>
+                {open ? `Hide ${label}` : label}
+              </ShimmerText>
             </span>
             <ChevronRight
               aria-hidden="true"
-              className="size-3 shrink-0 opacity-55 transition-transform group-open/activity-run:rotate-90"
+              className="size-3 shrink-0 opacity-55 transition-transform group-aria-expanded/activity-run:rotate-90"
               strokeWidth={2.2}
             />
-          </span>
+          </TooltipTrigger>
+          <TooltipContent>{summary}</TooltipContent>
         </Tooltip>
-      </TranscriptSummary>
-      <TranscriptActivityNesting.Provider value>
-        <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
-      </TranscriptActivityNesting.Provider>
-    </details>
+      </TranscriptSummaryTrigger>
+      {/* Closed rows stay in the page, so browser find can open the group. */}
+      <CollapsibleContent hiddenUntilFound>
+        <TranscriptActivityNesting.Provider value>
+          <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
+        </TranscriptActivityNesting.Provider>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

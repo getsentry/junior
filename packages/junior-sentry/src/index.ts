@@ -7,12 +7,17 @@
  */
 import {
   defineJuniorPlugin,
+  mergeEventMatchFields,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { SENTRY_ISSUE_EVENTS } from "./events/issue.js";
+import {
+  SENTRY_ISSUE_EVENTS,
+  SENTRY_ISSUE_MATCH_FIELDS,
+} from "./events/issue.js";
 import {
   SENTRY_METRIC_ALERT_EVENTS,
   SENTRY_METRIC_ALERT_IDENTIFIER,
+  SENTRY_METRIC_ALERT_MATCH_FIELDS,
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
 import {
@@ -20,8 +25,9 @@ import {
   issueSentryCredential,
   sentryGrantForEgress,
 } from "./org-read.js";
+import { resolveSentryOAuthAccount } from "./oauth-account.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
-import { sentryWebhookOrg, sentryWebhookSecret } from "./webhooks/secret.js";
+import { sentryWebhookSecret } from "./webhooks/secret.js";
 
 /** Register Sentry runtime metadata and signed event ingress. */
 export function sentryPlugin(): PluginRegistration {
@@ -33,21 +39,40 @@ export function sentryPlugin(): PluginRegistration {
           type: "issue",
           supportedEvents: [...SENTRY_ISSUE_EVENTS],
           suggestedEvents: [...SENTRY_ISSUE_EVENTS],
+          matchFields: SENTRY_ISSUE_MATCH_FIELDS,
         },
         {
           type: "project",
-          supportedEvents: [...SENTRY_ISSUE_EVENTS],
-          suggestedEvents: [...SENTRY_ISSUE_EVENTS],
+          supportedEvents: [
+            ...SENTRY_ISSUE_EVENTS,
+            ...SENTRY_METRIC_ALERT_EVENTS,
+          ],
+          suggestedEvents: [
+            ...SENTRY_ISSUE_EVENTS,
+            ...SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
+          ],
+          matchFields: mergeEventMatchFields(
+            SENTRY_ISSUE_MATCH_FIELDS,
+            SENTRY_METRIC_ALERT_MATCH_FIELDS,
+          ),
         },
         {
           type: "metric_alert",
           identifier: SENTRY_METRIC_ALERT_IDENTIFIER,
           supportedEvents: [...SENTRY_METRIC_ALERT_EVENTS],
           suggestedEvents: SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
+          matchFields: SENTRY_METRIC_ALERT_MATCH_FIELDS,
         },
       ],
-      isEnabled: () =>
-        Boolean(sentryWebhookSecret()) && Boolean(sentryWebhookOrg()),
+      // One install is one Sentry org. Issue and metric alert events carry
+      // alert facts, and Junior adds nothing to Sentry, so they can run for
+      // every project. Use the `projects` filter to narrow them.
+      events: Object.fromEntries(
+        [...SENTRY_ISSUE_EVENTS, ...SENTRY_METRIC_ALERT_EVENTS].map(
+          (eventType) => [eventType, { reach: "all" }],
+        ),
+      ),
+      isEnabled: () => Boolean(sentryWebhookSecret()),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
     manifest: {
@@ -68,7 +93,6 @@ export function sentryPlugin(): PluginRegistration {
         SENTRY_CLIENT_ID: {},
         SENTRY_CLIENT_SECRET: {},
         SENTRY_READ_TOKEN: {},
-        SENTRY_WEBHOOK_ORG: {},
         SENTRY_WEBHOOK_SECRET: {},
       },
       name: "sentry",
@@ -91,11 +115,11 @@ export function sentryPlugin(): PluginRegistration {
     hooks: {
       grantForEgress: sentryGrantForEgress,
       issueCredential: issueSentryCredential,
+      resolveOAuthAccount: resolveSentryOAuthAccount,
       routes(ctx) {
         return [
           createSentryWebhookRoute({
             events: ctx.events,
-            webhookOrg: sentryWebhookOrg,
             webhookSecret: sentryWebhookSecret,
           }),
         ];

@@ -9,6 +9,11 @@ export type ConversationOutboxMessage = {
   actorIdentity?: ActorIdentity;
   createdAt: string;
   idempotencyKey: string;
+  /**
+   * Sent while Junior was idle and the queue was empty. The transcript shows
+   * the row in place, so it does not pass through the queue first.
+   */
+  inline?: boolean;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -31,6 +36,7 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 export function conversationOutboxMessageForSubmit(input: {
   actorIdentity?: ActorIdentity;
   idempotencyKey: string;
+  inline?: boolean;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -41,6 +47,7 @@ export function conversationOutboxMessageForSubmit(input: {
     actorIdentity: input.actorIdentity,
     createdAt,
     idempotencyKey: input.idempotencyKey,
+    ...(input.inline ? { inline: true } : undefined),
     message: input.message,
     ...(input.images?.length ? { images: input.images } : undefined),
     messageId: input.messageId,
@@ -151,6 +158,45 @@ function sameActorIdentity(
     left.slackUserId === right.slackUserId &&
     left.slackUserName === right.slackUserName
   );
+}
+
+/** True while an outbox row belongs in the transcript instead of the queue. */
+export function isInlineOutboxMessage(
+  message: ConversationOutboxMessage,
+): boolean {
+  // A failed send moves to the queue, which owns the retry action.
+  return Boolean(message.inline) && message.status !== "failed";
+}
+
+/**
+ * Split pending rows between the queue and the transcript.
+ *
+ * Inline rows prefer the server copy once the mailbox has it, so attachments
+ * and identity match what the queue would show.
+ */
+export function splitInlineMailboxMessages(
+  merged: readonly ConversationMailboxMessage[],
+  server: readonly ConversationPendingMessage[] | undefined,
+  outbox: readonly ConversationOutboxMessage[],
+): {
+  inline: ConversationMailboxMessage[];
+  queued: ConversationMailboxMessage[];
+} {
+  const inlineRows = outbox.filter(isInlineOutboxMessage);
+  if (inlineRows.length === 0) {
+    return { inline: [], queued: merged as ConversationMailboxMessage[] };
+  }
+  const inlineIds = new Set(inlineRows.map((message) => message.messageId));
+  const serverById = new Map(
+    (server ?? []).map((message) => [message.messageId, message]),
+  );
+  return {
+    inline: inlineRows.map(
+      (message) =>
+        serverById.get(message.messageId) ?? mailboxMessageFromOutbox(message),
+    ),
+    queued: merged.filter((message) => !inlineIds.has(message.messageId)),
+  };
 }
 
 /** Append or replace one outbox row by idempotency key. */

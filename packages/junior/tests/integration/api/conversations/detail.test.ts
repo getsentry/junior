@@ -12,6 +12,8 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { usersInfoOk } from "../../../fixtures/slack/factories/api";
+import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -114,6 +116,55 @@ describe("conversation detail API", () => {
     });
   });
 
+  it("titles an untitled conversation from its first human message", async () => {
+    const conversationId = "local:test:untitled-detail";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "web",
+      visibility: "public",
+    });
+    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
+      { displayTitle: "API" },
+    );
+
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          messageId: "bot-message",
+          meta: { author: { isBot: true } },
+          role: "user",
+          text: "Bot input is not a title",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          messageId: "human-message",
+          role: "user",
+          text: "\n  Review this PR and check the failing tests\nMore context",
+          type: "message",
+        },
+      },
+    ]);
+    // While generation runs, the title is the first line of the human message.
+    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
+      { displayTitle: "Review this PR and check the failing tests" },
+    );
+
+    await getConversationStore().recordActivity({
+      conversationId,
+      nowMs: 4,
+      title: "Review failing PR tests",
+    });
+    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
+      { displayTitle: "Review failing PR tests" },
+    );
+  });
+
   it("only returns annotations to viewers with private-content access", async () => {
     const conversationId = "slack:C-private:annotated-detail";
     await getConversationStore().recordActivity({
@@ -184,6 +235,96 @@ describe("conversation detail API", () => {
       ],
       eventHistory: { status: "available" },
     });
+  });
+
+  it("resolves mentioned Slack users with current names", async () => {
+    const conversationId = "slack:C123:mentions-detail";
+    await getConversationStore().recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        platform: "slack",
+        slackUserId: "UOWNER1",
+        teamId: "T123",
+      },
+      conversationId,
+      destination: { channelId: "C123", platform: "slack", teamId: "T123" },
+      nowMs: 1,
+      source: "slack",
+      title: "Mentions",
+      visibility: "public",
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({
+        userId: "UNEW1234",
+        userName: "new.person",
+        realName: "New Person",
+      }),
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        // Gives UNEW1234 a Junior identity with no name.
+        createdAtMs: 2,
+        data: {
+          messageId: "user-1",
+          meta: { author: { userId: "UNEW1234" } },
+          role: "user",
+          text: "ship it",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          messageId: "reply-1",
+          role: "assistant",
+          text: "<@UOWNER1> merged. cc <@UNEW1234>",
+          type: "message",
+        },
+      },
+    ]);
+    await appendConversationBrief(getDb(), {
+      conversationId,
+      turnId: "mentions-brief-turn",
+      throughSeq: 1,
+      content: conversationBriefFixture({
+        summary: "<@UOWNER1> merged the fix.",
+      }),
+      searchText: "owner merged the fix",
+      modelId: "test-model",
+    });
+
+    const detail = await readConversationDetail(conversationId, {
+      viewer: testViewer("owner@example.com"),
+    });
+    const message = detail?.events.find(
+      (event) =>
+        event.data.type === "message" && event.data.messageId === "reply-1",
+    );
+    expect(message).toMatchObject({
+      mentions: [
+        // Known Junior users link to their People profile.
+        {
+          email: "owner@example.com",
+          fullName: "Owner Person",
+          slackUserId: "UOWNER1",
+        },
+        // A user with no name in Junior gets one from Slack, but no link.
+        {
+          fullName: "New Person",
+          slackUserId: "UNEW1234",
+          slackUserName: "new.person",
+        },
+      ],
+    });
+    // The Brief uses the same lookup as transcript events.
+    expect(detail?.brief?.mentions).toEqual([
+      {
+        email: "owner@example.com",
+        fullName: "Owner Person",
+        slackUserId: "UOWNER1",
+      },
+    ]);
   });
 
   it("links a viewer-visible source task from a terminal execution", async () => {

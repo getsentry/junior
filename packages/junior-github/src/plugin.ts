@@ -3,8 +3,10 @@
  *
  * This module composes GitHub hooks, events, and credentials.
  */
+import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import {
   defineJuniorPlugin,
+  mergeEventMatchFields,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
@@ -13,17 +15,21 @@ import {
   readGrantPermissions,
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
-import {
-  pullRequestCommentReactionsPath,
-  pullRequestFeedbackReactionContent,
-} from "./tools/update-pull-request-feedback.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import { gitHubEventDeclarations } from "./events/declarations.js";
+import {
+  loadPullRequestCommitPages,
+  loadRepositoryRole,
+  markPullRequestFeedbackReviewing,
+} from "./webhooks/installation-requests.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
+  GITHUB_DEPLOYMENT_MATCH_FIELDS,
   GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import {
+  GITHUB_ISSUE_MATCH_FIELDS,
   GITHUB_ISSUE_EVENTS,
   GITHUB_ISSUE_IDENTIFIER,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
@@ -38,13 +44,17 @@ import {
 } from "./events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
+  GITHUB_RELEASE_MATCH_FIELDS,
   GITHUB_RELEASE_SOURCE_IDENTIFIER,
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./events/release.js";
-import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
+import {
+  GITHUB_REPOSITORY_EVENTS,
+  GITHUB_REPOSITORY_IDENTIFIER,
+  GITHUB_REPOSITORY_SUGGESTED_EVENTS,
+} from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
-import { loadGitHubPullRequestPeople } from "./webhooks/pull-request-people.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
   listGitHubAssignedWork,
@@ -54,30 +64,29 @@ import {
 import {
   additionalActorCoauthorTrailers,
   configureGit,
+  gitHooksPath,
   prepareCommitMsgHook,
+  REPOSITORY_HOOK_NAMES,
+  repositoryHook,
+  setGitHooksPathEnv,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
+import { loadGitHubConversationTitleContext } from "./conversation-title-context.js";
 import { prepareWorkspace } from "./workspace-prepare.js";
+import { githubCloneCommandRedirect } from "./clone-command.js";
 import {
   githubGrantForEgress,
-  githubGraphqlPermissionDeniedMessage,
-  shouldInspectGitHubGraphqlResponse,
+  githubPermissionDeniedMessage,
 } from "./egress-policy.js";
 import {
   GITHUB_APP_ID_ENV,
   GITHUB_APP_PRIVATE_KEY_ENV,
   GITHUB_AUTH_TOKEN_ENV,
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
-  GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   GITHUB_INSTALLATION_ID_ENV,
-  USER_TOKEN_GRANTS,
-  GitHubPluginSetupError,
   createPermissionCache,
-  credentialUnavailable,
-  githubRequest,
-  issueInstallationCredential,
-  issueInstallationToken,
-  issueUserCredential,
+  issueGitHubCredential,
+  listVerifiedUserEmails,
   normalizeScopeList,
   readEnv,
   requireEnv,
@@ -158,12 +167,14 @@ export function githubPlugin(
           identifier: GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
           suggestedEvents: [...GITHUB_DEPLOYMENT_SUGGESTED_EVENTS],
+          matchFields: GITHUB_DEPLOYMENT_MATCH_FIELDS,
         },
         {
           type: "issue",
           identifier: GITHUB_ISSUE_IDENTIFIER,
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
+          matchFields: GITHUB_ISSUE_MATCH_FIELDS,
         },
         {
           type: "pull_request",
@@ -171,35 +182,29 @@ export function githubPlugin(
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          guidance: gitHubPullRequestEventGuidance(
-            options.pullRequestEvents?.guidance,
-          ),
         },
         {
           type: "release_source",
           identifier: GITHUB_RELEASE_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_RELEASE_EVENTS],
           suggestedEvents: [...GITHUB_RELEASE_SUGGESTED_EVENTS],
+          matchFields: GITHUB_RELEASE_MATCH_FIELDS,
         },
         {
           type: "repository",
           identifier: GITHUB_REPOSITORY_IDENTIFIER,
-          supportedEvents: [
-            ...GITHUB_ISSUE_EVENTS,
-            ...GITHUB_PULL_REQUEST_EVENTS,
-          ],
-          suggestedEvents: [
-            "issue.opened",
-            "pull_request.opened",
-            ...GITHUB_ISSUE_SUGGESTED_EVENTS,
-            ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-          ],
-          matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          guidance: gitHubPullRequestEventGuidance(
-            options.pullRequestEvents?.guidance,
+          supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+          suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+          matchFields: mergeEventMatchFields(
+            GITHUB_DEPLOYMENT_MATCH_FIELDS,
+            GITHUB_ISSUE_MATCH_FIELDS,
+            GITHUB_PULL_REQUEST_MATCH_FIELDS,
           ),
         },
       ],
+      events: gitHubEventDeclarations(
+        gitHubPullRequestEventGuidance(options.pullRequestEvents?.guidance),
+      ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
@@ -251,6 +256,49 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      async conversationTitleContext(ctx) {
+        return await loadGitHubConversationTitleContext({
+          config: ctx.config,
+          log: ctx.log,
+          text: ctx.text,
+          loadObject: async (reference) => {
+            const { collection, operation } = (
+              {
+                commit: {
+                  collection: "commits",
+                  operation: "github.commit.get",
+                },
+                issue: { collection: "issues", operation: "github.issue.get" },
+                pull_request: {
+                  collection: "pulls",
+                  operation: "github.pull.get",
+                },
+              } as const
+            )[reference.kind];
+            // Read through host egress so policy, grants, and audit apply.
+            const response = await ctx.egress.fetch({
+              provider: "github",
+              operation,
+              request: new Request(
+                `https://api.github.com/repos/${encodeURIComponent(reference.owner)}/${encodeURIComponent(reference.name)}/${collection}/${encodeURIComponent(reference.id)}`,
+                {
+                  headers: {
+                    Accept: "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                  },
+                  signal: ctx.signal,
+                },
+              ),
+            });
+            if (!response.ok) {
+              throw new Error(
+                `GitHub ${reference.kind} lookup failed with HTTP ${response.status}`,
+              );
+            }
+            return await response.json();
+          },
+        });
+      },
       conversationSidebar(ctx) {
         return {
           annotationsByConversationId: Object.fromEntries(
@@ -286,31 +334,10 @@ export function githubPlugin(
         };
       },
       routes(ctx) {
-        /** Read pages of a pull request's commits with a read-only token. */
-        const loadPullRequestCommitPage = async (pullRequest: {
-          number: number;
-          repositoryFullName: string;
-        }) => {
-          const [owner, name, ...extra] =
-            pullRequest.repositoryFullName.split("/");
-          if (!owner || !name || extra.length > 0) {
-            throw new Error(
-              "GitHub pull request commits received an invalid repository name",
-            );
-          }
-          const token = await issueInstallationToken({
-            appIdEnv,
-            privateKeyEnv,
-            installationIdEnv,
-            permissions: { pull_requests: "read" },
-            repositories: [name],
-          });
-          return async (page: number, perPage: number) =>
-            await githubRequest(
-              "https://api.github.com",
-              `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}/commits?per_page=${perPage}&page=${page}`,
-              { token: token.token },
-            );
+        const installationEnv = {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
         };
         return [
           createGitHubWebhookRoute({
@@ -320,48 +347,26 @@ export function githubPlugin(
             classifyPullRequestCommits: async (pullRequest) =>
               await classifyGitHubPullRequestCommitComposition({
                 botEmail: requireEnv(botEmailEnv),
-                loadPage: await loadPullRequestCommitPage(pullRequest),
+                loadPage: await loadPullRequestCommitPages(
+                  installationEnv,
+                  pullRequest,
+                ),
               }),
             codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
-            loadPullRequestPeople: async (pullRequest) =>
-              await loadGitHubPullRequestPeople({
-                logins: pullRequest.logins,
-                loadPage: await loadPullRequestCommitPage(pullRequest),
-              }),
+            loadRepositoryRole: async (target) =>
+              await loadRepositoryRole(installationEnv, ctx.cache, target),
+            loadGitHubLogin: async (identityId) =>
+              linkedGitHubLogin(
+                (await ctx.users.readIdentity(identityId))?.user,
+              ),
+            loadPullRequestCommitPages: async (pullRequest) =>
+              await loadPullRequestCommitPages(installationEnv, pullRequest),
             log: ctx.log,
-            markFeedbackReviewing: async ({ commentId, commentKind, repo }) => {
-              const [owner, name, ...extra] = repo.split("/");
-              if (!owner || !name || extra.length > 0) {
-                throw new Error(
-                  "GitHub pull request feedback received an invalid repository name",
-                );
-              }
-              const token = await issueInstallationToken({
-                appIdEnv,
-                privateKeyEnv,
-                installationIdEnv,
-                repositories: [name],
-              });
-              await githubRequest(
-                "https://api.github.com",
-                pullRequestCommentReactionsPath({
-                  owner,
-                  name,
-                  commentKind,
-                  commentId,
-                }),
-                {
-                  body: {
-                    content: pullRequestFeedbackReactionContent("reviewing"),
-                  },
-                  method: "POST",
-                  token: token.token,
-                },
-              );
-            },
+            markFeedbackReviewing: async (target) =>
+              await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
@@ -377,12 +382,19 @@ export function githubPlugin(
       },
       workspacePrepare: prepareWorkspace,
       async sandboxPrepare(ctx) {
-        const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;
+        const hooksPath = gitHooksPath(ctx.sandbox.juniorRoot);
         await ctx.sandbox.writeFile({
           path: `${hooksPath}/prepare-commit-msg`,
           mode: 0o755,
           content: prepareCommitMsgHook(),
         });
+        for (const name of REPOSITORY_HOOK_NAMES) {
+          await ctx.sandbox.writeFile({
+            path: `${hooksPath}/${name}`,
+            mode: 0o755,
+            content: repositoryHook(name),
+          });
+        }
         await configureGit(ctx, "core.hooksPath", hooksPath);
         await configureGit(ctx, "commit.gpgsign", "false");
         await configureGit(ctx, "credential.helper", "");
@@ -390,6 +402,14 @@ export function githubPlugin(
       },
       async beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
+          return;
+        }
+        const cloneRedirect =
+          typeof ctx.tool.input.command === "string"
+            ? githubCloneCommandRedirect(ctx.tool.input.command)
+            : undefined;
+        if (cloneRedirect) {
+          ctx.decision.redirect(cloneRedirect);
           return;
         }
         const botName = requireEnv(botNameEnv);
@@ -400,6 +420,7 @@ export function githubPlugin(
         ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", botEmail);
         ctx.env.set("GIT_COMMITTER_NAME", botName);
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
+        setGitHooksPathEnv(ctx.env, gitHooksPath(ctx.juniorRoot));
         let currentUser;
         if (ctx.actor) {
           try {
@@ -422,60 +443,49 @@ export function githubPlugin(
         return githubGrantForEgress(ctx);
       },
       async onEgressResponse(ctx) {
-        if (!shouldInspectGitHubGraphqlResponse(ctx)) {
-          return;
+        if (ctx.response.status === 403) {
+          ctx.log.warn("github.egress.upstream_forbidden", {
+            "app.github.accepted_permissions":
+              ctx.response.headers.get("x-accepted-github-permissions") ??
+              undefined,
+            "app.github.sso":
+              ctx.response.headers.get("x-github-sso") ?? undefined,
+          });
         }
-        const bodyText = await ctx.response.readText(
-          GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
-        );
-        if (!bodyText) {
-          return;
-        }
-        const message = githubGraphqlPermissionDeniedMessage(bodyText);
+        const message = await githubPermissionDeniedMessage(ctx);
         if (message) {
           ctx.permissionDenied(message);
         }
       },
       async resolveOAuthAccount(ctx) {
-        return await resolveUserAccount(ctx.tokens);
+        const [account, verifiedEmails] = await Promise.all([
+          resolveUserAccount(ctx.tokens),
+          // Verified emails only help link the account. An email lookup
+          // failure must not block the connection.
+          listVerifiedUserEmails(ctx.tokens).catch((error: unknown) => {
+            ctx.log.warn("github.oauth_account.emails_lookup.failed", {
+              "exception.message":
+                error instanceof Error ? error.message : String(error),
+            });
+            return [];
+          }),
+        ]);
+        return verifiedEmails.length > 0
+          ? { ...account, verifiedEmails }
+          : account;
       },
       async issueCredential(ctx) {
-        try {
-          if (ctx.grant.name === "installation-read") {
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              ...(declaredReadPermissions
-                ? { permissions: declaredReadPermissions }
-                : { loadPermissions: loadReadPermissions }),
-            });
-          }
-          if (ctx.grant.name === "installation-write") {
-            // Use the full installed App permissions. Repo allowlisting stays in
-            // egress policy, not in per-request token minting.
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-            });
-          }
-          if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
-            return await issueUserCredential(ctx, {
-              clientIdEnv,
-              clientSecretEnv,
-              userScope,
-            });
-          }
-        } catch (error) {
-          if (error instanceof GitHubPluginSetupError) {
-            return credentialUnavailable(error.message);
-          }
-          throw error;
-        }
-        throw new Error(
-          `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,
-        );
+        return await issueGitHubCredential(ctx, {
+          appIdEnv,
+          clientIdEnv,
+          clientSecretEnv,
+          installationIdEnv,
+          privateKeyEnv,
+          readPermissions: declaredReadPermissions
+            ? { permissions: declaredReadPermissions }
+            : { loadPermissions: loadReadPermissions },
+          userScope,
+        });
       },
     },
   });

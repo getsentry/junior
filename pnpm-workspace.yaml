@@ -7,9 +7,9 @@ dedupePeerDependents: false
 catalog:
   "@earendil-works/pi-agent-core": 0.84.1
   "@earendil-works/pi-ai": 0.85.1
-  "@opentelemetry/api": 1.9.1
-  "@opentelemetry/core": 2.9.0
-  "@sentry/node": 10.65.0
+  "@sentry/nitro": 11.10.0
+  "@sentry/node": 11.10.0
+  "@sentry/server-utils": 11.10.0
   "@sentry/starlight-theme": ^0.9.1
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.2
@@ -18,7 +18,7 @@ overrides:
   "@earendil-works/pi-agent-core>@earendil-works/pi-ai": 0.85.1
   "@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   "@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
-  ai: 6.0.190
+  ai: 7.0.153
   "astro>vite": 8.0.14
   "@swc/core": 1.15.33
   linkify-it: 5.0.0
@@ -26,6 +26,12 @@ overrides:
   tldts: 7.0.30
   ws: 8.20.1
   yaml: ^2.9.0
+packageExtensions:
+  dependency-cruiser:
+    dependencies:
+      # TypeScript 7 has no compiler API. dependency-cruiser needs it to parse
+      # TypeScript sources, and finds no TypeScript files without it.
+      typescript: npm:@typescript/typescript6@6.0.2
 peerDependencyRules:
   allowedVersions:
     vitest-evals>ai: ">=4"
@@ -38,11 +44,13 @@ minimumReleaseAgeExclude:
   - "@vitest-evals/core@0.16.1"
   - "@vitest-evals/report-ui@0.16.1"
   - "vitest-evals@0.16.1"
-  - "@sentry/core@10.65.0"
-  - "@sentry/node-core@10.65.0"
-  - "@sentry/node@10.65.0"
-  - "@sentry/opentelemetry@10.65.0"
-  - "@sentry/server-utils@10.65.0"
+  - "@sentry/bundler-plugins@11.10.0"
+  - "@sentry/core@11.10.0"
+  - "@sentry/nitro@11.10.0"
+  - "@sentry/node@11.10.0"
+  - "@sentry/opentelemetry@11.10.0"
+  - "@sentry/server-runtime-injection@11.10.0"
+  - "@sentry/server-utils@11.10.0"
   - "@earendil-works/pi-agent-core"
   - "@earendil-works/pi-ai"
   - sentry
@@ -52,9 +60,9 @@ allowBuilds:
   "@google/genai": true
   "@mongodb-js/zstd": true
   "@parcel/watcher": true
-  "@sentry/cli": true
   agent-browser: true
   esbuild: true
+  msgpackr-extract: false
   msw: true
   node-liblzma: false
   protobufjs: true

@@ -5,6 +5,7 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
+import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
   Location,
@@ -432,6 +433,7 @@ function taskPluginContext(
     }),
     name: message.name,
     plugin: { name: pluginName },
+    cache: createPluginCache(pluginName),
     run: {
       async load() {
         return await loadPluginRun(sessionParams);
@@ -494,7 +496,7 @@ export async function processPluginTask(
 ): Promise<void> {
   await withPluginTaskLock(pluginTaskId(message), async () => {
     const resolved = findPluginTask(message);
-    if (!resolved) {
+    if (!resolved?.task) {
       throw new Error(
         `Plugin task "${message.plugin}.${message.name}" is not registered`,
       );

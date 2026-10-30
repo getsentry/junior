@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { botConfig } from "@/chat/config";
-import { EVENT_AUTOMATION_RUN_WINDOW_MS } from "@/chat/event-automations/run-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { githubPlugin } from "@sentry/junior-github";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -163,7 +166,7 @@ describe("event automation blocking", () => {
         queue,
         teamId,
       });
-    const maxRuns = botConfig.maxEventAutomationRunsPerHour;
+    const maxRuns = botConfig.maxEventAutomationRuns;
     const fill = async (prefix: string, count: number, nowMs: number) => {
       for (let index = 0; index < count; index += 1) {
         expect(await ingest(`${prefix}-${index}`, nowMs)).toEqual({
@@ -172,10 +175,10 @@ describe("event automation blocking", () => {
       }
     };
 
-    const firstHourMs = Date.now();
-    await fill("github:burst", maxRuns, firstHourMs);
+    const firstWindowMs = Date.now();
+    await fill("github:burst", maxRuns, firstWindowMs);
     // A provider retry of a counted Event does not count again.
-    expect(await ingest("github:burst-0", firstHourMs)).toEqual({
+    expect(await ingest("github:burst-0", firstWindowMs)).toEqual({
       dispatched: 0,
     });
     expect(await getEventAutomation(db, automation.id)).toMatchObject({
@@ -183,19 +186,22 @@ describe("event automation blocking", () => {
     });
 
     // Old runs leave the rolling window.
-    const nextHourMs = firstHourMs + EVENT_AUTOMATION_RUN_WINDOW_MS + 1;
-    await fill("github:next", maxRuns, nextHourMs);
+    const nextWindowMs =
+      firstWindowMs + botConfig.eventAutomationRunWindowMs + 1;
+    await fill("github:next", maxRuns, nextWindowMs);
 
     // A second automation on the same trigger has its own count.
     const { automation: sibling } = await createTask(
       "Post a summary.",
       "sibling-call",
     );
-    expect(await ingest("github:over", nextHourMs)).toEqual({ dispatched: 1 });
+    expect(await ingest("github:over", nextWindowMs)).toEqual({
+      dispatched: 1,
+    });
     expect(await getEventAutomation(db, automation.id)).toMatchObject({
       status: "blocked",
       statusReason: expect.stringContaining(
-        `limit of ${maxRuns} runs per hour`,
+        `limit of ${maxRuns} runs per minute`,
       ),
     });
     expect(await getEventAutomation(db, sibling.id)).toMatchObject({
@@ -209,7 +215,7 @@ describe("event automation blocking", () => {
       automationId: automation.id,
       status: "active",
     });
-    expect(await ingest("github:after-resume", nextHourMs)).toEqual({
+    expect(await ingest("github:after-resume", nextWindowMs)).toEqual({
       dispatched: 2,
     });
 
@@ -219,15 +225,74 @@ describe("event automation blocking", () => {
         automationId,
       });
     await remove(sibling.id);
-    await fill("github:refill", maxRuns - 1, nextHourMs);
+    await fill("github:refill", maxRuns - 1, nextWindowMs);
     await remove(automation.id);
     const { automation: revived } = await createTask(
       "Add the release-train label.",
     );
     expect(revived.id).toBe(automation.id);
-    expect(await ingest("github:after-revive", nextHourMs)).toEqual({
+    expect(await ingest("github:after-revive", nextWindowMs)).toEqual({
       dispatched: 1,
     });
     // Filling the window takes about three times the cap in sequential ingests.
+  }, 30_000);
+
+  it("counts each event once, however many resources it is published for", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    try {
+      const { automation } = (await execute(
+        createEventAutomationTool(context(), getEventCatalog()),
+        {
+          instruction: "Summarize the failed deployment.",
+          trigger: {
+            namespace: "github",
+            label: "Failed deployments",
+            events: ["deployment.failed"],
+          },
+        },
+        "any-deployment",
+      )) as { automation: { id: string } };
+      // A trigger with no identifier gets every copy of an event. Repeated
+      // copies must not fill the run list and block it early.
+      const copies = 12;
+      const occur = async (eventKey: string, nowMs: number) => {
+        let dispatched = 0;
+        for (let index = 0; index < copies; index += 1) {
+          const result = await ingestEventAutomations(
+            {
+              eventKey,
+              eventType: "deployment.failed",
+              occurredAtMs: nowMs,
+              namespace: "github",
+              identifier: `deployment-source:getsentry/repo-${index}:abc`,
+              trustedSummary: "A deployment failed.",
+            },
+            { nowMs, queue, teamId },
+          );
+          dispatched += result.dispatched;
+        }
+        return dispatched;
+      };
+      const nowMs = Date.now();
+      for (
+        let index = 0;
+        index < botConfig.maxEventAutomationRuns;
+        index += 1
+      ) {
+        expect(await occur(`github:deploy-${index}`, nowMs)).toBe(1);
+      }
+      const db = fixture.sql.db();
+      expect(await getEventAutomation(db, automation.id)).toMatchObject({
+        status: "active",
+      });
+      // The limit is the same as for a trigger with an identifier.
+      expect(await occur("github:deploy-over", nowMs)).toBe(0);
+      expect(await getEventAutomation(db, automation.id)).toMatchObject({
+        status: "blocked",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   }, 30_000);
 });

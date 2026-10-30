@@ -17,8 +17,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
-    allowedGoogleDomains: ["sentry.io"],
-    allowedEmails: ["admin@example.com"],
+    allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
 }
@@ -225,7 +224,7 @@ describe("dashboard shell routes", () => {
   it("serves the installable shell manifest without auth", async () => {
     const app = createDashboardApp({
       agentName: "Marky",
-      allowedEmails: ["admin@example.com"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null),
       basePath: "/ops",
     });
@@ -274,26 +273,6 @@ describe("dashboard shell routes", () => {
     );
     expect(response.headers.get("content-type")).toBe("image/png");
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
-  });
-
-  it("serves the component gallery only when enabled", async () => {
-    const disabled = createDashboardApp({ authRequired: false });
-    const enabled = createDashboardApp({
-      authRequired: false,
-      componentGallery: true,
-    });
-
-    expect(
-      (await disabled.fetch(new Request("http://localhost/dev"))).status,
-    ).toBe(404);
-    expect(
-      (await enabled.fetch(new Request("http://localhost/dev"))).status,
-    ).toBe(200);
-    expect(
-      await (
-        await enabled.fetch(new Request("http://localhost/api/config"))
-      ).json(),
-    ).toMatchObject({ componentGallery: true });
   });
 
   it("renders a browser-readable forbidden page for denied dashboard routes", async () => {

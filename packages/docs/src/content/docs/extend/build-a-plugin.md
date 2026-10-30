@@ -109,6 +109,68 @@ Set the client redirect URI to
 plugin read-only. `authorize-params` adds provider-specific parameters to the
 authorization URL. Do not declare both `mcp.auth` and `mcp.oauth-client`.
 
+### Service accounts
+
+Per-user OAuth is the default. A plugin can also let Junior use one shared
+provider account, often a bot, for people who have not connected their own
+account. This account usually has fewer permissions than a person.
+
+Use the `accounts` block to say which accounts Junior may use. The service
+account lists exactly the tools that it may call:
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  allowed-tools:
+    - search
+    - fetch
+    - create-page
+
+accounts:
+  service-account:
+    tools:
+      - search
+      - fetch
+```
+
+- `accounts.service-account.tools` lists the MCP tools that the shared
+  account may call. Each tool must be in `mcp.allowed-tools` or
+  `mcp.wrapped-tools`. Junior calls MCP servers from the host, so it checks
+  each tool call against this list. Leave out `service-account` when the
+  plugin has no service account.
+- `accounts.user-oauth` is `true` by default. Set it to `false` when people
+  must not use their own accounts. Then Junior uses only the service account,
+  never asks a person to connect, and ignores connections that people already
+  made. Junior hides the tools that the service account does not list. Until
+  an admin connects the account, the plugin is not available.
+  `user-oauth: false` requires `service-account`.
+- You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
+  Plugins with only a top-level `oauth` block do not support a service
+  account yet.
+- Junior rejects unknown keys in `accounts`, so a typo cannot change which
+  accounts Junior uses.
+
+The declaration has no effect until a Junior admin connects the account. In
+the dashboard, open **Admin**, find the plugin under **Service accounts**, and
+click **Connect**. Sign in as the account that Junior uses, not as yourself.
+The same card shows who connected the account and lets an admin disconnect it.
+
+If the dashboard is not available, an operator can use the CLI on a machine
+with a browser and the deployment `REDIS_URL`:
+
+```bash
+junior service-account connect my-provider
+junior service-account status my-provider
+junior service-account disconnect my-provider
+```
+
+When the account is connected, Junior uses it only for an actor who has not
+connected their own account, and only for the tools that it lists.
+Other requests ask the actor to connect their own account, as before. An
+actor's own connection always wins. Everyone who can talk to Junior can read what the
+service account can read, so give that account only the access that all of
+them may have.
+
 ## Runtime dependencies
 
 If a skill needs a CLI or system package inside the sandbox, declare that in `plugin.yaml`:
@@ -213,12 +275,22 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | Surface                  | Purpose                                                                                                                                                                                      |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                      |
-| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                                   |
+| `beforeToolExecute(ctx)` | Deny, redirect, or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                        |
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
 | `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
+
+In `beforeToolExecute`, `ctx.decision` can stop a tool call before it runs:
+
+- `ctx.decision.redirect(message)`: a different path is correct. The message
+  tells the agent what to do instead, for example "Use `myProvider_clone`."
+- `ctx.decision.deny(reason)`: a policy refusal. Junior tells the agent not to
+  retry or work around the block, and to explain it.
+
+Both return the message to the agent as the tool result. Neither ends the
+turn, and neither is reported to Sentry as an exception.
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
 `ctx.users.resolveActor()` only when a tool needs the active actor's linked
@@ -297,6 +369,20 @@ can review them.
 Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata
 instead of the raw structured result.
+
+Every hook context has `ctx.cache`. Use it to keep short-lived copies of
+provider reads, such as a user's role. It is not durable. Junior can drop an
+entry at any time, so keep data that must survive in `ctx.state`. Return a
+`ttlMs` to cache the value. Omit `ttlMs` to skip the cache for a result, such
+as an incomplete response. A load that throws is not cached, and concurrent
+callers for one key share one load.
+
+```ts
+const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
+  value: await loadRole(repo, login),
+  ttlMs: 10 * 60 * 1000,
+}));
+```
 
 `heartbeat(ctx)` is for plugins that need server-side background work.
 Use `ctx.state` for plugin-namespaced durable state. Use

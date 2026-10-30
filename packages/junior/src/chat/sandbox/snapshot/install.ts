@@ -3,7 +3,10 @@ import type {
   PluginRuntimePostinstallCommand,
 } from "@/chat/plugins/types";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_COMMAND_PATH,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { trace } from "@/chat/sandbox/snapshot/span";
 
@@ -286,7 +289,7 @@ export async function postinstall(
           cmd: command.cmd,
           args: command.args,
           login: true,
-          pathPrefix: `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`,
+          path: SANDBOX_COMMAND_PATH,
           signal,
           timeoutMs,
           ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),

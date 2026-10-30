@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { PluginRouteMethod, User } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
+import type { SignInAuth } from "@/chat/sign-in/auth";
 import type {
   PluginApiRouteRegistration,
   PluginRouteRegistration,
@@ -15,16 +16,10 @@ export interface JuniorDashboardOptions {
   authPath?: string;
   /** Require a dashboard browser session before serving dashboard pages and APIs. */
   authRequired?: boolean;
-  /** Exact Google account emails allowed to open the dashboard. */
-  allowedEmails?: string[];
-  /** Google Workspace domains allowed to open the dashboard. */
-  allowedGoogleDomains?: string[];
   /** Browser route prefix for the dashboard shell. */
   basePath?: string;
   /** Public deployment origin used for auth callbacks and external links. */
   baseURL?: string;
-  /** Expose the config-gated component gallery for local visual QA. */
-  componentGallery?: boolean;
   /** Disable dashboard route mounting while preserving serializable config shape. */
   disabled?: boolean;
   /** Replace Conversation route responses with dashboard visual-QA fixtures. */
@@ -37,6 +32,10 @@ export interface JuniorDashboardOptions {
 
 export interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   agentName?: string;
+  /** The app's `allowedDomains`. Dashboard auth requires at least one. */
+  allowedDomains: string[];
+  /** Google sign-in session of the dashboard. */
+  auth?: SignInAuth;
   authenticatedRoutes?: readonly AuthenticatedRoute[];
   conversationWorkQueue?: ConversationWorkQueue;
   pluginRoutes?: PluginApiRouteRegistration[];
@@ -66,6 +65,8 @@ const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 
 /** Mount the dashboard app on the dashboard-owned host paths. */
 export async function createDashboardRouteRegistrations(args: {
+  allowedDomains: string[];
+  auth: SignInAuth | undefined;
   authenticatedRoutes: readonly AuthenticatedRoute[];
   conversationWorkQueue: ConversationWorkQueue;
   dashboard: JuniorDashboardOptions | undefined;
@@ -79,6 +80,8 @@ export async function createDashboardRouteRegistrations(args: {
   const createDashboardApp =
     args.createDashboardApp ?? (await loadDashboardAppFactory());
   return dashboardRouteRegistrations({
+    allowedDomains: args.allowedDomains,
+    auth: args.auth,
     authenticatedRoutes: args.authenticatedRoutes,
     conversationWorkQueue: args.conversationWorkQueue,
     dashboard: args.dashboard,
@@ -182,9 +185,6 @@ function dashboardHostRoutePaths(
     pagePath("settings"),
     `${pagePath("settings")}/*`,
   ];
-  if (dashboard.componentGallery) {
-    pagePaths.push(pagePath("dev"), `${pagePath("dev")}/*`);
-  }
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 
   return [
@@ -220,6 +220,8 @@ function dashboardHostRoutePaths(
     "/api/people/*",
     "/api/personal-tokens",
     "/api/personal-tokens/*",
+    "/api/service-accounts",
+    "/api/service-accounts/*",
     "/api/workspaces",
     "/api/workspaces/*",
     "/api/config",
@@ -253,7 +255,7 @@ function routePatternMatchesConcretePath(
   const patternSegments = routeSegments(pattern);
   const pathSegments = routeSegments(concretePath);
   for (let index = 0; index < patternSegments.length; index += 1) {
-    const segment = patternSegments[index];
+    const segment = patternSegments[index] ?? "";
     if (segment === "**" || segment === "*") {
       return true;
     }
@@ -305,6 +307,8 @@ function dashboardOwnedRoutePath(
 }
 
 function dashboardRouteRegistrations(args: {
+  allowedDomains: string[];
+  auth: SignInAuth | undefined;
   authenticatedRoutes: readonly AuthenticatedRoute[];
   conversationWorkQueue: ConversationWorkQueue;
   dashboard: JuniorDashboardOptions;
@@ -316,6 +320,8 @@ function dashboardRouteRegistrations(args: {
     const dashboardOptions: JuniorDashboardRuntimeOptions = {
       ...args.dashboard,
       agentName: botConfig.userName,
+      allowedDomains: args.allowedDomains,
+      ...(args.auth ? { auth: args.auth } : undefined),
       authenticatedRoutes: args.authenticatedRoutes,
       conversationWorkQueue: args.conversationWorkQueue,
       pluginRoutes: args.pluginRoutes,

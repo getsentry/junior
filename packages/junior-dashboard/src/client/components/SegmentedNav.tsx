@@ -81,7 +81,7 @@ function edgeFade(edges: HiddenEdges): CSSProperties | undefined {
 /**
  * Show links between sibling pages as underline tabs. The current page has
  * a solid underline that sits on the border below the row. App navigation
- * uses pills and in-place panel switches use `SegmentedTabs`, so the three
+ * uses pills and in-place panel switches use `ui/tabs`, so the three
  * levels stay distinct.
  *
  * With `fill`, links share the row width equally while their labels fit.

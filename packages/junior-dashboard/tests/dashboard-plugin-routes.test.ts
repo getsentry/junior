@@ -51,9 +51,9 @@ describe("dashboard plugin routes", () => {
   it("mounts dashboard routes through core app config", async () => {
     mockDashboardVirtualConfig();
     const app = await createApp({
+      allowedDomains: ["sentry.io"],
       dashboard: {
         authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
       },
       plugins: defineJuniorPlugins([]),
     });
@@ -89,9 +89,9 @@ describe("dashboard plugin routes", () => {
     mockDashboardVirtualConfig();
     const pluginApp = memoryRoutes();
     const app = await createApp({
+      allowedDomains: ["sentry.io"],
       dashboard: {
         authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
       },
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -125,7 +125,7 @@ describe("dashboard plugin routes", () => {
   it("protects plugin API route apps with dashboard auth", async () => {
     const pluginApp = memoryRoutes();
     const unauthenticated = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null),
       pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
     });
@@ -138,7 +138,7 @@ describe("dashboard plugin routes", () => {
     });
 
     const authenticated = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
           email: "person@sentry.io",
@@ -166,7 +166,7 @@ describe("dashboard plugin routes", () => {
       return c.body(null, 204);
     });
     const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth(null),
       pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
     });
@@ -185,7 +185,7 @@ describe("dashboard plugin routes", () => {
   it("passes sanitized auth context to plugin API route apps", async () => {
     let pluginContext: unknown;
     const authenticated = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
+      allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
           email: "person@sentry.io",
@@ -246,7 +246,7 @@ describe("dashboard plugin routes", () => {
     );
     const app = createDashboardApp({
       authRequired: false,
-      allowedGoogleDomains: [],
+      allowedDomains: [],
       pluginRoutes: [{ app: pluginApp, pluginName: "viewer" }],
     });
     const response = await app.fetch(

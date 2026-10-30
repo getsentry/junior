@@ -20,17 +20,36 @@ export const eventAutomationPrincipalSchema = z
   })
   .strict();
 
-/** Validate one persisted event-automation selector and its presentation metadata. */
+/**
+ * Validate one persisted event-automation selector and its presentation
+ * metadata. A trigger names one resource with a resource type and an
+ * identifier, or it names neither. With neither, it runs for every resource
+ * of the namespace that its filters match.
+ */
 export const eventAutomationTriggerSchema = z
   .object({
     events: z.array(eventTypeSchema).min(1),
     label: z.string().min(1),
     match: eventMatchSchema.optional(),
     namespace: z.string().min(1),
-    identifier: z.string().min(1).max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH),
-    resourceType: z.string().min(1),
+    identifier: z
+      .string()
+      .min(1)
+      .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
+      .optional(),
+    resourceType: z.string().min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (trigger) =>
+      (trigger.identifier === undefined) ===
+      (trigger.resourceType === undefined),
+    {
+      message:
+        "Set both a resource type and an identifier, or leave out both to run for every resource.",
+      path: ["identifier"],
+    },
+  );
 
 /** Event automations target a Slack channel or DM, never a message thread. */
 const eventAutomationDestinationSchema = slackDestinationSchema.omit({

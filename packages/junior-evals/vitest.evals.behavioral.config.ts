@@ -32,7 +32,9 @@ process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 // The agent test fixture calls the heartbeat route with this secret.
 process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
-// The agent test fixture mocks Vercel Blob, which stores attachments.
+// The agent test fixture mocks Vercel Blob, which stores attachments. Pin the
+// provider so the S3 defaults in apps/example/.env.example do not apply.
+process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "vercel-blob";
 process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_evalstore_secret";
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 // The agent test fixture signs GitHub webhooks with this secret.
@@ -46,7 +48,6 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
     `JUNIOR_EVAL_REDIS_URL must point at localhost or 127.0.0.1, got ${evalRedisHostname}`,
   );
 }
-process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
 const resolve = {
   alias: {

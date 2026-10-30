@@ -2,6 +2,7 @@ import {
   PluginToolInputError,
   type ObjectAnnotation,
   type PluginEgress,
+  type PluginSandbox,
   type User,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -14,6 +15,8 @@ export interface GoogleToolContext {
   accountEmail: string;
   allowedDomains: string[];
   egress: PluginEgress;
+  /** Holds full meeting records that are too long to return inline. */
+  sandbox: Pick<PluginSandbox, "root" | "run" | "writeFile">;
   users: {
     resolveActor(): Promise<{ user?: User } | undefined>;
     resolveTimezone(): Promise<string>;
@@ -56,7 +59,7 @@ export function requireAllowedEmails(
   });
   if (outside.length > 0) {
     throw new PluginToolInputError(
-      `Junior can only schedule with people at ${allowedDomains.join(", ")}. Not allowed: ${outside.join(", ")}`,
+      `You can only schedule with people at ${allowedDomains.join(", ")}. Not allowed: ${outside.join(", ")}`,
     );
   }
 }
@@ -153,7 +156,7 @@ export function googleApiError(
     )
   ) {
     return new Error(
-      `Junior's Google account does not have the permission that ${operation} needs. A Junior admin must reconnect it on the dashboard Admin page or with \`junior google connect\`.`,
+      `Your own Google account does not have the permission that ${operation} needs. An admin must reconnect it on the dashboard Admin page or with \`junior google connect\`.`,
     );
   }
   // Each Google API must be enabled in the Cloud project of the OAuth client.
@@ -162,7 +165,7 @@ export function googleApiError(
     error?.details?.some((detail) => detail.reason === "SERVICE_DISABLED")
   ) {
     return new Error(
-      `The Google API that ${operation} needs is not enabled for Junior's Google Cloud project. A Junior admin must enable it.`,
+      `The Google API that ${operation} needs is not enabled for the connected Google Cloud project. An admin must enable it.`,
     );
   }
   const detail = error?.message;
@@ -400,7 +403,7 @@ export async function readOwnEventForRequester(
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
-      `Junior does not know the requester's email, so it cannot check that they may ${action} this event.`,
+      `The requester's email is unknown, so the tool cannot check that they may ${action} this event.`,
     );
   }
   const path = `/calendar/v3/calendars/primary/events/${eventId}`;
@@ -417,7 +420,7 @@ export async function readOwnEventForRequester(
   }
   if (response.status === 404) {
     throw new PluginToolInputError(
-      `Junior's calendar has no event ${eventId}. Junior can only ${action} events it organizes; ask the organizer instead.`,
+      `Your calendar has no event ${eventId}. You can only ${action} events you organize; ask the organizer instead.`,
     );
   }
   if (response.status !== 200) {
@@ -426,7 +429,7 @@ export async function readOwnEventForRequester(
   const event = ownEventSchema.parse(response.body);
   if (event.organizer?.self !== true) {
     throw new PluginToolInputError(
-      `Junior does not organize this event, so it cannot ${action} it. Ask the organizer instead.`,
+      `You do not organize this event, so you cannot ${action} it. Ask the organizer instead.`,
     );
   }
   if (
@@ -435,7 +438,7 @@ export async function readOwnEventForRequester(
     )
   ) {
     throw new PluginToolInputError(
-      `Only people invited to this event can ask Junior to ${action} it.`,
+      `Only people invited to this event can ask you to ${action} it.`,
     );
   }
   return { event, eventId, path, status: "active" };

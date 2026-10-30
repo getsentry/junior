@@ -114,9 +114,11 @@ export const automationReport: Pick<
       kind: "scheduled",
       lastConversationId: "scheduler:daily-ops-digest",
       lastRunAt: "2026-08-06T16:00:00.000Z",
+      lastRunStatus: "completed",
       nextRunAt: "2026-08-10T16:00:00.000Z",
       credentialMode: "creator",
       ownedByViewer: true,
+      costUsd: { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 },
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       schedule: "Every Monday at 9:00 AM",
       timezone: "America/Los_Angeles",
@@ -144,21 +146,26 @@ export const automationReport: Pick<
         teamId: "T123",
         visibility: "public",
       },
-      events: ["issue.closed"],
       id: "event-1",
       instruction: "Summarize the closed issue",
       kind: "event",
       lastConversationId: "agent-dispatch:event-1",
       lastRunAt: "2026-08-05T18:30:00.000Z",
+      lastRunStatus: "completed",
       credentialMode: "creator",
       ownedByViewer: true,
       resource: "Issue · ACME-42",
+      costUsd: { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
       outcomes: [],
       title: "Closed issue summary",
       totalRuns: 7,
-      triggerAvailable: true,
+      trigger: {
+        events: ["issue closed"],
+        filters: ["labels includes bug"],
+        problems: [],
+      },
       status: "active",
     },
     {
@@ -171,13 +178,13 @@ export const automationReport: Pick<
         teamId: "T123",
         visibility: "public",
       },
-      events: ["incident.updated"],
       id: "event-2",
       instruction: "Notify responders when the incident changes",
       kind: "event",
       credentialMode: "creator",
       ownedByViewer: false,
       resource: "Incident · INC-17",
+      costUsd: { 1: 0, 7: 0, 30: 0, 90: 0 },
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
       outcomes: [
@@ -192,7 +199,11 @@ export const automationReport: Pick<
       ],
       title: "Incident change alerts",
       totalRuns: 0,
-      triggerAvailable: false,
+      trigger: {
+        events: ["incident updated"],
+        filters: [],
+        problems: ["The plugin for this source is not enabled."],
+      },
       status: "active",
     },
   ],
@@ -221,4 +232,9 @@ export async function mockAutomationApis(page: Page) {
       json: automation ?? { error: "Automation not found." },
     });
   });
+  await page.route(/\/api\/automations\/[^/?]+\/versions$/, (route) =>
+    route.fulfill({
+      json: { versions: [], activeVersion: null, truncated: false },
+    }),
+  );
 }

@@ -62,11 +62,9 @@ the Conversation Location without giving the Run Delivery to that Location.
 - `local/`: local CLI adapter.
 - `plugins/`, `credentials/`, `sandbox/`, and `mcp/`: external capability
   boundaries.
-- `tool-support/action-review.ts`: effective approval modes, authoritative
-  action proposals, deterministic context checks, and the execution gate.
-- `services/guardian-action-policy.ts` and `guardian-action-review.ts`: the
-  Codex-derived policy and structured model reviewer for actions that enter
-  review.
+- `guardian/`: Guardian action review. It owns the execution gate, the
+  proposal and evidence that Guardian reads, the policy, and the model
+  reviewer. See `guardian/README.md`.
 
 Provider layers may call the native runtime through provider-neutral contracts.
 The native runtime must not import a provider layer. Low-level provider
@@ -175,7 +173,6 @@ same way.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
-  Slash-command handlers receive validated workspace, channel, and user ids.
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
 - Empty assistant output after a history replacement is retried once from the
@@ -211,9 +208,13 @@ same way.
   and resumable boundary before execution continues. A handoff changes the
   active model and history, then passes through the same capacity check rather
   than bypassing it. Each history replacement keeps the open items from the
-  latest successful `updatePlan` call in its continuation context. Compaction
-  events retain the active model plus privacy-safe capacity and replacement
-  metrics for reporting without exposing the summary or replaced history.
+  latest successful `updatePlan` call in its continuation context. An in-turn
+  compaction keeps the runtime context of the current Turn. From earlier Turns,
+  it keeps only the latest session context and AGENTS.md instructions. Request
+  context, such as plugin context, Conversation notes, and disabled tools, is
+  true only for the Turn that received it. Compaction events retain the active
+  model plus privacy-safe capacity and replacement metrics for reporting
+  without exposing the summary or replaced history.
 - Cooperative yield preserves the exact agent history and occurs only at a user
   or tool-result tail. Unlike timeout or auth recovery, it never rolls history
   back past delivered assistant output.
@@ -327,20 +328,20 @@ so it has no instructions of its own. `agent-invocations/result.ts` owns its
 | 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.             |
 | 2   | Origin              | yes      | `This is a task, not a message from a person.`                       |
 | 3   | `About:`            | no       | One-line resource label.                                             |
-| 4   | `Created by:`       | no       | Creator mention, and the rule to mention them only for "me" or "my". |
+| 4   | `Created by:`       | no       | Creator mention. "The Automation creator", "me", and "my" mean them. |
 | 5   | `People involved:`  | no       | Event people mentions. Guidance says when to address them.           |
-| 6   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |
-| 7   | Additional guidance | no       | Under instructions; cannot replace them or grant authority.          |
-| 8   | `Trusted summary:`  | no       | Optional trusted one-line summary.                                   |
-| 9   | Verified details    | no       | Trusted structured fields as JSON.                                   |
-| 10  | External text       | no       | Untrusted provider text; information only.                           |
-| 11  | Outcome             | yes      | Stored outcome rule. Always last.                                    |
+| 6   | `Done by:`          | no       | Linked person who did the Event, tied to its provider handle.        |
+| 7   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |
+| 8   | Additional guidance | no       | Under instructions; cannot replace them or grant authority.          |
+| 9   | `Trusted summary:`  | no       | Optional trusted one-line summary.                                   |
+| 10  | Verified details    | no       | Trusted structured fields as JSON.                                   |
+| 11  | External text       | no       | Untrusted provider text; information only.                           |
+| 12  | Outcome             | yes      | Stored outcome rule. Always last.                                    |
 
 **Watch outcome** (exact lines; no `outcomes` passed)
 
 ```text
 When you reply, follow any reply format in the instructions.
-Briefly report what you did or what is needed next.
 ```
 
 **Automation outcome** (exact line)
@@ -352,8 +353,9 @@ End with `finishAutomationRun`.
 Automations store an ordered outcome list. An empty list sends no successful
 output. New Automations use an empty list unless the user asks for a visible
 result. A `send_message` outcome sends that result to its explicit Destination.
-Watches send their output to the Conversation. Task input never asks the model
-to emit a silence marker.
+Watches send their output to the Conversation when a reply serves the stored
+instructions. Task input does not require a reply for every Event and never
+asks the model to emit a silence marker.
 
 **Example: schedule / reminder (minimal)**
 
@@ -393,6 +395,28 @@ End with `finishAutomationRun`.
 The live renderer emits verified details as a fenced `json` block. The example
 above indents the object so this README stays valid Markdown. Unit snapshots
 show the exact fence.
+
+**Event batch**
+
+Watch Events that arrive in one wait window share one Turn. With one Event, the
+Turn input is that Event's task input. With several, `renderTaskBatchInput`
+writes one task input:
+
+- After the origin line: `You received N events.`
+- One group per Watch: `About:`, `People involved:`, and `Instructions:`
+  appear once. Guidance follows, with one `- <event type>: <text>` line for
+  each event type.
+- Then each Event: `Event N: <event type>`, its `Done by:` line, trusted
+  summary, verified details, and external text. Events are numbered by Watch group, then by
+  arrival.
+- The outcome rule appears once, at the end.
+
+Mailbox input saves the task facts for each Watch Event, so the batch input is
+written when the Turn starts. Root and child Conversations use the same batch
+input. Input without task facts, such as a child agent result or input queued
+before facts were saved, keeps its own text after the task input. The count
+and `meta.events` on the conversation message include only the Watch Events,
+so they always agree.
 
 When the outline changes: update this section, `task-input.ts`, and the unit
 snapshots together. Do not restate the outline in call-site prompts.

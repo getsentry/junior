@@ -22,11 +22,8 @@ import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals
 import { formatSandboxCommandResult } from "@/chat/sandbox/command-result";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { CredentialContext } from "@/chat/credentials/context";
-import {
-  isSandboxCommandStreamInterruptedError,
-  isSandboxUnavailableError,
-  throwSandboxOperationError,
-} from "@/chat/sandbox/errors";
+import { throwSandboxOperationError } from "@/chat/sandbox/errors";
+import { getSandboxProvider } from "@/chat/sandbox/provider";
 import {
   getWorkspaceSnapshotNotReadyError,
   workspaceSnapshotNotReadyUserMessage,
@@ -103,6 +100,8 @@ export interface SandboxOptions {
   timeoutMs?: number;
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
+  /** Conversation that sandbox egress records for its credentialed requests. */
+  conversationId?: string;
   credentialEgress?: CredentialContext;
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
@@ -192,6 +191,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     }
     const now = Date.now();
     const token = createSandboxEgressCredentialToken({
+      conversationId: options.conversationId,
       credentials: credentialEgress,
       egressId,
       ttlMs: sandboxEgressTokenTtlMs,
@@ -372,40 +372,31 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         "process.executable.name": "bash",
       },
       async () => {
-        try {
-          const response = await executeBash({
-            command,
-            cwd,
-            ...(env ? { env } : undefined),
-            ...(timeoutMs ? { timeoutMs } : undefined),
-            ...(context.signal ? { signal: context.signal } : undefined),
-          });
-          setSpanAttributes({
-            "process.exit.code": response.exitCode,
-            "app.sandbox.stdout_bytes": Buffer.byteLength(
-              response.stdout ?? "",
-              "utf8",
-            ),
-            "app.sandbox.stderr_bytes": Buffer.byteLength(
-              response.stderr ?? "",
-              "utf8",
-            ),
-            ...(response.aborted
-              ? { "error.type": "outcome_unknown" }
-              : response.exitCode !== 0
-                ? { "error.type": "nonzero_exit" }
-                : {}),
-          });
-          setSpanStatus(response.exitCode === 0 ? "ok" : "error");
-          return response;
-        } catch (error) {
-          setSpanAttributes({
-            "error.type":
-              error instanceof Error ? error.name : "sandbox_execute_error",
-          });
-          setSpanStatus("error");
-          throw error;
-        }
+        const response = await executeBash({
+          command,
+          cwd,
+          ...(env ? { env } : undefined),
+          ...(timeoutMs ? { timeoutMs } : undefined),
+          ...(context.signal ? { signal: context.signal } : undefined),
+        });
+        setSpanAttributes({
+          "process.exit.code": response.exitCode,
+          "app.sandbox.stdout_bytes": Buffer.byteLength(
+            response.stdout ?? "",
+            "utf8",
+          ),
+          "app.sandbox.stderr_bytes": Buffer.byteLength(
+            response.stderr ?? "",
+            "utf8",
+          ),
+          ...(response.aborted
+            ? { "error.type": "outcome_unknown" }
+            : response.exitCode !== 0
+              ? { "error.type": "nonzero_exit" }
+              : {}),
+        });
+        setSpanStatus(response.exitCode === 0 ? "ok" : "error");
+        return response;
       },
     );
     // Always consume egress auth/permission signals regardless of exit code.
@@ -431,7 +422,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       stdout_truncated: result.stdoutTruncated,
       stderr_truncated: result.stderrTruncated,
       ...(authRequired ? { auth_required: authRequired } : undefined),
-      ...(permissionDenied ? { permission_denied: permissionDenied } : undefined),
+      ...(permissionDenied
+        ? { permission_denied: permissionDenied }
+        : undefined),
     }) as T;
   };
 
@@ -633,8 +626,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
-          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
+          ...(typeof rawInput.glob === "string"
+            ? { glob: rawInput.glob }
+            : undefined),
           ...(typeof rawInput.ignoreCase === "boolean"
             ? { ignoreCase: rawInput.ignoreCase }
             : undefined),
@@ -681,7 +678,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
           ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
@@ -706,7 +705,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         const response = await listDir({
           fs: fileSystem,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
           ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
@@ -767,11 +768,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       if (getWorkspaceSnapshotNotReadyError(error)) {
         return createWorkspaceSnapshotNotReadyToolResult(error) as T;
       }
-      if (isSandboxUnavailableError(error)) {
+      if (getSandboxProvider().errors.isUnavailable(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
       }
-      if (isSandboxCommandStreamInterruptedError(error)) {
+      if (getSandboxProvider().errors.isCommandStreamInterrupted(error)) {
         throw new ToolInputError(
           `The sandbox command stream was interrupted during ${params.toolName}, so the operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
           { cause: error },
@@ -792,11 +793,14 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     } catch (error) {
       const notReady = getWorkspaceSnapshotNotReadyError(error);
       if (notReady) {
-        throw new ToolInputError(workspaceSnapshotNotReadyUserMessage(notReady), {
-          cause: notReady,
-        });
+        throw new ToolInputError(
+          workspaceSnapshotNotReadyUserMessage(notReady),
+          {
+            cause: notReady,
+          },
+        );
       }
-      if (isSandboxUnavailableError(error)) {
+      if (getSandboxProvider().errors.isUnavailable(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }
       throw error;

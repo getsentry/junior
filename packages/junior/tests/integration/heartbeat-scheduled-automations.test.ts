@@ -185,7 +185,9 @@ describe("scheduled automation heartbeat", () => {
       db,
       `sched_plugin_1:${TEST_RUN_AT_MS}`,
     );
+    // The run stores the Automation version that it dispatched.
     expect(running).toMatchObject({
+      automationVersion: 1,
       status: "running",
       dispatchId: expect.any(String),
     });
@@ -204,7 +206,11 @@ describe("scheduled automation heartbeat", () => {
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
-    expect(dispatchRecord?.source).toEqual({ kind: "scheduled_automation" });
+    expect(dispatchRecord?.source).toEqual({
+      kind: "scheduled_automation",
+      automationId: "sched_plugin_1",
+      automationRunId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
+    });
     expect(dispatchRecord?.metadata).toMatchObject({
       runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
       schedule: "Once at noon",
@@ -226,6 +232,7 @@ describe("scheduled automation heartbeat", () => {
     await runAuthorizedHeartbeat();
 
     await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
+      automationVersion: 1,
       status: "completed",
       resultMessageTs: "1700000000.000001",
     });

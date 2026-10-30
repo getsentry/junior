@@ -32,6 +32,7 @@ function eventPlugin() {
     },
     events: {
       resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
+      events: { "issue.closed": { reach: "resource" } },
     },
   });
 }

@@ -1,15 +1,19 @@
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { connectionListSchema } from "@/api/schema";
-import { closeDb } from "@/chat/db";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { closeDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { juniorIdentities } from "@/db/schema";
 import { GET as handleOAuthCallback } from "@/handlers/oauth-callback";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+import { createEvalOAuthAccountApp } from "../../fixtures/eval-oauth-account";
 import {
   testWaitUntil,
   waitUntilCallbacks,
@@ -29,6 +33,23 @@ function authenticatedApi(email: string) {
   return app;
 }
 
+async function evalOAuthIdentities() {
+  return await getSqlExecutor()
+    .db()
+    .select({
+      email: juniorIdentities.email,
+      emailVerified: juniorIdentities.emailVerified,
+      userId: juniorIdentities.userId,
+    })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "eval-oauth"),
+        eq(juniorIdentities.providerSubjectId, "eval-account-1"),
+      ),
+    );
+}
+
 async function listConnections(app: ReturnType<typeof authenticatedApi>) {
   const response = await app.request("http://localhost/api/connections");
   expect(response.status).toBe(200);
@@ -36,7 +57,7 @@ async function listConnections(app: ReturnType<typeof authenticatedApi>) {
 }
 
 describe("connections API", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -44,37 +65,14 @@ describe("connections API", () => {
       EVAL_OAUTH_CLIENT_SECRET: "eval-oauth-secret",
       JUNIOR_BASE_URL: "https://junior.example.com",
     };
-    // Same OAuth endpoints as the shared eval-oauth MSW handlers.
-    pluginCatalogRuntime.setConfig({
-      inlineManifests: [
-        {
-          manifest: {
-            name: "eval-oauth",
-            displayName: "Eval OAuth",
-            description: "Eval OAuth fixture",
-            configKeys: [],
-            credentials: {
-              type: "oauth-bearer",
-              domains: ["example.com"],
-              authTokenEnv: "EVAL_OAUTH_ACCESS_TOKEN",
-            },
-            oauth: {
-              clientIdEnv: "EVAL_OAUTH_CLIENT_ID",
-              clientSecretEnv: "EVAL_OAUTH_CLIENT_SECRET",
-              authorizeEndpoint:
-                "https://example.com/junior-eval-oauth/oauth/authorize",
-              tokenEndpoint:
-                "https://example.com/junior-eval-oauth/oauth/token",
-              scope: "read",
-            },
-          },
-        },
-      ],
+    await createEvalOAuthAccountApp({
+      id: "eval-account-1",
+      label: "person",
+      verifiedEmails: ["personal@example.net", "Person@Example.com"],
     });
   });
 
   afterEach(async () => {
-    pluginCatalogRuntime.setConfig(undefined);
     process.env = { ...ORIGINAL_ENV };
     await closeDb();
   });
@@ -136,6 +134,22 @@ describe("connections API", () => {
     expect(await listConnections(otherApp)).toEqual([
       expect.objectContaining({ connected: false, provider: "eval-oauth" }),
     ]);
+    const viewer = await resolveViewerUser("person@example.com");
+    expect(await evalOAuthIdentities()).toEqual([
+      {
+        email: "person@example.com",
+        emailVerified: true,
+        userId: viewer?.id,
+      },
+    ]);
+    const storedTokens = await createUserTokenStore().get(
+      webActorFromEmail("person@example.com").userId,
+      "eval-oauth",
+    );
+    expect(storedTokens?.account).toEqual({
+      id: "eval-account-1",
+      label: "person",
+    });
 
     const disconnectResponse = await app.request(
       "http://localhost/api/connections/eval-oauth",
@@ -146,6 +160,7 @@ describe("connections API", () => {
     expect(await listConnections(app)).toEqual([
       expect.objectContaining({ connected: false, provider: "eval-oauth" }),
     ]);
+    expect(await evalOAuthIdentities()).toEqual([]);
   });
 
   it("rejects providers without user OAuth", async () => {

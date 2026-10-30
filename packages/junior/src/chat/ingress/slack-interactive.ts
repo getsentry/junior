@@ -103,6 +103,7 @@ async function answerSlackUserInput(args: {
   messageId: string;
   messageTs: SlackMessageTs;
   payload: SlackInteractivePayload;
+  isAuthorAllowed: (userId: string) => Promise<boolean>;
   persistMessage: (message: Message) => Promise<void>;
   state: StateAdapter;
   threadTs: SlackMessageTs;
@@ -130,6 +131,11 @@ async function answerSlackUserInput(args: {
       args.state,
     ))
   ) {
+    return;
+  }
+  // An answer starts a Turn as the person who answered, so it needs the same
+  // allowed domain check as a Slack mention.
+  if (!(await args.isAuthorAllowed(userId))) {
     return;
   }
   if (
@@ -196,6 +202,7 @@ async function handleUserInputChoice(args: {
   action: NonNullable<SlackInteractivePayload["actions"]>[number];
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
+  isAuthorAllowed: (userId: string) => Promise<boolean>;
   persistMessage: (message: Message) => Promise<void>;
   state: StateAdapter;
 }): Promise<void> {
@@ -218,6 +225,7 @@ async function handleUserInputChoice(args: {
     inputTs: actionTs,
     messageId: `slack-user-input-answer:${actionTs}`,
     payload: args.payload,
+    isAuthorAllowed: args.isAuthorAllowed,
     persistMessage: args.persistMessage,
     state: args.state,
   });
@@ -247,6 +255,7 @@ async function handleUserInputOpenForm(args: {
 async function handleUserInputSubmission(args: {
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
+  isAuthorAllowed: (userId: string) => Promise<boolean>;
   persistMessage: (message: Message) => Promise<void>;
   state: StateAdapter;
 }): Promise<void> {
@@ -272,6 +281,7 @@ async function handleUserInputSubmission(args: {
     messageId: `slack-user-input-answer:${view.id}`,
     messageTs,
     payload: args.payload,
+    isAuthorAllowed: args.isAuthorAllowed,
     persistMessage: args.persistMessage,
     state: args.state,
     threadTs,
@@ -285,6 +295,7 @@ async function handleUserInputSubmission(args: {
 export async function handleSlackInteractivePayload(args: {
   adapter: SlackAdapter;
   payload: SlackInteractivePayload;
+  isAuthorAllowed: (userId: string) => Promise<boolean>;
   persistMessage: (message: Message) => Promise<void>;
   state: StateAdapter;
   userTokenStore: UserTokenStore;

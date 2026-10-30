@@ -42,7 +42,7 @@ const managedEgressReadResultSchema = pluginToolOutputSchema.extend({
 });
 
 type EgressPolicyModule = typeof import("@/chat/sandbox/egress/policy");
-type EgressProxyModule = typeof import("@/chat/sandbox/egress/proxy");
+type EgressVercelModule = typeof import("@/chat/sandbox/egress/vercel");
 type EgressSessionModule = typeof import("@/chat/sandbox/egress/session");
 type LoggingModule = typeof import("@/chat/logging");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
@@ -50,23 +50,23 @@ type StateAdapterModule = typeof import("@/chat/state/adapter");
 interface LoadedModules {
   logging: LoggingModule;
   policy: EgressPolicyModule;
-  proxy: EgressProxyModule;
+  vercel: EgressVercelModule;
   session: EgressSessionModule;
   state: StateAdapterModule;
 }
 
 async function loadModules(): Promise<LoadedModules> {
   vi.resetModules();
-  const [logging, policy, proxy, session, state] = await Promise.all([
+  const [logging, policy, vercel, session, state] = await Promise.all([
     import("@/chat/logging"),
     import("@/chat/sandbox/egress/policy"),
-    import("@/chat/sandbox/egress/proxy"),
+    import("@/chat/sandbox/egress/vercel"),
     import("@/chat/sandbox/egress/session"),
     import("@/chat/state/adapter"),
   ]);
   await state.disconnectStateAdapter();
   await state.getStateAdapter().connect();
-  return { logging, policy, proxy, session, state };
+  return { logging, policy, vercel, session, state };
 }
 
 function forwardUrlFor(policy: unknown, host: string): string {
@@ -276,6 +276,13 @@ function mockGitHubInstallationToken() {
 
 describe("sandbox egress proxy integration", () => {
   let modules: LoadedModules;
+  // Vercel is the sandbox provider whose forwarded requests these tests send.
+  const buildVercelNetworkPolicy = (
+    input: Parameters<EgressPolicyModule["buildSandboxEgressNetworkPolicy"]>[0],
+  ) =>
+    modules.vercel.toVercelNetworkPolicy(
+      modules.policy.buildSandboxEgressNetworkPolicy(input),
+    );
   let pluginApp: PluginAppFixture | undefined;
 
   beforeEach(async () => {
@@ -303,7 +310,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
@@ -326,7 +333,7 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({ forwardURL }),
       {
         fetch: upstreamFetch as typeof fetch,
@@ -351,12 +358,12 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({ forwardURL }),
       { verifyOidc: async () => ({ sandbox_id: EGRESS_ID }) },
     );
@@ -384,12 +391,12 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, OAUTH_BROKER_PROVIDER_HOST);
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamHost: OAUTH_BROKER_PROVIDER_HOST,
@@ -442,7 +449,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, OAUTH_BROKER_PROVIDER_HOST);
@@ -451,7 +458,7 @@ describe("sandbox egress proxy integration", () => {
         new Response(new Headers(init?.headers).get("authorization")),
     );
 
-    const readResponse = await modules.proxy.proxySandboxEgressRequest(
+    const readResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamHost: OAUTH_BROKER_PROVIDER_HOST,
@@ -464,7 +471,7 @@ describe("sandbox egress proxy integration", () => {
     expect(readResponse.status).toBe(200);
     await expect(readResponse.text()).resolves.toBe("Bearer org-read-token");
 
-    const writeResponse = await modules.proxy.proxySandboxEgressRequest(
+    const writeResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         method: "POST",
@@ -493,7 +500,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
       traceConfig: { domains: ["*.managed-egress.example.test"] },
       traceHeaders: {
@@ -517,7 +524,7 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         headers: {
@@ -545,7 +552,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
       traceHeaders: {
         "sentry-trace": "trace-span-1",
@@ -568,7 +575,7 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         headers: {
@@ -589,12 +596,17 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("reuses broker-managed credentials across read and write egress", async () => {
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      conversationId: "conversation-1",
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
@@ -603,7 +615,7 @@ describe("sandbox egress proxy integration", () => {
         new Response(new Headers(init?.headers).get("authorization")),
     );
 
-    const readResponse = await modules.proxy.proxySandboxEgressRequest(
+    const readResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({ forwardURL }),
       {
         fetch: upstreamFetch as typeof fetch,
@@ -615,7 +627,7 @@ describe("sandbox egress proxy integration", () => {
       "Bearer integration-egress-token",
     );
 
-    const writeResponse = await modules.proxy.proxySandboxEgressRequest(
+    const writeResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         method: "POST",
@@ -628,11 +640,24 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
+    unregister();
+
     expect(writeResponse.status).toBe(200);
     await expect(writeResponse.text()).resolves.toBe(
       "Bearer integration-egress-token",
     );
     expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    const writeAudit = records.find(
+      (record) =>
+        record.eventName === "sandbox.egress.upstream.requested" &&
+        record.attributes["http.request.method"] === "POST",
+    );
+    expect(writeAudit?.attributes).toMatchObject({
+      "app.actor.type": "user",
+      "app.log.audit": true,
+      "gen_ai.conversation.id": "conversation-1",
+      "user.id": ACTOR_ID,
+    });
   });
 
   it("intercepts credential-injected provider traffic before live forwarding", async () => {
@@ -641,7 +666,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, PROVIDER_HOST);
@@ -650,7 +675,7 @@ describe("sandbox egress proxy integration", () => {
       return Response.json({ ok: true });
     });
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamPath: "/v1/repos?query=first",
@@ -678,7 +703,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_HOST);
@@ -687,7 +712,7 @@ describe("sandbox egress proxy integration", () => {
         new Response(new Headers(init?.headers).get("authorization")),
     );
 
-    const readResponse = await modules.proxy.proxySandboxEgressRequest(
+    const readResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamHost: MANAGED_PROVIDER_HOST,
@@ -701,7 +726,7 @@ describe("sandbox egress proxy integration", () => {
     expect(readResponse.status).toBe(200);
     await expect(readResponse.text()).resolves.toBe("Bearer installation-read");
 
-    const writeResponse = await modules.proxy.proxySandboxEgressRequest(
+    const writeResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         method: "POST",
@@ -882,13 +907,13 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_HOST);
     const upstreamFetch = vi.fn(async () => new Response("provider response"));
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamHost: MANAGED_PROVIDER_HOST,
@@ -929,12 +954,12 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_HOST);
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamHost: MANAGED_PROVIDER_HOST,
@@ -973,7 +998,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
@@ -982,7 +1007,7 @@ describe("sandbox egress proxy integration", () => {
         new Response(new Headers(init?.headers).get("authorization")),
     );
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({
           query:
@@ -1026,7 +1051,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_UPLOAD_HOST);
@@ -1049,7 +1074,7 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: file,
         forwardURL,
@@ -1083,7 +1108,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
@@ -1100,7 +1125,7 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({ ref: "main", inputs: { bump: "minor" } }),
         forwardURL,
@@ -1130,7 +1155,7 @@ describe("sandbox egress proxy integration", () => {
       ttlMs: 60_000,
     });
     const forwardURL = forwardUrlFor(
-      modules.policy.buildSandboxEgressNetworkPolicy({ credentialToken }),
+      buildVercelNetworkPolicy({ credentialToken }),
       GITHUB_API_HOST,
     );
     const upstreamFetch = vi.fn(
@@ -1147,10 +1172,13 @@ describe("sandbox egress proxy integration", () => {
     });
     await request.arrayBuffer();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(request, {
-      fetch: upstreamFetch as typeof fetch,
-      verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-    });
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      request,
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({
@@ -1174,7 +1202,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
@@ -1200,7 +1228,7 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({
           query:
@@ -1237,6 +1265,73 @@ describe("sandbox egress proxy integration", () => {
     });
   });
 
+  it.each([
+    {
+      name: "keeps GitHub refusals that are not access denials generic",
+      body: { message: "This workflow run cannot be retried" },
+      message:
+        "github returned HTTP 403 after the runtime injected the installation-write grant. The request was forwarded; this is not a local runtime block.",
+    },
+    {
+      name: "classifies GitHub access denials with the accepted permissions",
+      body: { message: "Resource not accessible by integration" },
+      message:
+        "GitHub denied access: Resource not accessible by integration. This endpoint accepts these GitHub permissions: actions=write.",
+    },
+  ])("$name", async ({ body, message }) => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin({
+      appPermissions: {
+        contents: "read",
+        issues: "write",
+      },
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = buildVercelNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamPath =
+      "/repos/getsentry/junior/actions/runs/123/rerun-failed-jobs";
+
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath,
+      }),
+      {
+        fetch: vi.fn(async () =>
+          HttpResponse.json(body, {
+            status: 403,
+            headers: { "x-accepted-github-permissions": "actions=write" },
+          }),
+        ) as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual(body);
+    await expect(
+      modules.session.consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      provider: "github",
+      grant: { name: "installation-write", access: "write" },
+      message,
+      source: "upstream",
+      status: 403,
+      upstreamHost: GITHUB_API_HOST,
+      upstreamPath,
+    });
+  });
+
   it("passes through successful GitHub GraphQL responses without permission signals", async () => {
     configureGitHubAppEnv();
     mockGitHubInstallationToken();
@@ -1251,7 +1346,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
@@ -1265,7 +1360,7 @@ describe("sandbox egress proxy integration", () => {
       },
     };
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({
           query:
@@ -1299,13 +1394,13 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         method: "POST",
@@ -1322,7 +1417,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub issue creation must use the github_createIssue tool, which owns idempotency and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1337,13 +1432,13 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({
           query:
@@ -1364,7 +1459,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub issue creation must use the github_createIssue tool, which owns idempotency and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
@@ -1382,13 +1477,13 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({
           title: "test",
@@ -1410,7 +1505,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub pull request creation must use the github_createPullRequest tool, which owns idempotency and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1431,13 +1526,13 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({
           title: "updated title",
@@ -1457,7 +1552,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub issue updates must use the github_updateIssue tool, which owns requester attribution and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1476,7 +1571,7 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
@@ -1484,7 +1579,7 @@ describe("sandbox egress proxy integration", () => {
 
     let response: Response;
     try {
-      response = await modules.proxy.proxySandboxEgressRequest(
+      response = await modules.vercel.proxyVercelSandboxEgressRequest(
         proxiedRequest({
           body: JSON.stringify({
             query:
@@ -1511,7 +1606,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+        "GitHub GraphQL request body is too large to inspect before issuing credentials.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     expect(
@@ -1520,7 +1615,7 @@ describe("sandbox egress proxy integration", () => {
       )?.attributes,
     ).toMatchObject({
       "app.sandbox.egress.policy.reason":
-        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+        "GitHub GraphQL request body is too large to inspect before issuing credentials.",
     });
   });
 
@@ -1531,13 +1626,13 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         body: JSON.stringify({
           event: "APPROVE",
@@ -1557,7 +1652,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.",
+        "GitHub pull request review request body is too large to inspect before issuing credentials.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
@@ -1576,12 +1671,12 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, MANAGED_PROVIDER_HOST);
 
-    const readResponse = await modules.proxy.proxySandboxEgressRequest(
+    const readResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamHost: MANAGED_PROVIDER_HOST,
@@ -1594,7 +1689,7 @@ describe("sandbox egress proxy integration", () => {
     );
     expect(readResponse.status).toBe(401);
 
-    const writeResponse = await modules.proxy.proxySandboxEgressRequest(
+    const writeResponse = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         method: "POST",
@@ -1633,13 +1728,13 @@ describe("sandbox egress proxy integration", () => {
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
-    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+    const networkPolicy = buildVercelNetworkPolicy({
       credentialToken,
     });
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
       proxiedRequest({
         forwardURL,
         upstreamHost: GITHUB_API_HOST,

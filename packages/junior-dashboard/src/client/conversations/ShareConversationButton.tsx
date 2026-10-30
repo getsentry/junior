@@ -2,13 +2,18 @@ import { useState } from "react";
 import { useHref } from "react-router";
 import { Check, Share2 } from "lucide-react";
 
-import { Button } from "../components/Button";
+import { Button } from "../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { conversationPath } from "./conversationRoutes";
 
 /** Share a conversation link without changing who can access it. */
 export function ShareConversationButton(props: {
   conversationId: string;
-  layout?: "button" | "menu";
+  layout?: "button" | "icon" | "menu";
 }) {
   const href = useHref(conversationPath(props.conversationId));
   const [status, setStatus] = useState<
@@ -70,16 +75,35 @@ export function ShareConversationButton(props: {
     </>
   );
   const button =
-    props.layout === "menu" ? (
-      <button
+    props.layout === "icon" ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              focusableWhenDisabled
+              aria-label={label}
+              className="text-dashboard-text-muted"
+              disabled={status === "sharing"}
+              onClick={() => void shareLink()}
+              size="icon"
+            >
+              <Icon aria-hidden="true" size={15} />
+            </Button>
+          }
+        />
+        <TooltipContent size="compact" side="bottom">
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    ) : props.layout === "menu" ? (
+      <Button
         aria-label={label}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         disabled={status === "sharing"}
         onClick={() => void shareLink()}
-        type="button"
+        size="menu"
       >
         {content}
-      </button>
+      </Button>
     ) : (
       <Button
         aria-label={label}

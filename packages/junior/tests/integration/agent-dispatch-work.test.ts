@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createOrGetDispatch,
   getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
@@ -115,12 +116,27 @@ describe("agent dispatch conversation work", () => {
   }, 15_000);
 
   it("runs enqueued dispatch work through production routing with exact authority", async () => {
-    const dispatch = await createDispatch(
-      "shared-runtime",
-      undefined,
-      undefined,
-      { label: "Scheduled automation", detail: "Weekly" },
-    );
+    const store = getConversationStore();
+    // A live Slack event saw the channel as private after the Automation saved
+    // its public visibility.
+    await store.recordActivity({
+      conversationId: "slack:C123:1700000000.000300",
+      destination,
+      source: "slack",
+      visibility: "private",
+    });
+    const { record: dispatch } = await createOrGetDispatch({
+      nowMs: Date.now(),
+      options: {
+        destination,
+        destinationVisibility: "public",
+        idempotencyKey: "shared-runtime",
+        input: "Post the scheduled digest.",
+        replyAttribution: { label: "Scheduled automation", detail: "Weekly" },
+        source: { kind: "scheduled_automation" },
+      },
+      plugin: "scheduler",
+    });
     const agentRunner = createModelAgentRunner(
       createModelStream([sendMessage("Scheduled digest")]),
     );
@@ -136,7 +152,6 @@ describe("agent dispatch conversation work", () => {
       onRequest: (request) => titleRequests.push(request),
     });
     const conversationId = getDispatchConversationId(dispatch);
-    const store = getConversationStore();
     const titleWork: Promise<unknown>[] = [];
     const waitUntil = (work: Promise<unknown>) => titleWork.push(work);
 
@@ -193,6 +208,15 @@ describe("agent dispatch conversation work", () => {
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });
+    // Only live provider signals refresh the visibility that the channel's
+    // Conversations share.
+    await expect(
+      store.getDestinationVisibility({
+        provider: "slack",
+        providerDestinationId: destination.channelId,
+        providerTenantId: destination.teamId,
+      }),
+    ).resolves.toBe("private");
   }, 15_000);
 
   it("binds the default same-channel outcome reply to the dispatch's origin thread", async () => {

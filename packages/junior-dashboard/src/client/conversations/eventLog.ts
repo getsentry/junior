@@ -111,10 +111,68 @@ export function eventLogTone(data: ConversationReportEventData): string {
   }
   if (
     (data.type === "guardian_action_reviewed" && data.decision === "ask") ||
+    (data.type === "turn_lifecycle" && data.state === "blocked") ||
     (data.type === "subagent" &&
       (data.status === "aborted" || data.status === "blocked"))
   ) {
     return "text-amber-200";
   }
   return "text-dashboard-text-subtle";
+}
+
+/** One event log entry with its display text. */
+export type EventLogRow = {
+  event: ConversationReportEvent;
+  summary: string;
+  metadata: string;
+};
+
+/** Build the display text for each event log entry. */
+export function eventLogRows(
+  events: readonly ConversationReportEvent[],
+): EventLogRow[] {
+  return events.map((event) => {
+    const model = eventLogModel(event);
+    return {
+      event,
+      summary: eventLogSummary(event.data).replace(/\s+/g, " ").slice(0, 300),
+      metadata: [
+        model?.modelId,
+        model?.modelProfile,
+        model?.reasoningLevel && `${model.reasoningLevel} reasoning`,
+        eventLogUsage(event),
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  });
+}
+
+/**
+ * Keep the rows that match a trimmed, lowercase search query. The match
+ * includes the full event payload, so large payloads are serialized here.
+ */
+export function filterEventLogRows(
+  rows: EventLogRow[],
+  normalizedQuery: string,
+): EventLogRow[] {
+  if (!normalizedQuery) return rows;
+  return rows.filter(({ event, summary, metadata }) =>
+    `${summary} ${metadata} ${JSON.stringify(event)}`
+      .toLowerCase()
+      .includes(normalizedQuery),
+  );
+}
+
+/** Find the visible rows before and after the selected event. */
+export function adjacentEventLogSeqs(
+  rows: readonly EventLogRow[],
+  seq: number | undefined,
+): { previous?: number; next?: number } {
+  const index = rows.findIndex((row) => row.event.seq === seq);
+  if (index === -1) return {};
+  return {
+    previous: rows[index - 1]?.event.seq,
+    next: rows[index + 1]?.event.seq,
+  };
 }

@@ -39,35 +39,65 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(details).toBeVisible();
+  // Turn context takes the details panel and gives it back on close.
   const contextAction = page.getByRole("button", { name: "View turn context" });
   await contextAction.scrollIntoViewIfNeeded();
   await contextAction.focus();
   await page.keyboard.press("Enter");
-  const contextPanel = page.getByRole("dialog", {
+  const contextPanel = page.getByRole("complementary", {
     name: "Turn context",
     exact: true,
   });
   await expect(
     contextPanel.getByRole("heading", { name: "Recalled memories" }),
   ).toBeVisible();
-  const closeContext = contextPanel.getByRole("button", {
-    name: "Close turn context",
-    exact: true,
-  });
-  await expect(closeContext).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(contextPanel.locator("summary").last()).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(closeContext).toBeFocused();
+  await expect(details).toBeHidden();
+  await expect(contextAction).toHaveAttribute("aria-expanded", "true");
+  await expect(contextAction).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(contextPanel).toBeHidden();
+  await expect(details).toBeVisible();
   await expect(contextAction).toBeFocused();
-  await page.setViewportSize({ width: 390, height: 844 });
+  // A mouse open must not leave the tooltip open to take the first Escape.
+  await contextAction.hover();
+  await expect(
+    page.getByText("View turn context", { exact: true }),
+  ).toBeVisible();
   await contextAction.click();
   await expect(contextPanel).toBeVisible();
-  await contextPanel
-    .getByRole("button", { name: "Close turn context", exact: true })
+  await page.keyboard.press("Escape");
+  await expect(contextPanel).toBeHidden();
+  await contextAction.click();
+  await expect(contextPanel).toBeVisible();
+  await contextAction.click();
+  await expect(contextPanel).toBeHidden();
+  await expect(details).toBeVisible();
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
     .click();
+  await expect(details).toBeHidden();
+  // Small screens show the same panel as a sheet.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await contextAction.click();
+  const contextSheet = page.getByRole("dialog", {
+    name: "Turn context",
+    exact: true,
+  });
+  await expect(
+    contextSheet.getByRole("heading", { name: "Recalled memories" }),
+  ).toBeVisible();
+  await contextSheet
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await expect(contextSheet).toBeHidden();
   await expect(contextAction).toBeFocused();
   await screenshot(page, "conversation-detail");
 
@@ -95,7 +125,6 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   const image = page
     .locator('a[href*="/attachments/qa-chart-png"]')
     .filter({ has: page.locator('img[alt="chart.png"]') })
-    .filter({ hasNot: page.locator("dialog") })
     .first();
   await image.waitFor({ state: "visible" });
   await image.evaluate((element) =>
@@ -104,8 +133,11 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await screenshot(page, "conversation-attachment");
 
   await image.click();
-  await expect(page.locator("dialog[open]")).toBeVisible();
+  const preview = page.getByRole("dialog", { name: "chart.png" });
+  await expect(preview).toBeVisible();
   await screenshot(page, "conversation-attachment-modal");
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
 });
 
 test("reuses the fresh conversation feed after window focus", async ({
@@ -202,146 +234,6 @@ test("shows the repo name for one annotation scope on mobile", async ({
   ).toBeVisible();
 });
 
-test("opens a conversation in the built dashboard", async ({
-  context,
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 900, width: 1600 });
-
-  await page.goto(dashboard.baseURL);
-
-  await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
-  await expect(page).toHaveTitle("Junior");
-  await expect(
-    page.getByRole("region", { name: "Conversations" }),
-  ).toBeVisible();
-  const privateConversation = page
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { name: "Direct Message" }) });
-  await expect(
-    privateConversation.getByLabel("Private conversation"),
-  ).toBeVisible();
-  const publicConversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Checkout latency triage" }),
-  });
-  await expect(
-    publicConversation.getByLabel("Private conversation"),
-  ).toHaveCount(0);
-  await publicConversation.getByText("41 minutes ago", { exact: true }).click();
-  await expect(page).toHaveURL(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
-  );
-  await expect(
-    page.getByRole("heading", { name: "Checkout latency triage" }),
-  ).toBeVisible();
-  await expect(page).toHaveTitle("Checkout latency triage - Junior");
-  await expect(page.getByRole("note")).toContainText("Public conversation");
-  await expect(page.getByRole("note")).toContainText("Public");
-
-  const costMetric = page
-    .getByRole("main")
-    .locator('span[tabindex="0"]')
-    .filter({ hasText: /^\$0\.03$/ });
-  await expect(costMetric).toHaveCount(1);
-  await costMetric.focus();
-  // Scope past sidebar linked-work tooltips that can stay open on the selected row.
-  const costTooltip = page.getByRole("tooltip").filter({ hasText: /\$/ });
-  await expect(costTooltip).toBeVisible();
-  const tooltipId = await costTooltip.getAttribute("id");
-  expect(tooltipId).toBeTruthy();
-  await expect(costMetric).toHaveAttribute("aria-describedby", tooltipId!);
-  await page.keyboard.press("Escape");
-  await expect(costTooltip).toBeHidden();
-
-  await expect(
-    page.getByLabel("Linked work", { exact: true }).getByRole("link").first(),
-  ).toBeVisible();
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: dashboard.baseURL,
-  });
-  const conversationUrl = page.url();
-
-  const detailsButton = page.getByRole("button", {
-    name: "Conversation details",
-  });
-  await detailsButton.click();
-  const details = page.getByRole("dialog", { name: "Checkout latency triage" });
-  await expect(
-    details.getByRole("heading", { name: "Summary", exact: true }),
-  ).toBeVisible();
-  await expect(
-    details.getByRole("link", { name: /getsentry\/payments#77/ }),
-  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
-  await screenshot(page, "conversation-share-details");
-  // Clipboard denial must show a failure and allow another attempt.
-  await page.evaluate(() => {
-    Object.defineProperty(navigator.clipboard, "writeText", {
-      configurable: true,
-      value: () =>
-        Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
-    });
-  });
-  await details.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(details.getByRole("status")).toContainText(
-    "Could not copy the link",
-  );
-  await page.evaluate(() =>
-    Reflect.deleteProperty(navigator.clipboard, "writeText"),
-  );
-  await details.getByRole("button", { name: "Copy failed — retry" }).click();
-  await expect(
-    details.getByRole("button", { name: "Link copied" }),
-  ).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    conversationUrl,
-  );
-
-  const detailsTab = details.getByRole("tab", { name: "Details", exact: true });
-  const memoriesTab = details.getByRole("tab", { name: "Memories" });
-  await detailsTab.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(memoriesTab).toBeFocused();
-  await expect(memoriesTab).toHaveAttribute("aria-selected", "true");
-  await expect(
-    details.getByRole("tabpanel", { name: "Memories" }),
-  ).toContainText("Use pnpm for repository commands.");
-  await page.keyboard.press("Home");
-  await expect(detailsTab).toBeFocused();
-  await expect(detailsTab).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("Escape");
-  await expect(details).toBeHidden();
-  await expect(detailsButton).toBeFocused();
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await screenshot(page, "conversation-share-menu", { view: "mobile" });
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    conversationUrl,
-  );
-  await page.getByRole("button", { name: "Close conversation menu" }).click();
-  await page.setViewportSize({ width: 1600, height: 900 });
-
-  // The full durable Brief stays available after the transcript expires.
-  await page.getByText("Facts, links & keywords", { exact: true }).click();
-  await expect(
-    page.getByText("PAYMENTS-42 contained 418 events."),
-  ).toBeVisible();
-
-  await expect(
-    page.getByRole("link", { name: "Conversations" }),
-  ).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
-
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:DQA123:1770007200.000300")}`,
-  );
-  await expect(page.getByRole("note")).toContainText("Private conversation");
-  await expect(page.getByRole("note")).toContainText("Private");
-});
-
 test("collapses long pending message stacks", async ({ page, dashboard }) => {
   const conversationId = "slack:CQA123:1770003600.000200";
   await page.setViewportSize({ height: 900, width: 1600 });
@@ -363,14 +255,14 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   });
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("Third queued message.")).toBeHidden();
+  await expect(pending.getByText("Fifth queued message.")).toBeHidden();
 
   await expand.click();
   await expect(
     pending.getByRole("button", { name: "Show fewer queued messages" }),
   ).toHaveAttribute("aria-expanded", "true");
-  await expect(pending.getByText("Third queued message.")).toBeVisible();
   await expect(pending.getByText("Fifth queued message.")).toBeVisible();
+  await expect(pending.getByText("Seventh queued message.")).toBeVisible();
 
   await pending
     .getByRole("button", { name: "Show fewer queued messages" })
@@ -378,7 +270,7 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   await expect(
     pending.getByRole("button", { name: "3 more queued messages" }),
   ).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("Third queued message.")).toBeHidden();
+  await expect(pending.getByText("Fifth queued message.")).toBeHidden();
 });
 
 test("scrolls long conversation and transcript panes independently", async ({
@@ -541,6 +433,23 @@ test("groups the signed-in profile and session actions in the header", async ({
   await signOutRequest;
 });
 
+test.describe("keeps a hover-opened profile menu open on click", () => {
+  test.use({ controlTimers: true });
+
+  test("after the hover pause", async ({ page, dashboard }) => {
+    await page.goto(dashboard.baseURL);
+    const trigger = page.getByRole("button", {
+      name: /^(Open|Close) profile menu for Dashboard User/,
+    });
+    await trigger.hover();
+    await expect(page.locator("#profile-popover")).toBeVisible();
+    // Pass Base UI's 500ms window that keeps a hover-opened popover open.
+    await page.clock.fastForward(600);
+    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
 test("inspects and copies a child agent transcript", async ({
   context,
   page,
@@ -568,9 +477,14 @@ test("inspects and copies a child agent transcript", async ({
   await expect(reviewer).toContainText("blocked");
   await screenshot(page, "conversation-child-agents");
 
-  // The Details drawer lists child agents with the runtime status.
-  await page.getByRole("button", { name: "Conversation details" }).click();
-  const details = page.getByRole("dialog", { name: "Dashboard QA edge cases" });
+  // Details lists child agents with the runtime status.
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
   const subagentsTab = details.getByRole("tab", { name: "Subagents" });
   await expect(subagentsTab).toHaveAccessibleName("Subagents 2");
   await subagentsTab.click();
@@ -581,8 +495,11 @@ test("inspects and copies a child agent transcript", async ({
   );
   await screenshot(page, "conversation-subagents-tab");
   // A row opens the same child transcript drawer as the transcript row.
-  await subagents.getByRole("button", { name: /^reviewer blocked/ }).click();
-  await expect(details).toBeHidden();
+  await subagents
+    .getByRole("button", {
+      name: /^blocked Review the open dashboard pull requests/,
+    })
+    .click();
   const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
   await expect(
     reviewerDrawer.getByText("blocked", { exact: true }),
@@ -595,6 +512,8 @@ test("inspects and copies a child agent transcript", async ({
   );
   await page.keyboard.press("Escape");
   await expect(reviewerDrawer).toBeHidden();
+  // The docked panel stays open beside the drawer.
+  await expect(details).toBeVisible();
 
   await planner.click();
 
@@ -637,7 +556,7 @@ test("inspects and copies a child agent transcript", async ({
   });
   await entry.click();
   const eventDetails = page.getByRole("dialog", {
-    name: "message",
+    name: "Event details",
     exact: true,
   });
   await expect(
@@ -647,8 +566,19 @@ test("inspects and copies a child agent transcript", async ({
   await expect(eventDetails).toBeHidden();
   await expect(drawer).toBeVisible();
   await expect(entry).toBeFocused();
+  // A resize mounts the details sheet below the drawer without taking focus.
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
+  await expect(
+    page.locator('[data-dashboard-modal][aria-label="Conversation details"]'),
+  ).toBeAttached();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(entry).toBeFocused();
 });
 
 test("shows the agent tree of a child agent conversation", async ({

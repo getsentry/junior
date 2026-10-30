@@ -55,8 +55,23 @@ root label is its display title. Each Conversation has its own access check, so
 a viewer who cannot see private content gets a generic child label. A root
 Conversation has no `agentTree`.
 
+Title generation runs after the first human message is stored. Until a title
+is stored, a non-Slack Conversation that a person started uses the first line
+of its first human message as its display title. Nothing is stored for this
+title. Every summary projection reads the same message with
+`readFirstHumanMessageTexts`, so lists, detail, profiles, and agent trees show
+the same title. A viewer who cannot see private content still gets the private
+label.
+
 Message attachments can appear after the source file finishes storing. Clients
 must compare attachment metadata as well as event sequence on refresh.
+
+Message text keeps Slack user mentions as `<@U123>`. The event log does not
+store who they are. Each read resolves them into `mentions` on the message:
+known Junior identities first, then a cached Slack lookup. So names stay
+current and old Conversations also get names. `email` is set only for a linked,
+verified Junior user, because it is the People profile route. A mention without
+`email` has no profile to link to.
 
 Other projections are append-only: later canonical facts produce new observations
 instead of changing previously returned events. Clients reduce observations by

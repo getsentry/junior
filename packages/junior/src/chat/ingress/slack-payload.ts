@@ -6,27 +6,11 @@ import type {
 } from "@slack/types";
 import { z } from "zod";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
-import {
-  slackChannelIdSchema,
-  slackTeamIdSchema,
-  slackUserIdSchema,
-} from "@/chat/slack/ids";
 
 // Message dates must also fit JavaScript's Date range.
 const eventTimestampSchema = slackMessageTsSchema.refine((value) =>
   Number.isFinite(new Date(Number(value) * 1_000).getTime()),
 );
-
-export const slackSlashCommandSchema = z.object({
-  channel_id: z.string().trim().pipe(slackChannelIdSchema),
-  team_id: z.string().trim().pipe(slackTeamIdSchema),
-  user_id: z.string().trim().pipe(slackUserIdSchema),
-  text: z.string(),
-  enterprise_id: z.string().optional(),
-  is_enterprise_install: z.enum(["true", "false"]).optional(),
-});
-
-export type SlackSlashCommandForm = z.output<typeof slackSlashCommandSchema>;
 
 export const slackAssistantThreadSchema = z.object({
   channel_id: z.string().min(1),

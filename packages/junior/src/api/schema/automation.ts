@@ -1,5 +1,4 @@
 import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
-import { pluginEventTypeSchema } from "@sentry/junior-plugin-api";
 import { scheduledAutomationSchema } from "@/chat/scheduled-automations/types";
 import {
   eventAutomationPrincipalSchema,
@@ -10,8 +9,15 @@ import {
   scheduledAutomationEditSchema,
   eventAutomationEditSchema,
 } from "@/chat/automations/edit-schema";
-import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
+import {
+  eventMatchFieldsSchema,
+  eventReachSchema,
+  pluginEventTypeSchema,
+  taskOutcomeSchema,
+  type EventTriggerDescription,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z
   .object({
@@ -32,7 +38,18 @@ export const automationRunWindowsSchema = z
   })
   .strict();
 
+/** Linked Conversation cost in USD for each dashboard range. */
+export const automationCostWindowsSchema = z
+  .object({
+    1: z.number().finite().nonnegative(),
+    7: z.number().finite().nonnegative(),
+    30: z.number().finite().nonnegative(),
+    90: z.number().finite().nonnegative(),
+  })
+  .strict();
+
 const automationSummaryBaseSchema = z.object({
+  costUsd: automationCostWindowsSchema,
   credentialMode: z.enum(["creator", "system"]),
   createdAt: z.string().datetime(),
   createdBy: z.string().min(1),
@@ -41,6 +58,8 @@ const automationSummaryBaseSchema = z.object({
   destination: automationDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),
+  /** People mentioned in the instruction, resolved at read time. */
+  mentions: z.array(actorIdentitySchema).optional(),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
   lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),
@@ -63,14 +82,22 @@ export const scheduledAutomationSummarySchema = automationSummaryBaseSchema
   })
   .strict();
 
+/** An Event trigger in plain words, the same in the dashboard and Slack. */
+export const eventTriggerDescriptionSchema = z
+  .object({
+    events: z.array(z.string().min(1)).min(1),
+    filters: z.array(z.string().min(1)),
+    /** Why the trigger cannot work. The trigger is available when empty. */
+    problems: z.array(z.string().min(1)),
+  })
+  .strict() satisfies z.ZodType<EventTriggerDescription>;
+
 export const eventAutomationSummarySchema = automationSummaryBaseSchema
   .extend({
-    events: z.array(z.string().min(1)).min(1),
-    match: eventMatchSchema.optional(),
+    trigger: eventTriggerDescriptionSchema,
     kind: z.literal("event"),
     resource: z.string().min(1),
     source: z.string().min(1),
-    triggerAvailable: z.boolean(),
     statusReason: z.string().optional(),
     status: z.enum(["active", "blocked", "paused"]),
   })
@@ -156,13 +183,22 @@ export const automationExecutionStatusSchema = z.enum([
 
 export const automationExecutionSchema = z
   .object({
+    /** Automation version that the run dispatched, when recorded. */
+    automationVersion: z.number().int().positive().optional(),
     conversationId: z.string().min(1).optional(),
     /** Estimated model cost for the linked conversation, when known. */
     costUsd: z.number().finite().nonnegative().optional(),
+    /** Accounts that the dispatched version could use. */
+    credentialMode: z.enum(["creator", "system"]).optional(),
     /** Cumulative conversation runtime in milliseconds, when known. */
     durationMs: z.number().finite().nonnegative().optional(),
+    /** Reason that the run failed or was blocked, when recorded. */
+    error: z.string().min(1).optional(),
     executedAt: z.string().datetime(),
     executionId: z.string().min(1),
+    /** Planned occurrence of a Scheduled automation run. */
+    scheduledFor: z.string().datetime().optional(),
+    startedAt: z.string().datetime().optional(),
     status: automationExecutionStatusSchema,
     title: z.string().min(1).optional(),
     /** Cumulative conversation token total, when known. */
@@ -218,44 +254,60 @@ const automationVersionFields = {
   editedBy: eventAutomationPrincipalSchema.nullable(),
 };
 
+const scheduledAutomationVersionSchema = z
+  .object({
+    ...automationVersionFields,
+    kind: z.literal("scheduled"),
+    definition: scheduledAutomationSchema
+      .pick({
+        credentialMode: true,
+        destination: true,
+        outcomes: true,
+        schedule: true,
+      })
+      .extend(automationDefinitionFields)
+      .strict(),
+  })
+  .strict();
+
+const eventAutomationVersionSchema = z
+  .object({
+    ...automationVersionFields,
+    kind: z.literal("event"),
+    definition: eventAutomationSchema
+      .pick({
+        credentialMode: true,
+        destination: true,
+        outcomes: true,
+        trigger: true,
+      })
+      .extend(automationDefinitionFields)
+      .strict(),
+  })
+  .strict();
+
 /** One saved Automation definition. Newer versions have larger numbers. */
 export const automationVersionSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      ...automationVersionFields,
-      kind: z.literal("scheduled"),
-      definition: scheduledAutomationSchema
-        .pick({
-          credentialMode: true,
-          destination: true,
-          outcomes: true,
-          schedule: true,
-        })
-        .extend(automationDefinitionFields)
-        .strict(),
-    })
-    .strict(),
-  z
-    .object({
-      ...automationVersionFields,
-      kind: z.literal("event"),
-      definition: eventAutomationSchema
-        .pick({
-          credentialMode: true,
-          destination: true,
-          outcomes: true,
-          trigger: true,
-        })
-        .extend(automationDefinitionFields)
-        .strict(),
-    })
+  scheduledAutomationVersionSchema,
+  eventAutomationVersionSchema,
+]);
+
+/**
+ * One version in the version history. An Event version also has its saved
+ * trigger in plain words. The definition stays as saved, so it can be made
+ * active again.
+ */
+export const listedAutomationVersionSchema = z.discriminatedUnion("kind", [
+  scheduledAutomationVersionSchema,
+  eventAutomationVersionSchema
+    .extend({ trigger: eventTriggerDescriptionSchema })
     .strict(),
 ]);
 
 /** Newest versions first. */
 export const automationVersionListSchema = z
   .object({
-    versions: z.array(automationVersionSchema),
+    versions: z.array(listedAutomationVersionSchema),
     /** Newest version that matches the current definition. Null when none match. */
     activeVersion: z.number().int().positive().nullable(),
     truncated: z.boolean(),
@@ -267,6 +319,9 @@ export const automationVersionParamsSchema = automationParamsSchema
   .strict();
 
 export type AutomationVersion = z.output<typeof automationVersionSchema>;
+export type ListedAutomationVersion = z.output<
+  typeof listedAutomationVersionSchema
+>;
 export type AutomationVersionList = z.output<
   typeof automationVersionListSchema
 >;
@@ -331,7 +386,6 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
     .extend({
       kind: z.literal("event"),
       trigger: eventAutomationTriggerSchema,
-      triggerAvailable: z.boolean(),
       status: z.enum(["active", "blocked", "paused"]),
     })
     .strict(),
@@ -365,9 +419,22 @@ export const automationEditErrorSchema = z
 export type AutomationEdit = z.output<typeof automationEditSchema>;
 export type AutomationUpdate = z.output<typeof automationUpdateSchema>;
 
-/** Catalog metadata only; callbacks and provider connections stay on the server. */
+/**
+ * Catalog metadata only, one entry for each namespace. Callbacks, guidance,
+ * and provider connections stay on the server. `events` gives the reach of
+ * each event once, and `anyResourceFields` gives the filters of every
+ * resource type, for a trigger with no identifier.
+ */
 export const automationEventCatalogSchema = z.array(
-  pluginEventTypeSchema.safeExtend({ namespace: z.string() }),
+  z
+    .object({
+      namespace: z.string(),
+      displayName: z.string(),
+      events: z.record(z.string(), z.object({ reach: eventReachSchema })),
+      anyResourceFields: eventMatchFieldsSchema,
+      resourceTypes: z.array(pluginEventTypeSchema),
+    })
+    .strict(),
 );
 export const automationScheduleIntentSchema = scheduleIntentSchema;
 export const automationSchedulePreviewSchema = scheduledAutomationSchema

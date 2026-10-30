@@ -1,4 +1,4 @@
-import { logException, logInfo, logWarn } from "@/chat/logging";
+import { logAudit, logException, logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
@@ -170,15 +170,23 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.egressId
+      ? { "app.sandbox.egress_id": input.egressId }
+      : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.grantName ? { "app.grant.name": input.grantName } : undefined),
-    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : undefined),
-    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : undefined),
+    ...(input.grantAccess
+      ? { "app.grant.access": input.grantAccess }
+      : undefined),
+    ...(input.grantReason
+      ? { "app.grant.reason": input.grantReason }
+      : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status ? { "http.response.status_code": input.status } : undefined),
+    ...(input.status
+      ? { "http.response.status_code": input.status }
+      : undefined),
   };
 }
 
@@ -221,34 +229,6 @@ function displayedUpstreamPath(upstreamUrl: URL): string {
   return upstreamUrl.pathname;
 }
 
-function upstreamPermissionAttributes(
-  provider: string,
-  upstream: Response,
-): Record<string, unknown> {
-  if (provider !== "github") {
-    return {};
-  }
-  return {
-    "app.github.accepted_permissions":
-      upstream.headers.get("x-accepted-github-permissions") ?? undefined,
-    "app.github.sso": upstream.headers.get("x-github-sso") ?? undefined,
-  };
-}
-
-function githubPermissionHeaders(upstream: Response): {
-  acceptedPermissions?: string;
-  sso?: string;
-} {
-  const acceptedPermissions = upstream.headers.get(
-    "x-accepted-github-permissions",
-  );
-  const sso = upstream.headers.get("x-github-sso");
-  return {
-    ...(acceptedPermissions ? { acceptedPermissions } : undefined),
-    ...(sso ? { sso } : undefined),
-  };
-}
-
 function permissionDeniedMessage(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
@@ -270,6 +250,11 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
   );
 }
 
+/**
+ * Record one forwarded provider request. Write-grant requests are audit
+ * events, so they reach Sentry in production. Other requests log only outside
+ * production.
+ */
 function logSandboxEgressUpstreamRequest(input: {
   egressId: string;
   grantAccess?: "read" | "write";
@@ -280,11 +265,12 @@ function logSandboxEgressUpstreamRequest(input: {
   upstream: Response;
   upstreamUrl: URL;
 }): void {
-  if (!shouldLogSandboxEgressInfo()) {
+  const isWrite = input.grantAccess === "write";
+  if (!isWrite && !shouldLogSandboxEgressInfo()) {
     return;
   }
 
-  logInfo("sandbox.egress.upstream.requested", {
+  (isWrite ? logAudit : logInfo)("sandbox.egress.upstream.requested", {
     ...egressAttributes({
       egressId: input.egressId,
       grantAccess: input.grantAccess,
@@ -307,6 +293,7 @@ async function requestBodyBytes(
   if (
     request.method === "GET" ||
     request.method === "HEAD" ||
+    request.method === "OPTIONS" ||
     request.body === null
   ) {
     return undefined;
@@ -325,7 +312,7 @@ function unreadableBodyResponse(eventId: string | undefined): Response {
     {
       source: "junior-egress",
       error:
-        "Junior's sandbox egress proxy could not read the request body, so it did not send the request upstream.",
+        "The sandbox egress proxy could not read the request body, so it did not send the request upstream.",
       ...(eventId ? { sentryEventId: eventId } : undefined),
     },
     { status: 500, headers: { "cache-control": "no-store" } },
@@ -362,8 +349,8 @@ function grantSelectionBodyTooLargeMessage(
   inspection: GitHubBodyInspection,
 ): string {
   return inspection === "graphql"
-    ? "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials."
-    : "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
+    ? "GitHub GraphQL request body is too large to inspect before issuing credentials."
+    : "GitHub pull request review request body is too large to inspect before issuing credentials.";
 }
 
 function grantSelectionBodyText(input: {
@@ -529,7 +516,6 @@ function leaseLogAttributes(input: {
   provider: string;
   request: Request;
   status: number;
-  upstream?: Response;
   upstreamUrl: URL;
 }): Record<string, unknown> {
   return {
@@ -545,9 +531,6 @@ function leaseLogAttributes(input: {
       status: input.status,
     }),
     ...routingAttributes(input.request, input.upstreamUrl),
-    ...(input.upstream
-      ? upstreamPermissionAttributes(input.provider, input.upstream)
-      : undefined),
   };
 }
 
@@ -563,7 +546,9 @@ async function recordSandboxAuthRequired(input: {
     provider: input.provider,
     grant: input.grant,
     kind: input.kind ?? "auth_required",
-    ...(input.authorization ? { authorization: input.authorization } : undefined),
+    ...(input.authorization
+      ? { authorization: input.authorization }
+      : undefined),
     message: input.message,
   });
 }
@@ -585,9 +570,6 @@ async function recordSandboxPermissionDenied(input: {
     status: input.upstream.status,
     upstreamHost: input.upstreamUrl.hostname,
     upstreamPath: displayedUpstreamPath(input.upstreamUrl),
-    ...(input.provider === "github"
-      ? githubPermissionHeaders(input.upstream)
-      : undefined),
   });
 }
 
@@ -687,7 +669,9 @@ export async function executeCredentialedEgressRequest(input: {
   const recordPermissionDenied =
     deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
-  async function resolveLease(): Promise<SandboxEgressCredentialLease | Response> {
+  async function resolveLease(): Promise<
+    SandboxEgressCredentialLease | Response
+  > {
     try {
       return await issueCredentialLease(
         provider,
@@ -743,7 +727,6 @@ export async function executeCredentialedEgressRequest(input: {
   const attributes = (
     activeLease: SandboxEgressCredentialLease,
     status: number,
-    upstream?: Response,
   ) =>
     leaseLogAttributes({
       egressId: activeEgressId,
@@ -751,7 +734,6 @@ export async function executeCredentialedEgressRequest(input: {
       provider,
       request,
       status,
-      ...(upstream ? { upstream } : undefined),
       upstreamUrl,
     });
 
@@ -792,8 +774,7 @@ export async function executeCredentialedEgressRequest(input: {
       return intercepted;
     }
 
-    const requestBody =
-      body instanceof ArrayBuffer ? body.slice(0) : body;
+    const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
     const upstream = await fetchImpl(upstreamUrl, {
       method: request.method,
       headers,
@@ -829,7 +810,7 @@ export async function executeCredentialedEgressRequest(input: {
         message: error.message,
       });
       logWarn("sandbox.egress.upstream_auth_requirement.classified", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       await upstream.body?.cancel().catch(() => undefined);
       return authRequiredResponse({
@@ -850,13 +831,13 @@ export async function executeCredentialedEgressRequest(input: {
     });
     if (upstream.status >= 400) {
       logWarn("sandbox.egress.upstream_response.failed", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
         "error.type": `http_${upstream.status}`,
       });
     }
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
         "app.sandbox.egress.www_authenticate":
           upstream.headers.get("www-authenticate") ?? undefined,
       });
@@ -880,12 +861,12 @@ export async function executeCredentialedEgressRequest(input: {
       !retriedAfter403
     ) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       await clearCredentialLease(provider, lease.grant, credentialContext);
       await upstream.body?.cancel().catch(() => undefined);
       logWarn("sandbox.egress.upstream_auth.retrying", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       leaseOrResponse = await resolveLease();
       if (leaseOrResponse instanceof Response) {
@@ -897,7 +878,7 @@ export async function executeCredentialedEgressRequest(input: {
     }
     if (upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
       await clearCredentialLease(provider, lease.grant, credentialContext);
       await recordPermissionDenied({
@@ -912,7 +893,7 @@ export async function executeCredentialedEgressRequest(input: {
       });
       if (pluginPermissionDenied) {
         logWarn("sandbox.egress.upstream_permission.classified", {
-          ...attributes(lease, upstream.status, upstream),
+          ...attributes(lease, upstream.status),
         });
       }
       return new Response(upstream.body, {
@@ -932,7 +913,7 @@ export async function executeCredentialedEgressRequest(input: {
         upstreamUrl,
       });
       logWarn("sandbox.egress.upstream_permission.classified", {
-        ...attributes(lease, upstream.status, upstream),
+        ...attributes(lease, upstream.status),
       });
     }
 

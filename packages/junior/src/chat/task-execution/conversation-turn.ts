@@ -83,12 +83,16 @@ import {
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
+import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
+  eventBatchMessageEvents,
   isEventMailboxMetadata,
+  renderEventBatchText,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
+import type { ConversationMessageEvent } from "@/chat/state/conversation";
 import { isEventConversationMessage } from "@/chat/events/actor";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
@@ -220,6 +224,7 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let event: EventMailboxMetadata["event"] | undefined;
+    let batchEvents: ConversationMessageEvent[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -237,7 +242,15 @@ export function createConversationTurnWorker(
     });
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
-      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
+      const messages = resolved.batch.map((entry) => entry.message);
+      const firstMetadata = first.message.input.metadata;
+      if (isEventMailboxMetadata(firstMetadata)) {
+        text = renderEventBatchText(messages);
+        event = firstMetadata.event;
+        batchEvents = eventBatchMessageEvents(messages);
+      } else {
+        text = joinMailboxText(messages);
+      }
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
       );
@@ -248,9 +261,6 @@ export function createConversationTurnWorker(
         (entry) => entry.message.inboundMessageId,
       );
       turnInputFacts = first;
-      if (isEventMailboxMetadata(first.message.input.metadata)) {
-        event = first.message.input.metadata.event;
-      }
     } else {
       turnId = resolved.turnId;
     }
@@ -405,6 +415,9 @@ export function createConversationTurnWorker(
                     eventObjectType: event.objectType,
                     ...(event.trustedSummary
                       ? { trustedSummary: event.trustedSummary }
+                      : undefined),
+                    ...(batchEvents.length > 1
+                      ? { events: batchEvents }
                       : undefined),
                   }
                 : undefined),
@@ -582,6 +595,17 @@ export function createConversationTurnWorker(
               },
               delivery: deliverAssistantMessage,
               durability: {
+                ...(webActor
+                  ? {
+                      drainSteeringMessages: createWebSteeringDrain({
+                        actor: webActor,
+                        author,
+                        context,
+                        conversation,
+                        turnId,
+                      }),
+                    }
+                  : undefined),
                 onInputCommitted: acknowledge,
                 shouldYield: context.shouldYield,
                 onSandboxRefChanged: async (nextSandboxRef) => {

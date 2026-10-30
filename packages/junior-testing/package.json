@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./event-filters": "./src/event-filters.ts",
     "./http": "./src/http/index.ts",
     "./pglite": "./src/pglite.ts",
     "./postgres": "./src/postgres/index.ts",
@@ -21,6 +22,6 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }

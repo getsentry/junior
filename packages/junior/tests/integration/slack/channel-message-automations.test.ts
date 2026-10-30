@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -37,13 +37,17 @@ const TEAM_ID = "T123";
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
-function trigger(identifier = "current_channel") {
+function trigger(
+  identifier = "current_channel",
+  match?: Record<string, string>,
+) {
   return {
     namespace: "slack",
     identifier,
     resourceType: "channel",
     label: "New messages in #discuss-integration",
     events: ["message.posted"],
+    ...(match ? { match } : undefined),
   };
 }
 
@@ -52,6 +56,7 @@ async function postChannelMessage(input: {
   channel?: string;
   threadTs?: string;
   ts: string;
+  user?: string;
 }) {
   const state = getStateAdapter();
   await state.connect();
@@ -181,6 +186,52 @@ describe("Slack channel-message automations", () => {
     ).toMatchObject({ credentialMode: "system" });
   });
 
+  it("runs for bot posts only when its match names the bot", async () => {
+    const catalog = getEventCatalog();
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    const { automation } = (await execute(
+      createEventAutomationTool(channelContext, catalog),
+      {
+        instruction: "Triage each new alert.",
+        title: "Triage alerts",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger("current_channel", { userId: "U777" }),
+      },
+    )) as { automation: { id: string } };
+
+    // A post from another bot does not run it.
+    await postChannelMessage({
+      botId: "B888",
+      ts: "1712346.0001",
+      user: "U888",
+    });
+    expect(queue.sentRecords()).toEqual([]);
+
+    // A post from the named bot runs it and replies in the alert thread.
+    await postChannelMessage({
+      botId: "B777",
+      ts: "1712346.0002",
+      user: "U777",
+    });
+    const sent = queue.sentRecords();
+    expect(sent).toHaveLength(1);
+    const dispatch = await getDispatchRecord(
+      sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch).toMatchObject({
+      destination: { channelId: "C123", threadTs: "1712346.0002" },
+      metadata: { eventAutomationId: automation.id },
+    });
+  });
+
   it("watches only the channel where the automation posts", async () => {
     const catalog = getEventCatalog();
     const channelContext = context(
@@ -199,6 +250,43 @@ describe("Slack channel-message automations", () => {
         trigger: trigger("C999"),
       }),
     ).rejects.toThrow("can watch only the channel where it posts");
+
+    // A trigger with no identifier would read every channel.
+    const {
+      identifier: _identifier,
+      resourceType: _type,
+      ...anyChannel
+    } = trigger();
+    await expect(
+      execute(createEventAutomationTool(channelContext, catalog), {
+        instruction: "Summarize new messages.",
+        title: "Summarize every channel",
+        outcomes: [],
+        trigger: anyChannel,
+      }),
+    ).rejects.toThrow("This source cannot run for every resource.");
+
+    // A message runs only automations that post in its own channel, even
+    // when a saved row names that channel and posts somewhere else.
+    const { automation } = (await execute(
+      createEventAutomationTool(channelContext, catalog),
+      {
+        instruction: "Summarize new messages.",
+        title: "Summarize messages",
+        outcomes: [],
+        trigger: trigger(),
+      },
+    )) as { automation: { id: string } };
+    await fixture.sql
+      .db()
+      .update(juniorAutomations)
+      .set({
+        channelId: "C999",
+        record: sql`jsonb_set(${juniorAutomations.record}, '{destination,channelId}', '"C999"')`,
+      })
+      .where(eq(juniorAutomations.id, automation.id));
+    expect((await postChannelMessage({ ts: "1712345.0006" })).status).toBe(200);
+    expect(queue.sentRecords()).toEqual([]);
 
     // A DM is not a channel, so the automation could never run there.
     await expect(

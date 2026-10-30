@@ -21,8 +21,13 @@ export {
 } from "@/chat/pi/gateway-auth";
 import {
   embedMany,
+  experimental_decide,
+  Experimental_DecisionRefusalError,
   generateObject,
   NoObjectGeneratedError,
+  type Experimental_DecisionQuestion,
+  type Experimental_DecisionResult,
+  type Experimental_DecisionState,
   type GenerateObjectResult,
   type LanguageModelUsage,
 } from "ai";
@@ -179,6 +184,7 @@ export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
+const GEN_AI_OPERATION_DECIDE = "decide" as const;
 // AI Gateway input rates in USD per million tokens. Keep estimates
 // model-specific so unlisted configured models remain explicitly unknown.
 const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -194,6 +200,25 @@ const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
   "voyage/voyage-3.5": 0.06,
   "voyage/voyage-3.5-lite": 0.02,
 };
+// Decision models bill input tokens only.
+const DECISION_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
+  Record<string, number>
+> = {
+  "openai/gpt-6-luna-decisions": 0.1,
+  "typesafe-ai/jev": 0.042,
+};
+
+function decisionCostUsd(
+  modelId: string,
+  inputTokens: number | undefined,
+): number | undefined {
+  const costPerMillionTokens =
+    DECISION_INPUT_COST_USD_PER_MILLION_TOKENS[modelId];
+  return costPerMillionTokens === undefined || inputTokens === undefined
+    ? undefined
+    : (inputTokens * costPerMillionTokens) / 1_000_000;
+}
+
 function embeddingCostUsd(
   modelId: string,
   inputTokens: number,
@@ -462,11 +487,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
-  /**
-   * `false` retains telemetry spans and metrics while omitting model inputs and
-   * outputs. Omission preserves the existing payload-recording behavior.
-   */
-  recordTelemetryPayloads?: boolean;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
   promptName?: string;
@@ -494,15 +514,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
             : undefined),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
-            : undefined),
-          ...(params.recordTelemetryPayloads === false
-            ? {
-                experimental_telemetry: {
-                  isEnabled: true,
-                  recordInputs: false,
-                  recordOutputs: false,
-                },
-              }
             : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
@@ -550,6 +561,80 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     object: result.object as z.infer<TSchema>,
     ...(costUsd !== undefined ? { costUsd } : undefined),
   };
+}
+
+/** Answer typed decision questions with an AI Gateway decision model, such as Jev. */
+export async function completeDecision<
+  const TQuestions extends Record<string, Experimental_DecisionQuestion>,
+>(params: {
+  modelId: string;
+  state: Experimental_DecisionState;
+  questions: TQuestions;
+  signal?: AbortSignal;
+  metadata?: Record<string, unknown>;
+  promptName?: string;
+}): Promise<{
+  answers: Experimental_DecisionResult<TQuestions>["answers"];
+  costUsd?: number;
+}> {
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider(
+    credential ? { apiKey: credential.token } : {},
+  );
+  try {
+    const result = await withSpan(
+      `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
+      "gen_ai.decide",
+      logContextFromMetadata(params.modelId, params.metadata),
+      async (setSpanAttributes) => {
+        const result = await experimental_decide({
+          model: provider.decisionModel(params.modelId),
+          state: params.state,
+          questions: params.questions,
+          ...(params.signal !== undefined
+            ? { abortSignal: params.signal }
+            : undefined),
+        });
+        const costUsd = decisionCostUsd(
+          params.modelId,
+          result.usage.inputTokens,
+        );
+        setSpanAttributes(
+          extractGenAiUsageAttributes({
+            ...result.usage,
+            ...(costUsd !== undefined
+              ? { cost: { input: costUsd, total: costUsd } }
+              : undefined),
+          }),
+        );
+        return { answers: result.answers, costUsd };
+      },
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_DECIDE,
+        "gen_ai.request.model": params.modelId,
+        ...(params.promptName
+          ? { "gen_ai.prompt.name": params.promptName }
+          : undefined),
+        "server.address": GEN_AI_SERVER_ADDRESS,
+        "server.port": GEN_AI_SERVER_PORT,
+        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+      },
+    );
+    return {
+      answers: result.answers,
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
+    };
+  } catch (error) {
+    throw createProviderError(error, {
+      ...(Experimental_DecisionRefusalError.isInstance(error)
+        ? { kind: "invalid_response" }
+        : undefined),
+      modelId: params.modelId,
+    });
+  }
 }
 
 /** Generate text embeddings through the host-owned AI Gateway provider. */

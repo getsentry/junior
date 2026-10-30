@@ -8,6 +8,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { identityFromRuntimeActor } from "@/chat/conversations/sql/actor-identity";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
@@ -182,8 +183,8 @@ export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  if (actor.platform === "system") return undefined;
-  const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
+  const key = identityFromRuntimeActor(actor);
+  if (!key) return undefined;
   const rows = await db
     .select({
       identity: juniorIdentities,
@@ -194,9 +195,9 @@ export async function readActorIdentityFromSql(
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, actor.platform),
-        eq(juniorIdentities.providerTenantId, providerTenantId),
-        eq(juniorIdentities.providerSubjectId, actor.userId),
+        eq(juniorIdentities.provider, key.provider),
+        eq(juniorIdentities.providerTenantId, key.providerTenantId ?? ""),
+        eq(juniorIdentities.providerSubjectId, key.providerSubjectId),
       ),
     )
     .limit(1);
@@ -213,4 +214,38 @@ export async function readActorIdentity(
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
   return await readActorIdentityFromSql(getDb(), actor);
+}
+
+/** Read one stored identity and its linked user by identity id. */
+export async function readIdentityByIdFromSql(
+  db: JuniorDatabase,
+  identityId: string,
+): Promise<{ identity: Identity; user?: User } | undefined> {
+  const rows = await db
+    .select({
+      identity: juniorIdentities,
+      user: juniorUsers,
+    })
+    .from(juniorIdentities)
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      and(
+        eq(juniorIdentities.id, identityId),
+        eq(juniorIdentities.kind, "user"),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return undefined;
+  return {
+    identity: identityFromRow(row.identity),
+    ...(row.user ? { user: await readUserById(db, row.user) } : undefined),
+  };
+}
+
+/** Read one stored identity and its linked user by identity id. */
+export async function readIdentityById(
+  identityId: string,
+): Promise<{ identity: Identity; user?: User } | undefined> {
+  return await readIdentityByIdFromSql(getDb(), identityId);
 }

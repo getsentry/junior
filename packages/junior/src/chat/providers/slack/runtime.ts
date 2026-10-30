@@ -23,12 +23,7 @@ import {
   isTurnInputDeferredError,
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import {
-  logException,
-  logWarn,
-  withSpan,
-  withLogContext,
-} from "@/chat/logging";
+import { logException, logWarn, withLogContext } from "@/chat/logging";
 import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type {
@@ -44,6 +39,11 @@ import {
   startProcessingReaction,
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
+import {
+  getTurnInputSpanAttributes,
+  withTurnSpan,
+  type SlackTurnInputTelemetry,
+} from "@/chat/providers/slack/turn-input-telemetry";
 import {
   getChannelId,
   getMessageTs,
@@ -105,6 +105,7 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
+  telemetry?: SlackTurnInputTelemetry;
 }
 
 /** Sent when a stop decision unsubscribes a thread. */
@@ -442,7 +443,7 @@ export function createSlackTurnRuntime<
 
     return {
       start: async (
-        context: RuntimeLogContext,
+        _context: RuntimeLogContext,
         targetMessage: Message,
       ): Promise<ProcessingReaction> => {
         const channelId = getChannelId(thread, targetMessage);
@@ -731,7 +732,11 @@ export function createSlackTurnRuntime<
           hooks,
         );
 
-        await withSpan("chat.turn", "chat.turn", context, async () => {
+        await withTurnSpan(context, hooks.telemetry, async (set) => {
+          const turnStartedAtMs = deps.now();
+          if (hooks.telemetry) {
+            set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));
+          }
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             botUserId: deps.getBotUserId(),
             explicitMention: true,
@@ -911,7 +916,11 @@ export function createSlackTurnRuntime<
           channelId,
           runId,
         });
-        await withSpan("chat.turn", "chat.turn", turnContext, async () => {
+        await withTurnSpan(turnContext, hooks.telemetry, async (set) => {
+          const turnStartedAtMs = deps.now();
+          if (hooks.telemetry) {
+            set(getTurnInputSpanAttributes(hooks.telemetry, turnStartedAtMs));
+          }
           // This path can compact context and run router/vision model calls
           // before executeSlackTurn() opens the main reply span.
           const content = parseContent(message);

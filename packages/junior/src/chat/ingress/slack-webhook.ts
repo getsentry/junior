@@ -3,14 +3,11 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   slackAssistantThreadSchema,
   slackEventEnvelopeSchema,
-  slackInteractivePayloadSchema,
-  slackSlashCommandSchema,
-  type SlackSlashCommandForm,
   type SlackEventEnvelope,
   type SlackInboundEvent,
-  type SlackInteractivePayload,
 } from "./slack-payload";
-import { ChannelImpl, ThreadImpl, type Message, type StateAdapter } from "chat";
+import { handleSlackForm } from "./slack-form";
+import { ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
 import {
@@ -62,12 +59,11 @@ import {
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { handleSlashCommand } from "@/chat/ingress/slash-command";
-import { handleSlackInteractivePayload } from "@/chat/ingress/slack-interactive";
 import { persistSlackUserInputReply } from "@/chat/slack/user-input-state";
 import { slackUserInputAnswerNote } from "@/chat/slack/user-input";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
@@ -132,6 +128,10 @@ export interface SlackWebhookServices {
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
   conversationStore?: ConversationStore;
+  /** Email domains Slack authors need to start a Turn. Empty allows all. */
+  allowedDomains?: readonly string[];
+  /** Slack user IDs of bots that may start a Turn without an email domain. */
+  allowedBotUserIds?: readonly string[];
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -444,6 +444,8 @@ async function routeParsedMessage(args: {
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
+  allowedBotUserIds: readonly string[];
+  allowedDomains: readonly string[];
   state: StateAdapter;
 }): Promise<void> {
   if (shouldIgnoreMessage(args.message)) {
@@ -525,6 +527,20 @@ async function routeParsedMessage(args: {
       state: args.state,
       stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
     });
+    return;
+  }
+
+  // Passive thread messages are not checked for the allowed domains yet.
+  if (
+    route === "mention" &&
+    !(await isSlackAuthorDomainAllowed({
+      allowedBotUserIds: args.allowedBotUserIds,
+      allowedDomains: args.allowedDomains,
+      state: args.state,
+      teamId: args.installation.teamId,
+      user: args.event.user,
+    }))
+  ) {
     return;
   }
 
@@ -716,6 +732,8 @@ async function handleSlackEvent(args: {
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
+                allowedBotUserIds: args.services.allowedBotUserIds ?? [],
+                allowedDomains: args.services.allowedDomains ?? [],
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
@@ -726,33 +744,6 @@ async function handleSlackEvent(args: {
         }
       },
     }),
-  );
-}
-
-async function handleSlashCommandForm(args: {
-  adapter: SlackAdapter;
-  form: SlackSlashCommandForm;
-  state: StateAdapter;
-}): Promise<void> {
-  const { channel_id: channelId, team_id: teamId, user_id: userId } = args.form;
-  const channel = new ChannelImpl({
-    id: `slack:${channelId}`,
-    adapter: args.adapter,
-    stateAdapter: args.state,
-  });
-  await withSpan(
-    "chat.slash_command",
-    "chat.slash_command",
-    { userId: userId },
-    async () => {
-      await handleSlashCommand({
-        channel,
-        channelId,
-        teamId,
-        text: args.form.text,
-        userId,
-      });
-    },
   );
 }
 
@@ -799,113 +790,6 @@ async function persistSlackMentionWithLock(args: {
   }
 }
 
-function installationFromInteractive(
-  payload: SlackInteractivePayload,
-): SlackInstallationContext {
-  return {
-    teamId: payload.team?.id ?? payload.user?.team_id,
-  };
-}
-
-async function handleSlackForm(args: {
-  body: string;
-  services: SlackWebhookServices;
-  waitUntil: WaitUntilFn;
-}): Promise<Response> {
-  const params = new URLSearchParams(args.body);
-  const adapter = args.services.getSlackAdapter();
-  const state = args.services.state ?? getStateAdapter();
-  await state.connect();
-
-  if (params.has("command") && !params.has("payload")) {
-    const result = slackSlashCommandSchema.safeParse(
-      Object.fromEntries(params),
-    );
-    if (!result.success) {
-      return new Response("Invalid slash command payload", { status: 400 });
-    }
-    const form = result.data;
-    const installation: SlackInstallationContext = {
-      teamId: form.team_id,
-      enterpriseId: form.enterprise_id,
-      isEnterpriseInstall: form.is_enterprise_install === "true",
-    };
-    enqueue(
-      args.waitUntil,
-      withLogContext(
-        {
-          platform: "slack",
-          userId: form.user_id,
-        },
-        () =>
-          runWithWorkspaceTeamId(installation.teamId, () =>
-            runWithSlackInstallation({
-              adapter,
-              installation,
-              state,
-              task: () =>
-                handleSlashCommandForm({
-                  adapter,
-                  form,
-                  state,
-                }),
-            }),
-          ).catch((error) => {
-            logException(error, "slash_command.failed");
-          }),
-      ),
-    );
-    return new Response("", { status: 200 });
-  }
-
-  const rawPayload = params.get("payload");
-  if (!rawPayload) {
-    return new Response("Missing payload", { status: 400 });
-  }
-  const result = slackInteractivePayloadSchema.safeParse(parseJson(rawPayload));
-  if (!result.success) {
-    return new Response("Invalid payload JSON", { status: 400 });
-  }
-  const payload = result.data;
-  const installation = installationFromInteractive(payload);
-
-  enqueue(
-    args.waitUntil,
-    withLogContext(
-      {
-        platform: "slack",
-        userId: payload.user?.id?.trim() || undefined,
-      },
-      () =>
-        runWithWorkspaceTeamId(installation.teamId, () =>
-          runWithSlackInstallation({
-            adapter,
-            installation,
-            state,
-            task: () =>
-              handleSlackInteractivePayload({
-                adapter,
-                payload,
-                persistMessage: (message) =>
-                  persistSlackMentionWithLock({
-                    adapter,
-                    installation,
-                    message,
-                    services: args.services,
-                    state,
-                  }),
-                state,
-                userTokenStore: getUserTokenStore(args.services),
-              }),
-          }),
-        ).catch((error) => {
-          logException(error, "slack.interactive.payload.failed");
-        }),
-    ),
-  );
-  return new Response("", { status: 200 });
-}
-
 /** Handle Slack webhooks by enqueueing durable conversation work. */
 export async function handleSlackWebhook(args: {
   request: Request;
@@ -921,9 +805,28 @@ export async function handleSlackWebhook(args: {
 
   const contentType = args.request.headers.get("content-type") || "";
   if (contentType.includes("application/x-www-form-urlencoded")) {
+    const state = args.services.state ?? getStateAdapter();
     return await handleSlackForm({
+      adapter,
       body,
-      services: args.services,
+      getUserTokenStore: () => getUserTokenStore(args.services),
+      isAuthorAllowed: (userId, installation) =>
+        isSlackAuthorDomainAllowed({
+          allowedBotUserIds: args.services.allowedBotUserIds ?? [],
+          allowedDomains: args.services.allowedDomains ?? [],
+          state,
+          teamId: installation.teamId,
+          user: userId,
+        }),
+      persistMessage: (message, installation) =>
+        persistSlackMentionWithLock({
+          adapter,
+          installation,
+          message,
+          services: args.services,
+          state,
+        }),
+      state,
       waitUntil: args.waitUntil,
     });
   }

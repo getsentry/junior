@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ActorProfileReport,
   ConversationReportEvent,
@@ -24,25 +25,45 @@ import {
   ConversationAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
-import {
-  conversationFromDetail,
-  setDashboardTimeZone,
-} from "../src/client/format";
+import { conversationFromDetail } from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
 import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 import { ConversationPage } from "../src/client/conversations/ConversationPage";
-import { ToolCallGallery } from "../src/client/pages/dev/TranscriptActivityFixtures";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
+import {
+  formatChartValue,
+  pluginChartScale,
+} from "../src/client/pages/system/PluginBarChart";
 import { PluginReports } from "../src/client/pages/system/PluginReports";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
+// Browser journeys cover portals and focus. These checks cover transcript data.
+vi.mock("../src/client/components/Drawer", () => ({
+  Drawer: ({
+    header,
+    actions,
+    children,
+  }: {
+    header: ReactNode;
+    actions?: ReactNode;
+    children: ReactNode;
+  }) => (
+    <>
+      {header}
+      {actions}
+      {children}
+    </>
+  ),
+}));
+
+const shimmerClass = /class="[^"]*\bshimmer\b/;
 const client = new QueryClient();
 
 afterEach(() => client.clear());
@@ -51,8 +72,9 @@ function event(
   seq: number,
   data: ConversationReportEventData,
   createdAt = `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
+  mentions?: ConversationReportEvent["mentions"],
 ): ConversationReportEvent {
-  return { seq, createdAt, data };
+  return { seq, createdAt, data, ...(mentions ? { mentions } : undefined) };
 }
 
 function conversation(
@@ -79,9 +101,11 @@ function conversation(
 function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} />
-      </TranscriptSearchProvider>
+      <MemoryRouter>
+        <TranscriptSearchProvider query="">
+          <ConversationTranscriptView conversation={detail} />
+        </TranscriptSearchProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -89,12 +113,10 @@ function renderTranscript(detail: ConversationTranscript): string {
 function systemData(): SystemData {
   return {
     config: {
-      allowedEmailCount: 0,
-      allowedGoogleDomainCount: 0,
+      allowedDomainCount: 0,
       authPath: "/api/auth",
       authRequired: false,
       basePath: "/",
-      componentGallery: false,
       sentryConversationLinks: false,
       timeZone: "UTC",
       version: "0.0.0-test",
@@ -161,7 +183,9 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
     configKeys: [],
     description: `${name} plugin description`,
     displayName:
-      name === "github" ? "GitHub" : `${name[0].toUpperCase()}${name.slice(1)}`,
+      name === "github"
+        ? "GitHub"
+        : `${name.charAt(0).toUpperCase()}${name.slice(1)}`,
     name,
     ...overrides,
   };
@@ -230,6 +254,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <TranscriptText
+          mentions={[]}
           role="user"
           text="The function reads a const value and returns it."
         />
@@ -244,7 +269,11 @@ describe("dashboard canonical-event components", () => {
   it("renders fenced XML as highlighted code", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText role="user" text={"```xml\n<root />\n```"} />
+        <TranscriptText
+          mentions={[]}
+          role="user"
+          text={"```xml\n<root />\n```"}
+        />
       </QueryClientProvider>,
     );
 
@@ -264,22 +293,19 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Handling:");
     expect(html).toContain("<ul");
     expect(html.match(/<li/g)).toHaveLength(2);
-  });
 
-  it("renders typed tool states in the component gallery", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <ToolCallGallery />
-      </QueryClientProvider>,
+    const slackHtml = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown
+          text={"Checking:\n• first item\n• second item\n2) next step"}
+        />
+      </TranscriptSearchProvider>,
     );
 
-    expect(html).toContain("webSearch");
-    expect(html).toContain(
-      "github_search, query: &quot;is:pr is:open&quot;, limit: 25",
-    );
-    expect(html).toContain("jr-rpc config get github.repo");
-    expect(html).toContain("junior-qa");
-    expect(html).toContain('aria-label="bash (failed)"');
+    expect(slackHtml.match(/<li/g)).toHaveLength(3);
+    expect(slackHtml).not.toContain("•");
+    expect(slackHtml).toContain('<ol class="');
+    expect(slackHtml).toContain('start="2"');
   });
 
   it("keeps a running tool name searchable and accessible", () => {
@@ -330,7 +356,6 @@ describe("dashboard canonical-event components", () => {
   it("exposes pressed state for transcript view controls", () => {
     const html = renderToStaticMarkup(
       <ConversationHeader
-        annotations={null}
         archive={{
           archived: false,
           disabled: false,
@@ -339,14 +364,13 @@ describe("dashboard canonical-event components", () => {
           pending: false,
         }}
         conversationId="conversation-1"
-        identity={null}
+        detailsOpen={false}
+        onDetailsClick={() => {}}
         live={false}
-        onOpenSubagent={() => {}}
         onSearchChange={() => {}}
         onViewChange={() => {}}
         privacy={null}
         search=""
-        stats={null}
         title="Header QA"
         view="raw"
       />,
@@ -354,7 +378,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('aria-label="Conversation"');
     expect(html).toContain('aria-label="Event log"');
-    expect(html).toContain('aria-label="Search transcript"');
+    expect(html).not.toContain('aria-label="Search transcript"');
     expect(html).toContain('aria-label="Conversation details"');
     expect(html).toContain('aria-label="Archive"');
   });
@@ -379,7 +403,7 @@ describe("dashboard canonical-event components", () => {
 
     expect(liveHtml).toContain('role="status"');
     expect(liveHtml).toContain("Junior is thinking…");
-    expect(liveHtml).toContain("junior-text-shimmer");
+    expect(liveHtml).toMatch(shimmerClass);
     expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
     expect(quietHtml).not.toContain("Junior is thinking…");
@@ -456,6 +480,67 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain("Taylor Chen");
     expect(html).not.toContain("Morgan Lee");
+  });
+
+  it("renders Slack mention tokens as names and profile links", () => {
+    const html = renderTranscript(
+      conversation([
+        event(
+          0,
+          {
+            type: "message",
+            messageId: "assistant-1",
+            role: "assistant",
+            text: "<@U123> merged. cc <@U456> <@U999> in <#C42|proj-junior>",
+          },
+          undefined,
+          [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
+        ),
+        event(
+          1,
+          {
+            type: "message",
+            messageId: "event-1",
+            role: "user",
+            eventType: "pull_request.merged",
+            trustedSummary: "<@U456> merged PR #42 for <@U123>.",
+            text: "PR merged.",
+          },
+          undefined,
+          [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
+        ),
+      ]),
+    );
+
+    expect(html).toContain("@Riley Park</span> merged PR #42 for");
+    // The Event heading is a disclosure button, which cannot hold a link.
+    expect(html).toContain("@Taylor Chen</span>.");
+    expect(html.match(/href="\/people\/taylor%40example.com"/g)).toHaveLength(
+      1,
+    );
+    expect(html).not.toContain("&lt;@");
+    expect(html).not.toContain("&lt;#");
+    expect(html).toMatch(
+      /<a [^>]*href="\/people\/taylor%40example.com"[^>]*>@Taylor Chen<\/a>/,
+    );
+    expect(html).not.toMatch(/<a [^>]*>@Riley Park/);
+    expect(html).toContain("@Riley Park");
+    expect(html).toContain("@U999");
+    expect(html).toContain("#proj-junior");
   });
 
   it("shows a Slack icon for Slack-origin messages only", () => {
@@ -772,8 +857,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('alt="chart.png"');
     expect(html).toContain("notes.txt");
     expect(html).toContain("text/plain · 42 B");
-    expect(html).toContain("image/png · 17.8 KB");
-    expect(html).toContain(">Close<");
     expect(html).toContain(
       "/api/conversations/conversation-1/attachments/att-1",
     );
@@ -1133,7 +1216,6 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(html).toContain("Conversation failed to load.");
-    expect(html).toContain('data-tone="error"');
     expect(html).toContain('role="alert"');
   });
 
@@ -1362,7 +1444,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Location telemetry refresh failed");
     expect(html).toContain("#proj-alpha");
     expect(html).toContain("Private activity");
-    expect(html).toContain("Public and private conversations per day");
     expect(html).toContain("Conversations: ");
   });
 
@@ -1502,7 +1583,6 @@ describe("dashboard canonical-event components", () => {
     );
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");
-    expect(systemHtml).toContain('aria-label="Conversations per day"');
     expect(systemHtml).toContain("Missing data in 1 of 1");
     expect(systemHtml).toContain("Input cache");
     expect(systemHtml).toContain("Model spend");
@@ -1586,7 +1666,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Usage over time");
   });
 
-  it("renders plugin chart widgets with accessible values", () => {
+  it("renders plugin chart widgets with a legend", () => {
     const html = renderToStaticMarkup(
       <PluginReports
         reports={[
@@ -1616,8 +1696,8 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain("Pull request outcomes");
     expect(html).toContain('aria-label="Chart legend"');
-    expect(html).toContain('aria-label="30d, Created: 4.5"');
-    expect(html).toContain('aria-label="30d, Merged: -1.25"');
+    expect(formatChartValue(4.5, undefined)).toBe("4.5");
+    expect(formatChartValue(-1.25, undefined)).toBe("-1.25");
   });
 
   it("uses the plugin display name for a single metric", () => {
@@ -1637,70 +1717,26 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(">GitHub<");
   });
 
-  it("formats fractional chart ticks without floating-point noise", () => {
-    const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            pluginName: "github",
-            widgets: [
-              {
-                categories: [
-                  { id: "7d", label: "7d", values: { created: 0.1 } },
-                  { id: "30d", label: "30d", values: { created: 0.2 } },
-                ],
-                id: "fractional-outcomes",
-                series: [{ key: "created", label: "Created" }],
-                title: "Pull request outcomes",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
-    );
-    expect(html).toContain(">0.1</text>");
-    expect(html).not.toContain("0.10000000000000002");
-    expect(html).not.toContain('aria-label="Chart legend"');
+  it("formats fractional chart values without floating-point noise", () => {
+    const scale = pluginChartScale({
+      categories: [
+        { id: "7d", label: "7d", values: { created: 0.1 } },
+        { id: "30d", label: "30d", values: { created: 0.2 } },
+      ],
+      id: "fractional-outcomes",
+      series: [{ key: "created", label: "Created" }],
+      title: "Pull request outcomes",
+      type: "bar_chart",
+    });
+    expect(scale).toMatchObject({ maximum: 0.2, minimum: 0 });
+    expect(formatChartValue(0.1 + 0.2, undefined)).toBe("0.3");
   });
 
   it("formats plugin cost charts as USD", () => {
-    const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            pluginName: "memory",
-            widgets: [
-              {
-                categories: [
-                  {
-                    id: "2026-07-31",
-                    label: "2026-07-31",
-                    values: { costUsd: 0.0042 },
-                  },
-                ],
-                id: "extraction-cost",
-                series: [
-                  {
-                    format: "usd",
-                    key: "costUsd",
-                    label: "Cost",
-                  },
-                ],
-                title: "Extraction cost",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
-    );
-    expect(html).toContain('aria-label="Jul 31, Cost: $0.0042"');
-    expect(html).toContain(">$0.0042</text>");
-    expect(html).toContain('x1="104"');
+    expect(formatChartValue(0.0042, "usd")).toBe("$0.0042");
   });
 
-  it("renders daily chart ranges from the shared page selection", () => {
+  it("shows daily chart ranges from the shared page selection", () => {
     const categories = Array.from({ length: 90 }, (_, index) => {
       const date = new Date("2026-05-03T00:00:00.000Z");
       date.setUTCDate(date.getUTCDate() + index);
@@ -1711,36 +1747,25 @@ describe("dashboard canonical-event components", () => {
         values: { created: index },
       };
     });
-    const html = renderToStaticMarkup(
-      <PluginReports
-        range={7}
-        reports={[
-          {
-            pluginName: "github",
-            widgets: [
-              {
-                categories,
-                id: "daily-outcomes",
-                series: [{ key: "created", label: "Created" }],
-                timeRangeDays: [7, 30, 90],
-                title: "Pull request outcomes",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
+    const scale = pluginChartScale(
+      {
+        categories,
+        id: "daily-outcomes",
+        series: [{ key: "created", label: "Created" }],
+        timeRangeDays: [7, 30, 90],
+        title: "Pull request outcomes",
+        type: "bar_chart",
+      },
+      7,
     );
-    expect(html).toContain('aria-label="Jul 31, Created: 89"');
-    expect(html).toContain('aria-label="Jul 25, Created: 83"');
-    expect(html).not.toContain('aria-label="Jul 24, Created: 82"');
-    expect(html).not.toContain('aria-label="Reporting period"');
+    expect(scale.categories.map((category) => category.id)).toEqual(
+      categories.slice(-7).map((category) => category.id),
+    );
+    expect(scale.categories.at(-1)?.id).toBe("2026-07-31");
+    expect(scale.maximum).toBe(89);
   });
 
-  it("renders 24 trailing hour categories for the 24h range", () => {
-    // Pin the display timezone so hour-bucket rendering is deterministic
-    // regardless of the test runner's own local timezone.
-    setDashboardTimeZone("America/Los_Angeles");
+  it("shows 24 trailing hour categories for the 24h range", () => {
     const categories = Array.from({ length: 48 }, (_, index) => {
       const date = new Date("2026-07-30T00:00:00.000Z");
       date.setUTCHours(date.getUTCHours() + index);
@@ -1751,57 +1776,34 @@ describe("dashboard canonical-event components", () => {
         values: { created: index },
       };
     });
-    const html = renderToStaticMarkup(
-      <PluginReports
-        range={1}
-        reports={[
-          {
-            pluginName: "github",
-            widgets: [
-              {
-                categories,
-                id: "hourly-outcomes",
-                series: [{ key: "created", label: "Created" }],
-                timeRangeDays: [1, 7, 30, 90],
-                title: "Pull request outcomes",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
+    const scale = pluginChartScale(
+      {
+        categories,
+        id: "hourly-outcomes",
+        series: [{ key: "created", label: "Created" }],
+        timeRangeDays: [1, 7, 30, 90],
+        title: "Pull request outcomes",
+        type: "bar_chart",
+      },
+      1,
     );
-    // Hour buckets render in the dashboard timezone (America/Los_Angeles).
-    expect(html).toContain('aria-label="Jul 31, 4 PM, Created: 47"');
-    expect(html).toContain('aria-label="Jul 30, 5 PM, Created: 24"');
-    expect(html).not.toContain('aria-label="Jul 30, 4 PM, Created: 23"');
+    expect(scale.categories).toHaveLength(24);
+    expect(scale.categories[0]?.id).toBe("2026-07-31T00");
+    expect(scale.categories.at(-1)?.id).toBe("2026-07-31T23");
   });
 
-  it("renders an all-zero chart with a stable zero scale", () => {
-    const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            pluginName: "github",
-            widgets: [
-              {
-                categories: [
-                  { id: "7d", label: "7d", values: { created: 0 } },
-                  { id: "30d", label: "30d", values: { created: 0 } },
-                ],
-                id: "zero-outcomes",
-                series: [{ key: "created", label: "Created" }],
-                title: "Pull request outcomes",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
-    );
-    expect(html).toContain(">1</text>");
-    expect(html).toContain(">0.5</text>");
-    expect(html).toContain(">0</text>");
+  it("keeps a stable zero scale for an all-zero chart", () => {
+    const scale = pluginChartScale({
+      categories: [
+        { id: "7d", label: "7d", values: { created: 0 } },
+        { id: "30d", label: "30d", values: { created: 0 } },
+      ],
+      id: "zero-outcomes",
+      series: [{ key: "created", label: "Created" }],
+      title: "Pull request outcomes",
+      type: "bar_chart",
+    });
+    expect(scale).toMatchObject({ maximum: 1, minimum: 0 });
   });
 
   it("keeps chart chrome visible for empty widget data", () => {

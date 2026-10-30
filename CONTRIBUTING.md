@@ -1,6 +1,37 @@
 # Contributing
 
-Use this guide for local development in the `junior` monorepo.
+Use this guide to propose changes and to develop locally in the `junior`
+monorepo.
+
+## Open an Issue Before Larger Changes
+
+Before you open a pull request for a larger change, open a GitHub issue that
+describes the problem and the approach you intend to use. Then link the issue
+from the pull request, for example with `Fixes #123`.
+
+Larger changes include:
+
+- New features or changes to existing behavior.
+- Architecture changes, plugin API changes, and new configuration or extension
+  points.
+- Broad refactors.
+- Prompt, tool description, or skill changes that try to fix agent behavior.
+  These count as larger changes even when the diff is small.
+
+You do not need an issue for small changes. Examples are a focused bug fix, a
+small docs fix, a test-only fix, or a dependency update.
+
+The issue lets maintainers find architecture mismatches early, before you write
+the code. It also lets us find the real cause of a behavior problem. A prompt
+change often hides the problem and does not fix it. Read
+`policies/agent-steering.md` and the other files in `policies/` before you
+propose a change.
+
+Junior checks each new pull request, including drafts. If a larger change has
+no linked issue, Junior closes the pull request and explains why. To continue,
+open an issue. Then open a new pull request that links the issue, or ask a
+maintainer to reopen the closed one. Maintainers with the `maintain` or `admin`
+role do not need to follow this step.
 
 ## Requirements
 
@@ -116,7 +147,7 @@ new branch; existing branches open at their current tip.
 Build and validate the published package artifacts:
 
 ```bash
-pnpm build:pkg
+pnpm build && pnpm package-types:check
 ```
 
 ## Releasing
@@ -130,6 +161,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-cloudflare`
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
+- `@sentry/junior-figma`
 - `@sentry/junior-tts`
 - `@sentry/junior-github`
 - `@sentry/junior-google`
@@ -139,6 +171,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-memory`
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
+- `@sentry/junior-pagerduty`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
 

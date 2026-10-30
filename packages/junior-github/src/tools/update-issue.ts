@@ -6,6 +6,7 @@ import {
   type Actor,
   type PluginLogger,
   type PluginEgress,
+  type Source,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -15,7 +16,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import {
+  appendGitHubRequesterAttribution,
+  resolveGitHubRequester,
+} from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
 
 const inputSchema = z
@@ -100,11 +104,13 @@ function githubApiErrorMessage(payload: unknown): string {
 /** Update mutable issue metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdateIssueTool(ctx: {
   actor?: Actor;
+  automationLink?: { url: string };
   conversationId?: string;
   egress: PluginEgress;
   log: PluginLogger;
   events: { canSubscribe: boolean };
   slack?: { conversationLink?: { url?: string } };
+  source?: Source;
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
   };
@@ -134,7 +140,11 @@ export function createGitHubUpdateIssueTool(ctx: {
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                await appendGitHubRequesterAttribution(update.body, ctx),
+                appendGitHubRequesterAttribution(
+                  update.body,
+                  ctx,
+                  await resolveGitHubRequester(ctx),
+                ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),
@@ -173,12 +183,11 @@ export function createGitHubUpdateIssueTool(ctx: {
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubIssueSubscribable({
-            number: providerResult.number,
-            repo: repo.ref,
-          })
-        : undefined;
+      const subscribable = gitHubIssueSubscribable({
+        canSubscribe: ctx.events.canSubscribe,
+        number: providerResult.number,
+        repo: repo.ref,
+      });
       return {
         objectAnnotations: [
           githubObjectAnnotation({

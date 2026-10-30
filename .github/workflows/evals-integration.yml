@@ -43,6 +43,9 @@ jobs:
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.integration.config.ts'
+              - 'packages/junior/src/chat/prompt.ts'
+              - 'packages/junior/src/chat/system-prompt-rules.ts'
+              - 'packages/junior/src/chat/discovery.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -127,9 +130,9 @@ jobs:
           set -euo pipefail
           curl --fail --location --silent --show-error \
             --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
-            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.10.4/cloudflared-linux-amd64 \
             --output "$RUNNER_TEMP/cloudflared"
-          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          echo "ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42  $RUNNER_TEMP/cloudflared" | sha256sum --check
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
@@ -167,7 +170,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: "24.18.0"
+          node-version: "24.22.1"
       - name: Download integration eval results
         uses: actions/download-artifact@v4
         with:

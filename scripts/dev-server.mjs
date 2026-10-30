@@ -39,8 +39,13 @@ if (!process.env.NO_COLOR && !process.env.FORCE_COLOR) {
 
 loadEnvFiles([workspaceRoot, exampleDir]);
 
+// `OPEN_SPOTLIGHT_WEB=1` opens the Sentry Local UI. Read it after the env
+// files load, so that `.env.local` can set it.
+const openLocalUi = process.env.OPEN_SPOTLIGHT_WEB?.trim() === "1";
+
 const children = new Set();
 const stoppedChildren = new WeakSet();
+let shuttingDown = false;
 
 function spawnChild(command, args, options = {}) {
   const child = spawn(command, args, {
@@ -63,7 +68,10 @@ function stopChild(child, signal) {
     return;
   }
   stoppedChildren.add(child);
+  signalChild(child, signal);
+}
 
+function signalChild(child, signal) {
   // Long-lived commands launch wrappers. Stop their process group so a
   // restarted wrapper cannot leave the server that owns its port behind.
   if (useProcessGroups && child.pid) {
@@ -81,8 +89,15 @@ function stopChild(child, signal) {
 }
 
 function terminateChildren(signal = "SIGTERM") {
+  // A restart that is waiting for an old process to exit must not start a
+  // new one after shutdown begins.
+  shuttingDown = true;
   for (const child of children) {
-    stopChild(child, signal);
+    if (child === queueWorkerChild) {
+      stopQueueWorker(child);
+    } else {
+      stopChild(child, signal);
+    }
   }
 }
 
@@ -93,6 +108,10 @@ function runRequiredChild(command, args, options = {}) {
     ...options,
   });
 
+  if (result.error) {
+    console.error(`Failed to run ${command}: ${result.error.message}`);
+    process.exit(1);
+  }
   if (result.signal) {
     process.kill(process.pid, result.signal);
     return;
@@ -108,7 +127,11 @@ function syncInjectedPackageDist(packageName, packageDir, options = {}) {
   // `node_modules/.pnpm/...`, not directly from `packages/*`.
   // Point the injected package `dist` at the live workspace build output so
   // `pnpm dev` executes the latest local build without recursive copy races.
-  const injectedPackageDirs = [workspaceRoot, exampleDir]
+  // Node resolves the linked dashboard `dist` to `packages/junior-dashboard`,
+  // so the dashboard imports `@sentry/junior` from its own injected copy.
+  // Link that copy too. Otherwise the app and the dashboard load two module
+  // instances, and in-memory state that one writes is not visible to the other.
+  const injectedPackageDirs = [workspaceRoot, exampleDir, dashboardPackageDir]
     .map((consumerDir) => resolveInjectedPackageDir(packageName, consumerDir))
     .filter((value, index, values) => value && values.indexOf(value) === index);
   if (injectedPackageDirs.length === 0) {
@@ -135,7 +158,20 @@ const tunnelUrl =
   process.env.CLOUDFLARE_TUNNEL_URL?.trim() || `http://localhost:${devPort}`;
 applyJuniorDevelopmentDefaults(process.env, {
   baseUrl: `http://localhost:${devPort}`,
+  // The Redis service in `compose.yaml`.
+  queueRedisUrl: "redis://localhost:6382",
 });
+// With BullMQ, one separate worker process pulls the queue jobs.
+const runQueueWorker = process.env.JUNIOR_QUEUE_PROVIDER?.trim() === "bullmq";
+if (
+  runQueueWorker &&
+  process.env.JUNIOR_STATE_ADAPTER?.trim().toLowerCase() === "memory"
+) {
+  console.error(
+    "JUNIOR_STATE_ADAPTER=memory does not work with the BullMQ queue: its worker runs in a separate process. Use JUNIOR_STATE_ADAPTER=redis or JUNIOR_QUEUE_PROVIDER=vercel.",
+  );
+  process.exit(1);
+}
 if (
   !process.env.JUNIOR_SCHEDULER_SECRET?.trim() &&
   !process.env.CRON_SECRET?.trim()
@@ -196,12 +232,18 @@ function clearExampleVercelOutput() {
   });
 }
 
-function startNitroDev() {
+// Restarts reuse this function. Open the Sentry Local UI only on the first
+// start, so that each rebuild does not open a new browser tab.
+function startNitroDev({ openLocalUi = false } = {}) {
+  if (shuttingDown) {
+    return;
+  }
   const child = spawnChild("pnpm", [
     "exec",
     "sentry",
     "local",
     "run",
+    ...(openLocalUi ? ["--open"] : []),
     "--port",
     "8969",
     "--",
@@ -217,7 +259,7 @@ function startNitroDev() {
   child.on("exit", (code, signal) => {
     stopChild(child, signal ?? "SIGTERM");
 
-    if (restartingNitro) {
+    if (restartingNitro && !shuttingDown) {
       return;
     }
 
@@ -228,6 +270,11 @@ function startNitroDev() {
       return;
     }
 
+    // Wait for the queue worker, which can take its stop timeout to exit.
+    if (queueWorkerChild) {
+      queueWorkerChild.once("exit", () => process.exit(code ?? 1));
+      return;
+    }
     process.exit(code ?? 1);
   });
 }
@@ -251,18 +298,83 @@ function restartNitroDev() {
   stopChild(nitroChild, "SIGTERM");
 }
 
-function watchDistForNitroRestart() {
+let queueWorkerChild;
+let restartingQueueWorker = false;
+// The worker waits for running jobs when it stops. After this time, the dev
+// server kills it, so that a long job cannot block a restart or shutdown.
+const queueWorkerStopTimeoutMs = 10_000;
+
+function startQueueWorker() {
+  if (shuttingDown) {
+    return;
+  }
+  const child = spawnChild(
+    process.execPath,
+    [path.join(workspaceRoot, "scripts", "dev-queue-worker.mjs")],
+    { cwd: exampleDir },
+  );
+  queueWorkerChild = child;
+
+  // A worker that fails, for example on a syntax error, does not stop the
+  // dev server. The next watched change starts it again.
+  child.on("exit", (code, signal) => {
+    if (queueWorkerChild === child) {
+      queueWorkerChild = undefined;
+    }
+    if (!stoppedChildren.has(child)) {
+      console.error(
+        `Queue worker exited (${signal ?? `code ${code}`}). It starts again after the next change to Junior or the example app.`,
+      );
+    }
+  });
+}
+
+function restartQueueWorker() {
+  if (restartingQueueWorker) {
+    return;
+  }
+  if (!queueWorkerChild) {
+    startQueueWorker();
+    return;
+  }
+
+  // Start the new worker only after the old one has closed, so that old
+  // code never takes new jobs.
+  restartingQueueWorker = true;
+  queueWorkerChild.once("exit", () => {
+    restartingQueueWorker = false;
+    startQueueWorker();
+  });
+  stopQueueWorker(queueWorkerChild);
+}
+
+function stopQueueWorker(child) {
+  if (stoppedChildren.has(child)) {
+    return;
+  }
+  const timer = setTimeout(() => {
+    console.error(
+      `Queue worker did not stop within ${queueWorkerStopTimeoutMs / 1000} seconds. Killing it.`,
+    );
+    signalChild(child, "SIGKILL");
+  }, queueWorkerStopTimeoutMs);
+  child.once("exit", () => clearTimeout(timer));
+  stopChild(child, "SIGTERM");
+}
+
+function watchForRestart(paths, restart, options = {}) {
+  const { includeFile = () => true, recursive = false } = options;
   let timer;
-  const scheduleRestart = () => {
+  const scheduleRestart = (_event, filename) => {
+    if (filename && !includeFile(filename)) {
+      return;
+    }
     clearTimeout(timer);
-    timer = setTimeout(restartNitroDev, 1500);
+    timer = setTimeout(restart, 1500);
   };
 
-  for (const distDir of [
-    path.join(juniorPackageDir, "dist"),
-    path.join(dashboardPackageDir, "dist"),
-  ]) {
-    const watcher = fs.watch(distDir, scheduleRestart);
+  for (const watchedPath of paths) {
+    const watcher = fs.watch(watchedPath, { recursive }, scheduleRestart);
     children.add({
       killed: false,
       kill() {
@@ -274,6 +386,40 @@ function watchDistForNitroRestart() {
   }
 }
 
+function watchForRestarts() {
+  // A new Junior build restarts both processes.
+  watchForRestart(
+    [
+      path.join(juniorPackageDir, "dist"),
+      path.join(dashboardPackageDir, "dist"),
+    ],
+    () => {
+      restartNitroDev();
+      if (runQueueWorker) {
+        restartQueueWorker();
+      }
+    },
+  );
+  if (!runQueueWorker) {
+    return;
+  }
+  // Nitro reloads the example app by itself. The worker loads the app once,
+  // so a change to its runtime files restarts only the worker. Watch the
+  // folder, because editors often save a file by replacing it.
+  const appEntryFiles = new Set(["server.ts", "plugins.ts", "dashboard.ts"]);
+  watchForRestart([exampleDir], restartQueueWorker, {
+    includeFile: (filename) => appEntryFiles.has(filename),
+  });
+  watchForRestart([path.join(exampleDir, "app")], restartQueueWorker, {
+    recursive: true,
+  });
+}
+
+// Start Postgres, Redis and S3 from `compose.yaml`, and wait until they are
+// healthy. Services that already run are left as they are.
+runRequiredChild("docker", ["compose", "up", "-d", "--wait"], {
+  cwd: workspaceRoot,
+});
 runRequiredChild("pnpm", ["build"], {
   cwd: juniorPackageDir,
 });
@@ -285,10 +431,18 @@ syncInjectedPackageDist("@sentry/junior-dashboard", dashboardPackageDir, {
   strict: true,
 });
 clearExampleVercelOutput();
-
-spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
-  cwd: juniorPackageDir,
+// Apply missing core and plugin migrations before Nitro and the worker start.
+// `junior upgrade` skips migrations that already ran, so this is safe on
+// every start.
+runRequiredChild("pnpm", ["exec", "junior", "upgrade"], {
+  cwd: exampleDir,
 });
+
+spawnChild(
+  "pnpm",
+  ["exec", "tsdown", "--watch", "--logLevel", "warn", "--no-clean"],
+  { cwd: juniorPackageDir },
+);
 spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
   cwd: dashboardPackageDir,
 });
@@ -309,8 +463,11 @@ if (tunnelToken) {
   ]);
 }
 
-watchDistForNitroRestart();
-startNitroDev();
+watchForRestarts();
+startNitroDev({ openLocalUi });
+if (runQueueWorker) {
+  startQueueWorker();
+}
 startLocalHeartbeat();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

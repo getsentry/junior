@@ -1,4 +1,9 @@
+import {
+  readAttachmentStorageConfig,
+  type AttachmentStorageConfig,
+} from "@/chat/attachments/config";
 import { toOptionalTrimmed } from "@/chat/optional-string";
+import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { logWarn } from "@/chat/logging";
@@ -42,14 +47,15 @@ const MAX_TOOL_CALLS_PER_TURN = 1000;
  */
 const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
 /**
- * Max runs one Event automation can start in a rolling hour. Each run is a
- * full agent turn, and Event automations skip the consecutive automated-turn
- * limit. Kept low so a broad trigger, such as every message in a channel,
- * blocks quickly instead of starting a turn for each Event.
+ * Max runs one Event automation can start in one rolling run window. Each run
+ * is a full agent turn, and Event automations skip the consecutive
+ * automated-turn limit. Kept low so a broad trigger, such as every message in
+ * a channel, blocks quickly instead of starting a turn for each Event.
  */
-const MAX_EVENT_AUTOMATION_RUNS_PER_HOUR = 10;
+const MAX_EVENT_AUTOMATION_RUNS = 10;
+/** Length of the rolling window for the Event automation run limit. */
+const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 1000;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
-const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
 const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
@@ -77,6 +83,8 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotModelConfig {
+  /** Decision model used by the passive reply router. */
+  decisionModelId?: string;
   /** Model used for embeddings. */
   embeddingModelId?: string;
   /** Model used for low-cost structured and utility calls. */
@@ -94,6 +102,7 @@ export interface BotModelConfig {
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
+  decisionModelId: string;
   defaultProfile: ModelProfile;
   embeddingModelId: string;
   fastModelId: string;
@@ -108,7 +117,8 @@ export interface BotConfig {
   maxToolCallsPerTurn: number;
   maxTurnCostUsd: number;
   maxConsecutiveAutomatedTurns: number;
-  maxEventAutomationRunsPerHour: number;
+  maxEventAutomationRuns: number;
+  eventAutomationRunWindowMs: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -119,7 +129,9 @@ export type CrossActorMidRunMode = "follow_up" | "steer";
 export type SqlDriver = "neon" | "postgres";
 
 export interface ChatConfig {
+  attachmentStorage: AttachmentStorageConfig;
   bot: BotConfig;
+  queue: QueueConfig;
   functionMaxDurationSeconds: number;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
@@ -135,7 +147,10 @@ export interface ChatConfig {
     completedReactionEmoji: string;
     processingReactionEmoji: string;
     signingSecret?: string;
-    slashCommand: string;
+  };
+  sandbox: {
+    /** Sandbox provider for this deployment. `docker` is for local development. */
+    provider: "vercel" | "docker";
   };
   state: {
     adapter: "memory" | "redis";
@@ -221,16 +236,6 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
-function parseSlashCommand(rawValue: string | undefined): string {
-  const command = toOptionalTrimmed(rawValue) ?? DEFAULT_SLACK_SLASH_COMMAND;
-  if (!command.startsWith("/") || /\s/.test(command)) {
-    throw new Error(
-      "JUNIOR_SLASH_COMMAND must start with / and contain no whitespace",
-    );
-  }
-  return command;
-}
-
 function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
   const value = toOptionalTrimmed(rawValue)?.toLowerCase();
   if (value === undefined || value === "true") {
@@ -261,6 +266,7 @@ const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
   DEFAULT_MODEL_PROFILES.handoff.modelId,
 ).id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
+const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
@@ -502,6 +508,8 @@ function readBotConfig(
       reasoningLevel === undefined
         ? undefined
         : parseTurnReasoningLevel(reasoningLevel),
+    decisionModelId:
+      toOptionalTrimmed(env.AI_DECISION_MODEL) ?? DEFAULT_DECISION_MODEL_ID,
     fastModelId,
     guardianModelId,
     imageGenerationModelId:
@@ -520,7 +528,8 @@ function readBotConfig(
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxTurnCostUsd: MAX_TURN_COST_USD,
     maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
-    maxEventAutomationRunsPerHour: MAX_EVENT_AUTOMATION_RUNS_PER_HOUR,
+    maxEventAutomationRuns: MAX_EVENT_AUTOMATION_RUNS,
+    eventAutomationRunWindowMs: EVENT_AUTOMATION_RUN_WINDOW_MS,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
@@ -591,7 +600,9 @@ export function readChatConfig(
     functionMaxDurationSeconds,
   );
   return {
+    attachmentStorage: readAttachmentStorageConfig(env),
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
+    queue: readQueueConfig(env),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
     conversationWorkEnabled: parseConversationWorkEnabled(
       env.JUNIOR_CONVERSATION_WORK_ENABLED,
@@ -613,7 +624,12 @@ export function readChatConfig(
       completedReactionEmoji: DEFAULT_COMPLETED_REACTION_EMOJI,
       processingReactionEmoji: DEFAULT_PROCESSING_REACTION_EMOJI,
       signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
-      slashCommand: parseSlashCommand(env.JUNIOR_SLASH_COMMAND),
+    },
+    sandbox: {
+      provider:
+        env.JUNIOR_SANDBOX_PROVIDER?.trim().toLowerCase() === "docker"
+          ? "docker"
+          : "vercel",
     },
     state: {
       adapter:
@@ -640,8 +656,13 @@ export interface RuntimeLimits {
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
   maxConsecutiveAutomatedTurns?: number;
-  /** Runs one Event automation can start in a rolling hour. */
-  maxEventAutomationRunsPerHour?: number;
+  /** Runs one Event automation can start in a rolling window. */
+  eventAutomationRunLimit?: {
+    /** Runs allowed in one window. The default is 10. */
+    maxRuns?: number;
+    /** Window length in ms. The default, 60000, is one minute. */
+    windowMs?: number;
+  };
   /** Run slices one turn may use. */
   maxSlicesPerTurn?: number;
   /** Tool calls one turn may make. */
@@ -738,10 +759,17 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
       limits.maxConsecutiveAutomatedTurns,
     );
   }
-  if (limits?.maxEventAutomationRunsPerHour !== undefined) {
-    bot.maxEventAutomationRunsPerHour = requirePositiveLimit(
-      "maxEventAutomationRunsPerHour",
-      limits.maxEventAutomationRunsPerHour,
+  const runLimit = limits?.eventAutomationRunLimit;
+  if (runLimit?.maxRuns !== undefined) {
+    bot.maxEventAutomationRuns = requirePositiveLimit(
+      "eventAutomationRunLimit.maxRuns",
+      runLimit.maxRuns,
+    );
+  }
+  if (runLimit?.windowMs !== undefined) {
+    bot.eventAutomationRunWindowMs = requirePositiveLimit(
+      "eventAutomationRunLimit.windowMs",
+      runLimit.windowMs,
     );
   }
   if (limits?.maxSlicesPerTurn !== undefined) {
@@ -825,6 +853,13 @@ export interface SlackReactionConfig {
 
 /** Apply model overrides from createApp(). */
 export function setBotModelConfig(config: BotModelConfig): void {
+  if (config.decisionModelId !== undefined) {
+    botConfig.decisionModelId = requireModelId(
+      "decisionModelId",
+      config.decisionModelId,
+      toOptionalTrimmed,
+    );
+  }
   if (config.embeddingModelId !== undefined) {
     botConfig.embeddingModelId = requireModelId(
       "embeddingModelId",
