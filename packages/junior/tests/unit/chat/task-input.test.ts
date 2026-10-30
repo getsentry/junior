@@ -36,7 +36,7 @@ describe("renderTaskInput", () => {
       This is a task, not a message from a person.
 
       About: GitHub PR getsentry/junior#691
-      Created by: <@U123>. This person is the Automation creator. Where the instructions say "the Automation creator", write this mention. "Me", "my", and this mention in the instructions also mean the Automation creator. If the instructions do not refer to the Automation creator, do not mention this person.
+      Created by: <@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person; write this mention for them. If the instructions do not refer to this person, do not mention them.
       People involved: <@U456>
       Done by: <@U456>. This person did what this Event describes. The Event calls them "octocat". That is the same person. They are also in People involved. Write to them as "you", and do not also call them "octocat".
       Instructions: Fix failed checks on this PR.

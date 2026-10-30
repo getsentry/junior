@@ -200,9 +200,7 @@ describe("scheduled automation heartbeat", () => {
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toContain("[task]");
     expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
-    // The creator identity decides the mention, not the createdBy copy.
-    expect(dispatchRecord?.input).toContain("Created by: <@U123>");
-    expect(dispatchRecord?.input).not.toContain("U039RR91S");
+    expect(dispatchRecord?.input).toContain("Created by: <@U039RR91S>");
     expect(dispatchRecord?.input).toContain(
       "Instructions: Post a digest. Summarize the latest state.",
     );

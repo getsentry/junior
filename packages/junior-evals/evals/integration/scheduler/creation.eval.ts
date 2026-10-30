@@ -90,13 +90,10 @@ describe("Schedule Creation", () => {
       conversation,
     );
     expect(creates).toHaveLength(1);
-    // The run does not see this request, so "me" would mean nothing. Each run
-    // binds "the Automation creator" to the creator identity, so no mention is
-    // saved. "This channel" would also mean nothing, and nothing binds it.
+    // The run does not see this request, so "this channel" would mean nothing.
     const { instruction } = creates[0]!.input as { instruction?: string };
     expect(instruction).toMatch(/\bAutomation creator\b/i);
     expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
-    expect(instruction).not.toContain("<@U0TEST>");
     expect(instruction).not.toMatch(/\bthis channel\b/i);
   });
 

@@ -1451,7 +1451,7 @@ function eventAutomationRunConversation(
             "This is a task, not a message from a person.",
             "",
             "About: Issue · ACME-42",
-            'Created by: <@U123>. This person is the Automation creator. Where the instructions say "the Automation creator", write this mention. "Me", "my", and this mention in the instructions also mean the Automation creator. If the instructions do not refer to the Automation creator, do not mention this person.',
+            'Created by: <@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person; write this mention for them. If the instructions do not refer to this person, do not mention them.',
             "Instructions: Summarize the closed issue",
             "",
             "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",

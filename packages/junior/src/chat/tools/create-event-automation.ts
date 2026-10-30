@@ -128,7 +128,7 @@ export function createEventAutomationTool(
     async execute(input, options) {
       const { actor, destination, source } =
         requireEventAutomationSlackContext(context);
-      requireRequesterMention(input.instruction, actor, { isCreator: true });
+      requireRequesterMention(input.instruction, actor);
       const trigger = requireEventAutomationTrigger(catalog, input.trigger);
       const id = buildEventAutomationId({
         channelId: destination.channelId,

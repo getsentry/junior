@@ -12,7 +12,6 @@ import {
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
-  // Instructions saved before "the Automation creator" can still say "me".
   test("when a due reminder says me, mention its creator", async ({ run }) => {
     await insertScheduledAutomation({
       credentialMode: "system",
