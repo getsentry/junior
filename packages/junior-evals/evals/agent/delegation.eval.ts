@@ -49,6 +49,8 @@ const MYSQL_DDL_BINLOG =
   "With the binary log format set to ROW, many changes are written to the binary log using the row-based format. Some changes, however, still use the statement-based format. Examples include all DDL (data definition language) statements such as CREATE TABLE, ALTER TABLE, or DROP TABLE.";
 const MYSQL_EXPRESSION_DEFAULT_REPLICATION =
   "If an expression default value refers to a nondeterministic function, any statement that causes the expression to be evaluated is unsafe for statement-based replication. This includes statements such as INSERT and UPDATE.";
+const SQLITE_ROLLBACK_ISOLATION =
+  "In rollback mode, SQLite implements isolation by locking the database file and preventing any reads by other database connections while each write transaction is underway.";
 const SQLITE_SESSION =
   'The session extension provides a convenient mechanism to record changes to tables in an SQLite database, package those changes into a "changeset" or "patchset" file, and later apply the same set of changes to another database with the same schema and compatible starting data.';
 const MYSQL_ADD_COLUMN_REBUILD =
@@ -61,8 +63,7 @@ const MYSQL_ADD_COLUMN_REBUILD =
 // text is sentences from the real docs of each project, so a quote that an
 // agent checks against the live docs matches. The main page of each database
 // also has the sentences of the related pages that answer its child's whole
-// task, so one read is enough. The first paragraph is also the search
-// excerpt. Other paths on these sites get 404.
+// task, so one read is enough. Other paths on these sites get 404.
 const DATABASE_DOCS: DocsPage[] = [
   {
     title: "PostgreSQL: Documentation: ALTER TABLE",
@@ -228,6 +229,7 @@ const DATABASE_DOCS: DocsPage[] = [
       'The only schema altering commands directly supported by SQLite are the rename table, rename column, add column, drop column commands shown above. However, applications can make other arbitrary changes to the format of a table using a simple sequence of operations. Start a transaction. Use CREATE TABLE to construct a new table "new_X" that is in the desired revised format of table X. Transfer content from X into new_X using a statement like: INSERT INTO new_X SELECT ... FROM X. Drop the old table X: DROP TABLE X. Change the name of new_X to X using: ALTER TABLE new_X RENAME TO X. Commit the transaction.',
       SQLITE_WRITE_LOCK,
       SQLITE_WAL,
+      SQLITE_ROLLBACK_ISOLATION,
       SQLITE_ONE_WRITER,
       SQLITE_BACKUP,
       SQLITE_RSYNC,
@@ -265,6 +267,15 @@ const DATABASE_DOCS: DocsPage[] = [
     ],
   },
   {
+    title: "Isolation In SQLite",
+    urls: ["https://www.sqlite.org/isolation.html"],
+    paragraphs: [
+      "SQLite implements serializable transactions by actually serializing the writes. There can only be a single writer at a time to an SQLite database.",
+      SQLITE_ROLLBACK_ISOLATION,
+      "WAL mode permits simultaneous readers and writers. It can do this because changes do not overwrite the original database file, but rather go into the separate write-ahead log file.",
+    ],
+  },
+  {
     title: "SQLite Session Module C/C++ Interface",
     urls: ["https://www.sqlite.org/session.html"],
     paragraphs: [
@@ -296,7 +307,8 @@ function withoutScheme(url: string): string {
 /**
  * Find docs pages as a search engine does. `site:` keeps the pages under that
  * site and path, or else the pages of that host. Pages that share more words
- * with the query come first.
+ * with the query come first. The excerpt is the paragraph that shares the most
+ * words with the query, so a result shows the sentence that answers it.
  */
 function searchDocs(query: string): WebSearchResult[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -321,16 +333,18 @@ function searchDocs(query: string): WebSearchResult[] {
         ? onPath
         : underSites(sites.map((site) => site.split("/")[0] ?? site));
   }
-  const score = (doc: DocsPage) => {
-    const text = `${doc.title} ${doc.urls.join(" ")} ${doc.paragraphs.join(" ")}`;
-    return terms.filter((term) => text.toLowerCase().includes(term)).length;
-  };
+  const score = (text: string) =>
+    terms.filter((term) => text.toLowerCase().includes(term)).length;
+  const pageScore = (doc: DocsPage) =>
+    score(`${doc.title} ${doc.urls.join(" ")} ${doc.paragraphs.join(" ")}`);
   return [...docs]
-    .sort((a, b) => score(b) - score(a))
+    .sort((a, b) => pageScore(b) - pageScore(a))
     .map((doc) => ({
       title: doc.title,
       url: doc.urls[0],
-      excerpt: doc.paragraphs[0],
+      excerpt: doc.paragraphs.reduce((best, paragraph) =>
+        score(paragraph) > score(best) ? paragraph : best,
+      ),
     }));
 }
 
