@@ -7,8 +7,8 @@
  * `mockWebSearchResults()`.
  *
  * The pages that the `webFetch` tool reads go to Roach, which
- * replays them. See `src/recording-rules.ts`. A test can answer some pages
- * itself with `mockWebPages()`.
+ * replays them. See `src/recording-rules.ts`. A test can answer the pages of
+ * some sites itself with `mockWebSites()`.
  */
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
@@ -16,17 +16,22 @@ import { onTestFinished } from "vitest";
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
 
-let mockedPages: Record<string, string> = {};
+let mockedSites: Record<string, string> = {};
+
+/** The host of a URL without `www.`, so both forms are the same site. */
+function siteHost(url: URL): string {
+  return url.hostname.replace(/^www\./, "");
+}
 
 /**
- * Answer `webFetch` reads of each page URL with its HTML in this test. Other
- * paths of the same origins get 404, as on a real site. Other origins still go
- * to Roach.
+ * Answer every `webFetch` read on each host with its HTML in this test, for
+ * any path, with or without `www.`. Give each host one real page. Other hosts
+ * still go to Roach.
  */
-export function mockWebPages(pages: Record<string, string>): void {
-  mockedPages = pages;
+export function mockWebSites(pages: Record<string, string>): void {
+  mockedSites = pages;
   onTestFinished(() => {
-    mockedPages = {};
+    mockedSites = {};
   });
 }
 
@@ -36,20 +41,11 @@ export function installWebReplay(): void {
     http.get("*", ({ request }) => {
       // Only `webFetch` sends this user agent.
       if (request.headers.get("user-agent") !== USER_AGENT) return undefined;
-      const url = new URL(request.url);
-      url.hash = "";
-      const page = mockedPages[url.href];
+      const page = mockedSites[siteHost(new URL(request.url))];
       if (page !== undefined) {
         return new Response(page, {
           headers: { "content-type": "text/html; charset=utf-8" },
         });
-      }
-      if (
-        Object.keys(mockedPages).some(
-          (pageUrl) => new URL(pageUrl).origin === url.origin,
-        )
-      ) {
-        return new Response("Not Found", { status: 404 });
       }
       // `webFetch` uses `node:https`, which does not use the proxy. `fetch`
       // uses the proxy dispatcher of the test. `webFetch` follows redirects

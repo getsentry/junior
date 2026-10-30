@@ -326,10 +326,10 @@ cache keeps the file for the later runs of a pull request.
   the results for one test. Give it a list for the same results on every
   query, or a function that gets the query, so that each search can find the
   page that it asks for.
-- `mockWebPages()` from the same file gives fixed pages to `webFetch` for
-  some URLs in one test. Other paths of those origins get 404. Use it when a
-  case does not check the content of a page, so a live page does not make the
-  run slow. Other origins go to Roach. The `bash` tool in the Vercel Sandbox
+- `mockWebSites()` from the same file gives `webFetch` one page for each host
+  in one test. Every path on the host, with or without `www.`, gets that page.
+  Use a real page of the site, so the agent reads what a real user's agent
+  would read. Other hosts go to Roach. The `bash` tool in the Vercel Sandbox
   does not use these mocks.
 
 ## Recordings

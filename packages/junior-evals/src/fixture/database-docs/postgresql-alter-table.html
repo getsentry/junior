@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <title>PostgreSQL: Documentation: 18: ALTER TABLE</title>
+  
+  
+   
+  
+  
+  
+  
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+  
+
+  
+
+
+  
+
+
+  </head>
+  <body>
+    <div class="container-fluid">
+      <div class="row justify-content-md-center">
+        <div class="col">
+          
+          <nav class="navbar navbar-expand-lg navbar-light bg-light">
+            <a class="navbar-brand p-0" href="/">
+              <img class="logo" src="/media/img/about/press/elephant.png" alt="PostgreSQL Elephant Logo">
+            </a>
+            <input type="checkbox">
+            <label for="navbar-toggler" class="navbar-toggler"><span class="navbar-toggler-icon"></span></label>
+            <div class="navbar-collapse">
+              <ul class="navbar-nav mr-auto">
+                <li class="nav-item p-2"><a href="/" title="Home">Home</a></li>
+                <li class="nav-item p-2"><a href="/about/" title="About">About</a></li>
+                <li class="nav-item p-2"><a href="/download/" title="Download">Download</a></li>
+                <li class="nav-item p-2"><a href="/docs/" title="Documentation">Documentation</a></li>
+                <li class="nav-item p-2"><a href="/community/" title="Community">Community</a></li>
+                <li class="nav-item p-2"><a href="/developer/" title="Developers">Developers</a></li>
+                <li class="nav-item p-2"><a href="/support/" title="Support">Support</a></li>
+                <li class="nav-item p-2"><a href="/about/donate/" title="Donate">Donate</a></li>
+                <li class="nav-item p-2"><a href="/account/" title="Your account">Your account</a></li>
+              </ul>
+              <form role="search" method="get" action="/search/">
+                <div class="input-group">
+                  <input type="text" size="20" maxlength="255" accesskey="s"  class="form-control" placeholder="Search for...">
+                  <span class="input-group-btn">
+                    <button class="btn btn-default" type="submit"><i class="fas fa-search"></i></button>
+                  </span>
+                </div>
+              </form>
+              <form class="form-inline d-none">
+                <button class="btn btn-default ml-1" type="button"></button>
+              </form>
+            </div>
+          </nav>
+        </div>
+      </div>
+      <div class="row justify-content-center pg-shout-box">
+        <div class="col text-white text-center">October 15, 2026: <a href="/about/news/postgresql-19-rc-1-released-3409/">PostgreSQL 19 RC 1 Released!</a>
+
+</div>
+      </div>
+    </div>
+    
+    <div class="container-fluid margin">
+      <div class="row">
+        <div class="col-11">
+          <div class="row">
+            <div class="col-md-6 mb-2">
+              <div class="row">
+                <div class="col">
+                  <div>
+                    <a href="/docs/" title="Documentation">Documentation</a> &rarr; <a href="/docs/18/index.html">PostgreSQL 18</a>
+                  </div>
+                </div>
+              </div>
+              
+                <div class="row">
+                  <div class="col">
+                    Supported Versions:
+                      
+                        
+                        
+                          <a href="/docs/current/sql-altertable.html" title="PostgreSQL 18 - ALTER TABLE" class="docs-version-selected">Current</a>
+                          (<a href="/docs/18/sql-altertable.html" title="PostgreSQL 18 - ALTER TABLE" class="docs-version-selected">18</a>)
+                        
+                      
+                         / 
+                        
+                          <a href="/docs/17/sql-altertable.html" title="PostgreSQL 17 - ALTER TABLE" >17</a>
+                        
+                      
+                         / 
+                        
+                          <a href="/docs/16/sql-altertable.html" title="PostgreSQL 16 - ALTER TABLE" >16</a>
+                        
+                      
+                         / 
+                        
+                          <a href="/docs/15/sql-altertable.html" title="PostgreSQL 15 - ALTER TABLE" >15</a>
+                        
+                      
+                         / 
+                        
+                          <a href="/docs/14/sql-altertable.html" title="PostgreSQL 14 - ALTER TABLE" >14</a>
+                        
+                      
+                  </div>
+                </div>
+              
+              
+                <div class="row">
+                  <div class="col">
+                    Development Versions:
+                    
+                      
+                      <a href="/docs/19/sql-altertable.html" title="PostgreSQL 19 - ALTER TABLE" >19</a>
+                    
+                       / 
+                      <a href="/docs/devel/sql-altertable.html" title="PostgreSQL devel - ALTER TABLE" >devel</a>
+                    
+                  </div>
+                </div>
+              
+              
+                <div class="row">
+                  <div class="col-12">
+                    Unsupported versions:
+                    
+                      
+                      <a href="/docs/13/sql-altertable.html" title="PostgreSQL 13 - ALTER TABLE" >13</a>
+                    
+                       / 
+                      <a href="/docs/12/sql-altertable.html" title="PostgreSQL 12 - ALTER TABLE" >12</a>
+                    
+                       / 
+                      <a href="/docs/11/sql-altertable.html" title="PostgreSQL 11 - ALTER TABLE" >11</a>
+                    
+                       / 
+                      <a href="/docs/10/sql-altertable.html" title="PostgreSQL 10 - ALTER TABLE" >10</a>
+                    
+                       / 
+                      <a href="/docs/9.6/sql-altertable.html" title="PostgreSQL 9.6 - ALTER TABLE" >9.6</a>
+                    
+                       / 
+                      <a href="/docs/9.5/sql-altertable.html" title="PostgreSQL 9.5 - ALTER TABLE" >9.5</a>
+                    
+                       / 
+                      <a href="/docs/9.4/sql-altertable.html" title="PostgreSQL 9.4 - ALTER TABLE" >9.4</a>
+                    
+                       / 
+                      <a href="/docs/9.3/sql-altertable.html" title="PostgreSQL 9.3 - ALTER TABLE" >9.3</a>
+                    
+                       / 
+                      <a href="/docs/9.2/sql-altertable.html" title="PostgreSQL 9.2 - ALTER TABLE" >9.2</a>
+                    
+                       / 
+                      <a href="/docs/9.1/sql-altertable.html" title="PostgreSQL 9.1 - ALTER TABLE" >9.1</a>
+                    
+                       / 
+                      <a href="/docs/9.0/sql-altertable.html" title="PostgreSQL 9.0 - ALTER TABLE" >9.0</a>
+                    
+                       / 
+                      <a href="/docs/8.4/sql-altertable.html" title="PostgreSQL 8.4 - ALTER TABLE" >8.4</a>
+                    
+                       / 
+                      <a href="/docs/8.3/sql-altertable.html" title="PostgreSQL 8.3 - ALTER TABLE" >8.3</a>
+                    
+                       / 
+                      <a href="/docs/8.2/sql-altertable.html" title="PostgreSQL 8.2 - ALTER TABLE" >8.2</a>
+                    
+                       / 
+                      <a href="/docs/8.1/sql-altertable.html" title="PostgreSQL 8.1 - ALTER TABLE" >8.1</a>
+                    
+                       / 
+                      <a href="/docs/8.0/sql-altertable.html" title="PostgreSQL 8.0 - ALTER TABLE" >8.0</a>
+                    
+                       / 
+                      <a href="/docs/7.4/sql-altertable.html" title="PostgreSQL 7.4 - ALTER TABLE" >7.4</a>
+                    
+                       / 
+                      <a href="/docs/7.3/sql-altertable.html" title="PostgreSQL 7.3 - ALTER TABLE" >7.3</a>
+                    
+                       / 
+                      <a href="/docs/7.2/sql-altertable.html" title="PostgreSQL 7.2 - ALTER TABLE" >7.2</a>
+                    
+                       / 
+                      <a href="/docs/7.1/sql-altertable.html" title="PostgreSQL 7.1 - ALTER TABLE" >7.1</a>
+                    
+                  </div>
+                </div>
+              
+            </div>
+            <div class="col-md-6 col-lg-5 offset-lg-1">
+              <form role="search" method="get" action="/search/">
+                <input type="hidden" value="/docs/18/" />
+                <div class="input-group">
+                  <input type="text" class="form-control" placeholder="Search the documentation for..."/>
+                  <span class="input-group-btn">
+                    <button class="btn btn-default" type="submit"><i class="fas fa-search"></i></button>
+                  </span>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div>
+            <div class="navheader">
+  <table summary="Navigation header">
+    <tr>
+      <th colspan="5" align="center">ALTER TABLE</th>
+    </tr>
+    <tr>
+      <td align="left"><a accesskey="p" href="sql-altersystem.html" title="ALTER SYSTEM">Prev</a>&nbsp;</td>
+      <td align="left"><a accesskey="u" href="sql-commands.html" title="SQL Commands">Up</a></td>
+      <th align="center">SQL Commands</th>
+      <td align="right"><a accesskey="h" href="index.html" title="PostgreSQL 18.6 Documentation">Home</a></td>
+      <td align="right">&nbsp;<a accesskey="n" href="sql-altertablespace.html" title="ALTER TABLESPACE">Next</a></td>
+    </tr>
+  </table>
+  <hr />
+</div>
+<div class="refentry">
+  <div class="titlepage"></div><a class="indexterm"></a>
+  <div class="refnamediv">
+    <h2><span class="refentrytitle">ALTER TABLE</span></h2>
+    <p>ALTER TABLE — change the definition of a table</p>
+  </div>
+  <div class="refsynopsisdiv">
+    <h2>Synopsis</h2>
+    <pre class="synopsis">
+ALTER TABLE [ IF EXISTS ] [ ONLY ] <em class="replaceable"><code>name</code></em> [ * ]
+    <em class="replaceable"><code>action</code></em> [, ... ]
+ALTER TABLE [ IF EXISTS ] [ ONLY ] <em class="replaceable"><code>name</code></em> [ * ]
+    RENAME [ COLUMN ] <em class="replaceable"><code>column_name</code></em> TO <em class="replaceable"><code>new_column_name</code></em>
+ALTER TABLE [ IF EXISTS ] [ ONLY ] <em class="replaceable"><code>name</code></em> [ * ]
+    RENAME CONSTRAINT <em class="replaceable"><code>constraint_name</code></em> TO <em class="replaceable"><code>new_constraint_name</code></em>
+ALTER TABLE [ IF EXISTS ] <em class="replaceable"><code>name</code></em>
+    RENAME TO <em class="replaceable"><code>new_name</code></em>
+ALTER TABLE [ IF EXISTS ] <em class="replaceable"><code>name</code></em>
+    SET SCHEMA <em class="replaceable"><code>new_schema</code></em>
+ALTER TABLE ALL IN TABLESPACE <em class="replaceable"><code>name</code></em> [ OWNED BY <em class="replaceable"><code>role_name</code></em> [, ... ] ]
+    SET TABLESPACE <em class="replaceable"><code>new_tablespace</code></em> [ NOWAIT ]
+ALTER TABLE [ IF EXISTS ] <em class="replaceable"><code>name</code></em>
+    ATTACH PARTITION <em class="replaceable"><code>partition_name</code></em> { FOR VALUES <em class="replaceable"><code>partition_bound_spec</code></em> | DEFAULT }
+ALTER TABLE [ IF EXISTS ] <em class="replaceable"><code>name</code></em>
+    DETACH PARTITION <em class="replaceable"><code>partition_name</code></em> [ CONCURRENTLY | FINALIZE ]
+
+<span class="phrase">where <em class="replaceable"><code>action</code></em> is one of:</span>
+
+    ADD [ COLUMN ] [ IF NOT EXISTS ] <em class="replaceable"><code>column_name</code></em> <em class="replaceable"><code>data_type</code></em> [ COLLATE <em class="replaceable"><code>collation</code></em> ] [ <em class="replaceable"><code>column_constraint</code></em> [ ... ] ]
+    DROP [ COLUMN ] [ IF EXISTS ] <em class="replaceable"><code>column_name</code></em> [ RESTRICT | CASCADE ]
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> [ SET DATA ] TYPE <em class="replaceable"><code>data_type</code></em> [ COLLATE <em class="replaceable"><code>collation</code></em> ] [ USING <em class="replaceable"><code>expression</code></em> ]
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> SET DEFAULT <em class="replaceable"><code>expression</code></em>
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> DROP DEFAULT
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> { SET | DROP } NOT NULL
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> SET EXPRESSION AS ( <em class="replaceable"><code>expression</code></em> )
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> DROP EXPRESSION [ IF EXISTS ]
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <em class="replaceable"><code>sequence_options</code></em> ) ]
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> { SET GENERATED { ALWAYS | BY DEFAULT } | SET <em class="replaceable"><code>sequence_option</code></em> | RESTART [ [ WITH ] <em class="replaceable"><code>restart</code></em> ] } [...]
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> DROP IDENTITY [ IF EXISTS ]
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> SET STATISTICS { <em class="replaceable"><code>integer</code></em> | DEFAULT }
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> SET ( <em class="replaceable"><code>attribute_option</code></em> = <em class="replaceable"><code>value</code></em> [, ... ] )
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> RESET ( <em class="replaceable"><code>attribute_option</code></em> [, ... ] )
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> SET STORAGE { PLAIN | EXTERNAL | EXTENDED | MAIN | DEFAULT }
+    ALTER [ COLUMN ] <em class="replaceable"><code>column_name</code></em> SET COMPRESSION <em class="replaceable"><code>compression_method</code></em>
+    ADD <em class="replaceable"><code>table_constraint</code></em> [ NOT VALID ]
+    ADD <em class="replaceable"><code>table_constraint_using_index</code></em>
+    ALTER CONSTRAINT <em class="replaceable"><code>constraint_name</code></em> [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ] [ ENFORCED | NOT ENFORCED ]
+    ALTER CONSTRAINT <em class="replaceable"><code>constraint_name</code></em> [ INHERIT | NO INHERIT ]
+    VALIDATE CONSTRAINT <em class="replaceable"><code>constraint_name</code></em>
+    DROP CONSTRAINT [ IF EXISTS ]  <em class="replaceable"><code>constraint_name</code></em> [ RESTRICT | CASCADE ]
+    DISABLE TRIGGER [ <em class="replaceable"><code>trigger_name</code></em> | ALL | USER ]
+    ENABLE TRIGGER [ <em class="replaceable"><code>trigger_name</code></em> | ALL | USER ]
+    ENABLE REPLICA TRIGGER <em class="replaceable"><code>trigger_name</code></em>
+    ENABLE ALWAYS TRIGGER <em class="replaceable"><code>trigger_name</code></em>
+    DISABLE RULE <em class="replaceable"><code>rewrite_rule_name</code></em>
+    ENABLE RULE <em class="replaceable"><code>rewrite_rule_name</code></em>
+    ENABLE REPLICA RULE <em class="replaceable"><code>rewrite_rule_name</code></em>
+    ENABLE ALWAYS RULE <em class="replaceable"><code>rewrite_rule_name</code></em>
+    DISABLE ROW LEVEL SECURITY
+    ENABLE ROW LEVEL SECURITY
+    FORCE ROW LEVEL SECURITY
+    NO FORCE ROW LEVEL SECURITY
+    CLUSTER ON <em class="replaceable"><code>index_name</code></em>
+    SET WITHOUT CLUSTER
+    SET WITHOUT OIDS
+    SET ACCESS METHOD { <em class="replaceable"><code>new_access_method</code></em> | DEFAULT }
+    SET TABLESPACE <em class="replaceable"><code>new_tablespace</code></em>
+    SET { LOGGED | UNLOGGED }
+    SET ( <em class="replaceable"><code>storage_parameter</code></em> [= <em class="replaceable"><code>value</code></em>] [, ... ] )
+    RESET ( <em class="replaceable"><code>storage_parameter</code></em> [, ... ] )
+    INHERIT <em class="replaceable"><code>parent_table</code></em>
+    NO INHERIT <em class="replaceable"><code>parent_table</code></em>
+    OF <em class="replaceable"><code>type_name</code></em>
+    NOT OF
+    OWNER TO { <em class="replaceable"><code>new_owner</code></em> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+    REPLICA IDENTITY { DEFAULT | USING INDEX <em class="replaceable"><code>index_name</code></em> | FULL | NOTHING }
+
+<span class="phrase">and <em class="replaceable"><code>partition_bound_spec</code></em> is:</span>
+
+IN ( <em class="replaceable"><code>partition_bound_expr</code></em> [, ...] ) |
+FROM ( { <em class="replaceable"><code>partition_bound_expr</code></em> | MINVALUE | MAXVALUE } [, ...] )
+  TO ( { <em class="replaceable"><code>partition_bound_expr</code></em> | MINVALUE | MAXVALUE } [, ...] ) |
+WITH ( MODULUS <em class="replaceable"><code>numeric_literal</code></em>, REMAINDER <em class="replaceable"><code>numeric_literal</code></em> )
+
+<span class="phrase">and <em class="replaceable"><code>column_constraint</code></em> is:</span>
+
+[ CONSTRAINT <em class="replaceable"><code>constraint_name</code></em> ]
+{ NOT NULL [ NO INHERIT ] |
+  NULL |
+  CHECK ( <em class="replaceable"><code>expression</code></em> ) [ NO INHERIT ] |
+  DEFAULT <em class="replaceable"><code>default_expr</code></em> |
+  GENERATED ALWAYS AS ( <em class="replaceable"><code>generation_expr</code></em> ) [ STORED | VIRTUAL ] |
+  GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <em class="replaceable"><code>sequence_options</code></em> ) ] |
+  UNIQUE [ NULLS [ NOT ] DISTINCT ] <em class="replaceable"><code>index_parameters</code></em> |
+  PRIMARY KEY <em class="replaceable"><code>index_parameters</code></em> |
+  REFERENCES <em class="replaceable"><code>reftable</code></em> [ ( <em class="replaceable"><code>refcolumn</code></em> ) ] [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]
+    [ ON DELETE <em class="replaceable"><code>referential_action</code></em> ] [ ON UPDATE <em class="replaceable"><code>referential_action</code></em> ] }
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ] [ ENFORCED | NOT ENFORCED ]
+
+<span class="phrase">and <em class="replaceable"><code>table_constraint</code></em> is:</span>
+
+[ CONSTRAINT <em class="replaceable"><code>constraint_name</code></em> ]
+{ CHECK ( <em class="replaceable"><code>expression</code></em> ) [ NO INHERIT ] |
+  NOT NULL <em class="replaceable"><code>column_name</code></em> [ NO INHERIT ] |
+  UNIQUE [ NULLS [ NOT ] DISTINCT ] ( <em class="replaceable"><code>column_name</code></em> [, ... ] [, <em class="replaceable"><code>column_name</code></em> WITHOUT OVERLAPS ] ) <em class="replaceable"><code>index_parameters</code></em> |
+  PRIMARY KEY ( <em class="replaceable"><code>column_name</code></em> [, ... ] [, <em class="replaceable"><code>column_name</code></em> WITHOUT OVERLAPS ] ) <em class="replaceable"><code>index_parameters</code></em> |
+  EXCLUDE [ USING <em class="replaceable"><code>index_method</code></em> ] ( <em class="replaceable"><code>exclude_element</code></em> WITH <em class="replaceable"><code>operator</code></em> [, ... ] ) <em class="replaceable"><code>index_parameters</code></em> [ WHERE ( <em class="replaceable"><code>predicate</code></em> ) ] |
+  FOREIGN KEY ( <em class="replaceable"><code>column_name</code></em> [, ... ] [, PERIOD <em class="replaceable"><code>column_name</code></em> ] ) REFERENCES <em class="replaceable"><code>reftable</code></em> [ ( <em class="replaceable"><code>refcolumn</code></em> [, ... ]  [, PERIOD <em class="replaceable"><code>refcolumn</code></em> ] ) ]
+    [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ] [ ON DELETE <em class="replaceable"><code>referential_action</code></em> ] [ ON UPDATE <em class="replaceable"><code>referential_action</code></em> ] }
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ] [ ENFORCED | NOT ENFORCED ]
+
+<span class="phrase">and <em class="replaceable"><code>table_constraint_using_index</code></em> is:</span>
+
+    [ CONSTRAINT <em class="replaceable"><code>constraint_name</code></em> ]
+    { UNIQUE | PRIMARY KEY } USING INDEX <em class="replaceable"><code>index_name</code></em>
+    [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+<span class="phrase"><em class="replaceable"><code>index_parameters</code></em> in <code class="literal">UNIQUE</code>, <code class="literal">PRIMARY KEY</code>, and <code class="literal">EXCLUDE</code> constraints are:</span>
+
+[ INCLUDE ( <em class="replaceable"><code>column_name</code></em> [, ... ] ) ]
+[ WITH ( <em class="replaceable"><code>storage_parameter</code></em> [= <em class="replaceable"><code>value</code></em>] [, ... ] ) ]
+[ USING INDEX TABLESPACE <em class="replaceable"><code>tablespace_name</code></em> ]
+
+<span class="phrase"><em class="replaceable"><code>exclude_element</code></em> in an <code class="literal">EXCLUDE</code> constraint is:</span>
+
+{ <em class="replaceable"><code>column_name</code></em> | ( <em class="replaceable"><code>expression</code></em> ) } [ COLLATE <em class="replaceable"><code>collation</code></em> ] [ <em class="replaceable"><code>opclass</code></em> [ ( <em class="replaceable"><code>opclass_parameter</code></em> = <em class="replaceable"><code>value</code></em> [, ... ] ) ] ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ]
+
+<span class="phrase"><em class="replaceable"><code>referential_action</code></em> in a <code class="literal">FOREIGN KEY</code>/<code class="literal">REFERENCES</code> constraint is:</span>
+
+{ NO ACTION | RESTRICT | CASCADE | SET NULL [ ( <em class="replaceable"><code>column_name</code></em> [, ... ] ) ] | SET DEFAULT [ ( <em class="replaceable"><code>column_name</code></em> [, ... ] ) ] }
+</pre>
+  </div>
+  <div class="refsect1">
+    <h2>Description</h2>
+    <p><code class="command">ALTER TABLE</code> changes the definition of an existing table. There are several subforms described below. Note that the lock level required may differ for each subform. An <code class="literal">ACCESS EXCLUSIVE</code> lock is acquired unless explicitly noted. When multiple subcommands are given, the lock acquired will be the strictest one required by any subcommand.</p>
+    <div class="variablelist">
+      <dl class="variablelist">
+        <dt><span class="term"><code class="literal">ADD [ COLUMN ] [ IF NOT EXISTS ]</code></span> <a href="#SQL-ALTERTABLE-DESC-ADD-COLUMN" class="id_link">#</a></dt>
+        <dd>
+          <p>This form adds a new column to the table, using the same syntax as <a class="link" href="sql-createtable.html" title="CREATE TABLE"><code class="command">CREATE TABLE</code></a>. If <code class="literal">IF NOT EXISTS</code> is specified and a column already exists with this name, no error is thrown.</p>
+        </dd>
+        <dt><span class="term"><code class="literal">DROP [ COLUMN ] [ IF EXISTS ]</code></span> <a href="#SQL-ALTERTABLE-DESC-DROP-COLUMN" class="id_link">#</a></dt>
+        <dd>
+          <p>This form drops a column from a table. Indexes and table constraints involving the column will be automatically dropped as well. Multivariate statistics referencing the dropped column will also be removed if the removal of the column would cause the statistics to contain data for only a single column. You will need to say <code class="literal">CASCADE</code> if anything outside the table depends on the column, for example, foreign key references or views. If <code class="literal">IF EXISTS</code> is specified and the column does not exist, no error is thrown. In this case a notice is issued instead.</p>
+        </dd>
+        <dt><span class="term"><code class="literal">SET DATA TYPE</code></span> <a href="#SQL-ALTERTABLE-DESC-SET-DATA-TYPE" class="id_link">#</a></dt>
+        <dd>
+          <p>This form changes the type of a column of a table. Indexes and simple table constraints involving the column will be automatically converted to use the new column type by reparsing the originally supplied expression. The optional <code class="literal">COLLATE</code> clause specifies a collation for the new column; if omitted, the collation is the default for the new column type. The optional <code class="literal">USING</code> clause specifies how to compute the new column value from the old; if omitted, the default conversion is the same as an assignment cast from old data type to new. A <code class="literal">USING</code> clause must be provided if there is no implicit or assignment cast from old to new type.</p>
+          <p>When this form is used, the column's statistics are removed, so running <a class="link" href="sql-analyze.html" title="ANALYZE"><code class="command">ANALYZE</code></a> on the table afterwards is recommended. For a virtual generated column, <code class="command">ANALYZE</code> is not necessary because such columns never have statistics.</p>
+        </dd>
+        <dt><span class="term"><code class="literal">SET</code>/<code class="literal">DROP DEFAULT</code></span> <a href="#SQL-ALTERTABLE-DESC-SET-DROP-DEFAULT" class="id_link">#</a></dt>
+        <dd>
+          <p>These forms set or remove the default value for a column (where removal is equivalent to setting the default value to NULL). The new default value will only apply in subsequent <code class="command">INSERT</code> or <code class="command">UPDATE</code> commands; it does not cause rows already in the table to change.</p>
+        </dd>
+        <dt><span class="term"><code class="literal">SET</code>/<code class="literal">DROP NOT NULL</code></span> <a href="#SQL-ALTERTABLE-DESC-SET-DROP-NOT-NULL" class="id_link">#</a></dt>
+        <dd>
+          <p>These forms change whether a column is marked to allow null values or to reject null values.</p>
+          <p><code class="literal">SET NOT NULL</code> may only be applied to a column provided none of the records in the table contain a <code class="literal">NULL</code> value for the column. Ordinarily this is checked during the <code class="literal">ALTER TABLE</code> by scanning the entire table, unless <code class="literal">NOT VALID</code> is specified; however, if a valid <code class="literal">CHECK</code> constraint exists (and is not dropped in the same command) which proves no <code class="literal">NULL</code> can exist, then the table scan is skipped. If a column has an invalid not-null constraint, <code class="literal">SET NOT NULL</code> validates it.</p></dd></dl></div></div></div></div></div></div></div></body></html>

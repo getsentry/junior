@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html><head>
+<title>ALTER TABLE</title>
+</head>
+<body>
+<div class=nosearch>
+<a href="index.html">
+<img class="logo" src="images/sqlite370_banner.svg" alt="SQLite" border="0">
+</a>
+<div></div>
+<div class="tagline desktoponly">
+Small. Fast. Reliable.<br>Choose any three.
+</div>
+<div class="menu mainmenu">
+<ul>
+<li><a href="index.html">Home</a>
+<li class='mobileonly'><a href="javascript:void(0)" onclick='toggle_div("submenu")'>Menu</a>
+<li class='wideonly'><a href='about.html'>About</a>
+<li class='desktoponly'><a href="docs.html">Documentation</a>
+<li class='desktoponly'><a href="download.html">Download</a>
+<li class='wideonly'><a href='copyright.html'>License</a>
+<li class='desktoponly'><a href="support.html">Support</a>
+<li class='desktoponly'><a href="prosupport.html">Purchase</a>
+<li class='search' id='search_menubutton'>
+<a href="javascript:void(0)" onclick='toggle_search()'>Search</a>
+</ul>
+</div>
+<div class="menu submenu">
+<ul>
+<li><a href='about.html'>About</a>
+<li><a href='docs.html'>Documentation</a>
+<li><a href='download.html'>Download</a>
+<li><a href='support.html'>Support</a>
+<li><a href='prosupport.html'>Purchase</a>
+</ul>
+</div>
+<div class="searchmenu">
+<form method="GET" action="search">
+<select>
+<option value="d">Search Documentation</option>
+<option value="c">Search Changelog</option>
+</select>
+<input type="text" value="">
+<input type="submit" value="Go">
+</form>
+</div>
+</div>
+<div class=fancy>
+<div class=nosearch>
+<div class="fancy_title">
+ALTER TABLE
+</div>
+<details class="fancy_toc">
+<summary>Table Of Contents</summary>
+<div><div class="fancy-toc1"><a href="#overview">1. Overview</a></div>
+<div class="fancy-toc1"><a href="#alter_table_rename">2. ALTER TABLE RENAME</a></div>
+<div class="fancy-toc1"><a href="#alter_table_rename_column">3. ALTER TABLE RENAME COLUMN</a></div>
+<div class="fancy-toc1"><a href="#alter_table_add_column">4. ALTER TABLE ADD COLUMN</a></div>
+<div class="fancy-toc1"><a href="#alter_table_drop_column">5. ALTER TABLE DROP COLUMN</a></div>
+<div class="fancy-toc2"><a href="#how_it_works">5.1. How It Works</a></div>
+<div class="fancy-toc1"><a href="#alter_table_alter_column">6. ALTER TABLE ALTER COLUMN</a></div>
+<div class="fancy-toc1"><a href="#disable_error_checking_using_pragma_writable_schema_on">7. Disable Error Checking Using PRAGMA writable_schema=ON</a></div>
+<div class="fancy-toc1"><a href="#making_other_kinds_of_table_schema_changes">8. Making Other Kinds Of Table Schema Changes</a></div>
+<div class="fancy-toc1"><a href="#why_alter_table_is_such_a_problem_for_sqlite">9. Why ALTER TABLE is such a problem for SQLite</a></div>
+</div>
+</details>
+</div>
+<h1><span>1. </span>Overview</h1>
+<p><b><a href="syntax/alter-table-stmt.html">alter-table-stmt:</a></b>
+<button id='x4af1a773' onclick='hideorshow("x4af1a773","xa610fee5")'>hide</button></p>
+ <div id='xa610fee5' class='imgcontainer'>
+ <div><svg>
+<text>ALTER</text>
+<text>TABLE</text>
+<text>schema-name</text>
+<text>.</text>
+<text>table-name</text>
+<text>RENAME</text>
+<text>TO</text>
+<text>new-table-name</text>
+<text>COLUMN</text>
+<text>column-name</text>
+<text>TO</text>
+<text>new-column-name</text>
+<text>ADD</text>
+<text>COLUMN</text>
+<text>column-def</text>
+<text>CONSTRAINT</text>
+<text>constraint-name</text>
+<text>CHECK</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>conflict-clause</text>
+<text>DROP</text>
+<text>COLUMN</text>
+<text>column-name</text>
+<text>CONSTRAINT</text>
+<text>constraint-name</text>
+<text>ALTER</text>
+<text>COLUMN</text>
+<text>column-name</text>
+<text>SET</text>
+<text>NOT</text>
+<text>NULL</text>
+<text>conflict-clause</text>
+<text>DROP</text>
+<text>NOT</text>
+<text>NULL</text>
+</svg>
+</div>
+<p><b><a href="syntax/column-def.html">column-def:</a></b>
+<button id='xca24c1d7' onclick='hideorshow("xca24c1d7","x171b5dd2")'>show</button></p>
+ <div id='x171b5dd2' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>column-name</text>
+<text>type-name</text>
+<text>column-constraint</text>
+</svg>
+</div>
+<p><b><a href="syntax/column-constraint.html">column-constraint:</a></b>
+<button id='x7c57e753' onclick='hideorshow("x7c57e753","xadf04275")'>show</button></p>
+ <div id='xadf04275' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>CONSTRAINT</text>
+<text>name</text>
+<text>PRIMARY</text>
+<text>KEY</text>
+<text>DESC</text>
+<text>conflict-clause</text>
+<text>AUTOINCREMENT</text>
+<text>ASC</text>
+<text>NOT</text>
+<text>NULL</text>
+<text>conflict-clause</text>
+<text>UNIQUE</text>
+<text>conflict-clause</text>
+<text>CHECK</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>DEFAULT</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>literal-value</text>
+<text>signed-number</text>
+<text>COLLATE</text>
+<text>collation-name</text>
+<text>foreign-key-clause</text>
+<text>GENERATED</text>
+<text>ALWAYS</text>
+<text>AS</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>VIRTUAL</text>
+<text>STORED</text>
+</svg>
+</div>
+<p><b><a href="syntax/foreign-key-clause.html">foreign-key-clause:</a></b>
+<button id='x689d8e90' onclick='hideorshow("x689d8e90","x97059a52")'>show</button></p>
+ <div id='x97059a52' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>REFERENCES</text>
+<text>foreign-table</text>
+<text>(</text>
+<text>column-name</text>
+<text>)</text>
+<text>,</text>
+<text>ON</text>
+<text>DELETE</text>
+<text>SET</text>
+<text>NULL</text>
+<text>UPDATE</text>
+<text>SET</text>
+<text>DEFAULT</text>
+<text>CASCADE</text>
+<text>RESTRICT</text>
+<text>NO</text>
+<text>ACTION</text>
+<text>MATCH</text>
+<text>name</text>
+<text>NOT</text>
+<text>DEFERRABLE</text>
+<text>INITIALLY</text>
+<text>DEFERRED</text>
+<text>INITIALLY</text>
+<text>IMMEDIATE</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/literal-value.html">literal-value:</a></b>
+<button id='xad03c394' onclick='hideorshow("xad03c394","xfc0e350a")'>show</button></p>
+ <div id='xfc0e350a' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>CURRENT_TIMESTAMP</text>
+<text>numeric-literal</text>
+<text>string-literal</text>
+<text>blob-literal</text>
+<text>NULL</text>
+<text>TRUE</text>
+<text>FALSE</text>
+<text>CURRENT_TIME</text>
+<text>CURRENT_DATE</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/signed-number.html">signed-number:</a></b>
+<button id='xc259d893' onclick='hideorshow("xc259d893","x5d46a914")'>show</button></p>
+ <div id='x5d46a914' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>+</text>
+<text>numeric-literal</text>
+<text>-</text>
+</svg>
+</div>
+</div>
+</div>
+<p><b><a href="syntax/type-name.html">type-name:</a></b>
+<button id='x7f454d1b' onclick='hideorshow("x7f454d1b","xd8d3672f")'>show</button></p>
+ <div id='xd8d3672f' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>name</text>
+<text>(</text>
+<text>signed-number</text>
+<text>,</text>
+<text>signed-number</text>
+<text>)</text>
+<text>(</text>
+<text>signed-number</text>
+<text>)</text>
+</svg>
+</div>
+<p><b><a href="syntax/signed-number.html">signed-number:</a></b>
+<button id='x3e36038f' onclick='hideorshow("x3e36038f","xe6786b85")'>show</button></p>
+ <div id='xe6786b85' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>+</text>
+<text>numeric-literal</text>
+<text>-</text>
+</svg>
+</div>
+</div>
+</div>
+</div>
+<p><b><a href="syntax/conflict-clause.html">conflict-clause:</a></b>
+<button id='x3bf34bce' onclick='hideorshow("x3bf34bce","x83ae8af6")'>show</button></p>
+ <div id='x83ae8af6' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>ON</text>
+<text>CONFLICT</text>
+<text>ROLLBACK</text>
+<text>ABORT</text>
+<text>FAIL</text>
+<text>IGNORE</text>
+<text>REPLACE</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/expr.html">expr:</a></b>
+<button id='xd888372f' onclick='hideorshow("xd888372f","x2041c74f")'>show</button></p>
+ <div id='x2041c74f' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>literal-value</text>
+<text>bind-parameter</text>
+<text>schema-name</text>
+<text>.</text>
+<text>table-name</text>
+<text>.</text>
+<text>column-name</text>
+<text>unary-operator</text>
+<text>expr</text>
+<text>expr</text>
+<text>binary-operator</text>
+<text>expr</text>
+<text>function-name</text>
+<text>(</text>
+<text>function-arguments</text>
+<text>)</text>
+<text>filter-clause</text>
+<text>over-clause</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>,</text>
+<text>CAST</text>
+<text>(</text>
+<text>expr</text>
+<text>AS</text>
+<text>type-name</text>
+<text>)</text>
+<text>expr</text>
+<text>COLLATE</text>
+<text>collation-name</text>
+<text>expr</text>
+<text>NOT</text>
+<text>LIKE</text>
+<text>GLOB</text>
+<text>REGEXP</text>
+<text>MATCH</text>
+<text>expr</text>
+<text>expr</text>
+<text>ESCAPE</text>
+<text>expr</text>
+<text>expr</text>
+<text>ISNULL</text>
+<text>NOTNULL</text>
+<text>NOT</text>
+<text>NULL</text>
+<text>expr</text>
+<text>IS</text>
+<text>NOT</text>
+<text>DISTINCT</text>
+<text>FROM</text>
+<text>expr</text>
+<text>expr</text>
+<text>NOT</text>
+<text>BETWEEN</text>
+<text>expr</text>
+<text>AND</text>
+<text>expr</text>
+<text>expr</text>
+<text>NOT</text>
+<text>IN</text>
+<text>(</text>
+<text>select-stmt</text>
+<text>)</text>
+<text>expr</text>
+<text>,</text>
+<text>schema-name</text>
+<text>.</text>
+<text>table-function</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>table-name</text>
+<text>,</text>
+<text>NOT</text>
+<text>EXISTS</text>
+<text>(</text>
+<text>select-stmt</text>
+<text>)</text>
+<text>CASE</text>
+<text>expr</text>
+<text>WHEN</text>
+<text>expr</text>
+<text>THEN</text>
+<text>expr</text>
+<text>ELSE</text>
+<text>expr</text>
+<text>END</text>
+<text>raise-function</text>
+</svg>
+</div>
+<p><b><a href="syntax/filter-clause.html">filter-clause:</a></b>
+<button id='xe9c7d18b' onclick='hideorshow("xe9c7d18b","x3fd9947d")'>show</button></p>
+ <div id='x3fd9947d' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>FILTER</text>
+<text>(</text>
+<text>WHERE</text>
+<text>expr</text>
+<text>)</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/function-arguments.html">function-arguments:</a></b>
+<button id='x748bc089' onclick='hideorshow("x748bc089","x5b1d25c7")'>show</button></p>
+ <div id='x5b1d25c7' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>DISTINCT</text>
+<text>expr</text>
+<text>,</text>
+<text>*</text>
+<text>ORDER</text>
+<text>BY</text>
+<text>ordering-term</text>
+<text>,</text>
+</svg>
+</div>
+<p><b><a href="syntax/ordering-term.html">ordering-term:</a></b>
+<button id='xfe5bf67d' onclick='hideorshow("xfe5bf67d","x6ab2e2a3")'>show</button></p>
+ <div id='x6ab2e2a3' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>expr</text>
+<text>COLLATE</text>
+<text>collation-name</text>
+<text>DESC</text>
+<text>ASC</text>
+<text>NULLS</text>
+<text>FIRST</text>
+<text>NULLS</text>
+<text>LAST</text>
+</svg>
+</div>
+</div>
+</div>
+<p><b><a href="syntax/literal-value.html">literal-value:</a></b>
+<button id='x2a14f2c6' onclick='hideorshow("x2a14f2c6","x3f855099")'>show</button></p>
+ <div id='x3f855099' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>CURRENT_TIMESTAMP</text>
+<text>numeric-literal</text>
+<text>string-literal</text>
+<text>blob-literal</text>
+<text>NULL</text>
+<text>TRUE</text>
+<text>FALSE</text>
+<text>CURRENT_TIME</text>
+<text>CURRENT_DATE</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/over-clause.html">over-clause:</a></b>
+<button id='xe2e2f194' onclick='hideorshow("xe2e2f194","x64223c4d")'>show</button></p>
+ <div id='x64223c4d' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>OVER</text>
+<text>window-name</text>
+<text>(</text>
+<text>base-window-name</text>
+<text>PARTITION</text>
+<text>BY</text>
+<text>expr</text>
+<text>,</text>
+<text>ORDER</text>
+<text>BY</text>
+<text>ordering-term</text>
+<text>,</text>
+<text>frame-spec</text>
+<text>)</text>
+</svg>
+</div>
+<p><b><a href="syntax/frame-spec.html">frame-spec:</a></b>
+<button id='x9120452d' onclick='hideorshow("x9120452d","xea8d67e7")'>show</button></p>
+ <div id='xea8d67e7' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>GROUPS</text>
+<text>BETWEEN</text>
+<text>UNBOUNDED</text>
+<text>PRECEDING</text>
+<text>AND</text>
+<text>UNBOUNDED</text>
+<text>FOLLOWING</text>
+<text>RANGE</text>
+<text>ROWS</text>
+<text>UNBOUNDED</text>
+<text>PRECEDING</text>
+<text>expr</text>
+<text>PRECEDING</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>expr</text>
+<text>PRECEDING</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>expr</text>
+<text>FOLLOWING</text>
+<text>expr</text>
+<text>PRECEDING</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>expr</text>
+<text>FOLLOWING</text>
+<text>EXCLUDE</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>EXCLUDE</text>
+<text>GROUP</text>
+<text>EXCLUDE</text>
+<text>TIES</text>
+<text>EXCLUDE</text>
+<text>NO</text>
+<text>OTHERS</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/ordering-term.html">ordering-term:</a></b>
+<button id='xfe356180' onclick='hideorshow("xfe356180","x5bc53af0")'>show</button></p>
+ <div id='x5bc53af0' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>expr</text>
+<text>COLLATE</text>
+<text>collation-name</text>
+<text>DESC</text>
+<text>ASC</text>
+<text>NULLS</text>
+<text>FIRST</text>
+<text>NULLS</text>
+<text>LAST</text>
+</svg>
+</div>
+</div>
+</div>
+<p><b><a href="syntax/raise-function.html">raise-function:</a></b>
+<button id='x72e75407' onclick='hideorshow("x72e75407","xace42d32")'>show</button></p>
+ <div id='xace42d32' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>RAISE</text>
+<text>(</text>
+<text>ROLLBACK</text>
+<text>,</text>
+<text>expr</text>
+<text>)</text>
+<text>IGNORE</text>
+<text>ABORT</text>
+<text>FAIL</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/select-stmt.html">select-stmt:</a></b>
+<button id='xbe8d1d78' onclick='hideorshow("xbe8d1d78","xa06e4c82")'>show</button></p>
+ <div id='xa06e4c82' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>WITH</text>
+<text>RECURSIVE</text>
+<text>common-table-expression</text>
+<text>,</text>
+<text>SELECT</text>
+<text>DISTINCT</text>
+<text>result-column</text>
+<text>,</text>
+<text>ALL</text>
+<text>FROM</text>
+<text>table-or-subquery</text>
+<text>join-clause</text>
+<text>,</text>
+<text>WHERE</text>
+<text>expr</text>
+<text>GROUP</text>
+<text>BY</text>
+<text>expr</text>
+<text>HAVING</text>
+<text>expr</text>
+<text>,</text>
+<text>WINDOW</text>
+<text>window-name</text>
+<text>AS</text>
+<text>window-defn</text>
+<text>,</text>
+<text>VALUES</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>,</text>
+<text>,</text>
+<text>compound-operator</text>
+<text>select-core</text>
+<text>ORDER</text>
+<text>BY</text>
+<text>LIMIT</text>
+<text>expr</text>
+<text>ordering-term</text>
+<text>,</text>
+<text>OFFSET</text>
+<text>expr</text>
+<text>,</text>
+<text>expr</text>
+</svg>
+</div>
+<p><b><a href="syntax/common-table-expression.html">common-table-expression:</a></b>
+<button id='x43695167' onclick='hideorshow("x43695167","x737fe2e9")'>show</button></p>
+ <div id='x737fe2e9' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>table-name</text>
+<text>(</text>
+<text>column-name</text>
+<text>)</text>
+<text>AS</text>
+<text>NOT</text>
+<text>MATERIALIZED</text>
+<text>(</text>
+<text>select-stmt</text>
+<text>)</text>
+<text>,</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/compound-operator.html">compound-operator:</a></b>
+<button id='xa8c671a5' onclick='hideorshow("xa8c671a5","xdebec532")'>show</button></p>
+ <div id='xdebec532' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>UNION</text>
+<text>UNION</text>
+<text>INTERSECT</text>
+<text>EXCEPT</text>
+<text>ALL</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/join-clause.html">join-clause:</a></b>
+<button id='x604a94d9' onclick='hideorshow("x604a94d9","xac0041bb")'>show</button></p>
+ <div id='xac0041bb' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>table-or-subquery</text>
+<text>join-operator</text>
+<text>table-or-subquery</text>
+<text>join-constraint</text>
+</svg>
+</div>
+<p><b><a href="syntax/join-constraint.html">join-constraint:</a></b>
+<button id='x8a3ce37d' onclick='hideorshow("x8a3ce37d","x0a0f3afe")'>show</button></p>
+ <div id='x0a0f3afe' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>USING</text>
+<text>(</text>
+<text>column-name</text>
+<text>)</text>
+<text>,</text>
+<text>ON</text>
+<text>expr</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/join-operator.html">join-operator:</a></b>
+<button id='x12dd7f17' onclick='hideorshow("x12dd7f17","x97bcf490")'>show</button></p>
+ <div id='x97bcf490' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>NATURAL</text>
+<text>LEFT</text>
+<text>OUTER</text>
+<text>JOIN</text>
+<text>,</text>
+<text>RIGHT</text>
+<text>FULL</text>
+<text>INNER</text>
+<text>CROSS</text>
+</svg>
+</div>
+</div>
+</div>
+<p><b><a href="syntax/ordering-term.html">ordering-term:</a></b>
+<button id='x64a9e423' onclick='hideorshow("x64a9e423","x60af3c9a")'>show</button></p>
+ <div id='x60af3c9a' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>expr</text>
+<text>COLLATE</text>
+<text>collation-name</text>
+<text>DESC</text>
+<text>ASC</text>
+<text>NULLS</text>
+<text>FIRST</text>
+<text>NULLS</text>
+<text>LAST</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/result-column.html">result-column:</a></b>
+<button id='x31068978' onclick='hideorshow("x31068978","x1a749fc9")'>show</button></p>
+ <div id='x1a749fc9' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>expr</text>
+<text>AS</text>
+<text>column-alias</text>
+<text>*</text>
+<text>table-name</text>
+<text>.</text>
+<text>*</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/table-or-subquery.html">table-or-subquery:</a></b>
+<button id='x07ebfdc8' onclick='hideorshow("x07ebfdc8","xe4db451e")'>show</button></p>
+ <div id='xe4db451e' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>schema-name</text>
+<text>.</text>
+<text>table-name</text>
+<text>AS</text>
+<text>table-alias</text>
+<text>INDEXED</text>
+<text>BY</text>
+<text>index-name</text>
+<text>NOT</text>
+<text>INDEXED</text>
+<text>table-function-name</text>
+<text>(</text>
+<text>expr</text>
+<text>)</text>
+<text>,</text>
+<text>AS</text>
+<text>table-alias</text>
+<text>(</text>
+<text>select-stmt</text>
+<text>)</text>
+<text>(</text>
+<text>table-or-subquery</text>
+<text>)</text>
+<text>,</text>
+<text>join-clause</text>
+</svg>
+</div>
+</div>
+<p><b><a href="syntax/window-defn.html">window-defn:</a></b>
+<button id='x8d5d2843' onclick='hideorshow("x8d5d2843","x557d1d70")'>show</button></p>
+ <div id='x557d1d70' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>(</text>
+<text>base-window-name</text>
+<text>PARTITION</text>
+<text>BY</text>
+<text>expr</text>
+<text>,</text>
+<text>ORDER</text>
+<text>BY</text>
+<text>ordering-term</text>
+<text>,</text>
+<text>frame-spec</text>
+<text>)</text>
+</svg>
+</div>
+<p><b><a href="syntax/frame-spec.html">frame-spec:</a></b>
+<button id='x2221306a' onclick='hideorshow("x2221306a","xa833066c")'>show</button></p>
+ <div id='xa833066c' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>GROUPS</text>
+<text>BETWEEN</text>
+<text>UNBOUNDED</text>
+<text>PRECEDING</text>
+<text>AND</text>
+<text>UNBOUNDED</text>
+<text>FOLLOWING</text>
+<text>RANGE</text>
+<text>ROWS</text>
+<text>UNBOUNDED</text>
+<text>PRECEDING</text>
+<text>expr</text>
+<text>PRECEDING</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>expr</text>
+<text>PRECEDING</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>expr</text>
+<text>FOLLOWING</text>
+<text>expr</text>
+<text>PRECEDING</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>expr</text>
+<text>FOLLOWING</text>
+<text>EXCLUDE</text>
+<text>CURRENT</text>
+<text>ROW</text>
+<text>EXCLUDE</text>
+<text>GROUP</text>
+<text>EXCLUDE</text>
+<text>TIES</text>
+<text>EXCLUDE</text>
+<text>NO</text>
+<text>OTHERS</text>
+</svg>
+</div>
+</div>
+</div>
+</div>
+<p><b><a href="syntax/type-name.html">type-name:</a></b>
+<button id='xb7a4d5da' onclick='hideorshow("xb7a4d5da","xaad9c2a9")'>show</button></p>
+ <div id='xaad9c2a9' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>name</text>
+<text>(</text>
+<text>signed-number</text>
+<text>,</text>
+<text>signed-number</text>
+<text>)</text>
+<text>(</text>
+<text>signed-number</text>
+<text>)</text>
+</svg>
+</div>
+<p><b><a href="syntax/signed-number.html">signed-number:</a></b>
+<button id='x82425b07' onclick='hideorshow("x82425b07","x25d3e1fe")'>show</button></p>
+ <div id='x25d3e1fe' style='display:none;' class='imgcontainer'>
+ <div><svg>
+<text>+</text>
+<text>numeric-literal</text>
+<text>-</text>
+</svg>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>SQLite supports a limited subset of ALTER TABLE.
+The ALTER TABLE command in SQLite allows
+these alterations of an existing table:
+it can be renamed;
+a column can be renamed;
+a column can be added to it;
+or
+a column can be dropped from it.
+<a></a>
+</p><h1><span>2. </span>ALTER TABLE RENAME</h1>
+<p> The RENAME TO syntax changes the name of <span class='yyterm'>table-name</span>
+to <span class='yyterm'>new-table-name</span>.
+This command 
+cannot be used to move a table between attached databases, only to rename 
+a table within the same database.
+If the table being renamed has triggers or indices, then these remain
+attached to the table after it has been renamed.
+</p><blockquote>
+<b>Compatibility Note:</b>
+The behavior of ALTER TABLE when renaming a table was enhanced
+in versions 3.25.0 (2018-09-15) and 3.26.0 (2018-12-01)
+in order to carry the rename operation forward into triggers and
+views that reference the renamed table.  This is considered an
+improvement. Applications that depend on the older (and
+arguably buggy) behavior can use the
+<a href="pragma.html#pragma_legacy_alter_table">PRAGMA legacy_alter_table=ON</a> statement or the
+<a href="c3ref/c_dbconfig_defensive.html#sqlitedbconfiglegacyaltertable">SQLITE_DBCONFIG_LEGACY_ALTER_TABLE</a> configuration parameter
+on <a href="c3ref/db_config.html">sqlite3_db_config()</a> interface to make ALTER TABLE RENAME
+behave as it did prior to version 3.25.0.
+</blockquote>
+<p>
+Beginning with release 3.25.0 (2018-09-15), references to the table
+within trigger bodies and view definitions are also renamed.
+</p>
+<p> Prior to version 3.26.0 (2018-12-01), FOREIGN KEY references
+to a table that is renamed were only edited with
+<a href="pragma.html#pragma_foreign_keys">PRAGMA foreign_keys=ON</a>, or in other words if
+<a href="foreignkeys.html">foreign key constraints</a> were being enforced.  With
+<a href="pragma.html#pragma_foreign_keys">PRAGMA foreign_keys=OFF</a>, FOREIGN KEY constraints would not be changed
+when the table that the foreign key referred to (the "<a href="foreignkeys.html#parentchild">parent table</a>")
+was renamed.  Beginning with version 3.26.0, FOREIGN KEY constraints
+are always converted when a table is renamed, unless the
+<a href="pragma.html#pragma_legacy_alter_table">PRAGMA legacy_alter_table=ON</a> setting is engaged.  The following
+table summarizes the difference:</p>
+<blockquote>
+<table border="1" cellpadding="2" cellspacing="0">
+<tr>
+<th>PRAGMA foreign_keys
+</th><th>PRAGMA legacy_alter_table
+</th><th><a href="foreignkeys.html#parentchild">Parent Table</a>
+references are updated
+</th><th>SQLite version
+</th></tr><tr><td align="center">Off</td><td align="center">Off</td><td align="center">No</td><td align="center">&lt; 3.26.0
+</td></tr><tr><td align="center">Off</td><td align="center">Off</td><td align="center">Yes</td><td align="center">&gt;= 3.26.0
+</td></tr><tr><td align="center">On</td><td align="center">Off</td><td align="center">Yes</td><td align="center">all
+</td></tr><tr><td align="center">Off</td><td align="center">On</td><td align="center">No</td><td align="center">all
+</td></tr><tr><td align="center">On</td><td align="center">On</td><td align="center">Yes</td><td align="center">all
+</td></tr></table>
+</blockquote>
+<a></a>
+<h1><span>3. </span>ALTER TABLE RENAME COLUMN</h1>
+<p> The RENAME COLUMN TO syntax changes the
+<span class='yyterm'>column-name</span> of table <span class='yyterm'>table-name</span>
+into <span class='yyterm'>new-column-name</span>.  The column name is changed both
+within the table definition itself and also within all indexes, triggers,
+and views that reference the column.  If the column name change would
+result in a semantic ambiguity in a trigger or view, then the RENAME
+COLUMN fails with an error and no changes are applied.
+<a></a>
+</p><h1><span>4. </span>ALTER TABLE ADD COLUMN</h1>
+<p> The ADD COLUMN syntax
+is used to add a new column to an existing table.
+The new column is always appended to the end of the list of existing columns.
+The <a href="syntax/column-def.html">column-def</a> rule defines the characteristics of the new column.
+The new column may take any of the forms permissible in a <a href="lang_createtable.html">CREATE TABLE</a>
+statement, with the following restrictions:
+</p><ul>
+<li>The column may not have a PRIMARY KEY or UNIQUE constraint.</li>
+<li>The column may not have a default value of CURRENT_TIME, CURRENT_DATE, 
+    CURRENT_TIMESTAMP, or an expression in parentheses.</li>
+<li>If a NOT NULL constraint is specified, then the column must have a
+    default value other than NULL.
+</li><li>If <a href="foreignkeys.html">foreign key constraints</a> are <a href="pragma.html#pragma_foreign_keys">enabled</a> and
+    a column with a <a href="syntax/foreign-key-clause.html">REFERENCES clause</a>
+    is added, the column must have a default value of NULL.
+</li><li>The column may not be <a href="gencol.html">GENERATED ALWAYS ... STORED</a>,
+though VIRTUAL columns are allowed.
+</li></ul>
+<p>When adding a column with a <a href="lang_createtable.html#ckconst">CHECK constraint</a>, or a NOT NULL constraint
+on a <a href="gencol.html">generated column</a>, the added constraints are tested against all 
+preexisting rows in the table and the ADD COLUMN fails
+if any constraint fails.  The testing of added constraints
+against preexisting rows is a new enhancement as of SQLite version
+3.37.0 (2021-11-27).</p>
+<p>The ALTER TABLE command works by modifying the SQL text of the schema
+stored in the <a href="schematab.html">sqlite_schema table</a>.
+No changes are made to table content for renames or column addition without
+constraints.
+Because of this,
+the execution time of such ALTER TABLE commands is independent of
+the amount of data in the table and such commands will 
+run as quickly on a table with 10 million rows as on a table with 1 row.
+When adding new columns that have CHECK constraints, or adding generated
+columns with NOT NULL constraints, or when deleting columns, then all
+existing data in the table must be either read (to test new constraints
+against existing rows) or written (to remove deleted columns).  In those
+cases, the ALTER TABLE command takes time that is proportional to the
+amount of content in the table being altered.
+</p></div></body></html>
