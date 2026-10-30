@@ -12,7 +12,7 @@ export function createReportBlockedTool() {
       readOnlyHint: false,
     },
     description:
-      "End this delegated task as blocked. Call this when missing access, credentials, input, or a decision stops the task, also when a search for the missing part found nothing. Do not guess, mock, or fake results to work around it.",
+      "End this delegated task as blocked. Call this instead of a final text reply when you cannot give the result that the task asks for because access, credentials, input, or a decision is missing, also when a search for the missing part found nothing. A reply that only says what is missing is not a result. Do not guess, mock, or fake results to work around it.",
     inputSchema: z
       .object({
         missing: z
