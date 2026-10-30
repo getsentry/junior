@@ -102,7 +102,7 @@ describe("web fetch content conversion", () => {
     const paragraph = `<p>${"Slack streaming docs ".repeat(800)}</p>`;
     const html = `<html><body>${paragraph.repeat(30)}</body></html>`;
 
-    const result = await extractWebFetchResponse(
+    const { result, fullContent } = await extractWebFetchResponse(
       new URL("https://docs.example.com/large"),
       new Response(html, {
         status: 200,
@@ -117,6 +117,7 @@ describe("web fetch content conversion", () => {
     expect(result.source_bytes).toBe(Buffer.byteLength(html));
     expect(result.extracted_chars).toBeGreaterThan(result.content.length);
     expect(result.truncated).toBe(true);
+    expect(fullContent.length).toBe(result.extracted_chars);
   });
 
   it("reports client-side fetch failures as repairable tool errors", async () => {

@@ -1,193 +1,269 @@
-<html><head><title>MySQL :: MySQL 8.4 Reference Manual :: 17.12.1 Online DDL Operations</title></head><body>
-<div role="main">
-            
-            
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+    <title>MySQL :: MySQL 8.4 Reference Manual :: 17.12.1 Online DDL Operations</title>
+
+                                </head>
+
+<body>
+<a href="#main">Skip to Main Content</a>
 <div>
-    <div class="">
+    <header>
+
+                        <a href="https://dev.mysql.com/" title="MySQL"></a>
+
+        <div>
+            <div>
+                <div>
+                    <div>
+                        The world's most popular open source database
+                    </div>
+                    <div>
+                        <form>
+                        <input/>
+                        <input/>
+                        </form>
+                    </div>
+                    <div>
+
+                    </div>
+                </div>
+            </div>
+            <div>
+
+                <div>
+
+                </div>
+            </div>
+        </div>
+        <div>
+            <div>
+                <div>
+                    <span></span>
+                </div>
+                                                                                        <a href="/"><span></span> Developer Zone</a>
+                                                                                                                                    <a href="https://www.mysql.com/downloads/"><span></span> Downloads</a>
+                                                                                                <a href="https://www.mysql.com/"><span></span> MySQL.com</a>
+                                                                        <div>
+                    <span></span>
+                </div>
+                <div>
+                                                                                                                                                                                                    <span></span>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        </div>
+                <div>
+                    <span>
+                        <a href="/doc/">Documentation</a>
+                    </span>
+                </div>
+
+            </div>
+            <div></div>
+            <div><span>Section Menu: &nbsp; </span></div>
+        </div>
+    </header>
+        <div>
+                        <div role="main">
+
+<div>
     <div>
-        <div class="docs-sidebar-header">
-            <a class="docs-show-hide-nav" href="" title="Hide Sidebar"><span class="icon-arrow-small-left"></span></a>
-            <div class="docs-nav-links">
-    <a href="innodb-online-ddl.html"
-        title="Previous: InnoDB and Online DDL"><span
-        class="icon-chevron-left"></span></a>
-<a href="index.html" title="Start"><span class="icon-book-open"></span></a>
-        <a href="innodb-online-ddl.html" title="Up: InnoDB and Online DDL"><span class="icon-chevron-up"></span></a>
-    <a href="innodb-online-ddl-performance.html"
-        title="Next: Online DDL Performance and Concurrency"><span
-        class="icon-chevron-right"></span></a>
+    <div>
+        <div>
+            <a href="" title="Hide Sidebar"><span></span></a>
+            <div>
+
+    <a href="innodb-online-ddl.html" title="Previous: InnoDB and Online DDL"><span></span></a>
+<a href="index.html" title="Start"><span></span></a>
+        <a href="innodb-online-ddl.html" title="Up: InnoDB and Online DDL"><span></span></a>
+    <a href="innodb-online-ddl-performance.html" title="Next: Online DDL Performance and Concurrency"><span></span></a>
                             </div>
         </div>
+
 <div>
     <div>
-        <form method="get" action="/doc/search/">
-            <input type="hidden" value="371" />
-            <input type="hidden" value="1" />
-            <input type="text" title="Search this Manual"
-                value="Search this Manual"
-                onfocus="if(this.value == 'Search this Manual') {this.value='';this.style.color='#555';}"
-                onblur="if(this.value == '') {this.value='Search this Manual';this.style.color='#bbb';}" />
-            <button class="docs-sidebar-search-btn" title="Search" type="submit">
-                <span class="icon-search"></span>
+        <form>
+            <input/>
+            <input/>
+            <input title="Search this Manual"/>
+
+            <button title="Search">
+                <span></span>
             </button>
         </form>
     </div>
 </div>
-                <div class="docs-sidebar-nav">
-            <a class="docs-icon-home" href="/doc/"><span class="icon-home"></span>Documentation Home</a><hr />
-            <div class="docs-sidebar-mtitle">MySQL 8.4 Reference Manual</div>
+                <div>
+            <a href="/doc/"><span></span>Documentation Home</a><hr/>
+            <div>MySQL 8.4 Reference Manual</div>
+
         </div>
-        
-<a class="docs-sidebar-section" href=""><span class="icon-related"></span>
-    <span class="text">Related Documentation</span></a>
-<div class="docs-sidebar-accordian open">
-    <div class="text">
-        <a href="/doc/relnotes/mysql/8.4/en/">MySQL 8.4 Release Notes</a><br />
+
+<a href=""><span></span>
+    <span>Related Documentation</span></a>
+<div>
+    <div>
+        <a href="/doc/relnotes/mysql/8.4/en/">MySQL 8.4 Release Notes</a><br/>
         </div>
 </div>
-    <a class="docs-sidebar-section" href=""><span class="icon-download-thin"></span>
-        <span class="text">
+
+    <a href=""><span></span>
+        <span>
             Download
                             this Manual
                     </span>
     </a>
-    <div class="docs-sidebar-accordian open">
-        <div class="text">
+    <div>
+        <div>
                                     <a href="https://downloads.mysql.com/docs/refman-8.4-en.pdf">PDF (US Ltr)</a>
-            - 40.2Mb<br />
+            - 40.2Mb<br/>
                                                 <a href="https://downloads.mysql.com/docs/refman-8.4-en.a4.pdf">PDF (A4)</a>
-            - 40.3Mb<br />
+            - 40.3Mb<br/>
                                                 <a href="https://downloads.mysql.com/docs/refman-8.4-en.man-gpl.tar.gz">Man Pages (TGZ)</a>
-            - 261.9Kb<br />
+            - 261.9Kb<br/>
                                                 <a href="https://downloads.mysql.com/docs/refman-8.4-en.man-gpl.zip">Man Pages (Zip)</a>
-            - 367.5Kb<br />
+            - 367.5Kb<br/>
                                                 <a href="https://downloads.mysql.com/docs/mysql-8.4.info.gz">Info (Gzip)</a>
-            - 4.0Mb<br />
+            - 4.0Mb<br/>
                                                 <a href="https://downloads.mysql.com/docs/mysql-8.4.info.zip">Info (Zip)</a>
-            - 4.0Mb<br />
+            - 4.0Mb<br/>
                                 </div>
     </div>
-        <br /><span><br /></span>
+
+        <br/><span><br/></span>
     </div>
     </div>
-    <div class="has-toc">
+
     <div>
-                <div class="right">
+    <div>
+
+                <div>
             <a href="">version 8.4
-            <span class="icon-chevron-down"></span></a>
+            <span></span></a>
             <div>
-                                                        <a                         href="/doc/refman/26.10/en/innodb-online-ddl-operations.html">
+                                                        <a href="/doc/refman/26.10/en/innodb-online-ddl-operations.html">
                         26.10
-                                            </a><br />
-                                                                            <a                         href="/doc/refman/26.7/en/innodb-online-ddl-operations.html">
+                                            </a><br/>
+                                                                            <a href="/doc/refman/26.7/en/innodb-online-ddl-operations.html">
                         26.7
-                                            </a><br />
-                                                                            <a                         href="/doc/refman/9.7/en/innodb-online-ddl-operations.html">
+                                            </a><br/>
+                                                                            <a href="/doc/refman/9.7/en/innodb-online-ddl-operations.html">
                         9.7
                                                 &nbsp;current
-                                            </a><br />
-                                                                                                                <a                         href="/doc/refman/8.0/en/innodb-online-ddl-operations.html">
+                                            </a><br/>
+                                                                                                                <a href="/doc/refman/8.0/en/innodb-online-ddl-operations.html">
                         8.0
-                                            </a><br />
+                                            </a><br/>
                                                                         <div>
-                                                                                                                                                    <a                                     href="/doc/refman/8.0/ja/innodb-online-ddl-operations.html">
+                                                                                                                                                    <a href="/doc/refman/8.0/ja/innodb-online-ddl-operations.html">
                                     8.0&nbsp;
                                                                             Japanese
-                                                                    </a><br />
+                                                                    </a><br/>
                                                                                             </div>
                             </div>
         </div>
-        <div class="left hidden">
-            <a class="docs-show-hide-nav" href=""
-                title="Show Sidebar"><span class="icon-arrow-small-right"></span></a>
+
+        <div>
+            <a href="" title="Show Sidebar"><span></span></a>
         </div>
+
                         <div>
             <a href="/doc/refman/8.4/en/">MySQL 8.4 Reference Manual</a> &nbsp;/&nbsp;
                             <span><a href="">...</a> &nbsp;/&nbsp;</span>
-                <span class="hidden">
+                <span>
                                                         <a href="innodb-storage-engine.html">The InnoDB Storage Engine</a> &nbsp;/&nbsp;
                                                             <a href="innodb-online-ddl.html">InnoDB and Online DDL</a> &nbsp;/&nbsp;
                                                                                         </span>
                                         Online DDL Operations
                                     </div>
+
         <div>
-<div class="section">
-<div class="titlepage">
+
 <div>
 <div>
-<h3 class="title"><a></a>17.12.1 Online DDL Operations</h3>
+<div>
+<div>
+<h3><a></a>17.12.1 Online DDL Operations</h3>
+
 </div>
+
 </div>
+
 </div>
-<a class="indexterm"></a><p>
+<a></a><p>
       Online support details, syntax examples, and usage notes for DDL
       operations are provided under the following topics in this
       section.
 </p>
-<div class="itemizedlist">
-<ul class="itemizedlist"><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-index-operations" title="Index Operations">Index Operations</a></p></li><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-primary-key-operations" title="Primary Key Operations">Primary Key Operations</a></p></li><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-column-operations" title="Column Operations">Column Operations</a></p></li><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-generated-column-operations" title="Generated Column Operations">Generated Column Operations</a></p></li><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-foreign-key-operations" title="Foreign Key Operations">Foreign Key Operations</a></p></li><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-table-operations" title="Table Operations">Table Operations</a></p></li><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-tablespace-operations" title="Tablespace Operations">Tablespace Operations</a></p></li><li class="listitem"><p><a class="xref" href="innodb-online-ddl-operations.html#online-ddl-partitioning" title="Partitioning Operations">Partitioning Operations</a></p></li></ul>
-</div>
-<div class="simplesect">
-<div class="titlepage">
 <div>
-<div class="simple">
-<h4 class="title"><a></a>Index Operations</h4>
+<ul><li><p><a href="innodb-online-ddl-operations.html#online-ddl-index-operations" title="Index Operations">Index Operations</a></p></li><li><p><a href="innodb-online-ddl-operations.html#online-ddl-primary-key-operations" title="Primary Key Operations">Primary Key Operations</a></p></li><li><p><a href="innodb-online-ddl-operations.html#online-ddl-column-operations" title="Column Operations">Column Operations</a></p></li><li><p><a href="innodb-online-ddl-operations.html#online-ddl-generated-column-operations" title="Generated Column Operations">Generated Column Operations</a></p></li><li><p><a href="innodb-online-ddl-operations.html#online-ddl-foreign-key-operations" title="Foreign Key Operations">Foreign Key Operations</a></p></li><li><p><a href="innodb-online-ddl-operations.html#online-ddl-table-operations" title="Table Operations">Table Operations</a></p></li><li><p><a href="innodb-online-ddl-operations.html#online-ddl-tablespace-operations" title="Tablespace Operations">Tablespace Operations</a></p></li><li><p><a href="innodb-online-ddl-operations.html#online-ddl-partitioning" title="Partitioning Operations">Partitioning Operations</a></p></li></ul>
 </div>
+
+<div>
+
+<div>
+<div>
+
+<div>
+<h4><a></a>Index Operations</h4>
+
 </div>
+
+</div>
+
 </div>
 <p>
         The following table provides an overview of online DDL support
         for index operations. An asterisk indicates additional
         information, an exception, or a dependency. For details, see
-        <a class="xref" href="innodb-online-ddl-operations.html#online-ddl-index-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
+        <a href="innodb-online-ddl-operations.html#online-ddl-index-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
 </p>
-<div class="table">
-<a></a><p class="title"><b>Table 17.15 Online DDL Support for Index Operations</b></p>
-<div class="table-contents">
-<table summary="Online DDL support for index operations indicating whether the operation is performed in place, rebuilds the table, permits concurrent DML, or only modifies metadata."><col align="left"><col align="center"><col align="center"><col align="center"><col align="center"><col align="center"><thead><tr>
-            <th scope="col">Operation</th>
-            <th scope="col">Instant</th>
-            <th scope="col">In Place</th>
-            <th scope="col">Rebuilds Table</th>
-            <th scope="col">Permits Concurrent DML</th>
-            <th scope="col">Only Modifies Metadata</th>
+<div>
+<a></a><p><b>Table 17.15 Online DDL Support for Index Operations</b></p>
+<div>
+<table><col><col><col><col><col><col><thead><tr>
+            <th>Operation</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Rebuilds Table</th>
+            <th>Permits Concurrent DML</th>
+            <th>Only Modifies Metadata</th>
           </tr></thead><tbody><tr>
-            <th scope="row">Creating or adding a secondary index</th>
+            <th>Creating or adding a secondary index</th>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Dropping an index</th>
+            <th>Dropping an index</th>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Renaming an index</th>
+            <th>Renaming an index</th>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Adding a <code class="literal">FULLTEXT</code> index</th>
+            <th>Adding a <code class="literal">FULLTEXT</code> index</th>
             <td>No</td>
             <td>Yes*</td>
             <td>No*</td>
             <td>No</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Adding a <code class="literal">SPATIAL</code> index</th>
+            <th>Adding a <code class="literal">SPATIAL</code> index</th>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>No</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Changing the index type</th>
+            <th>Changing the index type</th>
             <td>Yes</td>
             <td>Yes</td>
             <td>No</td>
@@ -195,16 +271,17 @@
             <td>Yes</td>
 </tr></tbody></table>
 </div>
+
 </div>
-<br class="table-break">
+<br>
 <h5><a></a>Syntax and Usage Notes</h5>
-<div class="itemizedlist">
-<ul class="itemizedlist"><li class="listitem"><p>
+<div>
+<ul><li><p>
             Creating or adding a secondary index
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">CREATE INDEX <em class="replaceable">name</em> ON <em class="replaceable">table</em> (<em class="replaceable">col_list</em>);</code></pre><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">ALTER TABLE <em class="replaceable">tbl_name</em> ADD INDEX <em class="replaceable">name</em> (<em class="replaceable">col_list</em>);</code></pre><p>
+          </p><pre><code class="language-sql">CREATE INDEX <em>name</em> ON <em>table</em> (<em>col_list</em>);</code></pre><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ADD INDEX <em>name</em> (<em>col_list</em>);</code></pre><p>
             The table remains available for read and write operations
             while the index is being created. The
-            <a class="link" href="create-index.html" title="15.1.15 CREATE INDEX Statement"><code class="literal">CREATE INDEX</code></a> statement only
+            <a href="create-index.html" title="15.1.15 CREATE INDEX Statement"><code class="literal">CREATE INDEX</code></a> statement only
             finishes after all transactions that are accessing the table
             are completed, so that the initial state of the index
             reflects the most recent contents of the table.
@@ -217,83 +294,87 @@
           </p><p>
             A newly created secondary index contains only the committed
             data in the table at the time the
-            <a class="link" href="create-index.html" title="15.1.15 CREATE INDEX Statement"><code class="literal">CREATE INDEX</code></a> or
-            <a class="link" href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> statement
+            <a href="create-index.html" title="15.1.15 CREATE INDEX Statement"><code class="literal">CREATE INDEX</code></a> or
+            <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> statement
             finishes executing. It does not contain any uncommitted
             values, old versions of values, or values marked for
             deletion but not yet removed from the old index.
           </p><p>
             Some factors affect the performance, space usage, and
             semantics of this operation. For details, see
-            <a class="xref" href="innodb-online-ddl-limitations.html" title="17.12.8 Online DDL Limitations">Section 17.12.8, “Online DDL Limitations”</a>.
-          </p></li><li class="listitem"><p>
+            <a href="innodb-online-ddl-limitations.html" title="17.12.8 Online DDL Limitations">Section 17.12.8, “Online DDL Limitations”</a>.
+          </p></li><li><p>
             Dropping an index
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">DROP INDEX <em class="replaceable">name</em> ON <em class="replaceable">table</em>;</code></pre><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">ALTER TABLE <em class="replaceable">tbl_name</em> DROP INDEX <em class="replaceable">name</em>;</code></pre><p>
+          </p><pre><code class="language-sql">DROP INDEX <em>name</em> ON <em>table</em>;</code></pre><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> DROP INDEX <em>name</em>;</code></pre><p>
             The table remains available for read and write operations
             while the index is being dropped. The
-            <a class="link" href="drop-index.html" title="15.1.27 DROP INDEX Statement"><code class="literal">DROP INDEX</code></a> statement only
+            <a href="drop-index.html" title="15.1.27 DROP INDEX Statement"><code class="literal">DROP INDEX</code></a> statement only
             finishes after all transactions that are accessing the table
             are completed, so that the initial state of the index
             reflects the most recent contents of the table.
-          </p></li><li class="listitem"><p>
+          </p></li><li><p>
             Renaming an index
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">ALTER TABLE <em class="replaceable">tbl_name</em> RENAME INDEX <em class="replaceable">old_index_name</em> TO <em class="replaceable">new_index_name</em>, ALGORITHM=INPLACE, LOCK=NONE;</code></pre></li><li class="listitem"><p>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> RENAME INDEX <em>old_index_name</em> TO <em>new_index_name</em>, ALGORITHM=INPLACE, LOCK=NONE;</code></pre></li><li><p>
             Adding a <code class="literal">FULLTEXT</code> index
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">CREATE FULLTEXT INDEX <em class="replaceable">name</em> ON table(<em class="replaceable">column</em>);</code></pre><p>
+          </p><pre><code class="language-sql">CREATE FULLTEXT INDEX <em>name</em> ON table(<em>column</em>);</code></pre><p>
             Adding the first <code class="literal">FULLTEXT</code> index rebuilds
             the table if there is no user-defined
             <code class="literal">FTS_DOC_ID</code> column. Additional
             <code class="literal">FULLTEXT</code> indexes may be added without
             rebuilding the table.
-          </p></li><li class="listitem"><p>
+          </p></li><li><p>
             Adding a <code class="literal">SPATIAL</code> index
-          </p><pre class="programlisting copytoclipboard language-sql"><code class="language-sql">CREATE TABLE geom (g GEOMETRY NOT NULL);
-ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></pre></li><li class="listitem"><p>
+          </p><pre><code class="language-sql">CREATE TABLE geom (g GEOMETRY NOT NULL);
+ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></pre></li><li><p>
             Changing the index type (<code class="literal">USING {BTREE |
             HASH}</code>)
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">ALTER TABLE <em class="replaceable">tbl_name</em> DROP INDEX i1, ADD INDEX i1(<em class="replaceable">key_part,...</em>) USING BTREE, ALGORITHM=INSTANT;</code></pre></li></ul>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> DROP INDEX i1, ADD INDEX i1(<em>key_part,...</em>) USING BTREE, ALGORITHM=INSTANT;</code></pre></li></ul>
 </div>
+
 </div>
-<div class="simplesect">
-<div class="titlepage">
 <div>
-<div class="simple">
-<h4 class="title"><a></a>Primary Key Operations</h4>
+<div>
+<div>
+<div>
+<h4><a></a>Primary Key Operations</h4>
+
 </div>
+
 </div>
+
 </div>
 <p>
         The following table provides an overview of online DDL support
         for primary key operations. An asterisk indicates additional
         information, an exception, or a dependency. See
-        <a class="xref" href="innodb-online-ddl-operations.html#online-ddl-primary-key-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
+        <a href="innodb-online-ddl-operations.html#online-ddl-primary-key-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
 </p>
-<div class="table">
-<a></a><p class="title"><b>Table 17.16 Online DDL Support for Primary Key Operations</b></p>
-<div class="table-contents">
-<table summary="Online DDL support for primary key operations indicating whether the operation is performed in place, rebuilds the table, permits concurrent DML, or only modifies metadata."><col align="left"><col align="center"><col align="center"><col align="center"><col align="center"><col align="center"><thead><tr>
-            <th scope="col">Operation</th>
-            <th scope="col">Instant</th>
-            <th scope="col">In Place</th>
-            <th scope="col">Rebuilds Table</th>
-            <th scope="col">Permits Concurrent DML</th>
-            <th scope="col">Only Modifies Metadata</th>
+<div>
+<a></a><p><b>Table 17.16 Online DDL Support for Primary Key Operations</b></p>
+<div>
+<table><col><col><col><col><col><col><thead><tr>
+            <th>Operation</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Rebuilds Table</th>
+            <th>Permits Concurrent DML</th>
+            <th>Only Modifies Metadata</th>
           </tr></thead><tbody><tr>
-            <th scope="row">Adding a primary key</th>
+            <th>Adding a primary key</th>
             <td>No</td>
             <td>Yes*</td>
             <td>Yes*</td>
             <td>Yes</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Dropping a primary key</th>
+            <th>Dropping a primary key</th>
             <td>No</td>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Dropping a primary key and adding another</th>
+            <th>Dropping a primary key and adding another</th>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
@@ -301,13 +382,14 @@ ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></p
             <td>No</td>
 </tr></tbody></table>
 </div>
+
 </div>
-<br class="table-break">
+<br>
 <h5><a></a>Syntax and Usage Notes</h5>
-<div class="itemizedlist">
-<ul class="itemizedlist"><li class="listitem"><p>
+<div>
+<ul><li><p>
             Adding a primary key
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">ALTER TABLE <em class="replaceable">tbl_name</em> ADD PRIMARY KEY (<em class="replaceable">column</em>), ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ADD PRIMARY KEY (<em>column</em>), ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
             Rebuilds the table in place. Data is reorganized
             substantially, making it an expensive operation.
             <code class="literal">ALGORITHM=INPLACE</code> is not permitted under
@@ -315,9 +397,9 @@ ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></p
             <code class="literal">NOT NULL</code>.
           </p><p>
             Restructuring the
-            <a class="link" href="glossary.html#glos_clustered_index" title="clustered index">clustered index</a>
+            <a href="glossary.html#glos_clustered_index" title="clustered index">clustered index</a>
             always requires copying of table data. Thus, it is best to
-            define the <a class="link" href="glossary.html#glos_primary_key" title="primary key">primary
+            define the <a href="glossary.html#glos_primary_key" title="primary key">primary
             key</a> when you create a table, rather than issuing
             <code class="literal">ALTER TABLE ... ADD PRIMARY KEY</code> later.
           </p><p>
@@ -329,6 +411,7 @@ ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></p
             checks that none of the <code class="literal">PRIMARY KEY</code>
             columns contains a <code class="literal">NULL</code>.
           </p><p>
+
             When you add a primary key using the
             <code class="literal">ALGORITHM=COPY</code> clause, MySQL converts
             <code class="literal">NULL</code> values in the associated columns to
@@ -338,7 +421,7 @@ ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></p
             behavior that Oracle recommends you not rely on. Adding a
             primary key using <code class="literal">ALGORITHM=INPLACE</code> is
             only permitted when the
-            <a class="link" href="server-system-variables.html#sysvar_sql_mode"><code class="literal">SQL_MODE</code></a> setting includes
+            <a href="server-system-variables.html#sysvar_sql_mode"><code class="literal">SQL_MODE</code></a> setting includes
             the <code class="literal">strict_trans_tables</code> or
             <code class="literal">strict_all_tables</code> flags; when the
             <code class="literal">SQL_MODE</code> setting is strict,
@@ -355,7 +438,7 @@ ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></p
             key. To avoid uncertainty and the potential space
             requirement for an extra hidden column, specify the
             <code class="literal">PRIMARY KEY</code> clause as part of the
-            <a class="link" href="create-table.html" title="15.1.20 CREATE TABLE Statement"><code class="literal">CREATE TABLE</code></a> statement.
+            <a href="create-table.html" title="15.1.20 CREATE TABLE Statement"><code class="literal">CREATE TABLE</code></a> statement.
           </p><p>
             MySQL creates a new clustered index by copying the existing
             data from the original table to a temporary table that has
@@ -369,10 +452,10 @@ ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></p
             The online performance enhancements that apply to operations
             on secondary indexes do not apply to the primary key index.
             The rows of an InnoDB table are stored in a
-            <a class="link" href="glossary.html#glos_clustered_index" title="clustered index">clustered index</a>
+            <a href="glossary.html#glos_clustered_index" title="clustered index">clustered index</a>
             organized based on the
-            <a class="link" href="glossary.html#glos_primary_key" title="primary key">primary key</a>, forming
-            what some database systems call an <span class="quote">“<span class="quote">index-organized
+            <a href="glossary.html#glos_primary_key" title="primary key">primary key</a>, forming
+            what some database systems call an <span>“<span>index-organized
             table</span>”</span>. Because the table structure is closely tied
             to the primary key, redefining the primary key still
             requires copying the data.
@@ -382,141 +465,1221 @@ ALTER TABLE geom ADD SPATIAL INDEX(g), ALGORITHM=INPLACE, LOCK=SHARED;</code></p
             is still copied, it is more efficient than using
             <code class="literal">ALGORITHM=COPY</code> because:
 </p>
-<div class="itemizedlist">
-<ul class="itemizedlist"><li class="listitem"><p>
+<div>
+<ul><li><p>
                 No undo logging or associated redo logging is required
                 for <code class="literal">ALGORITHM=INPLACE</code>. These
                 operations add overhead to DDL statements that use
                 <code class="literal">ALGORITHM=COPY</code>.
-              </p></li><li class="listitem"><p>
+              </p></li><li><p>
                 The secondary index entries are pre-sorted, and so can
                 be loaded in order.
-              </p></li><li class="listitem"><p>
+              </p></li><li><p>
                 The change buffer is not used, because there are no
                 random-access inserts into the secondary indexes.
 </p></li></ul>
 </div>
-</li><li class="listitem"><p>
+</li><li><p>
             Dropping a primary key
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">ALTER TABLE <em class="replaceable">tbl_name</em> DROP PRIMARY KEY, ALGORITHM=COPY;</code></pre><p>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> DROP PRIMARY KEY, ALGORITHM=COPY;</code></pre><p>
             Only <code class="literal">ALGORITHM=COPY</code> supports dropping a
             primary key without adding a new one in the same
             <code class="literal">ALTER TABLE</code> statement.
-          </p></li><li class="listitem"><p>
+          </p></li><li><p>
             Dropping a primary key and adding another
-          </p><pre class="programlisting copytoclipboard language-sql one-line"><code class="language-sql">ALTER TABLE <em class="replaceable">tbl_name</em> DROP PRIMARY KEY, ADD PRIMARY KEY (<em class="replaceable">column</em>), ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> DROP PRIMARY KEY, ADD PRIMARY KEY (<em>column</em>), ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
             Data is reorganized substantially, making it an expensive
             operation.
 </p></li></ul>
 </div>
+
 </div>
-<div class="simplesect">
-<div class="titlepage">
 <div>
-<div class="simple">
-<h4 class="title"><a></a>Column Operations</h4>
+<div>
+<div>
+<div>
+<h4><a></a>Column Operations</h4>
+
 </div>
+
 </div>
+
 </div>
 <p>
         The following table provides an overview of online DDL support
         for column operations. An asterisk indicates additional
         information, an exception, or a dependency. For details, see
-        <a class="xref" href="innodb-online-ddl-operations.html#online-ddl-column-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
+        <a href="innodb-online-ddl-operations.html#online-ddl-column-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
 </p>
-<div class="table">
-<a></a><p class="title"><b>Table 17.17 Online DDL Support for Column Operations</b></p>
-<div class="table-contents">
-<table summary="Online DDL support for column operations indicating whether the operation is performed in place, rebuilds the table, permits concurrent DML, or only modifies metadata."><col align="left"><col align="center"><col align="center"><col align="center"><col align="center"><col align="center"><thead><tr>
-            <th scope="col">Operation</th>
-            <th scope="col">Instant</th>
-            <th scope="col">In Place</th>
-            <th scope="col">Rebuilds Table</th>
-            <th scope="col">Permits Concurrent DML</th>
-            <th scope="col">Only Modifies Metadata</th>
+<div>
+<a></a><p><b>Table 17.17 Online DDL Support for Column Operations</b></p>
+<div>
+<table><col><col><col><col><col><col><thead><tr>
+            <th>Operation</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Rebuilds Table</th>
+            <th>Permits Concurrent DML</th>
+            <th>Only Modifies Metadata</th>
           </tr></thead><tbody><tr>
-            <th scope="row">Adding a column</th>
+            <th>Adding a column</th>
             <td>Yes*</td>
             <td>Yes</td>
             <td>No*</td>
             <td>Yes*</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Dropping a column</th>
+            <th>Dropping a column</th>
             <td>Yes*</td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Renaming a column</th>
+            <th>Renaming a column</th>
             <td>Yes*</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes*</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Reordering columns</th>
+            <th>Reordering columns</th>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
             <td>Yes</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Setting a column default value</th>
+            <th>Setting a column default value</th>
             <td>Yes</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Changing the column data type</th>
+            <th>Changing the column data type</th>
             <td>No</td>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Extending <code class="literal">VARCHAR</code> column size</th>
+            <th>Extending <code class="literal">VARCHAR</code> column size</th>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Dropping the column default value</th>
+            <th>Dropping the column default value</th>
             <td>Yes</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
           </tr><tr>
-            <th scope="row">Changing the auto-increment value</th>
+            <th>Changing the auto-increment value</th>
             <td>No</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>No*</td>
           </tr><tr>
-            <th scope="row">Making a column <code class="literal">NULL</code></th>
+            <th>Making a column <code class="literal">NULL</code></th>
             <td>No</td>
             <td>Yes</td>
             <td>Yes*</td>
             <td>Yes</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Making a column <code class="literal">NOT NULL</code></th>
+            <th>Making a column <code class="literal">NOT NULL</code></th>
             <td>No</td>
             <td>Yes*</td>
             <td>Yes*</td>
             <td>Yes</td>
             <td>No</td>
           </tr><tr>
-            <th scope="row">Modifying the definition of an <code class="literal">ENUM</code> or
+            <th>Modifying the definition of an <code class="literal">ENUM</code> or
               <code class="literal">SET</code> column</th>
             <td>Yes</td>
             <td>Yes</td>
             <td>No</td>
             <td>Yes</td>
             <td>Yes</td>
-</tr></tbody></table></div></div></div></div></div></div></div></div></div></body></html>
+</tr></tbody></table>
+</div>
+
+</div>
+<br>
+<h5><a></a>Syntax and Usage Notes</h5>
+<div>
+<ul><li><p>
+            Adding a column
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ADD COLUMN <em>column_name</em> <em>column_definition</em>, ALGORITHM=INSTANT;</code></pre><p>
+            <code class="literal">INSTANT</code> is the default algorithm in MySQL
+            8.4.
+          </p><p>
+            The following limitations apply when the
+            <code class="literal">INSTANT</code> algorithm adds a column:
+</p>
+<div>
+<ul><li><p>
+                A statement cannot combine the addition of a column with
+                other <code class="literal">ALTER TABLE</code> actions that do not
+                support the <code class="literal">INSTANT</code> algorithm.
+              </p></li><li><p>
+                The <code class="literal">INSTANT</code> algorithm can add a
+                column at any position in the table.
+              </p></li><li><p>
+                Columns cannot be added to tables that use
+                <code class="literal">ROW_FORMAT=COMPRESSED</code>, tables with a
+                <code class="literal">FULLTEXT</code> index, tables that reside in
+                the data dictionary tablespace, or temporary tables.
+                Temporary tables only support
+                <code class="literal">ALGORITHM=COPY</code>.
+              </p></li><li><p>
+                MySQL checks the row size when the
+                <code class="literal">INSTANT</code> algorithm adds a column, and
+                throws the following error if the addition exceeds the
+                limit.
+              </p><p>
+                <span>ERROR 4092 (HY000): Column can't be added
+                with ALGORITHM=INSTANT as after this max possible row
+                size crosses max permissible row size. Try
+                ALGORITHM=INPLACE/COPY.</span>
+              </p></li><li><p>
+                The maximum number of columns in the internal
+                representation of the table cannot exceed 1022 after
+                column addition with the <code class="literal">INSTANT</code>
+                algorithm. The error message is:
+              </p><p>
+                <span>ERROR 4158 (HY000): Column can't be added to
+                <em><code>tbl_name</code></em> with
+                ALGORITHM=INSTANT anymore. Please try
+                ALGORITHM=INPLACE/COPY</span>
+              </p></li><li><p>
+                The <code class="literal">INSTANT</code> algorithm can not add or
+                drop columns to system schema tables, such as the
+                internal <code class="literal">mysql</code> table.
+              </p></li><li><p>
+                A column with a functional index cannot be dropped using
+                the <code class="literal">INSTANT</code> algorithm.
+</p></li></ul>
+</div>
+<p>
+            Multiple columns may be added in the same
+            <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> statement. For
+            example:
+          </p><pre><code class="language-sql">ALTER TABLE t1 ADD COLUMN c2 INT, ADD COLUMN c3 INT, ALGORITHM=INSTANT;</code></pre><p>
+            A new row version is created after each
+            <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE ...
+            ALGORITHM=INSTANT</code></a> operation that adds one or more
+            columns, drops one or more columns, or adds and drops one or
+            more columns in the same operation. The
+            <code class="literal">INFORMATION_SCHEMA.INNODB_TABLES.TOTAL_ROW_VERSIONS</code>
+            column tracks the number of row versions for a table. The
+            value is incremented each time a column is instantly added
+            or dropped. The initial value is 0.
+          </p><pre><code class="language-sql">mysql&gt;  SELECT NAME, TOTAL_ROW_VERSIONS FROM INFORMATION_SCHEMA.INNODB_TABLES
+        WHERE NAME LIKE 'test/t1';
++---------+--------------------+
+| NAME    | TOTAL_ROW_VERSIONS |
++---------+--------------------+
+| test/t1 |                  0 |
++---------+--------------------+</code></pre><p>
+            When a table with instantly added or dropped columns is
+            rebuilt by table-rebuilding <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE
+            </code></a> or <a href="optimize-table.html" title="15.7.3.4 OPTIMIZE TABLE Statement"><code class="literal">OPTIMIZE TABLE</code></a>
+            operation, the <code class="literal">TOTAL_ROW_VERSIONS</code> value
+            is reset to 0. The maximum number of row versions permitted
+            is 64 (255 as of MySQL 9.1.0), as each row version requires
+            additional space for table metadata. When the row version
+            limit is reached, <code class="literal">ADD COLUMN</code> and
+            <code class="literal">DROP COLUMN</code> operations using
+            <code class="literal">ALGORITHM=INSTANT</code> are rejected with an
+            error message that recommends rebuilding the table using the
+            <code class="literal">COPY</code> or <code class="literal">INPLACE</code>
+            algorithm.
+          </p><p>
+            <span>ERROR 4092 (HY000): Maximum row versions reached
+            for table test/t1. No more columns can be added or dropped
+            instantly. Please use COPY/INPLACE.</span>
+          </p><p>
+            The following
+            <a href="information-schema.html" title="Chapter 28 INFORMATION_SCHEMA Tables"><code class="literal">INFORMATION_SCHEMA</code></a> columns
+            provide additional metadata for instantly added columns.
+            Refer to the descriptions of those columns for more
+            information. See
+            <a href="information-schema-innodb-columns-table.html" title="28.4.9 The INFORMATION_SCHEMA INNODB_COLUMNS Table">Section 28.4.9, “The INFORMATION_SCHEMA INNODB_COLUMNS Table”</a>,
+            and
+            <a href="information-schema-innodb-tables-table.html" title="28.4.23 The INFORMATION_SCHEMA INNODB_TABLES Table">Section 28.4.23, “The INFORMATION_SCHEMA INNODB_TABLES Table”</a>.
+</p>
+<div>
+<ul><li><p>
+                <code class="literal">INNODB_COLUMNS.DEFAULT_VALUE</code>
+              </p></li><li><p>
+                <code class="literal">INNODB_COLUMNS.HAS_DEFAULT</code>
+              </p></li><li><p>
+                <code class="literal">INNODB_TABLES.INSTANT_COLS</code>
+</p></li></ul>
+</div>
+<p>
+            Concurrent DML is not permitted when adding an
+            <a href="glossary.html#glos_auto_increment" title="auto-increment">auto-increment</a>
+            column. Data is reorganized substantially, making it an
+            expensive operation. At a minimum,
+            <code class="literal">ALGORITHM=INPLACE, LOCK=SHARED</code> is
+            required.
+          </p><p>
+            The table is rebuilt if <code class="literal">ALGORITHM=INPLACE</code>
+            is used to add a column.
+          </p></li><li><p>
+            Dropping a column
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> DROP COLUMN <em>column_name</em>, ALGORITHM=INSTANT;</code></pre><p>
+            <code class="literal">INSTANT</code> is the default algorithm in MySQL
+            8.4.
+          </p><p>
+            The following limitations apply when the
+            <code class="literal">INSTANT</code> algorithm is used to drop a
+            column:
+</p>
+<div>
+<ul><li><p>
+                Dropping a column cannot be combined in the same
+                statement with other <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER
+                TABLE</code></a> actions that do not support
+                <code class="literal">ALGORITHM=INSTANT</code>.
+              </p></li><li><p>
+                Columns cannot be dropped from tables that use
+                <code class="literal">ROW_FORMAT=COMPRESSED</code>, tables with a
+                <code class="literal">FULLTEXT</code> index, tables that reside in
+                the data dictionary tablespace, or temporary tables.
+                Temporary tables only support
+                <code class="literal">ALGORITHM=COPY</code>.
+</p></li></ul>
+</div>
+<p>
+            Multiple columns may be dropped in the same
+            <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> statement; for
+            example:
+          </p><pre><code class="language-sql">ALTER TABLE t1 DROP COLUMN c4, DROP COLUMN c5, ALGORITHM=INSTANT;</code></pre><p>
+            Each time a column is added or dropped using
+            <code class="literal">ALGORITHM=INSTANT</code>, a new row version is
+            created. The
+            <code class="literal">INFORMATION_SCHEMA.INNODB_TABLES.TOTAL_ROW_VERSIONS</code>
+            column tracks the number of row versions for a table. The
+            value is incremented each time a column is instantly added
+            or dropped. The initial value is 0.
+          </p><pre><code class="language-sql">mysql&gt;  SELECT NAME, TOTAL_ROW_VERSIONS FROM INFORMATION_SCHEMA.INNODB_TABLES
+        WHERE NAME LIKE 'test/t1';
++---------+--------------------+
+| NAME    | TOTAL_ROW_VERSIONS |
++---------+--------------------+
+| test/t1 |                  0 |
++---------+--------------------+</code></pre><p>
+            When a table with instantly added or dropped columns is
+            rebuilt by table-rebuilding <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE
+            </code></a> or <a href="optimize-table.html" title="15.7.3.4 OPTIMIZE TABLE Statement"><code class="literal">OPTIMIZE TABLE</code></a>
+            operation, the <code class="literal">TOTAL_ROW_VERSIONS</code> value
+            is reset to 0. The maximum number of row versions permitted
+            is 64 (255 as of MySQL 9.1.0), as each row version requires
+            additional space for table metadata. When the row version
+            limit is reached, <code class="literal">ADD COLUMN</code> and
+            <code class="literal">DROP COLUMN</code> operations using
+            <code class="literal">ALGORITHM=INSTANT</code> are rejected with an
+            error message that recommends rebuilding the table using the
+            <code class="literal">COPY</code> or <code class="literal">INPLACE</code>
+            algorithm.
+          </p><p>
+            <span>ERROR 4092 (HY000): Maximum row versions reached
+            for table test/t1. No more columns can be added or dropped
+            instantly. Please use COPY/INPLACE.</span>
+          </p><p>
+            If an algorithm other than
+            <code class="literal">ALGORITHM=INSTANT</code> is used, data is
+            reorganized substantially, making it an expensive operation.
+          </p></li><li><p>
+            Renaming a column
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl</em> CHANGE <em>old_col_name</em> <em>new_col_name</em> <em>data_type</em>, ALGORITHM=INSTANT;</code></pre><p>
+            To permit concurrent DML, keep the same data type and only
+            change the column name.
+          </p><p>
+            When you keep the same data type and <code class="literal">[NOT]
+            NULL</code> attribute, only changing the column name, the
+            operation can always be performed online.
+          </p><p>
+            Renaming a column referenced from another table is only
+            permitted with <code class="literal">ALGORITHM=INPLACE</code>. If you
+            use <code class="literal">ALGORITHM=INSTANT</code>,
+            <code class="literal">ALGORITHM=COPY</code>, or some other condition
+            that causes the operation to use those algorithms, the
+            <code class="literal">ALTER TABLE</code> statement fails.
+          </p><p>
+            <code class="literal">ALGORITHM=INSTANT</code> supports renaming a
+            virtual column; <code class="literal">ALGORITHM=INPLACE</code> does
+            not.
+          </p><p>
+            <code class="literal">ALGORITHM=INSTANT</code> and
+            <code class="literal">ALGORITHM=INPLACE</code> do not support renaming
+            a column when adding or dropping a virtual column in the
+            same statement. In this case, only
+            <code class="literal">ALGORITHM=COPY</code> is supported.
+          </p></li><li><p>
+            Reordering columns
+          </p><p>
+            To reorder columns, use <code class="literal">FIRST</code> or
+            <code class="literal">AFTER</code> in <code class="literal">CHANGE</code> or
+            <code class="literal">MODIFY</code> operations.
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> MODIFY COLUMN <em>col_name</em> <em>column_definition</em> FIRST, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Data is reorganized substantially, making it an expensive
+            operation.
+          </p></li><li><p>
+            Changing the column data type
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> CHANGE c1 c1 BIGINT, ALGORITHM=COPY;</code></pre><p>
+            Changing the column data type is only supported with
+            <code class="literal">ALGORITHM=COPY</code>.
+          </p></li><li><p>
+            Extending <code class="literal">VARCHAR</code> column size
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> CHANGE COLUMN c1 c1 VARCHAR(255), ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            The number of length bytes required by a
+            <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a> column must remain
+            the same. For <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a> columns
+            of 0 to 255 bytes in size, one length byte is required to
+            encode the value. For <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a>
+            columns of 256 bytes in size or more, two length bytes are
+            required. As a result, in-place <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER
+            TABLE</code></a> only supports increasing
+            <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a> column size from 0 to
+            255 bytes, or from 256 bytes to a greater size. In-place
+            <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> does not support
+            increasing the size of a
+            <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a> column from less than
+            256 bytes to a size equal to or greater than 256 bytes. In
+            this case, the number of required length bytes changes from
+            1 to 2, which is only supported by a table copy
+            (<code class="literal">ALGORITHM=COPY</code>). For example, attempting
+            to change <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a> column size
+            for a single byte character set from VARCHAR(255) to
+            VARCHAR(256) using in-place <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER
+            TABLE</code></a> returns this error:
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ALGORITHM=INPLACE, CHANGE COLUMN c1 c1 VARCHAR(256);
+ERROR 0A000: ALGORITHM=INPLACE is not supported. Reason: Cannot change
+column type INPLACE. Try ALGORITHM=COPY.</code></pre>
+<div>
+
+<div>
+Note
+</div>
+<p>
+              The byte length of a <code class="literal">VARCHAR</code> column is
+              dependant on the byte length of the character set.
+</p>
+</div>
+<p>
+            Decreasing <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a> size using
+            in-place <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> is not
+            supported. Decreasing <a href="char.html" title="13.3.2 The CHAR and VARCHAR Types"><code class="literal">VARCHAR</code></a>
+            size requires a table copy
+            (<code class="literal">ALGORITHM=COPY</code>).
+          </p></li><li><p>
+            Setting a column default value
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ALTER COLUMN <em>col</em> SET DEFAULT <em>literal</em>, ALGORITHM=INSTANT;</code></pre><p>
+            Only modifies table metadata. Default column values are
+            stored in the <a href="glossary.html#glos_data_dictionary" title="data dictionary">data
+            dictionary</a>.
+          </p></li><li><p>
+            Dropping a column default value
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl</em> ALTER COLUMN <em>col</em> DROP DEFAULT, ALGORITHM=INSTANT;</code></pre></li><li><p>
+            Changing the auto-increment value
+          </p><pre><code class="language-sql">ALTER TABLE <em>table</em> AUTO_INCREMENT=<em>next_value</em>, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Modifies a value stored in memory, not the data file.
+          </p><p>
+            In a distributed system using replication or sharding, you
+            sometimes reset the auto-increment counter for a table to a
+            specific value. The next row inserted into the table uses
+            the specified value for its auto-increment column. You might
+            also use this technique in a data warehousing environment
+            where you periodically empty all the tables and reload them,
+            and restart the auto-increment sequence from 1.
+          </p></li><li><p>
+            Making a column <code class="literal">NULL</code>
+          </p><pre><code class="language-sql">ALTER TABLE tbl_name MODIFY COLUMN <em>column_name</em> <em>data_type</em> NULL, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Rebuilds the table in place. Data is reorganized
+            substantially, making it an expensive operation.
+          </p></li><li><p>
+            Making a column <code class="literal">NOT NULL</code>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> MODIFY COLUMN <em>column_name</em> <em>data_type</em> NOT NULL, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Rebuilds the table in place.
+            <code class="literal">STRICT_ALL_TABLES</code> or
+            <code class="literal">STRICT_TRANS_TABLES</code>
+            <a href="server-system-variables.html#sysvar_sql_mode"><code class="literal">SQL_MODE</code></a> is required for
+            the operation to succeed. The operation fails if the column
+            contains NULL values. The server prohibits changes to
+            foreign key columns that have the potential to cause loss of
+            referential integrity. See <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement">Section 15.1.9, “ALTER TABLE Statement”</a>.
+            Data is reorganized substantially, making it an expensive
+            operation.
+          </p></li><li><p>
+            Modifying the definition of an <code class="literal">ENUM</code> or
+            <code class="literal">SET</code> column
+          </p><pre><code class="language-sql">CREATE TABLE t1 (c1 ENUM('a', 'b', 'c'));
+ALTER TABLE t1 MODIFY COLUMN c1 ENUM('a', 'b', 'c', 'd'), ALGORITHM=INSTANT;</code></pre><p>
+            Modifying the definition of an
+            <a href="enum.html" title="13.3.5 The ENUM Type"><code class="literal">ENUM</code></a> or
+            <a href="set.html" title="13.3.6 The SET Type"><code class="literal">SET</code></a> column by adding new
+            enumeration or set members to the <span><em>end</em></span>
+            of the list of valid member values may be performed
+            instantly or in place, as long as the storage size of the
+            data type does not change. For example, adding a member to a
+            <a href="set.html" title="13.3.6 The SET Type"><code class="literal">SET</code></a> column that has 8 members
+            changes the required storage per value from 1 byte to 2
+            bytes; this requires a table copy. Adding members in the
+            middle of the list causes renumbering of existing members,
+            which requires a table copy.
+</p></li></ul>
+</div>
+
+</div>
+<div>
+<div>
+<div>
+<div>
+<h4><a></a>Generated Column Operations</h4>
+
+</div>
+
+</div>
+
+</div>
+<p>
+        The following table provides an overview of online DDL support
+        for generated column operations. For details, see
+        <a href="innodb-online-ddl-operations.html#online-ddl-generated-column-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
+</p>
+<div>
+<a></a><p><b>Table 17.18 Online DDL Support for Generated Column Operations</b></p>
+<div>
+<table><col><col><col><col><col><col><thead><tr>
+            <th>Operation</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Rebuilds Table</th>
+            <th>Permits Concurrent DML</th>
+            <th>Only Modifies Metadata</th>
+          </tr></thead><tbody><tr>
+            <th>Adding a <code class="literal">STORED</code> column</th>
+            <td>No</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Modifying <code class="literal">STORED</code> column order</th>
+            <td>No</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Dropping a <code class="literal">STORED</code> column</th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Adding a <code class="literal">VIRTUAL</code> column</th>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr><tr>
+            <th>Modifying <code class="literal">VIRTUAL</code> column order</th>
+            <td>No</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Dropping a <code class="literal">VIRTUAL</code> column</th>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+</tr></tbody></table>
+</div>
+
+</div>
+<br>
+<h5><a></a>Syntax and Usage Notes</h5>
+<div>
+<ul><li><p>
+            Adding a <code class="literal">STORED</code> column
+          </p><pre><code class="language-sql">ALTER TABLE t1 ADD COLUMN (c2 INT GENERATED ALWAYS AS (c1 + 1) STORED), ALGORITHM=COPY;</code></pre><p>
+            <code class="literal">ADD COLUMN</code> is not an in-place operation
+            for stored columns (done without using a temporary table)
+            because the expression must be evaluated by the server.
+          </p></li><li><p>
+            Modifying <code class="literal">STORED</code> column order
+          </p><pre><code class="language-sql">ALTER TABLE t1 MODIFY COLUMN c2 INT GENERATED ALWAYS AS (c1 + 1) STORED FIRST, ALGORITHM=COPY;</code></pre><p>
+            Rebuilds the table in place.
+          </p></li><li><p>
+            Dropping a <code class="literal">STORED</code> column
+          </p><pre><code class="language-sql">ALTER TABLE t1 DROP COLUMN c2, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Rebuilds the table in place.
+          </p></li><li><p>
+            Adding a <code class="literal">VIRTUAL</code> column
+          </p><pre><code class="language-sql">ALTER TABLE t1 ADD COLUMN (c2 INT GENERATED ALWAYS AS (c1 + 1) VIRTUAL), ALGORITHM=INSTANT;</code></pre><p>
+            Adding a virtual column can be performed instantly or in
+            place for non-partitioned tables.
+          </p><p>
+            Adding a <code class="literal">VIRTUAL</code> is not an in-place
+            operation for partitioned tables.
+          </p></li><li><p>
+            Modifying <code class="literal">VIRTUAL</code> column order
+          </p><pre><code class="language-sql">ALTER TABLE t1 MODIFY COLUMN c2 INT GENERATED ALWAYS AS (c1 + 1) VIRTUAL FIRST, ALGORITHM=COPY;</code></pre></li><li><p>
+            Dropping a <code class="literal">VIRTUAL</code> column
+          </p><pre><code class="language-sql">ALTER TABLE t1 DROP COLUMN c2, ALGORITHM=INSTANT;</code></pre><p>
+            Dropping a <code class="literal">VIRTUAL</code> column can be
+            performed instantly or in place for non-partitioned tables.
+</p></li></ul>
+</div>
+
+</div>
+<div>
+<div>
+<div>
+<div>
+<h4><a></a>Foreign Key Operations</h4>
+
+</div>
+
+</div>
+
+</div>
+<p>
+        The following table provides an overview of online DDL support
+        for foreign key operations. An asterisk indicates additional
+        information, an exception, or a dependency. For details, see
+        <a href="innodb-online-ddl-operations.html#online-ddl-foreign-key-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
+</p>
+<div>
+<a></a><p><b>Table 17.19 Online DDL Support for Foreign Key Operations</b></p>
+<div>
+<table><col><col><col><col><col><col><thead><tr>
+            <th>Operation</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Rebuilds Table</th>
+            <th>Permits Concurrent DML</th>
+            <th>Only Modifies Metadata</th>
+          </tr></thead><tbody><tr>
+            <th>Adding a foreign key constraint</th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr><tr>
+            <th>Dropping a foreign key constraint</th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+</tr></tbody></table>
+</div>
+
+</div>
+<br>
+<h5><a></a>Syntax and Usage Notes</h5>
+<div>
+<ul><li><p>
+            Adding a foreign key constraint
+          </p><p>
+            The <code class="literal">INPLACE</code> algorithm is supported when
+            <a href="server-system-variables.html#sysvar_foreign_key_checks"><code class="literal">foreign_key_checks</code></a> is
+            disabled. Otherwise, only the <code class="literal">COPY</code>
+            algorithm is supported.
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl1</em> ADD CONSTRAINT <em>fk_name</em> FOREIGN KEY <em>index</em> (<em>col1</em>)
+  REFERENCES <em>tbl2</em>(<em>col2</em>) <em>referential_actions</em>;</code></pre></li><li><p>
+            Dropping a foreign key constraint
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl</em> DROP FOREIGN KEY <em>fk_name</em>;</code></pre><p>
+            Dropping a foreign key can be performed online with the
+            <a href="server-system-variables.html#sysvar_foreign_key_checks"><code class="literal">foreign_key_checks</code></a> option
+            enabled or disabled.
+          </p><p>
+            If you do not know the names of the foreign key constraints
+            on a particular table, issue the following statement and
+            find the constraint name in the
+            <code class="literal">CONSTRAINT</code> clause for each foreign key:
+          </p><pre><code class="language-sql">SHOW CREATE TABLE <em>table</em>\G</code></pre><p>
+            Or, query the Information Schema
+            <a href="information-schema-table-constraints-table.html" title="28.3.41 The INFORMATION_SCHEMA TABLE_CONSTRAINTS Table"><code class="literal">TABLE_CONSTRAINTS</code></a> table and use
+            the <code class="literal">CONSTRAINT_NAME</code> and
+            <code class="literal">CONSTRAINT_TYPE</code> columns to identify the
+            foreign key names.
+          </p><p>
+            You can also drop a foreign key and its associated index in
+            a single statement:
+          </p><pre><code class="language-sql">ALTER TABLE <em>table</em> DROP FOREIGN KEY <em>constraint</em>, DROP INDEX <em>index</em>;</code></pre></li></ul>
+</div>
+<div>
+<div>
+Note
+</div>
+<p>
+          If <a href="glossary.html#glos_foreign_key" title="foreign key">foreign keys</a> are
+          already present in the table being altered (that is, it is a
+          <a href="glossary.html#glos_child_table" title="child table">child table</a> containing
+          a <code class="literal">FOREIGN KEY ... REFERENCE</code> clause),
+          additional restrictions apply to online DDL operations, even
+          those not directly involving the foreign key columns:
+</p>
+<div>
+<ul><li><p>
+              An <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> on the child
+              table could wait for another transaction to commit, if a
+              change to the parent table causes associated changes in
+              the child table through an <code class="literal">ON UPDATE</code> or
+              <code class="literal">ON DELETE</code> clause using the
+              <code class="literal">CASCADE</code> or <code class="literal">SET NULL</code>
+              parameters.
+            </p></li><li><p>
+              In the same way, if a table is the
+              <a href="glossary.html#glos_parent_table" title="parent table">parent table</a> in a
+              foreign key relationship, even though it does not contain
+              any <code class="literal">FOREIGN KEY</code> clauses, it could wait
+              for the <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> to
+              complete if an <a href="insert.html" title="15.2.7 INSERT Statement"><code class="literal">INSERT</code></a>,
+              <a href="update.html" title="15.2.17 UPDATE Statement"><code class="literal">UPDATE</code></a>, or
+              <a href="delete.html" title="15.2.2 DELETE Statement"><code class="literal">DELETE</code></a> statement causes an
+              <code class="literal">ON UPDATE</code> or <code class="literal">ON
+              DELETE</code> action in the child table.
+</p></li></ul>
+</div>
+
+</div>
+
+</div>
+<div>
+<div>
+<div>
+<div>
+<h4><a></a>Table Operations</h4>
+
+</div>
+
+</div>
+
+</div>
+<p>
+        The following table provides an overview of online DDL support
+        for table operations. An asterisk indicates additional
+        information, an exception, or a dependency. For details, see
+        <a href="innodb-online-ddl-operations.html#online-ddl-table-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
+</p>
+<div>
+<a></a><p><b>Table 17.20 Online DDL Support for Table Operations</b></p>
+<div>
+<table><col><col><col><col><col><col><thead><tr>
+            <th>Operation</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Rebuilds Table</th>
+            <th>Permits Concurrent DML</th>
+            <th>Only Modifies Metadata</th>
+          </tr></thead><tbody><tr>
+            <th>Changing the <code class="literal">ROW_FORMAT</code></th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Changing the <code class="literal">KEY_BLOCK_SIZE</code></th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Setting persistent table statistics</th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr><tr>
+            <th>Specifying a character set</th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes*</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Converting a character set</th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes*</td>
+            <td>No</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Optimizing a table</th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Rebuilding with the <code class="literal">FORCE</code> option</th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Performing a null rebuild</th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Renaming a table</th>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+</tr></tbody></table>
+</div>
+
+</div>
+<br>
+<h5><a></a>Syntax and Usage Notes</h5>
+<div>
+<ul><li><p>
+            Changing the <code class="literal">ROW_FORMAT</code>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ROW_FORMAT = <em>row_format</em>, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Data is reorganized substantially, making it an expensive
+            operation.
+          </p><p>
+            For additional information about the
+            <code class="literal">ROW_FORMAT</code> option, see
+            <a href="create-table.html#create-table-options" title="Table Options">Table Options</a>.
+          </p></li><li><p>
+            Changing the <code class="literal">KEY_BLOCK_SIZE</code>
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> KEY_BLOCK_SIZE = <em>value</em>, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Data is reorganized substantially, making it an expensive
+            operation.
+          </p><p>
+            For additional information about the
+            <code class="literal">KEY_BLOCK_SIZE</code> option, see
+            <a href="create-table.html#create-table-options" title="Table Options">Table Options</a>.
+          </p></li><li><p>
+            Setting persistent table statistics options
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> STATS_PERSISTENT=0, STATS_SAMPLE_PAGES=20, STATS_AUTO_RECALC=1, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Only modifies table metadata.
+          </p><p>
+            Persistent statistics include
+            <code class="literal">STATS_PERSISTENT</code>,
+            <code class="literal">STATS_AUTO_RECALC</code>, and
+            <code class="literal">STATS_SAMPLE_PAGES</code>. For more information,
+            see <a href="innodb-persistent-stats.html" title="17.8.10.1 Configuring Persistent Optimizer Statistics Parameters">Section 17.8.10.1, “Configuring Persistent Optimizer Statistics Parameters”</a>.
+          </p></li><li><p>
+            Specifying a character set
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> CHARACTER SET = <em>charset_name</em>, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Rebuilds the table if the new character encoding is
+            different.
+          </p></li><li><p>
+            Converting a character set
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> CONVERT TO CHARACTER SET <em>charset_name</em>, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Rebuilds the table if the new character encoding is
+            different.
+          </p></li><li><p>
+            Optimizing a table
+          </p><pre><code class="language-sql">OPTIMIZE TABLE <em>tbl_name</em>;</code></pre><p>
+            In-place operation is not supported for tables with
+            <code class="literal">FULLTEXT</code> indexes. The operation uses the
+            <code class="literal">INPLACE</code> algorithm, but
+            <code class="literal">ALGORITHM</code> and <code class="literal">LOCK</code>
+            syntax is not permitted.
+          </p></li><li><p>
+            Rebuilding a table with the <code class="literal">FORCE</code> option
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> FORCE, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Uses <code class="literal">ALGORITHM=INPLACE</code> as of MySQL
+            5.6.17<code class="literal"></code>. <code class="literal">ALGORITHM=INPLACE</code> is
+            not supported for tables with <code class="literal">FULLTEXT</code>
+            indexes.
+          </p></li><li><p>
+            Performing a "null" rebuild
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ENGINE=InnoDB, ALGORITHM=INPLACE, LOCK=NONE;</code></pre><p>
+            Uses <code class="literal">ALGORITHM=INPLACE</code> as of MySQL
+            5.6.17. <code class="literal">ALGORITHM=INPLACE</code> is not
+            supported for tables with <code class="literal">FULLTEXT</code>
+            indexes.
+          </p></li><li><p>
+            Renaming a table
+          </p><pre><code class="language-sql">ALTER TABLE <em>old_tbl_name</em> RENAME TO <em>new_tbl_name</em>, ALGORITHM=INSTANT;</code></pre><p>
+            Renaming a table can be performed instantly or in place.
+            MySQL renames files that correspond to the table
+            <em><code>tbl_name</code></em> without making a copy.
+            (You can also use the <a href="rename-table.html" title="15.1.36 RENAME TABLE Statement"><code class="literal">RENAME
+            TABLE</code></a> statement to rename tables. See
+            <a href="rename-table.html" title="15.1.36 RENAME TABLE Statement">Section 15.1.36, “RENAME TABLE Statement”</a>.) Privileges granted
+            specifically for the renamed table are not migrated to the
+            new name. They must be changed manually.
+</p></li></ul>
+</div>
+
+</div>
+<div>
+<div>
+<div>
+<div>
+<h4><a></a>Tablespace Operations</h4>
+
+</div>
+
+</div>
+
+</div>
+<p>
+        The following table provides an overview of online DDL support
+        for tablespace operations. For details, see
+        <a href="innodb-online-ddl-operations.html#online-ddl-tablespace-syntax-notes" title="Syntax and Usage Notes">Syntax and Usage Notes</a>.
+</p>
+<div>
+<a></a><p><b>Table 17.21 Online DDL Support for Tablespace Operations</b></p>
+<div>
+<table><col><col><col><col><col><col><thead><tr>
+            <th>Operation</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Rebuilds Table</th>
+            <th>Permits Concurrent DML</th>
+            <th>Only Modifies Metadata</th>
+          </tr></thead><tbody><tr>
+            <th>Renaming a general tablespace</th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr><tr>
+            <th>Enabling or disabling general tablespace encryption</th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+          </tr><tr>
+            <th>Enabling or disabling file-per-table tablespace encryption</th>
+            <td>No</td>
+            <td>No</td>
+            <td>Yes</td>
+            <td>No</td>
+            <td>No</td>
+</tr></tbody></table>
+</div>
+
+</div>
+<br>
+<h5><a></a>Syntax and Usage Notes</h5>
+<div>
+<ul><li><p>
+            Renaming a general tablespace
+          </p><pre><code class="language-sql">ALTER TABLESPACE <em>tablespace_name</em> RENAME TO <em>new_tablespace_name</em>;</code></pre><p>
+            <a href="alter-tablespace.html" title="15.1.10 ALTER TABLESPACE Statement"><code class="literal">ALTER
+            TABLESPACE ... RENAME TO</code></a> uses the
+            <code class="literal">INPLACE</code> algorithm but does not support
+            the <code class="literal">ALGORITHM</code> clause.
+          </p></li><li><p>
+            Enabling or disabling general tablespace encryption
+          </p><pre><code class="language-sql">ALTER TABLESPACE <em>tablespace_name</em> ENCRYPTION='Y';</code></pre><p>
+            <a href="alter-tablespace.html" title="15.1.10 ALTER TABLESPACE Statement"><code class="literal">ALTER
+            TABLESPACE ... ENCRYPTION</code></a> uses the
+            <code class="literal">INPLACE</code> algorithm but does not support
+            the <code class="literal">ALGORITHM</code> clause.
+          </p><p>
+            For related information, see
+            <a href="innodb-data-encryption.html" title="17.13 InnoDB Data-at-Rest Encryption">Section 17.13, “InnoDB Data-at-Rest Encryption”</a>.
+          </p></li><li><p>
+            Enabling or disabling file-per-table tablespace encryption
+          </p><pre><code class="language-sql">ALTER TABLE <em>tbl_name</em> ENCRYPTION='Y', ALGORITHM=COPY;</code></pre><p>
+            For related information, see
+            <a href="innodb-data-encryption.html" title="17.13 InnoDB Data-at-Rest Encryption">Section 17.13, “InnoDB Data-at-Rest Encryption”</a>.
+</p></li></ul>
+</div>
+
+</div>
+<div>
+<div>
+<div>
+<div>
+<h4><a></a>Partitioning Operations</h4>
+
+</div>
+
+</div>
+
+</div>
+<p>
+        With the exception of some <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER
+        TABLE</code></a> partitioning clauses, online DDL operations for
+        partitioned <code class="literal">InnoDB</code> tables follow the same
+        rules that apply to regular <code class="literal">InnoDB</code> tables.
+      </p><p>
+        Some <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> partitioning
+        clauses do not go through the same internal online DDL API as
+        regular non-partitioned <code class="literal">InnoDB</code> tables. As a
+        result, online support for <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER
+        TABLE</code></a> partitioning clauses varies.
+      </p><p>
+        The following table shows the online status for each
+        <code class="literal">ALTER TABLE</code> partitioning statement.
+        Regardless of the online DDL API that is used, MySQL attempts to
+        minimize data copying and locking where possible.
+      </p><p>
+        <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> partitioning options
+        that use <code class="literal">ALGORITHM=COPY</code> or that only permit
+        <span>“<span><code class="literal">ALGORITHM=DEFAULT,
+        LOCK=DEFAULT</code></span>”</span>, repartition the table using the
+        <code class="literal">COPY</code> algorithm. In other words, a new
+        partitioned table is created with the new partitioning scheme.
+        The newly created table includes any changes applied by the
+        <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> statement, and table
+        data is copied into the new table structure.
+</p>
+<div>
+<a></a><p><b>Table 17.22 Online DDL Support for Partitioning Operations</b></p>
+<div>
+<table><col><col><col><col><col><thead><tr>
+            <th>Partitioning Clause</th>
+            <th>Instant</th>
+            <th>In Place</th>
+            <th>Permits DML</th>
+            <th>Notes</th>
+          </tr></thead><tbody><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">PARTITION BY</code></a></th>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>Permits <code class="literal">ALGORITHM=COPY</code>,
+              <code class="literal">LOCK={DEFAULT|SHARED|EXCLUSIVE}</code></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ADD PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>Yes*</td>
+            <td><code class="literal">ALGORITHM=INPLACE,
+              LOCK={DEFAULT|NONE|SHARED|EXCLUSISVE}</code> is
+              supported for <code class="literal">RANGE</code> and
+              <code class="literal">LIST</code> partitions,
+              <code class="literal">ALGORITHM=INPLACE,
+              LOCK={DEFAULT|SHARED|EXCLUSISVE}</code> for
+              <code class="literal">HASH</code> and <code class="literal">KEY</code>
+              partitions, and <code class="literal">ALGORITHM=COPY,
+              LOCK={SHARED|EXCLUSIVE}</code> for all partition types.
+              Does not copy existing data for tables partitioned by
+              <code class="literal">RANGE</code> or <code class="literal">LIST</code>.
+              Concurrent queries are permitted with
+              <code class="literal">ALGORITHM=COPY</code> for tables partitioned
+              by <code class="literal">HASH</code> or <code class="literal">LIST</code>, as
+              MySQL copies the data while holding a shared lock.</td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">DROP PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>Yes*</td>
+            <td><p>
+                <code class="literal">ALGORITHM=INPLACE,
+                LOCK={DEFAULT|NONE|SHARED|EXCLUSIVE}</code> is
+                supported. Does not copy data for tables partitioned by
+                <code class="literal">RANGE</code> or <code class="literal">LIST</code>.
+              </p><p>
+                <code class="literal">DROP PARTITION</code> with
+                <code class="literal">ALGORITHM=INPLACE</code> deletes data stored
+                in the partition and drops the partition. However,
+                <code class="literal">DROP PARTITION</code> with
+                <code class="literal">ALGORITHM=COPY</code> or
+                <a href="server-system-variables.html#sysvar_old_alter_table"><code class="literal">old_alter_table=ON</code></a>
+                rebuilds the partitioned table and attempts to move data
+                from the dropped partition to another partition with a
+                compatible <code class="literal">PARTITION ... VALUES</code>
+                definition. Data that cannot be moved to another
+                partition is deleted.
+              </p></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">DISCARD PARTITION</code></a></th>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>Only permits <code class="literal">ALGORITHM=DEFAULT</code>,
+              <code class="literal">LOCK=DEFAULT</code></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">IMPORT PARTITION</code></a></th>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>Only permits <code class="literal">ALGORITHM=DEFAULT</code>,
+              <code class="literal">LOCK=DEFAULT</code></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">TRUNCATE
+              PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Does not copy existing data. It merely deletes rows; it does not alter
+              the definition of the table itself, or of any of its
+              partitions.</td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">COALESCE
+              PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>No</td>
+            <td><code class="literal">ALGORITHM=INPLACE, LOCK={DEFAULT|SHARED|EXCLUSIVE}</code> is
+              supported.</td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">REORGANIZE
+              PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>No</td>
+            <td><code class="literal">ALGORITHM=INPLACE, LOCK={DEFAULT|SHARED|EXCLUSIVE}</code> is
+              supported.</td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">EXCHANGE
+              PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ANALYZE PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">CHECK PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">OPTIMIZE
+              PARTITION</code></a></th>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td><code class="literal">ALGORITHM</code> and <code class="literal">LOCK</code> clauses are
+              ignored. Rebuilds the entire table. See
+              <a href="partitioning-maintenance.html" title="26.3.4 Maintenance of Partitions">Section 26.3.4, “Maintenance of Partitions”</a>.</td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">REBUILD PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes*</td>
+            <td>No</td>
+            <td><code class="literal">ALGORITHM=INPLACE, LOCK={DEFAULT|SHARED|EXCLUSIVE}</code> is
+              supported.</td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">REPAIR PARTITION</code></a></th>
+            <td>No</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td></td>
+          </tr><tr>
+            <th><a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">REMOVE
+              PARTITIONING</code></a></th>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>Permits <code class="literal">ALGORITHM=COPY</code>,
+              <code class="literal">LOCK={DEFAULT|SHARED|EXCLUSIVE}</code></td>
+</tr></tbody></table>
+</div>
+
+</div>
+<br><p>
+        Non-partitioning online <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER
+        TABLE</code></a> operations on partitioned tables follow the same
+        rules that apply to regular tables. However,
+        <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER TABLE</code></a> performs online
+        operations on each table partition, which causes increased
+        demand on system resources due to operations being performed on
+        multiple partitions.
+      </p><p>
+        For additional information about <a href="alter-table.html" title="15.1.9 ALTER TABLE Statement"><code class="literal">ALTER
+        TABLE</code></a> partitioning clauses, see
+        <a href="alter-table.html#alter-table-partition-options" title="Partitioning Options">Partitioning Options</a>, and
+        <a href="alter-table-partition-operations.html" title="15.1.9.1 ALTER TABLE Partition Operations">Section 15.1.9.1, “ALTER TABLE Partition Operations”</a>. For
+        information about partitioning in general, see
+        <a href="partitioning.html" title="Chapter 26 Partitioning">Chapter 26, <i>Partitioning</i></a>.
+</p>
+</div>
+
+</div>
+<br/>
+        </div>
+
+                <div>
+            <div>
+
+    <a href="innodb-online-ddl.html" title="Previous: InnoDB and Online DDL"><span></span> PREV</a> &nbsp;
+<a href="index.html" title="Start"> HOME</a> &nbsp;
+        <a href="innodb-online-ddl.html" title="Up: InnoDB and Online DDL"> UP</a> &nbsp;
+    <a href="innodb-online-ddl-performance.html" title="Next: Online DDL Performance and Concurrency">NEXT <span></span></a>
+            </div>
+        </div>
+
+         <div>
+
+<a href=""><span></span>
+    <span>Related Documentation</span></a>
+<div>
+    <div>
+        <a href="/doc/relnotes/mysql/8.4/en/">MySQL 8.4 Release Notes</a><br/>
+        </div>
+</div>
+
+    <a href=""><span></span>
+        <span>
+            Download
+                            this Manual
+                    </span>
+    </a>
+    <div>
+        <div>
+                                    <a href="https://downloads.mysql.com/docs/refman-8.4-en.pdf">PDF (US Ltr)</a>
+            - 40.2Mb<br/>
+                                                <a href="https://downloads.mysql.com/docs/refman-8.4-en.a4.pdf">PDF (A4)</a>
+            - 40.3Mb<br/>
+                                                <a href="https://downloads.mysql.com/docs/refman-8.4-en.man-gpl.tar.gz">Man Pages (TGZ)</a>
+            - 261.9Kb<br/>
+                                                <a href="https://downloads.mysql.com/docs/refman-8.4-en.man-gpl.zip">Man Pages (Zip)</a>
+            - 367.5Kb<br/>
+                                                <a href="https://downloads.mysql.com/docs/mysql-8.4.info.gz">Info (Gzip)</a>
+            - 4.0Mb<br/>
+                                                <a href="https://downloads.mysql.com/docs/mysql-8.4.info.zip">Info (Zip)</a>
+            - 4.0Mb<br/>
+                                </div>
+    </div>
+
+         </div>
+     </div>
+     </div>
+
+</div>
+
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

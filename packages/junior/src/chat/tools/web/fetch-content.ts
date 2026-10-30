@@ -23,6 +23,8 @@ const htmlToMarkdownConverter = new NodeHtmlMarkdown({
 
 export interface WebFetchResponseContent {
   content: string;
+  /** All extracted text before the character limit. */
+  fullContent: string;
   title?: string;
   truncated: boolean;
   extractedChars: number;
@@ -170,6 +172,7 @@ export function extractContentDetails(
       const truncated = truncateWebFetchContent(normalizedMarkdown, maxChars);
       return {
         content: truncated.content,
+        fullContent: normalizedMarkdown,
         title: extractTitle(normalizedBody),
         truncated: truncated.truncated,
         extractedChars: normalizedMarkdown.length,
@@ -186,6 +189,7 @@ export function extractContentDetails(
       const truncated = truncateWebFetchContent(formatted, maxChars);
       return {
         content: truncated.content,
+        fullContent: formatted,
         truncated: truncated.truncated,
         extractedChars: formatted.length,
       };
@@ -194,6 +198,7 @@ export function extractContentDetails(
       const truncated = truncateWebFetchContent(normalizedText, maxChars);
       return {
         content: truncated.content,
+        fullContent: normalizedText,
         truncated: truncated.truncated,
         extractedChars: normalizedText.length,
       };
@@ -204,6 +209,7 @@ export function extractContentDetails(
   const truncated = truncateWebFetchContent(normalizedText, maxChars);
   return {
     content: truncated.content,
+    fullContent: normalizedText,
     truncated: truncated.truncated,
     extractedChars: normalizedText.length,
   };
@@ -222,12 +228,16 @@ export function extractContent(
 // Response extraction
 // ---------------------------------------------------------------------------
 
-/** Extract text content from a web fetch response, validating content type and size. */
+/**
+ * Extract text content from a web fetch response, validating content type and
+ * size. Also return all extracted text, so the caller can keep the part that
+ * the character limit removed.
+ */
 export async function extractWebFetchResponse(
   url: URL,
   response: Response,
   maxChars = DEFAULT_MAX_CHARS,
-): Promise<WebFetchResponse> {
+): Promise<{ result: WebFetchResponse; fullContent: string }> {
   const safeMaxChars = Math.max(500, Math.min(maxChars, MAX_FETCH_CHARS));
 
   if (!response.ok) {
@@ -259,12 +269,15 @@ export async function extractWebFetchResponse(
   );
   const extracted = extractContentDetails(body, contentType, safeMaxChars);
   return {
-    url: url.toString(),
-    content: extracted.content,
-    ...(extracted.title ? { title: extracted.title } : undefined),
-    content_type: contentType || "unknown",
-    source_bytes: Buffer.byteLength(body, "utf8"),
-    extracted_chars: extracted.extractedChars,
-    truncated: extracted.truncated,
+    result: {
+      url: url.toString(),
+      content: extracted.content,
+      ...(extracted.title ? { title: extracted.title } : undefined),
+      content_type: contentType || "unknown",
+      source_bytes: Buffer.byteLength(body, "utf8"),
+      extracted_chars: extracted.extractedChars,
+      truncated: extracted.truncated,
+    },
+    fullContent: extracted.fullContent,
   };
 }
