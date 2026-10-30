@@ -67,6 +67,7 @@ describe("Slack turn input timing", () => {
           count: 3,
           oldestCreatedAtMs: 1_000.4,
           oldestReceivedAtMs: 1_250,
+          traceContexts: [],
         },
         1_900,
       ),
@@ -77,7 +78,12 @@ describe("Slack turn input timing", () => {
     });
     expect(
       getTurnInputSpanAttributes(
-        { count: 1, oldestCreatedAtMs: 2_000, oldestReceivedAtMs: 1_500 },
+        {
+          count: 1,
+          oldestCreatedAtMs: 2_000,
+          oldestReceivedAtMs: 1_500,
+          traceContexts: [],
+        },
         1_000,
       ),
     ).toEqual({ "app.turn.input_count": 1 });
@@ -100,6 +106,7 @@ describe("Slack turn input timing", () => {
           count: 2,
           oldestCreatedAtMs: TURN_STARTED_AT_MS - 4_000,
           oldestReceivedAtMs: TURN_STARTED_AT_MS - 3_000,
+          traceContexts: [],
         },
       });
 

@@ -9,7 +9,7 @@ import {
 } from "chat";
 import { z } from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { logException } from "@/chat/logging";
+import { getTracePropagationHeaders, logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
@@ -678,6 +678,7 @@ export function createSlackConversationWorker(
       count: records.length,
       oldestCreatedAtMs: oldestRecord.createdAtMs,
       oldestReceivedAtMs: oldestRecord.receivedAtMs,
+      traceContexts: records.flatMap((record) => record.traceContext ?? []),
     };
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
@@ -830,7 +831,7 @@ export function createSlackConversationWorker(
   };
 }
 
-/** Serialize a Slack message into the generic durable conversation mailbox. */
+/** Serialize a Slack message and the active trace into the durable mailbox. */
 export function buildSlackInboundMessage(args: {
   conversationId: string;
   installation?: SlackInstallationContext;
@@ -848,6 +849,7 @@ export function buildSlackInboundMessage(args: {
     throw new Error("Slack inbound message requires destination context");
   }
   const hasInterruptOverride = hasSteeringOverride(args.message.text);
+  const { "sentry-trace": sentryTrace, baggage } = getTracePropagationHeaders();
   return {
     conversationId: args.conversationId,
     destination,
@@ -874,5 +876,6 @@ export function buildSlackInboundMessage(args: {
         message: args.message.toJSON(),
       } satisfies SlackConversationMessageMetadata,
     },
+    ...(sentryTrace && { traceContext: { sentryTrace, baggage } }),
   };
 }

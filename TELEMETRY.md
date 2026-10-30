@@ -239,8 +239,8 @@ Attributes: `gen_ai.conversation.id`, `messaging.system`,
 These spans use the [Sentry queue span conventions](https://develop.sentry.dev/sdk/telemetry/traces/modules/queues/),
 so they show in the Sentry Queues view. Each conversation work queue send gets
 one `queue.publish` span. Each queue message that the worker processes gets one
-`queue.process` span. The process span is not in the publish trace or the
-`slack.message.ingress` trace and has no link to them yet.
+`queue.process` span. The process span starts a new trace. A Slack `chat.turn`
+span links to it. See Slack Delivery.
 
 On these spans, the `messaging.*` attributes describe the queue, not Slack:
 
@@ -295,6 +295,18 @@ A Slack `chat.turn` span records mailbox timing for its input messages:
 For the oldest input message, delivery lag, wait, and the `chat.turn` duration
 are contiguous.
 
+A Slack `chat.turn` span is in the trace of a Slack webhook request:
+
+- Ingress stores the `sentry-trace` and `baggage` headers of its
+  `slack.message.ingress` span on the mailbox entry.
+- `chat.turn` continues the trace of the oldest input message that has these
+  headers. Its parent is that `slack.message.ingress` span. The trace keeps the
+  sampling decision of the ingress request.
+- `chat.turn` has a span link to the `slack.message.ingress` span of each other
+  input message, and a span link to the `queue.process` span of the worker.
+- Without stored headers, `chat.turn` is a child of the `queue.process` span.
+  Headers that are not valid start a new trace.
+
 The timing attributes are absent when the value is negative. A negative value
 is clock skew between Slack and Junior hosts, not latency. Resumed `chat.turn`
 spans do not record these attributes.
@@ -309,8 +321,8 @@ First feedback is the earliest `http.client` span for
 `POST slack.com/api/reactions.add` or
 `POST slack.com/api/assistant.threads.setStatus` in the turn's trace. For a
 mention, ingress adds the processing reaction before the worker runs. Use the
-ingress `reactions.add` span for a mention. It is in the same trace after
-#2269 PR 5b joins the ingress and turn traces.
+ingress `reactions.add` span for a mention. It is in the same trace as the
+turn.
 
 A mention turn also calls `reactions.add` again, and Slack returns an
 `already_reacted` error. This is a known double reaction. #2318 tracks it.

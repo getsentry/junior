@@ -131,6 +131,8 @@ export const inboundMessageSchema = z
 
 export type InboundMessage = z.output<typeof inboundMessageSchema>;
 
+export type TraceContext = NonNullable<InboundMessage["traceContext"]>;
+
 /** Redis mailbox shape kept for deployed workers that still require this field. */
 const storedInboundMessageSchema = inboundMessageSchema.extend({
   publishExternally: z.boolean(),
