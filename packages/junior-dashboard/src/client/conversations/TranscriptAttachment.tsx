@@ -54,7 +54,7 @@ export function TranscriptLocalImages(props: { images: InputImage[] }) {
           filename={image.filename}
           imageClassName={TRANSCRIPT_IMAGE_CLASS}
           key={`${image.filename}:${index}`}
-          src={`data:${image.contentType};base64,${image.data}`}
+          src={inputImageSrc(image)}
           triggerClassName={TRANSCRIPT_IMAGE_TRIGGER_CLASS}
         />
       ))}
