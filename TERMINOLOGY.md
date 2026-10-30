@@ -129,6 +129,12 @@ Canonical words used across Junior's code and documentation.
 - **Calendar event**: a meeting on a calendar. Object annotations store this
   type as `calendar_event`.
 - **Item**: a linked object without a more specific native type.
+- **Review item**: work that needs a person, such as a decision or a notice.
+  An agent adds it. Its assignees act on it on the review desk. It is not an
+  Item.
+- **Review desk**: the dashboard page that lists open Review items.
+- **Assignee**: a User or Everyone who can act on a Review item. Everyone
+  means any person who can see the item.
 - **Message card**: a reference to an Annotation attached to a Message. Each
   surface shows the latest saved facts and owns its layout. A card does not
   record facts at delivery or fetch live provider state.

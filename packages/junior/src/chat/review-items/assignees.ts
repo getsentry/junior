@@ -1,0 +1,87 @@
+import { and, eq, isNotNull } from "drizzle-orm";
+import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
+import { parseSlackUserId } from "@/chat/slack/ids";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { JuniorDatabase } from "@/db/db";
+import { juniorIdentities } from "@/db/schema";
+
+/** Text that the agent writes to assign Everyone. */
+export const EVERYONE_ASSIGNEE = "everyone";
+
+/** The assignment that an agent asked for, resolved to Users. */
+export interface ResolvedAssignees {
+  everyone: boolean;
+  userIds: string[];
+}
+
+const SLACK_MENTION = /^<@([A-Z0-9]+)(?:\|[^>]*)?>$/;
+
+async function userIdForSlackUser(
+  db: JuniorDatabase,
+  slackUserId: string,
+): Promise<string | undefined> {
+  const rows = await db
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerSubjectId, slackUserId),
+        isNotNull(juniorIdentities.userId),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.userId ?? undefined;
+}
+
+/** Resolve one assignee: Everyone, an email, or a Slack user. */
+export async function resolveAssignee(
+  db: JuniorDatabase,
+  value: string,
+): Promise<{ everyone: true } | { userId: string }> {
+  const text = value.trim();
+  if (text.toLowerCase() === EVERYONE_ASSIGNEE) return { everyone: true };
+  const slackUserId = parseSlackUserId(SLACK_MENTION.exec(text)?.[1] ?? text);
+  if (slackUserId) {
+    const userId = await userIdForSlackUser(db, slackUserId);
+    if (!userId) {
+      throw new ToolInputError(
+        `<@${slackUserId}> has no Junior user yet. Assign them by email.`,
+      );
+    }
+    return { userId };
+  }
+  if (text.includes("@")) {
+    const user = await findUserByEmailFromSql(db, text);
+    if (!user) {
+      throw new ToolInputError(`No Junior user has the email ${text}.`);
+    }
+    return { userId: user.id };
+  }
+  throw new ToolInputError(
+    `Unknown assignee ${JSON.stringify(text)}. Use ${EVERYONE_ASSIGNEE}, an email, or a Slack mention such as <@U123>.`,
+  );
+}
+
+/** Resolve the assignees of a Review item. One is required. */
+export async function resolveAssignees(
+  db: JuniorDatabase,
+  values: readonly string[],
+): Promise<ResolvedAssignees> {
+  if (values.length === 0) {
+    throw new ToolInputError("A review item needs at least one assignee.");
+  }
+  const resolved = await Promise.all(
+    values.map((value) => resolveAssignee(db, value)),
+  );
+  return {
+    everyone: resolved.some((assignee) => "everyone" in assignee),
+    userIds: [
+      ...new Set(
+        resolved.flatMap((assignee) =>
+          "userId" in assignee ? [assignee.userId] : [],
+        ),
+      ),
+    ],
+  };
+}
