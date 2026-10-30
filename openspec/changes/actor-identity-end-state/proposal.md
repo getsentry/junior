@@ -71,10 +71,11 @@ dashboard shows, private access, spend, and the personal feed.
   Then it deletes the three rows.
 - `SystemActor.name` values stay in code as runtime provenance. Examples are
   `scheduled-automation`, `event`, `conversation-title`, `workspace-snapshot`,
-  plugin names, and Slack bot ids. Runtime code reads these names. For example,
+  and plugin names. Runtime code reads these names. For example,
   `task-execution/mailbox-turn.ts` compares `actor.name` with
   `EVENT_SYSTEM_ACTOR.name`, and Guardian keeps `actor.name` in
   `guardian/gate.ts`. All of these Actors map to the one system Identity.
+- A Slack bot is not the system Identity. See Slack Bots.
 - A `LocalActor` (local CLI) also maps to the one system Identity. The local
   runner uses one shared user id for every person, so it cannot name a human.
 
@@ -97,6 +98,32 @@ dashboard shows, private access, spend, and the personal feed.
   write it.
 - `WebActor.userId` stays `dashboard:<hash>` (`webActorFromEmail`). It is a
   provider-scoped Actor id, not an Identity id.
+- Every web Actor resolves to a real Identity. There is no fallback to the
+  system Identity.
+- The mock viewer creates a mock Identity. Today `mockViewerFromSession`
+  (`packages/junior-dashboard/src/app.ts`) makes a viewer without durable user
+  rows.
+- Older sessions need no invalidation. The code shows this:
+  - Better Auth has no database adapter (`chat/sign-in/auth.ts`). Sessions are
+    JWE cookies with `disableSessionRefresh` and a default maximum age of 8
+    hours (`DEFAULT_SESSION_MAX_AGE_SECONDS`).
+  - Each new session runs the `after` hook, which calls `recordGoogleSignIn`.
+    The hook throws when the Google account is missing. It skips only a
+    session with no verified email, and the dashboard rejects that session
+    (`verifiedDashboardSessionEmail`).
+  - `recordGoogleSignIn` shipped in #2220 on 2026-10-26. Any session from
+    before that date expired long ago.
+  - So each live browser session has a `google` Identity row, linked to the
+    viewer's `junior_users` row through the verified email.
+- The session itself does not carry a Junior user id. The dashboard session
+  keeps only `email`, `emailVerified`, and `name`
+  (`sanitizeDashboardSession` in `packages/junior-dashboard/src/auth.ts`).
+  The middleware finds the user by email. A User alone does not prove a
+  `google` row. The 8-hour session limit gives that proof.
+- Personal-token requests have no `google` row either. They are `GET` only
+  (`requireAuth`), so they never write a Message.
+- **Proposal:** the local auth bypass (`authRequired` is false,
+  `dev@example.com`) creates a mock Identity, the same as the mock viewer.
 
 ### Identity Id Placement
 
@@ -120,8 +147,11 @@ dashboard shows, private access, spend, and the personal feed.
 - A user Message from a system Actor uses the system Identity. Examples are
   event, scheduled automation, and plugin dispatch prompts, and local CLI
   input.
-- Assistant output is an event. It has no author Identity. This rule does not
-  cover Messages with role `assistant` or `system`.
+- A user Message from a Slack bot uses the bot's own Identity. See Slack Bots.
+- Assistant output is an event. It has no author Identity.
+- No code writes `system`-role Message rows today.
+  `ConversationMessageRole` (`chat/conversations/messages.ts`) allows the
+  value, but each writer sets `user` or `assistant`.
 - Junior resolves the author at ingress. Code that cannot name an author fails.
   It does not store an unknown author.
 - Missing-author fallbacks exist only to read legacy rows. They log when they
@@ -168,6 +198,29 @@ change.
 
 - The constraint does not cover the `user_message` agent history items. They
   are model input, not Messages, and their payload is encoded.
+
+### Slack Bots
+
+- A Slack bot gets its own Identity: provider `slack`, the Slack team id as
+  tenant, and the bot id as subject. It has no linked User. It is the author
+  of the bot's Messages.
+- `junior_identities.user_id` is nullable (`db/schema/identities.ts`).
+  `upsertIdentityRecord` writes `userId ?? null`.
+- **Proposal:** add a `bot` kind. `IdentityKind` is `service`, `system`, or
+  `user` (`chat/identities/identity.ts`). Do not use `user`: `upsertIdentity`
+  creates and links a User for a `user` Identity with a verified email, and
+  `userLookup` (`chat/tools/user-lookup.ts`) and `chat/events/people.ts`
+  match on `kind = 'user'`. Do not use `service`: no code writes it today, and
+  Service account in `TERMINOLOGY.md` means Junior's own provider account.
+- With no User and a non-`user` kind, a bot never counts as a person:
+  - Spend and People join `junior_users` and require `kind = 'user'`
+    (`verifiedActorWhere` in `api/people/shared.ts`).
+  - `recordConversationParticipant` skips an Identity without a User or with
+    a kind other than `user`. So a bot never gets access as a participant.
+- Today `resolveEventActorIdentityId` stores no author when
+  `meta.author.isBot` is true. Guardian's `messageAuthor`
+  (`agent-invocations/root-conversation.ts`) labels a bot as a `SystemActor`
+  with the bot id as its name. Step 5 moves both to the bot Identity.
 
 ### Participants
 
@@ -216,7 +269,9 @@ of the event column keep `actor_identity_id`.
 - A human who replies to an automation Conversation gets access as a
   participant, not as Owner. The Conversation stays in their feed through the
   participant row. It does not count as theirs in People or spend.
-- Child spend: see open question 4. It is not decided.
+- Child spend rolls up to the root Owner. Today `peopleTreeMetricsJoin`
+  (`api/people/shared.ts`) gives a child's metrics to the child's own Actor
+  when that Actor differs from the root Actor.
 - A web user's Messages and Conversations use their `google` Identity. The
   People page groups them with the same user as before, because both
   Identities link to the same `junior_users` row.
@@ -231,35 +286,26 @@ of the event column keep `actor_identity_id`.
 
 ## Open Questions
 
-1. **Web Actor without a `google` Identity.** The local auth bypass
-   (`authRequired` is false) uses `dev@example.com` and never signs in with
-   Google. The mock viewer also has no Google Identity. Also, a session that
-   started before `recordGoogleSignIn` shipped can have no `google` row until
-   the next sign-in. Proposed answer: in production, fail closed and ask the
-   user to sign in again. In the local bypass, map the web Actor to the system
-   Identity, as for the local CLI. Confirm.
-2. **Slack bot authors.** A Slack bot Message comes in with role `user`, so
-   the author rule covers it. It still needs an answer.
-   `agent-invocations/root-conversation.ts` already treats a Slack bot author
-   as a `SystemActor` with the bot id as its name. Today
-   `resolveEventActorIdentityId` stores no Identity when `meta.author.isBot` is
-   true. Proposed answer: bot Messages use the system Identity and keep the bot
-   id as provenance. Confirm.
-3. **Legacy `junior/<email>` rows with no `google` row.** A user who used the
+1. **Legacy `junior/<email>` rows with no `google` row.** A user who used the
    dashboard but never signed in after `recordGoogleSignIn` shipped has only the
    synthetic row. Proposed answer: the backfill keeps these rows for legacy
    reads and counts them in the dry run. New writes never use them.
-4. **Child spend roll-up.** Today `peopleTreeMetricsJoin`
-   (`api/people/shared.ts`) gives a child's metrics to the child's own Actor
-   when that Actor differs from the root Actor. A child has no Owner in the end
-   state. Proposed answer: the root Owner gets the child's spend. Confirm.
+2. **Bots and the system Identity in the participant list.**
+   `readConversationParticipants` (`api/conversations/participants.ts`) lists
+   every Message author Identity, with no `kind` filter. Once bots and system
+   prompts have authors, they show there. **Proposal:** list only Identities
+   with a linked User.
 
 ## Decided
 
-- **Assistant and system Messages** (David Cramer): assistant output is an
-  event, not an authored Message. The author rule and its check constraint
-  cover only user Messages. Assistant and system Messages keep a `null`
-  author.
+These are David Cramer's answers in the #2439 thread.
+
+- **Assistant output** is an event and has no author Identity.
+- **Web users** always have an Identity. The mock viewer mocks one. David
+  asked if older sessions get invalidated. The code shows that they need no
+  invalidation (see Web User).
+- **Child spend** rolls up to the root Owner.
+- **Slack bots** have an Identity but no User. A bot is still an Actor.
 
 ## Docs To Update Later
 

@@ -47,8 +47,12 @@ Each step ships on its own. Each step leaves `main` correct.
 
 - [ ] Map every `SystemActor` and every `LocalActor` to one system Identity.
       Keep `SystemActor.name` as provenance.
-- [ ] Map a web Actor to the viewer's `google` Identity. Resolve open question 1
-      first.
+- [ ] Map a web Actor to the viewer's `google` Identity. Never fall back to the
+      system Identity.
+- [ ] The mock viewer creates a mock Identity. Proposal: the local auth bypass
+      does the same.
+- [ ] Map a Slack bot author to its own Identity: provider `slack`, subject
+      the bot id, no User. Proposal: add a `bot` Identity kind.
 - [ ] Stop writing the `scheduler`, `local-cli`, and `event` system rows and the
       synthetic `junior/<email>` web rows.
 - [ ] Migration: move references in `junior_conversations` and
@@ -72,8 +76,8 @@ This is the riskiest step. It changes access, the feed, People, and spend.
   - rows with a human Identity and a system Source (`scheduler`, `event`,
     `plugin`, `local`);
   - root rows with no Identity;
-  - child rows with an Identity that differs from their root (open
-    question 4);
+  - child rows with an Identity that differs from their root (their spend
+    moves to the root Owner);
   - `junior/<email>` rows that are still referenced.
 - [ ] Backfill the Owner:
   - Slack, web, and fork roots: copy `actor_identity_id`.
@@ -92,8 +96,8 @@ This is the riskiest step. It changes access, the feed, People, and spend.
 
 - [ ] Add the `NOT VALID` check that requires `actor_identity_id` on new user
       Message rows: `type` is `message` or `message_updated`, and
-      `payload->>'role'` is `user`. The proposal has the exact SQL. Resolve
-      open question 2 (Slack bot authors) first.
+      `payload->>'role'` is `user`. The proposal has the exact SQL. Slack bot
+      Messages use the bot Identity.
 - [ ] Remove author inference from `resolveEventActorIdentityId`. Keep it only
       for legacy reads.
 - [ ] Retire `StoredSlackActor` in `Conversation` and in Redis work state

@@ -63,6 +63,23 @@ Junior SHALL NOT create a synthetic web Identity.
 - **THEN** the Message author is the user's `google` Identity
 - **AND** that Identity links to the viewer's `junior_users` row.
 
+#### Scenario: Mock viewer sends a Message
+
+- **WHEN** the mock viewer sends a Message
+- **THEN** the Message author is a mock Identity, not the system Identity.
+
+### Requirement: Slack Bots Have Their Own Identity
+
+A Slack bot SHALL have its own Identity with no linked User. That Identity
+SHALL be the author of the bot's Messages. A bot SHALL NOT count as a person
+in spend, People, or participant access.
+
+#### Scenario: Slack bot posts in a Conversation
+
+- **WHEN** a Slack bot posts a Message that Junior stores
+- **THEN** the Message author is the bot's Identity
+- **AND** the bot gets no participant row.
+
 ### Requirement: Identity Id Next To The Actor
 
 Junior SHALL store the Identity id next to the Actor on the Turn and on each
