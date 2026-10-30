@@ -8,6 +8,12 @@ Conversations of the signed-in user. The OAuth flow follows the
 This directory is the server side of MCP. `src/chat/mcp/` is the client side,
 which connects Junior to plugin MCP servers. Do not mix the two.
 
+## Layout
+
+`route.ts` mounts the HTTP routes and `server.ts` builds the MCP server.
+`oauth/` has the OAuth authorization server. To add a tool, add one file under
+`tools/` and call its register function in `server.ts`.
+
 ## Mount rule
 
 Consent needs a Junior user who signed in with Google. Thus the app mounts the

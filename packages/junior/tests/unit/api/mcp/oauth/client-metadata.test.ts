@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redirectUriMatches } from "@/api/mcp/client-metadata";
+import { redirectUriMatches } from "@/api/mcp/oauth/client-metadata";
 
 describe("MCP redirect URI matching", () => {
   const registered = [

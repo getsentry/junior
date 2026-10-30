@@ -5,8 +5,8 @@
 import { Hono } from "hono";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { isAllowedSignInEmail } from "@/chat/sign-in/allowlist";
-import { handleMcpAuthorize } from "./authorization";
-import { authenticateMcpAccessToken } from "./grants";
+import { handleMcpAuthorize } from "./oauth/authorization";
+import { authenticateMcpAccessToken } from "./oauth/grants";
 import {
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
@@ -18,10 +18,10 @@ import {
   protectedResourceMetadata,
   resolveMcpUrls,
   type McpUrls,
-} from "./metadata";
+} from "./oauth/metadata";
 import { handleMcpServerRequest } from "./server";
-import type { McpState } from "./state";
-import { handleMcpToken, mcpTokenBodyLimit } from "./token";
+import type { McpState } from "./oauth/state";
+import { handleMcpToken, mcpTokenBodyLimit } from "./oauth/token";
 
 /** Host paths that the app forwards to the MCP handler. */
 export const MCP_ROUTE_PATHS = [

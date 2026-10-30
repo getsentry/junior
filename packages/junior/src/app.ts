@@ -122,8 +122,8 @@ import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { createAcpHttpHandler } from "@/api/acp/route";
-import { handleMcpConsentPage } from "@/api/mcp/consent-page";
-import { MCP_CONSENT_PATH } from "@/api/mcp/metadata";
+import { handleMcpConsentPage } from "@/api/mcp/oauth/consent-page";
+import { MCP_CONSENT_PATH } from "@/api/mcp/oauth/metadata";
 import { createMcpHttpHandler, MCP_ROUTE_PATHS } from "@/api/mcp/route";
 import {
   ACP_AUTHORIZATION_PATH,
