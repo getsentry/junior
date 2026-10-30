@@ -47,23 +47,29 @@ identifier when its plugin can turn the identifier into filters
 (`identifierMatch`). For example, `getsentry/junior#7` on pull request events
 becomes `repo` and `pullRequest` filters. `trigger-conversion.ts` owns the
 rule. A trigger converts only when the plugin gives the same filters for every
-selected event, those filters agree with the saved filters, and the result
-passes the check for a new trigger. Otherwise it keeps its identifier and
-keeps running, and the trigger saves the reason in `identifierReason`. Each
-edit that changes the trigger sets the reason again. A conversion never makes
-a trigger broader.
+selected event, each saved filter matches the identifier's value, and the
+result passes the check for a new trigger. A saved list filter that has the
+identifier's value becomes that one value. A conversion never makes a trigger
+broader.
 
-Each heartbeat checks at most 50 saved rows that have an identifier, no
-saved reason, and the same identifier in the row and the trigger. It saves
-each row with the revision that it read, under the row lock, and records a
-version with no editor. A row that changed after the read is left for the next
-heartbeat. A row that cannot convert keeps its identifier, stays active, and
-saves the reason, so later heartbeats skip it. Examples are a Sentry project
-trigger for metric alerts, because a metric alert can leave out `projects`,
-and a row whose plugin is not enabled. The trigger description shows the
-reason as a note, not a problem, in the dashboard, Slack details, and
-`listEventAutomations`. Slice D of #2362 decides what happens to these rows
-before the identifier column goes away. Saved versions keep their old triggers, and the version schema still reads
+A write is rejected when a saved filter never matches the identifier's value,
+because the trigger could never run. In other cases, the trigger keeps its
+identifier and saves the plain reason in `identifierReason`. An example is a
+Sentry identifier. The Sentry plugin reads its org from each webhook URL and
+has no saved org for the install, so it cannot check the org in an identifier.
+A wrong org would make a dead trigger run, so the plugin gives no
+`identifierMatch`. Each edit that changes the trigger sets
+the reason again. The trigger description shows the reason as a note, not a
+problem, in the dashboard, Slack details, and `listEventAutomations`.
+
+The update tool changes `match` key by key. A value sets a filter, `null`
+removes it, and a filter that the update leaves out keeps its saved value.
+After a conversion the scope lives in `match`, so replacing the whole object
+would make the trigger broader. The dashboard sends the whole trigger from
+its form, which shows every saved filter.
+
+Saved rows keep their identifiers until a later change converts them. Saved
+versions keep their old triggers, and the version schema still reads
 `identifier` and `resourceType`.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by

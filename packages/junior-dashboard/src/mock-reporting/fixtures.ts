@@ -3055,7 +3055,6 @@ function mockTasks(): AutomationSummary[] {
         events: ["incident updated"],
         filters: [],
         problems: ["The plugin for this source is not enabled."],
-        notes: [],
       },
       status: "active",
     },

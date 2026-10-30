@@ -122,6 +122,17 @@ describe("Vercel webhook events", () => {
         toMatch,
       }),
     ).toEqual([]);
+    // An identifier that the webhooks never build gets no filters, so a
+    // trigger that never ran does not start to run.
+    expect(
+      [
+        "prj_1:prod",
+        `prj_1:production:${"A".repeat(40)}`,
+        `prj_1:production:${"a".repeat(40)}:extra`,
+      ].map((identifier) =>
+        toMatch({ eventType: "deployment.succeeded", identifier }),
+      ),
+    ).toEqual([undefined, undefined, undefined]);
   });
 
   it.each([

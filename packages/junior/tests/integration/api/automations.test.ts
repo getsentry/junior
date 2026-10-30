@@ -407,7 +407,6 @@ describe("Automations API", () => {
               events: ["issue closed"],
               filters: ["action is closed or resolved"],
               problems: ["The plugin for this source is not enabled."],
-              notes: [],
             },
           }),
           expect.objectContaining({

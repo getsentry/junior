@@ -128,6 +128,16 @@ describe("Linear webhook events", () => {
         toMatch,
       }),
     ).toEqual([]);
+    // Saved identifiers are uppercase. Another identifier never got events,
+    // so it gets no filters and does not start to run.
+    expect(
+      ["eng-7", "eng"].map((identifier) =>
+        linearPlugin().events?.identifierMatch?.({
+          eventType: "issue.created",
+          identifier,
+        }),
+      ),
+    ).toEqual([undefined, undefined]);
   });
 
   it("normalizes a created issue for the issue and team", () => {

@@ -437,6 +437,10 @@ export const pluginEventsSchema = z
      * for example when the event can leave out a scope value or does not go
      * to this kind of identifier. Core then keeps the identifier, so a
      * trigger never gets broader.
+     *
+     * Temporary: it exists only to move event automation triggers off
+     * identifiers. Slice D of getsentry/junior#2362 removes it with the
+     * identifier column.
      */
     identifierMatch: z
       .function({

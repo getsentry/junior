@@ -85,7 +85,7 @@ function renderAutomationDetails(
         long: true,
       },
     );
-    if (trigger.notes.length > 0) {
+    if (trigger.notes) {
       fields.push({
         ...textField("note", "Note", trigger.notes.join(" ")),
         long: true,

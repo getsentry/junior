@@ -133,8 +133,9 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
  * The identifier gets its plugin's convention. A trigger with an identifier is
  * saved with no identifier when its plugin can turn the identifier into
  * filters that select the same events. Otherwise it is saved with the reason
- * that it keeps the identifier, so each edit sets the reason again. Events
- * and list values lose repeats.
+ * that it keeps the identifier, so each edit sets the reason again. A trigger
+ * whose filter never matches the events of its identifier is rejected,
+ * because it would never run. Events and list values lose repeats.
  */
 export function requireEventAutomationTrigger(
   catalog: EventCatalog,
@@ -176,7 +177,13 @@ export function requireEventAutomationTrigger(
     events,
     ...(match ? { match } : undefined),
   };
-  return triggerWithoutIdentifier(catalog, trigger).trigger;
+  const conversion = triggerWithoutIdentifier(catalog, trigger);
+  if (!conversion.converted && conversion.conflict) {
+    throw new ToolInputError(
+      `The "${conversion.conflict}" filter never matches the events of identifier "${trigger.identifier}", so this trigger would never run. Change or remove the "${conversion.conflict}" filter.`,
+    );
+  }
+  return conversion.trigger;
 }
 
 /** Require the active Slack authority used for event-automation management. */
@@ -252,8 +259,11 @@ export async function writableEventAutomation(
 
 /** A saved trigger in words, with notes about how Junior saved it. */
 export type EventAutomationTriggerDescription = EventTriggerDescription & {
-  /** Plain facts about a trigger that still works, such as a kept identifier. */
-  notes: string[];
+  /**
+   * Plain facts about a trigger that still works, such as a kept
+   * identifier. Missing when there are none.
+   */
+  notes?: string[];
 };
 
 /**
@@ -268,7 +278,9 @@ export function describeEventAutomationTrigger(
 ): EventAutomationTriggerDescription {
   return {
     ...describeRegisteredEventTrigger(automationEventCatalog(catalog), trigger),
-    notes: trigger.identifierReason ? [trigger.identifierReason] : [],
+    ...(trigger.identifierReason
+      ? { notes: [trigger.identifierReason] }
+      : undefined),
   };
 }
 
@@ -298,7 +310,7 @@ export function compactEventAutomation(
       ...(task.trigger.match ? { match: task.trigger.match } : undefined),
       available: problems.length === 0,
       ...(problems.length > 0 ? { problems } : undefined),
-      ...(notes.length > 0 ? { notes } : undefined),
+      ...(notes ? { notes } : undefined),
     },
     credentialMode: task.credentialMode,
     isCreator: task.createdBy.slackUserId === requesterSlackUserId,

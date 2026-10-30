@@ -117,7 +117,7 @@ function AutomationDetailsContent({
                 {automation.trigger.events.join(", ")}
               </p>
               <TriggerFilters filters={automation.trigger.filters} />
-              {automation.trigger.notes.map((note) => (
+              {automation.trigger.notes?.map((note) => (
                 <p className="m-0 mt-1 break-words" key={note}>
                   {note}
                 </p>

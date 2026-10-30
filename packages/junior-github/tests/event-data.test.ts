@@ -248,6 +248,15 @@ async function publish(
         expect(event.data).toMatchObject(data);
       }
     }
+    // When every copy is for one pull request, core gets its number, so a
+    // trigger for another pull request skips the lookups.
+    const numbers = [
+      ...new Set(published.map((event) => event.data?.pullRequest)),
+    ];
+    const onePullRequest = numbers.length === 1 ? numbers[0] : undefined;
+    expect(known.map((data) => data.pullRequest)).toEqual(
+      known.map(() => onePullRequest),
+    );
     events.push(...published);
   }
   return events;
@@ -332,6 +341,25 @@ describe("GitHub event data", () => {
           }),
       }),
     ).toEqual([]);
+    // An identifier that the webhooks never build gets no filters, so a
+    // trigger that never ran does not start to run.
+    const sha = "a".repeat(40);
+    expect(
+      [
+        ["release-source:getsentry/junior:release/1.0", "release.published"],
+        [
+          `deployment-source:getsentry/junior:prod/eu:${sha}`,
+          "deployment.failed",
+        ],
+        ["getsentry/junior#007", "pull_request.opened"],
+        ["getsentry/junior#007", "issue.opened"],
+      ].map(([identifier, eventType]) =>
+        githubPlugin().events?.identifierMatch?.({
+          identifier: identifier!,
+          eventType: eventType!,
+        }),
+      ),
+    ).toEqual([undefined, undefined, undefined, undefined]);
     // Tags keep their text: no URI encoding, and only ASCII letters change.
     expect(new Set(events.flatMap((event) => event.data?.tag ?? []))).toEqual(
       new Set(["v1.2.0", "release/Ü1", "release/ü1"]),

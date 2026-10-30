@@ -909,7 +909,6 @@ describe("Automation edit API", () => {
         events: ["issue closed"],
         filters: ["retainedCondition is one or two"],
         problems: ["The plugin for this source is not enabled."],
-        notes: [],
       };
       expect(
         versions.map((version) =>
@@ -924,7 +923,6 @@ describe("Automation edit API", () => {
             "pullRequest is 42",
           ],
           problems: [],
-          notes: [],
         },
         saved,
         saved,
@@ -992,7 +990,6 @@ describe("Automation edit API", () => {
           events: ["pull request opened"],
           filters: ["repo is getsentry/junior"],
           problems: [],
-          notes: [],
         },
       });
     } finally {

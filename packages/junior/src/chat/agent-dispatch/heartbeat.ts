@@ -1,6 +1,3 @@
-import { getDb } from "@/chat/db";
-import { convertSavedEventAutomationTriggers } from "@/chat/event-automations/trigger-conversion";
-import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
@@ -217,13 +214,6 @@ export async function runHeartbeat(args: {
     }
   } catch (error) {
     logException(error, "scheduled_automations.heartbeat.failed");
-  }
-  try {
-    // Saved triggers with an identifier move to filters. Slice D of #2362
-    // removes this step with the identifier column.
-    await convertSavedEventAutomationTriggers(getDb(), getEventCatalog());
-  } catch (error) {
-    logException(error, "event_automation.trigger.conversion_failed");
   }
   try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });

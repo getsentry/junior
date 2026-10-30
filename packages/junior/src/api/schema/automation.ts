@@ -79,7 +79,7 @@ export const eventTriggerDescriptionSchema = z
     /** Why the trigger cannot work. The trigger is available when empty. */
     problems: z.array(z.string().min(1)),
     /** Facts about a trigger that still works, such as a kept identifier. */
-    notes: z.array(z.string().min(1)),
+    notes: z.array(z.string().min(1)).min(1).optional(),
   })
   .strict() satisfies z.ZodType<EventTriggerDescription>;
 

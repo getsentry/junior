@@ -1,18 +1,14 @@
 import { githubPlugin } from "@sentry/junior-github";
-import type { EventMatch } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getConversationStore } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
-import { listAutomationVersions } from "@/chat/automations/versions";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
-import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -207,24 +203,75 @@ describe("event automations with no identifier", () => {
 
       // A new trigger with an identifier is saved as the filters that select
       // the same events, so the tools stop writing identifiers.
-      const one = await create(
-        {
-          ...trigger,
-          identifier: "getsentry/junior#7",
-          resourceType: "pull_request",
-          label: "getsentry/junior#7",
-        },
-        "one-pull-request",
-      );
+      const onePullRequestTrigger = {
+        ...trigger,
+        identifier: "getsentry/junior#7",
+        resourceType: "pull_request",
+        label: "getsentry/junior#7",
+      };
+      const one = await create(onePullRequestTrigger, "one-pull-request");
       const onePullRequest = {
         identifier: null,
         resourceType: null,
         match: { repo: "getsentry/junior", pullRequest: 7 },
       };
       expect(one.automation.trigger).toMatchObject(onePullRequest);
+      // A saved list that has the identifier's value becomes that value. A
+      // filter that never matches the identifier would never run, so the
+      // write fails and names the filter.
+      await expect(
+        create(
+          { ...onePullRequestTrigger, match: { pullRequest: [7, 8] } },
+          "list-filter",
+        ),
+      ).resolves.toMatchObject({ automation: { trigger: onePullRequest } });
+      await expect(
+        create(
+          { ...onePullRequestTrigger, match: { pullRequest: 5 } },
+          "conflicting-filter",
+        ),
+      ).rejects.toThrow(
+        'The "pullRequest" filter never matches the events of identifier "getsentry/junior#7"',
+      );
 
-      // An update that leaves out identifier, resourceType, and match keeps
-      // them, so it cannot make a trigger broad by omission.
+      // The converted trigger runs for its pull request and not for another
+      // one in the same repository.
+      const dispatchedFor = async (pullRequest: number) => {
+        const before = queue.sentRecords().length;
+        for (const identifier of [
+          `getsentry/junior#${pullRequest}`,
+          "getsentry/junior",
+        ]) {
+          await ingestEventAutomations(
+            {
+              eventKey: `github:one-pull-request-${pullRequest}`,
+              eventType: "pull_request.opened",
+              occurredAtMs: Date.now(),
+              namespace: "github",
+              identifier,
+              trustedSummary: "A pull request was opened.",
+              data: { pullRequest, repo: "getsentry/junior" },
+            },
+            { queue, teamId },
+          );
+        }
+        let count = 0;
+        for (const sentRecord of queue.sentRecords().slice(before)) {
+          const dispatched = await getDispatchRecord(
+            sentRecord.conversationId.replace(/^agent-dispatch:/, ""),
+          );
+          if (dispatched?.metadata?.eventAutomationId === one.automation.id) {
+            count++;
+          }
+        }
+        return count;
+      };
+      expect(await dispatchedFor(7)).toBe(1);
+      expect(await dispatchedFor(8)).toBe(0);
+
+      // An update changes only the filters that it names. A filter that it
+      // leaves out keeps its saved value, so the scope stays. Only null
+      // removes a filter.
       const update = (next: Record<string, unknown>, toolCallId: string) =>
         execute(
           createUpdateEventAutomationTool(context(), catalog),
@@ -237,151 +284,29 @@ describe("event automations with no identifier", () => {
       await expect(update(edited, "keep-filters")).resolves.toMatchObject({
         automation: { trigger: onePullRequest },
       });
-      // Only an explicit empty match drops filters, and then the trigger
-      // needs a repo.
+      const notDraft = { ...onePullRequest.match, isDraft: false };
       await expect(
-        update({ ...edited, match: {} }, "drop-filters"),
-      ).rejects.toThrow('This trigger needs a "repo" filter (match.repo)');
-      await expect(
-        update(
-          { ...edited, match: { repo: "getsentry/junior" } },
-          "repo-filter",
-        ),
+        update({ ...edited, match: { isDraft: false } }, "add-filter"),
       ).resolves.toMatchObject({
-        automation: { trigger: { match: { repo: "getsentry/junior" } } },
+        automation: { trigger: { match: notDraft } },
       });
-
-      // Rows saved before this change still name one resource. The heartbeat
-      // converts each one under its row lock and saves a version with no
-      // editor. A row that cannot convert without matching more events keeps
-      // its identifier, saves the reason, and keeps running.
-      const savedPullRequest = (id: string, match?: EventMatch) => ({
-        ...row!,
-        id,
-        identifier: "getsentry/junior#8",
-        record: {
-          ...record,
-          trigger: {
-            ...record.trigger,
-            identifier: "getsentry/junior#8",
-            resourceType: "pull_request",
-            match,
-          },
-        },
+      await expect(
+        update({ ...edited, match: {} }, "no-filter-change"),
+      ).resolves.toMatchObject({
+        automation: { trigger: { match: notDraft } },
       });
-      await fixture.sql
-        .db()
-        .insert(juniorAutomations)
-        .values([
-          savedPullRequest("evt_saved_pull_request"),
-          savedPullRequest("evt_saved_list_filter", { pullRequest: [8, 9] }),
-          // Its saved trigger has no identifier, so ingest never runs it.
-          // Conversion must not save it as a broad row.
-          {
-            ...savedPullRequest("evt_saved_column_only"),
-            record: {
-              ...record,
-              trigger: {
-                ...record.trigger,
-                match: { repo: "getsentry/junior" },
-              },
-            },
-          },
-        ]);
-      const savedRows = async () =>
-        Object.fromEntries(
-          (
-            await fixture.sql
-              .db()
-              .select()
-              .from(juniorAutomations)
-              .where(sql`${juniorAutomations.id} like 'evt_saved_%'`)
-          ).map((saved) => [saved.id, saved]),
-        );
-      const versions = (id: string) =>
-        listAutomationVersions(fixture.sql.db(), id, 5);
-      await runHeartbeat({ nowMs: Date.now(), conversationWorkQueue: queue });
-      const reason =
-        "Kept its exact pull request because its saved pullRequest filter has a different value.";
-      const rows = await savedRows();
-      expect(rows.evt_saved_pull_request?.identifier).toBeNull();
-      expect(await versions("evt_saved_pull_request")).toMatchObject([
-        {
-          editedBy: null,
-          definition: {
-            trigger: {
-              events: ["pull_request.opened"],
-              match: { repo: "getsentry/junior", pullRequest: 8 },
-            },
-          },
-        },
-      ]);
-      expect(rows.evt_saved_list_filter?.identifier).toBe("getsentry/junior#8");
-      expect(rows.evt_saved_list_filter?.status).toBe("active");
-      expect(await versions("evt_saved_list_filter")).toMatchObject([
-        {
-          editedBy: null,
-          definition: { trigger: { identifierReason: reason } },
-        },
-      ]);
-      // The saved reason is a note on the trigger, not a problem. Listing
-      // reads every row of the team, so remove the row that does not parse.
-      await fixture.sql
-        .db()
-        .delete(juniorAutomations)
-        .where(eq(juniorAutomations.id, "evt_bad_record"));
-      const listed = (await execute(
-        createListEventAutomationsTool(context(), catalog),
-        {},
-        "list-kept",
-      )) as {
-        automations: { id: string; trigger: Record<string, unknown> }[];
-      };
-      expect(
-        listed.automations.find(({ id }) => id === "evt_saved_list_filter")
-          ?.trigger,
-      ).toMatchObject({ available: true, notes: [reason] });
-      // The next heartbeat does not save the kept row again.
-      await runHeartbeat({ nowMs: Date.now(), conversationWorkQueue: queue });
-      expect(await versions("evt_saved_list_filter")).toHaveLength(1);
-      expect(await versions("evt_saved_column_only")).toEqual([]);
-      // Both rows run once for a pull request event, and not for another
-      // pull request.
-      const dispatchedIds = async (pullRequest: number, eventKey: string) => {
-        const before = queue.sentRecords().length;
-        for (const identifier of [
-          `getsentry/junior#${pullRequest}`,
-          "getsentry/junior",
-        ]) {
-          await ingestEventAutomations(
-            {
-              eventKey,
-              eventType: "pull_request.opened",
-              occurredAtMs: Date.now(),
-              namespace: "github",
-              identifier,
-              trustedSummary: "A pull request was opened.",
-              data: { pullRequest, repo: "getsentry/junior" },
-            },
-            { queue, teamId },
-          );
-        }
-        const ids = [];
-        for (const sentRecord of queue.sentRecords().slice(before)) {
-          const dispatched = await getDispatchRecord(
-            sentRecord.conversationId.replace(/^agent-dispatch:/, ""),
-          );
-          ids.push(dispatched?.metadata?.eventAutomationId);
-        }
-        return ids.filter((id) => id?.startsWith("evt_saved_")).sort();
-      };
-      expect(await dispatchedIds(8, "github:opened-8")).toEqual([
-        "evt_saved_list_filter",
-        "evt_saved_pull_request",
-      ]);
-      expect(await dispatchedIds(9, "github:opened-9")).toEqual([]);
+      await expect(
+        update({ ...edited, match: { repo: null } }, "drop-repo"),
+      ).rejects.toThrow('This trigger needs a "repo" filter (match.repo)');
+      const repoOnly = await update(
+        { ...edited, match: { pullRequest: null, isDraft: null } },
+        "drop-filters",
+      );
+      expect(repoOnly.automation.trigger.match).toEqual({
+        repo: "getsentry/junior",
+      });
     } finally {
       vi.unstubAllEnvs();
     }
-  });
+  }, 20_000);
 });

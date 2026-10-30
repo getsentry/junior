@@ -2,7 +2,6 @@ import type { EventMatch } from "@sentry/junior-plugin-api";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
   VERCEL_DEPLOYMENT_TARGETS,
-  vercelDeploymentResource,
   type VercelDeploymentTarget,
 } from "./deployment.js";
 
@@ -15,9 +14,9 @@ function isTarget(value: string): value is VercelDeploymentTarget {
  * deployment events: `projectId`, then `target`, then `commitSha`, one for
  * each part of `projectId[:target[:commitSha]]`.
  *
- * The filters must rebuild the same identifier with the builder that the
- * webhooks use. Otherwise the identifier never got events, and filters could
- * match events that it never got.
+ * Each part must have the form that `vercelDeploymentResource` builds: a
+ * known target and a full lowercase commit SHA. Otherwise the identifier
+ * never got events, and filters could match events that it never got.
  */
 export function vercelIdentifierMatch(input: {
   identifier: string;
@@ -33,8 +32,6 @@ export function vercelIdentifierMatch(input: {
   if (commitSha !== undefined && !/^[0-9a-f]{40}$/.test(commitSha)) {
     return undefined;
   }
-  const built = vercelDeploymentResource({ projectId, target, commitSha });
-  if (built.identifier !== input.identifier) return undefined;
   return {
     projectId,
     ...(target ? { target } : undefined),

@@ -126,6 +126,7 @@ Watches route events back into an existing conversation.
   to the identifier, and no other. It returns nothing when no filters can do
   that. Core uses it to save event automation triggers with no identifier
   (`event-automations/trigger-conversion.ts`). Watches keep their identifier.
+  It is temporary. Slice D of #2362 removes it with the identifier column.
 - A match field may declare `case: "lower"` or `case: "upper"`. Core changes a
   filter value to that case when it saves a trigger or a Watch, so a value such
   as `getsentry/Junior` still matches lowercase event data. The plugin decides
@@ -192,7 +193,8 @@ Watches route events back into an existing conversation.
    identifier again from the filters with the shared builder, and return
    nothing when it differs. Use `identifierMatchMismatches` from
    `@sentry/junior-testing` in the webhook test to prove that the filters
-   match the same events.
+   match the same events. Add identifiers that do not rebuild, such as a tag
+   that is not encoded, and check that they give no filters.
 8. When `data` needs a lookup, call `neededMatchKeys` with the values that the
    plugin already has, such as `repo`. Core then skips triggers with no
    identifier whose filters on those values fail.

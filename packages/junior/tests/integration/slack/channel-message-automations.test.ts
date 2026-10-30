@@ -4,7 +4,6 @@ import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getEventAutomation } from "@/chat/event-automations/store";
-import { convertSavedEventAutomationTriggers } from "@/chat/event-automations/trigger-conversion";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
@@ -139,26 +138,6 @@ describe("Slack channel-message automations", () => {
     });
     expect(created?.trigger.identifier).toBeUndefined();
 
-    // A row saved before channel filters names the channel with its
-    // identifier. The heartbeat step turns it into the same channel filter.
-    const { match: _match, ...unfiltered } = created!.trigger;
-    await fixture.sql
-      .db()
-      .update(juniorAutomations)
-      .set({
-        identifier: "C123",
-        record: sql`jsonb_set(${juniorAutomations.record}, '{trigger}', ${JSON.stringify(
-          { ...unfiltered, identifier: "C123", resourceType: "channel" },
-        )}::jsonb)`,
-      })
-      .where(eq(juniorAutomations.id, automation.id));
-    expect(
-      await convertSavedEventAutomationTriggers(fixture.sql.db(), catalog),
-    ).toEqual({ converted: [automation.id], kept: [] });
-    expect(
-      (await getEventAutomation(fixture.sql.db(), automation.id))?.trigger,
-    ).toEqual(created?.trigger);
-
     // A thread reply, a bot post, and a message in another channel do not run it.
     expect(
       (
@@ -228,6 +207,25 @@ describe("Slack channel-message automations", () => {
         trigger: trigger("current_channel", { userId: "U777" }),
       },
     )) as { automation: { id: string } };
+    // A row saved before channel filters names the channel with its
+    // identifier, and it still runs for its own channel.
+    const created = await getEventAutomation(fixture.sql.db(), automation.id);
+    const { match, ...unfiltered } = created!.trigger;
+    await fixture.sql
+      .db()
+      .update(juniorAutomations)
+      .set({
+        identifier: "C123",
+        record: sql`jsonb_set(${juniorAutomations.record}, '{trigger}', ${JSON.stringify(
+          {
+            ...unfiltered,
+            identifier: "C123",
+            resourceType: "channel",
+            match: { userId: match?.userId },
+          },
+        )}::jsonb)`,
+      })
+      .where(eq(juniorAutomations.id, automation.id));
 
     // A post from another bot does not run it.
     await postChannelMessage({
