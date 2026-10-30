@@ -108,7 +108,10 @@ stream or delete.
 - PKCE with `S256` is required. The only scope is `conversations:read`. The
   `resource` must be the exact `/api/mcp` URL (RFC 8707).
 - The first signed-in user who opens a consent page owns it. Approve and deny
-  need a same-origin `POST` with the form token of that user.
+  need a same-origin `POST` with the newest form token of that user.
+- A pending authorization ends 10 minutes after the authorize request. Opening
+  the consent page again does not extend it. The binding is a separate record,
+  so a page load that races with approve or deny cannot restore the request.
 - One consent gives one code. A code works once. A second use of a code
   revokes the grant that the first use made.
 - A refresh token works once. Each refresh gives a new token pair. A client

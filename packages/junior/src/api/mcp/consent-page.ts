@@ -100,8 +100,9 @@ export async function handleMcpConsentPage(args: {
   user: User;
 }): Promise<Response> {
   const requestId = new URL(args.request.url).pathname.split("/").at(-1) ?? "";
-  const authorization = await readMcpAuthorization(args.state, requestId);
-  if (!authorization) return expiredPage();
+  const pending = await readMcpAuthorization(args.state, requestId);
+  if (!pending) return expiredPage();
+  const { authorization, consent } = pending;
 
   if (args.request.method === "GET") {
     const csrfToken = await bindMcpConsent({
@@ -117,9 +118,9 @@ export async function handleMcpConsentPage(args: {
   const form = await readForm(args.request);
   if (
     !requestHasSameOrigin(args.request) ||
-    authorization.consent?.userId !== args.user.id ||
+    consent?.userId !== args.user.id ||
     !form.csrf ||
-    !csrfMatches(form.csrf, authorization.consent.csrfHash) ||
+    !csrfMatches(form.csrf, consent.csrfHash) ||
     (form.action !== "approve" && form.action !== "deny")
   ) {
     return blockedPage();

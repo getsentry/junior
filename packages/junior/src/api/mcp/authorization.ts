@@ -23,14 +23,8 @@ const mcpAuthorizationSchema = z
     clientId: z.string().min(1),
     clientName: z.string().min(1).optional(),
     codeChallenge: z.string().regex(CODE_CHALLENGE_PATTERN),
-    /** The first signed-in user who opened the consent page. */
-    consent: z
-      .object({
-        csrfHash: z.string().length(64),
-        userId: z.string().min(1),
-      })
-      .strict()
-      .optional(),
+    /** Fixed end of the request. Opening the consent page does not move it. */
+    expiresAtMs: z.number().int().positive(),
     redirectUri: z.string().min(1),
     resource: z.string().min(1),
     scope: z.literal(MCP_SCOPE),
@@ -41,27 +35,57 @@ const mcpAuthorizationSchema = z
 /** One authorization request that waits for consent. */
 export type McpAuthorization = z.output<typeof mcpAuthorizationSchema>;
 
+/** The user who owns one consent page, and the hash of its form token. */
+const mcpConsentSchema = z
+  .object({
+    csrfHash: z.string().length(64),
+    userId: z.string().min(1),
+  })
+  .strict();
+
+type McpConsent = z.output<typeof mcpConsentSchema>;
+
 function authorizationKey(requestId: string): string {
   return mcpStateKey("authorization", requestId);
 }
 
-/** Read one pending authorization. Malformed ids read as missing. */
-export async function readMcpAuthorization(
-  state: McpState,
-  requestId: string,
-): Promise<McpAuthorization | undefined> {
-  if (!REQUEST_ID_PATTERN.test(requestId)) return undefined;
-  const value = await state.get(authorizationKey(requestId));
-  return value === null || value === undefined
-    ? undefined
-    : mcpAuthorizationSchema.parse(value);
+function consentKey(requestId: string): string {
+  return `${authorizationKey(requestId)}:consent`;
+}
+
+function claimedKey(requestId: string): string {
+  return `${authorizationKey(requestId)}:claimed`;
 }
 
 /**
- * Bind a pending authorization to the user who opened the consent page, and
- * return a new form token for that user. Return `undefined` when another user
- * owns it. Only the bound user can approve, so a page that an attacker opened
- * cannot be submitted for a victim.
+ * Read one pending authorization and its consent binding. Malformed ids,
+ * ended requests, and claimed requests read as missing.
+ */
+export async function readMcpAuthorization(
+  state: McpState,
+  requestId: string,
+): Promise<
+  { authorization: McpAuthorization; consent?: McpConsent } | undefined
+> {
+  if (!REQUEST_ID_PATTERN.test(requestId)) return undefined;
+  const value = await state.get(authorizationKey(requestId));
+  if (value === null || value === undefined) return undefined;
+  const authorization = mcpAuthorizationSchema.parse(value);
+  if (authorization.expiresAtMs <= Date.now()) return undefined;
+  const claimed = await state.get(claimedKey(requestId));
+  if (claimed !== null && claimed !== undefined) return undefined;
+  const consent = await state.get(consentKey(requestId));
+  return consent === null || consent === undefined
+    ? { authorization }
+    : { authorization, consent: mcpConsentSchema.parse(consent) };
+}
+
+/**
+ * Bind a pending authorization to the first user who opens its consent page,
+ * and return a new form token for that user. Return `undefined` when another
+ * user owns it. Only the bound user can approve, so a page that an attacker
+ * opened cannot be submitted for a victim. The binding never extends the
+ * request, and a claimed request stays claimed.
  */
 export async function bindMcpConsent(args: {
   authorization: McpAuthorization;
@@ -69,21 +93,19 @@ export async function bindMcpConsent(args: {
   state: McpState;
   userId: string;
 }): Promise<string | undefined> {
-  if (
-    args.authorization.consent &&
-    args.authorization.consent.userId !== args.userId
-  ) {
-    return undefined;
-  }
+  const ttlMs = args.authorization.expiresAtMs - Date.now();
+  if (ttlMs <= 0) return undefined;
   const csrfToken = randomBytes(32).toString("base64url");
-  await args.state.set(
-    authorizationKey(args.requestId),
-    mcpAuthorizationSchema.parse({
-      ...args.authorization,
-      consent: { csrfHash: stateKeyHash(csrfToken), userId: args.userId },
-    }),
-    AUTHORIZATION_TTL_MS,
-  );
+  const consent = mcpConsentSchema.parse({
+    csrfHash: stateKeyHash(csrfToken),
+    userId: args.userId,
+  });
+  const key = consentKey(args.requestId);
+  if (await args.state.setIfNotExists(key, consent, ttlMs)) return csrfToken;
+  const owner = mcpConsentSchema.parse(await args.state.get(key));
+  if (owner.userId !== args.userId) return undefined;
+  // The owner opened the page again. Only the newest form token works.
+  await args.state.set(key, consent, ttlMs);
   return csrfToken;
 }
 
@@ -96,11 +118,14 @@ export async function claimMcpAuthorization(
   requestId: string,
 ): Promise<boolean> {
   const claimed = await state.setIfNotExists(
-    `${authorizationKey(requestId)}:claimed`,
+    claimedKey(requestId),
     true,
     AUTHORIZATION_TTL_MS,
   );
-  if (claimed) await state.delete(authorizationKey(requestId));
+  if (claimed) {
+    await state.delete(authorizationKey(requestId));
+    await state.delete(consentKey(requestId));
+  }
   return claimed;
 }
 
@@ -192,6 +217,7 @@ export async function handleMcpAuthorize(args: {
       clientId: client.clientId,
       ...(client.name ? { clientName: client.name } : undefined),
       codeChallenge,
+      expiresAtMs: Date.now() + AUTHORIZATION_TTL_MS,
       redirectUri,
       resource: args.urls.resource,
       scope: MCP_SCOPE,
