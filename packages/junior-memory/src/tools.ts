@@ -410,7 +410,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Junior sets access, Location, Source, and subject. The memory agent rewrites the content and sets the memory kind.",
+      "Explicit memory-write tool. Use only when the latest user message directly asks you to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. The runtime sets access, Location, Source, and subject. The memory agent rewrites the content and sets the memory kind.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     outputSchema: memoryCreateOutputSchema,
@@ -507,10 +507,7 @@ export function createMemoryArchiveTool(context: MemoryToolContext) {
     inputSchema: archiveMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
     execute: async (input) => {
-      const parsedInput = parseMemoryToolInput(
-        archiveMemoryInputSchema,
-        input,
-      );
+      const parsedInput = parseMemoryToolInput(archiveMemoryInputSchema, input);
       const runtimeContext = await memoryRuntimeContext(context);
       const memory = await (async () => {
         try {
@@ -533,7 +530,7 @@ export function createMemoryArchiveTool(context: MemoryToolContext) {
 export function createMemoryListTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "List active memories visible in the current context. Use when the user asks what Junior remembers or when memory ids are needed before removing a memory.",
+      "List active memories visible in the current context. Use when the user asks what you remember or when memory ids are needed before removing a memory.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

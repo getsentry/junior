@@ -6,8 +6,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   automationEditSchema,
   type AutomationSummary,
-  type AutomationVersion,
   type AutomationVersionList,
+  type ListedAutomationVersion,
 } from "@sentry/junior/api/schema";
 import { useAutomationData, useAutomationVersionsData } from "../../api";
 import {
@@ -38,6 +38,7 @@ import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { formatAutomationRunTime } from "./automationFormat";
 import { automationOutcomeLabel } from "./automationOutcomes";
+import { TriggerFilters } from "./TriggerFilters";
 
 const DESCRIPTION = "Saved settings for this automation, newest first.";
 
@@ -226,9 +227,9 @@ function VersionRow(props: {
   error: Error | null;
   onActivate(): void;
   pending: boolean;
-  previous: AutomationVersion | undefined;
+  previous: ListedAutomationVersion | undefined;
   truncated: boolean;
-  version: AutomationVersion;
+  version: ListedAutomationVersion;
 }) {
   const { automation, version } = props;
   const editor = version.editedBy
@@ -307,7 +308,7 @@ function VersionRow(props: {
 
 function VersionSettings(props: {
   automation: AutomationSummary;
-  version: AutomationVersion;
+  version: ListedAutomationVersion;
 }) {
   const { automation, version } = props;
   const { definition } = version;
@@ -338,12 +339,8 @@ function VersionSettings(props: {
             {version.definition.trigger.label} ·{" "}
             {version.definition.trigger.identifier}
             <br />
-            {version.definition.trigger.events.join(", ")}
-            {Object.keys(version.definition.trigger.match ?? {}).length ? (
-              <pre className="mt-2 mb-0 whitespace-pre-wrap break-words text-xs">
-                {JSON.stringify(version.definition.trigger.match, null, 2)}
-              </pre>
-            ) : null}
+            {version.trigger.events.join(", ")}
+            <TriggerFilters filters={version.trigger.filters} />
           </>
         )}
       </Detail>
@@ -372,8 +369,8 @@ function VersionSettings(props: {
 
 /** Name the settings that differ from the previous version. */
 function changedFields(
-  previous: AutomationVersion,
-  version: AutomationVersion,
+  previous: ListedAutomationVersion,
+  version: ListedAutomationVersion,
 ): string[] {
   const before: Record<string, unknown> = previous.definition;
   const after: Record<string, unknown> = version.definition;

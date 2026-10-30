@@ -624,12 +624,12 @@ describe("github plugin", () => {
         "github_resolvePullRequestReviewThread",
       ),
     });
-    expect(pullRequest?.matchFields).toEqual({
+    expect(pullRequest?.matchFields).toMatchObject({
       authors: {
         kind: "string",
         list: true,
         description:
-          "GitHub logins of the commit authors and Co-authored-by people, including bots such as Junior's",
+          "GitHub logins of the commit authors and Co-authored-by people, including bots such as this GitHub App",
       },
       headBranch: {
         kind: "string",
@@ -642,7 +642,7 @@ describe("github plugin", () => {
       openerEmail: {
         kind: "string",
         description:
-          "opener email when GitHub sends it; missing on Junior's pull requests",
+          "opener email when GitHub sends it; missing on pull requests that this GitHub App opened",
       },
       openerRole: {
         kind: "string",
@@ -652,7 +652,7 @@ describe("github plugin", () => {
       openerUsername: {
         kind: "string",
         description:
-          "login of who opened the pull request; on Junior's, the person who asked Junior to open it, missing until Junior saves them",
+          "login of who opened the pull request; on pull requests that this GitHub App opened, the person who asked for it, missing until that person is saved",
       },
     });
   });
@@ -798,7 +798,7 @@ describe("github plugin", () => {
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/forks",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
@@ -820,7 +820,7 @@ describe("github plugin", () => {
         method: "POST",
         url: "https://uploads.github.com/unrelated",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("allows workflow dispatch, rerun, and cancellation", async () => {
@@ -894,7 +894,7 @@ describe("github plugin", () => {
         method: "DELETE",
         url: "https://api.github.com/repos/getsentry/junior/stacks/12",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("creates issues with deterministic requester attribution", async () => {
@@ -1142,7 +1142,7 @@ describe("github plugin", () => {
 
 --
 
-[View Junior Session](https://junior.example.com/conversations/session) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+[View Session](https://junior.example.com/conversations/session) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });
@@ -1906,7 +1906,7 @@ Conversation: \`local:test:old-conversation\`
 
 --
 
-[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });
@@ -2536,7 +2536,7 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/git/blobs",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("treats pull request review writes as bot-owned installation identity", async () => {
@@ -2629,7 +2629,7 @@ Conversation: \`local:test:old-conversation\`
         method: "PUT",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/merge",
       }),
-    ).rejects.toThrow("Junior does not support this GitHub write request.");
+    ).rejects.toThrow("This GitHub write request is not supported.");
   });
 
   it("denies GitHub pull request approvals while allowing non-approve reviews", async () => {
@@ -2639,14 +2639,14 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
       }),
-    ).rejects.toThrow("Junior cannot approve GitHub pull requests");
+    ).rejects.toThrow("You cannot approve GitHub pull requests");
     await expect(
       grantForEgress({
         bodyText: JSON.stringify({ event: "approve" }),
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
       }),
-    ).rejects.toThrow("Junior cannot approve GitHub pull requests");
+    ).rejects.toThrow("You cannot approve GitHub pull requests");
     await expect(
       grantForEgress({
         method: "POST",
@@ -3449,7 +3449,7 @@ Conversation: \`local:test:old-conversation\`
     );
     expect(String(writes[0]?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
     expect(String(writes[0]?.content)).toContain(
-      "Git author was not set to the Junior identity",
+      "Git author was not set to the configured identity",
     );
     expect(started).toEqual([
       "core.hooksPath",

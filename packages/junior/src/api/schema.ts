@@ -116,6 +116,14 @@ export type {
   ConversationChildAgentsReport,
 } from "./schema/child-agent";
 export {
+  conversationWatchSchema,
+  conversationWatchesReportSchema,
+} from "./schema/watch";
+export type {
+  ConversationWatch,
+  ConversationWatchesReport,
+} from "./schema/watch";
+export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   personalSpendReportSchema,
@@ -225,8 +233,8 @@ export type {
   AutomationRunList,
   AutomationRunWindows,
   AutomationSummary,
-  AutomationVersion,
   AutomationVersionList,
+  ListedAutomationVersion,
 } from "./schema/automation";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";

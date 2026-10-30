@@ -111,6 +111,7 @@ export function eventLogTone(data: ConversationReportEventData): string {
   }
   if (
     (data.type === "guardian_action_reviewed" && data.decision === "ask") ||
+    (data.type === "turn_lifecycle" && data.state === "blocked") ||
     (data.type === "subagent" &&
       (data.status === "aborted" || data.status === "blocked"))
   ) {

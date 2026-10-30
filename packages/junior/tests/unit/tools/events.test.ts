@@ -144,6 +144,12 @@ describe("event tools", () => {
   });
 
   it("searches enabled event types without creating a watch", async () => {
+    const authors = {
+      kind: "string" as const,
+      description: "GitHub usernames of the pull request authors",
+      list: true as const,
+      events: ["pull_request.checks.failed"],
+    };
     const tools = createEventTools(context, {
       vercel: {
         resourceTypes: [
@@ -153,7 +159,12 @@ describe("event tools", () => {
           },
         ],
       },
-      ...GITHUB_EVENTS,
+      github: {
+        ...GITHUB_EVENTS.github,
+        resourceTypes: GITHUB_EVENTS.github.resourceTypes.map(
+          (resourceType) => ({ ...resourceType, matchFields: { authors } }),
+        ),
+      },
     });
 
     await expect(
@@ -171,6 +182,8 @@ describe("event tools", () => {
             "pull_request.review.changes_requested",
           ],
           suggestedEvents: ["pull_request.checks.failed"],
+          // The agent needs `events` to pick events that the filter matches.
+          matchFields: { authors },
         },
       ],
     });
@@ -232,7 +245,9 @@ describe("event tools", () => {
         },
         {},
       ),
-    ).rejects.toThrow(/github:issue.*does not support event/);
+    ).rejects.toThrow(
+      /github issue watch cannot be created\. "pull_request\.merged" is not an event/,
+    );
     expect(createSubscription).not.toHaveBeenCalled();
   });
 

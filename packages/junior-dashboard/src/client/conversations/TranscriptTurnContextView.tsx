@@ -9,13 +9,14 @@ import {
 import { createPortal } from "react-dom";
 
 import { DetailsPanel } from "../components/DetailsPanel";
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { Drawer } from "../components/Drawer";
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp, formatTime } from "../format";
 import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
-import { cn } from "../styles";
+import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { HighlightText } from "./transcriptSearch";
-import { TranscriptSummary } from "./TranscriptSummary";
+import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 /** The turn context that a page panel shows, keyed by its message. */
 export type TurnContextSelection = {
@@ -189,15 +190,17 @@ function MemoryRecall(props: {
   return (
     <div className="overflow-hidden rounded-lg border border-dashboard-border-strong">
       {props.memories.map((memory, index) => (
-        <details
-          className="group/memory border-t border-dashboard-border-strong first:border-t-0"
+        <Collapsible
+          className="border-t border-dashboard-border-strong first:border-t-0"
           key={memory.id}
         >
-          <TranscriptSummary className="flex items-start gap-2.5">
+          <TranscriptSummaryTrigger className="group flex items-start gap-2.5">
             <ChevronRight
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-dashboard-text-muted transition-transform group-open/memory:rotate-90"
-              size={15}
+              className={cn(
+                dashboardDisclosureChevronClass,
+                "mt-0.5 text-dashboard-text-muted",
+              )}
             />
             <span className="min-w-0 flex-1">
               <span className="flex items-center justify-between gap-3">
@@ -212,39 +215,43 @@ function MemoryRecall(props: {
                 <HighlightText text={memory.content} />
               </span>
             </span>
-          </TranscriptSummary>
+          </TranscriptSummaryTrigger>
 
-          <div className="border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-4">
-            <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
-              <HighlightText text={memory.content} />
+          <CollapsibleContent hiddenUntilFound>
+            <div className="border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-4">
+              <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
+                <HighlightText text={memory.content} />
+              </div>
+
+              <dl className="mt-4 grid gap-2 text-xs">
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Memory ID</dt>
+                  <dd className="m-0 break-all font-mono text-dashboard-text-muted">
+                    <HighlightText text={memory.id} />
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Observed</dt>
+                  <dd className="m-0 text-dashboard-text-muted">
+                    {formatTime(new Date(memory.observedAtMs).toISOString())}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Scope</dt>
+                  <dd className="m-0 text-dashboard-text-muted">
+                    {memory.scope}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+                  <dt className="text-dashboard-text-muted">Kind</dt>
+                  <dd className="m-0 text-dashboard-text-muted">
+                    {memory.kind}
+                  </dd>
+                </div>
+              </dl>
             </div>
-
-            <dl className="mt-4 grid gap-2 text-xs">
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Memory ID</dt>
-                <dd className="m-0 break-all font-mono text-dashboard-text-muted">
-                  <HighlightText text={memory.id} />
-                </dd>
-              </div>
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Observed</dt>
-                <dd className="m-0 text-dashboard-text-muted">
-                  {formatTime(new Date(memory.observedAtMs).toISOString())}
-                </dd>
-              </div>
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Scope</dt>
-                <dd className="m-0 text-dashboard-text-muted">
-                  {memory.scope}
-                </dd>
-              </div>
-              <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
-                <dt className="text-dashboard-text-muted">Kind</dt>
-                <dd className="m-0 text-dashboard-text-muted">{memory.kind}</dd>
-              </div>
-            </dl>
-          </div>
-        </details>
+          </CollapsibleContent>
+        </Collapsible>
       ))}
       <p className="m-0 border-t border-dashboard-border-strong px-3 py-2 text-xs text-dashboard-text-muted">
         {props.memories.length}{" "}

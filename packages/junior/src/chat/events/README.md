@@ -30,10 +30,26 @@ Watches route events back into an existing conversation.
   builds one enabled runtime catalog for search, tool schemas, and validation,
   including core Workspace snapshot events. Prefer match keys the publisher
   always sets. If a listed key is missing on an event, core does not match.
-- Core also registers the `junior` / `workspace_snapshot` resource type for
-  snapshot ready and failed events. That namespace is reserved; plugins must not
-  claim it. Temporary watches created by `switchWorkspace` use the same catalog
-  entry and event guidance as any other watch.
+- Core registers two reserved namespaces. Plugins must not claim them, and
+  `getEventCatalog` throws when one does.
+  - `junior` has the `workspace_snapshot` resource type for snapshot ready and
+    failed events, and the `timer` resource type for `timer.fired`. Temporary
+    watches created by `switchWorkspace` use the same catalog entry and event
+    guidance as any other watch.
+  - `slack` has the `channel` resource type for new top-level channel messages.
+    Slack ingress publishes these events, not a plugin.
+- Core resource types can limit how they are used. A core registration keeps
+  these limits in `limits`, by resource type, beside its resource types
+  (`EventResourceTypeLimits` in `catalog.ts`). They are not in the published
+  plugin API, and API responses do not carry them.
+  - `automation: false` keeps the resource type out of event automations. The
+    `workspace_snapshot` and `timer` types set it, because nothing runs
+    event-automation ingest for those events.
+  - `watch: false` makes `watchEvents` reject the resource type. It needs
+    `watchUnavailableMessage`, which tells the agent what to use instead.
+    `timer` sets it, because `watchTimer` creates timer watches. `channel` sets
+    it, because only an event automation in that channel can use channel
+    messages.
 - `searchEventTypes` discovers that catalog without creating anything.
   `watchEvents` creates a temporary watch for the
   current conversation. Concrete identifiers still come from plugin tool
@@ -56,6 +72,15 @@ Watches route events back into an existing conversation.
   destination and worker path.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
+- `eventKey` names one provider change. Core uses it to drop duplicates for
+  each Watch and each event automation. A retry of the same provider delivery
+  must give the same key. When a plugin sends one change to several
+  identifiers, each copy uses the same key.
+- `occurredAtMs` is when the change happened, in milliseconds. Use the provider
+  time when the webhook has it, and the receive time when it does not. The
+  conversation message uses this time.
+- `objectType` is optional. It names the kind of thing the event is about, such
+  as `task` or `code_change`. It is for display. Core does not match on it.
 - Normalized events contain a stable namespace and identifier plus a short safe
   summary. They do not include the raw webhook payload. Plugins may also attach
   small trusted `data` with ids, urls, and other values the agent should not look
@@ -80,6 +105,16 @@ Watches route events back into an existing conversation.
   from the resource type `matchFields`. Core drops events that do not match
   before any wake. `resourceType` and `label` are display metadata, not match
   keys.
+- A match field may list the `events` that set it. Core rejects a new Watch
+  or a new or changed trigger when its resource type or an event is unknown,
+  or when a filter is unknown, has a wrong value, or is not set by every
+  selected event. `eventTriggerProblems` in plugin-api is the one check. Core
+  and the dashboard editor both use it. Resource types that share match fields,
+  such as a repository, merge them with `mergeEventMatchFields`.
+- An unchanged saved trigger is kept. When a plugin change gives it a problem,
+  core reports the trigger as unavailable and lists the problems. The SQL rule
+  in `automations/collection.ts` must give the same result as
+  `eventTriggerProblems`.
 - A resource type may declare the shape of its identifiers. Resource types can
   share event types, so the identifier shows which one a selector names. Core
   rejects a watch or event automation whose identifier does not fit its
@@ -113,6 +148,24 @@ Watches route events back into an existing conversation.
   that text only for the matching resource type. The prompt applies it within
   the subscription intent or stored event automation instruction. Keep it separate
   from trusted data and untrusted provider content.
+
+## Add an Event Type
+
+1. Add the event type to `supportedEvents` of each resource type that receives
+   it. Add it to `suggestedEvents` when the agent should watch it by default.
+2. Build identifiers in one function that tools and the normalizer share. The
+   way a resource type declares its identifier shape is moving from regex
+   patterns to structured parts (#2362, item 6).
+3. In the normalizer, parse the webhook with Zod. Return one `EventInput` for
+   each identifier that should receive the event, such as the exact resource
+   and its broader scopes.
+4. Set the same `eventKey` on every copy, and a provider `occurredAtMs`. Set
+   `terminal` only on the copy for the exact resource, and only when the change
+   ends it.
+5. Put the values that filters use in `data`, and list them in `matchFields`.
+   Use the same keys as other events of the same kind from that service.
+6. Add `guidance` when the agent needs a rule for this event.
+7. Extend the plugin's webhook test with a delivery for the new event.
 
 ## Timer Watches
 

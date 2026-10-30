@@ -60,11 +60,11 @@ Use the example app skills when you need to prove local skill and plugin
 discovery, not just a plain model response:
 
 ```bash
-pnpm cli -- chat -p "/example-local Confirm the example app local skill is available."
+pnpm cli -- chat -p '$example-local Confirm the example app local skill is available.'
 ```
 
 ```bash
-pnpm cli -- chat -p "/example-bundle-help Explain where this plugin-bundled skill is discovered from and whether it supports jr-rpc issue-credential."
+pnpm cli -- chat -p '$example-bundle-help Explain where this plugin-bundled skill is discovered from and whether it supports jr-rpc issue-credential.'
 ```
 
 The first command should use the app-local `example-local` skill. The second

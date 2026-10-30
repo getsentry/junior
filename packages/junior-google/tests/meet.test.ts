@@ -80,7 +80,7 @@ describe("Google Meet transcripts", () => {
     );
     await expect(
       notInvited.run("readMeetingTranscript", { eventId: "event1" }),
-    ).rejects.toThrow("Junior is not invited");
+    ).rejects.toThrow("You are not invited");
     // A cancelled event can be a stub without times or attendees.
     const cancelled = meetTools(
       Response.json({ id: "event1", status: "cancelled" }),

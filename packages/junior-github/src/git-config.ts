@@ -155,12 +155,12 @@ if [ -z "$message_file" ]; then
 fi
 
 if [ -z "\${JUNIOR_GIT_AUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_AUTHOR_EMAIL:-}" ]; then
-  echo "Junior GitHub plugin internal error: Junior author identity was not injected by the host runtime. Do not set Git author env vars manually; report this configuration error." >&2
+  echo "GitHub plugin internal error: the host runtime did not inject the Git author identity. Do not set Git author env vars manually; report this configuration error." >&2
   exit 1
 fi
 
 if [ "\${GIT_AUTHOR_NAME:-}" != "$JUNIOR_GIT_AUTHOR_NAME" ] || [ "\${GIT_AUTHOR_EMAIL:-}" != "$JUNIOR_GIT_AUTHOR_EMAIL" ]; then
-  echo "Junior GitHub plugin internal error: Git author was not set to the Junior identity. Do not override Git author manually; report this configuration error." >&2
+  echo "GitHub plugin internal error: Git author was not set to the configured identity. Do not override Git author manually; report this configuration error." >&2
   exit 1
 fi
 

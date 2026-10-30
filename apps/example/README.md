@@ -4,8 +4,8 @@ This app is the canonical Junior consumer app in this repo. Use it as the main d
 
 It demonstrates:
 
-- one local skill (`/example-local`)
-- one plugin-bundled skill (`/example-bundle-help`)
+- one local skill (`$example-local`)
+- one plugin-bundled skill (`$example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
 - installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-datadog`, `@sentry/junior-github`, `@sentry/junior-hex`, `@sentry/junior-linear`, `@sentry/junior-memory`, `@sentry/junior-notion`, `@sentry/junior-sentry`, `@sentry/junior-vercel`)
 

@@ -58,7 +58,7 @@ import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPa
 import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
-  isAutomationListPath,
+  hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
 import {
@@ -138,7 +138,7 @@ export function DashboardShell() {
         className="bg-dashboard-bg"
         enabled={
           workspace ||
-          isAutomationListPath(location.pathname) ||
+          hasAutomationDetailsFrame(location.pathname) ||
           isMemoryLibraryPath(location.pathname)
         }
       >

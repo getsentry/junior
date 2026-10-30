@@ -319,9 +319,9 @@ every item of that kind in a repository with `owner/repo`. Deployment events can
 target one commit with `deployment_source`, or every deployment in a repository
 with `owner/repo`.
 
-Deployment events carry `environment` and, when GitHub Actions made the
-deployment for a job with `environment:`, `workflowId`, `workflowPath`, and
-`workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
+Deployment events carry `repo`, `commitSha`, `deploymentId`, `environment`,
+and, when GitHub Actions made the deployment for a job with `environment:`,
+`workflowId`, `workflowPath`, and `workflowRunId`. Match `environment`, `workflowId`, or `workflowPath` to limit a
 repository automation to one environment or one workflow. For example, an
 automation on `getsentry/toolkit` for `deployment.failed` can match
 `environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.
@@ -382,18 +382,21 @@ The deployment failed.
 <details class="event">
 <summary><code>deployment.error</code></summary>
 
-The deployment reported an error.
+The deploy tool set the GitHub status to `error`. For a deployment that ran
+and failed, use `deployment.failed`. Vercel `deployment.error` is the same as
+GitHub `deployment.failed`.
 
 </details>
 
 #### `issue`
 
-One issue: `owner/repo#number`.
+One issue: `owner/repo#number`. Every issue event has `repo` and `issue` in
+trusted data.
 
 <details class="event">
 <summary><code>issue.comment.created</code></summary>
 
-A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines and code do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
+A comment was added. Trusted data includes `senderId`, the numeric GitHub user id of the commenter, and `senderLogin`. When `GITHUB_APP_BOT_EMAIL` is set, `mentionsBot` is `true` if the comment mentions the App, such as `@your-app`. Mentions in quoted lines and code do not count. GitHub sends mentions only as comment text, so `mentionsBot` shows that the comment addresses the App. It does not show who is trusted. Issue, pull request, and repository watches and event automations can match these keys. To let only some people start work, match `senderId` with a list of ids. Do not match `senderLogin` for this, because a GitHub login can be renamed and then used by another account. Edited comments do not publish this event. The comment text stays untrusted content.
 
 </details>
 
@@ -420,7 +423,8 @@ The issue was reopened.
 
 #### `pull_request`
 
-One pull request: `owner/repo#number`.
+One pull request: `owner/repo#number`. Every pull request event has `repo` and
+`pullRequest` in trusted data.
 
 <details class="event">
 <summary><code>pull_request.checks.failed</code></summary>
@@ -439,7 +443,7 @@ A check suite finished successfully after a failure. Trusted data includes the f
 <details class="event">
 <summary><code>pull_request.comment.created</code></summary>
 
-A conversation comment was added.
+A conversation comment was added. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
@@ -460,28 +464,28 @@ The pull request became ready for review.
 <details class="event">
 <summary><code>pull_request.review.approved</code></summary>
 
-A reviewer approved the pull request.
+A reviewer approved the pull request. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.review.changes_requested</code></summary>
 
-A reviewer requested changes.
+A reviewer requested changes. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.review.commented</code></summary>
 
-A reviewer submitted a comment-only review, or approved with a comment.
+A reviewer submitted a comment-only review, or approved with a comment. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.review_comment.created</code></summary>
 
-An inline review comment was added.
+An inline review comment was added. Trusted data includes `senderId`, `senderLogin`, and `mentionsBot` for who wrote it, the same as `issue.comment.created`.
 
 </details>
 

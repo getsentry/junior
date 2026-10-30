@@ -25,7 +25,7 @@ export function createSlackScheduleRunAutomationNowTool(
       readOnlyHint: false,
     },
     description:
-      "Queue an existing active scheduled Junior task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled automation now. Use only task IDs returned for this conversation.",
+      "Queue an existing active scheduled task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled automation now. Use only task IDs returned for this conversation.",
     executionMode: "sequential",
     inputSchema: z.object({
       automationId: z

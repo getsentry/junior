@@ -17,6 +17,7 @@ import {
   conversationParamsSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
+  conversationWatchesReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -58,6 +59,7 @@ import {
   readMockAutomationList,
   setMockConversationArchived,
 } from "./fixtures";
+import { readMockConversationWatches } from "./watches";
 
 function errorResponse(error: string, status: 400 | 404): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -203,6 +205,16 @@ export function createMockReportingApi(): Hono<{
     const report = readMockConversationChildAgents(params.data.conversationId);
     return report
       ? jsonResponse(conversationChildAgentsReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.get("/conversations/:conversationId/watches", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationWatches(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
   });
   app.get("/conversations/:conversationId/pending-messages", (c) => {

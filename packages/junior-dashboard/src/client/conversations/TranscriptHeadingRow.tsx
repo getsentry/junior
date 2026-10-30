@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "../styles";
 
-/** Align transcript labels and metadata as one centered heading row. */
+/** Align transcript labels and metadata as one centered heading row. Spans keep it valid inside a row button. */
 export function TranscriptHeadingRow(props: {
   className?: string;
   left: ReactNode;
@@ -14,31 +14,31 @@ export function TranscriptHeadingRow(props: {
     props.right !== undefined && props.right !== null && props.right !== false;
 
   return (
-    <div
+    <span
       className={cn(
         "flex min-w-0 items-start justify-between gap-2 md:items-center md:gap-3",
         props.className,
       )}
     >
-      <div
+      <span
         className={cn(
           "flex min-w-0 items-center gap-2 overflow-hidden",
           props.leftClassName,
         )}
       >
         {props.left}
-      </div>
+      </span>
       {hasRight ? (
-        <div
+        <span
           className={cn(
             "min-w-0 max-w-[60%] shrink text-right md:max-w-none md:shrink-0",
             props.rightClassName,
           )}
         >
           {props.right}
-        </div>
+        </span>
       ) : null}
-    </div>
+    </span>
   );
 }
 

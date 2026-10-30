@@ -28,7 +28,8 @@ function useGoogleIdToken(idToken: string) {
   );
 }
 
-function useGoogleAccount(claims: { email: string; hd?: string }) {
+// Unsigned Google ID token with these claims.
+function googleIdToken(claims: { email: string; hd?: string }): string {
   const payload = Buffer.from(
     JSON.stringify({
       aud: "google-client",
@@ -38,7 +39,11 @@ function useGoogleAccount(claims: { email: string; hd?: string }) {
       ...claims,
     }),
   ).toString("base64url");
-  useGoogleIdToken(`e30.${payload}.sig`);
+  return `e30.${payload}.sig`;
+}
+
+function useGoogleAccount(claims: { email: string; hd?: string }) {
+  useGoogleIdToken(googleIdToken(claims));
 }
 
 function cookieHeader(response: Response): string {
@@ -112,5 +117,27 @@ describe("Google sign-in", () => {
     expect(await auth.getSession(accepted.session)).toMatchObject({
       user: { email: "person@example.org", emailVerified: true },
     });
+
+    // Direct ID-token sign-in is off, so a client cannot submit its own
+    // token, even with claims on an allowed domain.
+    const direct = await auth.handler(
+      new Request(`${BASE_URL}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: "google",
+          idToken: {
+            token: googleIdToken({
+              email: "person@example.org",
+              hd: "example.org",
+            }),
+          },
+        }),
+      }),
+    );
+    expect(await direct.json()).toMatchObject({
+      code: "ID_TOKEN_NOT_SUPPORTED",
+    });
+    expect(direct.headers.getSetCookie()).toEqual([]);
   });
 });

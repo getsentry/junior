@@ -9,6 +9,7 @@ import type {
   EventInput,
   EventPublisher,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import {
@@ -99,11 +100,13 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
-interface FeedbackTarget {
-  commentId: number;
-  commentKind: "conversation" | "review";
-  repo: string;
-}
+/** The pull request comment data that the feedback reaction needs. */
+const feedbackTargetSchema = z.object({
+  commentId: z.number(),
+  commentKind: z.enum(["conversation", "review"]),
+  repo: z.string().min(1),
+});
+type FeedbackTarget = z.output<typeof feedbackTargetSchema>;
 
 /** Return comment-level pull request feedback that the webhook can mark. */
 function pullRequestFeedbackTarget(
@@ -114,20 +117,8 @@ function pullRequestFeedbackTarget(
       candidate.eventType === "pull_request.comment.created" ||
       candidate.eventType === "pull_request.review_comment.created",
   );
-  const data = event?.data;
-  if (
-    !data ||
-    typeof data.repo !== "string" ||
-    typeof data.commentId !== "number" ||
-    (data.commentKind !== "conversation" && data.commentKind !== "review")
-  ) {
-    return undefined;
-  }
-  return {
-    commentId: data.commentId,
-    commentKind: data.commentKind,
-    repo: data.repo,
-  };
+  const parsed = feedbackTargetSchema.safeParse(event?.data);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function githubCodeChange(

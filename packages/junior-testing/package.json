@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./event-filters": "./src/event-filters.ts",
     "./http": "./src/http/index.ts",
     "./pglite": "./src/pglite.ts",
     "./postgres": "./src/postgres/index.ts",

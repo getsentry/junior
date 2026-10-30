@@ -361,10 +361,13 @@ export async function mockDashboardApis(
             status: "active" as const,
           }
         : {
-            events: ["issue.closed"],
             resource: "Issue · ACME-42",
             source: "github",
-            triggerAvailable: true,
+            trigger: {
+              events: ["issue closed"],
+              filters: [],
+              problems: [],
+            },
             status: "active",
           }),
     };
@@ -394,11 +397,16 @@ export async function mockDashboardApis(
             totalTokens: 1_200,
           },
           {
+            automationVersion: 3,
             conversationId: "slack:CQA123:1770003600.000200",
             costUsd: 0.18,
+            credentialMode: "creator",
             durationMs: 18_000,
+            error: "Slack rejected the result message: channel_not_found.",
             executedAt: "2026-08-05T16:00:00.000Z",
             executionId: `${id}-run-2`,
+            scheduledFor: "2026-08-05T15:59:00.000Z",
+            startedAt: "2026-08-05T15:59:42.000Z",
             status: "failed",
             title: "Ship notes for the release train",
             totalTokens: 480,

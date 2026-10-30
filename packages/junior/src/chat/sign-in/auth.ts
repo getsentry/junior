@@ -169,9 +169,12 @@ function createBetterAuth(config: SignInAuthConfig) {
         ),
         hd: hostedDomain,
         prompt: "select_account",
+        // Junior signs in only through the redirect flow. Turn off direct
+        // ID-token sign-in, so `getUserInfo` only reads tokens from Google.
+        disableIdTokenSignIn: true,
         // Replaces Better Auth's default, which can check only one `hd`.
-        // The ID token comes from Google's token endpoint over TLS, or was
-        // verified before direct ID-token sign-in.
+        // The ID token comes from Google's token endpoint over TLS, so this
+        // reads its claims without a signature check.
         async getUserInfo(token) {
           if (!token.idToken) return null;
           const claims = readGoogleClaims(token.idToken);

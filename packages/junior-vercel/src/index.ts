@@ -13,6 +13,7 @@ import { createVercelDeploymentTool } from "./tools/deployment.js";
 import { createVercelActionTools } from "./tools/actions.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
+  VERCEL_DEPLOYMENT_MATCH_FIELDS,
   VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
@@ -28,6 +29,7 @@ export function vercelPlugin(): PluginRegistration {
           type: "deployment",
           supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
           suggestedEvents: [...VERCEL_DEPLOYMENT_SUGGESTED_EVENTS],
+          matchFields: VERCEL_DEPLOYMENT_MATCH_FIELDS,
         },
       ],
       isEnabled: () => Boolean(vercelWebhookSecret()),

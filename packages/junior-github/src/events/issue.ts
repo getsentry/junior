@@ -2,6 +2,8 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { gitHubCommentMatchFields } from "./comment.js";
+import { gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_ISSUE_EVENTS = [
   "issue.comment.created",
@@ -16,22 +18,17 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
 ];
 
 /**
- * Exact values GitHub sets on issue comment event data. Missing keys do not
- * match, so selectors fail closed on other events.
+ * Exact values GitHub sets on issue event data. Every issue event sets the
+ * repository and issue number. Only `issue.comment.created` sets the comment
+ * filters, so a trigger with them cannot select other events.
  */
-export const GITHUB_ISSUE_COMMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
-  mentionsBot: {
-    kind: "boolean",
-    description: "true when the issue comment mentions the Junior GitHub App",
-  },
-  senderId: {
+export const GITHUB_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
+  ...gitHubCommentMatchFields(["issue.comment.created"]),
+  ...gitHubRepoMatchFields(GITHUB_ISSUE_EVENTS),
+  issue: {
     kind: "number",
-    description:
-      "immutable numeric GitHub user id of the issue commenter; prefer over logins",
-  },
-  senderLogin: {
-    kind: "string",
-    description: "GitHub login of the issue commenter; logins can be renamed",
+    description: "issue number, such as 12",
+    events: GITHUB_ISSUE_EVENTS,
   },
 });
 
@@ -53,12 +50,17 @@ export function gitHubIssueResource(input: {
   };
 }
 
-/** Describe an issue as a resource when webhook subscriptions are enabled. */
+/**
+ * Describe an issue as a resource that a conversation can watch.
+ * Return undefined when the host cannot create Watches.
+ */
 export function gitHubIssueSubscribable(input: {
+  /** `ctx.events.canSubscribe` from the tool context. */
+  canSubscribe: boolean;
   number: number;
   repo: string;
 }): SubscribableResource | undefined {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+  if (!input.canSubscribe) return undefined;
   return {
     ...gitHubIssueResource(input),
     suggestedEvents: GITHUB_ISSUE_SUGGESTED_EVENTS,

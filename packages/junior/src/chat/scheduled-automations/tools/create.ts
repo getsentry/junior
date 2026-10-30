@@ -49,7 +49,7 @@ export function createSlackScheduleCreateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      "Create a one-time or recurring Junior task in the active Slack channel. Store the requested future work; do not perform it or check its service access now unless the user also asks for that.",
+      "Create a one-time or recurring scheduled task in the active Slack channel. Store the requested future work; do not perform it or check its service access now unless the user also asks for that.",
     executionMode: "sequential",
     inputSchema: z
       .object({

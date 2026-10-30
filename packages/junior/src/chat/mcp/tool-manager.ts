@@ -612,7 +612,7 @@ export class McpToolManager {
     }
     if (serviceAccountOnly(plugin.manifest)) {
       throw new McpToolError(
-        `${plugin.manifest.displayName} tool ${toolName} is not available: Junior's shared ${plugin.manifest.displayName} account cannot use it`,
+        `${plugin.manifest.displayName} tool ${toolName} is not available: the shared ${plugin.manifest.displayName} account cannot use it`,
       );
     }
     const existing = this.actorClientsByProvider.get(provider);

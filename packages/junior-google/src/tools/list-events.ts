@@ -27,7 +27,7 @@ const inputSchema = z
       .pipe(z.email())
       .optional()
       .describe(
-        "Email address of the person whose calendar to read. Omit to read Junior's own calendar, which holds every event Junior organizes.",
+        "Email address of the person whose calendar to read. Omit to read your own calendar, which holds every event you organize.",
       ),
     timeMin: z.iso
       .datetime({ offset: true })
@@ -52,7 +52,7 @@ const eventSchema = z.object({
   organizedByJunior: z
     .boolean()
     .describe(
-      "True when Junior organizes the event, so Junior can change or cancel it with this eventId.",
+      "True when you organize the event, so you can change or cancel it with this eventId.",
     ),
   seriesEventId: z
     .string()
@@ -146,7 +146,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "List events on a colleague's Google Calendar or on Junior's own calendar, as seen by Junior's own Google account. Shows titles, times, locations, organizer, and attendee responses when the calendar's sharing settings allow it. Use it to find an event to change or cancel, check who accepted, or see what someone has coming up. Events without a title are busy blocks the owner did not share. Only calendars in the company's Google Workspace domains can be read. Calendar details can be private: share only what the requester needs, and avoid repeating them in public channels.",
+      "List events on a colleague's Google Calendar or on your own calendar, as seen by your own Google account. Shows titles, times, locations, organizer, and attendee responses when the calendar's sharing settings allow it. Use it to find an event to change or cancel, check who accepted, or see what someone has coming up. Events without a title are busy blocks the owner did not share. Only calendars in the company's Google Workspace domains can be read. Calendar details can be private: share only what the requester needs, and avoid repeating them in public channels.",
     inputSchema,
     outputSchema,
     async execute(input) {

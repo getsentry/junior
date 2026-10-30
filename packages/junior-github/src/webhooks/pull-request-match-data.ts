@@ -6,6 +6,7 @@ import type {
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import { definedValues } from "./event-targets.js";
 import { isBotLogin } from "./ownership.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
 
@@ -20,6 +21,25 @@ const LOOKUPS_BY_MATCH_KEY: Record<string, Lookup[]> = {
   openerUsername: ["opener"],
 };
 const ALL_LOOKUPS: Lookup[] = ["authors", "opener", "openerRole"];
+
+/**
+ * The values that lookups add to pull request event data. The event data
+ * schemas check the rest when the webhook is normalized.
+ */
+const lookupDataSchema = z
+  .object({
+    authors: z.array(z.string().min(1)).min(1).optional(),
+    openerRole: z.string().min(1).optional(),
+    openerUsername: z.string().min(1).optional(),
+  })
+  .strict();
+
+/** Check the values that lookups found, and drop the missing ones. */
+function lookupData(
+  input: z.input<typeof lookupDataSchema>,
+): Record<string, unknown> {
+  return lookupDataSchema.parse(definedValues(input));
+}
 
 const webhookSchema = z.object({
   repository: z.object({ full_name: z.string().min(1) }),
@@ -45,16 +65,16 @@ interface LookupContext {
 }
 
 /**
- * Map each Event key to its pull request number. Repository watches get a
- * copy of each pull request Event with the repository identifier and the same
- * key, so the number comes from the copy with the pull request identifier.
+ * Map each Event key to its pull request number. A pull request Event sets
+ * `pullRequest`, and the repository copy has the same key. A check suite
+ * result that GitHub links to no pull request, such as on the main branch,
+ * has none, so it gets no opener or author values.
  */
 function pullRequestNumbers(events: EventInput[]): Map<string, number> {
   const numbers = new Map<string, number>();
   for (const event of events) {
-    if (!event.eventType.startsWith("pull_request.")) continue;
-    const match = /#(\d+)$/.exec(event.identifier);
-    if (match) numbers.set(event.eventKey, Number(match[1]));
+    const number = event.data?.pullRequest;
+    if (typeof number === "number") numbers.set(event.eventKey, number);
   }
   return numbers;
 }
@@ -118,7 +138,7 @@ async function withJuniorOpeners(
     } = event.data ?? {};
     return {
       ...event,
-      data: { ...data, ...(login ? { openerUsername: login } : undefined) },
+      data: { ...data, ...lookupData({ openerUsername: login || undefined }) },
     };
   });
 }
@@ -170,8 +190,10 @@ async function withRolesAndAuthors(
         ...event,
         data: {
           ...event.data,
-          ...(role ? { openerRole: role } : undefined),
-          ...(logins?.length ? { authors: logins } : undefined),
+          ...lookupData({
+            authors: logins?.length ? logins : undefined,
+            openerRole: role || undefined,
+          }),
         },
       };
     }),

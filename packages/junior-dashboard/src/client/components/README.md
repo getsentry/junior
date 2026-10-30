@@ -35,18 +35,38 @@ file when every caller needs the same style or variant. App components compose
 | `Drawer`, `BottomSheet`        | `ui/sheet`        |
 | `layout/DashboardHeader` (nav) | `ui/sheet`        |
 | `ProfileMenu` (desktop)        | `ui/popover`      |
+| `ActorAvatar`                  | `ui/avatar`       |
+| `ParticipantAvatarStack`       | `ui/avatar`       |
+| `SearchInput`                  | `ui/input-group`  |
+| `PagePagination`               | `ui/pagination`   |
+| `EmptyTelemetry`               | `ui/empty`        |
 | `TimeRangeSelector`            | `ui/toggle-group` |
 | `ThemeSwitcher`                | `ui/toggle-group` |
 | `TranscriptViewToggle`         | `ui/toggle-group` |
 | `FilterTabList`                | `ui/tabs`         |
 | `charts/ActivityChartTooltip`  | `ui/tooltip`      |
+| `conversations/ToolFrame`      | `ui/trace`        |
+| `TranscriptReasoningView`      | `ui/trace`        |
+| `ImageAttachment` (preview)    | `ui/dialog`       |
+| `Notice`, `InlineError`        | `ui/alert`        |
+| App banners                    | `ui/alert`        |
 | Recharts activity charts       | `ui/chart`        |
 
 Rules for adopted components:
 
+- Use `ui/trace` for transcript activity rows. It composes `ui/collapsible`.
+  A closed tool row unmounts its panel, so it does not run Shiki. Reasoning
+  sets `hiddenUntilFound`, so browser find reaches closed text. Transcript
+  search holds rows open and turns off the row button. Put only inline
+  elements, such as `span`, inside the row button.
 - Use `ui/alert-dialog` for every confirmation. Do not use `window.confirm`.
   Keep the confirmed item in state after close, so the closing dialog keeps its
   text.
+- Use `useSheet` for each app `ui/dialog`, as for sheets. It shares the
+  document scroll lock. Only the front modal closes on Escape or a backdrop
+  tap. Mount the dialog only while it is open.
+- `ui/alert` sets `role="alert"`. Pass `role="status"` for a message that is
+  not an error.
 - `ui/toast` has no global notification manager. Features call
   `useToastManager` inside the mounted `Toaster` provider.
 - Put a checkbox or radio inside its `<label>`. Give each `RadioGroup` an
@@ -61,6 +81,8 @@ Rules for adopted components:
 - Build a form field from `ui/field`. Give `FieldError` the id
   `<control id>-error` and `FieldDescription` the id `<control id>-help`. The
   control sets `aria-invalid` and `aria-describedby`.
+- Use `Button size="menu"` for a full-width icon and label row in a mobile
+  overflow menu. A pressed row adds `bg-dashboard-fill-strong`.
 - For a link that looks like a button, put `buttonVariants()` on the router
   `Link`. A form page has one `Button variant="primary"` for its main save
   action.
@@ -134,7 +156,8 @@ Shared class strings live in `src/client/styles.ts`.
 - **Loading.** Use `ui/skeleton` for placeholder leaves and `PageContentSkeleton`
   variants for page bodies. Use `PageRouteLoading` when a page keeps its real
   header above a body skeleton. Use a feature-owned loading component for
-  distinct geometry, such as conversations.
+  distinct geometry, such as conversations. Use `ui/spinner` for an inline
+  pending icon.
 
 ## Navigation
 

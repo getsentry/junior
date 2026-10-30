@@ -329,14 +329,14 @@ const PULL_REQUEST_COMMENT_REACTIONS_PATH =
 
 const GITHUB_BODY_WRITES = [
   {
-    denialMessage: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub issue creation must use the github_createIssue tool, which owns idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "createIssue",
     method: "POST",
     operation: "github.issue.create",
     restPath: /^\/repos\/[^/]+\/[^/]+\/issues$/,
   },
   {
-    denialMessage: `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub pull request creation must use the github_createPullRequest tool, which owns idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "createPullRequest",
     method: "POST",
     operation: "github.pull.create",
@@ -350,14 +350,14 @@ const GITHUB_BODY_WRITES = [
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews$/,
   },
   {
-    denialMessage: `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub issue updates must use the github_updateIssue tool, which owns requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "updateIssue",
     method: "PATCH",
     operation: "github.issue.update",
     restPath: /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/,
   },
   {
-    denialMessage: `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub pull request updates must use the github_updatePullRequest tool, which owns requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "updatePullRequest",
     method: "PATCH",
     operation: "github.pull.update",
@@ -698,7 +698,7 @@ export async function githubGrantForEgress(
   const access = HTTP_READ_METHODS.has(method) ? "read" : "write";
   if (access === "write") {
     throw new EgressPolicyDenied(
-      "Junior does not support this GitHub write request. Use the matching GitHub tool or a supported REST endpoint.",
+      "This GitHub write request is not supported. Use the matching GitHub tool or a supported REST endpoint.",
     );
   }
   return grantForAccess(access, "github.api-read", "installation-read");

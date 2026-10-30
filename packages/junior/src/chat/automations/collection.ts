@@ -1,6 +1,6 @@
 import { automationEventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
-import type { User } from "@sentry/junior-plugin-api";
+import type { EventMatchFields, User } from "@sentry/junior-plugin-api";
 import { and, asc, count, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { AutomationListQuery } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
@@ -37,20 +37,39 @@ export function viewerAutomationCollection(user: User) {
     publicDestination,
     ne(automation.status, "completed"),
   )!;
-  // Use the same namespace/event availability rule as the direct reader.
+  // Mirror `eventTriggerProblems`, which the direct reader uses: a trigger is
+  // available when no resource type, event, or filter problem applies.
+  const trigger = sql`${automation.record}->'trigger'`;
+  const match = sql`coalesce(${trigger}->'match', '{}'::jsonb)`;
+  const json = (value: unknown) => sql`${JSON.stringify(value)}::jsonb`;
+  const fieldWorks = (key: string, field: EventMatchFields[string]) => {
+    const value = sql`${match}->(${key}::text)`;
+    const type = sql`jsonb_typeof(${value})`;
+    return sql`(${value} is null or (${and(
+      field.events
+        ? sql`${trigger}->'events' <@ ${json(field.events)}`
+        : undefined,
+      field.kind === "boolean"
+        ? sql`${type} = 'boolean'`
+        : sql`(${type} = ${field.kind} or (${type} = 'array' and not exists (select 1 from jsonb_array_elements(${value}) entry where jsonb_typeof(entry) <> ${field.kind})))`,
+      field.enum ? sql`${value} <@ ${json(field.enum)}` : undefined,
+    )}))`;
+  };
   const available =
     or(
       isScheduled,
-      ...Object.entries(automationEventCatalog(getEventCatalog())).map(
-        ([namespace, registration]) => {
-          const events = registration.resourceTypes.flatMap(
-            (resource) => resource.supportedEvents,
-          );
-          return and(
-            eq(automation.namespace, namespace),
-            sql`${automation.record}->'trigger'->'events' <@ ${JSON.stringify(events)}::jsonb`,
-          );
-        },
+      ...Object.entries(automationEventCatalog(getEventCatalog())).flatMap(
+        ([namespace, registration]) =>
+          registration.resourceTypes.map((resourceType) => {
+            const fields = Object.entries(resourceType.matchFields ?? {});
+            return and(
+              eq(automation.namespace, namespace),
+              sql`${trigger}->>'resourceType' = ${resourceType.type}`,
+              sql`${trigger}->'events' <@ ${json(resourceType.supportedEvents)}`,
+              sql`not exists (select 1 from jsonb_object_keys(${match}) match_key where not (${json(fields.map(([key]) => key))} @> to_jsonb(match_key)))`,
+              ...fields.map(([key, field]) => fieldWorks(key, field)),
+            );
+          }),
       ),
     ) ?? sql`false`;
   const runs = juniorAutomationRuns;

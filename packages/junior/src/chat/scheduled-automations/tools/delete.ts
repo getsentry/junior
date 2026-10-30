@@ -26,7 +26,7 @@ export function createSlackScheduleDeleteAutomationTool(
       readOnlyHint: false,
     },
     description:
-      "Delete one scheduled Junior task from the active Slack conversation. Use only task IDs returned for this conversation. Do not delete schedules from threads, other channels, or another user's DM.",
+      "Delete one scheduled task from the active Slack conversation. Use only task IDs returned for this conversation. Do not delete schedules from threads, other channels, or another user's DM.",
     executionMode: "sequential",
     inputSchema: z.object({
       automationId: z

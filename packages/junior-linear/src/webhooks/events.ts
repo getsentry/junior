@@ -62,6 +62,19 @@ function issueText(
   return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
+/**
+ * Trusted data on every issue event. `issueIdentifier` and `teamKey` are
+ * uppercase, the same form as identifiers.
+ */
+const issueEventDataSchema = z
+  .object({
+    issueId: z.string().min(1),
+    issueIdentifier: z.string().min(1).toUpperCase(),
+    teamKey: z.string().min(1).toUpperCase(),
+    url: z.url(),
+  })
+  .strict();
+
 function occurredAtMs(input: {
   createdAt?: string;
   webhookTimestamp?: number;
@@ -98,12 +111,12 @@ export function normalizeLinearEvents(input: {
     eventType,
     occurredAtMs: occurredAtMs(parsed.data),
     trustedSummary: `${issueResource.label} was created.`,
-    data: {
+    data: issueEventDataSchema.parse({
       issueId: issue.id,
-      issueIdentifier: issueResource.identifier,
-      teamKey: teamResource.identifier,
+      issueIdentifier: issue.identifier,
+      teamKey,
       url: issue.url,
-    },
+    }),
     untrustedText: issueText(issue),
   } satisfies Omit<EventInput, "identifier">;
 

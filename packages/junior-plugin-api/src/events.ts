@@ -57,6 +57,12 @@ export const eventMatchFieldSchema = z
      * the list includes it.
      */
     list: z.literal(true).optional(),
+    /**
+     * The events that set this field. Leave it out when every event of the
+     * resource type sets it. A filter on this field never matches other
+     * events, so a trigger that selects them is rejected.
+     */
+    events: z.array(eventTypeSchema).min(1).optional(),
   })
   .strict()
   .superRefine((field, context) => {
@@ -119,6 +125,58 @@ export const eventMatchSchema = z
 
 export type EventMatch = z.output<typeof eventMatchSchema>;
 export type EventMatchFields = z.output<typeof eventMatchFieldsSchema>;
+
+function sameValues(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  return (
+    left?.length === right?.length &&
+    (left ?? []).every((value) => right?.includes(value))
+  );
+}
+
+/**
+ * Merge the match fields of resource types that share one parent resource
+ * type, such as a repository. A field in more than one map keeps the first
+ * description and gets the union of the `events` lists. Fields with the same
+ * key must have the same kind, enum, and list values, and each copy must list
+ * its events. Otherwise this throws, because one field cannot describe two
+ * different values.
+ */
+export function mergeEventMatchFields(
+  ...maps: readonly EventMatchFields[]
+): EventMatchFields {
+  const merged: EventMatchFields = {};
+  for (const fields of maps) {
+    for (const [key, field] of Object.entries(fields)) {
+      const current = merged[key];
+      if (!current) {
+        merged[key] = field;
+        continue;
+      }
+      if (
+        current.kind !== field.kind ||
+        current.list !== field.list ||
+        !sameValues(current.enum, field.enum)
+      ) {
+        throw new Error(
+          `Match field "${key}" has a different kind, enum, or list in two maps.`,
+        );
+      }
+      if (!current.events || !field.events) {
+        throw new Error(
+          `Match field "${key}" is in two maps, so each copy must list its events.`,
+        );
+      }
+      merged[key] = {
+        ...current,
+        events: [...new Set([...current.events, ...field.events])],
+      };
+    }
+  }
+  return eventMatchFieldsSchema.parse(merged);
+}
 
 function stableMatchValue(value: EventMatch[string]): unknown {
   if (!Array.isArray(value)) return value;
@@ -247,6 +305,17 @@ export const pluginEventTypeSchema = z
       }
       suggested.add(eventType);
     });
+    for (const [key, field] of Object.entries(resourceType.matchFields ?? {})) {
+      field.events?.forEach((eventType, index) => {
+        if (!supported.has(eventType)) {
+          context.addIssue({
+            code: "custom",
+            message: `Match field "${key}" event type "${eventType}" is not supported.`,
+            path: ["matchFields", key, "events", index],
+          });
+        }
+      });
+    }
   });
 
 export const pluginEventsSchema = z
@@ -336,6 +405,11 @@ export const eventInputSchema = z
     eventType: eventTypeSchema,
     identifier: z.string().min(1),
     occurredAtMs: z.number().finite(),
+    /**
+     * The Watch that gets this Event completes after delivery. Set it only on
+     * the Event for the exact resource. Never set it on copies for broader
+     * resources, such as a repository, because those Watches must stay active.
+     */
     terminal: z.boolean().optional(),
     trustedSummary: z
       .string()

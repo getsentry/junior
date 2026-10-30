@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createGitHubGetDeploymentTool } from "../src/tools/get-deployment";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const COMMIT_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
@@ -13,12 +13,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
 }
 
 describe("getDeployment", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("returns deployment metadata, its latest status, and a subscription hint", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([
       {
         body: [
@@ -95,7 +90,6 @@ describe("getDeployment", () => {
   });
 
   it("returns a subscribable source before GitHub creates the deployment", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([{ body: [] }]);
 
     await expect(
@@ -117,7 +111,6 @@ describe("getDeployment", () => {
   });
 
   it("watches every environment for a commit when environment is omitted", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([{ body: [] }]);
 
     await expect(

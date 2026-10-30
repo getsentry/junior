@@ -91,7 +91,7 @@ const inputSchema = z
       .describe("Event end, RFC 3339 with offset."),
     timeZone: timeZoneSchema,
     attendees: emailListSchema(50).describe(
-      "Email addresses of required attendees. Junior adds the requester automatically when it knows their email.",
+      "Email addresses of required attendees. The tool adds the requester automatically when their email is known.",
     ),
     optionalAttendees: emailListSchema(50)
       .default([])
@@ -140,7 +140,7 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
     },
     description:
-      "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Every event gets a Google Meet link. Junior can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
+      "Create a Google Calendar event organized by your own Google account and email invites to the attendees. Every event gets a Google Meet link. You can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
     inputSchema,
     outputSchema,
     async execute(input, options) {

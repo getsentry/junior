@@ -6,6 +6,7 @@
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import {
   defineJuniorPlugin,
+  mergeEventMatchFields,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
@@ -27,7 +28,7 @@ import {
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import {
-  GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+  GITHUB_ISSUE_MATCH_FIELDS,
   GITHUB_ISSUE_EVENTS,
   GITHUB_ISSUE_IDENTIFIER,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
@@ -42,10 +43,15 @@ import {
 } from "./events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
+  GITHUB_RELEASE_MATCH_FIELDS,
   GITHUB_RELEASE_SOURCE_IDENTIFIER,
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./events/release.js";
-import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
+import {
+  GITHUB_REPOSITORY_EVENTS,
+  GITHUB_REPOSITORY_IDENTIFIER,
+  GITHUB_REPOSITORY_SUGGESTED_EVENTS,
+} from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
@@ -163,7 +169,7 @@ export function githubPlugin(
           identifier: GITHUB_ISSUE_IDENTIFIER,
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
-          matchFields: GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
+          matchFields: GITHUB_ISSUE_MATCH_FIELDS,
         },
         {
           type: "pull_request",
@@ -180,26 +186,18 @@ export function githubPlugin(
           identifier: GITHUB_RELEASE_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_RELEASE_EVENTS],
           suggestedEvents: [...GITHUB_RELEASE_SUGGESTED_EVENTS],
+          matchFields: GITHUB_RELEASE_MATCH_FIELDS,
         },
         {
           type: "repository",
           identifier: GITHUB_REPOSITORY_IDENTIFIER,
-          supportedEvents: [
-            ...GITHUB_DEPLOYMENT_EVENTS,
-            ...GITHUB_ISSUE_EVENTS,
-            ...GITHUB_PULL_REQUEST_EVENTS,
-          ],
-          suggestedEvents: [
-            "issue.opened",
-            "pull_request.opened",
-            ...GITHUB_ISSUE_SUGGESTED_EVENTS,
-            ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-          ],
-          matchFields: {
-            ...GITHUB_DEPLOYMENT_MATCH_FIELDS,
-            ...GITHUB_ISSUE_COMMENT_MATCH_FIELDS,
-            ...GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          },
+          supportedEvents: [...GITHUB_REPOSITORY_EVENTS],
+          suggestedEvents: [...GITHUB_REPOSITORY_SUGGESTED_EVENTS],
+          matchFields: mergeEventMatchFields(
+            GITHUB_DEPLOYMENT_MATCH_FIELDS,
+            GITHUB_ISSUE_MATCH_FIELDS,
+            GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          ),
           guidance: gitHubPullRequestEventGuidance(
             options.pullRequestEvents?.guidance,
           ),

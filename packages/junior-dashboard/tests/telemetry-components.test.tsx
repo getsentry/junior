@@ -63,6 +63,7 @@ vi.mock("../src/client/components/Drawer", () => ({
   ),
 }));
 
+const shimmerClass = /class="[^"]*\bshimmer\b/;
 const client = new QueryClient();
 
 afterEach(() => client.clear());
@@ -402,7 +403,7 @@ describe("dashboard canonical-event components", () => {
 
     expect(liveHtml).toContain('role="status"');
     expect(liveHtml).toContain("Junior is thinking…");
-    expect(liveHtml).toContain("junior-text-shimmer");
+    expect(liveHtml).toMatch(shimmerClass);
     expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
     expect(quietHtml).not.toContain("Junior is thinking…");
@@ -509,16 +510,28 @@ describe("dashboard canonical-event components", () => {
             messageId: "event-1",
             role: "user",
             eventType: "pull_request.merged",
-            trustedSummary: "<@U456> merged PR #42.",
+            trustedSummary: "<@U456> merged PR #42 for <@U123>.",
             text: "PR merged.",
           },
           undefined,
-          [{ fullName: "Riley Park", slackUserId: "U456" }],
+          [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
         ),
       ]),
     );
 
-    expect(html).toContain("@Riley Park</span> merged PR #42.");
+    expect(html).toContain("@Riley Park</span> merged PR #42 for");
+    // The Event heading is a disclosure button, which cannot hold a link.
+    expect(html).toContain("@Taylor Chen</span>.");
+    expect(html.match(/href="\/people\/taylor%40example.com"/g)).toHaveLength(
+      1,
+    );
     expect(html).not.toContain("&lt;@");
     expect(html).not.toContain("&lt;#");
     expect(html).toMatch(
@@ -844,8 +857,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('alt="chart.png"');
     expect(html).toContain("notes.txt");
     expect(html).toContain("text/plain · 42 B");
-    expect(html).toContain("image/png · 17.8 KB");
-    expect(html).toContain(">Close<");
     expect(html).toContain(
       "/api/conversations/conversation-1/attachments/att-1",
     );

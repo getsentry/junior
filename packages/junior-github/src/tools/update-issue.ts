@@ -183,12 +183,11 @@ export function createGitHubUpdateIssueTool(ctx: {
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.events.canSubscribe
-        ? gitHubIssueSubscribable({
-            number: providerResult.number,
-            repo: repo.ref,
-          })
-        : undefined;
+      const subscribable = gitHubIssueSubscribable({
+        canSubscribe: ctx.events.canSubscribe,
+        number: providerResult.number,
+        repo: repo.ref,
+      });
       return {
         objectAnnotations: [
           githubObjectAnnotation({

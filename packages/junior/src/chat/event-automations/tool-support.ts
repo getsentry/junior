@@ -1,5 +1,7 @@
 import {
+  eventTriggerText,
   ownedObjectAnnotationSchema,
+  type EventTriggerDescription,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
@@ -18,11 +20,11 @@ import {
 import {
   eventNamespaceSchema,
   automationEventCatalog,
-  pluginSupportsEvent,
+  describeRegisteredEventTrigger,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
   registeredResourceTypeSchema,
-  requireSupportedEventMatch,
+  requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -47,6 +49,7 @@ const compactEventAutomationResultSchema = z
         events: z.array(z.string().min(1)).min(1),
         match: z.record(z.string(), z.unknown()).optional(),
         available: z.boolean(),
+        problems: z.array(z.string().min(1)).min(1).optional(),
       })
       .strict(),
     credentialMode: z.enum(["system", "creator"]),
@@ -110,7 +113,7 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
     .strict();
 }
 
-/** Reject an event-automation trigger that is no longer supported by the catalog. */
+/** Reject an event-automation trigger that cannot work with the enabled plugins. */
 export function requireSupportedEventAutomationTrigger(
   catalog: EventCatalog,
   trigger: {
@@ -120,26 +123,11 @@ export function requireSupportedEventAutomationTrigger(
     resourceType: string;
   },
 ): EventAutomation["trigger"]["match"] | undefined {
-  const plugins = automationEventCatalog(catalog);
-  for (const eventType of trigger.events) {
-    if (
-      !pluginSupportsEvent(
-        plugins,
-        trigger.namespace,
-        trigger.resourceType,
-        eventType,
-      )
-    ) {
-      throw new ToolInputError(
-        `Resource type "${trigger.namespace}:${trigger.resourceType}" does not support event "${eventType}".`,
-      );
-    }
-  }
-  return requireSupportedEventMatch(plugins, {
-    match: trigger.match,
-    namespace: trigger.namespace,
-    resourceType: trigger.resourceType,
-  });
+  return requireValidEventTrigger(
+    automationEventCatalog(catalog),
+    trigger,
+    "event_automation",
+  );
 }
 
 /** Require the active Slack authority used for event-automation management. */
@@ -213,20 +201,19 @@ export async function writableEventAutomation(
   return task;
 }
 
-export function eventAutomationTriggerAvailable(
-  task: EventAutomation,
+/**
+ * Describe a saved trigger with the enabled plugins. Its problems say why it
+ * cannot work: a plugin can remove or rename a resource type, event, or filter
+ * after the trigger was saved. Resource types with `automation: false` never
+ * dispatch event automations.
+ */
+export function describeEventAutomationTrigger(
+  trigger: EventAutomation["trigger"],
   catalog: EventCatalog,
-): boolean {
-  // resourceType is presentation metadata; runtime matching uses namespace,
-  // identifier, and event type. Core snapshot events never dispatch tasks.
-  const registration = automationEventCatalog(catalog)[task.trigger.namespace];
-  return Boolean(
-    registration &&
-    task.trigger.events.every((eventType) =>
-      registration.resourceTypes.some((resourceType) =>
-        resourceType.supportedEvents.includes(eventType),
-      ),
-    ),
+): EventTriggerDescription {
+  return describeRegisteredEventTrigger(
+    automationEventCatalog(catalog),
+    trigger,
   );
 }
 
@@ -236,6 +223,7 @@ export function compactEventAutomation(
   catalog: EventCatalog,
   requesterSlackUserId?: string,
 ) {
+  const { problems } = describeEventAutomationTrigger(task.trigger, catalog);
   return compactEventAutomationResultSchema.parse({
     id: task.id,
     status: task.status,
@@ -250,7 +238,8 @@ export function compactEventAutomation(
       label: task.trigger.label,
       events: task.trigger.events,
       ...(task.trigger.match ? { match: task.trigger.match } : undefined),
-      available: eventAutomationTriggerAvailable(task, catalog),
+      available: problems.length === 0,
+      ...(problems.length > 0 ? { problems } : undefined),
     },
     credentialMode: task.credentialMode,
     isCreator: task.createdBy.slackUserId === requesterSlackUserId,
@@ -282,9 +271,7 @@ export async function eventAutomationToolResult(
     catalog,
     requesterSlackUserId,
   );
-  const filters = Object.entries(task.trigger.match ?? {}).map(
-    ([key, value]) => `${key} = ${JSON.stringify(value)}`,
-  );
+  const description = describeEventAutomationTrigger(task.trigger, catalog);
   const title =
     automation.title ?? fallbackShortTitle(task.task.text, "Event automation");
   return {
@@ -298,15 +285,12 @@ export async function eventAutomationToolResult(
         title,
         url: automation.dashboardUrl,
         description: task.task.text,
-        status: automation.trigger.available ? "ready" : "unavailable",
-        trigger: [
-          task.trigger.label,
-          task.trigger.events.join(", "),
-          ...filters,
-        ].join(" · "),
-        warning: !automation.trigger.available
-          ? "Trigger unavailable. This automation cannot receive events."
-          : undefined,
+        status: description.problems.length === 0 ? "ready" : "unavailable",
+        trigger: eventTriggerText(task.trigger.label, description),
+        warning:
+          description.problems.length > 0
+            ? ["Trigger unavailable.", ...description.problems].join(" ")
+            : undefined,
       } satisfies ObjectAnnotation,
     ]),
   };

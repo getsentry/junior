@@ -1417,7 +1417,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub issue creation must use the github_createIssue tool, which owns idempotency and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1459,7 +1459,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub issue creation must use the github_createIssue tool, which owns idempotency and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
@@ -1505,7 +1505,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub pull request creation must use the github_createPullRequest tool, which owns idempotency and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1552,7 +1552,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub issue updates must use the github_updateIssue tool, which owns requester attribution and the conversation footer. This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1606,7 +1606,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+        "GitHub GraphQL request body is too large to inspect before issuing credentials.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     expect(
@@ -1615,7 +1615,7 @@ describe("sandbox egress proxy integration", () => {
       )?.attributes,
     ).toMatchObject({
       "app.sandbox.egress.policy.reason":
-        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+        "GitHub GraphQL request body is too large to inspect before issuing credentials.",
     });
   });
 
@@ -1652,7 +1652,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.",
+        "GitHub pull request review request body is too large to inspect before issuing credentials.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });

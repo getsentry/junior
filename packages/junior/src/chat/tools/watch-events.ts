@@ -1,12 +1,12 @@
 import { z } from "zod";
 import {
   eventNamespaceSchema,
+  eventWatchUnavailable,
   requireEventIdentifier,
-  pluginSupportsEvent,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
   registeredResourceTypeSchema,
-  requireSupportedEventMatch,
+  requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { createWatch } from "@/chat/events/store";
@@ -18,7 +18,6 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { SLACK_EVENT_NAMESPACE } from "@/chat/slack/channel-message-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 function inputSchema(catalog: EventCatalog) {
@@ -63,25 +62,7 @@ function inputSchema(catalog: EventCatalog) {
         )
         .optional(),
     })
-    .strict()
-    .superRefine((subscription, context) => {
-      subscription.events.forEach((eventType, index) => {
-        if (
-          !pluginSupportsEvent(
-            catalog,
-            subscription.namespace,
-            subscription.resourceType,
-            eventType,
-          )
-        ) {
-          context.addIssue({
-            code: "custom",
-            message: `Resource type "${subscription.namespace}:${subscription.resourceType}" does not support event "${eventType}".`,
-            path: ["events", index],
-          });
-        }
-      });
-    });
+    .strict();
 }
 
 type Input = z.output<ReturnType<typeof inputSchema>>;
@@ -144,36 +125,25 @@ export function createWatchEventsTool(
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
-      if (input.namespace === "junior" && input.resourceType === "timer") {
-        throw new ToolInputError("Use watchTimer to create a timer Watch.");
-      }
-      if (input.namespace === SLACK_EVENT_NAMESPACE) {
-        throw new ToolInputError(
-          "Slack channel messages can trigger only an event automation in that channel. Use createEventAutomation.",
-        );
-      }
+      const unavailable = eventWatchUnavailable(
+        catalog,
+        input.namespace,
+        input.resourceType,
+      );
+      if (unavailable) throw new ToolInputError(unavailable);
       const events = cleanStrings(input.events);
-      for (const eventType of events) {
-        if (
-          !pluginSupportsEvent(
-            catalog,
-            input.namespace,
-            input.resourceType,
-            eventType,
-          )
-        ) {
-          throw new ToolInputError(
-            `Resource type "${input.namespace}:${input.resourceType}" does not support event "${eventType}".`,
-          );
-        }
-      }
       const intent = input.intent.trim();
       if (!intent) throw new ToolInputError("intent is required");
-      const match = requireSupportedEventMatch(catalog, {
-        match: input.match,
-        namespace: input.namespace,
-        resourceType: input.resourceType,
-      });
+      const match = requireValidEventTrigger(
+        catalog,
+        {
+          events,
+          match: input.match,
+          namespace: input.namespace,
+          resourceType: input.resourceType,
+        },
+        "watch",
+      );
       const nowMs = Date.now();
       const subscription = await createWatch({
         conversationId: context.conversationId,
