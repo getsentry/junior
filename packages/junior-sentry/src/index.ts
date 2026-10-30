@@ -7,12 +7,17 @@
  */
 import {
   defineJuniorPlugin,
+  mergeEventMatchFields,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { SENTRY_ISSUE_EVENTS } from "./events/issue.js";
+import {
+  SENTRY_ISSUE_EVENTS,
+  SENTRY_ISSUE_MATCH_FIELDS,
+} from "./events/issue.js";
 import {
   SENTRY_METRIC_ALERT_EVENTS,
   SENTRY_METRIC_ALERT_IDENTIFIER,
+  SENTRY_METRIC_ALERT_MATCH_FIELDS,
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
 import {
@@ -45,6 +50,10 @@ export function sentryPlugin(): PluginRegistration {
             ...SENTRY_ISSUE_EVENTS,
             ...SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
           ],
+          matchFields: mergeEventMatchFields(
+            SENTRY_ISSUE_MATCH_FIELDS,
+            SENTRY_METRIC_ALERT_MATCH_FIELDS,
+          ),
         },
         {
           type: "metric_alert",

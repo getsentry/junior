@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { EventInput } from "@sentry/junior-plugin-api";
+import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sentryPlugin } from "../src";
 import { createSentryWebhookRoute } from "../src/webhooks/handler";
@@ -103,6 +104,42 @@ afterEach(() => {
 });
 
 describe("Sentry webhook events", () => {
+  it("declares filter events that match the data the webhooks set", () => {
+    // The fullest delivery of each webhook, so every optional value is set.
+    const deliveries = [
+      { body: issueBody(), hookResource: "issue" },
+      ...["critical", "warning", "resolved"].map((action) => ({
+        body: metricAlertBody(action),
+        hookResource: "metric_alert",
+      })),
+    ];
+    const events = deliveries.flatMap((delivery) =>
+      normalizeSentryEvents(delivery),
+    );
+
+    expect(
+      filterEventMismatches({
+        resourceTypes: sentryPlugin().events?.resourceTypes ?? [],
+        events,
+      }),
+    ).toEqual([]);
+  });
+
+  it("drops an issue level or priority that it does not know", () => {
+    const body = issueBody();
+    body.data.issue.level = "critical";
+    body.data.issue.priority = "urgent";
+
+    const [event] = normalizeSentryEvents({
+      body,
+      hookResource: "issue",
+    });
+
+    expect(event?.data).not.toHaveProperty("level");
+    expect(event?.data).not.toHaveProperty("priority");
+    expect(event?.data).toMatchObject({ issueId: "7513266773" });
+  });
+
   it("normalizes a created issue for the issue and project", () => {
     expect(
       normalizeSentryEvents({
@@ -112,27 +149,31 @@ describe("Sentry webhook events", () => {
       }),
     ).toEqual([
       {
+        data: {
+          issueCategory: "error",
+          issueId: "7513266773",
+          issueType: "error",
+          level: "error",
+          priority: "high",
+          url: "https://sentry.sentry.io/issues/7513266773/",
+        },
         eventKey: "sentry:sentry/junior#7513266773:issue.created",
         eventType: "issue.created",
         identifier: "sentry/junior#7513266773",
+        objectType: "task",
         occurredAtMs: Date.parse("2026-08-05T23:00:00.000Z"),
         trustedSummary: "Sentry issue sentry/junior#7513266773 was created.",
         untrustedText: [
           "Title: TypeError: cannot read properties of undefined",
           "Culprit: api.users.create",
-          "Level: error",
-          "Priority: high",
-          "Category: error",
-          "Type: error",
-          "Status: unresolved",
-          "Substatus: new",
-          "URL: https://sentry.sentry.io/issues/7513266773/",
         ].join("\n"),
       },
       {
+        data: expect.objectContaining({ level: "error" }),
         eventKey: "sentry:sentry/junior#7513266773:issue.created",
         eventType: "issue.created",
         identifier: "sentry/junior",
+        objectType: "task",
         occurredAtMs: Date.parse("2026-08-05T23:00:00.000Z"),
         trustedSummary: "Sentry issue sentry/junior#7513266773 was created.",
         untrustedText: expect.any(String),
@@ -157,13 +198,13 @@ describe("Sentry webhook events", () => {
         eventKey: "sentry:metric-alert:sentry/7:4:metric_alert.critical",
         eventType: "metric_alert.critical",
         identifier: "metric-alert:sentry/7",
+        objectType: "item",
         occurredAtMs: 1_785_976_800_000,
         trustedSummary: "Sentry metric alert sentry/7 is critical.",
         untrustedText: [
           "Critical: Too many errors",
           "1000 events in the last 10 minutes",
           "Filter: level:error",
-          "URL: https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
         ].join("\n"),
       },
       {
@@ -171,6 +212,7 @@ describe("Sentry webhook events", () => {
         eventKey: "sentry:metric-alert:sentry/7:4:metric_alert.critical",
         eventType: "metric_alert.critical",
         identifier: "sentry/junior",
+        objectType: "item",
         occurredAtMs: 1_785_976_800_000,
         trustedSummary: "Sentry metric alert sentry/7 is critical.",
         untrustedText: expect.any(String),

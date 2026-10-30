@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { EventInput } from "@sentry/junior-plugin-api";
+import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 import { createVercelWebhookRoute } from "../src/webhooks/handler";
@@ -63,6 +64,24 @@ function routeFixture() {
 }
 
 describe("Vercel webhook events", () => {
+  it("declares filter events that match the data the webhooks set", () => {
+    // The fixture deployment has a Git commit, so every optional value is set.
+    const events = (
+      [
+        "deployment.succeeded",
+        "deployment.error",
+        "deployment.canceled",
+      ] as const
+    ).flatMap((type) => normalizeVercelEvents({ body: webhookBody(type) }));
+
+    expect(
+      filterEventMismatches({
+        resourceTypes: vercelPlugin().events?.resourceTypes ?? [],
+        events,
+      }),
+    ).toEqual([]);
+  });
+
   it.each([
     ["deployment.succeeded", "succeeded"],
     ["deployment.error", "failed"],
@@ -72,35 +91,44 @@ describe("Vercel webhook events", () => {
     (eventType, outcome) => {
       expect(normalizeVercelEvents({ body: webhookBody(eventType) })).toEqual([
         {
+          data: {
+            commitSha: COMMIT_SHA,
+            deploymentId: "dpl_123abc",
+            target: "production",
+          },
           eventKey: `vercel:evt_delivery_123:${eventType}`,
           eventType,
+          objectType: "deployment",
           occurredAtMs: 1_784_043_000_000,
           identifier: "prj_junior",
           trustedSummary: `Vercel deployments for prj_junior (dpl_123abc) ${outcome}.`,
-          untrustedText: `Target: production
-Commit: ${COMMIT_SHA}
-Deployment: dpl_123abc`,
         },
         {
+          data: {
+            commitSha: COMMIT_SHA,
+            deploymentId: "dpl_123abc",
+            target: "production",
+          },
           eventKey: `vercel:evt_delivery_123:${eventType}`,
           eventType,
+          objectType: "deployment",
           occurredAtMs: 1_784_043_000_000,
           identifier: "prj_junior:production",
           trustedSummary: `Vercel production deployments for prj_junior (dpl_123abc) ${outcome}.`,
-          untrustedText: `Target: production
-Commit: ${COMMIT_SHA}
-Deployment: dpl_123abc`,
         },
         {
+          data: {
+            commitSha: COMMIT_SHA,
+            deploymentId: "dpl_123abc",
+            target: "production",
+          },
           eventKey: `vercel:evt_delivery_123:${eventType}`,
           eventType,
+          objectType: "deployment",
           occurredAtMs: 1_784_043_000_000,
           identifier: `prj_junior:production:${COMMIT_SHA}`,
           terminal: true,
           trustedSummary: `Vercel production deployment for prj_junior at abcdef012345 (dpl_123abc) ${outcome}.`,
-          untrustedText: `Target: production
-Commit: ${COMMIT_SHA}
-Deployment: dpl_123abc`,
         },
       ]);
     },
@@ -128,9 +156,10 @@ Deployment: dpl_123abc`,
     ]);
   });
 
-  it("maps a null Vercel target and alternate Git provider metadata to preview", () => {
+  it("maps a null Vercel target to preview and skips bad commit metadata", () => {
     const body = webhookBody("deployment.succeeded", null);
     body.payload.deployment.meta = {
+      githubCommitSha: "not-a-sha",
       gitlabCommitSha: COMMIT_SHA.toUpperCase(),
     };
 
@@ -142,6 +171,11 @@ Deployment: dpl_123abc`,
         identifier: "prj_junior:preview",
       }),
       expect.objectContaining({
+        data: {
+          commitSha: COMMIT_SHA,
+          deploymentId: "dpl_123abc",
+          target: "preview",
+        },
         identifier: `prj_junior:preview:${COMMIT_SHA}`,
         terminal: true,
       }),
@@ -154,22 +188,24 @@ Deployment: dpl_123abc`,
 
     expect(normalizeVercelEvents({ body })).toEqual([
       {
+        data: { deploymentId: "dpl_123abc", target: "production" },
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
         eventType: "deployment.succeeded",
+        objectType: "deployment",
         occurredAtMs: 1_784_043_000_000,
         identifier: "prj_junior",
         trustedSummary:
           "Vercel deployments for prj_junior (dpl_123abc) succeeded.",
-        untrustedText: "Target: production\nDeployment: dpl_123abc",
       },
       {
+        data: { deploymentId: "dpl_123abc", target: "production" },
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
         eventType: "deployment.succeeded",
+        objectType: "deployment",
         occurredAtMs: 1_784_043_000_000,
         identifier: "prj_junior:production",
         trustedSummary:
           "Vercel production deployments for prj_junior (dpl_123abc) succeeded.",
-        untrustedText: "Target: production\nDeployment: dpl_123abc",
       },
     ]);
   });

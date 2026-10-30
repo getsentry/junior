@@ -1,14 +1,30 @@
-import type { EventInput } from "@sentry/junior-plugin-api";
+import type { EventData, EventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { sentryIssueResource, sentryProjectResource } from "../events/issue.js";
 import {
-  SENTRY_METRIC_ALERT_EVENTS,
+  SENTRY_ISSUE_LEVELS,
+  SENTRY_ISSUE_PRIORITIES,
+  sentryIssueResource,
+  sentryProjectResource,
+} from "../events/issue.js";
+import {
+  SENTRY_METRIC_ALERT_ACTIONS,
   sentryMetricAlertResource,
 } from "../events/metric-alert.js";
 
+// A level or priority that this plugin does not know counts as missing, so a
+// new Sentry value does not reject the webhook or match a filter by mistake.
+const issueLevelSchema = z
+  .enum(SENTRY_ISSUE_LEVELS)
+  .optional()
+  .catch(undefined);
+const issuePrioritySchema = z
+  .enum(SENTRY_ISSUE_PRIORITIES)
+  .optional()
+  .catch(undefined);
+
 const issueWebhookSchema = z
   .object({
-    action: z.string(),
+    action: z.literal("created"),
     data: z.object({
       issue: z
         .object({
@@ -17,11 +33,9 @@ const issueWebhookSchema = z
           id: z.string().min(1),
           issueCategory: z.string().optional(),
           issueType: z.string().optional(),
-          level: z.string().optional(),
-          priority: z.string().optional(),
+          level: issueLevelSchema,
+          priority: issuePrioritySchema,
           project: z.object({ slug: z.string().min(1) }).passthrough(),
-          status: z.string().optional(),
-          substatus: z.string().optional().nullable(),
           title: z.string().optional(),
           url: z.string().url(),
           web_url: z.string().url().optional(),
@@ -34,7 +48,7 @@ const issueWebhookSchema = z
 
 const metricAlertWebhookSchema = z
   .object({
-    action: z.string(),
+    action: z.enum(SENTRY_METRIC_ALERT_ACTIONS),
     data: z.object({
       description_text: z.string().optional(),
       description_title: z.string().optional(),
@@ -78,29 +92,35 @@ function providerTime(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/**
+ * Title and culprit come from the monitored app's code and error messages, so
+ * they stay untrusted text.
+ */
 function issueText(issue: {
   culprit?: string;
-  issueCategory?: string;
-  issueType?: string;
-  level?: string;
-  priority?: string;
-  status?: string;
-  substatus?: string | null;
   title?: string;
-  web_url?: string;
 }): string | undefined {
   const parts = [
     issue.title ? `Title: ${issue.title}` : undefined,
     issue.culprit ? `Culprit: ${issue.culprit}` : undefined,
-    issue.level ? `Level: ${issue.level}` : undefined,
-    issue.priority ? `Priority: ${issue.priority}` : undefined,
-    issue.issueCategory ? `Category: ${issue.issueCategory}` : undefined,
-    issue.issueType ? `Type: ${issue.issueType}` : undefined,
-    issue.status ? `Status: ${issue.status}` : undefined,
-    issue.substatus ? `Substatus: ${issue.substatus}` : undefined,
-    issue.web_url ? `URL: ${issue.web_url}` : undefined,
   ].filter((part): part is string => part !== undefined);
   return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+/** Sentry's own values for the issue. Sentry sets them, so they are trusted. */
+function issueData(
+  issue: z.output<typeof issueWebhookSchema>["data"]["issue"],
+): EventData {
+  return {
+    issueId: issue.id,
+    ...(issue.level ? { level: issue.level } : undefined),
+    ...(issue.priority ? { priority: issue.priority } : undefined),
+    ...(issue.issueCategory
+      ? { issueCategory: issue.issueCategory }
+      : undefined),
+    ...(issue.issueType ? { issueType: issue.issueType } : undefined),
+    ...(issue.web_url ? { url: issue.web_url } : undefined),
+  };
 }
 
 /**
@@ -122,7 +142,7 @@ interface WebhookInput {
 
 function normalizeIssueEvents(input: WebhookInput): EventInput[] {
   const parsed = issueWebhookSchema.safeParse(input.body);
-  if (!parsed.success || parsed.data.action !== "created") return [];
+  if (!parsed.success) return [];
 
   const issue = parsed.data.data.issue;
   const org = organizationSlug(issue.url)?.toLowerCase();
@@ -147,8 +167,10 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
     // idempotency across repeated deliveries of the same lifecycle event.
     eventKey: `sentry:${issueResource.identifier}:${eventType}`,
     eventType,
+    objectType: "task",
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,
+    data: issueData(issue),
     ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
 
@@ -161,10 +183,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
 function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const parsed = metricAlertWebhookSchema.safeParse(input.body);
   if (!parsed.success) return [];
-  const eventType = `metric_alert.${parsed.data.action}`;
-  if (!(SENTRY_METRIC_ALERT_EVENTS as readonly string[]).includes(eventType)) {
-    return [];
-  }
+  const eventType = `metric_alert.${parsed.data.action}` as const;
 
   const { data } = parsed.data;
   const org = webOrganizationSlug(data.web_url)?.toLowerCase();
@@ -172,11 +191,8 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const alertRuleId = data.metric_alert.alert_rule.id;
   const incidentId = data.metric_alert.id;
   const resource = sentryMetricAlertResource({ alertRuleId, org });
-  const untrustedText = [
-    data.description_title,
-    data.description_text,
-    `URL: ${data.web_url}`,
-  ]
+  // Alert titles and descriptions come from user-written rules.
+  const untrustedText = [data.description_title, data.description_text]
     .filter((part): part is string => Boolean(part))
     .join("\n");
 
@@ -184,10 +200,11 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     // One event per incident state. Sentry retries get new Request-IDs.
     eventKey: `sentry:${resource.identifier}:${incidentId}:${eventType}`,
     eventType,
+    objectType: "item",
     occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
     trustedSummary: `${resource.label} is ${parsed.data.action}.`,
     data: { alertRuleId, incidentId, url: data.web_url },
-    untrustedText,
+    ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
   // Also publish to each project of the alert rule, so one project
   // subscription receives its new issues and its metric alerts.
