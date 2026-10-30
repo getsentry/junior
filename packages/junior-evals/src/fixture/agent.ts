@@ -108,8 +108,6 @@ export interface CallOptions {
     progress: TurnProgress,
     actions: { send(input: Input): Promise<void> },
   ) => void | Promise<void>;
-  /** Idle budget in place of 60 seconds. See `policies/evals.md`. */
-  idleTimeoutMs?: number;
 }
 
 /**
@@ -268,13 +266,14 @@ export async function createFixtureAgent(
   });
   const startedAtMs = Date.now();
 
-  const waitForIdle = async (limitMs = IDLE_TIMEOUT_MS): Promise<void> => {
+  const waitForIdle = async (): Promise<void> => {
     const startedAtMs = Date.now();
     for (;;) {
       // The product delays some deliveries. For example, the worker checks
       // a busy Conversation again after 15 seconds. The budget starts when
       // the last delivery is due to start.
-      const deadline = Math.max(startedAtMs, queue.latestStartAtMs()) + limitMs;
+      const deadline =
+        Math.max(startedAtMs, queue.latestStartAtMs()) + IDLE_TIMEOUT_MS;
       const pending = [...queue.pending(), ...background];
       if (pending.length === 0) {
         // Let work that a finished delivery started reach the queue.
@@ -287,7 +286,7 @@ export async function createFixtureAgent(
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
         throw new Error(
-          `The agent was not idle within ${limitMs / 1000} seconds`,
+          `The agent was not idle within ${IDLE_TIMEOUT_MS / 1000} seconds`,
         );
       }
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -599,7 +598,7 @@ export async function createFixtureAgent(
     }
     try {
       await send();
-      await waitForIdle(options.idleTimeoutMs);
+      await waitForIdle();
     } catch (error) {
       // Keep the partial transcript before cleanup removes the test identities.
       // A timeout must show the work that was still running, not an empty run.
