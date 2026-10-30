@@ -10,6 +10,7 @@ import {
   DOCKER_SANDBOX_LABEL,
   dockerSandboxExtraCaFile,
 } from "@/chat/sandbox/docker/settings";
+import { packTar } from "@/chat/sandbox/docker/tar";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { sleep } from "@/chat/sleep";
 
@@ -23,7 +24,7 @@ import { sleep } from "@/chat/sleep";
 // sandbox's inner Docker daemon uses.
 
 const SUBNET_PREFIX = "10.213";
-const CA_ANCHOR_DIR = "/etc/pki/ca-trust/source/anchors";
+const CA_ANCHOR = "/etc/pki/ca-trust/source/anchors/junior-docker-sandbox.pem";
 /** Amazon Linux's combined CA bundle, rebuilt by `update-ca-trust`. */
 const SYSTEM_CA_BUNDLE = "/etc/pki/tls/certs/ca-bundle.crt";
 /** Runtimes that ignore the system trust store but read these env vars. */
@@ -233,17 +234,30 @@ async function caCertificates(egressCaPem: string): Promise<string> {
 
 /** Put the egress CA into the sandbox's system trust store. */
 async function trustEgressCa(id: string, egressCaPem: string) {
-  const pem = Buffer.from(await caCertificates(egressCaPem)).toString("base64");
-  const anchor = `${CA_ANCHOR_DIR}/junior-docker-sandbox.pem`;
+  // Copy the file with the archive API. A command argument has a size limit,
+  // and a full CA bundle in `JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS` passes it.
+  await dockerRequest({
+    method: "PUT",
+    path: `/containers/${id}/archive`,
+    query: { path: "/" },
+    body: packTar([
+      {
+        path: `${CA_ANCHOR.slice(1)}.new`,
+        content: Buffer.from(await caCertificates(egressCaPem)),
+        mode: 0o644,
+        uid: 0,
+        gid: 0,
+      },
+    ]),
+  });
   const result = await runRawExec(id, {
     cmd: [
       "sh",
       "-c",
       [
         "set -eu",
-        `printf '%s' '${pem}' | base64 -d > ${anchor}.new`,
-        `if cmp -s ${anchor}.new ${anchor}; then rm ${anchor}.new; exit 0; fi`,
-        `mv ${anchor}.new ${anchor}`,
+        `if cmp -s ${CA_ANCHOR}.new ${CA_ANCHOR}; then rm ${CA_ANCHOR}.new; exit 0; fi`,
+        `mv ${CA_ANCHOR}.new ${CA_ANCHOR}`,
         "update-ca-trust extract",
       ].join("\n"),
     ],
