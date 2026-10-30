@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createCanvas } from "@/chat/slack/tool-support/canvas/api";
 import {
+  authTestOk,
   canvasesAccessSetOk,
   canvasesCreateOk,
+  conversationsInfoOk,
+  conversationsMembersOk,
   filesInfoOk,
 } from "../fixtures/slack/factories/api";
 import {
@@ -18,9 +21,15 @@ describe("createCanvas", () => {
       process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
   });
 
-  it("grants DM access after canvases.create so the DM participant can see the canvas", async () => {
+  it("grants DM members write access by user id because Slack rejects DM channel ids", async () => {
     queueSlackApiResponse("canvases.create", {
       body: canvasesCreateOk({ canvasId: "F_DM" }),
+    });
+    queueSlackApiResponse("auth.test", {
+      body: authTestOk({ userId: "U_JUNIOR" }),
+    });
+    queueSlackApiResponse("conversations.members", {
+      body: conversationsMembersOk({ members: ["U_JUNIOR", "U_HUMAN"] }),
     });
     queueSlackApiResponse("canvases.access.set", {
       body: canvasesAccessSetOk(),
@@ -43,18 +52,57 @@ describe("createCanvas", () => {
       permalink: "https://example.invalid/files/F_DM",
     });
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
+    expect(
+      getCapturedSlackApiCalls("conversations.members")[0]?.params,
+    ).toMatchObject({ channel: "D12345" });
 
     const accessCalls = getCapturedSlackApiCalls("canvases.access.set");
     expect(accessCalls).toHaveLength(1);
     expect(accessCalls[0]?.params).toMatchObject({
       canvas_id: "F_DM",
       access_level: "write",
-      channel_ids: ["D12345"],
+      user_ids: ["U_HUMAN"],
     });
+    expect(accessCalls[0]?.params).not.toHaveProperty("channel_ids");
 
     expect(
       getCapturedSlackApiCalls("conversations.canvases.create"),
     ).toHaveLength(0);
+  });
+
+  it("grants group DM members write access by user id", async () => {
+    queueSlackApiResponse("canvases.create", {
+      body: canvasesCreateOk({ canvasId: "F_MPIM" }),
+    });
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "G12345", isMpim: true }),
+    });
+    queueSlackApiResponse("auth.test", {
+      body: authTestOk({ userId: "U_JUNIOR" }),
+    });
+    queueSlackApiResponse("conversations.members", {
+      body: conversationsMembersOk({
+        members: ["U_ALICE", "U_JUNIOR", "U_BOB"],
+      }),
+    });
+    queueSlackApiResponse("canvases.access.set", {
+      body: canvasesAccessSetOk(),
+    });
+
+    await createCanvas({
+      title: "Title",
+      markdown: "Body",
+      channelId: "G12345",
+    });
+
+    const accessCalls = getCapturedSlackApiCalls("canvases.access.set");
+    expect(accessCalls).toHaveLength(1);
+    expect(accessCalls[0]?.params).toMatchObject({
+      canvas_id: "F_MPIM",
+      access_level: "write",
+      user_ids: ["U_ALICE", "U_BOB"],
+    });
+    expect(accessCalls[0]?.params).not.toHaveProperty("channel_ids");
   });
 
   it("grants channel write access after canvases.create for C/G channels", async () => {

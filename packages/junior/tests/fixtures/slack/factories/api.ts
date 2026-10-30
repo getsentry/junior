@@ -117,6 +117,18 @@ export function conversationsOpenOk(input: { channelId?: string } = {}): {
   });
 }
 
+/** Builds the successful Slack response that lists conversation members. */
+export function conversationsMembersOk(input: { members?: string[] } = {}): {
+  ok: true;
+  members: string[];
+  response_metadata: { next_cursor: string };
+} {
+  return slackOk({
+    members: input.members ?? [TEST_USER_ID],
+    response_metadata: { next_cursor: "" },
+  });
+}
+
 export function reactionsAddOk(): { ok: true } {
   return slackOk();
 }

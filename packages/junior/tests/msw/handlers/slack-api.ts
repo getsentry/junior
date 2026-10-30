@@ -15,6 +15,7 @@ import {
   conversationsInfoOk,
   conversationsJoinOk,
   conversationsListPage,
+  conversationsMembersOk,
   conversationsOpenOk,
   conversationsRepliesPage,
   filesCompleteUploadOk,
@@ -53,6 +54,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "conversations.info",
   "conversations.join",
   "conversations.list",
+  "conversations.members",
   "conversations.open",
   "conversations.replies",
   "canvases.access.set",
@@ -240,6 +242,8 @@ function defaultSlackApiResponse(
       return { body: conversationsJoinOk() };
     case "conversations.list":
       return { body: conversationsListPage() };
+    case "conversations.members":
+      return { body: conversationsMembersOk() };
     case "conversations.open":
       return { body: conversationsOpenOk() };
     case "conversations.replies":

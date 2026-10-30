@@ -8,8 +8,10 @@ import type { ToolState } from "@/chat/tools/types";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import {
+  authTestOk,
   canvasesAccessSetOk,
   canvasesCreateOk,
+  conversationsMembersOk,
   filesInfoOk,
   slackListsItemsCreateOk,
 } from "../fixtures/slack/factories/api";
@@ -126,9 +128,15 @@ describe("tool idempotency", () => {
     });
   });
 
-  it("creates a canvas from DM context using canvases.create and grants DM access", async () => {
+  it("creates a canvas from DM context using canvases.create and grants DM member access", async () => {
     queueSlackApiResponse("canvases.create", {
       body: canvasesCreateOk({ canvasId: "canvas-dm-1" }),
+    });
+    queueSlackApiResponse("auth.test", {
+      body: authTestOk({ userId: "U_JUNIOR" }),
+    });
+    queueSlackApiResponse("conversations.members", {
+      body: conversationsMembersOk({ members: ["U_JUNIOR", "U_HUMAN"] }),
     });
     queueSlackApiResponse("canvases.access.set", {
       body: canvasesAccessSetOk(),
@@ -158,8 +166,9 @@ describe("tool idempotency", () => {
     expect(accessCalls[0]?.params).toMatchObject({
       canvas_id: "canvas-dm-1",
       access_level: "write",
-      channel_ids: ["D123"],
+      user_ids: ["U_HUMAN"],
     });
+    expect(accessCalls[0]?.params).not.toHaveProperty("channel_ids");
     expect(
       getCapturedSlackApiCalls("conversations.canvases.create"),
     ).toHaveLength(0);
