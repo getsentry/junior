@@ -138,9 +138,12 @@ async function answerSlackUserInput(args: {
   if (!(await args.isAuthorAllowed(userId))) {
     return;
   }
-  if (
-    !(await claimSlackUserInput(args.state, { channelId, messageTs, userId }))
-  ) {
+  const claimed = await claimSlackUserInput(args.state, {
+    channelId,
+    claimedBy: userId,
+    messageTs,
+  });
+  if (!claimed) {
     return;
   }
 

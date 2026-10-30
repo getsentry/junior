@@ -581,19 +581,22 @@ async function routeParsedMessage(args: {
       route,
       state: args.state,
     });
+  if (route !== "mention") {
+    await persist();
+    return;
+  }
   // A message to Junior answers an open question in its thread, like a click.
-  await (route !== "mention"
-    ? persist()
-    : persistSlackUserInputReply({
-        channelId: args.event.channel,
-        claimedBy: message.author.userId,
-        isSaved: (e) => e instanceof SlackEventPersistenceError && e.saved,
-        note: (request) =>
-          slackUserInputAnswerNote({ request, userId: message.author.userId }),
-        persist,
-        state: args.state,
-        threadTs: args.event.thread_ts,
-      }));
+  await persistSlackUserInputReply({
+    channelId: args.event.channel,
+    claimedBy: message.author.userId,
+    isSaved: (error) =>
+      error instanceof SlackEventPersistenceError && error.saved,
+    note: (request) =>
+      slackUserInputAnswerNote({ request, userId: message.author.userId }),
+    persist,
+    state: args.state,
+    threadTs: args.event.thread_ts,
+  });
 }
 
 async function handleSlackEvent(args: {
@@ -760,9 +763,8 @@ async function persistSlackMentionWithLock(args: {
   state: StateAdapter;
 }): Promise<void> {
   const { message, threadId } = normalizeMessageThreadId(args.message);
-  let routed: Awaited<ReturnType<typeof withLock<void>>>;
   try {
-    routed = await withLock(
+    const routed = await withLock(
       args.state,
       `slack:ingress:${threadId}`,
       () =>
@@ -778,15 +780,15 @@ async function persistSlackMentionWithLock(args: {
         }),
       { keepAlive: true, waitMs: 10_000 },
     );
+    if (!routed.acquired) {
+      throw new Error("Could not acquire Slack ingress lock");
+    }
   } catch (error) {
     if (error instanceof SlackEventPersistenceError && error.saved) {
       logException(error.cause, "slack.event.wake.failed");
       return;
     }
     throw error;
-  }
-  if (!routed.acquired) {
-    throw new Error("Could not acquire Slack ingress lock");
   }
 }
 

@@ -16,6 +16,9 @@ import {
 // come back to an old thread.
 const USER_INPUT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Claim value for a request that a newer request replaced before an answer.
+const REPLACED_CLAIM = "replaced";
+
 const openUserInputSchema = z.object({
   messageTs: z.string(),
   request: userInputRequestSchema,
@@ -44,11 +47,11 @@ export interface OpenSlackUserInput {
  */
 export async function claimSlackUserInput(
   state: StateAdapter,
-  args: { channelId: string; messageTs: string; userId: string },
+  args: { channelId: string; claimedBy: string; messageTs: string },
 ): Promise<boolean> {
   return state.setIfNotExists(
     claimKey(args.channelId, args.messageTs),
-    args.userId,
+    args.claimedBy,
     USER_INPUT_TTL_MS,
   );
 }
@@ -64,7 +67,9 @@ export async function releaseSlackUserInput(
 /**
  * Remember the open request of a Slack thread. Clicks and forms read it to
  * build the answer, and a typed reply closes it. A newer request in the same
- * thread replaces the older one. Return the replaced request, if any.
+ * thread replaces the older one. Return the replaced request when nobody
+ * answered it, so the caller can close its controls. An answered request
+ * keeps its answer note.
  */
 export async function recordOpenSlackUserInput(
   state: StateAdapter,
@@ -86,9 +91,15 @@ export async function recordOpenSlackUserInput(
     },
     USER_INPUT_TTL_MS,
   );
-  return replaced && replaced.messageTs !== args.messageTs
-    ? replaced
-    : undefined;
+  if (!replaced || replaced.messageTs === args.messageTs) return undefined;
+  // Claim the older request so that a late answer cannot win after Junior
+  // marks it replaced. A failed claim means that a person answered it.
+  const unanswered = await claimSlackUserInput(state, {
+    channelId: args.channelId,
+    messageTs: replaced.messageTs,
+    claimedBy: REPLACED_CLAIM,
+  });
+  return unanswered ? replaced : undefined;
 }
 
 /** Read the open request of a Slack thread, if there is one. */
@@ -117,24 +128,17 @@ async function claimOpenSlackUserInput(args: {
   state: StateAdapter;
   threadTs?: string;
 }): Promise<OpenSlackUserInput | undefined> {
-  const channelId = args.channelId;
+  const { channelId, claimedBy, state } = args;
   const threadTs = parseSlackMessageTs(args.threadTs);
   if (!channelId || !threadTs) return undefined;
-  const open = await getOpenSlackUserInput(args.state, {
+  const open = await getOpenSlackUserInput(state, { channelId, threadTs });
+  if (!open) return undefined;
+  const claimed = await claimSlackUserInput(state, {
     channelId,
-    threadTs,
+    claimedBy,
+    messageTs: open.messageTs,
   });
-  if (
-    !open ||
-    !(await claimSlackUserInput(args.state, {
-      channelId,
-      messageTs: open.messageTs,
-      userId: args.claimedBy,
-    }))
-  ) {
-    return undefined;
-  }
-  return open;
+  return claimed ? open : undefined;
 }
 
 /**

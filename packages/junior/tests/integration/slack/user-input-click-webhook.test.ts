@@ -323,6 +323,27 @@ describe("Slack webhook: user input clicks", () => {
     expect(queue.queuedMessages()).toHaveLength(1);
   });
 
+  it("replaces only an unanswered question", async () => {
+    const { click, recordQuestion, state } = clickHarness();
+    const newer = (messageTs: string) =>
+      recordOpenSlackUserInput(state, {
+        channelId: "C123",
+        messageTs,
+        request: QUESTION,
+        requestId: "toolu_next",
+        threadTs: THREAD_TS,
+      });
+
+    // The answered question keeps its answer note.
+    await recordQuestion();
+    await click("U123", "1712345.0003");
+    expect(await newer("1712345.0005")).toBeUndefined();
+
+    // An unanswered question is replaced.
+    const replaced = await newer("1712345.0006");
+    expect(replaced?.messageTs).toBe("1712345.0005");
+  });
+
   it("keeps the first click when only the queue wake fails", async () => {
     const { click, queue, recordQuestion, state } = clickHarness();
     await recordQuestion();

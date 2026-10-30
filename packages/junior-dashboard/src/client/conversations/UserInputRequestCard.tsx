@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import {
   buttonUserInputField,
   formatUserInputAnswer,
@@ -113,15 +113,21 @@ export function UserInputRequestCard(props: {
   const [other, setOther] = useState("");
   const buttonField = buttonUserInputField(props.request);
 
+  // A ref blocks a second click before React renders the disabled controls.
+  // The lock stays after a sent answer; only a failed send can retry.
+  const sendLock = useRef(false);
+
   async function send(answer: UserInputAnswer) {
+    if (sendLock.current) return;
+    sendLock.current = true;
     setSending(true);
     setFailed(false);
     try {
       await props.onAnswer(formatUserInputAnswer(props.request, answer));
     } catch {
-      setFailed(true);
-    } finally {
+      sendLock.current = false;
       setSending(false);
+      setFailed(true);
     }
   }
 
