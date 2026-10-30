@@ -60,6 +60,25 @@ describe("event automation match data", () => {
           namespace: "github",
         }),
       ).resolves.toEqual(["openerRole", "repo"]);
+      // The plugin passes the repo it already knows. The filter for
+      // getsentry/junior fails for another repository, so that repository
+      // loads nothing from GitHub.
+      await expect(
+        publisher.neededMatchKeys({
+          data: { repo: "getsentry/sentry" },
+          eventTypes: ["pull_request.opened"],
+          identifiers: ["getsentry/sentry#7", "getsentry/sentry"],
+          namespace: "github",
+        }),
+      ).resolves.toEqual([]);
+      await expect(
+        publisher.neededMatchKeys({
+          data: { repo: "getsentry/junior" },
+          eventTypes: ["pull_request.opened"],
+          identifiers: ["getsentry/junior#7", "getsentry/junior"],
+          namespace: "github",
+        }),
+      ).resolves.toEqual(["openerRole", "repo"]);
       await expect(
         publisher.neededMatchKeys({
           eventTypes: ["pull_request.merged"],

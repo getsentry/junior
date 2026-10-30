@@ -35,8 +35,11 @@ export function vercelPlugin(): PluginRegistration {
       // Deployment events carry status facts, and Junior adds nothing to
       // Vercel, so they can run for every project. Use the `projectId`
       // filter to narrow them.
-      anyResourceEvents: Object.fromEntries(
-        VERCEL_DEPLOYMENT_EVENTS.map((eventType) => [eventType, {}]),
+      events: Object.fromEntries(
+        VERCEL_DEPLOYMENT_EVENTS.map((eventType) => [
+          eventType,
+          { reach: "all" },
+        ]),
       ),
       isEnabled: () => Boolean(vercelWebhookSecret()),
     },

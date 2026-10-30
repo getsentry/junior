@@ -49,6 +49,7 @@ export const VERCEL_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   },
   commitSha: {
     kind: "string",
+    case: "lower",
     description:
       "full lowercase Git commit SHA of the deployment, when it came from a Git commit",
     events: [...VERCEL_DEPLOYMENT_EVENTS],

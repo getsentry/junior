@@ -11,19 +11,23 @@ import { readViewerAutomationEdit } from "./edit";
 import type { User } from "@sentry/junior-plugin-api";
 
 /**
- * Return only Event types that can start a durable Automation. Each entry
- * carries the events of its namespace that can run for any resource.
+ * Return only Event types that can start a durable Automation, one entry for
+ * each namespace, with the reach of each event.
  */
 export function readAutomationEventCatalog() {
-  return Object.entries(automationEventCatalog(getEventCatalog())).flatMap(
-    ([namespace, registration]) =>
-      registration.resourceTypes.map((resource) => ({
-        namespace,
-        ...resource,
-        ...(registration.anyResourceEvents
-          ? { anyResourceEvents: registration.anyResourceEvents }
-          : undefined),
-      })),
+  return Object.entries(automationEventCatalog(getEventCatalog())).map(
+    ([namespace, registration]) => ({
+      namespace,
+      displayName: registration.displayName ?? namespace,
+      events: Object.fromEntries(
+        Object.entries(registration.events).map(([eventType, declaration]) => [
+          eventType,
+          { reach: declaration.reach },
+        ]),
+      ),
+      anyResourceFields: registration.anyResourceFields,
+      resourceTypes: registration.resourceTypes,
+    }),
   );
 }
 

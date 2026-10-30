@@ -1,4 +1,7 @@
-import { eventMatchFieldSchema } from "@sentry/junior-plugin-api";
+import {
+  eventMatchFieldSchema,
+  eventReachSchema,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { eventNamespaceSchema, type EventCatalog } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -17,16 +20,14 @@ const searchedResourceTypeSchema = z
     // Use the plugin contract schema, so new filter field keys such as
     // `events` reach the agent instead of failing this output.
     matchFields: z.record(z.string(), eventMatchFieldSchema).optional(),
-    anyResourceEvents: z
-      .array(
-        z
-          .object({
-            event: z.string(),
-            requiredFilter: z.string().optional(),
-          })
-          .strict(),
-      )
-      .optional(),
+  })
+  .strict();
+
+// The reach of each event, once for each namespace in the results.
+const searchedNamespaceSchema = z
+  .object({
+    namespace: z.string(),
+    reach: z.record(z.string(), eventReachSchema),
   })
   .strict();
 
@@ -36,6 +37,7 @@ const outputSchema = juniorToolOutputSchema
     namespace: z.string().nullable(),
     totalMatches: z.number().int().nonnegative(),
     resourceTypes: z.array(searchedResourceTypeSchema),
+    namespaces: z.array(searchedNamespaceSchema),
   })
   .strict();
 
@@ -46,16 +48,26 @@ function normalizeSearchText(value: string): string {
     .trim();
 }
 
-// The events of one resource type that can run with no identifier.
-function anyResourceEventsOf(
-  anyResourceEvents: EventCatalog[string]["anyResourceEvents"],
-  supportedEvents: readonly string[],
+// The reach of the events of these resource types, once for each namespace.
+function namespaceReach(
+  catalog: EventCatalog,
+  resourceTypes: readonly { namespace: string; supportedEvents: string[] }[],
 ) {
-  const events = [...supportedEvents].sort().flatMap((event) => {
-    const scope = anyResourceEvents?.[event];
-    return scope ? [{ event, ...scope }] : [];
-  });
-  return events.length > 0 ? { anyResourceEvents: events } : undefined;
+  const events = new Map<string, Set<string>>();
+  for (const resourceType of resourceTypes) {
+    const set = events.get(resourceType.namespace) ?? new Set<string>();
+    for (const eventType of resourceType.supportedEvents) set.add(eventType);
+    events.set(resourceType.namespace, set);
+  }
+  return [...events].map(([namespace, eventTypes]) => ({
+    namespace,
+    reach: Object.fromEntries(
+      [...eventTypes].sort().flatMap((eventType) => {
+        const reach = catalog[namespace]?.events[eventType]?.reach;
+        return reach ? [[eventType, reach]] : [];
+      }),
+    ),
+  }));
 }
 
 function searchableResourceTypes(catalog: EventCatalog) {
@@ -74,10 +86,6 @@ function searchableResourceTypes(catalog: EventCatalog) {
         ...(resourceType.matchFields
           ? { matchFields: resourceType.matchFields }
           : undefined),
-        ...anyResourceEventsOf(
-          registration.anyResourceEvents,
-          resourceType.supportedEvents,
-        ),
       })),
     )
     .sort(
@@ -97,7 +105,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
       readOnlyHint: true,
     },
     description:
-      "Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. An event in anyResourceEvents can start an event automation for every resource of its namespace: leave out identifier and resourceType, and narrow it with match filters from that namespace. Set its requiredFilter, if it has one. Use watchEvents for temporary updates in the current conversation; use createEventAutomation for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.",
+      'Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. namespaces gives the reach of each event. With reach "all" or { anyOf }, an event can start an event automation for every resource of its namespace: leave out identifier and resourceType, and narrow it with match filters from that namespace. For { anyOf }, set at least one of those filters. With reach "resource", the automation needs an identifier. Use watchEvents for temporary updates in the current conversation; use createEventAutomation for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.',
     inputSchema: z
       .object({
         query: z
@@ -161,6 +169,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
         namespace: namespace ?? null,
         totalMatches: matches.length,
         resourceTypes,
+        namespaces: namespaceReach(catalog, resourceTypes),
       };
       return {
         ...details,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CORE_EVENT_NAMESPACE,
   automationEventCatalog,
+  eventCatalogEntry,
   eventGuidance,
   requireEventIdentifier,
   type EventCatalog,
@@ -20,53 +21,35 @@ import {
 } from "@/chat/sandbox/snapshot/events";
 
 const catalog: EventCatalog = {
-  github: {
+  github: eventCatalogEntry({
     resourceTypes: [
       {
         type: "pull_request",
         supportedEvents: ["pull_request.comment.created"],
-        guidance: {
-          "pull_request.comment.created": "Address actionable feedback.",
-        },
       },
-      {
-        type: "repository",
-        supportedEvents: ["pull_request.comment.created"],
-        guidance: {
-          "pull_request.comment.created": "Address actionable feedback.",
-        },
-      },
+      { type: "repository", supportedEvents: ["pull_request.comment.created"] },
     ],
-  },
-  [CORE_EVENT_NAMESPACE]: workspaceSnapshotEvents(),
+    events: {
+      "pull_request.comment.created": {
+        reach: "resource",
+        guidance: "Address actionable feedback.",
+      },
+    },
+  }),
+  [CORE_EVENT_NAMESPACE]: eventCatalogEntry(workspaceSnapshotEvents()),
 };
 
 describe("event catalog", () => {
-  it("gives one guidance per event and rejects resource types that disagree", () => {
+  it("gives the declared guidance of an event for every resource type", () => {
     expect(
       eventGuidance(catalog, "github", "pull_request.comment.created"),
     ).toBe("Address actionable feedback.");
-    const disagreeing: EventCatalog = {
-      github: {
-        resourceTypes: [
-          ...catalog.github!.resourceTypes.slice(0, 1),
-          {
-            type: "repository",
-            supportedEvents: ["pull_request.comment.created"],
-          },
-        ],
-      },
-    };
-    expect(() =>
-      eventGuidance(disagreeing, "github", "pull_request.comment.created"),
-    ).toThrow(
-      'Resource types "pull_request", "repository" give different guidance for "pull_request.comment.created".',
-    );
+    expect(eventGuidance(catalog, "github", "issue.closed")).toBeUndefined();
   });
 
   it("rejects an identifier that does not fit its resource type", () => {
     const declared: EventCatalog = {
-      github: {
+      github: eventCatalogEntry({
         resourceTypes: [
           {
             type: "issue",
@@ -86,8 +69,12 @@ describe("event catalog", () => {
           },
           { type: "release_source", supportedEvents: ["release.published"] },
         ],
+        events: {
+          "issue.closed": { reach: "resource" },
+          "release.published": { reach: "resource" },
+        },
         normalizeIdentifier: (identifier) => identifier.toLowerCase(),
-      },
+      }),
     };
     const identifier = (resourceType: string, value: string) =>
       requireEventIdentifier(declared, {

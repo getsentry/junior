@@ -108,13 +108,13 @@ export function registeredEventAutomationTriggerSchema(catalog: EventCatalog) {
         .max(EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH)
         .nullable()
         .describe(
-          "Exact resource identifier. Omit or use null, with no resourceType, to run for every resource of the namespace. Only events listed in anyResourceEvents by searchEventTypes can run that way, and a requiredFilter there must be set in match.",
+          'Exact resource identifier. Use null, with a null resourceType, to run for every resource of the namespace. Only events whose searchEventTypes reach is "all" or { anyOf } can run that way, and match must set one of the anyOf filters. When creating, omit it to run for every resource. When updating, omit it to keep the saved identifier.',
         )
         .optional(),
       resourceType: registeredResourceTypeSchema(plugins)
         .nullable()
         .describe(
-          "Resource type of the identifier. Omit or use null when identifier is omitted.",
+          "Resource type of the identifier. Use null when identifier is null. When updating, omit it to keep the saved resource type.",
         )
         .optional(),
       label: z.string().trim().min(1).max(500),

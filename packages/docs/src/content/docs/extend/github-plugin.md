@@ -326,6 +326,16 @@ repository automation to one environment or one workflow. For example, an
 automation on `getsentry/toolkit` for `deployment.failed` can match
 `environment: "production"` and `workflowPath: ".github/workflows/deploy.yml"`.
 
+An event automation can also run for every repository, with no identifier.
+Deployment events (`deployment.created`, `deployment.queued`,
+`deployment.pending`, `deployment.in_progress`, `deployment.succeeded`,
+`deployment.failed`, `deployment.error`) can run that way with no filter.
+Release, issue, and pull request events need a `repo` filter, because they
+carry text from repositories that can be private. Junior saves `repo` in
+lowercase. The filter does not check that the creator can see the repository,
+so a broad deployment automation can post private repository names in its
+channel. See [Automations](/concepts/automations/).
+
 To always watch selected events after Junior creates a pull request in this
 app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
 app guidance for one pull request event type, set

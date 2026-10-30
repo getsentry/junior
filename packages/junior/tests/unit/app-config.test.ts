@@ -758,6 +758,7 @@ describe("createApp plugin config", () => {
         },
         events: {
           resourceTypes: [{ type: "issue", supportedEvents: ["closed"] }],
+          events: { closed: { reach: "resource" } },
         },
       }),
     ).toThrow('Junior plugin "event-demo" events is invalid.');
@@ -776,6 +777,7 @@ describe("createApp plugin config", () => {
               supportedEvents: ["issue.closed", "issue.closed"],
             },
           ],
+          events: { "issue.closed": { reach: "resource" } },
         },
       }),
     ).toThrow('Junior plugin "event-demo" events is invalid.');
@@ -795,6 +797,7 @@ describe("createApp plugin config", () => {
               supportedEvents: ["issue.closed"],
             },
           ],
+          events: { "issue.closed": { reach: "resource" } },
         },
       }),
     ).toThrow('Junior plugin "event-demo" events is invalid.');

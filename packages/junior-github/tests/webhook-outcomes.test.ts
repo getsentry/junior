@@ -1340,6 +1340,8 @@ describe("GitHub webhook events", () => {
         },
       }),
     ).toEqual({
+      // Core uses the repo to skip broad triggers for other repositories.
+      data: { repo: "getsentry/junior" },
       eventTypes: ["pull_request.checks.recovered"],
       identifiers: ["getsentry/junior", "getsentry/junior#10"],
     });

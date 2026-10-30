@@ -86,13 +86,17 @@ export async function mockAutomationEditor(
       json: [
         {
           namespace: "github",
-          type: "issue",
-          supportedEvents: ["issue.closed", "issue.opened"],
-          matchFields: {
+          displayName: "GitHub",
+          events: {
+            "issue.closed": { reach: { anyOf: ["state"] } },
+            "issue.opened": { reach: "all" },
+          },
+          anyResourceFields: {
             state: {
               kind: "string",
               description: "Issue state",
               enum: ["open", "closed"],
+              events: ["issue.closed", "issue.opened"],
             },
             closedBy: {
               kind: "string",
@@ -100,10 +104,24 @@ export async function mockAutomationEditor(
               events: ["issue.closed"],
             },
           },
-          anyResourceEvents: {
-            "issue.closed": { requiredFilter: "state" },
-            "issue.opened": {},
-          },
+          resourceTypes: [
+            {
+              type: "issue",
+              supportedEvents: ["issue.closed", "issue.opened"],
+              matchFields: {
+                state: {
+                  kind: "string",
+                  description: "Issue state",
+                  enum: ["open", "closed"],
+                },
+                closedBy: {
+                  kind: "string",
+                  description: "Login of who closed the issue",
+                  events: ["issue.closed"],
+                },
+              },
+            },
+          ],
         },
       ],
     }),

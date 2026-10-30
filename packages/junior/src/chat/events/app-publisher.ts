@@ -1,4 +1,4 @@
-import type { Event } from "@sentry/junior-plugin-api";
+import type { Event, EventData } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -19,6 +19,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 export type EventAppPublisher = {
   hasMatch(event: Event): Promise<boolean>;
   neededMatchKeys(input: {
+    data?: EventData;
     eventTypes: string[];
     identifiers: string[];
     namespace: string;
@@ -71,6 +72,8 @@ export function createEventAppPublisher(args: {
         }),
         eventAutomationTeamId
           ? collectEventAutomationMatchKeys(getDb(), {
+              catalog: getEventCatalog(),
+              ...(input.data ? { data: input.data } : undefined),
               eventTypes: input.eventTypes,
               identifiers: input.identifiers,
               namespace: input.namespace,

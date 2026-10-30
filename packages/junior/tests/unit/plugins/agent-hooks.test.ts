@@ -621,6 +621,7 @@ describe("agent plugin hooks", () => {
           resourceTypes: [
             { type: "demo", supportedEvents: ["demo.completed"] },
           ],
+          events: { "demo.completed": { reach: "resource" } },
         },
         hooks: {
           tools(ctx) {
@@ -693,6 +694,7 @@ describe("agent plugin hooks", () => {
           resourceTypes: [
             { type: "demo", supportedEvents: ["demo.completed"] },
           ],
+          events: { "demo.completed": { reach: "resource" } },
           isEnabled: () => enabled,
         },
         hooks: {
@@ -1098,6 +1100,7 @@ describe("agent plugin hooks", () => {
       defineJuniorPlugin({
         events: {
           resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+          events: { "demo.created": { reach: "resource" } },
           normalizeIdentifier: (identifier) => identifier.toLowerCase(),
         },
         manifest: {
@@ -1206,6 +1209,7 @@ describe("agent plugin hooks", () => {
       label: "while its registration is disabled",
       events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+        events: { "demo.created": { reach: "resource" as const } },
         isEnabled: () => false,
       },
       error: "without an active registration",
@@ -1214,6 +1218,7 @@ describe("agent plugin hooks", () => {
       label: "when the event type is undeclared",
       events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+        events: { "demo.created": { reach: "resource" as const } },
       },
       error: 'did not register event "demo.deleted"',
     },

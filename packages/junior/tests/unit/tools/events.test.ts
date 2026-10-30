@@ -1,5 +1,6 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { eventCatalogEntry } from "@/chat/events/catalog";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -35,7 +36,7 @@ const context: ToolRuntimeContext = {
 };
 
 const GITHUB_EVENTS = {
-  github: {
+  github: eventCatalogEntry({
     resourceTypes: [
       {
         type: "pull_request",
@@ -46,8 +47,21 @@ const GITHUB_EVENTS = {
         suggestedEvents: ["pull_request.checks.failed"],
       },
     ],
+    events: {
+      "pull_request.checks.failed": { reach: "resource" },
+      "pull_request.review.changes_requested": { reach: "resource" },
+    },
     normalizeIdentifier: (identifier: string) => identifier.toLowerCase(),
-  },
+  }),
+};
+
+const VERCEL_EVENTS = {
+  vercel: eventCatalogEntry({
+    resourceTypes: [
+      { type: "deployment", supportedEvents: ["deployment.succeeded"] },
+    ],
+    events: { "deployment.succeeded": { reach: "resource" } },
+  }),
 };
 
 describe("event tools", () => {
@@ -151,23 +165,17 @@ describe("event tools", () => {
       events: ["pull_request.checks.failed"],
     };
     const tools = createEventTools(context, {
-      vercel: {
-        resourceTypes: [
-          {
-            type: "deployment",
-            supportedEvents: ["deployment.succeeded"],
-          },
-        ],
-      },
-      github: {
+      ...VERCEL_EVENTS,
+      github: eventCatalogEntry({
         ...GITHUB_EVENTS.github,
         resourceTypes: GITHUB_EVENTS.github.resourceTypes.map(
           (resourceType) => ({ ...resourceType, matchFields: { authors } }),
         ),
-        anyResourceEvents: {
-          "pull_request.checks.failed": { requiredFilter: "authors" },
+        events: {
+          ...GITHUB_EVENTS.github.events,
+          "pull_request.checks.failed": { reach: { anyOf: ["authors"] } },
         },
-      },
+      }),
     });
 
     await expect(
@@ -187,10 +195,16 @@ describe("event tools", () => {
           suggestedEvents: ["pull_request.checks.failed"],
           // The agent needs `events` to pick events that the filter matches.
           matchFields: { authors },
-          // The agent can leave out the identifier for these events.
-          anyResourceEvents: [
-            { event: "pull_request.checks.failed", requiredFilter: "authors" },
-          ],
+        },
+      ],
+      // The reach of each event is given once for its namespace.
+      namespaces: [
+        {
+          namespace: "github",
+          reach: {
+            "pull_request.checks.failed": { anyOf: ["authors"] },
+            "pull_request.review.changes_requested": "resource",
+          },
         },
       ],
     });
@@ -199,14 +213,7 @@ describe("event tools", () => {
 
   it("exposes active plugin namespaces as an enum", () => {
     const tool = createEventTools(context, {
-      vercel: {
-        resourceTypes: [
-          {
-            type: "deployment",
-            supportedEvents: ["deployment.succeeded"],
-          },
-        ],
-      },
+      ...VERCEL_EVENTS,
       ...GITHUB_EVENTS,
     }).watchEvents!;
 
@@ -229,7 +236,7 @@ describe("event tools", () => {
 
   it("rejects events unsupported by the selected resource type", async () => {
     const tool = createEventTools(context, {
-      github: {
+      github: eventCatalogEntry({
         resourceTypes: [
           { type: "issue", supportedEvents: ["issue.closed"] },
           {
@@ -237,7 +244,11 @@ describe("event tools", () => {
             supportedEvents: ["pull_request.merged"],
           },
         ],
-      },
+        events: {
+          "issue.closed": { reach: "resource" },
+          "pull_request.merged": { reach: "resource" },
+        },
+      }),
     }).watchEvents!;
 
     await expect(

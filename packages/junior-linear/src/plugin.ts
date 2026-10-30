@@ -183,11 +183,12 @@ export function linearPlugin(): PluginRegistration {
         },
       ],
       // An issue carries its title and description, and a team can be
-      // private. So a trigger with no identifier must name its team.
-      anyResourceEvents: Object.fromEntries(
+      // private. So a trigger with no identifier must name its team or one
+      // issue.
+      events: Object.fromEntries(
         LINEAR_ISSUE_EVENTS.map((eventType) => [
           eventType,
-          { requiredFilter: "teamKey" },
+          { reach: { anyOf: ["teamKey", "issueIdentifier"] } },
         ]),
       ),
       isEnabled: () => Boolean(linearWebhookSecret()),

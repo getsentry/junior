@@ -26,6 +26,7 @@ export function gitHubRepoMatchFields(
   return eventMatchFieldsSchema.parse({
     repo: {
       kind: "string",
+      case: "lower",
       description:
         "lowercase repository as owner/repo, such as getsentry/junior",
       events,
@@ -40,6 +41,7 @@ export function gitHubCommitMatchFields(
   return eventMatchFieldsSchema.parse({
     commitSha: {
       kind: "string",
+      case: "lower",
       description: "full lowercase Git commit SHA",
       events,
     },

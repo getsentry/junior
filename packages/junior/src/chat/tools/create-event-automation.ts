@@ -73,7 +73,7 @@ export function createEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. When the resource and events are known, create it without redundant confirmation. To run for every resource of a namespace, such as any Sentry metric alert, leave out identifier and resourceType and use match filters; searchEventTypes lists the events that allow it in anyResourceEvents and the filter each one needs. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
+      "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. When the resource and events are known, create it without redundant confirmation. To run for every resource of a namespace, such as any Sentry metric alert, leave out identifier and resourceType and use match filters; searchEventTypes gives the reach of each event in namespaces, and an { anyOf } reach names the filters to choose from. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema,

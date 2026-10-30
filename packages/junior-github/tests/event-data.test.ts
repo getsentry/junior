@@ -217,32 +217,42 @@ async function publish(
   const events: EventInput[] = [];
   for (const [index, delivery] of deliveries.entries()) {
     const deliveryId = `${deliveryPrefix}-${index}`;
-    events.push(
-      ...(await withGitHubPullRequestMatchData({
-        body: delivery.body,
+    const known: Record<string, unknown>[] = [];
+    const published = await withGitHubPullRequestMatchData({
+      body: delivery.body,
+      botEmail,
+      db,
+      deliveryId,
+      events: normalizeGitHubEvents({
+        ...delivery,
         botEmail,
-        db,
-        deliveryId,
-        events: normalizeGitHubEvents({
-          ...delivery,
-          botEmail,
-          checkSuiteFacts: {
-            pullRequestFactsByNumber: {
-              [BASE_SCOPE.pullRequest]: {
-                isDraft: false,
-                openerEmail: opener.email,
-                openerUsername: opener.login,
-              },
+        checkSuiteFacts: {
+          pullRequestFactsByNumber: {
+            [BASE_SCOPE.pullRequest]: {
+              isDraft: false,
+              openerEmail: opener.email,
+              openerUsername: opener.login,
             },
           },
-          deliveryId,
-        }),
-        hasMatch: async () => true,
-        loadAuthors: async () => ["dcramer"],
-        loadRole: async () => "write",
-        neededMatchKeys: async () => fieldNames,
-      })),
-    );
+        },
+        deliveryId,
+      }),
+      hasMatch: async () => true,
+      loadAuthors: async () => ["dcramer"],
+      loadRole: async () => "write",
+      neededMatchKeys: async (input) => {
+        known.push(input.data ?? {});
+        return fieldNames;
+      },
+    });
+    // Core skips broad triggers whose filters fail on the data it gets
+    // before the lookups, so every published copy must have that data.
+    for (const data of known) {
+      for (const event of published) {
+        expect(event.data).toMatchObject(data);
+      }
+    }
+    events.push(...published);
   }
   return events;
 }

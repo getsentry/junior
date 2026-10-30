@@ -174,8 +174,10 @@ test("replaces an Event trigger with one for any resource", async ({
   await page.getByLabel("Resource type").selectOption("github:*");
   await page.getByRole("button", { name: "Replace trigger" }).click();
   await expect(page.getByLabel("Resource identifier")).toHaveCount(0);
-  await page.getByLabel("Resource name").fill("Closed issues");
+  // A trigger with no identifier names no resource.
+  await page.getByLabel("Trigger name").fill("Closed issues");
   await page.getByRole("checkbox", { name: /^issue closed/ }).check();
+  await screenshot(page, "automation-event-editor-any-resource");
   // The shared check names the filter that this event needs.
   await expect(
     page.getByText('This trigger needs a "state" filter'),

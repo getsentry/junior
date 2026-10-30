@@ -9,6 +9,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import {
   describeRegisteredEventTrigger,
+  eventCatalogEntry,
   registeredEventTriggerProblems,
   requireValidEventTrigger,
   type EventCatalog,
@@ -16,7 +17,7 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const catalog: EventCatalog = {
-  github: {
+  github: eventCatalogEntry({
     displayName: "GitHub",
     resourceTypes: [
       {
@@ -52,7 +53,12 @@ const catalog: EventCatalog = {
         supportedEvents: ["issue.opened"],
       },
     ],
-  },
+    events: {
+      "issue.opened": { reach: "resource" },
+      "pull_request.comment.created": { reach: "resource" },
+      "pull_request.opened": { reach: "resource" },
+    },
+  }),
 };
 
 describe("eventMatches", () => {
@@ -198,7 +204,9 @@ describe("mergeEventMatchFields", () => {
         },
         pullRequestFields,
       ),
-    ).toThrow('Match field "senderId" has a different kind, enum, or list');
+    ).toThrow(
+      'Match field "senderId" has a different kind, case, enum, or list',
+    );
     expect(() =>
       mergeEventMatchFields(
         { senderId: { kind: "number", description: "every commenter" } },
@@ -260,10 +268,11 @@ describe("describeRegisteredEventTrigger", () => {
 describe("triggers with no identifier", () => {
   const repo = {
     kind: "string",
+    case: "lower",
     description: "repository full name",
   } as const;
   const anyCatalog: EventCatalog = {
-    github: {
+    github: eventCatalogEntry({
       displayName: "GitHub",
       resourceTypes: [
         {
@@ -286,12 +295,13 @@ describe("triggers with no identifier", () => {
           },
         },
       ],
-      anyResourceEvents: {
-        "deployment.failed": {},
-        "pull_request.opened": { requiredFilter: "repo" },
+      events: {
+        "deployment.failed": { reach: "all" },
+        "pull_request.opened": { reach: { anyOf: ["repo"] } },
+        "pull_request.merged": { reach: "resource" },
       },
-    },
-    sentry: {
+    }),
+    sentry: eventCatalogEntry({
       displayName: "Sentry",
       resourceTypes: [
         {
@@ -302,11 +312,28 @@ describe("triggers with no identifier", () => {
           },
         },
       ],
-      anyResourceEvents: { "metric_alert.critical": {} },
-    },
-    linear: {
-      resourceTypes: [{ type: "team", supportedEvents: ["issue.created"] }],
-    },
+      events: { "metric_alert.critical": { reach: "all" } },
+    }),
+    linear: eventCatalogEntry({
+      resourceTypes: [
+        {
+          type: "team",
+          supportedEvents: ["issue.created", "issue.updated"],
+          matchFields: {
+            teamKey: { kind: "string", case: "upper", description: "team key" },
+            issueIdentifier: {
+              kind: "string",
+              case: "upper",
+              description: "issue identifier",
+            },
+          },
+        },
+      ],
+      events: {
+        "issue.created": { reach: "resource" },
+        "issue.updated": { reach: { anyOf: ["teamKey", "issueIdentifier"] } },
+      },
+    }),
   };
   const problems = (
     namespace: string,
@@ -336,7 +363,7 @@ describe("triggers with no identifier", () => {
     ).toEqual([{ reason: "field_not_set", field: "environment" }]);
   });
 
-  it("names the filter that an event needs", () => {
+  it("names the filters that an event needs, and accepts any one of them", () => {
     expect(problems("github", ["pull_request.opened"])).toEqual([
       { reason: "filter_required", field: "repo" },
     ]);
@@ -351,6 +378,37 @@ describe("triggers with no identifier", () => {
         'This GitHub trigger cannot be saved. This trigger needs a "repo" filter (match.repo), because "pull_request.opened" cannot run for every resource.',
       ),
     );
+    expect(problems("linear", ["issue.updated"])).toEqual([
+      { reason: "filter_required", field: "teamKey" },
+    ]);
+    expect(
+      problems("linear", ["issue.updated"], { issueIdentifier: "JR-1" }),
+    ).toEqual([]);
+  });
+
+  it("saves filter values in the case that the plugin declares", () => {
+    expect(
+      requireValidEventTrigger(
+        anyCatalog,
+        {
+          namespace: "github",
+          events: ["pull_request.opened"],
+          match: { repo: "getsentry/Junior" },
+        },
+        "event_automation",
+      ),
+    ).toEqual({ repo: "getsentry/junior" });
+    expect(
+      requireValidEventTrigger(
+        anyCatalog,
+        {
+          namespace: "linear",
+          events: ["issue.updated"],
+          match: { teamKey: "jr" },
+        },
+        "event_automation",
+      ),
+    ).toEqual({ teamKey: "JR" });
   });
 
   it("rejects events and sources that need an identifier", () => {
@@ -362,39 +420,30 @@ describe("triggers with no identifier", () => {
     ]);
   });
 
-  it("rejects a plugin registration that cannot keep its events narrow", () => {
+  it("rejects a plugin registration without one valid declaration for each event", () => {
     const issues = (events: unknown) =>
       pluginEventsSchema
         .safeParse(events)
         .error?.issues.map((issue) => issue.message);
-    const { displayName: _name, ...github } = anyCatalog.github!;
+    const {
+      displayName: _name,
+      anyResourceFields: _fields,
+      ...github
+    } = anyCatalog.github!;
     expect(issues(github)).toBeUndefined();
     expect(
       issues({
         ...github,
-        anyResourceEvents: {
-          "deployment.failed": { requiredFilter: "isDraft" },
-          "issue.closed": {},
+        events: {
+          "deployment.failed": { reach: { anyOf: ["isDraft"] } },
+          "pull_request.opened": { reach: "all" },
+          "issue.closed": { reach: "all" },
         },
       }),
     ).toEqual([
-      'Required filter "isDraft" is not set on "deployment.failed".',
-      'Any-resource event type "issue.closed" is not supported.',
-    ]);
-    // The agent gets one guidance for an event, whatever its resource type.
-    expect(
-      issues({
-        resourceTypes: [
-          {
-            type: "pull_request",
-            supportedEvents: ["pull_request.opened"],
-            guidance: { "pull_request.opened": "Review it." },
-          },
-          { type: "repository", supportedEvents: ["pull_request.opened"] },
-        ],
-      }),
-    ).toEqual([
-      'Resource types "pull_request", "repository" give different guidance for "pull_request.opened".',
+      'Event type "pull_request.merged" has no declaration in events.',
+      'Reach filter "isDraft" is not set on "deployment.failed".',
+      'Declared event type "issue.closed" is not supported.',
     ]);
   });
 

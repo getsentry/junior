@@ -139,11 +139,19 @@ export function createUpdateEventAutomationTool(
           {
             title: input.title,
             instruction: input.instruction ?? undefined,
+            // An omitted identifier or resource type keeps the saved one.
+            // Only an explicit null makes the trigger run for every resource.
             trigger: input.trigger
               ? {
                   ...input.trigger,
-                  identifier: input.trigger.identifier ?? undefined,
-                  resourceType: input.trigger.resourceType ?? undefined,
+                  identifier:
+                    input.trigger.identifier === undefined
+                      ? current.trigger.identifier
+                      : (input.trigger.identifier ?? undefined),
+                  resourceType:
+                    input.trigger.resourceType === undefined
+                      ? current.trigger.resourceType
+                      : (input.trigger.resourceType ?? undefined),
                 }
               : undefined,
             outcomes: input.outcomes ?? undefined,

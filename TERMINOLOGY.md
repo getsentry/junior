@@ -71,6 +71,12 @@ Canonical words used across Junior's code and documentation.
   its outcome. It is not a Run.
 - **Scheduled automation**: an Automation that has a Schedule trigger.
 - **Event automation**: an Automation that has an Event trigger.
+- **Event reach**: which event automation triggers can select one event type.
+  Each source declares it once for each of its event types. `"all"` lets a
+  trigger with no identifier run for every resource of the source.
+  `{ anyOf }` lets such a trigger run only when it sets one of the named
+  filters. `"resource"` needs a trigger with an identifier. Reach limits scope
+  and noise. It is not access control.
 - **Inbound message**: one normalized source event made available to the agent.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.

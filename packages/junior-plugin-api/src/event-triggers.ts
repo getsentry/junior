@@ -7,10 +7,9 @@
  * editor, so all of them use the same rules.
  */
 import {
-  anyResourceMatchFields,
   type EventMatch,
   type EventMatchFields,
-  type PluginEvents,
+  type EventReach,
   type PluginEventType,
 } from "./events";
 
@@ -23,8 +22,8 @@ export interface EventTriggerProblem {
    * - `unknown_event`: the resource type has no such event.
    * - `identifier_required`: a trigger with no identifier selects an event
    *   that cannot run for every resource.
-   * - `filter_required`: a trigger with no identifier selects an event that
-   *   needs a filter, and the trigger does not set it.
+   * - `filter_required`: a trigger with no identifier selects an event whose
+   *   reach names filters, and the trigger sets none of them.
    * - `unknown_field`: the resource type has no such filter. Saved triggers
    *   get this after a plugin renames or removes a filter.
    * - `field_not_set`: a selected event never sets the filter, so the filter
@@ -56,13 +55,27 @@ export interface EventTriggerSelection {
   match?: EventMatch;
 }
 
-/** The enabled resource types of one source, and the events that can run for any resource. */
+/** The enabled resource types of one source, and the reach of each of its events. */
 export interface EventTriggerSource {
   resourceTypes: readonly Pick<
     PluginEventType,
     "type" | "matchFields" | "supportedEvents"
   >[];
-  anyResourceEvents?: PluginEvents["anyResourceEvents"];
+  events: Readonly<Record<string, { reach: EventReach }>>;
+  /**
+   * The filters of every resource type, for a trigger with no identifier.
+   * Merge them once with `anyResourceMatchFields` when the catalog is built,
+   * not for each check.
+   */
+  anyResourceFields: EventMatchFields;
+}
+
+/** The events of a source that a trigger with no identifier can select. */
+export function anyResourceEvents(source: EventTriggerSource): string[] {
+  return Object.entries(source.events)
+    .filter(([, declaration]) => declaration.reach !== "resource")
+    .map(([eventType]) => eventType)
+    .sort();
 }
 
 function quoted(values: readonly string[]): string {
@@ -121,7 +134,7 @@ function selectionScope(
     }
   | EventTriggerProblem {
   if (selection.resourceType === undefined) {
-    const events = Object.keys(source.anyResourceEvents ?? {});
+    const events = anyResourceEvents(source);
     if (events.length === 0) {
       return {
         reason: "identifier_required",
@@ -129,11 +142,7 @@ function selectionScope(
           "This source cannot run for every resource. Set a resource type and an identifier.",
       };
     }
-    return {
-      events,
-      fields: anyResourceMatchFields(source.resourceTypes),
-      owner: "source",
-    };
+    return { events, fields: source.anyResourceFields, owner: "source" };
   }
   const resourceType = source.resourceTypes.find(
     (candidate) => candidate.type === selection.resourceType,
@@ -153,8 +162,8 @@ function selectionScope(
 
 /**
  * Return the events and filters that a selection can use: those of its
- * resource type, or with no resource type, the source's `anyResourceEvents`
- * with the filters of every resource type. Return nothing when the source
+ * resource type, or with no resource type, the events whose reach is not
+ * `"resource"`, with the filters of every resource type. Return nothing when the source
  * has no such resource type or cannot run for every resource.
  */
 export function eventTriggerChoices(
@@ -173,9 +182,9 @@ export function eventTriggerChoices(
  * empty list means the resource type exists, every selected event is
  * supported, and every selected event can match every filter. A filter on a
  * list field (`list: true`) matches when the event list includes the value.
- * A selection with no resource type can use only the source's
- * `anyResourceEvents`, with the filters of every resource type, and must set
- * each filter that those events require.
+ * A selection with no resource type can use only events whose reach is not
+ * `"resource"`, with the filters of every resource type, and must set one of
+ * the filters that the reach of each selected event names.
  * Set `inputKeys` for the agent, so messages name the `match.<key>` input.
  */
 export function eventTriggerProblems(
@@ -252,25 +261,34 @@ export function eventTriggerProblems(
   return problems;
 }
 
-/** Name each filter that the selected events need and the trigger does not set. */
+/** Name the filters that the selected events need and the trigger does not set. */
 function requiredFilterProblems(
   source: EventTriggerSource,
   events: readonly string[],
   selection: EventTriggerSelection,
   options: { inputKeys?: boolean },
 ): EventTriggerProblem[] {
-  const missing = new Map<string, string[]>();
+  const missing = new Map<string, { anyOf: string[]; events: string[] }>();
   for (const eventType of events) {
-    const filter = source.anyResourceEvents?.[eventType]?.requiredFilter;
-    if (filter === undefined || selection.match?.[filter] !== undefined) {
+    const reach = source.events[eventType]?.reach;
+    if (typeof reach !== "object") continue;
+    if (reach.anyOf.some((filter) => selection.match?.[filter] !== undefined)) {
       continue;
     }
-    missing.set(filter, [...(missing.get(filter) ?? []), eventType]);
+    const key = [...reach.anyOf].sort().join(",");
+    const entry = missing.get(key) ?? { anyOf: reach.anyOf, events: [] };
+    entry.events.push(eventType);
+    missing.set(key, entry);
   }
-  return [...missing].map(([filter, requiredBy]) => ({
+  const inputKey = (filter: string) =>
+    options.inputKeys ? ` (match.${filter})` : "";
+  return [...missing.values()].map(({ anyOf, events: requiredBy }) => ({
     reason: "filter_required",
-    field: filter,
-    message: `This trigger needs a "${filter}" filter${options.inputKeys ? ` (match.${filter})` : ""}, because ${quoted(requiredBy)} cannot run for every resource.`,
+    field: anyOf[0],
+    message:
+      anyOf.length === 1
+        ? `This trigger needs a "${anyOf[0]}" filter${inputKey(anyOf[0]!)}, because ${quoted(requiredBy)} cannot run for every resource.`
+        : `This trigger needs one of these filters: ${anyOf.map((filter) => `"${filter}"${inputKey(filter)}`).join(", ")}, because ${quoted(requiredBy)} cannot run for every resource.`,
   }));
 }
 

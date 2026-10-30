@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  anyResourceEvents,
   describeEventTrigger,
   eventTriggerChoices,
   eventMatchFilterText,
@@ -41,6 +42,30 @@ type Trigger = Extract<AutomationEdit, { kind: "event" }>["trigger"];
 // Select value for a trigger with no identifier, which runs for any resource.
 const ANY_RESOURCE = "*";
 
+const NO_SOURCE: EventTriggerSource = {
+  resourceTypes: [],
+  events: {},
+  anyResourceFields: {},
+};
+
+/**
+ * Say which filter an event needs when a trigger has no identifier, with the
+ * filter descriptions, such as "needs a filter: lowercase repository".
+ */
+function reachText(
+  source: EventTriggerSource,
+  eventType: string,
+): string | undefined {
+  const reach = source.events[eventType]?.reach;
+  if (typeof reach !== "object") return undefined;
+  const filters = reach.anyOf.map(
+    (key) => source.anyResourceFields[key]?.description ?? key,
+  );
+  return filters.length === 1
+    ? `needs a filter: ${filters[0]}`
+    : `needs one of these filters: ${filters.join("; or ")}`;
+}
+
 /** Render registered Event choices without discarding unsupported saved selectors. */
 export function AutomationEventFields(props: {
   value: Trigger;
@@ -60,13 +85,11 @@ export function AutomationEventFields(props: {
       ),
     retry: false,
   });
-  const sourceResourceTypes =
-    catalog.data?.filter((item) => item.namespace === props.value.namespace) ??
-    [];
-  const source: EventTriggerSource = {
-    resourceTypes: sourceResourceTypes,
-    anyResourceEvents: sourceResourceTypes[0]?.anyResourceEvents,
-  };
+  const entry = catalog.data?.find(
+    (item) => item.namespace === props.value.namespace,
+  );
+  const source: EventTriggerSource = entry ?? NO_SOURCE;
+  const displayName = entry?.displayName ?? props.value.namespace;
   const anyResource = props.value.resourceType === undefined;
   const choices = eventTriggerChoices(source, props.value);
   const problems = catalog.data
@@ -82,13 +105,8 @@ export function AutomationEventFields(props: {
         problem.reason !== "field_not_set" &&
         problem.reason !== "filter_required",
     );
-  const anyResourceNamespaces = [
-    ...new Set(
-      catalog.data
-        ?.filter((item) => item.anyResourceEvents)
-        .map((item) => item.namespace),
-    ),
-  ];
+  const anyResourceSources =
+    catalog.data?.filter((item) => anyResourceEvents(item).length > 0) ?? [];
   const matchFields = Object.entries(choices?.fields ?? {});
   const shownMatchFields = matchFields.filter(
     ([key, field]) =>
@@ -118,7 +136,11 @@ export function AutomationEventFields(props: {
         <FormNotice title="Saved trigger · Kept unchanged">
           Some saved values are not in the current catalog. You can edit other
           fields, or select a new resource type to replace the trigger.
-          <SavedTrigger source={source} trigger={props.value} />
+          <SavedTrigger
+            displayName={displayName}
+            source={source}
+            trigger={props.value}
+          />
         </FormNotice>
       ) : null}
       <Field>
@@ -138,12 +160,12 @@ export function AutomationEventFields(props: {
               setReplacement({ namespace, label: "", events: [] });
               return;
             }
-            const next = catalog.data?.find(
-              (item) => `${item.namespace}:${item.type}` === e.target.value,
-            );
-            if (!next) return;
+            const next = catalog.data
+              ?.find((item) => item.namespace === namespace)
+              ?.resourceTypes.find((item) => item.type === type);
+            if (!namespace || !next) return;
             setReplacement({
-              namespace: next.namespace,
+              namespace,
               resourceType: next.type,
               identifier: "",
               label: "",
@@ -154,22 +176,24 @@ export function AutomationEventFields(props: {
           <option value="" disabled>
             Keep saved trigger
           </option>
-          {anyResourceNamespaces.map((namespace) => (
+          {anyResourceSources.map((item) => (
             <option
-              key={`${namespace}:${ANY_RESOURCE}`}
-              value={`${namespace}:${ANY_RESOURCE}`}
+              key={`${item.namespace}:${ANY_RESOURCE}`}
+              value={`${item.namespace}:${ANY_RESOURCE}`}
             >
-              {namespace} · any resource
+              {item.displayName} · any resource
             </option>
           ))}
-          {catalog.data?.map((item) => (
-            <option
-              key={`${item.namespace}:${item.type}`}
-              value={`${item.namespace}:${item.type}`}
-            >
-              {item.namespace} · {item.type.replaceAll("_", " ")}
-            </option>
-          ))}
+          {catalog.data?.flatMap((item) =>
+            item.resourceTypes.map((resourceType) => (
+              <option
+                key={`${item.namespace}:${resourceType.type}`}
+                value={`${item.namespace}:${resourceType.type}`}
+              >
+                {item.displayName} · {resourceType.type.replaceAll("_", " ")}
+              </option>
+            )),
+          )}
         </NativeSelect>
       </Field>
       <AlertDialog
@@ -200,7 +224,9 @@ export function AutomationEventFields(props: {
       {!unsupported && choices ? (
         <>
           <Field>
-            <FieldLabel htmlFor="trigger-label">Resource name</FieldLabel>
+            <FieldLabel htmlFor="trigger-label">
+              {anyResource ? "Trigger name" : "Resource name"}
+            </FieldLabel>
             <Input
               size="comfortable"
               id="trigger-label"
@@ -261,12 +287,10 @@ export function AutomationEventFields(props: {
                   />
                   <span className="min-w-0 break-words">
                     {eventTypeText(event)}
-                    {anyResource &&
-                    source.anyResourceEvents?.[event]?.requiredFilter ? (
+                    {anyResource && reachText(source, event) ? (
                       <span className="text-dashboard-text-muted">
                         {" "}
-                        · needs a{" "}
-                        {source.anyResourceEvents[event].requiredFilter} filter
+                        · {reachText(source, event)}
                       </span>
                     ) : null}
                   </span>
@@ -368,7 +392,11 @@ export function AutomationEventFields(props: {
 }
 
 /** Show the saved trigger and its problems in the same words as the details. */
-function SavedTrigger(props: { source: EventTriggerSource; trigger: Trigger }) {
+function SavedTrigger(props: {
+  displayName: string;
+  source: EventTriggerSource;
+  trigger: Trigger;
+}) {
   const description = describeEventTrigger(props.source, props.trigger);
   return (
     <>
@@ -379,7 +407,7 @@ function SavedTrigger(props: { source: EventTriggerSource; trigger: Trigger }) {
       </ul>
       <div className="text-xs">
         <p className="m-0 break-words">
-          {props.trigger.namespace} ·{" "}
+          {props.displayName} ·{" "}
           {props.trigger.resourceType?.replaceAll("_", " ") ?? "any resource"}
           {props.trigger.identifier ? ` · ${props.trigger.identifier}` : null}
         </p>

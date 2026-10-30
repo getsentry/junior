@@ -1,5 +1,5 @@
 import { githubPlugin } from "@sentry/junior-github";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
@@ -9,6 +9,8 @@ import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
+import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
+import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
   createConversationWorkQueueTestAdapter,
@@ -97,20 +99,61 @@ describe("event automations with no identifier", () => {
           "half-resource",
         ),
       ).rejects.toThrow("Set both resourceType and identifier");
+      // Event data has a lowercase repo, so the saved filter does too.
       const created = await create(
-        { ...trigger, match: { repo: "getsentry/junior" } },
+        { ...trigger, match: { repo: "getsentry/Junior" } },
         "any-pull-request",
       );
       expect(created.automation.trigger).toMatchObject({
         identifier: null,
         resourceType: null,
+        match: { repo: "getsentry/junior" },
       });
       const [row] = await fixture.sql
         .db()
-        .select({ identifier: juniorAutomations.identifier })
+        .select()
         .from(juniorAutomations)
         .where(eq(juniorAutomations.id, created.automation.id));
-      expect(row).toEqual({ identifier: null });
+      expect(row?.identifier).toBeNull();
+      // The runtime gate skips rows that no tool can save: a broad pull
+      // request row with no repo filter, a row whose identifier column and
+      // saved trigger disagree, and a row that does not parse. The good row
+      // still runs.
+      const record = row!.record as EventAutomationRecord;
+      await fixture.sql
+        .db()
+        .insert(juniorAutomations)
+        .values([
+          {
+            ...row!,
+            id: "evt_no_repo_filter",
+            record: {
+              ...record,
+              trigger: { ...record.trigger, match: undefined },
+            },
+          },
+          {
+            ...row!,
+            id: "evt_column_without_identifier",
+            record: {
+              ...record,
+              trigger: {
+                ...record.trigger,
+                identifier: "getsentry/sentry#7",
+                resourceType: "pull_request",
+                match: undefined,
+              },
+            },
+          },
+          { ...row!, id: "evt_bad_record" },
+        ]);
+      await fixture.sql
+        .db()
+        .update(juniorAutomations)
+        .set({
+          record: sql`jsonb_set(${juniorAutomations.record}, '{task}', 'null'::jsonb)`,
+        })
+        .where(eq(juniorAutomations.id, "evt_bad_record"));
       // Deployment facts can run for every repository with no filter.
       await create(
         {
@@ -157,6 +200,48 @@ describe("event automations with no identifier", () => {
       expect(dispatch?.input).toContain(
         "About: New pull requests in getsentry/junior",
       );
+
+      // An update that leaves out identifier and resourceType keeps them,
+      // so it cannot make a trigger broad by omission.
+      const one = await create(
+        {
+          ...trigger,
+          identifier: "getsentry/junior#7",
+          resourceType: "pull_request",
+          label: "getsentry/junior#7",
+        },
+        "one-pull-request",
+      );
+      const update = (next: Record<string, unknown>, toolCallId: string) =>
+        execute(
+          createUpdateEventAutomationTool(context(), catalog),
+          { automationId: one.automation.id, trigger: next },
+          toolCallId,
+        ) as Promise<{
+          automation: { trigger: Record<string, unknown> };
+        }>;
+      const edited = { ...trigger, label: "Opened getsentry/junior#7" };
+      await expect(update(edited, "keep-identifier")).resolves.toMatchObject({
+        automation: {
+          trigger: {
+            identifier: "getsentry/junior#7",
+            resourceType: "pull_request",
+          },
+        },
+      });
+      // Only explicit nulls drop them, and then the trigger needs a repo.
+      const broad = { ...edited, identifier: null, resourceType: null };
+      await expect(update(broad, "drop-identifier")).rejects.toThrow(
+        'This trigger needs a "repo" filter (match.repo)',
+      );
+      await expect(
+        update(
+          { ...broad, match: { repo: "getsentry/junior" } },
+          "drop-identifier-with-repo",
+        ),
+      ).resolves.toMatchObject({
+        automation: { trigger: { identifier: null, resourceType: null } },
+      });
     } finally {
       vi.unstubAllEnvs();
     }

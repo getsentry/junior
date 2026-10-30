@@ -1,12 +1,16 @@
 import {
+  anyResourceMatchFields,
   describeEventTrigger,
+  eventTriggerChoices,
   eventTriggerProblems,
   normalizeEventIdentifier,
+  normalizeEventMatch,
   eventMatchSchema,
-  sourceEventGuidance,
+  type EventMatchFields,
   type EventTriggerDescription,
   type EventTriggerProblem,
   type EventTriggerSelection,
+  type EventTriggerSource,
   type PluginEvents,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
@@ -31,9 +35,10 @@ export type EventResourceTypeLimits = {
     }
 );
 
-type EventRegistration = Pick<
+/** One source as a plugin or core registers it, before the catalog adds merged filters. */
+export type EventRegistrationInput = Pick<
   PluginEvents,
-  "anyResourceEvents" | "resourceTypes" | "normalizeIdentifier"
+  "events" | "resourceTypes" | "normalizeIdentifier"
 > & {
   /** Name people see for the source, such as GitHub. Defaults to the namespace. */
   displayName?: string;
@@ -41,7 +46,33 @@ type EventRegistration = Pick<
   limits?: Readonly<Record<string, EventResourceTypeLimits>>;
 };
 
+type EventRegistration = EventRegistrationInput & {
+  /** The filters of every resource type, merged once when the catalog is built. */
+  anyResourceFields: EventMatchFields;
+};
+
 export type EventCatalog = Readonly<Record<string, EventRegistration>>;
+
+/** A source with nothing enabled, for a namespace that the catalog lacks. */
+const NO_SOURCE: EventTriggerSource = {
+  resourceTypes: [],
+  events: {},
+  anyResourceFields: {},
+};
+
+/**
+ * Build one catalog entry. It merges the filters of every resource type here,
+ * once, so trigger checks for each event copy and each row do not merge them
+ * again.
+ */
+export function eventCatalogEntry(
+  registration: EventRegistrationInput,
+): EventRegistration {
+  return {
+    ...registration,
+    anyResourceFields: anyResourceMatchFields(registration.resourceTypes),
+  };
+}
 
 /** Core-owned event namespace. Not a plugin publisher. */
 export const CORE_EVENT_NAMESPACE = "junior";
@@ -65,9 +96,27 @@ export function automationEventCatalog(catalog: EventCatalog): EventCatalog {
         (resourceType) =>
           registration.limits?.[resourceType.type]?.automation !== false,
       );
-      return resourceTypes.length > 0
-        ? [[namespace, { ...registration, resourceTypes }]]
-        : [];
+      if (resourceTypes.length === 0) return [];
+      if (resourceTypes.length === registration.resourceTypes.length) {
+        return [[namespace, registration]];
+      }
+      const supported = new Set(
+        resourceTypes.flatMap((resourceType) => resourceType.supportedEvents),
+      );
+      return [
+        [
+          namespace,
+          eventCatalogEntry({
+            ...registration,
+            resourceTypes,
+            events: Object.fromEntries(
+              Object.entries(registration.events).filter(([eventType]) =>
+                supported.has(eventType),
+              ),
+            ),
+          }),
+        ],
+      ];
     }),
   );
 }
@@ -128,19 +177,16 @@ export function registeredResourceTypeSchema(catalog: EventCatalog) {
 }
 
 /**
- * Return app guidance for one event of a namespace. Every resource type that
- * has the event gives the same guidance, so a trigger with no resource type
- * gets it too. This throws when two resource types disagree.
+ * Return app guidance for one event of a namespace. The source declares it
+ * once for the event, so every resource type and a trigger with no resource
+ * type get the same guidance.
  */
 export function eventGuidance(
   catalog: EventCatalog,
   namespace: string,
   eventType: string,
 ): string | undefined {
-  return sourceEventGuidance(
-    catalog[namespace]?.resourceTypes ?? [],
-    eventType,
-  );
+  return catalog[namespace]?.events[eventType]?.guidance;
 }
 
 /** Build the match object the tools accept for one resource type. */
@@ -168,7 +214,7 @@ export function registeredEventTriggerProblems(
   options?: { inputKeys?: boolean },
 ): EventTriggerProblem[] {
   return eventTriggerProblems(
-    catalog[selection.namespace] ?? { resourceTypes: [] },
+    catalog[selection.namespace] ?? NO_SOURCE,
     selection,
     options,
   );
@@ -183,7 +229,7 @@ export function describeRegisteredEventTrigger(
   selection: RegisteredEventSelection,
 ): EventTriggerDescription {
   return describeEventTrigger(
-    catalog[selection.namespace] ?? { resourceTypes: [] },
+    catalog[selection.namespace] ?? NO_SOURCE,
     selection,
   );
 }
@@ -200,7 +246,8 @@ function uniqueMatchValues(match: EventMatch | undefined) {
 
 /**
  * Reject an event automation trigger or a Watch that cannot work, with every
- * problem in one message for the agent. Return its match without repeated
+ * problem in one message for the agent. Return its match as it is saved:
+ * each text value in the case that its plugin declares, with no repeated
  * list values.
  */
 export function requireValidEventTrigger(
@@ -208,7 +255,14 @@ export function requireValidEventTrigger(
   selection: RegisteredEventSelection,
   target: "event_automation" | "watch",
 ): EventMatch | undefined {
-  const problems = registeredEventTriggerProblems(catalog, selection, {
+  const fields =
+    eventTriggerChoices(catalog[selection.namespace] ?? NO_SOURCE, selection)
+      ?.fields ?? {};
+  const normalized = {
+    ...selection,
+    match: normalizeEventMatch(fields, selection.match),
+  };
+  const problems = registeredEventTriggerProblems(catalog, normalized, {
     inputKeys: true,
   });
   if (problems.length > 0) {
@@ -226,7 +280,7 @@ export function requireValidEventTrigger(
       ].join(" "),
     );
   }
-  return uniqueMatchValues(selection.match);
+  return uniqueMatchValues(normalized.match);
 }
 
 /**
