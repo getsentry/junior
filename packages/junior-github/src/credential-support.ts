@@ -14,7 +14,13 @@ import type {
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
+import type { GitHubDb } from "./db/database.js";
 import { ownerFromLeaseScope } from "./installation-targets.js";
+import {
+  findGitHubInstallationId,
+  replaceGitHubInstallations,
+  type GitHubInstallation,
+} from "./installations/store.js";
 import {
   type GitHubAppPermissions,
   readGrantPermissions,
@@ -91,9 +97,11 @@ export const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
 export const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
 export const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
 const MAX_LEASE_MS = 60 * 60 * 1000;
-// Installs change rarely, and `installation` webhooks refresh the map sooner.
-const INSTALLATIONS_TTL_MS = 10 * 60 * 1000;
+// `installation` webhooks keep stored installations current. A sync only
+// repairs missed ones, so a short interval bounds GitHub calls on misses.
+const INSTALLATIONS_SYNC_INTERVAL_MS = 60 * 1000;
 const INSTALLATIONS_PAGE_SIZE = 100;
+const APP_OWNER_TTL_MS = 60 * 60 * 1000;
 const GITHUB_API = "https://api.github.com";
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const USER_REFRESH_TIMEOUT_MS = 20_000;
@@ -805,66 +813,81 @@ export async function issueInstallationToken(
   );
 }
 
-/** Every installation of the App, by lowercase account login. */
-export interface GitHubInstallations {
-  /** Lowercase login of the account that owns the App. */
-  appOwner: string;
-  byOwner: Record<string, number>;
-}
-
 function readLogin(value: unknown): string | undefined {
   const login = isRecord(value) ? value.login : undefined;
   return typeof login === "string" && login ? login.toLowerCase() : undefined;
 }
 
-/**
- * Load every installation of the App. An App can be installed at most once
- * per account, so the account login identifies the installation. Set
- * `refresh` to reload the cached map now.
- */
-export async function loadInstallations(
+/** Read the lowercase login of the account that owns the App. */
+async function appOwnerLogin(
   app: GitHubAppEnv,
   cache: PluginCache,
-  options?: { refresh?: boolean },
-): Promise<GitHubInstallations> {
-  return await cache.getOrLoad(
-    "installations",
-    async () => {
-      const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
-      const appResponse = await githubRequest(GITHUB_API, "/app", {
-        token: appJwt,
-      });
-      const appOwner = readLogin(
-        isRecord(appResponse) ? appResponse.owner : undefined,
+): Promise<string> {
+  return await cache.getOrLoad("app-owner", async () => {
+    const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
+    const response = await githubRequest(GITHUB_API, "/app", {
+      token: appJwt,
+    });
+    const login = readLogin(isRecord(response) ? response.owner : undefined);
+    if (!login) {
+      throw new Error("GitHub App response missing owner");
+    }
+    return { value: login, ttlMs: APP_OWNER_TTL_MS };
+  });
+}
+
+/**
+ * Replace the stored installations with the active ones that GitHub lists.
+ * This fills the table on first use and repairs missed `installation`
+ * webhooks. It runs at most once per `INSTALLATIONS_SYNC_INTERVAL_MS`.
+ */
+async function syncInstallations(
+  app: GitHubAppEnv,
+  db: GitHubDb,
+  cache: PluginCache,
+): Promise<void> {
+  await cache.getOrLoad("installations-synced", async () => {
+    const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
+    const active: GitHubInstallation[] = [];
+    for (let page = 1; ; page += 1) {
+      const installations = await githubRequest(
+        GITHUB_API,
+        `/app/installations?per_page=${INSTALLATIONS_PAGE_SIZE}&page=${page}`,
+        { token: appJwt },
       );
-      if (!appOwner) {
-        throw new Error("GitHub App response missing owner");
+      if (!Array.isArray(installations)) {
+        throw new Error("GitHub installations response is not a list");
       }
-      const byOwner: Record<string, number> = {};
-      for (let page = 1; ; page += 1) {
-        const installations = await githubRequest(
-          GITHUB_API,
-          `/app/installations?per_page=${INSTALLATIONS_PAGE_SIZE}&page=${page}`,
-          { token: appJwt },
-        );
-        if (!Array.isArray(installations)) {
-          throw new Error("GitHub installations response is not a list");
+      for (const installation of installations) {
+        if (!isRecord(installation) || installation.suspended_at) continue;
+        const accountLogin = readLogin(installation.account);
+        const installationId = installation.id;
+        if (
+          accountLogin &&
+          typeof installationId === "number" &&
+          Number.isSafeInteger(installationId)
+        ) {
+          active.push({ accountLogin, installationId });
         }
-        for (const installation of installations) {
-          const login = readLogin(
-            isRecord(installation) ? installation.account : undefined,
-          );
-          const id = isRecord(installation) ? installation.id : undefined;
-          if (login && typeof id === "number" && Number.isSafeInteger(id)) {
-            byOwner[login] = id;
-          }
-        }
-        if (installations.length < INSTALLATIONS_PAGE_SIZE) break;
       }
-      return { value: { appOwner, byOwner }, ttlMs: INSTALLATIONS_TTL_MS };
-    },
-    options,
-  );
+      if (installations.length < INSTALLATIONS_PAGE_SIZE) break;
+    }
+    await replaceGitHubInstallations(db, active);
+    return { value: true, ttlMs: INSTALLATIONS_SYNC_INTERVAL_MS };
+  });
+}
+
+/** Read the installation on one account, and sync once when none is stored. */
+async function installationIdFor(
+  accountLogin: string,
+  app: GitHubAppEnv,
+  ctx: IssueCredentialHookContext,
+): Promise<number | undefined> {
+  const db = ctx.db as GitHubDb;
+  const stored = await findGitHubInstallationId(db, accountLogin);
+  if (stored) return stored;
+  await syncInstallations(app, db, ctx.cache);
+  return await findGitHubInstallationId(db, accountLogin);
 }
 
 /**
@@ -878,26 +901,20 @@ async function resolveInstallationId(
   app: GitHubAppEnv,
 ): Promise<number> {
   const owner = ownerFromLeaseScope(ctx.grant.leaseScope);
-  let installations = await loadInstallations(app, ctx.cache);
   if (owner) {
-    const id = installations.byOwner[owner];
+    const id = await installationIdFor(owner, app, ctx);
     if (id) return id;
     if (ctx.grant.access === "write") {
-      // The App can be installed before its `installation` webhook arrives.
-      installations = await loadInstallations(app, ctx.cache, {
-        refresh: true,
-      });
-      const refreshedId = installations.byOwner[owner];
-      if (refreshedId) return refreshedId;
       throw new GitHubPluginSetupError(
         `The GitHub App is not installed on ${owner}.`,
       );
     }
   }
-  const defaultId = installations.byOwner[installations.appOwner];
+  const appOwner = await appOwnerLogin(app, ctx.cache);
+  const defaultId = await installationIdFor(appOwner, app, ctx);
   if (!defaultId) {
     throw new GitHubPluginSetupError(
-      `The GitHub App is not installed on ${installations.appOwner}, the account that owns it.`,
+      `The GitHub App is not installed on ${appOwner}, the account that owns it.`,
     );
   }
   return defaultId;

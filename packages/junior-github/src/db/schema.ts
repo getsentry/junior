@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   index,
   integer,
   pgTable,
@@ -152,7 +153,24 @@ export const juniorGitHubPullRequestRequesters = pgTable(
   ],
 );
 
+/**
+ * Active installations of the GitHub App. An App has at most one
+ * installation per account, so the account login finds the installation for
+ * a request. `installation` webhooks keep the rows current. A sync from
+ * `GET /app/installations` fills the table and repairs missed webhooks.
+ */
+export const juniorGitHubInstallations = pgTable(
+  "junior_github_installations",
+  {
+    installationId: bigint("installation_id", { mode: "number" }).primaryKey(),
+    /** Lowercase login of the account the App is installed on. */
+    accountLogin: text("account_login").notNull().unique(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+);
+
 export const githubSqlSchema = {
+  juniorGitHubInstallations,
   juniorGitHubIssues,
   juniorGitHubPullRequestIssues,
   juniorGitHubPullRequestRequesters,

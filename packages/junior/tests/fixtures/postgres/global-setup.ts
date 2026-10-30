@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { TestProject } from "vitest/node";
 import {
   cleanupPostgresHarness,
@@ -5,6 +6,7 @@ import {
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 
@@ -15,6 +17,19 @@ declare module "vitest" {
 }
 
 const TEST_DATABASE_URL = process.env.DATABASE_URL;
+
+/**
+ * Tests run the GitHub plugin through real Junior wiring, and it stores App
+ * installations in its own table. `junior upgrade` applies the same
+ * migrations in a deployment.
+ */
+const GITHUB_PLUGIN_MIGRATIONS = {
+  dir: path.resolve(
+    import.meta.dirname,
+    "../../../../junior-github/migrations",
+  ),
+  pluginName: "github",
+};
 
 function assertLocalDatabaseUrl(databaseUrl: string): void {
   const { hostname } = new URL(databaseUrl);
@@ -46,6 +61,7 @@ export async function setupJuniorPostgresHarness(
       const executor = createPostgresJuniorSqlExecutor({ connectionString });
       try {
         await migrateSchema(executor);
+        await migratePluginSchemas(executor, [GITHUB_PLUGIN_MIGRATIONS]);
         await options.migrateTemplate?.(executor);
       } finally {
         await executor.close();

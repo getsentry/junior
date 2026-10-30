@@ -81,7 +81,6 @@ import {
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
   issueGitHubCredential,
   listVerifiedUserEmails,
-  loadInstallations,
   normalizeScopeList,
   readEnv,
   requireEnv,
@@ -349,9 +348,6 @@ export function githubPlugin(
               await markPullRequestFeedbackReviewing(app, target),
             privateKeyEnv,
             events: ctx.events,
-            refreshInstallations: async () => {
-              await loadInstallations(app, ctx.cache, { refresh: true });
-            },
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

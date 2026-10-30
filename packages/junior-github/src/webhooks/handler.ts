@@ -13,6 +13,10 @@ import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import {
+  deleteGitHubInstallation,
+  saveGitHubInstallation,
+} from "../installations/store.js";
+import {
   recordGitHubIssueConversations,
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
@@ -100,6 +104,46 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
+const installationEventSchema = z.object({
+  action: z.string(),
+  /** Set on `installation_target` deliveries, with the new login. */
+  account: z.object({ login: z.string().min(1) }).optional(),
+  installation: z.object({
+    account: z.object({ login: z.string().min(1) }).optional(),
+  }),
+});
+
+/**
+ * Keep the stored installations current. Installs, permission changes, and
+ * unsuspends save the account login. Uninstalls and suspends remove the row,
+ * because GitHub cannot mint tokens for them. Account renames arrive as
+ * `installation_target` deliveries.
+ */
+async function recordInstallationEvent(
+  db: GitHubDb,
+  eventName: "installation" | "installation_target",
+  installationId: number,
+  body: unknown,
+): Promise<void> {
+  const parsed = installationEventSchema.safeParse(body);
+  if (!parsed.success) return;
+  const { account, action, installation } = parsed.data;
+  if (
+    eventName === "installation" &&
+    (action === "deleted" || action === "suspend")
+  ) {
+    await deleteGitHubInstallation(db, installationId);
+    return;
+  }
+  const accountLogin =
+    eventName === "installation_target"
+      ? account?.login
+      : installation.account?.login;
+  if (accountLogin) {
+    await saveGitHubInstallation(db, { accountLogin, installationId });
+  }
+}
+
 /** The pull request comment data that the feedback reaction needs. */
 const feedbackTargetSchema = z.object({
   commentId: z.number(),
@@ -176,8 +220,6 @@ export function createGitHubWebhookRoute(args: {
   ): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
-  /** Reload the App's installations after one is added, removed, or renamed. */
-  refreshInstallations(): Promise<void>;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -202,9 +244,8 @@ export function createGitHubWebhookRoute(args: {
       if (!installationId) {
         return new Response("Ignored", { status: 202 });
       }
-      // Installs, uninstalls, and account renames change the installation map.
       if (eventName === "installation" || eventName === "installation_target") {
-        await args.refreshInstallations();
+        await recordInstallationEvent(args.db, eventName, installationId, body);
         return new Response("Accepted", { status: 202 });
       }
       const botEmail = args.botEmail();

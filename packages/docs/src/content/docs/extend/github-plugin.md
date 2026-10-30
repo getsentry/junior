@@ -88,10 +88,11 @@ when the target is not obvious.
 
 One deployment works with every installation of the App. An App has at most
 one installation per account, so Junior uses the installation on the account
-that owns the target repository or organization. Junior keeps a list of the
-App's installations for 10 minutes. `installation` and `installation_target`
-webhooks reload the list. A webhook delivery uses the installation that sent
-it.
+that owns the target repository or organization. Junior stores the App's
+installations in its database. `installation` and `installation_target`
+webhooks keep them current. When Junior finds no stored installation for an
+account, it syncs the list from GitHub, at most once a minute. A webhook
+delivery uses the installation that sent it.
 
 Reads that name no owner, such as search or GraphQL without an `owner`
 variable, use the installation on the account that owns the App. Reads of

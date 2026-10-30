@@ -11,6 +11,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -23,6 +24,7 @@ import { gitHubPullRequestResource } from "../src/events/pull-request";
 import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
+import { juniorGitHubInstallations } from "../src/db/schema";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -34,6 +36,11 @@ let db: GitHubDb;
 beforeAll(async () => {
   dbFixture = await createGitHubFixture();
   db = dbFixture.db();
+});
+
+beforeEach(async () => {
+  // Each test starts before Junior has stored any App installation.
+  await db.delete(juniorGitHubInstallations);
 });
 
 afterAll(async () => {
@@ -2793,27 +2800,31 @@ Conversation: \`local:test:old-conversation\`
 
     const result = await issue();
 
+    // No installation is stored yet, so Junior syncs them from GitHub.
     expect(result?.type).toBe("lease");
     expect(grant?.leaseScope).toBe("owner:fairsource");
     expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
-      "GET https://api.github.com/app",
       "GET https://api.github.com/app/installations?per_page=100&page=1",
       "POST https://api.github.com/app/installations/789/access_tokens",
     ]);
     // Write tokens keep the full installed App permissions and repos.
-    expect(requests[2]?.body).toEqual({});
+    expect(requests[1]?.body).toEqual({});
 
-    // A write never falls back to another installation. It reloads the
-    // cached installations once, in case the App was just installed.
+    // Later tokens use the stored installation.
+    requests.length = 0;
+    await expect(issue()).resolves.toMatchObject({ type: "lease" });
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "POST https://api.github.com/app/installations/789/access_tokens",
+    ]);
+
+    // A write never falls back to another installation. The sync just ran,
+    // so a miss does not call GitHub again.
     requests.length = 0;
     await expect(issue("owner:uninstalled")).resolves.toEqual({
       type: "unavailable",
       message: "The GitHub App is not installed on uninstalled.",
     });
-    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
-      "GET https://api.github.com/app",
-      "GET https://api.github.com/app/installations?per_page=100&page=1",
-    ]);
+    expect(requests).toEqual([]);
   });
 
   it("issues read-only GitHub App installation credentials from plugin hooks", async () => {
@@ -2885,8 +2896,8 @@ Conversation: \`local:test:old-conversation\`
       type: "lease",
     });
     expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
-      "GET https://api.github.com/app",
       "GET https://api.github.com/app/installations?per_page=100&page=1",
+      "GET https://api.github.com/app",
       "POST https://api.github.com/app/installations/456/access_tokens",
     ]);
   });
@@ -2927,8 +2938,8 @@ Conversation: \`local:test:old-conversation\`
     const tokenRequests = requests.filter((request) =>
       request.url.endsWith("/app/installations/456/access_tokens"),
     );
-    // One App, installation list, and permission read serve both tokens.
-    expect(lookups).toHaveLength(3);
+    // One installation sync and permission read serve both tokens.
+    expect(lookups).toHaveLength(2);
     expect(tokenRequests).toHaveLength(2);
     expect(tokenRequests.map((request) => request.body)).toEqual([
       {

@@ -47,10 +47,11 @@ Set on the harness host (never in skill files):
 
 One Junior deployment works with every installation of the App. Junior uses the
 installation on the account that owns the target repository or organization.
-It keeps a list of the App's installations for 10 minutes, and `installation`
-and `installation_target` webhooks reload it. Reads that name no owner, or an
-account without the App, use the installation on the account that owns the App.
-Writes to an account without the App fail.
+It stores the App's installations in the database. `installation` and
+`installation_target` webhooks keep them current. A lookup that finds no row
+syncs them from `GET /app/installations`, at most once a minute. Reads that
+name no owner, or an account without the App, use the installation on the
+account that owns the App. Writes to an account without the App fail.
 
 ### Vercel env setup (multiline-safe)
 
