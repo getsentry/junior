@@ -179,6 +179,8 @@ export interface SandboxPrepareHookContext extends PluginContext {
 export interface BeforeToolExecuteHookContext extends PluginContext {
   decision: PluginDecision;
   env: PluginEnv;
+  /** Same directory as `PluginSandbox.juniorRoot` from `sandboxPrepare`. */
+  juniorRoot: string;
   actor?: Actor;
   /** All actors who contributed instructions to the run so far; see `multi-actor-runs.md`. */
   actors?: Actor[];

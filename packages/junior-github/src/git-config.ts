@@ -3,6 +3,7 @@
  */
 import type {
   Actor,
+  PluginEnv,
   SandboxPrepareHookContext,
   User,
 } from "@sentry/junior-plugin-api";
@@ -144,6 +145,81 @@ export function additionalActorCoauthorTrailers(args: {
   return trailers;
 }
 
+/**
+ * Client hooks that Junior's hooks directory passes to the repository.
+ *
+ * Junior's `core.hooksPath` replaces the repository hooks directory: the
+ * repository's own `core.hooksPath` (husky) or `.git/hooks` (simple-git-hooks,
+ * Git LFS). Git would skip those hooks without these pass-through hooks.
+ * `prepare-commit-msg` is not in the list because Junior's own hook runs the
+ * repository hook first.
+ */
+export const REPOSITORY_HOOK_NAMES = [
+  "applypatch-msg",
+  "pre-applypatch",
+  "post-applypatch",
+  "pre-commit",
+  "pre-merge-commit",
+  "commit-msg",
+  "post-commit",
+  "pre-rebase",
+  "post-checkout",
+  "post-merge",
+  "pre-push",
+  "post-rewrite",
+  "pre-auto-gc",
+] as const;
+
+/** Directory for Junior's Git hooks under the sandbox Junior root. */
+export function gitHooksPath(juniorRoot: string): string {
+  return `${juniorRoot}/git-hooks`;
+}
+
+/**
+ * Point Git at Junior's hooks for one command.
+ *
+ * Command env config has a higher priority than every config file, so it
+ * also wins over a repository `core.hooksPath` such as husky's.
+ */
+export function setGitHooksPathEnv(env: PluginEnv, hooksPath: string): void {
+  const index = Number.parseInt(env.get("GIT_CONFIG_COUNT") ?? "0", 10) || 0;
+  env.set(`GIT_CONFIG_KEY_${index}`, "core.hooksPath");
+  env.set(`GIT_CONFIG_VALUE_${index}`, hooksPath);
+  env.set("GIT_CONFIG_COUNT", String(index + 1));
+}
+
+/**
+ * Bash that sets `repository_hook` to the repository's own hook, if any.
+ * `git config --local` reads only the repository config file, so Junior's
+ * env config does not hide the repository value. Hooks run from the top of
+ * the worktree, so a relative path works as Git resolves it.
+ */
+function findRepositoryHook(name: string): string {
+  return `repository_hook=""
+repository_hooks_dir=$(git config --local --type=path core.hooksPath 2>/dev/null) || repository_hooks_dir=""
+if [ -z "$repository_hooks_dir" ]; then
+  git_common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || git_common_dir=""
+  if [ -n "$git_common_dir" ]; then
+    repository_hooks_dir="$git_common_dir/hooks"
+  fi
+fi
+if [ -n "$repository_hooks_dir" ] && [ -x "$repository_hooks_dir/${name}" ] && ! [ "$repository_hooks_dir/${name}" -ef "$0" ]; then
+  repository_hook="$repository_hooks_dir/${name}"
+fi`;
+}
+
+/** Build a hook that runs the repository's own hook with the same name. */
+export function repositoryHook(name: string): string {
+  return `#!/usr/bin/env bash
+set -eu
+
+${findRepositoryHook(name)}
+if [ -n "$repository_hook" ]; then
+  exec "$repository_hook" "$@"
+fi
+`;
+}
+
 /** Build the hook that replaces model-supplied commit attribution. */
 export function prepareCommitMsgHook(): string {
   return `#!/usr/bin/env bash
@@ -152,6 +228,12 @@ set -eu
 message_file="\${1:-}"
 if [ -z "$message_file" ]; then
   exit 1
+fi
+
+# Run the repository hook first so Junior's trailers stay final.
+${findRepositoryHook("prepare-commit-msg")}
+if [ -n "$repository_hook" ]; then
+  "$repository_hook" "$@"
 fi
 
 if [ -z "\${JUNIOR_GIT_AUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_AUTHOR_EMAIL:-}" ]; then
