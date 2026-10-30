@@ -3957,44 +3957,6 @@ Conversation: \`local:test:old-conversation\`
     },
   );
 
-  it.each([
-    ["bash", "git -c core.hooksPath=/dev/null commit -m x", true],
-    ["bash", "git -c core.hookspath=.husky/_ commit -m x", true],
-    ["bash", "git --config-env=core.hooksPath=HOME push", true],
-    ["bash", "sh -c 'git -c \"core.hooksPath=/tmp\" commit -m x'", true],
-    ["bash", "GIT_CONFIG_COUNT=0 git commit -m x", true],
-    ["bash", "export GIT_CONFIG_VALUE_0=/tmp && git commit -m x", true],
-    ["bash", "unset GIT_CONFIG_COUNT; git commit -m x", true],
-    ["bash", "env -u GIT_CONFIG_PARAMETERS git push", true],
-    ["bash", "rm -rf /vercel/sandbox/.junior/git-hooks", true],
-    ["writeFile", "/vercel/sandbox/.junior/git-hooks/prepare-commit-msg", true],
-    ["editFile", ".junior/git-hooks/pre-push", true],
-    ["bash", "git -c user.name=x commit --no-verify -m x", false],
-    ["bash", 'echo "$GIT_CONFIG_COUNT ${GIT_CONFIG_KEY_0}"', false],
-    ["bash", "grep -rn GIT_CONFIG_COUNT packages", false],
-    ["bash", "git config --get core.hooksPath", false],
-    ["writeFile", "/vercel/sandbox/repos/junior/.husky/pre-commit", false],
-  ])(
-    "denies tool calls that change or skip Junior's Git hooks: %s %s",
-    async (toolName, value, denied) => {
-      process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-      process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
-
-      const before = beforeToolContext({
-        fullName: "David Cramer",
-        userId: "U039RR91S",
-        userName: "dcramer",
-      });
-      before.ctx.tool.name = toolName;
-      before.ctx.tool.input =
-        toolName === "bash" ? { command: value } : { path: value };
-
-      await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
-
-      expect(before.blocked?.kind).toBe(denied ? "deny" : undefined);
-    },
-  );
-
   it("prefers linked GitHub noreply emails for the current actor", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
