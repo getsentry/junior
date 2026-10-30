@@ -85,6 +85,12 @@ function renderAutomationDetails(
         long: true,
       },
     );
+    if (trigger.notes.length > 0) {
+      fields.push({
+        ...textField("note", "Note", trigger.notes.join(" ")),
+        long: true,
+      });
+    }
     if (trigger.problems.length > 0) {
       fields.push({
         ...textField(

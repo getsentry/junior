@@ -3,15 +3,16 @@ import type { EventMatch } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getConversationStore } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
-import { convertSavedEventAutomationTriggers } from "@/chat/event-automations/trigger-conversion";
 import { listAutomationVersions } from "@/chat/automations/versions";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
+import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -251,9 +252,9 @@ describe("event automations with no identifier", () => {
       });
 
       // Rows saved before this change still name one resource. The heartbeat
-      // step converts each one under its row lock and saves a version with
-      // no editor. A row that cannot convert without matching more events
-      // keeps its identifier and keeps running.
+      // converts each one under its row lock and saves a version with no
+      // editor. A row that cannot convert without matching more events keeps
+      // its identifier, saves the reason, and keeps running.
       const savedPullRequest = (id: string, match?: EventMatch) => ({
         ...row!,
         id,
@@ -274,32 +275,37 @@ describe("event automations with no identifier", () => {
         .values([
           savedPullRequest("evt_saved_pull_request"),
           savedPullRequest("evt_saved_list_filter", { pullRequest: [8, 9] }),
+          // Its saved trigger has no identifier, so ingest never runs it.
+          // Conversion must not save it as a broad row.
+          {
+            ...savedPullRequest("evt_saved_column_only"),
+            record: {
+              ...record,
+              trigger: {
+                ...record.trigger,
+                match: { repo: "getsentry/junior" },
+              },
+            },
+          },
         ]);
-      const conversion = await convertSavedEventAutomationTriggers(
-        fixture.sql.db(),
-        catalog,
-      );
-      expect(conversion.converted).toEqual(["evt_saved_pull_request"]);
-      expect(conversion.kept).toEqual([
-        {
-          id: "evt_saved_list_filter",
-          reason:
-            'Filter "pullRequest" already has a value that identifier "getsentry/junior#8" does not have.',
-        },
-      ]);
-      const [converted] = await fixture.sql
-        .db()
-        .select()
-        .from(juniorAutomations)
-        .where(eq(juniorAutomations.id, "evt_saved_pull_request"));
-      expect(converted?.identifier).toBeNull();
-      expect(
-        await listAutomationVersions(
-          fixture.sql.db(),
-          "evt_saved_pull_request",
-          5,
-        ),
-      ).toMatchObject([
+      const savedRows = async () =>
+        Object.fromEntries(
+          (
+            await fixture.sql
+              .db()
+              .select()
+              .from(juniorAutomations)
+              .where(sql`${juniorAutomations.id} like 'evt_saved_%'`)
+          ).map((saved) => [saved.id, saved]),
+        );
+      const versions = (id: string) =>
+        listAutomationVersions(fixture.sql.db(), id, 5);
+      await runHeartbeat({ nowMs: Date.now(), conversationWorkQueue: queue });
+      const reason =
+        "Kept its exact pull request because its saved pullRequest filter has a different value.";
+      const rows = await savedRows();
+      expect(rows.evt_saved_pull_request?.identifier).toBeNull();
+      expect(await versions("evt_saved_pull_request")).toMatchObject([
         {
           editedBy: null,
           definition: {
@@ -310,6 +316,35 @@ describe("event automations with no identifier", () => {
           },
         },
       ]);
+      expect(rows.evt_saved_list_filter?.identifier).toBe("getsentry/junior#8");
+      expect(rows.evt_saved_list_filter?.status).toBe("active");
+      expect(await versions("evt_saved_list_filter")).toMatchObject([
+        {
+          editedBy: null,
+          definition: { trigger: { identifierReason: reason } },
+        },
+      ]);
+      // The saved reason is a note on the trigger, not a problem. Listing
+      // reads every row of the team, so remove the row that does not parse.
+      await fixture.sql
+        .db()
+        .delete(juniorAutomations)
+        .where(eq(juniorAutomations.id, "evt_bad_record"));
+      const listed = (await execute(
+        createListEventAutomationsTool(context(), catalog),
+        {},
+        "list-kept",
+      )) as {
+        automations: { id: string; trigger: Record<string, unknown> }[];
+      };
+      expect(
+        listed.automations.find(({ id }) => id === "evt_saved_list_filter")
+          ?.trigger,
+      ).toMatchObject({ available: true, notes: [reason] });
+      // The next heartbeat does not save the kept row again.
+      await runHeartbeat({ nowMs: Date.now(), conversationWorkQueue: queue });
+      expect(await versions("evt_saved_list_filter")).toHaveLength(1);
+      expect(await versions("evt_saved_column_only")).toEqual([]);
       // Both rows run once for a pull request event, and not for another
       // pull request.
       const dispatchedIds = async (pullRequest: number, eventKey: string) => {

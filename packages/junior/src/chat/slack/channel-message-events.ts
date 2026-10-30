@@ -100,6 +100,7 @@ export function requireSlackChannelMessageScope(
   const {
     identifier,
     resourceType: _resourceType,
+    identifierReason: _identifierReason,
     ...trigger
   } = automation.trigger;
   const named = [

@@ -42,7 +42,7 @@ export function createUpdateEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, credential use, or status of an event automation. In trigger, an omitted identifier, resourceType, or match keeps the saved value. A match replaces every saved filter, so include saved filters such as repo, projects, or channelId that limit the trigger.",
+      "Update the instruction, registered trigger, credential use, or status of an event automation. In trigger, leaving out identifier, resourceType, or match keeps the saved value. Only identifier null removes the identifier, and only match {} removes all filters. A new match replaces all saved filters, so repeat each saved filter to keep, such as repo, projects, or channelId.",
     inputSchema: z
       .object({
         automationId: z.string().min(1),

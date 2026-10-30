@@ -49,16 +49,21 @@ becomes `repo` and `pullRequest` filters. `trigger-conversion.ts` owns the
 rule. A trigger converts only when the plugin gives the same filters for every
 selected event, those filters agree with the saved filters, and the result
 passes the check for a new trigger. Otherwise it keeps its identifier and
-keeps running. A conversion never makes a trigger broader.
+keeps running, and the trigger saves the reason in `identifierReason`. Each
+edit that changes the trigger sets the reason again. A conversion never makes
+a trigger broader.
 
-Each heartbeat converts saved rows that still have an identifier. It saves
+Each heartbeat checks at most 50 saved rows that have an identifier, no
+saved reason, and the same identifier in the row and the trigger. It saves
 each row with the revision that it read, under the row lock, and records a
 version with no editor. A row that changed after the read is left for the next
-heartbeat. Rows that cannot convert keep their identifier. Examples are a
-Sentry project trigger for metric alerts, because a metric alert can leave
-out `projects`, and a row whose plugin is not enabled. Slice D of #2362
-decides what happens to these rows before the identifier column goes away.
-Saved versions keep their old triggers, and the version schema still reads
+heartbeat. A row that cannot convert keeps its identifier, stays active, and
+saves the reason, so later heartbeats skip it. Examples are a Sentry project
+trigger for metric alerts, because a metric alert can leave out `projects`,
+and a row whose plugin is not enabled. The trigger description shows the
+reason as a note, not a problem, in the dashboard, Slack details, and
+`listEventAutomations`. Slice D of #2362 decides what happens to these rows
+before the identifier column goes away. Saved versions keep their old triggers, and the version schema still reads
 `identifier` and `resourceType`.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by

@@ -296,11 +296,15 @@ export async function listDeletedEventAutomationsCreatedBy(
 }
 
 /**
- * List live event automations whose trigger still has an identifier. Skip a
- * row that does not parse; ingest logs it when an event reaches it.
+ * List up to `limit` live event automations whose trigger still has an
+ * identifier and no saved reason to keep it. Skip a row whose identifier
+ * column and saved trigger disagree, because ingest never runs it and a save
+ * could make it broad. Skip a row that does not parse; ingest logs it when an
+ * event reaches it.
  */
-export async function listEventAutomationsWithIdentifier(
+export async function listEventAutomationsToConvert(
   db: JuniorDatabase,
+  limit: number,
 ): Promise<StoredEventAutomation[]> {
   const rows = await db
     .select()
@@ -309,9 +313,12 @@ export async function listEventAutomationsWithIdentifier(
       and(
         activeEventAutomationWhere(),
         isNotNull(juniorAutomations.identifier),
+        sql`${juniorAutomations.record}->'trigger'->>'identifier' = ${juniorAutomations.identifier}`,
+        sql`${juniorAutomations.record}->'trigger'->'identifierReason' is null`,
       ),
     )
-    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
+    .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id))
+    .limit(limit);
   return rows.flatMap((row) => {
     const parsed = eventAutomationSchema.safeParse(
       eventAutomationRowInput(row),
