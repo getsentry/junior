@@ -296,8 +296,6 @@ function webhookRoute(
       async record() {},
     },
     db: fixture.db(),
-    installationId: () => "456",
-    installationIdEnv: "GITHUB_INSTALLATION_ID",
     log: { error },
     markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
@@ -1908,6 +1906,8 @@ describe("GitHub-owned pull request outcomes", () => {
         signedRequest(
           {
             action: "created",
+            // A delivery from any installation of the App uses that installation.
+            installation: { id: 999 },
             repository: { full_name: "getsentry/junior" },
             issue: {
               number: 946,
@@ -1927,6 +1927,7 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(markFeedbackReviewing).toHaveBeenCalledWith({
         commentId: 101,
         commentKind: "conversation",
+        installationId: 999,
         repo: "getsentry/junior",
       });
       expect(published).toHaveLength(2);
@@ -2055,7 +2056,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("ignores signed deliveries from another installation", async () => {
+  it("ignores signed deliveries without an installation", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];
     try {
@@ -2063,7 +2064,7 @@ describe("GitHub-owned pull request outcomes", () => {
       const response = await route.handler(
         signedRequest({
           ...pullRequestPayload(),
-          installation: { id: 999 },
+          installation: undefined,
         }),
       );
 
@@ -2130,7 +2131,6 @@ describe("GitHub-owned pull request outcomes", () => {
       "CUSTOM_GITHUB_BOT_EMAIL",
       "264270552+sentry-junior[bot]@users.noreply.github.com",
     );
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     try {
       const plugin = githubPlugin({
@@ -2190,7 +2190,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
@@ -2294,7 +2293,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
@@ -2419,7 +2417,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
@@ -2558,7 +2555,6 @@ describe("GitHub-owned pull request outcomes", () => {
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
     vi.stubEnv("GITHUB_APP_ID", "123");
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",

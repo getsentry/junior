@@ -170,7 +170,7 @@ export function createGitHubWebhookRoute(args: {
   ): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  log?: Pick<PluginLogger, "error" | "info">;
+  log?: Pick<PluginLogger, "error">;
   markFeedbackReviewing(
     input: InstallationScoped<FeedbackTarget>,
   ): Promise<void>;
@@ -198,11 +198,6 @@ export function createGitHubWebhookRoute(args: {
       // installations. Every token for this delivery uses that installation.
       const installationId = webhookInstallationId(body);
       if (!installationId) {
-        args.log?.info("github.webhook.delivery.skipped", {
-          "app.github.delivery_id": deliveryId,
-          "app.github.event_name": eventName,
-          "app.github.skip_reason": "missing_installation",
-        });
         return new Response("Ignored", { status: 202 });
       }
       const botEmail = args.botEmail();
