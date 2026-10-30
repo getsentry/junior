@@ -646,7 +646,7 @@ describe("conversation SQL store", () => {
     }
   }, 15_000);
 
-  it("fills missing actor identity from later trusted profile observations", async () => {
+  it("fills missing actor identity from later observations and keeps it across event writes", async () => {
     const fixture = await createJuniorSqlFixture();
 
     try {
@@ -677,6 +677,17 @@ describe("conversation SQL store", () => {
         source: "slack",
         nowMs: 2_000,
       });
+      // An event write without an Actor, such as a mailbox mirror after the
+      // Redis work state expired, must not replace the Slack root Actor.
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: { status: "idle", updatedAtMs: 3_000 },
+        lastActivityAtMs: 3_000,
+        metrics: null,
+        source: "event",
+        updatedAtMs: 3_000,
+      });
 
       await expect(store.listByActivity({ limit: 5 })).resolves.toMatchObject([
         {
@@ -686,6 +697,7 @@ describe("conversation SQL store", () => {
             fullName: "Casey Example",
             slackUserId: "U123",
           },
+          source: "slack",
         },
       ]);
     } finally {

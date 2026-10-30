@@ -233,6 +233,7 @@ function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
     ...(stats?.lastExecutedAtMs
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
       : undefined),
+    costUsd: stats?.costUsd ?? emptyAutomationRunWindows(),
     runs: stats?.runs ?? emptyAutomationRunWindows(),
     totalRuns: stats?.totalRuns ?? 0,
   };

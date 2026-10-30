@@ -160,7 +160,6 @@ export async function enqueueAgentDispatch(
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,
-    visibility: claimedDispatch.destinationVisibility,
   });
   await appendAndEnqueueInboundMessage({
     message: buildAgentDispatchInboundMessage(claimedDispatch, nowMs),
@@ -367,7 +366,6 @@ async function persistBlockedDispatchTurn(
     actor: dispatch.actor,
     conversationId,
     destination: dispatch.destination,
-    destinationVisibility: dispatch.destinationVisibility,
     dispatchId: dispatch.id,
     dispatchOutcome: "blocked",
     turnId: sessionId,

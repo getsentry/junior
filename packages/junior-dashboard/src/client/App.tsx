@@ -1,6 +1,5 @@
-import { AutomationEditPage } from "./pages/automations/AutomationEditPage";
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 
 import {
   useConversationsData,
@@ -21,6 +20,7 @@ import {
 import { DashboardHeader } from "./components/layout/DashboardHeader";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
+  automationPath,
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
@@ -52,9 +52,8 @@ import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
 } from "./pages/memory/MemoryPageLayout";
-import { AutomationExecutionsPage } from "./pages/automations/AutomationExecutionsPage";
+import { AutomationPage } from "./pages/automations/AutomationPage";
 import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
-import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPage";
 import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
@@ -208,46 +207,38 @@ export function DashboardShell() {
           <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
           <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
           <Route
-            element={
-              loading ? (
-                <AutomationsPageLayout>
-                  <AutomationsRouteLoading
-                    description="Terminal runs for one scheduled or event automation."
-                    label="Loading automation executions"
-                    title="Automation executions"
-                    variant="list"
-                  />
-                </AutomationsPageLayout>
-              ) : loggedIn ? (
-                <AutomationsPageLayout>
-                  <AutomationExecutionsPage enabled={loggedIn} />
-                </AutomationsPageLayout>
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
+            element={<LegacyAutomationExecutionsRedirect />}
             path="/automations/:automationId/executions"
           />
           <Route
             element={
-              loading ? (
-                <AutomationsPageLayout>
-                  <AutomationsRouteLoading
-                    description="Saved settings for this automation, newest first."
-                    label="Loading version history"
-                    title="Version history"
-                    variant="list"
-                  />
-                </AutomationsPageLayout>
-              ) : loggedIn ? (
-                <AutomationsPageLayout>
-                  <AutomationVersionsPage enabled={loggedIn} />
-                </AutomationsPageLayout>
+              loading || loggedIn ? (
+                <AutomationPage enabled={loggedIn} tab="runs" />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/:automationId/runs"
+          />
+          <Route
+            element={
+              loading || loggedIn ? (
+                <AutomationPage enabled={loggedIn} tab="versions" />
               ) : (
                 <Navigate replace to="/" />
               )
             }
             path="/automations/:automationId/versions"
+          />
+          <Route
+            element={
+              loading || loggedIn ? (
+                <AutomationPage enabled={loggedIn} tab="edit" />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/:automationId/edit"
           />
           <Route
             element={
@@ -292,30 +283,9 @@ export function DashboardShell() {
             path="/automations/list"
           />
           <Route
-            path="/automations/:automationId/edit"
             element={
               loading || loggedIn ? (
-                <AutomationEditPage enabled={loggedIn} />
-              ) : (
-                <Navigate replace to="/" />
-              )
-            }
-          />
-          <Route
-            element={
-              loading ? (
-                <AutomationsPageLayout>
-                  <AutomationsRouteLoading
-                    description="Find and manage automations across your linked workspaces."
-                    label="Loading automations"
-                    title="All automations"
-                    variant="list"
-                  />
-                </AutomationsPageLayout>
-              ) : loggedIn ? (
-                <AutomationsPageLayout>
-                  <AutomationsPage enabled={loggedIn} view="list" />
-                </AutomationsPageLayout>
+                <AutomationPage enabled={loggedIn} tab="overview" />
               ) : (
                 <Navigate replace to="/" />
               )
@@ -657,6 +627,18 @@ function LegacyAutomationsRedirect() {
     <Navigate
       replace
       to={`/automations${suffix}${location.search}${location.hash}`}
+    />
+  );
+}
+
+/** Execution history became the Runs tab of the Automation page. */
+function LegacyAutomationExecutionsRedirect() {
+  const location = useLocation();
+  const { automationId } = useParams();
+  return (
+    <Navigate
+      replace
+      to={`${automationPath(automationId ?? "", "runs")}${location.search}${location.hash}`}
     />
   );
 }

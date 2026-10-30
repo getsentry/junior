@@ -144,7 +144,11 @@ export interface ConversationStore {
     /** Source normalized to a stable session locator; set-once when absent. */
     sessionSource?: Source;
     title?: string;
-    /** Confirmed destination visibility; omit when unavailable. */
+    /**
+     * Current visibility from its owner, such as a Slack event channel type. It
+     * replaces the visibility of the shared Destination row. Omit it for saved
+     * values, such as visibility captured when an Automation was created.
+     */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   /**
@@ -167,7 +171,11 @@ export interface ConversationStore {
     source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
-    /** Confirmed destination visibility; omit when unavailable. */
+    /**
+     * Current visibility from its owner, such as a Slack event channel type. It
+     * replaces the visibility of the shared Destination row. Omit it for saved
+     * values, such as visibility captured when an Automation was created.
+     */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   listByActivity(args?: {

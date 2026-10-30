@@ -73,7 +73,7 @@ import {
   installSlackMock,
   isAppMention,
   postSlackAssistantThreadStarted,
-  postSlackCommand,
+  postSlackAppHomeUnlink,
   postSlackMessageEvent,
   slackAuthorEmail,
   SLACK_APP,
@@ -376,16 +376,15 @@ export async function createFixtureAgent(
       });
       return;
     }
-    if (input.kind === "slack_command") {
+    if (input.kind === "app_home_unlink") {
       if (record.surface !== "slack") {
-        throw new Error("slackCommand() continues a Slack Conversation");
+        throw new Error("appHomeUnlink() continues a Slack Conversation");
       }
       const { userId } = slack.registerAuthor(
         input.author ?? DEFAULT_SLACK_AUTHOR,
       );
-      await postSlackCommand(app, {
-        channel: record.channelId,
-        text: input.text,
+      await postSlackAppHomeUnlink(app, {
+        provider: input.provider,
         user: userId,
       });
       return;
@@ -915,8 +914,8 @@ export async function createFixtureAgent(
     if (first.kind === "complete_auth") {
       throw new Error("completeAuth() continues a Conversation");
     }
-    if (first.kind === "slack_command") {
-      throw new Error("slackCommand() continues a Slack Conversation");
+    if (first.kind === "app_home_unlink") {
+      throw new Error("appHomeUnlink() continues a Slack Conversation");
     }
     return await converse(
       newConversation(first, options.history),

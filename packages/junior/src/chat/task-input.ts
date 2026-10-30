@@ -70,7 +70,7 @@ export function renderTaskInput(args: {
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
   about?: string;
-  /** Mention of the person who created the task, so "me" in it is exact. */
+  /** Mention of the Automation creator, so "me" and "the Automation creator" are exact. */
   creator?: string;
   /** Mentions of the people involved in an Event. Guidance says when to address them. */
   people?: readonly string[];
@@ -103,9 +103,10 @@ export function renderTaskInput(args: {
     "This is a task, not a message from a person.",
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
+    // Say what to write, or the model drops the mention.
     ...(creator
       ? [
-          `Created by: ${oneLine(creator)}. "Me" and "my" in the instructions mean this person: mention them in the message. If the instructions do not say "me" or "my", do not mention this person.`,
+          `Created by: ${oneLine(creator)}. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.`,
         ]
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),

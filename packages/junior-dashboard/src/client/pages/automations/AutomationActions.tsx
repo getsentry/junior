@@ -12,23 +12,30 @@ import {
   TooltipTrigger,
 } from "../../components/ui/tooltip";
 import { Link } from "react-router";
-import { CircleHelp, Pencil, Settings2, Trash2 } from "lucide-react";
+import { CircleHelp, Pencil, Trash2 } from "lucide-react";
 import {
   automationEditSchema,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { Button } from "../../components/ui/button";
+import { Button, buttonVariants } from "../../components/ui/button";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 
-/** Keep revision-checked lifecycle actions available in the fixed details footer. */
-export function AutomationLifecycle({
+/**
+ * Header actions for one Automation: Edit, then creator-only Pause or Resume
+ * and Delete. Public readers can edit settings, but only the creator controls
+ * lifecycle. Lifecycle actions re-read the revision before they apply.
+ */
+export function AutomationActions({
   automation,
   editPath,
+  editVariant,
   onDelete,
 }: {
   automation: AutomationSummary;
   editPath: string;
+  /** Use "default" when a notice on the page owns the main action. */
+  editVariant: "default" | "primary";
   onDelete(source: HTMLButtonElement): void;
 }) {
   const toast = useToastManager();
@@ -36,8 +43,6 @@ export function AutomationLifecycle({
   const completed = automation.status === "completed";
   const paused = automation.status === "paused";
   const blocked = automation.status === "blocked";
-  // Public readers can edit settings, but only the creator controls lifecycle.
-  const canEdit = !completed;
   const canPause = automation.ownedByViewer && !completed;
   const action = paused || blocked ? "resume" : "pause";
   const mutation = useMutation({
@@ -50,7 +55,7 @@ export function AutomationLifecycle({
       // Do not apply the opposite action if another surface changed lifecycle.
       if (current.status !== automation.status) {
         throw new Error(
-          "The Automation changed. Close and reopen its details before trying again.",
+          "The Automation changed. Reload the page before trying again.",
         );
       }
       return post(automationEditSchema, `${path}/lifecycle`, {
@@ -80,57 +85,24 @@ export function AutomationLifecycle({
     },
   });
   return (
-    <footer
-      aria-label="Automation actions"
-      className="grid gap-3 border-t border-dashboard-border bg-dashboard-bg-elevated p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-    >
-      <div className="flex items-center gap-2">
-        <div className="mr-auto flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Link
-                  aria-label={canEdit ? "Edit automation" : "View settings"}
-                  className="grid size-11 place-items-center rounded-md text-dashboard-text-muted no-underline hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-                  to={editPath}
-                >
-                  {canEdit ? (
-                    <Pencil aria-hidden="true" size={16} />
-                  ) : (
-                    <Settings2 aria-hidden="true" size={16} />
-                  )}
-                </Link>
-              }
-            />
-            <TooltipContent size="compact">
-              {canEdit ? "Edit automation" : "View settings"}
-            </TooltipContent>
-          </Tooltip>
-          {automation.ownedByViewer ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    focusableWhenDisabled
-                    aria-label="Delete automation"
-                    className="min-h-11 min-w-11"
-                    size="icon"
-                    variant="danger"
-                    onClick={(event) => onDelete(event.currentTarget)}
-                    disabled={mutation.isPending}
-                  >
-                    <Trash2 aria-hidden="true" size={16} />
-                  </Button>
-                }
-              />
-              <TooltipContent size="compact">Delete automation</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </div>
+    <div className="grid min-w-0 justify-items-stretch gap-3 md:justify-items-end">
+      <div
+        aria-label="Automation actions"
+        className="flex flex-wrap items-center gap-2"
+        role="group"
+      >
+        {completed ? null : (
+          <Link
+            className={buttonVariants({ variant: editVariant })}
+            to={editPath}
+          >
+            <Pencil aria-hidden="true" size={14} />
+            Edit automation
+          </Link>
+        )}
         {canPause ? (
           <>
             <Button
-              className="min-h-11"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
             >
@@ -142,17 +114,15 @@ export function AutomationLifecycle({
             </Button>
             <Popover>
               <PopoverTrigger
-                render={
-                  <Button
-                    aria-label="About pausing"
-                    className="min-h-11 min-w-11"
-                    size="icon"
-                  />
-                }
+                render={<Button aria-label="About pausing" size="icon" />}
               >
                 <CircleHelp aria-hidden="true" size={16} />
               </PopoverTrigger>
-              <PopoverContent side="top" align="end" aria-label="About pausing">
+              <PopoverContent
+                side="bottom"
+                align="end"
+                aria-label="About pausing"
+              >
                 <PopoverDescription>
                   Pausing stops new runs. Work already queued or running may
                   finish. Resuming skips missed runs and waits for the next
@@ -165,14 +135,35 @@ export function AutomationLifecycle({
             </Popover>
           </>
         ) : null}
+        {automation.ownedByViewer ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  focusableWhenDisabled
+                  aria-label="Delete automation"
+                  size="icon"
+                  variant="danger"
+                  onClick={(event) => onDelete(event.currentTarget)}
+                  disabled={mutation.isPending}
+                >
+                  <Trash2 aria-hidden="true" size={16} />
+                </Button>
+              }
+            />
+            <TooltipContent size="compact">Delete automation</TooltipContent>
+          </Tooltip>
+        ) : null}
       </div>
       {mutation.error ? (
-        <FormNotice tone="error" title="Could not update this automation.">
-          {mutation.error instanceof DashboardApiError
-            ? (mutation.error.apiError ?? "Try again.")
-            : mutation.error.message}
-        </FormNotice>
+        <div className="max-w-sm">
+          <FormNotice tone="error" title="Could not update this automation.">
+            {mutation.error instanceof DashboardApiError
+              ? (mutation.error.apiError ?? "Try again.")
+              : mutation.error.message}
+          </FormNotice>
+        </div>
       ) : null}
-    </footer>
+    </div>
   );
 }
