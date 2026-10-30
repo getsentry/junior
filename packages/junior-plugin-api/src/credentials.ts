@@ -51,7 +51,7 @@ export const pluginStoredTokensSchema = z
 export const pluginGrantSchema = z
   .object({
     access: pluginGrantAccessSchema,
-    /** Plugin-defined target, such as one repository. Junior remembers shared installation leases per scope. */
+    /** Plugin-defined target, such as one GitHub account. Junior remembers shared installation leases per scope. */
     leaseScope: nonBlankStringSchema.optional(),
     name: pluginGrantNameSchema,
     reason: nonBlankStringSchema.optional(),
