@@ -297,7 +297,7 @@ describe("dashboard canonical-event components", () => {
     const slackHtml = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
         <TranscriptMarkdown
-          text={"Checking:\n• first item\n• second item\n2) next step"}
+          text={"Checking:\n• first item\n• second item\n\n2) next step"}
         />
       </TranscriptSearchProvider>,
     );
@@ -306,6 +306,21 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain("•");
     expect(slackHtml).toContain('<ol class="');
     expect(slackHtml).toContain('start="2"');
+
+    const nestedHtml = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown
+          text={">you're right\n>second line\n\n- parent\n  - child\n\n~~old~~"}
+        />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(nestedHtml).toMatch(
+      /<blockquote[^>]*>\s*<p[^>]*>you&#x27;re right<br\/>/,
+    );
+    expect(nestedHtml).not.toContain("&gt;you");
+    expect(nestedHtml).toMatch(/<li[^>]*>parent\s*<ul/);
+    expect(nestedHtml).toContain(">old</del>");
   });
 
   it("keeps a running tool name searchable and accessible", () => {

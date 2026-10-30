@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
+import Markdown, { type Components } from "react-markdown";
+import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
 
 import {
   Table,
@@ -10,32 +13,24 @@ import {
 } from "../components/ui/table";
 import { cn } from "../styles";
 import {
-  findTranscriptMarkdownLinks,
+  safeTranscriptHref,
   TRANSCRIPT_ANCHOR_CLASS,
 } from "./transcriptMarkdownLinks";
 import { renderMentionText } from "./transcriptMentions";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
-type TableAlignment = "left" | "center" | "right" | null;
-
-type MarkdownBlock =
-  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
-  | { type: "list"; ordered: boolean; items: string[]; start?: number }
-  | {
-      type: "table";
-      alignments: TableAlignment[];
-      headers: string[];
-      rows: string[][];
-    }
-  | { type: "paragraph"; lines: string[] };
-
-/** Render transcript markdown as readable prose with GFM-style hard breaks. */
+/**
+ * Render transcript markdown as readable prose.
+ *
+ * The text is CommonMark plus GFM, with a hard break for each newline. Agent
+ * replies also use Slack-style `•` bullets and bold-only section labels, so
+ * those render as lists and headings too.
+ */
 export function TranscriptMarkdown(props: {
   compact?: boolean;
   text: string;
 }): ReactNode {
-  const blocks = parseMarkdownProseBlocks(props.text);
-  if (blocks.length === 0) return null;
+  if (!props.text.trim()) return null;
 
   return (
     <div
@@ -47,436 +42,251 @@ export function TranscriptMarkdown(props: {
       )}
     >
       <div className={cn("grid min-w-0", props.compact ? "gap-3" : "gap-2")}>
-        {blocks.map((block, index) => (
-          <MarkdownBlockView block={block} key={index} />
-        ))}
+        <Markdown
+          components={COMPONENTS}
+          remarkPlugins={[
+            remarkGfm,
+            remarkBreaks,
+            remarkBareUrlStops,
+            remarkSectionLabels,
+          ]}
+          urlTransform={safeTranscriptHref}
+        >
+          {normalizeSlackBullets(props.text)}
+        </Markdown>
       </div>
     </div>
   );
 }
 
-function MarkdownBlockView(props: { block: MarkdownBlock }) {
-  switch (props.block.type) {
-    case "heading": {
-      const className = cn(
-        "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text [&:not(:first-child)]:mt-1 [&+*]:-mt-1",
-        props.block.level <= 2 ? "text-[1.05em]" : "text-[1em]",
-      );
-      const content = renderInlineMarkdown(props.block.text);
-      switch (props.block.level) {
-        case 1:
-          return <h1 className={className}>{content}</h1>;
-        case 2:
-          return <h2 className={className}>{content}</h2>;
-        case 3:
-          return <h3 className={className}>{content}</h3>;
-        case 4:
-          return <h4 className={className}>{content}</h4>;
-        case 5:
-          return <h5 className={className}>{content}</h5>;
-        default:
-          return <h6 className={className}>{content}</h6>;
-      }
-    }
-    case "list": {
-      const ListTag = props.block.ordered ? "ol" : "ul";
-      return (
-        <ListTag
-          className={cn(
-            "m-0 grid min-w-0 list-outside gap-1.5 pl-6 text-dashboard-text marker:text-dashboard-text-muted",
-            props.block.ordered ? "list-decimal" : "list-disc",
-          )}
-          start={props.block.start}
-        >
-          {props.block.items.map((item, index) => (
-            <li className="min-w-0 pl-1" key={index}>
-              {renderInlineMarkdown(item)}
-            </li>
-          ))}
-        </ListTag>
-      );
-    }
-    case "table":
-      return <MarkdownTable block={props.block} />;
-    case "paragraph":
-      return (
-        <p className="m-0 min-w-0 whitespace-normal text-dashboard-text">
-          {props.block.lines.map((line, index) => (
-            <span key={index}>
-              {index > 0 ? <br /> : null}
-              {renderInlineMarkdown(line)}
-            </span>
-          ))}
-        </p>
-      );
-  }
+// Slack-style replies use "•" and "◦" bullets. CommonMark only knows -, *, +.
+function normalizeSlackBullets(text: string): string {
+  return text.replace(/^([ \t]*)[•◦](?=[ \t])/gm, "$1-");
 }
 
-function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
-  const normalized = text.replace(/\r\n?/g, "\n").replace(/^\n+|\n+$/g, "");
-  if (!normalized) return [];
+type MarkdownNode = {
+  children?: MarkdownNode[];
+  depth?: number;
+  position?: { start: { offset?: number } };
+  type: string;
+  url?: string;
+  value?: string;
+};
 
-  const blocks: MarkdownBlock[] = [];
-  for (const chunk of normalized.split(/\n{2,}/)) {
-    const lines = chunk.split("\n");
-    let index = 0;
-    while (index < lines.length) {
-      const line = lines[index] ?? "";
-      const heading = matchHeading(line);
-      if (heading) {
-        blocks.push(heading);
-        index += 1;
-        continue;
-      }
-
-      const ordered = isOrderedListItem(line);
-      const unordered = isUnorderedListItem(line);
-      if (ordered || unordered) {
-        const start = ordered ? Number(/\d+/.exec(line)?.[0]) : undefined;
-        const items: string[] = [];
-        while (
-          index < lines.length &&
-          (ordered
-            ? isOrderedListItem(lines[index] ?? "")
-            : isUnorderedListItem(lines[index] ?? ""))
-        ) {
-          items.push(
-            (lines[index] ?? "").replace(
-              ordered ? ORDERED_LIST_MARKER : UNORDERED_LIST_MARKER,
-              "",
-            ),
-          );
-          index += 1;
-        }
-        blocks.push({
-          items,
-          ordered,
-          start: start === 1 ? undefined : start,
-          type: "list",
-        });
-        continue;
-      }
-
-      const table = matchTable(lines, index);
-      if (table) {
-        blocks.push(table.block);
-        index = table.nextIndex;
-        continue;
-      }
-
-      const paragraphLines: string[] = [];
-      while (
-        index < lines.length &&
-        !matchHeading(lines[index] ?? "") &&
-        !isOrderedListItem(lines[index] ?? "") &&
-        !isUnorderedListItem(lines[index] ?? "") &&
-        !matchTable(lines, index)
-      ) {
-        paragraphLines.push(lines[index] ?? "");
-        index += 1;
-      }
-      blocks.push({ lines: paragraphLines, type: "paragraph" });
-    }
-  }
-
-  return blocks;
-}
-
-function MarkdownTable(props: {
-  block: Extract<MarkdownBlock, { type: "table" }>;
-}) {
-  const columnCount = Math.max(
-    props.block.headers.length,
-    ...props.block.rows.map((row) => row.length),
-    props.block.alignments.length,
-  );
-
-  return (
-    <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-dashboard-border bg-dashboard-fill-faint">
-      <Table className="w-max min-w-full">
-        <TableHeader className="bg-dashboard-overlay-soft">
-          <TableRow className="border-dashboard-border">
-            {Array.from({ length: columnCount }, (_, index) => {
-              const alignment = props.block.alignments[index] ?? null;
-              return (
-                <TableHead
-                  className={cn(
-                    "px-2.5 py-1.5",
-                    tableCellAlignClass(alignment),
-                  )}
-                  key={`h-${index}`}
-                  scope="col"
-                >
-                  {renderInlineMarkdown(props.block.headers[index] ?? "")}
-                </TableHead>
-              );
-            })}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {props.block.rows.map((row, rowIndex) => (
-            <TableRow key={`r-${rowIndex}`}>
-              {Array.from({ length: columnCount }, (_, index) => {
-                const alignment = props.block.alignments[index] ?? null;
-                return (
-                  <TableCell
-                    className={cn(
-                      "px-2.5 py-1.5 align-top",
-                      tableCellAlignClass(alignment),
-                    )}
-                    key={`c-${rowIndex}-${index}`}
-                  >
-                    {renderInlineMarkdown(row[index] ?? "")}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-function tableCellAlignClass(alignment: TableAlignment): string | undefined {
-  if (alignment === "center") return "text-center";
-  if (alignment === "right") return "text-right";
-  return undefined;
-}
-
-function matchTable(
-  lines: readonly string[],
-  index: number,
-):
-  | { block: Extract<MarkdownBlock, { type: "table" }>; nextIndex: number }
-  | undefined {
-  const headerLine = lines[index] ?? "";
-  const separatorLine = lines[index + 1] ?? "";
-  if (!isTableRowLine(headerLine) || !isTableSeparatorLine(separatorLine)) {
-    return undefined;
-  }
-
-  const headers = splitTableRow(headerLine);
-  const alignments = parseTableAlignments(separatorLine);
-  if (headers.length === 0 || alignments.length === 0) {
-    return undefined;
-  }
-
-  const rows: string[][] = [];
-  let cursor = index + 2;
-  while (cursor < lines.length && isTableRowLine(lines[cursor] ?? "")) {
-    rows.push(splitTableRow(lines[cursor] ?? ""));
-    cursor += 1;
-  }
-
-  return {
-    block: {
-      alignments,
-      headers,
-      rows,
-      type: "table",
-    },
-    nextIndex: cursor,
+/**
+ * End a bare URL at `*`, as Slack output does (`readBareUrl` in
+ * `packages/junior/src/chat/slack/mrkdwn.ts`). GFM keeps `*` in the URL, so
+ * `https://example.com**bold**` would link to `https://example.com**bold`.
+ */
+function remarkBareUrlStops() {
+  return (tree: MarkdownNode, file: { value: unknown }) => {
+    splitBareUrls(tree, String(file.value));
   };
 }
 
-function isTableRowLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed.includes("|")) return false;
-  if (isTableSeparatorLine(trimmed)) return false;
-  return /^\|?.+\|/.test(trimmed) || /\|.+\|?$/.test(trimmed);
-}
+function splitBareUrls(parent: MarkdownNode, source: string): void {
+  parent.children = parent.children?.flatMap((node) => {
+    splitBareUrls(node, source);
+    const text = node.children?.[0];
+    const stop = node.url?.indexOf("*") ?? -1;
+    const bare =
+      node.type === "link" &&
+      node.children?.length === 1 &&
+      text?.value === node.url &&
+      source[node.position?.start.offset ?? -1] !== "<";
+    if (!bare || stop <= 0) return [node];
 
-function isTableSeparatorLine(line: string): boolean {
-  const cells = splitTableRow(line);
-  if (cells.length === 0) return false;
-  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
-}
-
-function parseTableAlignments(line: string): TableAlignment[] {
-  return splitTableRow(line).map((cell) => {
-    const token = cell.replace(/\s+/g, "");
-    const left = token.startsWith(":");
-    const right = token.endsWith(":");
-    if (left && right) return "center";
-    if (right) return "right";
-    if (left) return "left";
-    return null;
+    const url = node.url!.slice(0, stop);
+    return [
+      { ...node, children: [{ type: "text", value: url }], url },
+      { type: "text", value: node.url!.slice(stop) },
+    ];
   });
 }
 
-function splitTableRow(line: string): string[] {
-  let trimmed = line.trim();
-  if (!trimmed) return [];
-  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
-  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
-
-  const cells: string[] = [];
-  let current = "";
-  let escaped = false;
-  for (const char of trimmed) {
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (char === "|") {
-      cells.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  cells.push(current.trim());
-  return cells;
-}
-
-function matchHeading(line: string): MarkdownBlock | undefined {
-  // Agents often write a bold-only line as a section label. Give it heading
-  // spacing so the section reads as a group.
-  if (/^\s*(?:\*\*[^*]+\*\*|__[^_]+__):?\s*$/.test(line)) {
-    return { level: 3, text: line.trim(), type: "heading" };
-  }
-  const match = /^(#{1,6})\s+(.+)$/.exec(line);
-  if (!match) return undefined;
-  return {
-    level: match[1]!.length as 1 | 2 | 3 | 4 | 5 | 6,
-    text: match[2]!.trimEnd(),
-    type: "heading",
+/**
+ * Agents often start a top-level paragraph with a bold-only line, such as
+ * `**Gaps**`, as a section label. Make that line a heading so the section
+ * reads as a group.
+ */
+function remarkSectionLabels() {
+  return (tree: MarkdownNode) => {
+    tree.children = tree.children?.flatMap(splitSectionLabel);
   };
 }
 
-// Slack-style replies use "•" bullets and "1)" numbers; render them as lists.
-const UNORDERED_LIST_MARKER = /^\s*[-*+•◦]\s+(?=\S)/;
-const ORDERED_LIST_MARKER = /^\s*\d+[.)]\s+(?=\S)/;
+function splitSectionLabel(node: MarkdownNode): MarkdownNode[] {
+  const [label, ...rest] = node.children ?? [];
+  if (node.type !== "paragraph" || label?.type !== "strong") return [node];
 
-function isUnorderedListItem(line: string): boolean {
-  return UNORDERED_LIST_MARKER.test(line);
+  const colon = rest[0]?.type === "text" && rest[0].value === ":";
+  const afterLabel = colon ? rest.slice(1) : rest;
+  if (afterLabel.length > 0 && afterLabel[0]?.type !== "break") return [node];
+
+  const heading: MarkdownNode = {
+    children: colon ? [label, rest[0]!] : [label],
+    depth: 3,
+    type: "heading",
+  };
+  const body = afterLabel.slice(1);
+  return body.length > 0
+    ? [heading, { children: body, type: "paragraph" }]
+    : [heading];
 }
 
-function isOrderedListItem(line: string): boolean {
-  return ORDERED_LIST_MARKER.test(line);
+const HEADING_CLASS =
+  "m-0 min-w-0 font-semibold tracking-[-0.01em] text-dashboard-text [&:not(:first-child)]:mt-1 [&+*]:-mt-1";
+
+const COMPONENTS: Components = {
+  a: ({ children, href }) => (
+    <TranscriptAnchor href={href}>{children}</TranscriptAnchor>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="m-0 grid min-w-0 gap-2 border-l-2 border-dashboard-border pl-3 text-dashboard-text-muted">
+      {children}
+    </blockquote>
+  ),
+  code: ({ children }) => (
+    <code className="rounded-[0.25rem] bg-dashboard-fill-strong px-1 py-0.5 font-mono text-[0.9em] text-dashboard-text">
+      {Children.map(children, (child) =>
+        typeof child === "string" ? <HighlightText text={child} /> : child,
+      )}
+    </code>
+  ),
+  del: ({ children }) => (
+    <del className="text-dashboard-text-muted">{renderText(children)}</del>
+  ),
+  em: ({ children }) => (
+    <em className="italic text-dashboard-text">{renderText(children)}</em>
+  ),
+  h1: ({ children }) => (
+    <h1 className={cn(HEADING_CLASS, "text-[1.05em]")}>
+      {renderText(children)}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className={cn(HEADING_CLASS, "text-[1.05em]")}>
+      {renderText(children)}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className={cn(HEADING_CLASS, "text-[1em]")}>{renderText(children)}</h3>
+  ),
+  h4: ({ children }) => (
+    <h4 className={cn(HEADING_CLASS, "text-[1em]")}>{renderText(children)}</h4>
+  ),
+  h5: ({ children }) => (
+    <h5 className={cn(HEADING_CLASS, "text-[1em]")}>{renderText(children)}</h5>
+  ),
+  h6: ({ children }) => (
+    <h6 className={cn(HEADING_CLASS, "text-[1em]")}>{renderText(children)}</h6>
+  ),
+  hr: () => <hr className="m-0 w-full border-dashboard-border" />,
+  // Do not load remote images from transcript text. Link to them instead.
+  img: ({ alt, src }) => (
+    <TranscriptAnchor href={typeof src === "string" ? src : undefined}>
+      {alt || src}
+    </TranscriptAnchor>
+  ),
+  li: ({ children, className }) => (
+    <li
+      className={cn(
+        "min-w-0 pl-1 [&>*+*]:mt-1.5",
+        className?.includes("task-list-item") && "-ml-5 list-none",
+      )}
+    >
+      {renderText(children)}
+    </li>
+  ),
+  ol: ({ children, start }) => (
+    <ol
+      className="m-0 grid min-w-0 list-outside list-decimal gap-1.5 pl-6 text-dashboard-text marker:text-dashboard-text-muted"
+      start={start}
+    >
+      {children}
+    </ol>
+  ),
+  p: ({ children }) => (
+    <p className="m-0 min-w-0 whitespace-normal">{renderText(children)}</p>
+  ),
+  pre: ({ children }) => (
+    <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0">
+      {children}
+    </pre>
+  ),
+  strong: ({ children }) => (
+    <strong className="font-semibold text-dashboard-text">
+      {renderText(children)}
+    </strong>
+  ),
+  table: ({ children }) => (
+    <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-dashboard-border bg-dashboard-fill-faint">
+      <Table className="w-max min-w-full">{children}</Table>
+    </div>
+  ),
+  tbody: ({ children }) => <TableBody>{children}</TableBody>,
+  td: ({ children, style }) => (
+    <TableCell
+      className={cn("px-2.5 py-1.5 align-top", alignClass(style?.textAlign))}
+    >
+      {renderText(children)}
+    </TableCell>
+  ),
+  th: ({ children, style }) => (
+    <TableHead
+      className={cn("px-2.5 py-1.5", alignClass(style?.textAlign))}
+      scope="col"
+    >
+      {renderText(children)}
+    </TableHead>
+  ),
+  thead: ({ children }) => (
+    <TableHeader className="bg-dashboard-overlay-soft">{children}</TableHeader>
+  ),
+  tr: ({ children }) => (
+    <TableRow className="[thead_&]:border-dashboard-border">
+      {children}
+    </TableRow>
+  ),
+  ul: ({ children }) => (
+    <ul className="m-0 grid min-w-0 list-outside list-disc gap-1.5 pl-6 text-dashboard-text marker:text-dashboard-text-muted">
+      {children}
+    </ul>
+  ),
+};
+
+// Text nodes can hold Slack mention tokens and transcript search matches.
+function renderText(children: ReactNode): ReactNode {
+  return Children.map(children, (child, index) =>
+    typeof child === "string" ? renderMentionText(child, `t-${index}`) : child,
+  );
 }
 
-function renderInlineMarkdown(text: string): ReactNode[] {
-  // code -> emphasis -> links, so bold/italic can wrap URLs without leaking ** into hrefs
-  return renderInlineCode(text, 0);
+function alignClass(align: unknown): string | undefined {
+  if (align === "center") return "text-center";
+  if (align === "right") return "text-right";
+  return undefined;
 }
 
-function renderInlineCode(text: string, keyBase: number): ReactNode[] {
-  if (!text) return [];
+function TranscriptAnchor(props: { children: ReactNode; href?: string }) {
+  // `safeTranscriptHref` removes unsafe destinations. Keep their label text.
+  if (!props.href) return <>{renderText(props.children)}</>;
 
-  const nodes: ReactNode[] = [];
-  const codePattern = /(`+)([^`]+?)\1/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  let part = 0;
-
-  while ((match = codePattern.exec(text))) {
-    if (match.index > cursor) {
-      nodes.push(
-        ...renderEmphasisText(
-          text.slice(cursor, match.index),
-          `${keyBase}-${part++}`,
-        ),
-      );
-    }
-    nodes.push(
-      <code
-        className="rounded-[0.25rem] bg-dashboard-fill-strong px-1 py-0.5 font-mono text-[0.9em] text-dashboard-text"
-        key={`code-${keyBase}-${part++}`}
-      >
-        <HighlightText text={match[2] ?? ""} />
-      </code>,
-    );
-    cursor = match.index + match[0].length;
-  }
-
-  if (cursor < text.length) {
-    nodes.push(...renderEmphasisText(text.slice(cursor), `${keyBase}-${part}`));
-  }
-  return nodes;
-}
-
-function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
-  if (!text) return [];
-
-  const nodes: ReactNode[] = [];
-  const pattern = /(\*\*|__)(.+?)\1|\*([^*]+?)\*/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  let part = 0;
-
-  while ((match = pattern.exec(text))) {
-    if (match.index > cursor) {
-      nodes.push(
-        ...renderLinkText(
-          text.slice(cursor, match.index),
-          `${keyBase}-t-${part++}`,
-        ),
-      );
-    }
-    nodes.push(
-      match[1] ? (
-        <strong
-          className="font-semibold text-dashboard-text"
-          key={`${keyBase}-b-${part++}`}
-        >
-          {renderLinkText(match[2] ?? "", `${keyBase}-bc-${part}`)}
-        </strong>
+  const opensNewTab = /^https?:/i.test(props.href);
+  return (
+    <a
+      className={TRANSCRIPT_ANCHOR_CLASS}
+      href={props.href}
+      rel={opensNewTab ? "noreferrer" : undefined}
+      target={opensNewTab ? "_blank" : undefined}
+    >
+      {typeof props.children === "string" ? (
+        <SearchAwareLinkLabel href={props.href} label={props.children} />
       ) : (
-        <em
-          className="italic text-dashboard-text"
-          key={`${keyBase}-i-${part++}`}
-        >
-          {renderLinkText(match[3] ?? "", `${keyBase}-ic-${part}`)}
-        </em>
-      ),
-    );
-    cursor = match.index + match[0].length;
-  }
-
-  if (cursor < text.length) {
-    nodes.push(...renderLinkText(text.slice(cursor), `${keyBase}-t-${part}`));
-  }
-  return nodes;
-}
-
-function renderLinkText(text: string, keyBase: string): ReactNode[] {
-  if (!text) return [];
-
-  const links = findTranscriptMarkdownLinks(text);
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  let part = 0;
-
-  for (const link of links) {
-    if (link.start > cursor) {
-      nodes.push(
-        ...renderMentionText(
-          text.slice(cursor, link.start),
-          `${keyBase}-s-${part++}`,
-        ),
-      );
-    }
-    nodes.push(
-      <TranscriptAnchor href={link.href} key={`${keyBase}-a-${link.start}`}>
-        <SearchAwareLinkLabel href={link.href} label={link.label} />
-      </TranscriptAnchor>,
-    );
-    cursor = link.end;
-  }
-
-  if (cursor < text.length) {
-    nodes.push(
-      ...renderMentionText(text.slice(cursor), `${keyBase}-s-${part}`),
-    );
-  }
-  return nodes;
+        props.children
+      )}
+    </a>
+  );
 }
 
 function SearchAwareLinkLabel(props: { href: string; label: string }) {
@@ -499,18 +309,4 @@ function SearchAwareLinkLabel(props: { href: string; label: string }) {
   }
 
   return <HighlightText text={props.label} />;
-}
-
-function TranscriptAnchor(props: { children: ReactNode; href: string }) {
-  const opensNewTab = /^https?:/i.test(props.href);
-  return (
-    <a
-      className={TRANSCRIPT_ANCHOR_CLASS}
-      href={props.href}
-      rel={opensNewTab ? "noreferrer" : undefined}
-      target={opensNewTab ? "_blank" : undefined}
-    >
-      {props.children}
-    </a>
-  );
 }

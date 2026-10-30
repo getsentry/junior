@@ -572,7 +572,16 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         type: "message",
         messageId: "active-user-followup",
         role: "user",
-        text: "Compare the pre/post deploy spans next.",
+        // Quoted reply keeps blockquote and nested-list rendering in visual QA.
+        text: [
+          "> error volume is flat, so this looks like slow path not hard fail",
+          "",
+          "Agreed. Compare the pre/post deploy spans next:",
+          "1. `checkout.complete` p95",
+          "   - stable hosts",
+          "   - canary hosts",
+          "2. ~~error rate~~ serializer span time",
+        ].join("\n"),
       }),
       reportEvent(8, iso(Date.parse(startedAt), 42_000), {
         type: "turn_lifecycle",
