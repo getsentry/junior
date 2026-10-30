@@ -12,7 +12,10 @@ import {
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import type { ThreadConversationState } from "@/chat/state/conversation";
+import type {
+  ConversationAuthor,
+  ThreadConversationState,
+} from "@/chat/state/conversation";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
@@ -43,11 +46,13 @@ function steeringMessageFromWeb(
  */
 export function createWebSteeringDrain(args: {
   actor: WebActor;
+  /** Transcript author of the Turn Actor. */
+  author: ConversationAuthor;
   context: ConversationWorkerContext;
   conversation: ThreadConversationState;
   turnId: string;
 }) {
-  const { actor, context, conversation, turnId } = args;
+  const { actor, author, context, conversation, turnId } = args;
   return async (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ): Promise<AgentSteeringMessage[]> => {
@@ -71,12 +76,7 @@ export function createWebSteeringDrain(args: {
           role: "user",
           text: normalizeConversationText(message.input.text),
           createdAtMs: message.createdAtMs,
-          author: {
-            email: actor.email,
-            ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-            userId: actor.userId,
-            ...(actor.userName ? { userName: actor.userName } : undefined),
-          },
+          author,
           meta: {
             ...(attachments.length ? { attachments } : undefined),
             explicitMention: true,
