@@ -75,8 +75,14 @@ async function connect(): Promise<{
     );
   })) as [BullMq, typeof import("redis")];
   const client = redis.createClient({ url: bullmqConfig().redisUrl });
-  await client.connect();
-  return { bullmq, connection: bullmq.createNodeRedisClient(client) };
+  try {
+    await client.connect();
+    return { bullmq, connection: bullmq.createNodeRedisClient(client) };
+  } catch (error) {
+    // A failed `connect()` leaves the client open and reconnecting.
+    client.destroy();
+    throw error;
+  }
 }
 
 /** BullMQ job ids must not contain ":", and Junior's keys do. */
