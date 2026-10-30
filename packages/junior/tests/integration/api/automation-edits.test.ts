@@ -544,7 +544,7 @@ describe("Automation edit API", () => {
         expect(
           versions.map(({ version, editedBy, definition }) => [
             version,
-            editedBy?.slackUserId,
+            (editedBy as { slackUserId: string } | null)?.slackUserId,
             definition.instruction,
             definition.title,
             definition.credentialMode,
@@ -635,10 +635,10 @@ describe("Automation edit API", () => {
         expect(
           afterReader.versions
             .slice(0, 2)
-            .map(({ version, editedBy }) => [version, editedBy?.slackUserId]),
-        ).toEqual([
-          [9, "U456"],
-          [8, "U123"],
+            .map(({ version, editedBy }) => [version, editedBy]),
+        ).toMatchObject([
+          [9, { slackUserId: "U456" }],
+          [8, { slackUserId: "U123" }],
         ]);
         expect(afterReader.activeVersion).toBe(9);
         expect(

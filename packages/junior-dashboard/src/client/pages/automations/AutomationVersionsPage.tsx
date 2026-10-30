@@ -232,11 +232,14 @@ function VersionRow(props: {
   version: ListedAutomationVersion;
 }) {
   const { automation, version } = props;
-  const editor = version.editedBy
-    ? (version.editedBy.fullName ??
-      version.editedBy.userName ??
-      version.editedBy.slackUserId)
-    : "Editor unknown";
+  const editor =
+    version.editedBy === "junior"
+      ? "Junior"
+      : version.editedBy
+        ? (version.editedBy.fullName ??
+          version.editedBy.userName ??
+          version.editedBy.slackUserId)
+        : "Editor unknown";
   const changes = props.previous
     ? changedFields(props.previous, version)
     : undefined;

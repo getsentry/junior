@@ -265,7 +265,8 @@ test("makes an earlier version active from version history", async ({
       kind: "scheduled",
       version: 1,
       createdAt: "2026-07-28T16:00:00.000Z",
-      editedBy: null,
+      // A version that Junior saved names Junior as its editor.
+      editedBy: "junior",
       definition,
     },
   ];
@@ -294,6 +295,9 @@ test("makes an earlier version active from version history", async ({
   await page.getByRole("link", { name: "Version history" }).click();
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);
   await expect(page.getByText("Changed instruction")).toBeVisible();
+  await expect(
+    page.getByRole("listitem", { name: "Version 1" }).getByText(/^Junior · /),
+  ).toBeVisible();
   await screenshot(page, "automation-versions");
   await page
     .getByRole("button", { name: "Make version 1 active", exact: true })

@@ -70,7 +70,10 @@ its form, which shows every saved filter.
 
 Saved rows keep their identifiers until a later change converts them. Saved
 versions keep their old triggers, and the version schema still reads
-`identifier` and `resourceType`.
+`identifier` and `resourceType`. The version schema also reads
+`editedBy: "junior"` for a version that Junior saves when it changes a trigger
+itself. Nothing writes it yet. The reader comes first, so a release that
+writes it can roll back to this one and keep version history readable.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by
 watches and event automations. Create and update tools accept only
