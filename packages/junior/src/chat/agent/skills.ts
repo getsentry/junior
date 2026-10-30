@@ -22,6 +22,20 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
   activeSkills.push(next);
 }
 
+/**
+ * Return the skills that the model can load with `loadSkill`. A user-callable
+ * skill is loadable only in the Turn where the user invoked it.
+ */
+export function loadableSkills(
+  availableSkills: SkillMetadata[],
+  invokedSkillName: string | undefined,
+): SkillMetadata[] {
+  return availableSkills.filter(
+    (skill) =>
+      skill.disableModelInvocation !== true || skill.name === invokedSkillName,
+  );
+}
+
 /** Discover skills for one slice; emits the startup discovery summary once per process. */
 export async function discoverRunSkills(args: {
   skillDirs?: string[];
@@ -46,7 +60,9 @@ export async function discoverRunSkills(args: {
   return availableSkills;
 }
 
-function lastLoadedSkillName(messages: readonly PiMessage[]): string | undefined {
+function lastLoadedSkillName(
+  messages: readonly PiMessage[],
+): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index] as {
       details?: unknown;
