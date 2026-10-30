@@ -11,7 +11,7 @@ import { onTestFinished } from "vitest";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
@@ -40,7 +40,10 @@ export interface SlackChannel {
  */
 const FIXTURE_START_DATE = "2026-05-04";
 
-/** The Slack timestamp of the message that stored a setup memory. */
+/**
+ * The Slack timestamp of the setup message that stored a memory or created an
+ * automation.
+ */
 const FIXTURE_MESSAGE_TS = "1780000000.000100";
 
 /**
@@ -96,6 +99,27 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
     provider: "slack",
     providerSubjectId: author.userId,
     providerTenantId: SLACK_TEAM_ID,
+  });
+}
+
+/**
+ * Store the Slack thread where a person created an automation. Like the live
+ * Slack event of that thread, it records the channel as public. Automation
+ * runs do not record channel visibility, so without it their Conversations in
+ * the channel are private.
+ */
+async function insertCreationThread(destination: SlackChannel) {
+  await getConversationStore().recordActivity({
+    conversationId: `slack:${destination.channelId}:${FIXTURE_MESSAGE_TS}`,
+    destination,
+    sessionSource: createSlackSource({
+      channelId: destination.channelId,
+      teamId: destination.teamId,
+      threadTs: FIXTURE_MESSAGE_TS,
+      visibility: "public",
+    }),
+    source: "slack",
+    visibility: "public",
   });
 }
 
@@ -162,6 +186,7 @@ export async function insertScheduledAutomation(args: {
     task: { text: args.task },
     updatedAtMs: nowMs - 60_000,
   };
+  await insertCreationThread(args.destination);
   await saveScheduledAutomation(getDb(), automation);
   return { id };
 }
@@ -180,6 +205,7 @@ export async function insertEventAutomation(args: {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
   const id = `evt_${fixtureId("event-automation", 20)}`;
+  await insertCreationThread(args.destination);
   await createEventAutomation(getDb(), {
     id,
     createdAtMs: Date.now() - 60_000,
