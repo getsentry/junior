@@ -778,6 +778,33 @@ test("edits a queued message back into the composer", async ({
   // Close the delivery tooltip that opened under the pointer.
   await page.mouse.move(0, 0);
 
+  // A draft with no room for the queued image keeps the message queued.
+  await composer.evaluate((element, data) => {
+    const dataTransfer = new DataTransfer();
+    for (const name of ["one.png", "two.png", "three.png"]) {
+      dataTransfer.items.add(
+        new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, {
+          type: "image/png",
+        }),
+      );
+    }
+    element.dispatchEvent(
+      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }),
+    );
+  }, mockChartPng.toString("base64"));
+  await expect(page.getByRole("img", { name: "three.png" })).toBeVisible();
+  await pending
+    .getByRole("button", { name: "Edit queued message" })
+    .first()
+    .click();
+  await expect(
+    page.getByText("Remove some draft images to edit that message."),
+  ).toBeVisible();
+  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
+  for (const name of ["one.png", "two.png", "three.png"]) {
+    await page.getByRole("button", { name: `Remove ${name}` }).click();
+  }
+
   // Text goes ahead of the draft and the image comes back with it.
   await composer.fill("Draft in progress");
   await pending

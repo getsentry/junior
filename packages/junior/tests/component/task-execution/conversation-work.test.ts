@@ -1651,6 +1651,53 @@ describe("conversation work execution", () => {
     ]);
   });
 
+  it("resumes a yielded Turn before a newly steered web message", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const webMessage = (id: string, authorId: string) =>
+      inboundMessage(id, {
+        delivery: "defer",
+        input: { authorId, text: id },
+        source: "web",
+      });
+    await appendInboundMessage({
+      message: webMessage("a1", "dashboard:a"),
+      nowMs: 1_000,
+    });
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        await appendInboundMessage({
+          message: webMessage("b1", "dashboard:b"),
+        });
+        await steerWebPendingMessages({
+          authorId: "dashboard:b",
+          conversationId: CONVERSATION_ID,
+          inboundMessageIds: ["b1"],
+        });
+        return { status: "yielded" };
+      },
+    });
+
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // A second Turn must not start while the first waits to resume.
+    expect(attempts).toEqual([["a1"], [], ["b1"]]);
+  });
+
   it("does not rewrite mailbox state for an empty drain result", async () => {
     const events: string[] = [];
     const conversationStore = metadataEventsStore(events);

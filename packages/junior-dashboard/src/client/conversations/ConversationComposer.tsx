@@ -65,12 +65,18 @@ export function conversationAttemptForSubmit(
 
 /** Imperative composer actions for the reply footer. */
 export type ConversationComposerHandle = {
+  /** True when the draft has room for these images right now. */
+  canRestoreImages(images: readonly InputImage[]): boolean;
   /** Put queued text ahead of the draft and add its images when they fit. */
   restoreMessage(message: { images?: InputImage[]; text: string }): void;
 };
 
-function imageBytes(images: readonly InputImage[]): number {
-  return images.reduce((sum, image) => sum + (image.data.length * 3) / 4, 0);
+function imagesFit(images: readonly InputImage[]): boolean {
+  return (
+    images.length <= MAX_INPUT_IMAGES &&
+    images.reduce((sum, image) => sum + (image.data.length * 3) / 4, 0) <=
+      MAX_INPUT_IMAGE_BYTES
+  );
 }
 
 type ConversationComposerProps = {
@@ -203,7 +209,18 @@ export const ConversationComposer = memo(function ConversationComposer(
     setReadingImages(true);
     setImageError(undefined);
     try {
-      replaceImages(await readComposerImages(files, imagesRef.current));
+      const before = imagesRef.current;
+      const added = (await readComposerImages(files, before)).slice(
+        before.length,
+      );
+      // An edit can restore images during the read. Add to those images
+      // instead of replacing them.
+      const next = [...imagesRef.current, ...added];
+      if (!imagesFit(next)) {
+        setImageError("Attach up to 3 images that total 3 MB or less.");
+      } else {
+        replaceImages(next);
+      }
       textareaRef.current?.focus({ preventScroll: true });
     } catch (error) {
       setImageError(
@@ -349,16 +366,15 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   useImperativeHandle(props.ref, () => ({
+    canRestoreImages: (images) =>
+      !images.length || imagesFit([...images, ...imagesRef.current]),
     restoreMessage: (message) => {
       // An image-only message has no text to put ahead of the draft.
       if (message.text.trim()) prependDraftText(message.text);
       const restoredImages = message.images ?? [];
       if (restoredImages.length) {
         const merged = [...restoredImages, ...imagesRef.current];
-        if (
-          merged.length > MAX_INPUT_IMAGES ||
-          imageBytes(merged) > MAX_INPUT_IMAGE_BYTES
-        ) {
+        if (!imagesFit(merged)) {
           setImageError(
             "The edited message images did not fit. Add them again.",
           );

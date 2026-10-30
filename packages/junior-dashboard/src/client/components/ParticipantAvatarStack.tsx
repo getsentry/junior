@@ -63,6 +63,8 @@ export function ParticipantAvatar(props: {
         render={
           <span
             aria-label={label}
+            // A name on a generic span is often skipped by screen readers.
+            role="img"
             className="relative -ml-1 inline-flex rounded-full first:ml-0 pointer-events-none focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus [@media(hover:hover)_and_(pointer:fine)]:pointer-events-auto"
             onKeyDown={(event) => event.stopPropagation()}
             tabIndex={0}
