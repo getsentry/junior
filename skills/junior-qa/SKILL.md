@@ -210,11 +210,8 @@ environment when appropriate with `pnpm dev:env`, then rerun the same command.
 If local chat fails with a `junior_conversation_messages` or
 `junior_conversation_events` query error, the local Postgres schema predates the
 SQL conversation storage cutover; run `pnpm cli -- upgrade`, then rerun.
-If a Docker sandbox fails with `Could not trust the egress CA: ... argument list
-too long`, the extra CA file is too large for this Junior version. Give only the
-proxy CA file. If commands in a Docker sandbox fail certificate checks for a
-host that the Vercel Sandbox proxies, the extra CA is not set. See "Inside a
-Vercel Sandbox".
+If commands in a Docker sandbox fail certificate checks for a host that the
+Vercel Sandbox proxies, the extra CA is not set. See "Inside a Vercel Sandbox".
 If Redis errors appear during ordinary local QA, check whether
 `JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
 state.
