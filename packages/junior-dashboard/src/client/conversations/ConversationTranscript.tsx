@@ -1,4 +1,5 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
+import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
@@ -74,13 +75,20 @@ export const ConversationTranscriptView = memo(
       conversation: ConversationTranscript;
     }) => void;
     conversation: ConversationTranscript;
+    /** Sends that history does not have yet. History wins on message id. */
+    pendingMessages?: readonly ConversationPendingMessage[];
     responding?: boolean;
   }) {
     // Cards can change while their Message events stay unchanged.
     const { events, annotations } = props.conversation;
     const messages = useMemo(
-      () => transcriptMessagesFromEvents(events, annotations),
-      [events, annotations],
+      () =>
+        transcriptMessagesFromEvents(
+          events,
+          annotations,
+          props.pendingMessages,
+        ),
+      [events, annotations, props.pendingMessages],
     );
 
     return (

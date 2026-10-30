@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 import { ArrowDownToLine } from "lucide-react";
 
 import type {
@@ -37,6 +38,8 @@ export function Transcript(props: {
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
   onSelectedEventSeqChange?(seq: number | undefined): void;
+  /** The reader's own sends to show at the end until history has them. */
+  pendingMessages?: readonly ConversationPendingMessage[];
   responding?: boolean;
   search?: string;
   onSearchChange?(value: string): void;
@@ -139,6 +142,7 @@ export function Transcript(props: {
             <ConversationTranscriptView
               onOpenSubagentTranscript={props.onOpenSubagentTranscript}
               conversation={props.transcript}
+              pendingMessages={props.pendingMessages}
               responding={props.responding ?? props.live ?? false}
             />
           </TurnContextPanelProvider>

@@ -219,6 +219,7 @@ test("starts and continues conversations from the dashboard", async ({
   await screenshot(page, "conversation-image-reply");
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
+  // This history expired, so the transcript cannot show the send. It queues.
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
   // The author avatar carries the name and email for hover and screen readers.
   await expect(pending.getByLabel(/dev@example\.com/)).toBeVisible();
@@ -406,12 +407,16 @@ test("hands web and external messages from queue to history without gaps", async
   );
   const composer = page.getByLabel("Continue this conversation");
   const pending = page.getByLabel("Pending messages");
+  const transcript = page.getByLabel("Conversation transcript");
   const thinking = page
     .getByRole("status")
     .filter({ hasText: "Junior is thinking" });
   await composer.fill(web.text);
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(pending.getByText(web.text)).toBeVisible();
+  // Junior is idle and the queue is empty, so the send goes straight to the
+  // transcript and stays in place until history has it.
+  await expect(transcript.getByText(web.text)).toBeVisible();
+  await expect(pending).toBeHidden();
   await expect(thinking).toBeHidden();
 
   // Watch every DOM change, not just the final state: the message must never
@@ -446,15 +451,17 @@ test("hands web and external messages from queue to history without gaps", async
   const readsBeforeAccept = detailReads;
   releaseAccept();
   await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeAccept);
-  await expect(pending.getByText(web.text)).toBeVisible();
-  await expect(pending.getByLabel("Queued", { exact: true })).toBeVisible();
+  await expect(transcript.getByText(web.text)).toBeVisible();
+  await expect(pending).toBeHidden();
   await expect(thinking).toBeHidden();
   releaseHistory();
   historyHeld = undefined;
+  // The mailbox copy does not pull the message back into the queue.
   queued = [web];
-  await expect(
-    pending.getByRole("button", { name: "Delete queued message" }),
-  ).toBeVisible();
+  const readsBeforeQueued = pendingReads;
+  await expect.poll(() => pendingReads).toBeGreaterThan(readsBeforeQueued + 1);
+  await expect(transcript.getByText(web.text)).toBeVisible();
+  await expect(pending).toBeHidden();
   await expect(thinking).toBeHidden();
 
   // The mailbox can empty before the slower history read returns. Publish both
@@ -467,15 +474,13 @@ test("hands web and external messages from queue to history without gaps", async
     releaseHistory = resolve;
   });
   await expect.poll(() => pendingReads).toBeGreaterThan(readsBeforeCommit);
-  await expect(pending.getByText(web.text)).toBeVisible();
+  await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(thinking).toBeHidden();
   releaseHistory();
   historyHeld = undefined;
-  await expect(pending).toBeHidden();
-  await expect(
-    page.getByLabel("Conversation transcript").getByText(web.text),
-  ).toBeVisible();
   await expect(thinking).toBeVisible();
+  await expect(transcript.getByText(web.text)).toBeVisible();
+  await expect(pending).toBeHidden();
 
   expect(
     await page.evaluate(() => {

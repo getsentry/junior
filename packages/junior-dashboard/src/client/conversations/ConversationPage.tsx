@@ -441,6 +441,7 @@ export function ConversationPage(props: {
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
                     onSelectedEventSeqChange={setSelectedEventSeq}
+                    pendingMessages={detail.inlineMessages}
                     pinRequestVersion={pinRequestVersion}
                     responding={
                       !detail.error && conversationIsResponding(transcript)
@@ -473,6 +474,9 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              // Without live history, an inline send would never leave the
+              // transcript tail. Keep those sends in the queue.
+              showsNewMessages={detail.data.eventHistory.status === "available"}
               stoppable={live}
             />
           ) : undefined
@@ -555,6 +559,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** True when the transcript can show a new send as it reaches history. */
+  showsNewMessages: boolean;
   /** True while the conversation has a Turn that a stop can end. */
   stoppable: boolean;
 }) {
@@ -593,10 +599,21 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
+  // Junior is idle and nothing waits in the queue, so the next send would
+  // leave the queue almost at once. Show it in the transcript instead.
+  const committedIds = new Set(props.committedMessageIds);
+  const sendInlineRef = useRef(false);
+  sendInlineRef.current =
+    props.showsNewMessages &&
+    !props.stoppable &&
+    !props.pendingMessages.some(
+      (message) => !committedIds.has(message.messageId),
+    );
   const onSubmit = useCallback(
     async (message: string, idempotencyKey: string, images?: InputImage[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
+        inline: sendInlineRef.current,
         message,
         images,
       });
