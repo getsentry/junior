@@ -12,6 +12,7 @@ import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
+import { createReviewItemRoutes } from "./api/review-items/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
@@ -78,13 +79,16 @@ export function createJuniorApi(
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
 
+  const queue =
+    options.conversationWorkQueue ?? getVercelConversationWorkQueue();
   app.route(
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: getAttachmentStorage(),
-      queue: options.conversationWorkQueue ?? getVercelConversationWorkQueue(),
+      queue,
     }),
   );
+  app.route("/api/review-items", createReviewItemRoutes({ queue }));
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());

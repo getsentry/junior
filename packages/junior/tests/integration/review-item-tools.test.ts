@@ -8,7 +8,9 @@ import {
   createSearchReviewItemsTool,
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
+import { getConversation } from "@/chat/task-execution/store";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 
 type Context = Pick<
   ToolRuntimeContext,
@@ -19,11 +21,13 @@ async function execute(tool: any, input: unknown): Promise<any> {
   return await tool.execute(input, {} as any);
 }
 
+const queue = createConversationWorkQueueTestAdapter();
+
 function tools(context: Context) {
   return {
     add: createAddReviewItemTool(context),
     search: createSearchReviewItemsTool(context),
-    update: createUpdateReviewItemTool(context),
+    update: createUpdateReviewItemTool(context, () => queue),
   };
 }
 
@@ -276,6 +280,7 @@ describe("review item tools", () => {
 
   it("lets an agent close an item once, with a reason", async () => {
     await conversation("slack:CPUB:1.000001", "CPUB", "public");
+    await conversation("slack:CPUB:1.000002", "CPUB", "public");
     await user("ana@example.com");
     const agent = tools(automationRun("slack:CPUB:1.000001"));
     const added = await execute(agent.add, {
@@ -283,6 +288,7 @@ describe("review item tools", () => {
       title: "Pull request needs review",
       body: "It waits on a reviewer.",
       assignees: ["everyone"],
+      conversation_ids: ["slack:CPUB:1.000002"],
       dedupe_key: "pr:7",
     });
 
@@ -299,6 +305,17 @@ describe("review item tools", () => {
       closed_by: "agent",
       close_reason: "no longer needed: pull request closed",
     });
+    // Only the other linked Conversation hears about the close.
+    const other = await getConversation({
+      conversationId: "slack:CPUB:1.000002",
+    });
+    expect(
+      other?.execution.pendingMessages.map((message) => message.input.text),
+    ).toEqual([expect.stringContaining("An agent in another Conversation")]);
+    const own = await getConversation({
+      conversationId: "slack:CPUB:1.000001",
+    });
+    expect(own?.execution.pendingMessages ?? []).toEqual([]);
     await expect(
       execute(agent.update, {
         id: added.item.id,

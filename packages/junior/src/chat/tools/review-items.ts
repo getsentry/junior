@@ -5,6 +5,7 @@ import {
   type ProviderTenant,
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
+import { sendReviewItemMessages } from "@/chat/review-items/messages";
 import {
   conversationParticipantUserIds,
   EVERYONE_ASSIGNEE,
@@ -32,6 +33,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { userInputRequestSchema } from "@/chat/tools/runtime/user-input-request";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 /** Deferred tool catalog source for Review items. */
 export const REVIEW_DESK_TOOL_SOURCE = {
@@ -399,8 +401,14 @@ export function createAddReviewItemTool(context: ReviewItemToolContext) {
   });
 }
 
-/** Create the tool that changes or closes a Review item. */
-export function createUpdateReviewItemTool(context: ReviewItemToolContext) {
+/**
+ * Create the tool that changes or closes a Review item. A close tells the
+ * other linked Conversations through `queue`.
+ */
+export function createUpdateReviewItemTool(
+  context: ReviewItemToolContext,
+  queue: () => ConversationWorkQueue,
+) {
   return zodTool({
     description:
       "Change an open review desk item, or close it. Set `status` to `done` or `dismissed` with a `reason`, for example when its pull request merged. An item never closes on its own. You cannot submit the answer to an action item: only an assignee can.",
@@ -506,16 +514,26 @@ export function createUpdateReviewItemTool(context: ReviewItemToolContext) {
           throw new ToolInputError(`Review item ${item.id} is already closed.`);
         }
       }
-      if (input.status) {
+      if (input.status && input.reason) {
+        const nowMs = Date.now();
         const closed = await closeReviewItem(db, {
           id: item.id,
-          nowMs: Date.now(),
-          reason: input.reason ?? undefined,
+          nowMs,
+          reason: input.reason,
           status: input.status,
         });
         if (!closed) {
           throw new ToolInputError(`Review item ${item.id} is already closed.`);
         }
+        const closedItem = await readableItem(item.id, scope);
+        await sendReviewItemMessages({
+          change: { kind: "closed", reason: input.reason },
+          exceptConversationId: context.conversationId,
+          item: closedItem,
+          nowMs,
+          queue: queue(),
+        });
+        return { item: itemResult(closedItem) };
       }
       return { item: itemResult(await readableItem(item.id, scope)) };
     },

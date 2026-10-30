@@ -1,5 +1,6 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import { botConfig } from "@/chat/config";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
@@ -389,7 +390,10 @@ export function createTools(
       {
         addReviewItem: createAddReviewItemTool(context),
         searchReviewItems: createSearchReviewItemsTool(context),
-        updateReviewItem: createUpdateReviewItemTool(context),
+        updateReviewItem: createUpdateReviewItemTool(
+          context,
+          getVercelConversationWorkQueue,
+        ),
       },
       context.parentConversationId
         ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`

@@ -4,6 +4,7 @@ import type { InputImage } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
+  acceptsWebMessages,
   webActorFromEmail,
   appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
@@ -90,12 +91,7 @@ export async function appendConversationMessageForViewer(
   if (!conversation) {
     throwApiError(404, "Conversation not found.");
   }
-  const destinationPlatform = conversation.destination?.platform;
-  const acceptsWebMessages =
-    (destinationPlatform === "local" &&
-      conversationId.startsWith("local:web:")) ||
-    destinationPlatform === "slack";
-  if (!acceptsWebMessages) {
+  if (!acceptsWebMessages(conversationId, conversation.destination)) {
     throwApiError(409, "Conversation does not accept web messages.");
   }
 

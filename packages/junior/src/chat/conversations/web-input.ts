@@ -108,6 +108,20 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
   };
 }
 
+/**
+ * Return whether a person can add a web Message to an existing
+ * Conversation: a dashboard Conversation or a Slack thread.
+ */
+export function acceptsWebMessages(
+  conversationId: string,
+  destination: Destination | undefined,
+): boolean {
+  if (destination?.platform === "slack") return true;
+  return (
+    destination?.platform === "local" && conversationId.startsWith("local:web:")
+  );
+}
+
 /** Rebuild the web Actor from durable Conversation identity. */
 export function webActorFromEmail(
   email: string,
