@@ -35,7 +35,7 @@ Verified CLI surface (check live `sentry --help` before blocking):
 
 ## Org read access
 
-Set `SENTRY_READ_TOKEN` to a read-only internal integration token. Junior then uses it for Sentry API reads (`GET`, `HEAD`, `OPTIONS`), including Explore queries, scheduled tasks, and event automations. Writes and `/api/0/users/` requests still use the requesting user's OAuth token.
+Set `SENTRY_READ_TOKEN` to a read-only internal integration token. Junior then uses it for Sentry API reads (`GET`, `HEAD`, `OPTIONS`) of the organization that installed the integration, including Explore queries, scheduled tasks, and event automations. Reads of other organizations, writes, and `/api/0/users/` requests still use the requesting user's OAuth token.
 
 ## Issue and metric alert webhooks
 
