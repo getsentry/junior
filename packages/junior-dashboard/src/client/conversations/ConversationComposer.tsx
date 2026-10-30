@@ -484,7 +484,6 @@ export const ConversationComposer = memo(function ConversationComposer(
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
                 disabled={props.stopPending || !online}
                 onClick={() => void stopTurn()}
-                title="Stop Junior"
               >
                 <Square aria-hidden="true" fill="currentColor" size={12} />
                 <span className="hidden md:inline">
@@ -501,7 +500,6 @@ export const ConversationComposer = memo(function ConversationComposer(
                 sendLocked ||
                 readingImages
               }
-              title={sendLocked ? "Sending message" : props.submitLabel}
               variant="primary"
               type="submit"
             >
