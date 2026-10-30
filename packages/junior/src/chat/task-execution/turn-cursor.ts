@@ -38,7 +38,9 @@ import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
+  Conversation,
   ConversationExecution,
+  ConversationRunMetrics,
   ConversationStore,
 } from "@/chat/conversations/store";
 import { traceContextSchema, type TraceContext } from "./state";
@@ -76,13 +78,23 @@ async function withTurnCursorMutation<T>(
   return result.value;
 }
 
-function executionMetricsForTurn(
-  conversation: Awaited<ReturnType<ConversationStore["get"]>>,
+/**
+ * Read this Turn's own totals. A newer Turn can own the latest Conversation
+ * metrics while this Turn is paused, so fall back to this Turn's metric rows.
+ */
+async function executionMetricsForTurn(
+  conversationStore: ConversationStore,
+  conversation: Conversation | undefined,
   turnId: string,
-): { durationMs: number; usage?: AgentTurnUsage } | undefined {
-  return conversation?.executionMetrics?.runId === turnId
-    ? conversation.executionMetrics
-    : undefined;
+): Promise<ConversationRunMetrics | undefined> {
+  if (!conversation) return undefined;
+  if (conversation.executionMetrics?.runId === turnId) {
+    return conversation.executionMetrics;
+  }
+  return await conversationStore.getRunMetrics({
+    conversationId: conversation.conversationId,
+    runId: turnId,
+  });
 }
 
 /** Keep only keys whose value is defined. */
@@ -534,8 +546,13 @@ async function materializeStoredTurnRecord(
       ? undefined
       : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
-  const conversation = await getConversationStore().get({ conversationId });
-  const executionMetrics = executionMetricsForTurn(conversation, turnId);
+  const conversationStore = getConversationStore();
+  const conversation = await conversationStore.get({ conversationId });
+  const executionMetrics = await executionMetricsForTurn(
+    conversationStore,
+    conversation,
+    turnId,
+  );
   return materializeTurnRecord(parsed, piProjection, turnStartMessageIndex, {
     channelName: conversation?.channelName,
     cumulativeDurationMs: executionMetrics?.durationMs,
@@ -803,12 +820,15 @@ async function upsertTurnRecordLocked(
     args.conversationId,
     args.turnId,
   );
-  const conversation = await (
-    args.conversationStore ?? getConversationStore()
-  ).get({
+  const conversationStore = args.conversationStore ?? getConversationStore();
+  const conversation = await conversationStore.get({
     conversationId: args.conversationId,
   });
-  const executionMetrics = executionMetricsForTurn(conversation, args.turnId);
+  const executionMetrics = await executionMetricsForTurn(
+    conversationStore,
+    conversation,
+    args.turnId,
+  );
   const existingDispatchId =
     existingRecord?.dispatchId ??
     (await listTurnSummaries(args.conversationId)).find(
@@ -979,7 +999,11 @@ async function recordTurnSummaryOwned(
   const conversation = await conversationStore.get({
     conversationId: args.conversationId,
   });
-  const executionMetrics = executionMetricsForTurn(conversation, args.turnId);
+  const executionMetrics = await executionMetricsForTurn(
+    conversationStore,
+    conversation,
+    args.turnId,
+  );
   const priorSummary = (await listTurnSummaries(args.conversationId)).find(
     (summary) => summary.turnId === args.turnId,
   );

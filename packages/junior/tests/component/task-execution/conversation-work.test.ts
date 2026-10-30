@@ -75,6 +75,7 @@ function failingMetadataStore(): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
@@ -91,6 +92,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {

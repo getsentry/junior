@@ -22,6 +22,12 @@ export type ConversationStatus =
   | "pending"
   | "running";
 
+/** Cumulative duration and usage that one Run reported. */
+export interface ConversationRunMetrics {
+  durationMs: number;
+  usage?: AgentTurnUsage;
+}
+
 export interface ConversationExecution {
   lastCheckpointAtMs?: number;
   lastEnqueuedAtMs?: number;
@@ -52,11 +58,8 @@ export interface Conversation {
   // reads use Location and provider output uses Delivery.
   destination?: Destination;
   execution: ConversationExecution;
-  executionMetrics?: {
-    durationMs: number;
-    runId?: string;
-    usage?: AgentTurnUsage;
-  };
+  /** Metrics of the latest Run that wrote metrics. */
+  executionMetrics?: ConversationRunMetrics & { runId?: string };
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
@@ -101,6 +104,11 @@ export interface ConversationStore {
     source?: ConversationSource;
   }): Promise<void>;
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
+  /** Read one Run's stored metrics, including a Run that is not the latest. */
+  getRunMetrics(args: {
+    conversationId: string;
+    runId: string;
+  }): Promise<ConversationRunMetrics | undefined>;
   /** Resolve the durable conversation bound to one provider conversation. */
   getConversationIdByProviderConversation(args: {
     provider: string;
@@ -159,10 +167,7 @@ export interface ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
-    metrics: {
-      durationMs: number;
-      usage?: AgentTurnUsage;
-    } | null;
+    metrics: ConversationRunMetrics | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
