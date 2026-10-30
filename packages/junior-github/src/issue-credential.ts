@@ -24,7 +24,7 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { ownerFromLeaseScope } from "./installation-targets.js";
 import {
-  deleteGitHubInstallation,
+  removeGitHubInstallation,
   findGitHubInstallationId,
   syncGitHubInstallations,
 } from "./installations/store.js";
@@ -108,7 +108,7 @@ interface GitHubCredentialOptions extends GitHubAppEnv, UserCredentialOptions {
 /**
  * Issue the lease for an installation grant. A stored installation can be
  * stale when Junior missed its uninstall or suspend webhook. When GitHub
- * rejects it, remove the row, sync from GitHub, and try once more.
+ * rejects it, mark the row as removed, sync from GitHub, and try once more.
  */
 async function issueInstallationCredential(
   ctx: IssueCredentialHookContext,
@@ -127,7 +127,7 @@ async function issueInstallationCredential(
       });
     } catch (error) {
       if (!isInactiveInstallationError(error)) throw error;
-      await deleteGitHubInstallation(db, installationId);
+      await removeGitHubInstallation(db, installationId);
       if (attempt > 1) {
         throw new GitHubPluginSetupError(
           `The GitHub App installation ${installationId} is no longer active.`,

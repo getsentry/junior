@@ -1,4 +1,4 @@
-import { and, eq, lt, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, ne, or } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubInstallations } from "../db/schema.js";
 
@@ -57,37 +57,66 @@ export async function saveGitHubInstallation(
   });
 }
 
-/** Remove an installation that was deleted or suspended. */
-export async function deleteGitHubInstallation(
+/**
+ * Mark an installation as removed, such as after an uninstall or suspend.
+ * The row stays without a login, so a sync with an older list skips it.
+ */
+export async function removeGitHubInstallation(
   db: GitHubDb,
   installationId: number,
 ): Promise<void> {
-  await db.delete(table).where(eq(table.installationId, installationId));
+  const updatedAt = new Date();
+  await db
+    .insert(table)
+    .values({ installationId, accountLogin: null, updatedAt })
+    .onConflictDoUpdate({
+      target: table.installationId,
+      set: { accountLogin: null, updatedAt },
+    });
 }
 
 /**
  * Apply the complete list of active installations that GitHub returned for a
  * request sent at `listedAt`. A row written after `listedAt`, such as by an
- * `installation` webhook while the request ran, is newer than the list. It
- * stays, and a listed installation with the same id or login is skipped.
+ * `installation` webhook or a later sync, is newer than the list. It stays,
+ * and a listed installation with the same id or login is skipped. Older rows
+ * that the list omits are marked as removed.
  */
 export async function syncGitHubInstallations(
   db: GitHubDb,
   installations: GitHubInstallation[],
   listedAt: Date,
 ): Promise<void> {
+  const rows = installations.map((installation) => ({
+    installationId: installation.installationId,
+    accountLogin: installation.accountLogin.toLowerCase(),
+    updatedAt: listedAt,
+  }));
+  const older = lt(table.updatedAt, listedAt);
   await db.transaction(async (tx) => {
-    await tx.delete(table).where(lt(table.updatedAt, listedAt));
-    if (installations.length === 0) return;
+    if (rows.length > 0) {
+      await tx.delete(table).where(
+        and(
+          older,
+          or(
+            inArray(
+              table.installationId,
+              rows.map((row) => row.installationId),
+            ),
+            inArray(
+              table.accountLogin,
+              rows.map((row) => row.accountLogin),
+            ),
+          ),
+        ),
+      );
+    }
     await tx
-      .insert(table)
-      .values(
-        installations.map((installation) => ({
-          installationId: installation.installationId,
-          accountLogin: installation.accountLogin.toLowerCase(),
-          updatedAt: listedAt,
-        })),
-      )
-      .onConflictDoNothing();
+      .update(table)
+      .set({ accountLogin: null, updatedAt: listedAt })
+      .where(and(older, isNotNull(table.accountLogin)));
+    if (rows.length > 0) {
+      await tx.insert(table).values(rows).onConflictDoNothing();
+    }
   });
 }

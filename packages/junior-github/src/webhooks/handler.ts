@@ -13,7 +13,7 @@ import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import {
-  deleteGitHubInstallation,
+  removeGitHubInstallation,
   saveGitHubInstallation,
 } from "../installations/store.js";
 import {
@@ -115,8 +115,8 @@ const installationEventSchema = z.object({
 
 /**
  * Keep the stored installations current. Installs, permission changes, and
- * unsuspends save the account login. Uninstalls and suspends remove the row,
- * because GitHub cannot mint tokens for them. Account renames arrive as
+ * unsuspends save the account login. Uninstalls and suspends mark the row as
+ * removed, because GitHub cannot mint tokens for them. Account renames arrive as
  * `installation_target` deliveries.
  */
 async function recordInstallationEvent(
@@ -132,7 +132,7 @@ async function recordInstallationEvent(
     eventName === "installation" &&
     (action === "deleted" || action === "suspend")
   ) {
-    await deleteGitHubInstallation(db, installationId);
+    await removeGitHubInstallation(db, installationId);
     return;
   }
   const accountLogin =

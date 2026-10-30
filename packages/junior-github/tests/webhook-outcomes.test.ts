@@ -2120,7 +2120,9 @@ describe("GitHub-owned pull request outcomes", () => {
         action: "suspend",
         installation: { id: 789, account: { login: "fair-source" } },
       });
-      await expect(installations()).resolves.toEqual([]);
+      await expect(installations()).resolves.toEqual([
+        { accountLogin: null, installationId: 789 },
+      ]);
       expect(published).toEqual([]);
     } finally {
       await fixture.close();

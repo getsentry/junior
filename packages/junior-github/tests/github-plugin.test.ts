@@ -25,7 +25,10 @@ import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
 import { juniorGitHubInstallations } from "../src/db/schema";
-import { saveGitHubInstallation } from "../src/installations/store";
+import {
+  removeGitHubInstallation,
+  saveGitHubInstallation,
+} from "../src/installations/store";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -2840,10 +2843,12 @@ Conversation: \`local:test:old-conversation\`
         "https://api.github.com/app/installations",
         async ({ request }) => {
           requests.push(await captureRequest(request));
-          // FairSource reinstalls the App while Junior lists installations.
+          // While Junior lists installations, FairSource uninstalls the
+          // App and Acme installs it. The list does not show either change.
+          await removeGitHubInstallation(db, 789);
           await saveGitHubInstallation(db, {
-            accountLogin: "FairSource",
-            installationId: 790,
+            accountLogin: "Acme",
+            installationId: 800,
           });
           return HttpResponse.json([
             { id: 456, account: { login: "getsentry" } },
@@ -2888,7 +2893,8 @@ Conversation: \`local:test:old-conversation\`
       "POST https://api.github.com/app/installations/999/access_tokens",
       "GET https://api.github.com/app/installations?per_page=100&page=1",
     ]);
-    // The stale row is gone, and the webhook row is newer than the list.
+    // The stale installation is removed. The webhook rows are newer than
+    // the list, so the sync keeps them and does not add 789 again.
     await expect(
       db
         .select({
@@ -2899,7 +2905,9 @@ Conversation: \`local:test:old-conversation\`
         .orderBy(juniorGitHubInstallations.installationId),
     ).resolves.toEqual([
       { accountLogin: "getsentry", installationId: 456 },
-      { accountLogin: "fairsource", installationId: 790 },
+      { accountLogin: null, installationId: 789 },
+      { accountLogin: "acme", installationId: 800 },
+      { accountLogin: null, installationId: 999 },
     ]);
   });
 
