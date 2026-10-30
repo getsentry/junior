@@ -215,12 +215,13 @@ Backfill:
    - child rows whose Identity differs from their root;
    - `junior/<email>` rows that are still referenced. Step 4b does not change
      them.
-   - the Owner repair counts and the agreement check (`design.md`, Owner
-     Repair).
+   - the Owner repair counts, the agreement check, and the roots with more
+     than one author User (`design.md`, Owner Repair).
 2. Roots with no Owner and a `slack` or `web` Source: copy
    `actor_identity_id`. When the agreement check found zero disagreements,
    repair each row that passes every Owner Repair condition. Otherwise drop
-   the repair. Every skipped row keeps its current Identity.
+   the repair. Every skipped row keeps its current Identity. This includes
+   each root with more than one author User.
 3. Roots with no Owner and a system Source: the system Identity.
 4. Roots with any other Source: hold until the dry run is reviewed.
 5. Child rows: `null`.

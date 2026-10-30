@@ -21,7 +21,10 @@ gives the model, the schema, the readers, and the known gaps.
 ### Owner Repair
 
 Before #2436, `recordExecution` could replace the human root Identity of a
-`slack` or `web` root with a system Identity (`local-cli` or `event`). David's
+`slack` or `web` root with a system Identity (`local-cli` or `event`). The
+same `coalesce(excluded.actor_identity_id, existing)` write could also replace
+one human Identity with a later human Identity. So today's Identity of a root
+with more than one human author is not proof of its starter. David's
 rule is: leave old rows as they are, unless the migration path is clearly
 correct. Step 4b repairs a root only when all of these are true:
 
@@ -34,7 +37,10 @@ correct. Step 4b repairs a root only when all of these are true:
 - its first `message` event with role `user`, by `seq`, has an author
   Identity. Junior does not look past a first Message with no author;
 - that author is kind `user`, links a User, and fits the Source: provider
-  `slack` for a `slack` root, `google` or `junior` for a `web` root.
+  `slack` for a `slack` root, `google` or `junior` for a `web` root;
+- it has one author User: every `message` event with role `user` has an
+  author Identity, and each one links the same User as the first author. A
+  root with more than one human author keeps its current Identity.
 
 The repair then sets the Owner to that author Identity.
 
@@ -42,14 +48,19 @@ The dry run counts, by Source:
 
 - the rows that pass every condition;
 - the rows skipped, by the first condition that fails;
-- the agreement check: for `slack` and `web` roots that are not forks and
-  have a `user` Identity today, the rows where the first user Message author
-  is a different User.
+- the agreement check: for `slack` and `web` roots that are not forks, have
+  a `user` Identity today, and have one author User (as above), the rows
+  where that author is a different User from today's Identity;
+- the roots with a `user` Identity today and more than one author User. The
+  agreement check does not use them.
 
-The agreement check tests the rule on rows that #2436 did not damage. If it
-finds one disagreement, the rule is not clearly correct. Then step 4b drops
-the repair and copies the current Identity for every row. Each skipped row
-also keeps its current Identity.
+The agreement check tests the rule on rows that the old write did not damage.
+On a root with one author User, a later human Turn cannot replace the
+starter with a different human, unless a Turn actor is not a Message author.
+So a disagreement there shows that the author does not identify the starter.
+If the check finds one disagreement, the rule is not clearly correct. Then
+step 4b drops the repair and copies the current Identity for every row. Each
+skipped row also keeps its current Identity.
 
 ### Child Conversations
 
