@@ -1,6 +1,13 @@
 import { createHmac } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
-import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
+import {
+  eventMatches,
+  type EventInput,
+  type EventMatch,
+} from "@sentry/junior-plugin-api";
+import {
+  filterEventMismatches,
+  identifierMatchMismatches,
+} from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { linearPlugin } from "../src";
 import { createLinearWebhookRoute } from "../src/webhooks/handler";
@@ -93,6 +100,37 @@ describe("Linear webhook events", () => {
           body: issueBody(),
           linearEvent: "Issue",
         }),
+      }),
+    ).toEqual([]);
+  });
+
+  it("turns each identifier into filters that select only its events", () => {
+    // Another issue in the same team, and the same number in another team.
+    const events = [
+      ["sre-123", "sre"],
+      ["SRE-124", "SRE"],
+      ["OPS-123", "OPS"],
+    ].flatMap(([identifier, teamKey]) => {
+      const body = issueBody();
+      body.data.id = `issue-${identifier}`;
+      body.data.identifier = identifier!;
+      body.data.team.key = teamKey!;
+      return normalizeLinearEvents({ body, linearEvent: "Issue" });
+    });
+    const toMatch = (event: { identifier: string }): EventMatch => {
+      // Saved identifiers went through the plugin's `normalizeIdentifier`.
+      const identifier = event.identifier.toUpperCase();
+      return /-\d+$/.test(identifier)
+        ? { issueIdentifier: identifier }
+        : { teamKey: identifier };
+    };
+
+    expect(
+      identifierMatchMismatches({
+        resourceTypes: linearPlugin().events?.resourceTypes ?? [],
+        events,
+        matches: eventMatches,
+        toMatch,
       }),
     ).toEqual([]);
   });

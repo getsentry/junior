@@ -34,20 +34,24 @@ export const VERCEL_DEPLOYMENT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   projectId: {
     kind: "string",
     description: "Vercel project id, such as prj_abc123",
+    events: [...VERCEL_DEPLOYMENT_EVENTS],
   },
   deploymentId: {
     kind: "string",
     description: "Vercel deployment id, such as dpl_abc123",
+    events: [...VERCEL_DEPLOYMENT_EVENTS],
   },
   target: {
     kind: "string",
     description: "where Vercel deployed: preview, production, or staging",
     enum: [...VERCEL_DEPLOYMENT_TARGETS],
+    events: [...VERCEL_DEPLOYMENT_EVENTS],
   },
   commitSha: {
     kind: "string",
     description:
       "full lowercase Git commit SHA of the deployment, when it came from a Git commit",
+    events: [...VERCEL_DEPLOYMENT_EVENTS],
   },
 });
 

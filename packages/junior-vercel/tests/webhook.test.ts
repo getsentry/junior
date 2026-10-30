@@ -1,6 +1,13 @@
 import { createHmac } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
-import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
+import {
+  eventMatches,
+  type EventInput,
+  type EventMatch,
+} from "@sentry/junior-plugin-api";
+import {
+  filterEventMismatches,
+  identifierMatchMismatches,
+} from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 import { createVercelWebhookRoute } from "../src/webhooks/handler";
@@ -78,6 +85,51 @@ describe("Vercel webhook events", () => {
       filterEventMismatches({
         resourceTypes: vercelPlugin().events?.resourceTypes ?? [],
         events,
+      }),
+    ).toEqual([]);
+  });
+
+  it("turns each identifier into filters that select only its events", () => {
+    // Another target, another commit, and another project.
+    const deployments = [
+      ["prj_junior", "production", COMMIT_SHA],
+      ["prj_junior", "preview", COMMIT_SHA],
+      ["prj_junior", "production", "f".repeat(40)],
+      ["prj_other", "production", COMMIT_SHA],
+    ];
+    const events = (
+      [
+        "deployment.succeeded",
+        "deployment.error",
+        "deployment.canceled",
+      ] as const
+    ).flatMap((type) =>
+      deployments.flatMap(([projectId, target, commitSha], index) => {
+        const body = webhookBody(type, target);
+        body.id = `evt_delivery_${index}`;
+        body.payload.deployment = {
+          id: `dpl_${index}`,
+          meta: { githubCommitSha: commitSha! },
+        };
+        body.payload.project.id = projectId!;
+        return normalizeVercelEvents({ body });
+      }),
+    );
+    const toMatch = ({ identifier }: { identifier: string }): EventMatch => {
+      const [projectId, target, commitSha] = identifier.split(":");
+      return {
+        projectId: projectId!,
+        ...(target ? { target } : undefined),
+        ...(commitSha ? { commitSha } : undefined),
+      };
+    };
+
+    expect(
+      identifierMatchMismatches({
+        resourceTypes: vercelPlugin().events?.resourceTypes ?? [],
+        events,
+        matches: eventMatches,
+        toMatch,
       }),
     ).toEqual([]);
   });

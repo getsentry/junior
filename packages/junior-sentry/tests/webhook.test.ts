@@ -1,6 +1,13 @@
 import { createHmac } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
-import { filterEventMismatches } from "@sentry/junior-testing/event-filters";
+import {
+  eventMatches,
+  type EventInput,
+  type EventMatch,
+} from "@sentry/junior-plugin-api";
+import {
+  filterEventMismatches,
+  identifierMatchMismatches,
+} from "@sentry/junior-testing/event-filters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sentryPlugin } from "../src";
 import { createSentryWebhookRoute } from "../src/webhooks/handler";
@@ -125,6 +132,62 @@ describe("Sentry webhook events", () => {
     ).toEqual([]);
   });
 
+  it("turns each identifier into filters that select only its events", () => {
+    // Another issue and rule in the same project, and one in another project.
+    const issues = [
+      ["junior", "7513266773"],
+      ["junior", "7513266774"],
+      ["sentry", "7513266775"],
+    ].map(([project, id]) => {
+      const body = issueBody();
+      body.data.issue.project.slug = project!;
+      body.data.issue.id = id!;
+      return { body, hookResource: "issue" };
+    });
+    const alerts = [
+      ["7", "Junior", "4"],
+      ["8", "junior", "5"],
+      ["9", "sentry", "6"],
+    ].flatMap(([ruleId, project, incidentId]) =>
+      ["critical", "warning", "resolved"].map((action) => {
+        const body = metricAlertBody(action);
+        body.data.metric_alert = {
+          alert_rule: {
+            id: ruleId!,
+            name: "Too many errors",
+            projects: [project!],
+          },
+          id: incidentId!,
+        };
+        return { body, hookResource: "metric_alert" };
+      }),
+    );
+    const events = [...issues, ...alerts].flatMap((delivery) =>
+      normalizeSentryEvents(delivery),
+    );
+
+    // The org part is dropped: the install already fixes the org.
+    const toMatch = (event: { identifier: string }): EventMatch | undefined => {
+      // Saved identifiers went through the plugin's `normalizeIdentifier`.
+      const identifier = event.identifier.toLowerCase();
+      const alert = /^metric-alert:[^/]+\/(\d+)$/.exec(identifier);
+      if (alert) return { alertRuleId: alert[1]! };
+      const scope = /^[^/]+\/([^/#]+)(?:#(\d+))?$/.exec(identifier);
+      if (!scope) return undefined;
+      const [, project, issueId] = scope;
+      return { projects: [project!], ...(issueId ? { issueId } : undefined) };
+    };
+
+    expect(
+      identifierMatchMismatches({
+        resourceTypes: sentryPlugin().events?.resourceTypes ?? [],
+        events,
+        matches: eventMatches,
+        toMatch,
+      }),
+    ).toEqual([]);
+  });
+
   it("drops an issue level or priority that it does not know", () => {
     const body = issueBody();
     body.data.issue.level = "critical";
@@ -150,7 +213,6 @@ describe("Sentry webhook events", () => {
     ).toEqual([
       {
         data: {
-          org: "sentry",
           projects: ["junior"],
           issueCategory: "error",
           issueId: "7513266773",
@@ -193,7 +255,6 @@ describe("Sentry webhook events", () => {
     ).toEqual([
       {
         data: {
-          org: "sentry",
           projects: ["junior"],
           alertRuleId: "7",
           incidentId: "4",
@@ -238,7 +299,7 @@ describe("Sentry webhook events", () => {
 
     expect(events).toHaveLength(201);
     expect(events[0]?.data).not.toHaveProperty("projects");
-    expect(events[0]?.data).toMatchObject({ org: "sentry", alertRuleId: "7" });
+    expect(events[0]?.data).toMatchObject({ alertRuleId: "7" });
   });
 
   it("ignores a metric alert without an organization or with an unsupported state", () => {

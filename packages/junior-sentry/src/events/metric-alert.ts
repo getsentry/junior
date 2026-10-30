@@ -2,7 +2,7 @@ import {
   eventMatchFieldsSchema,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { sentryScopeMatchFields } from "./scope.js";
+import { sentryProjectsMatchFields } from "./scope.js";
 
 /** The `action` values of Sentry metric alert webhooks. */
 export const SENTRY_METRIC_ALERT_ACTIONS = [
@@ -28,7 +28,7 @@ export const SENTRY_METRIC_ALERT_SUGGESTED_EVENTS = [
  * when the rule lists no projects or too many to fit in event data.
  */
 export const SENTRY_METRIC_ALERT_MATCH_FIELDS = eventMatchFieldsSchema.parse({
-  ...sentryScopeMatchFields(SENTRY_METRIC_ALERT_EVENTS),
+  ...sentryProjectsMatchFields(SENTRY_METRIC_ALERT_EVENTS),
   alertRuleId: {
     kind: "string",
     description: "id of the Sentry metric alert rule, such as 7",

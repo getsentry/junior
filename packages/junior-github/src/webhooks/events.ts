@@ -61,7 +61,7 @@ const repositorySchema = z
 const deploymentSchema = z
   .object({
     created_at: z.string().optional(),
-    environment: z.string().min(1),
+    environment: z.string().trim().min(1),
     id: z.number(),
     sha: z.string().regex(/^[0-9a-f]{40}$/i),
   })
@@ -235,7 +235,8 @@ const deploymentEventDataSchema = z
     repo: gitHubRepoDataSchema,
     commitSha: gitHubCommitShaDataSchema,
     deploymentId: z.number(),
-    environment: z.string().min(1).toLowerCase(),
+    // Trimmed and lowercase, the same as in the identifier.
+    environment: z.string().trim().min(1).toLowerCase(),
     workflowId: z.number().optional(),
     workflowPath: z.string().min(1).optional(),
     workflowRunId: z.number().optional(),
@@ -696,6 +697,11 @@ function normalizePullRequestEvent(
     repo,
   });
   const data = pullRequestEventData({ pullRequest, repo });
+  // A ready pull request is no longer a draft, even when the webhook says so.
+  const readyData = pullRequestEventData({
+    pullRequest: { ...pullRequest, draft: false },
+    repo,
+  });
   const untrustedText = titleAndBodyText(pullRequest);
   const lifecycleEvents = (event: {
     eventType: string;
@@ -713,7 +719,7 @@ function normalizePullRequestEvent(
         identifier: resource.identifier,
         ...(event.terminal ? { terminal: true } : undefined),
         trustedSummary: event.trustedSummary,
-        data: event.isDraft === false ? { ...data, isDraft: false } : data,
+        data: event.isDraft === false ? readyData : data,
         ...(event.untrustedText
           ? { untrustedText: event.untrustedText }
           : undefined),
@@ -823,9 +829,12 @@ function normalizeReleaseEvent(
   if (parsed.data.release.draft) return [];
   const eventType = "release.published";
   const repo = parsed.data.repository.full_name;
-  const tag = parsed.data.release.tag_name;
+  // GitHub does not allow a blank tag. Skip one anyway: event data and the
+  // identifier need a tag, and a throw would fail the whole delivery.
+  const tag = parsed.data.release.tag_name.trim();
+  if (!tag) return [];
   const untrustedParts = [
-    tag ? `Tag: ${tag}` : undefined,
+    `Tag: ${tag}`,
     parsed.data.release.name?.trim()
       ? `Name: ${parsed.data.release.name.trim()}`
       : undefined,

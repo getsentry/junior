@@ -74,16 +74,27 @@ const metricAlertWebhookSchema = z
   })
   .passthrough();
 
-function organizationSlug(issueApiUrl: string): string | undefined {
-  try {
-    const segments = new URL(issueApiUrl).pathname.split("/").filter(Boolean);
-    const organizationsIndex = segments.indexOf("organizations");
-    return organizationsIndex >= 0
-      ? segments[organizationsIndex + 1]
-      : undefined;
-  } catch {
-    return undefined;
-  }
+/**
+ * Read the org slug from a Sentry URL. Identifiers name the org, and a payload
+ * with no readable org is ignored. Event data has no `org`, because one
+ * integration belongs to one org. Sentry sends no org slug in issue or
+ * metric alert webhooks, so the URL is the only place to read it. Issue API
+ * URLs and some web URLs have an `/organizations/<org>/` path. Other web URLs
+ * have an `<org>.sentry.io` host.
+ */
+function organizationSlug(url: string): string | undefined {
+  const parsed = z.url().safeParse(url);
+  if (!parsed.success) return undefined;
+  const { hostname, pathname } = new URL(parsed.data);
+  const segments = pathname.split("/").filter(Boolean);
+  const index = segments.indexOf("organizations");
+  const slug =
+    index >= 0
+      ? segments[index + 1]
+      : hostname.split(".").length >= 3
+        ? hostname.split(".")[0]
+        : undefined;
+  return slug?.toLowerCase() || undefined;
 }
 
 function providerTime(value: string | undefined): number | undefined {
@@ -118,7 +129,6 @@ function issueText(issue: {
  */
 const issueEventDataSchema = z
   .object({
-    org: sentrySlugDataSchema,
     projects: z.array(sentrySlugDataSchema).length(1),
     issueId: z.string().min(1),
     level: z.enum(SENTRY_ISSUE_LEVELS).optional(),
@@ -132,11 +142,9 @@ const issueEventDataSchema = z
 /** Build the trusted data of one issue event. */
 function issueData(
   issue: z.output<typeof issueWebhookSchema>["data"]["issue"],
-  org: string,
 ): EventData {
-  return definedValues(
-    issueEventDataSchema.parse({
-      org,
+  return issueEventDataSchema.parse(
+    definedValues({
       projects: [issue.project.slug],
       issueId: issue.id,
       level: issue.level,
@@ -151,7 +159,6 @@ function issueData(
 /** Trusted data on every metric alert event. See `metricAlertData`. */
 const metricAlertEventDataSchema = z
   .object({
-    org: sentrySlugDataSchema,
     projects: z.array(sentrySlugDataSchema).min(1).optional(),
     alertRuleId: z.string().min(1),
     incidentId: z.string().min(1),
@@ -167,29 +174,18 @@ function definedValues(data: Record<string, unknown>): EventData {
 }
 
 /**
- * Read the org slug from a Sentry web URL. Sentry builds metric alert links
- * with either `/organizations/<org>/` paths or `<org>.sentry.io` hosts.
- */
-function webOrganizationSlug(webUrl: string): string | undefined {
-  const fromPath = organizationSlug(webUrl);
-  if (fromPath) return fromPath;
-  const labels = new URL(webUrl).hostname.split(".");
-  return labels.length >= 3 ? labels[0] : undefined;
-}
-
-/**
  * Build the trusted data of one metric alert event. `projects` is missing
- * when the rule lists none. A rule on very many projects can pass the event
- * data size limit. Then `projects` is left out too,
- * so a `projects` filter does not match, but each project copy still goes
- * out.
+ * when the rule lists none. A rule on very many projects (about 72 with
+ * 50-character slugs) can pass the event data size limit. Then `projects` is
+ * left out too, so a `projects` filter does not match. The filter misses
+ * the alert and never matches more. Each project copy still goes out.
  */
 function metricAlertData(
   input: Omit<z.input<typeof metricAlertEventDataSchema>, "projects">,
   projects: string[],
 ): EventData {
-  const data = definedValues(
-    metricAlertEventDataSchema.parse({
+  const data = metricAlertEventDataSchema.parse(
+    definedValues({
       ...input,
       projects: projects.length > 0 ? projects : undefined,
     }),
@@ -210,7 +206,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
   if (!parsed.success) return [];
 
   const issue = parsed.data.data.issue;
-  const org = organizationSlug(issue.url)?.toLowerCase();
+  const org = organizationSlug(issue.url);
   if (!org) return [];
   const issueResource = sentryIssueResource({
     issueId: issue.id,
@@ -235,7 +231,7 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
     objectType: "task",
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,
-    data: issueData(issue, org),
+    data: issueData(issue),
     ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<EventInput, "identifier">;
 
@@ -251,7 +247,7 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const eventType = `metric_alert.${parsed.data.action}` as const;
 
   const { data } = parsed.data;
-  const org = webOrganizationSlug(data.web_url)?.toLowerCase();
+  const org = organizationSlug(data.web_url);
   if (!org) return [];
   const alertRuleId = data.metric_alert.alert_rule.id;
   const incidentId = data.metric_alert.id;
@@ -278,7 +274,7 @@ function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
     occurredAtMs: providerTime(input.hookTimestamp) ?? Date.now(),
     trustedSummary: `${resource.label} is ${parsed.data.action}.`,
     data: metricAlertData(
-      { org, alertRuleId, incidentId, url: data.web_url },
+      { alertRuleId, incidentId, url: data.web_url },
       projects,
     ),
     ...(untrustedText ? { untrustedText } : undefined),

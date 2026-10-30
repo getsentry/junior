@@ -84,3 +84,88 @@ function fitsField(value: unknown, field: FilterField): boolean {
     )
   );
 }
+
+/** A published event and the identifier it went to. */
+interface IdentifiedEvent extends FilterEvent {
+  eventKey: string;
+  identifier: string;
+}
+
+/**
+ * Check that a saved identifier can become filters that select the same
+ * events. `toMatch` turns one identifier into a match, the way a saved
+ * trigger is converted. It gets the event type too, because a trigger keeps
+ * its events and one identifier, such as `owner/repo#12`, can name an issue
+ * or a pull request. For each published event, the match of its
+ * identifier must use only filters that the plugin declares for that event
+ * type, and it must match the event. It must not match an event of the same
+ * type that did not go to that identifier, so a conversion never widens a
+ * trigger. Each event needs at least one such other event, so give fixtures
+ * that differ in each part of the identifier.
+ *
+ * Copies of one event have the same `eventKey`, so give each fixture
+ * delivery its own key. Pass `eventMatches` from plugin-api as `matches`, so
+ * the check uses the real match rule. Returns one plain sentence per
+ * mismatch, so a test can expect `[]`.
+ */
+export function identifierMatchMismatches<Match extends object>(args: {
+  resourceTypes: readonly FilterResourceType[];
+  events: readonly IdentifiedEvent[];
+  matches: (match: Match, data: Record<string, unknown> | undefined) => boolean;
+  toMatch: (event: {
+    eventType: string;
+    identifier: string;
+  }) => Match | undefined;
+}): string[] {
+  const mismatches = new Set<string>();
+  const identifiersByKey = new Map<string, Set<string>>();
+  for (const event of args.events) {
+    const identifiers = identifiersByKey.get(event.eventKey) ?? new Set();
+    identifiers.add(event.identifier);
+    identifiersByKey.set(event.eventKey, identifiers);
+  }
+  for (const event of args.events) {
+    const name = `${event.identifier} on ${event.eventType}`;
+    const match = args.toMatch(event);
+    if (!match) {
+      mismatches.add(`${event.identifier} has no match`);
+      continue;
+    }
+    for (const key of Object.keys(match)) {
+      if (declaresFilter(args.resourceTypes, event.eventType, key)) continue;
+      mismatches.add(`${name} uses ${key}, which is not a filter`);
+    }
+    if (!args.matches(match, event.data)) {
+      mismatches.add(`${name} does not match its own event`);
+    }
+    const others = args.events.filter(
+      (other) =>
+        other.eventType === event.eventType &&
+        !identifiersByKey.get(other.eventKey)?.has(event.identifier),
+    );
+    if (others.length === 0) {
+      mismatches.add(`${name} has no event on a different identifier`);
+    }
+    for (const other of others) {
+      if (!args.matches(match, other.data)) continue;
+      mismatches.add(`${name} also matches ${other.eventKey}`);
+    }
+  }
+  return [...mismatches];
+}
+
+/** Whether a resource type that supports the event declares this filter for it. */
+function declaresFilter(
+  resourceTypes: readonly FilterResourceType[],
+  eventType: string,
+  key: string,
+): boolean {
+  return resourceTypes.some((resourceType) => {
+    const field = resourceType.matchFields?.[key];
+    return (
+      field !== undefined &&
+      resourceType.supportedEvents.includes(eventType) &&
+      (field.events?.includes(eventType) ?? true)
+    );
+  });
+}

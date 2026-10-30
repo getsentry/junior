@@ -8,17 +8,20 @@ import { gitHubRepoMatchFields } from "./scope.js";
 export const GITHUB_RELEASE_EVENTS = ["release.published"] as const;
 
 /**
- * `tag` in event data, in the same form as in a release-source identifier:
- * URI-encoded, then lowercase, because the plugin lowercases identifiers.
- * Tags that differ only in case look the same. Tag names come from people,
- * and the encoding keeps their text out of trusted data. The raw tag is in
- * the untrusted text.
+ * `tag` in event data: the trimmed tag with ASCII letters in lowercase. The
+ * release-source identifier has the URI-encoded tag, and the plugin
+ * lowercases identifiers. Encoding turns other characters into `%XX`
+ * escapes, so only ASCII letters change case there. This form is the same
+ * text, so `release/1.0` is not `release%2f1.0`, and `Ü` stays `Ü`. To turn
+ * an identifier into a `tag` filter, decode its tag part.
  */
 export const gitHubReleaseTagDataSchema = z
   .string()
   .trim()
   .min(1)
-  .transform((tag) => encodeURIComponent(tag).toLowerCase());
+  .transform((tag) =>
+    tag.replace(/[A-Z]+/g, (letters) => letters.toLowerCase()),
+  );
 
 /** Exact values that every release event sets. */
 export const GITHUB_RELEASE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
@@ -26,7 +29,7 @@ export const GITHUB_RELEASE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   tag: {
     kind: "string",
     description:
-      "lowercase release tag, URI-encoded as in the identifier, such as v1.2.0",
+      "release tag with ASCII letters in lowercase, such as v1.2.0 or release/1.0",
     events: [...GITHUB_RELEASE_EVENTS],
   },
 });
