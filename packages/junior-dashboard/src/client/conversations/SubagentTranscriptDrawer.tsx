@@ -11,6 +11,8 @@ import {
 } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
+import { EmptyTelemetry } from "../components/EmptyTelemetry";
+import { Alert } from "../components/ui/alert";
 import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { subagentStatusTone } from "./ConversationChildAgents";
@@ -22,7 +24,6 @@ import {
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import { transcriptEmptyClass } from "./transcriptStyles";
 
 /** One child Conversation to show, with what its parent already knows. */
 export interface SubagentTranscriptTarget {
@@ -178,9 +179,7 @@ function SubagentTranscriptDrawerContent(props: {
       {query.isPending ? (
         <TranscriptLoading />
       ) : query.error && !detail ? (
-        <DrawerEmptyState tone="error">
-          Conversation failed to load.
-        </DrawerEmptyState>
+        <Alert variant="destructive">Conversation failed to load.</Alert>
       ) : detail ? (
         <Transcript
           hasPreviousPage={query.hasPreviousPage}
@@ -194,7 +193,7 @@ function SubagentTranscriptDrawerContent(props: {
           view={view}
         />
       ) : (
-        <DrawerEmptyState>Conversation unavailable.</DrawerEmptyState>
+        <EmptyTelemetry>Conversation unavailable.</EmptyTelemetry>
       )}
     </Drawer>
   );
@@ -208,20 +207,4 @@ function statusLabel(
     return status;
   }
   return detailStatus ?? status;
-}
-
-function DrawerEmptyState(props: {
-  children: string;
-  tone?: "default" | "error";
-}) {
-  const isError = props.tone === "error";
-  return (
-    <div
-      className={transcriptEmptyClass(isError ? "error" : "default")}
-      data-tone={props.tone ?? "default"}
-      role={isError ? "alert" : undefined}
-    >
-      {props.children}
-    </div>
-  );
 }

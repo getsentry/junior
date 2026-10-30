@@ -1,5 +1,6 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
 
+import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
 import { ConversationBrief } from "./ConversationBrief";
@@ -39,7 +40,6 @@ import {
   groupTranscriptMessages,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
-import { transcriptEmptyClass } from "./transcriptStyles";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptRow, TranscriptRows } from "./TranscriptRows";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
@@ -131,9 +131,9 @@ function SegmentEvents(props: {
           conversation={props.conversation}
         />
       ) : (
-        <div className={transcriptEmptyClass()}>
+        <EmptyTelemetry>
           {unavailableTranscriptLabel(props.conversation)}
-        </div>
+        </EmptyTelemetry>
       )}
       {props.responding ? (
         <TranscriptRow indent>
@@ -157,9 +157,9 @@ function ExpiredTranscriptView(props: {
           <ConversationBrief brief={props.conversation.brief} />
         </Card>
       ) : null}
-      <div className={transcriptEmptyClass()}>
+      <EmptyTelemetry>
         {unavailableTranscriptLabel(props.conversation)}
-      </div>
+      </EmptyTelemetry>
     </>
   );
 }
@@ -348,9 +348,7 @@ function TranscriptEntryList(props: {
   }
 
   if (search.active && rows.length === 0) {
-    return (
-      <div className={transcriptEmptyClass()}>No events match your search.</div>
-    );
+    return <EmptyTelemetry>No events match your search.</EmptyTelemetry>;
   }
 
   // Let rows participate in the parent transcript stack so messages, tool
