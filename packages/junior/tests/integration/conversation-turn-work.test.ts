@@ -638,6 +638,9 @@ describe("Conversation mailbox Turn work", () => {
       source,
       state: "completed",
     });
+    const root = await conversationStore.get({ conversationId });
+    // The event Turn keeps the web root Actor.
+    expect(root?.actor).toMatchObject({ email: actor.email });
     const transcript = (
       await getConversationEventStore().loadHistory(conversationId)
     ).flatMap((event) =>
