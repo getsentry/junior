@@ -3,7 +3,6 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { recordConversationParticipant } from "./participants";
 import { replaceConversationMetrics } from "../metrics";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -40,7 +39,7 @@ import {
 } from "./bindings";
 import {
   actorFromIdentityRow,
-  actorIdentityForConversation,
+  resolveConversationActorIdentityId,
   mergeActor,
 } from "./actor-identity";
 import {
@@ -746,14 +745,10 @@ export class SqlStore implements ConversationStore {
       location: conversation.location,
       sessionSource: conversation.sessionSource,
     });
-    const actorIdentityObservation = actorIdentityForConversation(conversation);
-    const actorIdentity = actorIdentityObservation
-      ? await upsertIdentity(
-          this.executor,
-          actorIdentityObservation,
-          conversation.updatedAtMs,
-        )
-      : undefined;
+    const actorIdentityId = await resolveConversationActorIdentityId(
+      this.executor,
+      conversation,
+    );
     const rootConversationId = conversation.parentConversationId
       ? sql<string | null>`(
           select parent.root_conversation_id
@@ -772,7 +767,7 @@ export class SqlStore implements ConversationStore {
         location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
-        actorIdentityId: actorIdentity?.id ?? null,
+        actorIdentityId: actorIdentityId ?? null,
         creatorIdentityId: null,
         credentialSubjectIdentityId: null,
         actor: null,

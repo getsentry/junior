@@ -52,7 +52,8 @@ import {
   findUserByVerifiedEmails,
   upsertLinkedIdentity,
 } from "@/chat/identities/sql";
-import { upsertActorIdentity } from "@/chat/identities/actor";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { readIdentityById } from "@/chat/plugins/viewer";
 import { isNativeIdentityProvider } from "@/chat/identities/identity";
 import type { SlackActor, WebActor } from "@/chat/actor";
 import type { PluginProviderAccount } from "@sentry/junior-plugin-api";
@@ -100,16 +101,26 @@ function pluginAuthorizationId(args: {
 async function resolveOAuthActorUserId(
   actor: SlackActor | WebActor,
 ): Promise<string | undefined> {
-  if (actor.platform === "web") {
-    // Dashboard sign-in verified the web actor email.
-    return (await upsertActorIdentity(getSqlExecutor(), actor))?.userId;
-  }
+  // Dashboard sign-in verified the web actor email.
+  const identityActor =
+    actor.platform === "web" ? actor : await slackProfileActor(actor);
+  const identityId = await resolveActorIdentityId(
+    getSqlExecutor(),
+    identityActor,
+  );
+  return identityId
+    ? (await readIdentityById(identityId))?.user?.id
+    : undefined;
+}
+
+/** Refresh a Slack actor with the profile Slack returns for that user. */
+async function slackProfileActor(actor: SlackActor): Promise<SlackActor> {
   const slackUserId = parseSlackUserId(actor.userId);
   if (!slackUserId) {
     throw new Error("OAuth Slack actor user id is invalid");
   }
   const profile = await lookupSlackUserProfile(slackUserId);
-  const slackIdentity = await upsertActorIdentity(getSqlExecutor(), {
+  return {
     platform: "slack",
     teamId: actor.teamId,
     userId: profile.id,
@@ -118,8 +129,7 @@ async function resolveOAuthActorUserId(
       : undefined),
     ...(profile.name ? { userName: profile.name } : undefined),
     ...(profile.email ? { email: profile.email } : undefined),
-  });
-  return slackIdentity?.userId;
+  };
 }
 
 /**

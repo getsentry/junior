@@ -8,7 +8,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { identityForActor } from "@/chat/identities/actor";
+import { findActorIdentityId } from "@/chat/identities/actor";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
@@ -183,30 +183,9 @@ export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  const key = identityForActor(actor);
-  if (key?.kind !== "user") return undefined;
-  const rows = await db
-    .select({
-      identity: juniorIdentities,
-      user: juniorUsers,
-    })
-    .from(juniorIdentities)
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .where(
-      and(
-        eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, key.provider),
-        eq(juniorIdentities.providerTenantId, key.providerTenantId ?? ""),
-        eq(juniorIdentities.providerSubjectId, key.providerSubjectId),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return undefined;
-  return {
-    identity: identityFromRow(row.identity),
-    ...(row.user ? { user: await readUserById(db, row.user) } : undefined),
-  };
+  const identityId = await findActorIdentityId(db, actor);
+  // The read by id returns only user Identities, so system work has no viewer.
+  return identityId ? await readIdentityByIdFromSql(db, identityId) : undefined;
 }
 
 /** Resolve the stored identity and linked user for one runtime actor. */

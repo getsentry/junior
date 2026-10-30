@@ -1,42 +1,33 @@
 /**
- * Map runtime Actors to the Identity rows that Junior stores for them.
+ * Resolve runtime Actors to the Identity rows that Junior stores for them.
  *
- * Every write and read path that needs an Actor's Identity uses this module, so
- * the Conversation store, OAuth, the viewer, and message events agree on one
- * key per person.
+ * The Conversation store, OAuth, the viewer, and message events use this
+ * module, so they agree on one Identity per person. The key for each Actor
+ * stays private here, so it can change without changing callers.
  */
+import { and, eq } from "drizzle-orm";
 import type { Actor } from "@/chat/actor";
-import type { JuniorSqlDatabase } from "@/db/db";
-import {
-  normalizeIdentityEmail,
-  type IdentityUpsert,
-  type StoredIdentity,
-} from "./identity";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
+import { juniorIdentities } from "@/db/schema";
+import { normalizeIdentityEmail, type IdentityUpsert } from "./identity";
 import { upsertIdentity } from "./sql";
 
-/** Build the `junior` system Identity with one system name. */
-export function systemIdentity(
-  name: string,
-  displayName?: string,
-): IdentityUpsert {
-  return {
-    kind: "system",
-    provider: "junior",
-    providerSubjectId: name,
-    ...(displayName ? { displayName } : undefined),
-  };
-}
+/** The one Identity for work that Junior does on its own. */
+const SYSTEM_IDENTITY: IdentityUpsert = {
+  kind: "system",
+  provider: "junior",
+  providerSubjectId: "system",
+  displayName: "System",
+};
 
 /**
- * Return the Identity key and profile for one runtime Actor.
+ * Return the Identity key for one Actor.
  *
- * - Slack: the Slack user in its workspace.
- * - Web: the `junior` Identity keyed by the verified email. A web Actor without
- *   an email has no Identity.
- * - Local: no Identity yet.
- * - System: the `junior` system Identity named by the Actor.
+ * Every SystemActor uses the one system Identity. `SystemActor.name` is
+ * provenance, not part of the key. A LocalActor uses the system Identity too,
+ * because the local runner has no per-person user id.
  */
-export function identityForActor(actor: Actor): IdentityUpsert | undefined {
+function identityKey(actor: Actor): IdentityUpsert | undefined {
   switch (actor.platform) {
     case "slack":
       return {
@@ -52,6 +43,8 @@ export function identityForActor(actor: Actor): IdentityUpsert | undefined {
         metadata: { platform: "slack" },
       };
     case "web": {
+      // TODO(dcramer): Look up the viewer User's `google` Identity instead of
+      // the `junior/<email>` row.
       const email = normalizeIdentityEmail(actor.email);
       if (!email) {
         return undefined;
@@ -67,23 +60,43 @@ export function identityForActor(actor: Actor): IdentityUpsert | undefined {
       };
     }
     case "local":
-      // TODO(dcramer): Decide which Identity a local CLI user gets. The local
-      // runner uses one shared `local-cli` user id for every person.
-      return undefined;
     case "system":
-      return systemIdentity(actor.name);
+      return SYSTEM_IDENTITY;
   }
 }
 
 /**
- * Save the Identity for one runtime Actor and return its id and linked user.
- * Return undefined when the Actor has no Identity.
+ * Save the Identity for one Actor and return its id.
+ * Return undefined only for a web Actor without a verified email.
  */
-export async function upsertActorIdentity(
+export async function resolveActorIdentityId(
   executor: JuniorSqlDatabase,
   actor: Actor,
   nowMs: number = Date.now(),
-): Promise<StoredIdentity | undefined> {
-  const identity = identityForActor(actor);
-  return identity ? await upsertIdentity(executor, identity, nowMs) : undefined;
+): Promise<string | undefined> {
+  const key = identityKey(actor);
+  return key ? (await upsertIdentity(executor, key, nowMs)).id : undefined;
+}
+
+/** Find the stored Identity id for one Actor without writing. */
+export async function findActorIdentityId(
+  db: JuniorDatabase,
+  actor: Actor,
+): Promise<string | undefined> {
+  const key = identityKey(actor);
+  if (!key) {
+    return undefined;
+  }
+  const rows = await db
+    .select({ id: juniorIdentities.id })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, key.provider),
+        eq(juniorIdentities.providerTenantId, key.providerTenantId ?? ""),
+        eq(juniorIdentities.providerSubjectId, key.providerSubjectId),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.id;
 }

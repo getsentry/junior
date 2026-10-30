@@ -1,7 +1,7 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { isSlackUserId, parseActorUserId } from "@/chat/actor";
 import { parseSessionSource } from "@/chat/source";
-import { upsertActorIdentity } from "@/chat/identities/actor";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -213,7 +213,7 @@ export async function resolveEventActorIdentityId(
         providerSubjectId: userId,
       });
     }
-    const stored = await upsertActorIdentity(
+    return await resolveActorIdentityId(
       executor,
       {
         platform: "slack",
@@ -225,7 +225,6 @@ export async function resolveEventActorIdentityId(
       },
       args.nowMs,
     );
-    return stored?.id;
   }
 
   const email =
@@ -235,7 +234,7 @@ export async function resolveEventActorIdentityId(
         ? userId
         : undefined;
   if (email) {
-    const stored = await upsertActorIdentity(
+    return await resolveActorIdentityId(
       executor,
       {
         platform: "web",
@@ -245,7 +244,6 @@ export async function resolveEventActorIdentityId(
       },
       args.nowMs,
     );
-    return stored?.id;
   }
 
   // Dashboard authors store dashboard:<hash> without email in meta. Junior

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import {
+  findActorIdentityId,
+  resolveActorIdentityId,
+} from "@/chat/identities/actor";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
-import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
+import {
+  readActorIdentityFromSql,
+  readIdentityByIdFromSql,
+} from "@/chat/plugins/viewer";
 import { createJuniorSqlFixture } from "../fixtures/sql";
 
 describe("identity read", () => {
@@ -36,6 +43,68 @@ describe("identity read", () => {
         after?.user?.identities.find((i) => i.provider === "github")?.handle,
       ).toBe("person");
       expect(await readIdentityByIdFromSql(db, "missing")).toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("resolves each actor to one identity", async () => {
+    const fixture = await createJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const db = fixture.sql.db();
+      const slack = {
+        email: "person@example.com",
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123456",
+      } as const;
+      expect(await findActorIdentityId(db, slack)).toBeUndefined();
+      const slackId = await resolveActorIdentityId(fixture.sql, slack);
+      expect(await findActorIdentityId(db, slack)).toBe(slackId);
+      expect(
+        (await readActorIdentityFromSql(db, slack))?.identity,
+      ).toMatchObject({
+        id: slackId,
+        provider: "slack",
+        providerTenantId: "T123",
+        providerSubjectId: "U123456",
+      });
+
+      const webId = await resolveActorIdentityId(fixture.sql, {
+        email: " Web@Example.com ",
+        platform: "web",
+        userId: "dashboard:abc",
+      });
+      expect(
+        (await readIdentityByIdFromSql(db, webId!))?.identity,
+      ).toMatchObject({
+        provider: "junior",
+        providerSubjectId: "web@example.com",
+      });
+      expect(
+        await resolveActorIdentityId(fixture.sql, {
+          platform: "web",
+          userId: "dashboard:abc",
+        }),
+      ).toBeUndefined();
+
+      // Every system and local actor shares one system identity, which has no
+      // viewer.
+      const systemId = await resolveActorIdentityId(fixture.sql, {
+        name: "scheduled-automation",
+        platform: "system",
+      });
+      expect(systemId).toBeDefined();
+      const local = { platform: "local", userId: "local-cli" } as const;
+      expect(await resolveActorIdentityId(fixture.sql, local)).toBe(systemId);
+      expect(
+        await resolveActorIdentityId(fixture.sql, {
+          name: "event",
+          platform: "system",
+        }),
+      ).toBe(systemId);
+      expect(await readActorIdentityFromSql(db, local)).toBeUndefined();
     } finally {
       await fixture.close();
     }

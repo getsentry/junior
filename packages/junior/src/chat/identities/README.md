@@ -18,16 +18,20 @@ timezone to this column. The scheduler and plugin tools use it, through
 
 ## Actor Identities
 
-`actor.ts` maps each runtime Actor to one Identity. The Conversation store,
-OAuth, the viewer, and message events use it, so they find the same Identity
-for the same person.
+`actor.ts` resolves each runtime Actor to one Identity id.
+`resolveActorIdentityId` saves the Identity and returns its id.
+`findActorIdentityId` only reads. The Conversation store, OAuth, the viewer,
+and message events use these functions, so they find the same Identity for
+the same person. The key for each Actor is private to `actor.ts`.
 
 - A Slack Actor is the Slack Identity in its workspace.
 - A web Actor is the `junior` Identity keyed by its verified email.
-- A system Actor is the `junior` system Identity with the Actor name.
+- Every system Actor and every local Actor is the one system Identity: kind
+  `system`, provider `junior`, an empty tenant, and subject `system`. The
+  system Actor name is provenance. It is not part of the key.
 
-A Conversation write without an Actor still uses a system Identity from its
-Source.
+A Conversation write without an Actor still uses a legacy system Identity
+from its Source, with the subject `scheduler`, `local-cli`, or `event`.
 
 ## Native Identities
 

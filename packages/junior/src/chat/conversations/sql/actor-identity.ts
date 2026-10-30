@@ -1,22 +1,24 @@
-import type { StoredSlackActor } from "@/chat/actor";
-import { identityForActor, systemIdentity } from "@/chat/identities/actor";
+import type { Actor, StoredSlackActor } from "@/chat/actor";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { IdentityUpsert } from "@/chat/identities/identity";
+import { upsertIdentity } from "@/chat/identities/sql";
+import type { JuniorSqlDatabase } from "@/db/db";
 import type { Conversation, ConversationSource } from "../store";
 import type { juniorIdentities } from "@/db/schema";
 
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 
 /**
- * Read the Identity key of an Actor in the stored Conversation shape.
+ * Convert an Actor in the stored Conversation shape to a runtime Actor.
  *
  * TODO(dcramer): Remove after Conversations store the Identity id instead of
  * StoredSlackActor.
  */
-function identityForStoredActor(
+function actorFromStoredActor(
   actor: StoredSlackActor | undefined,
-): IdentityUpsert | undefined {
+): Actor | undefined {
   if (actor?.slackUserId) {
-    return identityForActor({
+    return {
       ...(actor.email ? { email: actor.email } : undefined),
       ...(actor.fullName ? { fullName: actor.fullName } : undefined),
       platform: "slack",
@@ -25,53 +27,78 @@ function identityForStoredActor(
       teamId: actor.teamId ?? "",
       userId: actor.slackUserId,
       ...(actor.slackUserName ? { userName: actor.slackUserName } : undefined),
-    });
+    };
   }
   if (!actor?.email) {
     return undefined;
   }
   // A stored web actor keeps only its verified email and name. The web
-  // Identity key does not use the Actor user id.
-  return identityForActor({
+  // Identity does not use the Actor user id.
+  return {
     email: actor.email,
     ...(actor.fullName ? { fullName: actor.fullName } : undefined),
     platform: "web",
     userId: actor.email,
-  });
+  };
 }
 
 /**
- * Build a system identity when a conversation has no user actor.
+ * Build the legacy system Identity for a Conversation that has no Actor.
  *
- * TODO(dcramer): These names do not match the SystemActor names. The
- * scheduler source uses `scheduler`, but its SystemActor is
- * `scheduled-automation`. Other SystemActors use plugin names, `event`,
- * `conversation-title`, and `workspace-snapshot`. Align them when every
- * ingress supplies its Actor.
+ * TODO(dcramer): Remove after every ingress supplies its Actor. These rows use
+ * one subject per Source (`scheduler`, `local-cli`, `event`). An Actor
+ * uses the one system Identity instead, so the backfill must merge them.
  */
-export function systemIdentityFromSource(
+function systemIdentityFromSource(
   source: ConversationSource | undefined,
 ): IdentityUpsert | undefined {
   if (source === "scheduler") {
-    return systemIdentity("scheduler", "Scheduler");
+    return {
+      kind: "system",
+      provider: "junior",
+      providerSubjectId: "scheduler",
+      displayName: "Scheduler",
+    };
   }
   if (source === "local") {
-    return systemIdentity("local-cli", "Local CLI");
+    return {
+      kind: "system",
+      provider: "junior",
+      providerSubjectId: "local-cli",
+      displayName: "Local CLI",
+    };
   }
   if (source === "event") {
-    return systemIdentity("event", "Event");
+    return {
+      kind: "system",
+      provider: "junior",
+      providerSubjectId: "event",
+      displayName: "Event",
+    };
   }
   return undefined;
 }
 
-/** Prefer the user actor identity, else a source-derived system identity. */
-export function actorIdentityForConversation(
+/**
+ * Save the Identity of a Conversation's actor and return its id. Use the
+ * legacy source system Identity when the Conversation has no actor.
+ */
+export async function resolveConversationActorIdentityId(
+  executor: JuniorSqlDatabase,
   conversation: Conversation,
-): IdentityUpsert | undefined {
-  return (
-    identityForStoredActor(conversation.actor) ??
-    systemIdentityFromSource(conversation.source)
-  );
+): Promise<string | undefined> {
+  const actor = actorFromStoredActor(conversation.actor);
+  if (actor) {
+    return await resolveActorIdentityId(
+      executor,
+      actor,
+      conversation.updatedAtMs,
+    );
+  }
+  const fallback = systemIdentityFromSource(conversation.source);
+  return fallback
+    ? (await upsertIdentity(executor, fallback, conversation.updatedAtMs)).id
+    : undefined;
 }
 
 /**
