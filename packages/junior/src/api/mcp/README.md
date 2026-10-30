@@ -15,8 +15,11 @@ passes its result to the dashboard app, so both use the same value.
 
 This directory owns the MCP HTTP edge, the OAuth authorization server for MCP,
 and the MCP tool. It does not own Conversation access rules.
-`listConversations` calls `readConversationFeed({ viewer })` in
-`@/api/conversations/list`. That function applies the access rules.
+`listConversations` calls `readConversationFeed({ viewer, q, status })` in
+`@/api/conversations/list`. With `viewer` and without `codeRepositoryId`, that
+function returns only root Conversations that the viewer started or takes part
+in. Its JSDoc states this guarantee. MCP never passes `codeRepositoryId` or
+`actorEmail`.
 
 This directory is the server side of MCP. `src/chat/mcp/` is the client side,
 which connects Junior to plugin MCP servers. Do not mix the two.
@@ -86,6 +89,12 @@ transport that answers with JSON. No MCP session or SSE stream stays open
 after the request. Thus the route does not reach the live request limit of the
 deployment. `GET` and `DELETE` return `405`, because there is no session to
 stream or delete.
+
+Every URL in the metadata and every token `resource` comes from the public
+base URL of the app, as for ACP. The order is `dashboard.baseURL`,
+`JUNIOR_BASE_URL`, then the Vercel URLs. Vercel also sets
+`VERCEL_PROJECT_PRODUCTION_URL` on preview deployments. Thus a preview
+advertises the production URL unless `JUNIOR_BASE_URL` is set for it.
 
 ## Invariants
 

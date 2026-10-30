@@ -15,6 +15,7 @@ import {
   MCP_AUTHORIZATION_SERVER_METADATA_PATH,
   MCP_AUTHORIZE_PATH,
   MCP_PATH,
+  MCP_SCOPE,
   MCP_TOKEN_PATH,
   MCP_RESOURCE_METADATA_PATH,
   authorizationServerMetadata,
@@ -24,7 +25,7 @@ import {
 } from "./metadata";
 import { handleMcpServerRequest } from "./server";
 import type { McpState } from "./state";
-import { handleMcpToken } from "./token";
+import { handleMcpToken, mcpTokenBodyLimit } from "./token";
 
 /** Host paths that the app forwards to the MCP handler. */
 export const MCP_ROUTE_PATHS = [
@@ -54,7 +55,7 @@ function unauthorized(urls: McpUrls, sentToken: boolean): Response {
     status: 401,
     headers: {
       "cache-control": "no-store",
-      "www-authenticate": `Bearer ${error}resource_metadata="${urls.resourceMetadata}"`,
+      "www-authenticate": `Bearer ${error}resource_metadata="${urls.resourceMetadata}", scope="${MCP_SCOPE}"`,
     },
   });
 }
@@ -86,7 +87,7 @@ export function createMcpHttpHandler(
       urls: urls(c.req.raw),
     }),
   );
-  app.post(MCP_TOKEN_PATH, (c) =>
+  app.post(MCP_TOKEN_PATH, mcpTokenBodyLimit, (c) =>
     handleMcpToken({ request: c.req.raw, state: options.state }),
   );
   // Only MCP access tokens for this exact resource pass. Personal tokens and

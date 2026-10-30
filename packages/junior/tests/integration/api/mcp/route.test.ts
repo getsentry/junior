@@ -282,7 +282,7 @@ describe("remote MCP HTTP", () => {
     expect(removedDomain.status).toBe(401);
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe(
-      `Bearer error="invalid_token", resource_metadata="${MCP_TEST_ORIGIN}/.well-known/oauth-protected-resource/api/mcp"`,
+      `Bearer error="invalid_token", resource_metadata="${MCP_TEST_ORIGIN}/.well-known/oauth-protected-resource/api/mcp", scope="conversations:read"`,
     );
   });
 

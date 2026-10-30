@@ -3,6 +3,7 @@
  * names its `client_id` and carries no client secret. Every response uses
  * `Cache-Control: no-store`.
  */
+import { bodyLimit } from "hono/body-limit";
 import {
   exchangeAuthorizationCode,
   refreshGrant,
@@ -12,12 +13,23 @@ import type { McpState } from "./state";
 
 const TOKEN_HEADERS = { "cache-control": "no-store", pragma: "no-cache" };
 
-function tokenError(error: string, description: string): Response {
+function tokenError(
+  error: string,
+  description: string,
+  status = 400,
+): Response {
   return Response.json(
     { error, error_description: description },
-    { status: 400, headers: TOKEN_HEADERS },
+    { status, headers: TOKEN_HEADERS },
   );
 }
+
+/** Limit token request bodies. A token request is a few short form fields. */
+export const mcpTokenBodyLimit = bodyLimit({
+  maxSize: 8 * 1024,
+  onError: () =>
+    tokenError("invalid_request", "The request body is too large.", 413),
+});
 
 function tokenResponse(result: McpTokenResult): Response {
   return result.ok

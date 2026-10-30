@@ -16,7 +16,7 @@ Junior has a remote MCP server at `/api/mcp`. An MCP client, such as Claude Code
 ## Before you start
 
 - The app must mount the [dashboard](/operate/dashboard/) with Google sign-in. Without it, Junior does not mount `/api/mcp`.
-- The app must know its public URL. Set `dashboard.baseURL` or `JUNIOR_BASE_URL`. On Vercel, Junior uses the production URL of the project when you do not set one.
+- The app must know its public URL. Set `dashboard.baseURL` or `JUNIOR_BASE_URL`. On Vercel, Junior uses the production URL of the project when you do not set one. Preview deployments also use the production URL. To connect a client to a preview deployment, set `JUNIOR_BASE_URL` for that deployment.
 - Your MCP client must support OAuth with Client ID Metadata Documents (CIMD). Junior does not support Dynamic Client Registration.
 
 ## Connect Claude Code

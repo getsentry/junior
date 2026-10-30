@@ -10,7 +10,11 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { readConversationFeed } from "@/api/conversations/list";
-import type { ConversationSummaryReport } from "@/api/schema/conversation";
+import {
+  conversationReportStatusSchema,
+  conversationSurfaceSchema,
+  type ConversationSummaryReport,
+} from "@/api/schema/conversation";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { JUNIOR_VERSION } from "@/version";
 
@@ -19,8 +23,8 @@ const mcpConversationSchema = z
   .object({
     conversationId: z.string(),
     title: z.string(),
-    status: z.enum(["active", "completed", "failed"]),
-    surface: z.enum(["api", "internal", "scheduler", "slack"]),
+    status: conversationReportStatusSchema,
+    surface: conversationSurfaceSchema,
     channelName: z.string().optional(),
     locationUrl: z.string().optional(),
     startedAt: z.string(),
