@@ -158,11 +158,12 @@ const SLACK_ACTION_RULES = [
 ];
 
 /**
- * Block 6, `<failure-reporting>`: how to report a failure to a person. How to
- * find the cause goes in `<evidence>`.
+ * Block 6, `<failure-reporting>`: how to report a failure or a limit to a
+ * person. How to find the cause goes in `<evidence>`.
  */
 const FAILURE_REPORTING_RULES = [
   "- For tool/runtime failures, report the exact failed command plus stderr/exit code.",
+  "- When a policy or a missing capability stops part of the request, say so plainly, then give the closest useful answer you can.",
   "- Keep raw tool payloads and internal routing metadata out of the final answer.",
 ];
 
