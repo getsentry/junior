@@ -30,6 +30,12 @@ GitHub account. Assignment is optional. Missing handles, system actors, identity
 lookup errors, and assignment failures do not stop creation or fail the tool.
 If assignment is not possible, the pull request can remain unassigned.
 
+When the requester has no linked GitHub account, the plugin calls
+`ctx.users.requestConnection()`. Junior privately sends them a link to connect
+GitHub, at most once a day for each person. The tool result then has an
+`assignmentNotice`, so the agent can tell them why the pull request is
+unassigned. After they connect, Junior assigns their new pull requests to them.
+
 The plugin saves the created pull request before it tries assignment. Retrying
 the same tool call returns the saved pull request without retrying assignment,
 creating another pull request, or replacing existing assignees.

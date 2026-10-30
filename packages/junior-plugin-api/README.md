@@ -73,7 +73,9 @@ reports, and other typed hook surfaces exported by this package.
   collection, sanitization, and browser rendering.
 - Tool hooks may resolve the active Actor's Identity and User through
   `ctx.users.resolveActor()`, and the Actor's timezone through
-  `ctx.users.resolveTimezone()`.
+  `ctx.users.resolveTimezone()`. `ctx.users.requestConnection()` privately
+  sends the Actor of a Slack message Turn a link to connect the plugin's OAuth
+  account. The Turn does not pause.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
   User lookup. Routes that do not need User data do not query identity storage.
 - User page readers receive the signed-in `User`. Plugins return limited data.

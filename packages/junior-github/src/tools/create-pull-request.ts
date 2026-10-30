@@ -34,6 +34,9 @@ import type { GitHubDb } from "../db/database.js";
 import { recordGitHubPullRequestOpener } from "../pull-request-requesters/store.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
+const GITHUB_CONNECTION_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
+const GITHUB_CONNECTION_REQUEST_NOTICE =
+  "The requester has no linked GitHub account, so this pull request is unassigned. Junior privately sent them a link to connect GitHub. After they connect, Junior assigns their new pull requests to them.";
 
 class GitHubPullRequestCreateRejectedError extends Error {
   status: number;
@@ -147,6 +150,7 @@ const gitHubPullRequestDataSchema = z.object({
   url: z.string(),
   subscribable: subscribableResourceSchema.optional(),
   subscription: watchResultSchema.optional(),
+  assignmentNotice: z.string().optional(),
 });
 
 const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
@@ -409,6 +413,47 @@ async function assignPullRequestRequester(
   }
 }
 
+/**
+ * Ask a requester with no linked GitHub login to connect GitHub, at most once
+ * a day. Linking is optional: failures must not fail PR creation.
+ */
+async function requestRequesterConnection(
+  ctx: ToolRegistrationHookContext,
+  requester: GitHubRequester | undefined,
+): Promise<boolean> {
+  const identityId = requester?.identity?.id;
+  if (!identityId || linkedGitHubLogin(requester?.user)) return false;
+  const key = `connectionRequest:${identityId}`;
+  let reserved = false;
+  try {
+    reserved = await ctx.state.setIfNotExists(
+      key,
+      true,
+      GITHUB_CONNECTION_REQUEST_TTL_MS,
+    );
+    if (!reserved) return false;
+    if (await ctx.users.requestConnection()) return true;
+    // No link was sent, so let a later pull request ask again.
+    await ctx.state.delete(key);
+    reserved = false;
+  } catch (error) {
+    ctx.log.warn("github.pull_request.connection_request.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    if (reserved) {
+      await ctx.state.delete(key).catch((deleteError: unknown) => {
+        ctx.log.warn("github.pull_request.connection_request.release_failed", {
+          error:
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError),
+        });
+      });
+    }
+  }
+  return false;
+}
+
 function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
@@ -507,7 +552,7 @@ export function createGitHubPullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-owned conversation footer and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-owned conversation footer and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests. When the result has assignmentNotice, tell the requester.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
@@ -612,12 +657,22 @@ export function createGitHubPullRequestTool(
           }
           await recordOpener(ctx, parsedInput, completedState, identityId);
           await assignPullRequestRequester(ctx, parsedInput, result, requester);
-          return await gitHubPullRequestStructuredResult(
+          const connectionRequested = await requestRequesterConnection(
+            ctx,
+            requester,
+          );
+          const structuredResult = await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
             result,
             subscriptionConfig,
           );
+          return connectionRequested
+            ? {
+                ...structuredResult,
+                assignmentNotice: GITHUB_CONNECTION_REQUEST_NOTICE,
+              }
+            : structuredResult;
         },
       );
     },
