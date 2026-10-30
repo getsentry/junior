@@ -422,6 +422,12 @@ syncInjectedPackageDist("@sentry/junior-dashboard", dashboardPackageDir, {
   strict: true,
 });
 clearExampleVercelOutput();
+// Apply missing core and plugin migrations before Nitro and the worker start.
+// `junior upgrade` skips migrations that already ran, so this is safe on
+// every start.
+runRequiredChild("pnpm", ["exec", "junior", "upgrade"], {
+  cwd: exampleDir,
+});
 
 spawnChild(
   "pnpm",
