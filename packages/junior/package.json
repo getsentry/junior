@@ -108,6 +108,9 @@
     "yaml": "^2.9.0",
     "zod": "catalog:"
   },
+  "peerDependencies": {
+    "nitro": "3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta"
+  },
   "devDependencies": {
     "@emnapi/core": "^1.10.0",
     "@emnapi/runtime": "^1.10.0",
