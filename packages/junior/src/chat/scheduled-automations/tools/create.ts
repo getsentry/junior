@@ -131,7 +131,9 @@ export function createSlackScheduleCreateAutomationTool(
         );
       }
 
-      requireRequesterMention(input.instruction, context.actor);
+      requireRequesterMention(input.instruction, context.actor, {
+        isCreator: true,
+      });
       const creator = await context.users.resolveActor();
       const identity = creator?.identity;
       if (

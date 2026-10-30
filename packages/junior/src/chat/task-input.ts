@@ -72,7 +72,7 @@ export function renderTaskInput(args: {
   about?: string;
   /**
    * Creator mention for the Destination, rendered from the creator identity
-   * at run time. Instructions call this person "the creator".
+   * at run time. Instructions call this person "the Automation creator".
    */
   creator?: string;
   /** Mentions of the people involved in an Event. Guidance says when to address them. */
@@ -107,11 +107,12 @@ export function renderTaskInput(args: {
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
     // Say who the creator is and what to write. With only who "me" is, the
-    // model often writes "your" and drops the mention. Instructions saved
-    // before "the creator" can still say "me" or hold a stored mention.
+    // model often writes "your" and drops the mention. The full term keeps
+    // "issue creator" or "PR creator" from matching. Compatibility: older
+    // saved instructions can say "me" or "my", or hold the creator mention.
     ...(creator
       ? [
-          `Created by: ${oneLine(creator)}. This person is the creator. Where the instructions refer to the creator, write this mention. "Me", "my", and this mention in the instructions also mean the creator. If the instructions do not refer to the creator, do not mention this person.`,
+          `Created by: ${oneLine(creator)}. This person is the Automation creator. Where the instructions say "the Automation creator", write this mention. "Me", "my", and this mention in the instructions also mean the Automation creator. If the instructions do not refer to the Automation creator, do not mention this person.`,
         ]
       : []),
     ...(people.length > 0 ? [`People involved: ${people.join(", ")}`] : []),

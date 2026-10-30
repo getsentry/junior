@@ -76,7 +76,7 @@ describe("Schedule Creation", () => {
     expect(creates[0]!.input).not.toHaveProperty("nextRunAt");
   });
 
-  test("when a reminder for the requester posts to the channel, save it for the creator", async ({
+  test("when a reminder for the requester posts to the channel, save it for the Automation creator without conversation references", async ({
     run,
   }) => {
     const conversation = await run(
@@ -91,11 +91,13 @@ describe("Schedule Creation", () => {
     );
     expect(creates).toHaveLength(1);
     // The run does not see this request, so "me" would mean nothing. Each run
-    // binds "the creator" to the creator identity, so no mention is saved.
+    // binds "the Automation creator" to the creator identity, so no mention is
+    // saved. "This channel" would also mean nothing, and nothing binds it.
     const { instruction } = creates[0]!.input as { instruction?: string };
-    expect(instruction).toMatch(/\bcreator\b/i);
+    expect(instruction).toMatch(/\bAutomation creator\b/i);
     expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
     expect(instruction).not.toContain("<@U0TEST>");
+    expect(instruction).not.toMatch(/\bthis channel\b/i);
   });
 
   test("when asked to tell the channel something later, preserve the future work in the schedule", async ({

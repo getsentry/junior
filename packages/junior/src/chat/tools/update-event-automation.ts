@@ -130,7 +130,7 @@ export function createUpdateEventAutomationTool(
         input.instruction != null &&
         input.instruction !== current.task.text
       ) {
-        requireRequesterMention(input.instruction, actor);
+        requireRequesterMention(input.instruction, actor, { isCreator });
       }
       let saved = current;
       if (edits) {

@@ -406,7 +406,7 @@ describe("event automations", () => {
       This is a task, not a message from a person.
 
       About: GitHub PR getsentry/junior#1174
-      Created by: <@U123>. This person is the creator. Where the instructions refer to the creator, write this mention. "Me", "my", and this mention in the instructions also mean the creator. If the instructions do not refer to the creator, do not mention this person.
+      Created by: <@U123>. This person is the Automation creator. Where the instructions say "the Automation creator", write this mention. "Me", "my", and this mention in the instructions also mean the Automation creator. If the instructions do not refer to the Automation creator, do not mention this person.
       Instructions: Address the requested changes.
 
       Trusted summary: A reviewer requested changes.

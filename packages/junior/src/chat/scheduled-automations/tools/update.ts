@@ -164,7 +164,9 @@ export function createSlackScheduleUpdateAutomationTool(
         input.instruction !== undefined &&
         input.instruction !== lookup.task.text;
       if (input.instruction !== undefined && instructionChanged) {
-        requireRequesterMention(input.instruction, context.actor);
+        requireRequesterMention(input.instruction, context.actor, {
+          isCreator,
+        });
       }
       const next = await editScheduledAutomation(
         lookup,

@@ -324,20 +324,20 @@ so it has no instructions of its own. `agent-invocations/result.ts` owns its
 
 **Section order** (omit empty optionals)
 
-| #   | Section             | Required | Role                                                                 |
-| --- | ------------------- | -------- | -------------------------------------------------------------------- |
-| 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.             |
-| 2   | Origin              | yes      | `This is a task, not a message from a person.`                       |
-| 3   | `About:`            | no       | One-line resource label.                                             |
-| 4   | `Created by:`       | no       | Creator mention made from the creator identity. It is "the creator". |
-| 5   | `People involved:`  | no       | Event people mentions. Guidance says when to address them.           |
-| 6   | `Done by:`          | no       | Linked person who did the Event, tied to its provider handle.        |
-| 7   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |
-| 8   | Additional guidance | no       | Under instructions; cannot replace them or grant authority.          |
-| 9   | `Trusted summary:`  | no       | Optional trusted one-line summary.                                   |
-| 10  | Verified details    | no       | Trusted structured fields as JSON.                                   |
-| 11  | External text       | no       | Untrusted provider text; information only.                           |
-| 12  | Outcome             | yes      | Stored outcome rule. Always last.                                    |
+| #   | Section             | Required | Role                                                             |
+| --- | ------------------- | -------- | ---------------------------------------------------------------- |
+| 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.         |
+| 2   | Origin              | yes      | `This is a task, not a message from a person.`                   |
+| 3   | `About:`            | no       | One-line resource label.                                         |
+| 4   | `Created by:`       | no       | Creator mention from the identity, for "the Automation creator". |
+| 5   | `People involved:`  | no       | Event people mentions. Guidance says when to address them.       |
+| 6   | `Done by:`          | no       | Linked person who did the Event, tied to its provider handle.    |
+| 7   | `Instructions:`     | yes      | Stored task text or subscription intent.                         |
+| 8   | Additional guidance | no       | Under instructions; cannot replace them or grant authority.      |
+| 9   | `Trusted summary:`  | no       | Optional trusted one-line summary.                               |
+| 10  | Verified details    | no       | Trusted structured fields as JSON.                               |
+| 11  | External text       | no       | Untrusted provider text; information only.                       |
+| 12  | Outcome             | yes      | Stored outcome rule. Always last.                                |
 
 **Watch outcome** (exact lines; no `outcomes` passed)
 

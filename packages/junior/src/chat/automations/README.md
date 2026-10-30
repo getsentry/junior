@@ -87,16 +87,18 @@ credentials. The edit read returns `ownedByViewer` so the editor can show
 these rules before a save.
 
 An Automation runs later without the request that created it. So the
-instruction names who and what it means, and calls its creator "the creator".
-The instruction does not store a mention for the creator. Each run reads the
-creator identity and renders its mention for the Destination in the
-`Created by:` task input line. The `createdBy` copy does not decide this.
-Instructions saved before this rule can say "me" or "my", or hold the creator
-mention. The `Created by:` line treats those as the creator too. Other people
-need an exact mention in the instruction. The agent tools
-that create or update an Automation reject an instruction that names the
-requester by display name without their Slack mention. A name does not notify
-the person.
+instruction names exact targets, such as a channel mention or a link. It calls
+its creator "the Automation creator" and does not store a mention for them.
+Each run reads the creator identity and renders its mention for the
+Destination in the `Created by:` task input line. The `createdBy` copy does not
+decide this. For compatibility, that line also treats "me", "my", and a stored
+creator mention as the Automation creator, because older instructions use them.
+
+Other people need an exact mention in the instruction. The agent tools that
+create or update an Automation reject an instruction that names the requester
+by display name without their Slack mention. A name does not notify the
+person. An update by a requester who did not create the Automation also
+rejects "me" and "my", because each run reads them as the Automation creator.
 
 ## Versions
 
