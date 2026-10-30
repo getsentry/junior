@@ -355,9 +355,14 @@ function dashboardRouteRegistrations(args: {
   );
 }
 
-/** Reject plugin routes that would shadow dashboard or auth paths. */
+/**
+ * Reject plugin routes that would shadow dashboard or auth paths, or other
+ * core routes that need the dashboard, such as the MCP routes.
+ */
 export function validateDashboardRouteOwnership(args: {
   authenticatedRoutes?: readonly AuthenticatedRoute[];
+  /** Core host paths that mount before plugin routes. */
+  coreRoutePaths?: readonly string[];
   dashboard: JuniorDashboardOptions | undefined;
   routes: PluginRouteRegistration[];
 }): void {
@@ -370,6 +375,9 @@ export function validateDashboardRouteOwnership(args: {
         route.path,
         args.dashboard,
         args.authenticatedRoutes,
+      ) ||
+      (args.coreRoutePaths ?? []).some((path) =>
+        routePatternOverlaps(path, route.path),
       )
     ) {
       throw new Error(

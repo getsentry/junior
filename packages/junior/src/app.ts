@@ -696,6 +696,7 @@ export async function createApp(
   try {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
+      coreRoutePaths: mcpEnabled ? MCP_ROUTE_PATHS : [],
       dashboard,
       routes: pluginRoutes,
     });
