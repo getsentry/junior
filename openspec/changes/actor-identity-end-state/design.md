@@ -1,6 +1,6 @@
 # Design
 
-`proposal.md` says which items are decided and which are proposals. This file
+`proposal.md` says who decided each item and what is still open. This file
 gives the model, the schema, the readers, and the known gaps.
 
 ## Model
@@ -14,11 +14,42 @@ gives the model, the schema, the readers, and the known gaps.
 - Scheduled automations, event automations, plugin dispatch, and the local
   CLI: the system Identity.
 - Junior sets the Owner at insert. The conflict update never changes it.
-- The owner of an Automation (`TERMINOLOGY.md`) is a different thing. It is
-  the Automation creator, in `junior_automations.creator_identity_id`. It is
-  not the Owner of the Conversations that its runs create. The owner of an
-  annotation is a third thing. `proposal.md`, Proposal 13, proposes the word
-  "creator" for the Automation.
+- An Automation has a creator (`TERMINOLOGY.md`), in
+  `junior_automations.creator_identity_id`. The creator is not the Owner of
+  the Conversations that its runs create.
+
+### Owner Repair
+
+Before #2436, `recordExecution` could replace the human root Identity of a
+`slack` or `web` root with a system Identity (`local-cli` or `event`). David's
+rule is: leave old rows as they are, unless the migration path is clearly
+correct. Step 4b repairs a root only when all of these are true:
+
+- the row is a root (`parent_conversation_id is null`);
+- the row is not a fork (`forked_from_conversation_id is null`). A fork
+  copies the events of its source, with their authors (`chat/conversations/fork.ts`),
+  so its first author can be someone else;
+- its Source is `slack` or `web`;
+- its current Identity is of kind `system`;
+- its first `message` event with role `user`, by `seq`, has an author
+  Identity. Junior does not look past a first Message with no author;
+- that author is kind `user`, links a User, and fits the Source: provider
+  `slack` for a `slack` root, `google` or `junior` for a `web` root.
+
+The repair then sets the Owner to that author Identity.
+
+The dry run counts, by Source:
+
+- the rows that pass every condition;
+- the rows skipped, by the first condition that fails;
+- the agreement check: for `slack` and `web` roots that are not forks and
+  have a `user` Identity today, the rows where the first user Message author
+  is a different User.
+
+The agreement check tests the rule on rows that #2436 did not damage. If it
+finds one disagreement, the rule is not clearly correct. Then step 4b drops
+the repair and copies the current Identity for every row. Each skipped row
+also keeps its current Identity.
 
 ### Child Conversations
 
@@ -47,6 +78,18 @@ gives the model, the schema, the readers, and the known gaps.
 - Step 3 changes that mapping to one key for every name. Its merge covers
   every row of kind `system`, not only the three rows above.
 
+### Users And Identities
+
+- A User is one person. A User has many Identities: for example a `slack`
+  Identity, a `google` Identity from dashboard sign-in, and a `github`
+  Identity from an OAuth link. Each one links the same `user_id`.
+- `userSchema.identities` (`junior-plugin-api/src/schemas.ts`) already gives
+  a viewer every linked Identity.
+- Spend, People, participants, and Locations roll up by User. The Identity
+  is the fallback only for an Identity with no User, such as a bot.
+- A Message author and an Owner are Identities. A reader joins the Identity
+  to its User to group.
+
 ### Web Users
 
 - A web Actor uses the `google` Identity that dashboard sign-in saves:
@@ -67,19 +110,36 @@ gives the model, the schema, the readers, and the known gaps.
   gives the viewer User (`resolveViewerUserFromSql`). Junior then uses that
   User's `google` Identity with the newest `signed_in_at`.
 - The mock viewer (`mockViewerFromSession` in `junior-dashboard/src/app.ts`)
-  gets a mock Identity. Today it has `identities: []`.
+  gets a mock Identity. Today it has `identities: []`. Mock reporting writes
+  no durable rows, so this Identity is in memory only. Its id is
+  `mock-identity:<email>`.
+- The local auth bypass (`authRequired: false`) uses a real User for
+  `dev@example.com` (`resolveViewerUser`). It has no Google sign-in. So the
+  bypass branch of `requireAuth` writes a `mock` Identity with the same key
+  as the mock viewer and links it to that User. A web Actor uses the viewer's
+  `google` Identity. Only under the bypass does the viewer have a `mock`
+  Identity in its place.
+- Today only `apps/example/dashboard.ts` refuses the bypass on Vercel. The
+  dashboard package accepts `authRequired: false` anywhere. Step 3 moves the
+  guard into the package.
 - Personal-token requests are `GET` only. They never write a Message.
 
 ### Slack Bots
 
-- A Slack bot gets an Identity: provider `slack` and the team id as tenant.
-  Proposal 11 picks the subject. The bot has no User.
+- A Slack bot gets an Identity of kind `bot`: provider `slack`, the team id
+  as tenant, and the bot user id (`U…`) as subject. It uses the `bot_id`
+  (`B…`) only when Slack sends no bot user id. The bot has no User.
   `junior_identities.user_id` is nullable.
 - With no User, a bot never counts as a person. Spend and People require a
   User and kind `user` (`verifiedActorWhere` in `api/people/shared.ts`).
   `recordConversationParticipant` skips an Identity with no User.
 
 ### Event Authors
+
+An event is a Message. An inbound event writes a Message with role `user`.
+Its author is the author Identity of the event: the system Identity for a
+system event, or the person or bot who wrote the content. The event never
+changes the Owner or the Turn Actor.
 
 - Today no event Message has an author Identity:
   - `createEventInboundMessage` (`chat/events/notification.ts`) writes one
@@ -93,8 +153,8 @@ gives the model, the schema, the readers, and the known gaps.
 - End state: an event whose `doneBy` has a `subjectId` uses the Identity of
   that person or bot. An event with no `doneBy`, or with no `subjectId`, uses
   the system Identity, and its text stays data. So no `hasActor` flag is
-  needed. Provider parsing stays in the plugin. `proposal.md`, Proposals 3 to
-  6, give the contract.
+  needed. Provider parsing stays in the plugin. `proposal.md`, Plan
+  Decisions, gives the contract.
 - Event text is untrusted by default. Plugins put it in `untrustedText`.
   `task-input.ts` shows it as "External text". Guardian denies actions that
   follow it (`untrusted_instruction` in `guardian/policy.ts`).
@@ -117,36 +177,50 @@ gives the model, the schema, the readers, and the known gaps.
   #2260's `Requester instruction` section. It is never a `user:` line, and it
   is never an approval.
 - The GitHub plugin owns its trusted authors list of logins,
-  `githubPlugin({ trustedAuthors })`. It sets `doneBy.trusted`. Core sees
-  only that boolean. This is the same split as
+  `githubPlugin({ trustedAuthors })`. It sets `doneBy.trustedAuthor`. Core
+  sees only that boolean. This is the same split as
   `slack.allowedBotUserIds`, which lets a listed Slack bot pass the domain
   check (`chat/ingress/slack-allowed-domain.ts`). Today no GitHub author list
   exists.
-- An event author never becomes a participant. Today `sql/history.ts`
+- An event Message author never becomes a participant. Today `sql/history.ts`
   records a participant for each Message author with an Identity.
 - Event automations write no event Message. They start an Automation run
   (`chat/event-automations/ingest.ts`).
 
 ### Identity Keys
 
-An Identity key is kind, provider, tenant, and subject. Each row says if it is
-a plan decision or a proposal.
+The unique key of `junior_identities` is provider, tenant, and subject
+(`junior_identities_provider_subject_uidx`). `kind` is a column, not part of
+the key. Each row says who decided it.
 
-| Identity     | Key                                                                                   | Status                                                   |
-| ------------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| System       | kind `system`, provider `junior`, tenant `""`, subject `system`                       | Proposal 10                                              |
-| Event author | provider `github`, tenant `""`, subject `String(sender.id)`                           | Plan decision. It is the key that the OAuth link writes. |
-| Slack bot    | provider `slack`, tenant the team id, subject the bot user id (`U…`), else `bot_id`   | Proposal 11                                              |
-| Web user     | the viewer User's `google` row with the newest `signed_in_at`                         | Plan decision. `WebActor` has no OIDC `sub`.             |
-| Mock viewer  | kind `user`, provider `mock`, tenant `""`, subject the mock viewer id (`mock-user:…`) | Proposal 12                                              |
+| Identity     | Key                                                                                             | Status                         |
+| ------------ | ----------------------------------------------------------------------------------------------- | ------------------------------ |
+| System       | kind `system`, provider `junior`, tenant `""`, subject `system`                                 | Delegated decision (answer 10) |
+| Event author | provider `github`, tenant `""`, subject `String(sender.id)`; kind `bot` for a bot, else `user`  | Plan decision                  |
+| Slack bot    | kind `bot`, provider `slack`, tenant the team id, subject the bot user id (`U…`), else `bot_id` | Decided (answers 1 and 11)     |
+| Web user     | the viewer User's `google` row with the newest `signed_in_at`                                   | Plan decision                  |
+| Mock viewer  | kind `user`, provider `mock`, tenant `""`, subject the viewer email; in memory only             | Delegated decision (answer 12) |
+| Auth bypass  | kind `user`, provider `mock`, tenant `""`, subject the viewer email; written only by the bypass | Delegated decision (answer 2)  |
 
 - The event author key must match the row that the OAuth link writes.
   `linkOAuthAccountIdentity` (`handlers/oauth-callback.ts`) upserts provider
   `github`, the default tenant `""`, and the account id. The GitHub plugin
   sets that id with `String(id)` (`junior-github/src/credential-support.ts`).
   An event upsert never changes the `kind` or `user_id` of an existing row.
+- An event upsert never changes the `kind` of an existing row. Today
+  `upsertIdentityRecord` (`chat/identities/sql.ts`) sets
+  `kind = excluded.kind` on conflict. Step 3 changes this for event
+  upserts. `user_id` already uses `coalesce(existing, excluded)`.
 - `slack.allowedBotUserIds` uses the bot user id (`U…`). So a Slack bot
   Identity uses it too when Slack sends it.
+- No other row can take the system key or a `mock` key:
+  - Plugin registration reserves the name `junior`
+    (`junior-plugin-api/src/registration.ts`).
+  - Step 3 adds `junior` and `mock` to `isNativeIdentityProvider`
+    (`chat/identities/identity.ts`), so an OAuth link never writes them.
+  - The other `junior` rows use an email (it has `@`) or a
+    `SystemActor.name` as the subject. Step 3 merges every row of kind
+    `system` into the system Identity.
 
 ### Guardian Labels
 
@@ -259,14 +333,14 @@ column moves to the Owner. Each reader of the event column keeps the author.
 | `api/conversations/access.ts`                | root Conversation column                         | root Owner                                          |
 | `api/conversations/list.ts`                  | Conversation column                              | Owner                                               |
 | `api/conversations/membership.ts`            | Conversation column                              | Owner                                               |
-| `api/conversations/participants.ts`          | Conversation and event columns                   | Owner and author                                    |
+| `api/conversations/participants.ts`          | Conversation and event columns, grouped by User  | Owner and author, grouped by User (no change)       |
 | `api/conversations/stats.query.ts`           | Conversation column                              | Owner                                               |
 | `api/conversations/user-message-activity.ts` | event column                                     | author, no change                                   |
-| `api/people/list.query.ts`                   | Conversation column                              | Owner                                               |
-| `api/people/profile.query.ts`                | Conversation column                              | Owner                                               |
-| `api/people/shared.ts`                       | root and child columns (`peopleTreeMetricsJoin`) | root Owner only                                     |
-| `api/people/spend.query.ts`                  | Conversation column                              | Owner                                               |
-| `api/locations/query.ts`                     | Conversation column                              | Owner                                               |
+| `api/people/list.query.ts`                   | Conversation column, grouped by User             | Owner, grouped by User (no change)                  |
+| `api/people/profile.query.ts`                | Conversation column, grouped by User             | Owner, grouped by User (no change)                  |
+| `api/people/shared.ts`                       | root and child columns (`peopleTreeMetricsJoin`) | root Owner only, grouped by its User                |
+| `api/people/spend.query.ts`                  | Conversation column, grouped by User             | Owner, grouped by User (no change)                  |
+| `api/locations/query.ts`                     | Conversation column, grouped by Identity         | Owner, grouped by User (Identity as fallback)       |
 | `api/code/overview.ts`                       | linked Conversation column (raw SQL)             | root Owner, through `root_conversation_id`          |
 | `chat/conversations/sql/store.ts`            | write, `returning`, list join, read              | write the Owner at insert, read it                  |
 | `chat/conversations/sql/participants.ts`     | an Identity id argument                          | no change; the root seed passes the Owner           |
@@ -288,24 +362,24 @@ No gap was reproduced at runtime. No production data was queried.
 No gap is fully fixed on `main`. #2436 fixed part of gap 10. #2437 fixed part
 of gap 17. #2440 fixed part of gap 19. #2443 is open.
 
-| #   | Gap                                                                                                                                                                                                    | Where                                                                 | Step                               | Evidence  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------- | --------- |
-| 1   | No event Message has an author Identity. Core does not read the GitHub sender id.                                                                                                                      | `chat/events/notification.ts`, `junior-github/src/webhooks/events.ts` | 3                                  | Confirmed |
-| 2   | Guardian sends every web Actor as `platform: "local"`. `ToolActionProposal` has no web variant.                                                                                                        | `guardian/gate.ts`, `guardian/proposal.ts`                            | 5                                  | Confirmed |
-| 3   | `messageAuthor` takes the author platform from the root Source or Location. A bot author gets no Actor. The Automation input Message is found by an id prefix.                                         | `agent-invocations/root-conversation.ts`                              | 5                                  | Confirmed |
-| 4   | `sessionLogActor` drops every Actor that is not Slack, so web, local, and system Turns record no Actor.                                                                                                | `task-execution/turn-cursor.ts`                                       | 2, 5                               | Confirmed |
-| 5   | `recordConversationActivityMetadata` guesses the Source. A web Turn with no saved Source gets `local`.                                                                                                 | `task-execution/turn-cursor.ts`                                       | 5                                  | Traced    |
-| 6   | `resolveEventActorIdentityId` picks Slack by an id regex, takes the workspace from the Location, and writes the synthetic web Identity. #2443 moves the mapping but keeps the guesses.                 | `chat/conversations/sql/event-actor.ts`                               | 1, 3, 5                            | Confirmed |
-| 7   | The participant list has no `kind` filter, so system Identities show.                                                                                                                                  | `api/conversations/participants.ts`                                   | 3                                  | Confirmed |
-| 8   | Locations group actors by Identity, so a person with two Identities shows two times.                                                                                                                   | `api/locations/query.ts`                                              | 4b (Proposal 8)                    | Confirmed |
-| 9   | Connections are keyed per platform. A Slack connection does not show on the web.                                                                                                                       | `api/connections/routes.ts`                                           | Non-Goal                           | Confirmed |
-| 10  | A system root reads back with no Actor. The next human Turn then writes its own Identity with `coalesce(excluded, existing)`. #2436 fixed only the Source case. Writes are locked, so this is no race. | `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`            | 2, 4a                              | Traced    |
-| 11  | System Identity subjects (`scheduler`, `local-cli`, `event`) do not match `SystemActor.name` values.                                                                                                   | `sql/actor-identity.ts`                                               | 3                                  | Confirmed |
-| 12  | The local CLI uses one user id, `local-cli`, for every person and for its tokens.                                                                                                                      | `chat/local/runner.ts`, `chat/local/credential-sync.ts`               | 3; naming the human: Non-Goal      | Confirmed |
-| 13  | `actorSchema` is closed. A TODO says system Actors should not use `platform: "system"`.                                                                                                                | `junior-plugin-api/src/schemas.ts`                                    | Non-Goal                           | Confirmed |
-| 14  | The dashboard author shape is Slack only. It cannot show a system, bot, or GitHub author.                                                                                                              | `api/schema/conversation.ts`                                          | 5 (Proposal 9)                     | Confirmed |
-| 15  | `Conversation.actor` and Redis work state are `StoredSlackActor`.                                                                                                                                      | `chat/conversations/store.ts`, `task-execution/state.ts`              | 5                                  | Confirmed |
-| 16  | `creator_identity_id` and `credential_subject_identity_id` are always `null`.                                                                                                                          | `chat/conversations/sql/store.ts`                                     | 2, 6, 7                            | Confirmed |
-| 17  | Web uses the synthetic `junior/<email>` Identity. The mock viewer and the local bypass have none. #2437 fixed only the read side.                                                                      | `sql/actor-identity.ts`, `junior-dashboard/src/app.ts`                | 3                                  | Confirmed |
-| 18  | No rule checks if an author Identity has a User before Junior follows its text. Authority comes from the Turn Actor and the text channel.                                                              | `agent-invocations/root-conversation.ts`, `guardian/policy.ts`        | 3                                  | Traced    |
-| 19  | Bad rows: web roots with a system Identity from before #2436, and wrong Location visibility from before #2440. No fix repaired them.                                                                   | `junior_conversations`, `junior_destinations`                         | 4b (Proposal 7); visibility: #2382 | Traced    |
+| #   | Gap                                                                                                                                                                                                    | Where                                                                 | Step                           | Evidence  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------ | --------- |
+| 1   | No event Message has an author Identity. Core does not read the GitHub sender id.                                                                                                                      | `chat/events/notification.ts`, `junior-github/src/webhooks/events.ts` | 3                              | Confirmed |
+| 2   | Guardian sends every web Actor as `platform: "local"`. `ToolActionProposal` has no web variant.                                                                                                        | `guardian/gate.ts`, `guardian/proposal.ts`                            | 5                              | Confirmed |
+| 3   | `messageAuthor` takes the author platform from the root Source or Location. A bot author gets no Actor. The Automation input Message is found by an id prefix.                                         | `agent-invocations/root-conversation.ts`                              | 5                              | Confirmed |
+| 4   | `sessionLogActor` drops every Actor that is not Slack, so web, local, and system Turns record no Actor.                                                                                                | `task-execution/turn-cursor.ts`                                       | 2, 5                           | Confirmed |
+| 5   | `recordConversationActivityMetadata` guesses the Source. A web Turn with no saved Source gets `local`.                                                                                                 | `task-execution/turn-cursor.ts`                                       | 5                              | Traced    |
+| 6   | `resolveEventActorIdentityId` picks Slack by an id regex, takes the workspace from the Location, and writes the synthetic web Identity. #2443 moves the mapping but keeps the guesses.                 | `chat/conversations/sql/event-actor.ts`                               | 1, 3, 5                        | Confirmed |
+| 7   | The participant list has no `kind` filter, so system Identities show.                                                                                                                                  | `api/conversations/participants.ts`                                   | 3                              | Confirmed |
+| 8   | Locations group actors by Identity, so a person with two Identities shows two times.                                                                                                                   | `api/locations/query.ts`                                              | 4b                             | Confirmed |
+| 9   | Connections are keyed per platform. A Slack connection does not show on the web.                                                                                                                       | `api/connections/routes.ts`                                           | Non-Goal                       | Confirmed |
+| 10  | A system root reads back with no Actor. The next human Turn then writes its own Identity with `coalesce(excluded, existing)`. #2436 fixed only the Source case. Writes are locked, so this is no race. | `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`            | 2, 4a                          | Traced    |
+| 11  | System Identity subjects (`scheduler`, `local-cli`, `event`) do not match `SystemActor.name` values.                                                                                                   | `sql/actor-identity.ts`                                               | 3                              | Confirmed |
+| 12  | The local CLI uses one user id, `local-cli`, for every person and for its tokens.                                                                                                                      | `chat/local/runner.ts`, `chat/local/credential-sync.ts`               | 3; naming the human: Non-Goal  | Confirmed |
+| 13  | `actorSchema` is closed. A TODO says system Actors should not use `platform: "system"`.                                                                                                                | `junior-plugin-api/src/schemas.ts`                                    | Non-Goal                       | Confirmed |
+| 14  | The dashboard author shape is Slack only. It cannot show a system, bot, or GitHub author.                                                                                                              | `api/schema/conversation.ts`                                          | 5                              | Confirmed |
+| 15  | `Conversation.actor` and Redis work state are `StoredSlackActor`.                                                                                                                                      | `chat/conversations/store.ts`, `task-execution/state.ts`              | 5                              | Confirmed |
+| 16  | `creator_identity_id` and `credential_subject_identity_id` are always `null`.                                                                                                                          | `chat/conversations/sql/store.ts`                                     | 2, 6, 7                        | Confirmed |
+| 17  | Web uses the synthetic `junior/<email>` Identity. The mock viewer and the local bypass have none. #2437 fixed only the read side.                                                                      | `sql/actor-identity.ts`, `junior-dashboard/src/app.ts`                | 3                              | Confirmed |
+| 18  | No rule checks if an author Identity has a User before Junior follows its text. Authority comes from the Turn Actor and the text channel.                                                              | `agent-invocations/root-conversation.ts`, `guardian/policy.ts`        | 3                              | Traced    |
+| 19  | Bad rows: web roots with a system Identity from before #2436, and wrong Location visibility from before #2440. No fix repaired them.                                                                   | `junior_conversations`, `junior_destinations`                         | 4b (repair); visibility: #2382 | Traced    |

@@ -76,33 +76,44 @@ a web Turn stores its author Identity.
 
 - [ ] Change two #2443 mappings in `identityForActor`
       (`chat/identities/actor.ts`): `system` uses one key for every name
-      (Proposal 10), and `web` looks up the viewer User's `google` row
+      (`design.md`, Identity Keys), and `web` looks up the viewer User's `google` row
       (`design.md`, Identity Keys) instead of building `junior/<email>`.
       `local` maps to the system Identity. Keep `SystemActor.name` as
       provenance.
 - [ ] A web Actor never falls back to the system Identity.
-- [ ] Give the mock viewer a mock Identity (Proposal 12). Proposal 2: give the
-      local auth bypass one too.
-- [ ] Map a Slack bot author to its own Identity with no User. Proposal 1: use
-      kind `bot`. Proposal 11: the subject.
-- [ ] Event authors, per Proposals 3 to 5: the plugin sets
-      `doneBy.subjectId`, `isBot`, and `trusted`. Core upserts the author
-      Identity with the OAuth link key and no email. An event with no
-      `subjectId` uses the system Identity.
-- [ ] Event authors do not become participants. `sql/history.ts` skips
-      `recordConversationParticipant` for event Messages.
+- [ ] Add `junior` and `mock` to `isNativeIdentityProvider`, so an OAuth
+      link never writes either provider.
+- [ ] Give the mock viewer an in-memory `mock` Identity in
+      `viewer.identities`. Write no row for it.
+- [ ] The local auth bypass writes one `mock` Identity for its User, with the
+      same key as the mock viewer. Move the Vercel guard of
+      `apps/example/dashboard.ts` into the dashboard package, so
+      `authRequired: false` fails to start on a Vercel production deploy.
+- [ ] Add `bot` to `IdentityKind`. Map a Slack bot author to its own `bot`
+      Identity with no User. The subject is the bot user id (`U…`), else the
+      `bot_id`.
+- [ ] Event Messages: the plugin sets `doneBy.subjectId`, `isBot`, and
+      `trustedAuthor`. Core upserts the author Identity with the OAuth link key,
+      kind `bot` when `isBot` is true, and no email. An event with no
+      `doneBy` or no `subjectId` uses the system Identity.
+- [ ] An event upsert never changes the `kind` or `user_id` of an existing
+      row. Change the conflict update in `upsertIdentityRecord`
+      (`chat/identities/sql.ts`), which sets `kind = excluded.kind` today.
+- [ ] Event Message authors do not become participants. `sql/history.ts`
+      skips `recordConversationParticipant` for event Messages.
 - [ ] Event author trust (`proposal.md`, Plan Decisions). The GitHub plugin
       gets `githubPlugin({ trustedAuthors })`, a trusted authors list of
-      GitHub logins. It compares logins without case (Proposal 6). It sets
-      `doneBy.trusted` when the event login is on the list. Core treats
-      `doneByText` as instructions only when `doneBy.trusted` is `true`, or
+      GitHub logins. It compares logins without case. It sets
+      `doneBy.trustedAuthor` when the event login is on the list. Core treats
+      `doneByText` as instructions only when `doneBy.trustedAuthor` is `true`, or
       when `findLinkedSlackMember()` returns `linked` for the author's
       account. Core reads no GitHub login for this.
 - [ ] Render trusted text in #2260's `Requester instruction` section, never as
-      a `user:` line and never as an approval. Proposal 14: record the author
-      Identity for a trusted bot, which has no Slack Actor.
-- [ ] Document `trustedAuthors` in `junior-github/SETUP.md` and say to list
-      bot logins.
+      a `user:` line and never as an approval. #2260's instruction record
+      keeps the author Identity id, because a trusted bot has no Slack Actor.
+- [ ] Document `trustedAuthors` in `junior-github/SETUP.md`, with the
+      login reuse risk. The bot-only rule waits for David (`proposal.md`,
+      Open Proposals).
 - [ ] The participant list shows only Identities of kind `user` with a User,
       the same rule as participant rows.
 - [ ] Stop writing new rows for each `SystemActor.name` and for
@@ -157,7 +168,8 @@ Ship it after every worker runs step 4a.
 - [ ] Run the backfill below.
 - [ ] Add the `NOT VALID` check for new root rows (`design.md`, Schema).
 - [ ] Move every reader in `design.md`, Readers, to the Owner.
-- [ ] Proposal 8: `api/locations/query.ts` groups actors by User.
+- [ ] `api/locations/query.ts` groups actors by User, with the Identity as
+      fallback.
 - [ ] State the behavior changes in the PR (`proposal.md`).
 
 Backfill:
@@ -171,10 +183,12 @@ Backfill:
    - child rows whose Identity differs from their root;
    - `junior/<email>` rows that are still referenced. Step 4b does not change
      them.
+   - the Owner repair counts and the agreement check (`design.md`, Owner
+     Repair).
 2. Roots with no Owner and a `slack` or `web` Source: copy
-   `actor_identity_id`. Proposal 7: when it is a system Identity and the first
-   user Message author is kind `user` with a User, use that author. Otherwise
-   copy the current Identity.
+   `actor_identity_id`. When the agreement check found zero disagreements,
+   repair each row that passes every Owner Repair condition. Otherwise drop
+   the repair. Every skipped row keeps its current Identity.
 3. Roots with no Owner and a system Source: the system Identity.
 4. Roots with any other Source: hold until the dry run is reviewed.
 5. Child rows: `null`.
@@ -204,8 +218,9 @@ Owner. `integration/api/locations/detail.test.ts`: one row per User.
       Identity ids alone (`design.md`, Guardian Labels).
 - [ ] Remove `sessionLogActor` and the Source guess in
       `recordConversationActivityMetadata`.
-- [ ] Proposal 9: add the Identity `kind` and `provider` to the dashboard
-      `actorIdentitySchema`.
+- [ ] Add the Identity `kind` and `provider` to the dashboard
+      `actorIdentitySchema`, and the `userId` when the Identity links a User.
+      The client groups authors by User.
 
 Backfill: none. The check is `NOT VALID`, so legacy rows stay.
 

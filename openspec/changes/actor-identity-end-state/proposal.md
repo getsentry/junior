@@ -78,6 +78,64 @@ These are David Cramer's answers in the Slack thread for #2439.
 - "also we'd allow list usernames in juniors config for github events (so we
   could allow list some bots)"
 - Name the list "trusted authors": "call it trusted authors or sometihng"
+- On the name: "yes "trusted" is what we want here, but you can use the
+  suffix that makes sense"
+
+His answers to the 14 earlier proposals:
+
+| #   | Topic                                                       | His words                                                            |
+| --- | ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| 1   | `bot` Identity kind                                         | "bots need to be annotated as bots, thats important"                 |
+| 2   | Mock Identity for the local auth bypass                     | "you can find what makes sense"                                      |
+| 3   | `isBot` and `trusted` on `doneBy`; no `doneBy` means system | "yes"                                                                |
+| 4   | Event author upserts never change `kind` or `user_id`       | "correct"                                                            |
+| 5   | An event changes only the Message author                    | "yes but an event _is_ a message so"                                 |
+| 6   | `trustedAuthors` logins compared without case               | "yes"                                                                |
+| 7   | Owner repair on old rows                                    | "sure defer to you but needs to be correct"                          |
+| 8   | Locations group by User                                     | "yep"                                                                |
+| 9   | `kind` and `provider` in the dashboard author shape         | "yep. and users have many identities associated to them"             |
+| 10  | System Identity key                                         | "thats meaningless to me, make sure its good arch and ill trust you" |
+| 11  | Slack bot subject is the bot user id                        | "yep"                                                                |
+| 12  | Mock viewer key                                             | "idk up to you make it correct"                                      |
+| 13  | "creator" for the Automation's "owner" in `TERMINOLOGY.md`  | "sure, we dont really have "owners" on automations anyways"          |
+| 14  | #2260's instruction record keeps the author Identity id     | "ok"                                                                 |
+
+### Delegated Decisions
+
+David handed these four to the plan. His words are in the table above. Each
+one is a plan decision. Each gives the choice and one line on why it is
+correct.
+
+- **Local auth bypass (2).** The bypass viewer (`dev@example.com`, used when
+  `authRequired` is `false`) gets the same key as the mock viewer: kind
+  `user`, provider `mock`, tenant `""`, subject the viewer email. With real
+  data, the bypass branch of `requireAuth` writes this row and links it to
+  the bypass User. No other path writes provider `mock`. Step 3 also moves the
+  Vercel guard of `apps/example/dashboard.ts` into the dashboard package, so
+  `authRequired: false` fails to start on a Vercel production deploy.
+  _Why:_ the bypass has no Google sign-in, so it needs a real row for the
+  author check, and a reserved provider that only the bypass writes cannot
+  reach a production User.
+- **Owner repair (7).** Step 4b repairs a root only when all conditions in
+  `design.md`, Owner Repair, are true, and only when the dry-run agreement
+  check finds zero disagreements. Every other row keeps its current Identity.
+  _Why:_ a `slack` or `web` root starts from a human Message, so its first
+  user Message author is its starter. The agreement check proves this on the
+  rows that #2436 did not damage before the repair runs on any damaged row.
+- **System Identity key (10).** Kind `system`, provider `junior`, tenant
+  `""`, subject `system`. Step 3 adds `junior` and `mock` to the providers
+  that only core may write (`isNativeIdentityProvider`).
+  _Why:_ `junior_identities` is unique on provider, tenant, and subject.
+  Plugin registration already reserves the name `junior`. The only other
+  `junior` rows use an email or a name from `SystemActor` as the subject, and
+  step 3 merges all of these.
+- **Mock viewer key (12).** Kind `user`, provider `mock`, tenant `""`,
+  subject the viewer email. In mock reporting mode, the Identity is in
+  memory only, in `viewer.identities`, with id `mock-identity:<email>`. Junior
+  writes no row for it.
+  _Why:_ mock reporting writes no durable rows today
+  (`mockViewerFromSession`), so the mock Identity cannot collide with a real
+  row and does not exist in production.
 
 ### Plan Decisions
 
@@ -95,6 +153,17 @@ These are the #2439 end state. They follow from the answers above.
   (`design.md`, System Identity). `SystemActor.name` stays as provenance.
 - A web Actor uses the `google` Identity that dashboard sign-in saves. The
   synthetic `junior/<email>` Identity goes away for new writes.
+- **A User has many Identities.** One person can have a `slack`, a `google`,
+  and a `github` Identity, each linked to the same User. Spend, People, and
+  participants roll up by User, not by Identity. The dashboard author shape
+  carries the Identity `kind` and `provider`, and the `userId` when the
+  Identity links a User (answer 9).
+- **Bots are kind `bot`.** A Slack bot or an event bot gets kind `bot` and no
+  User (answer 1). Kind `user` is for a person. Kind `service` stays Junior's
+  own Service account.
+- **Slack bot subject.** The bot user id (`U…`), the same id as
+  `slack.allowedBotUserIds`. Use the `bot_id` (`B…`) only when Slack sends no
+  bot user id (answer 11).
 - The Identity id goes next to the Actor, not inside it.
 - Every new user Message row has an author Identity. A check constraint
   enforces this.
@@ -114,11 +183,26 @@ These are the #2439 end state. They follow from the answers above.
   `chat/conversations/sql/participants.ts`). The participant list that the
   dashboard shows uses the same rule. Today that list has no `kind` filter,
   so system Identities show (`design.md`, gap 7).
-- **Event authors are not participants.** Today
+- **An event is a user Message.** An inbound event writes a Message with
+  role `user`. Its author is the author Identity of the event: the system
+  Identity for a system event, or the person or bot who wrote the content
+  (answer 5). The event never changes the Owner or the Turn Actor. The Event
+  Turn keeps `EVENT_SYSTEM_ACTOR`.
+- **Event Message authors are not participants.** Today
   `chat/conversations/sql/history.ts` records a participant for each Message
   author with an Identity. Step 3 skips this for event Messages. A verified
   GitHub commenter gets no access to a private Conversation. This can change
   later.
+- **Event author fields.** `doneBy` gets `isBot` and `trustedAuthor`, next
+  to `subjectId` from #2260. The plugin sets them. David agreed to a
+  `trusted` flag (answer 3). The plan names it `trustedAuthor`, because the
+  event schema already has `trustedSummary` beside `doneBy`, and that field
+  means plugin facts that are never instructions. An event with no `doneBy` or
+  no `subjectId` uses the system Identity, and its text stays data
+  (answer 3).
+- **Event author Identity.** Core upserts the author Identity with the OAuth
+  link key and no email. The upsert never changes the `kind` or `user_id` of
+  an existing row (answer 4).
 - **Event author trust.** The text of an event author counts as
   instructions when one of these is true:
   - `findLinkedSlackMember()` returns `linked` for the author's account. This
@@ -126,6 +210,7 @@ These are the #2439 end state. They follow from the answers above.
     exact linked account id, one linked Slack user, a current human member,
     and a Slack email on `allowedDomains` (`design.md`, Event Authors).
   - the author's GitHub login is on the GitHub plugin trusted authors list.
+    The plugin compares logins without case (answer 6).
 
   All other event text is data only. This includes a bot that is not on the
   list, a person with no linked account, and a deactivated member. #2260 lets
@@ -133,20 +218,32 @@ These are the #2439 end state. They follow from the answers above.
 
 - **Trusted text stays narrow.** Only `doneByText` counts, with quoted lines
   removed. Core renders it in #2260's `Requester instruction` section. It is
-  never a `user:` line and never an approval.
+  never a `user:` line and never an approval. #2260's
+  `requesterInstructionSchema` keeps the author Identity id, because a
+  trusted bot has no Slack Actor (answer 14).
 - **Guardian labels come from the Actor and provenance.** They never come
   from the Identity id alone. With one system Identity, an Identity id
   compare would make every system author match the Turn Actor
   (`design.md`, Guardian Labels).
+- **Trusted author name.** David chose the word "trusted". The plan chose
+  the suffix "Authors", because the list holds event author logins. The
+  option is `githubPlugin({ trustedAuthors })`. `TERMINOLOGY.md` defines
+  Trusted author. It is different from the "trusted" summary and details in
+  `chat/README.md`, which are plugin facts and never instructions.
 - **The trusted authors list lives in the GitHub plugin.** The option is
   `githubPlugin({ trustedAuthors: [...] })`. It takes GitHub logins, such as
-  `some-app[bot]`. David chose the name. No such list exists today.
-  `GitHubPluginOptions` (`junior-github/src/plugin.ts`) has no author list.
+  `some-app[bot]`. No such list exists today. `GitHubPluginOptions`
+  (`junior-github/src/plugin.ts`) has no author list.
   `slack.allowedBotUserIds` (`app.ts`, `chat/ingress/slack-allowed-domain.ts`)
   covers only Slack ingress. The new list follows the same pattern, but in
   the plugin config. The plugin compares the event login to the list and
   gives core one provider-neutral result: this author is trusted. Core does
   not read GitHub logins (`policies/provider-boundaries.md`).
+- **Locations group by User** (answer 8), with the Identity as fallback for
+  an Identity with no User.
+- **Automation creator.** `TERMINOLOGY.md` now says that an Automation has a
+  creator, not an owner (answer 13). "Owner" means only the Owner of a
+  Conversation.
 - **Identity keys.** An event author uses the key that the OAuth link writes:
   provider `github`, tenant `""`, subject `String(sender.id)`. A web Actor
   finds its `google` row through its User, because `WebActor` has no OIDC
@@ -162,52 +259,31 @@ These are the #2439 end state. They follow from the answers above.
 - Old dashboard sessions need no invalidation. David asked about this. The
   code shows that each live session already has a `google` Identity
   (`design.md`, Web Users).
+- Today the Identity upsert changes `kind` on conflict
+  (`kind: excluded.kind` in `upsertIdentityRecord`, `chat/identities/sql.ts`).
+  It keeps an existing `user_id`. So answer 4 needs a code change in step 3:
+  an event upsert keeps the existing `kind`.
+- `junior_identities` is unique on provider, tenant, and subject
+  (`junior_identities_provider_subject_uidx`). `kind` is not part of the key.
+  So one account cannot have both a `bot` row and a `user` row.
+- People already groups by User (`primaryEmailNormalized` in
+  `api/people/list.query.ts` and `profile.query.ts`). It counts a root only
+  when its Identity has a verified email (`verifiedActorWhere`). The
+  participant list already groups by User, with the Identity as fallback
+  (`api/conversations/participants.ts`). Only Locations groups by Identity.
 
-## Proposals
+## Open Proposals
 
-These are not agreed yet.
+These still wait for David.
 
-1. **`bot` Identity kind.** A Slack bot or event bot gets kind `bot`. Kind
-   `user` would link a User through a verified email. Kind `service` means
-   Junior's own Service account.
-2. **Local auth bypass.** The bypass viewer (`dev@example.com`) gets a mock
-   Identity, the same as the mock viewer.
-3. **Event author field.** `doneBy` gets `isBot` and `trusted`, next to
-   `subjectId` from #2260. The plugin sets them. `trusted` is `true` only when
-   the login is on `trustedAuthors`. No `hasActor` flag: an event with no
-   `doneBy` or no `subjectId` uses the system Identity, and its text stays
-   data.
-4. **Event author Identity.** Core upserts the author Identity with the OAuth
-   link key and no email. The upsert never changes the `kind` or `user_id` of
-   an existing row. The author is trusted only through
-   `findLinkedSlackMember()` or `trustedAuthors`.
-5. **Event Owner and Turn Actor.** An event changes only the Message author.
-   The Owner stays. The Event Turn keeps `EVENT_SYSTEM_ACTOR`.
-6. **Trusted authors match.** The plugin compares each login in
-   `trustedAuthors` to the event login without case.
-7. **Owner repair.** The Owner backfill can repair a root with a `slack` or
-   `web` Source and a system Identity. These rows got the system Identity
-   before #2436. The repair is clearly correct only when the first user
-   Message of the root has an author Identity of kind `user` with a User. The
-   backfill then uses that Identity. Otherwise it copies the current Identity
-   and leaves the row as it is.
-8. **Locations group by User.** The location actor list groups by User, with
-   the Identity as fallback.
-9. **Dashboard author shape.** The dashboard `actorIdentitySchema` gets the
-   Identity `kind` and `provider`.
-10. **System Identity key.** Kind `system`, provider `junior`, tenant `""`,
-    subject `system`.
-11. **Slack bot subject.** The bot user id (`U…`) when Slack sends it, the
-    same id as `slack.allowedBotUserIds`. Otherwise the `bot_id` (`B…`).
-12. **Mock viewer key.** Kind `user`, provider `mock`, tenant `""`, subject
-    the mock viewer id (`mock-user:<email>`).
-13. **Automation creator.** "Owner" now means the Owner of a Conversation.
-    `TERMINOLOGY.md` also says "owner" for the Automation creator and for the
-    annotation owner. Call the Automation's one "creator". The
-    `TERMINOLOGY.md` lines stay as they are until this is agreed.
-14. **Trusted bot instruction record.** #2260's `requesterInstructionSchema`
-    needs a Slack Actor. A bot on `trustedAuthors` has none. The record keeps
-    the author Identity id instead.
+- **Bot logins only on the trusted authors list.** Recommendation: yes. The
+  plugin accepts a login only when it ends in `[bot]` and the webhook
+  `sender.type` is `Bot`. It ignores a human login on the list and logs it.
+  _Risk if no:_ GitHub can give a renamed or deleted user's login to a new
+  account. That new person then passes as a trusted author. GitHub Apps keep
+  the `[bot]` suffix, and a user account cannot take it. Numeric account ids
+  are the other option. They never move to a new account, but they are hard
+  to read in config.
 
 ## Behavior Changes
 
@@ -232,9 +308,8 @@ These are not agreed yet.
   `.strict()` schemas, insert rows without new values, and select every
   schema column. `tasks.md`, Release Rules, gives the order for fields,
   checks, and column drops.
-- A human GitHub login can change owners after a rename. A GitHub App login
-  ends in `[bot]`, and GitHub keeps that suffix for Apps. The trusted authors
-  docs should say to list bot logins.
+- A human GitHub login can move to a new account after a rename. Until David
+  answers the open proposal, the trusted authors docs warn about this.
 - A write with no author Identity fails after step 5. A missed ingress path
   shows up as an error, not as wrong data. The legacy fallback logs first, so
   the logs find missed paths before the constraint ships.

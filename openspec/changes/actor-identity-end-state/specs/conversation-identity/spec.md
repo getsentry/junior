@@ -72,40 +72,86 @@ Junior SHALL NOT create a synthetic web Identity.
 #### Scenario: Mock viewer sends a Message
 
 - **WHEN** the mock viewer sends a Message
-- **THEN** the Message author is a mock Identity, not the system Identity.
+- **THEN** the Message author is a `mock` Identity, not the system Identity
+- **AND** Junior writes no Identity row for it.
+
+#### Scenario: Local auth bypass sends a Message
+
+- **WHEN** the dashboard runs with `authRequired: false` and real data
+- **THEN** the Message author is the bypass User's `mock` Identity
+- **AND** that Identity has the same key as the mock viewer.
+
+#### Scenario: Auth bypass on a production deploy
+
+- **WHEN** the dashboard starts with `authRequired: false` on a Vercel
+  production deploy
+- **THEN** the dashboard fails to start.
+
+### Requirement: Users Have Many Identities
+
+A User SHALL be able to link many Identities, such as `slack`, `google`, and
+`github`. Spend, People, participants, and Locations SHALL group by User. They
+SHALL use the Identity only for an Identity with no User.
+
+#### Scenario: One person on Slack and the web
+
+- **WHEN** a person starts one Conversation in Slack and one on the dashboard
+- **THEN** People shows one person with both Conversations
+- **AND** Locations shows that person one time.
+
+### Requirement: Reserved Identity Providers
+
+Only core SHALL write Identities with provider `junior` or `mock`. An OAuth
+account link SHALL NOT write either provider.
+
+#### Scenario: Plugin OAuth link
+
+- **WHEN** a plugin OAuth account links an Identity
+- **THEN** its provider is not `slack`, `google`, `junior`, or `mock`.
 
 ### Requirement: Slack Bots Have Their Own Identity
 
-A Slack bot SHALL have its own Identity with no linked User. That Identity
-SHALL be the author of the bot's Messages. A bot SHALL NOT count as a person
+A Slack bot SHALL have its own Identity of kind `bot` with no linked User.
+Its subject SHALL be the bot user id. That Identity SHALL be the author of
+the bot's Messages. A bot SHALL NOT count as a person
 in spend, People, or participant access.
 
 #### Scenario: Slack bot posts in a Conversation
 
 - **WHEN** a Slack bot posts a Message that Junior stores
-- **THEN** the Message author is the bot's Identity
+- **THEN** the Message author is the bot's `bot` Identity
 - **AND** the bot gets no participant row.
 
 ### Requirement: Inbound Event Authors
 
-An inbound event Message SHALL use the Identity of the person or bot that the
-event names by provider account id. An event that names no account SHALL use
-the system Identity. The author Identity SHALL use the same key as the OAuth
-account link. Junior SHALL verify the author the same way as everywhere else. An
-event SHALL NOT change the Owner. An event author SHALL NOT become a
-participant.
+An inbound event SHALL be a user Message. Its author SHALL be the Identity of
+the person or bot that the event names by provider account id. An event that
+names no account SHALL use the system Identity. The author Identity SHALL use
+the same key as the OAuth account link, and kind `bot` for a bot. Writing the
+author Identity SHALL NOT change the `kind` or `user_id` of an existing row.
+Junior SHALL verify the author the same way as everywhere else. An event
+SHALL NOT change the Owner or the Turn Actor. An event Message author SHALL
+NOT become a participant.
 
 #### Scenario: GitHub PR comment
 
 - **WHEN** a person comments on a watched PR
-- **THEN** the event Message author is that person's `github` Identity
+- **THEN** the event is a user Message
+- **AND** its author is that person's `github` Identity
 - **AND** the Identity is verified only when it links to a User
 - **AND** the person gets no participant row.
 
 #### Scenario: Status event
 
 - **WHEN** a watched PR's checks fail
-- **THEN** the event Message author is the system Identity.
+- **THEN** the event is a user Message
+- **AND** its author is the system Identity.
+
+#### Scenario: Event author already linked
+
+- **WHEN** a person whose `github` Identity links a User comments on a
+  watched PR
+- **THEN** the `github` Identity keeps its `kind` and `user_id`.
 
 ### Requirement: Trusted Event Authors
 
@@ -217,8 +263,8 @@ later. Assistant output is an event and SHALL NOT need an author Identity.
 
 #### Scenario: System input as a user Message
 
-- **WHEN** an event, a scheduled automation, a plugin dispatch, or the local
-  CLI writes a user Message
+- **WHEN** a system event with no author, a scheduled automation, a plugin
+  dispatch, or the local CLI writes a user Message
 - **THEN** the author is the system Identity.
 
 #### Scenario: Assistant output
