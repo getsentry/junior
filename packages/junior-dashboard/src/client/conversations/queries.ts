@@ -407,9 +407,15 @@ export function useSteerConversationPendingMessages(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages/steer`,
         args,
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       const steered = new Set(result.steeredInboundMessageIds);
       if (steered.size === 0) return;
+      // A live poll that read the mailbox before the steer would restore
+      // `defer`. Cancel it; onSettled refetches after the write.
+      await queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
       queryClient.setQueryData<ConversationSnapshot>(
         conversationDetailQueryKey(conversationId),
         (current) =>
