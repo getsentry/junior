@@ -435,6 +435,7 @@ export type JuniorApp = Hono & {
 
 async function startQueueWorker(
   consumers: QueueConsumer[],
+  backgroundWork: Set<Promise<unknown>>,
 ): Promise<QueueWorker> {
   const provider = getQueueProvider();
   if (!provider.startWorker) {
@@ -449,6 +450,11 @@ async function startQueueWorker(
       try {
         await worker.close();
       } finally {
+        // A job can end before the work it started with `waitUntil`, such
+        // as title work. Let that work finish before its connections close.
+        while (backgroundWork.size > 0) {
+          await Promise.allSettled(backgroundWork);
+        }
         try {
           await disconnectStateAdapter();
         } finally {
@@ -590,6 +596,9 @@ export async function createApp(
     sandbox: { tracePropagation },
     visionContext: { attachmentStorage },
   };
+  // Background work that Conversation work starts. A queue worker waits for
+  // it before it closes its connections.
+  const backgroundWork = new Set<Promise<unknown>>();
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = (): ConversationWorkCallbackOptions => {
     conversationWorkOptions ??=
@@ -601,7 +610,13 @@ export async function createApp(
           ? { sendPluginTask: (message) => pluginTaskQueue.send(message) }
           : undefined),
         services: runtimeServiceOverrides,
-        waitUntil: (task) => waitUntil(task),
+        waitUntil: (task) => {
+          backgroundWork.add(task);
+          void task
+            .finally(() => backgroundWork.delete(task))
+            .catch(() => undefined);
+          waitUntil(task);
+        },
       });
     return conversationWorkOptions;
   };
@@ -795,10 +810,13 @@ export async function createApp(
 
   return Object.assign(app, {
     startQueueWorker: () =>
-      startQueueWorker([
-        conversationWorkQueueConsumer(getConversationWorkOptions()),
-        pluginTaskQueueConsumer(),
-        workspaceSnapshotJobQueueConsumer(),
-      ]),
+      startQueueWorker(
+        [
+          conversationWorkQueueConsumer(getConversationWorkOptions()),
+          pluginTaskQueueConsumer(),
+          workspaceSnapshotJobQueueConsumer(),
+        ],
+        backgroundWork,
+      ),
   });
 }

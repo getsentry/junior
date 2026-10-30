@@ -45,6 +45,7 @@ const openLocalUi = process.env.OPEN_SPOTLIGHT_WEB?.trim() === "1";
 
 const children = new Set();
 const stoppedChildren = new WeakSet();
+let shuttingDown = false;
 
 function spawnChild(command, args, options = {}) {
   const child = spawn(command, args, {
@@ -88,6 +89,9 @@ function signalChild(child, signal) {
 }
 
 function terminateChildren(signal = "SIGTERM") {
+  // A restart that is waiting for an old process to exit must not start a
+  // new one after shutdown begins.
+  shuttingDown = true;
   for (const child of children) {
     if (child === queueWorkerChild) {
       stopQueueWorker(child);
@@ -227,6 +231,9 @@ function clearExampleVercelOutput() {
 // Restarts reuse this function. Open the Sentry Local UI only on the first
 // start, so that each rebuild does not open a new browser tab.
 function startNitroDev({ openLocalUi = false } = {}) {
+  if (shuttingDown) {
+    return;
+  }
   const child = spawnChild("pnpm", [
     "exec",
     "sentry",
@@ -248,7 +255,7 @@ function startNitroDev({ openLocalUi = false } = {}) {
   child.on("exit", (code, signal) => {
     stopChild(child, signal ?? "SIGTERM");
 
-    if (restartingNitro) {
+    if (restartingNitro && !shuttingDown) {
       return;
     }
 
@@ -294,6 +301,9 @@ let restartingQueueWorker = false;
 const queueWorkerStopTimeoutMs = 10_000;
 
 function startQueueWorker() {
+  if (shuttingDown) {
+    return;
+  }
   const child = spawnChild(
     process.execPath,
     [path.join(workspaceRoot, "scripts", "dev-queue-worker.mjs")],
