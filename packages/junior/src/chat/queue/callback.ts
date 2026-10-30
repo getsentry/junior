@@ -98,12 +98,13 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   return {
     /** Run a message that an in-process queue already trusts. */
     consume,
+    consumer,
     create: () => getQueueProvider().createCallback(consumer),
     registerDev: () => {
       if (process.env.NODE_ENV !== "development") {
         return undefined;
       }
-      return getQueueProvider().registerDevConsumer(consumer);
+      return getQueueProvider().registerDevConsumer?.(consumer);
     },
   };
 }
