@@ -69,16 +69,19 @@ export interface WebSearchResult {
 const SEARCH_REQUEST_URL = "https://ai-gateway.vercel.sh/v4/ai/language-model";
 const SEARCH_TOOL_ID = "gateway.parallel_search";
 
-let searchResults: WebSearchResult[] = [];
+type SearchResults = WebSearchResult[] | ((query: string) => WebSearchResult[]);
+
+let searchResults: SearchResults = [];
 
 /**
- * Set the results that the mocked search provider returns in this test, for
- * every query.
+ * Set the results that the mocked search provider returns in this test. A
+ * list answers every query. A function gets the query and returns its
+ * results, so each search can find the pages that it asks for.
  *
  * The fixture always mocks the search provider. This function does not turn
  * the mock on. Without it, `webSearch` finds nothing.
  */
-export function mockWebSearchResults(results: WebSearchResult[]): void {
+export function mockWebSearchResults(results: SearchResults): void {
   searchResults = results;
   onTestFinished(() => {
     searchResults = [];
@@ -96,6 +99,7 @@ export async function answerWebSearch(
     return undefined;
   }
   const payload = (await request.clone().json()) as {
+    prompt?: Array<{ content?: unknown }>;
     tools?: Array<{
       args?: { maxResults?: number };
       id?: string;
@@ -104,6 +108,17 @@ export async function answerWebSearch(
   };
   const tool = payload.tools?.find((entry) => entry.id === SEARCH_TOOL_ID);
   if (!tool) return undefined;
+  // `webSearch` sends the query as the text of the prompt.
+  const query = (payload.prompt ?? [])
+    .flatMap((message) =>
+      Array.isArray(message.content) ? message.content : [],
+    )
+    .flatMap((part: { text?: unknown }) =>
+      typeof part.text === "string" ? [part.text] : [],
+    )
+    .join("\n");
+  const results =
+    typeof searchResults === "function" ? searchResults(query) : searchResults;
   const toolCallId = `call_${randomUUID()}`;
   const tokens = { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 };
   return HttpResponse.json({
@@ -120,7 +135,7 @@ export async function answerWebSearch(
         toolCallId,
         toolName: tool.name,
         result: {
-          results: searchResults
+          results: results
             .slice(0, tool.args?.maxResults)
             .map(({ excerpt, title, url }) => ({
               excerpts: [excerpt],

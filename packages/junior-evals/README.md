@@ -323,7 +323,9 @@ cache keeps the file for the later runs of a pull request.
 - The fixture always mocks the search provider of `webSearch`. No test turns
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
-  the results for one test.
+  the results for one test. Give it a list for the same results on every
+  query, or a function that gets the query, so that each search can find the
+  page that it asks for.
 - `mockWebPages()` from the same file gives fixed pages to `webFetch` for
   some URLs in one test. Other paths of those origins get 404. Use it when a
   case does not check the content of a page, so a live page does not make the
