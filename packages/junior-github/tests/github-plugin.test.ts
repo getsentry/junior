@@ -25,6 +25,7 @@ import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
 import { juniorGitHubInstallations } from "../src/db/schema";
+import { saveGitHubInstallation } from "../src/installations/store";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -2825,6 +2826,81 @@ Conversation: \`local:test:old-conversation\`
       message: "The GitHub App is not installed on uninstalled.",
     });
     expect(requests).toEqual([]);
+  });
+
+  it("repairs stale installations without losing concurrent webhook writes", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_ID = "123";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    const requests = mockGitHubInstallationApi();
+    mswServer.use(
+      http.get(
+        "https://api.github.com/app/installations",
+        async ({ request }) => {
+          requests.push(await captureRequest(request));
+          // FairSource reinstalls the App while Junior lists installations.
+          await saveGitHubInstallation(db, {
+            accountLogin: "FairSource",
+            installationId: 790,
+          });
+          return HttpResponse.json([
+            { id: 456, account: { login: "getsentry" } },
+            { id: 789, account: { login: "FairSource" } },
+          ]);
+        },
+      ),
+      http.post(
+        "https://api.github.com/app/installations/999/access_tokens",
+        async ({ request }) => {
+          requests.push(await captureRequest(request));
+          return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+        },
+      ),
+    );
+    // Junior missed the webhook that removed this installation.
+    await db.insert(juniorGitHubInstallations).values({
+      accountLogin: "uninstalled",
+      installationId: 999,
+      updatedAt: new Date(Date.now() - 60_000),
+    });
+    const result = await githubPlugin().hooks?.issueCredential?.({
+      actor: { platform: "system", name: "event" },
+      cache: pluginCache(),
+      grant: {
+        name: "installation-write",
+        access: "write",
+        leaseScope: "owner:uninstalled",
+        reason: "github.installation-write",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {},
+    });
+
+    expect(result).toEqual({
+      type: "unavailable",
+      message: "The GitHub App is not installed on uninstalled.",
+    });
+    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+      "POST https://api.github.com/app/installations/999/access_tokens",
+      "GET https://api.github.com/app/installations?per_page=100&page=1",
+    ]);
+    // The stale row is gone, and the webhook row is newer than the list.
+    await expect(
+      db
+        .select({
+          accountLogin: juniorGitHubInstallations.accountLogin,
+          installationId: juniorGitHubInstallations.installationId,
+        })
+        .from(juniorGitHubInstallations)
+        .orderBy(juniorGitHubInstallations.installationId),
+    ).resolves.toEqual([
+      { accountLogin: "getsentry", installationId: 456 },
+      { accountLogin: "fairsource", installationId: 790 },
+    ]);
   });
 
   it("issues read-only GitHub App installation credentials from plugin hooks", async () => {

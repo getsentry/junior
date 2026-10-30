@@ -14,13 +14,7 @@ import type {
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
-import type { GitHubDb } from "./db/database.js";
-import { ownerFromLeaseScope } from "./installation-targets.js";
-import {
-  findGitHubInstallationId,
-  replaceGitHubInstallations,
-  type GitHubInstallation,
-} from "./installations/store.js";
+import type { GitHubInstallation } from "./installations/store.js";
 import {
   type GitHubAppPermissions,
   readGrantPermissions,
@@ -80,7 +74,8 @@ type TokenResolution =
   | { ok: true; tokens: PluginStoredTokens }
   | { ok: false; result: PluginCredentialResult };
 
-interface UserCredentialOptions {
+/** OAuth App settings for GitHub user credentials. */
+export interface UserCredentialOptions {
   clientIdEnv: string;
   clientSecretEnv: string;
   userScope?: string;
@@ -97,9 +92,6 @@ export const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
 export const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
 export const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
 const MAX_LEASE_MS = 60 * 60 * 1000;
-// `installation` webhooks keep stored installations current. A sync only
-// repairs missed ones, so a short interval bounds GitHub calls on misses.
-const INSTALLATIONS_SYNC_INTERVAL_MS = 60 * 1000;
 const INSTALLATIONS_PAGE_SIZE = 100;
 const APP_OWNER_TTL_MS = 60 * 60 * 1000;
 const GITHUB_API = "https://api.github.com";
@@ -704,7 +696,7 @@ async function refreshUserTokensWithLock(
 }
 
 /** Issue a bounded GitHub user credential for an approved grant. */
-async function issueUserCredential(
+export async function issueUserCredential(
   ctx: IssueCredentialHookContext,
   options: UserCredentialOptions,
 ): Promise<PluginCredentialResult> {
@@ -813,113 +805,6 @@ export async function issueInstallationToken(
   );
 }
 
-function readLogin(value: unknown): string | undefined {
-  const login = isRecord(value) ? value.login : undefined;
-  return typeof login === "string" && login ? login.toLowerCase() : undefined;
-}
-
-/** Read the lowercase login of the account that owns the App. */
-async function appOwnerLogin(
-  app: GitHubAppEnv,
-  cache: PluginCache,
-): Promise<string> {
-  return await cache.getOrLoad("app-owner", async () => {
-    const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
-    const response = await githubRequest(GITHUB_API, "/app", {
-      token: appJwt,
-    });
-    const login = readLogin(isRecord(response) ? response.owner : undefined);
-    if (!login) {
-      throw new Error("GitHub App response missing owner");
-    }
-    return { value: login, ttlMs: APP_OWNER_TTL_MS };
-  });
-}
-
-/**
- * Replace the stored installations with the active ones that GitHub lists.
- * This fills the table on first use and repairs missed `installation`
- * webhooks. It runs at most once per `INSTALLATIONS_SYNC_INTERVAL_MS`.
- */
-async function syncInstallations(
-  app: GitHubAppEnv,
-  db: GitHubDb,
-  cache: PluginCache,
-): Promise<void> {
-  await cache.getOrLoad("installations-synced", async () => {
-    const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
-    const active: GitHubInstallation[] = [];
-    for (let page = 1; ; page += 1) {
-      const installations = await githubRequest(
-        GITHUB_API,
-        `/app/installations?per_page=${INSTALLATIONS_PAGE_SIZE}&page=${page}`,
-        { token: appJwt },
-      );
-      if (!Array.isArray(installations)) {
-        throw new Error("GitHub installations response is not a list");
-      }
-      for (const installation of installations) {
-        if (!isRecord(installation) || installation.suspended_at) continue;
-        const accountLogin = readLogin(installation.account);
-        const installationId = installation.id;
-        if (
-          accountLogin &&
-          typeof installationId === "number" &&
-          Number.isSafeInteger(installationId)
-        ) {
-          active.push({ accountLogin, installationId });
-        }
-      }
-      if (installations.length < INSTALLATIONS_PAGE_SIZE) break;
-    }
-    await replaceGitHubInstallations(db, active);
-    return { value: true, ttlMs: INSTALLATIONS_SYNC_INTERVAL_MS };
-  });
-}
-
-/** Read the installation on one account, and sync once when none is stored. */
-async function installationIdFor(
-  accountLogin: string,
-  app: GitHubAppEnv,
-  ctx: IssueCredentialHookContext,
-): Promise<number | undefined> {
-  const db = ctx.db as GitHubDb;
-  const stored = await findGitHubInstallationId(db, accountLogin);
-  if (stored) return stored;
-  await syncInstallations(app, db, ctx.cache);
-  return await findGitHubInstallationId(db, accountLogin);
-}
-
-/**
- * Resolve the App installation for an installation grant from the owner in
- * its lease scope. Writes need the owner's own installation. Reads without
- * one, or without an owner, use the App owner's installation, which can still
- * read public repositories.
- */
-async function resolveInstallationId(
-  ctx: IssueCredentialHookContext,
-  app: GitHubAppEnv,
-): Promise<number> {
-  const owner = ownerFromLeaseScope(ctx.grant.leaseScope);
-  if (owner) {
-    const id = await installationIdFor(owner, app, ctx);
-    if (id) return id;
-    if (ctx.grant.access === "write") {
-      throw new GitHubPluginSetupError(
-        `The GitHub App is not installed on ${owner}.`,
-      );
-    }
-  }
-  const appOwner = await appOwnerLogin(app, ctx.cache);
-  const defaultId = await installationIdFor(appOwner, app, ctx);
-  if (!defaultId) {
-    throw new GitHubPluginSetupError(
-      `The GitHub App is not installed on ${appOwner}, the account that owns it.`,
-    );
-  }
-  return defaultId;
-}
-
 /** Read an installation's permissions as read grants, cached per lease period. */
 async function installedReadPermissions(
   cache: PluginCache,
@@ -943,51 +828,96 @@ async function installedReadPermissions(
   );
 }
 
-interface GitHubCredentialOptions extends GitHubAppEnv, UserCredentialOptions {
-  /** Declared read permissions. Omit to read the installed ones. */
-  readPermissions?: Record<string, "read">;
+/** Return whether GitHub rejected an installation that was removed or suspended. */
+export function isInactiveInstallationError(error: unknown): boolean {
+  return (
+    error instanceof GitHubRequestError &&
+    (error.status === 404 ||
+      (error.status === 403 && /suspended/i.test(error.message)))
+  );
+}
+
+function readLogin(value: unknown): string | undefined {
+  const login = isRecord(value) ? value.login : undefined;
+  return typeof login === "string" && login ? login.toLowerCase() : undefined;
+}
+
+/** Read the lowercase login of the account that owns the App. */
+export async function readAppOwnerLogin(
+  app: GitHubAppEnv,
+  cache: PluginCache,
+): Promise<string> {
+  return await cache.getOrLoad("app-owner", async () => {
+    const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
+    const response = await githubRequest(GITHUB_API, "/app", {
+      token: appJwt,
+    });
+    const login = readLogin(isRecord(response) ? response.owner : undefined);
+    if (!login) {
+      throw new Error("GitHub App response missing owner");
+    }
+    return { value: login, ttlMs: APP_OWNER_TTL_MS };
+  });
+}
+
+/** List every App installation that GitHub reports as active. */
+export async function listActiveInstallations(
+  app: GitHubAppEnv,
+): Promise<GitHubInstallation[]> {
+  const appJwt = createAppJwt(requireEnv(app.appIdEnv), app.privateKeyEnv);
+  const active: GitHubInstallation[] = [];
+  for (let page = 1; ; page += 1) {
+    const installations = await githubRequest(
+      GITHUB_API,
+      `/app/installations?per_page=${INSTALLATIONS_PAGE_SIZE}&page=${page}`,
+      { token: appJwt },
+    );
+    if (!Array.isArray(installations)) {
+      throw new Error("GitHub installations response is not a list");
+    }
+    for (const installation of installations) {
+      if (!isRecord(installation) || installation.suspended_at) continue;
+      const accountLogin = readLogin(installation.account);
+      const installationId = installation.id;
+      if (
+        accountLogin &&
+        typeof installationId === "number" &&
+        Number.isSafeInteger(installationId)
+      ) {
+        active.push({ accountLogin, installationId });
+      }
+    }
+    if (installations.length < INSTALLATIONS_PAGE_SIZE) return active;
+  }
 }
 
 /**
- * Issue the credential for one GitHub grant that host egress selected. Only
- * the `issueCredential` hook may call this. Other code reads and writes GitHub
- * through host egress.
+ * Issue a credential lease for one App installation. Read leases get the
+ * declared read permissions, or the installed ones as read permissions. Write
+ * leases use the full installed App permissions and repos. Repo allowlisting
+ * stays in egress policy, not in per-request token minting.
  */
-export async function issueGitHubCredential(
-  ctx: IssueCredentialHookContext,
-  options: GitHubCredentialOptions,
-): Promise<PluginCredentialResult> {
-  try {
-    if (
-      ctx.grant.name === "installation-read" ||
-      ctx.grant.name === "installation-write"
-    ) {
-      const installationId = await resolveInstallationId(ctx, options);
-      const appJwt = createAppJwt(
-        requireEnv(options.appIdEnv),
-        options.privateKeyEnv,
-      );
-      // Write tokens use the full installed App permissions and repos. Repo
-      // allowlisting stays in egress policy, not in per-request token minting.
-      const permissions =
-        ctx.grant.name === "installation-read"
-          ? (options.readPermissions ??
-            (await installedReadPermissions(ctx.cache, appJwt, installationId)))
-          : undefined;
-      return createCredentialLease(
-        await mintInstallationToken(appJwt, installationId, { permissions }),
-      );
-    }
-    if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
-      return await issueUserCredential(ctx, options);
-    }
-  } catch (error) {
-    if (error instanceof GitHubPluginSetupError) {
-      return credentialUnavailable(error.message);
-    }
-    throw error;
-  }
-  throw new Error(
-    `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,
+export async function issueInstallationLease(input: {
+  app: GitHubAppEnv;
+  cache: PluginCache;
+  installationId: number;
+  access: "read" | "write";
+  readPermissions?: Record<string, "read">;
+}): Promise<PluginCredentialResult> {
+  const appJwt = createAppJwt(
+    requireEnv(input.app.appIdEnv),
+    input.app.privateKeyEnv,
+  );
+  const permissions =
+    input.access === "read"
+      ? (input.readPermissions ??
+        (await installedReadPermissions(
+          input.cache,
+          appJwt,
+          input.installationId,
+        )))
+      : undefined;
+  return createCredentialLease(
+    await mintInstallationToken(appJwt, input.installationId, { permissions }),
   );
 }

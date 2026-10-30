@@ -79,13 +79,13 @@ import {
   GITHUB_APP_PRIVATE_KEY_ENV,
   GITHUB_AUTH_TOKEN_ENV,
   GITHUB_AUTH_TOKEN_PLACEHOLDER,
-  issueGitHubCredential,
   listVerifiedUserEmails,
   normalizeScopeList,
   readEnv,
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+import { issueGitHubCredential } from "./issue-credential.js";
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {

@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, lt, ne } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubInstallations } from "../db/schema.js";
 
@@ -65,21 +65,29 @@ export async function deleteGitHubInstallation(
   await db.delete(table).where(eq(table.installationId, installationId));
 }
 
-/** Replace every row with the complete list of active installations. */
-export async function replaceGitHubInstallations(
+/**
+ * Apply the complete list of active installations that GitHub returned for a
+ * request sent at `listedAt`. A row written after `listedAt`, such as by an
+ * `installation` webhook while the request ran, is newer than the list. It
+ * stays, and a listed installation with the same id or login is skipped.
+ */
+export async function syncGitHubInstallations(
   db: GitHubDb,
   installations: GitHubInstallation[],
+  listedAt: Date,
 ): Promise<void> {
-  const updatedAt = new Date();
   await db.transaction(async (tx) => {
-    await tx.delete(table);
+    await tx.delete(table).where(lt(table.updatedAt, listedAt));
     if (installations.length === 0) return;
-    await tx.insert(table).values(
-      installations.map((installation) => ({
-        installationId: installation.installationId,
-        accountLogin: installation.accountLogin.toLowerCase(),
-        updatedAt,
-      })),
-    );
+    await tx
+      .insert(table)
+      .values(
+        installations.map((installation) => ({
+          installationId: installation.installationId,
+          accountLogin: installation.accountLogin.toLowerCase(),
+          updatedAt: listedAt,
+        })),
+      )
+      .onConflictDoNothing();
   });
 }
