@@ -28,6 +28,11 @@ function docsPage(title: string, facts: string): string {
   return `<html><head><title>${title}</title></head><body><h1>${title}</h1><p>${facts}</p></body></html>`;
 }
 
+const SQLITE_PAGE = docsPage(
+  SQLITE_DOCS.title,
+  "Rewrite cost: ADD COLUMN changes only the schema, at any table size. A NOT NULL column needs a constant default. Locking: a short database write lock. Replication: none built in.",
+);
+
 const DATABASE_DOCS_PAGES = {
   [POSTGRES_DOCS.url]: docsPage(
     POSTGRES_DOCS.title,
@@ -37,10 +42,9 @@ const DATABASE_DOCS_PAGES = {
     MYSQL_DOCS.title,
     "Rewrite cost: ADD COLUMN, also with NOT NULL and a default, uses ALGORITHM=INSTANT by default and changes only metadata, at any table size. INSTANT does not apply to ROW_FORMAT=COMPRESSED tables or tables with a FULLTEXT index. Then MySQL rebuilds the table. Locking: a short metadata lock. Replication: replicas run the same statement, so a rebuild makes them lag.",
   ),
-  [SQLITE_DOCS.url]: docsPage(
-    SQLITE_DOCS.title,
-    "Rewrite cost: ADD COLUMN changes only the schema, at any table size. A NOT NULL column needs a constant default. Locking: a short database write lock. Replication: none built in.",
-  ),
+  [SQLITE_DOCS.url]: SQLITE_PAGE,
+  // The SQLite docs are also served without "www".
+  "https://sqlite.org/lang_altertable.html": SQLITE_PAGE,
 };
 
 // The user never names spawnAgent here. These cases measure whether Junior
