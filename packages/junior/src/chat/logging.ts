@@ -1692,6 +1692,14 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
   return headers;
 }
 
+/** Return the active trace as a durable trace context, if there is one. */
+export function getActiveTraceContext():
+  | { baggage?: string; sentryTrace: string }
+  | undefined {
+  const { "sentry-trace": sentryTrace, baggage } = getTracePropagationHeaders();
+  return sentryTrace ? { baggage, sentryTrace } : undefined;
+}
+
 /** Set attributes on the currently active Sentry span. */
 export function setSpanAttributes(attributes: Record<string, unknown>): void {
   const span = getActiveSpan();

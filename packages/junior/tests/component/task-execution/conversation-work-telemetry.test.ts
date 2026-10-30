@@ -8,11 +8,16 @@ import {
   it,
   vi,
 } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import * as Sentry from "@/chat/sentry";
 import { closeDb } from "@/chat/db";
 import { withLogContext } from "@/chat/logging";
 import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import { consumeConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -26,9 +31,11 @@ import {
   handleSlackWebhookAndFlush,
   inboundMessage,
   SLACK_BOT_USER_ID,
+  SLACK_DESTINATION,
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 
 describe("conversation work telemetry", () => {
   const spans: ReturnType<typeof Sentry.spanToJSON>[] = [];
@@ -66,6 +73,9 @@ describe("conversation work telemetry", () => {
     spans.length = 0;
     await disconnectStateAdapter();
   });
+
+  const byOp = (op: string) =>
+    spans.filter((span) => span.attributes?.["sentry.op"] === op);
 
   afterEach(async () => {
     vi.useRealTimers();
@@ -172,8 +182,6 @@ describe("conversation work telemetry", () => {
       state,
     });
 
-    const byOp = (op: string) =>
-      spans.filter((span) => span.attributes?.["sentry.op"] === op);
     const [oldest, newest] = byOp("slack.message.ingress");
     const [worker] = byOp("queue.process");
     expect(oldest?.trace_id).not.toBe(newest?.trace_id);
@@ -194,5 +202,94 @@ describe("conversation work telemetry", () => {
         ],
       }),
     ]);
+  });
+
+  it("puts a resumed slice in the trace of its first slice", async () => {
+    const conversationId = "slack:C123:1712345.0001";
+    const turnId = "turn_1712345_0001";
+    const checkpoint = {
+      conversationId,
+      turnId,
+      sliceId: 1,
+      destination: SLACK_DESTINATION,
+      source: createSlackSource({
+        ...SLACK_DESTINATION,
+        threadTs: "1712345.0001",
+        visibility: "private",
+      }),
+      messages: [
+        {
+          role: "user" as const,
+          content: [{ type: "text" as const, text: "original request" }],
+          timestamp: 1_000,
+        },
+      ],
+    };
+    await Sentry.startNewTrace(() =>
+      Sentry.startSpan({ name: "chat.turn", op: "chat.turn" }, () =>
+        saveTurnCheckpoint({ ...checkpoint, mode: "running" }),
+      ),
+    );
+    // A later save from another trace, such as lost-worker recovery.
+    await Sentry.startNewTrace(() =>
+      saveTurnCheckpoint({ ...checkpoint, mode: "paused", reason: "yield" }),
+    );
+    await persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        compactions: [],
+        messages: [
+          {
+            id: "1712345.0001",
+            role: "user",
+            text: "original request",
+            createdAtMs: 1_000,
+            author: { userId: "U123" },
+          },
+        ],
+        processing: { activeTurnId: turnId },
+        vision: { byFileId: {} },
+      },
+    });
+
+    await Sentry.startNewTrace(() =>
+      Sentry.startSpan(
+        { name: "conversation.work.process", op: "queue.process" },
+        () =>
+          runNextPausedTurn(conversationId, {
+            agentRunner: {
+              run: async (run) => {
+                await deliverAssistantMessagesForTest(run, [{ text: "done" }]);
+                return completedAgentRun({
+                  text: "done",
+                  diagnostics: {
+                    assistantMessageCount: 1,
+                    modelId: "fake-agent-model",
+                    outcome: "success",
+                    toolCalls: [],
+                    toolErrorCount: 0,
+                    toolResultCount: 0,
+                    usedPrimaryText: true,
+                  },
+                });
+              },
+            },
+          }),
+      ),
+    );
+
+    const [first, resumed] = byOp("chat.turn");
+    const [worker] = byOp("queue.process");
+    expect(worker?.trace_id).not.toBe(first?.trace_id);
+    expect(resumed).toMatchObject({
+      trace_id: first?.trace_id,
+      parent_span_id: first?.span_id,
+      links: [
+        expect.objectContaining({
+          trace_id: worker?.trace_id,
+          span_id: worker?.span_id,
+        }),
+      ],
+    });
   });
 });

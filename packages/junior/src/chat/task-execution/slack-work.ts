@@ -9,7 +9,7 @@ import {
 } from "chat";
 import { z } from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { getTracePropagationHeaders, logException } from "@/chat/logging";
+import { getActiveTraceContext, logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
@@ -849,7 +849,6 @@ export function buildSlackInboundMessage(args: {
     throw new Error("Slack inbound message requires destination context");
   }
   const hasInterruptOverride = hasSteeringOverride(args.message.text);
-  const { "sentry-trace": sentryTrace, baggage } = getTracePropagationHeaders();
   return {
     conversationId: args.conversationId,
     destination,
@@ -876,6 +875,6 @@ export function buildSlackInboundMessage(args: {
         message: args.message.toJSON(),
       } satisfies SlackConversationMessageMetadata,
     },
-    ...(sentryTrace && { traceContext: { sentryTrace, baggage } }),
+    traceContext: getActiveTraceContext(),
   };
 }

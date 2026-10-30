@@ -399,6 +399,7 @@ async function runPausedTurnInContext(
     messageText: "",
     conversationId: payload.conversationId,
     turnId: payload.turnId,
+    traceContext: payload.traceContext,
     channelId: thread?.channelId ?? destination.channelId,
     ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
     executeTurn: async (run, saveResult) =>
