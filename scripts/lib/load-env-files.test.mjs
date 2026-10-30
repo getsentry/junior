@@ -116,6 +116,7 @@ describe("applyJuniorDevelopmentDefaults", () => {
       JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
     );
     assert.equal(env.JUNIOR_BASE_URL, "http://localhost:3000");
+    assert.equal(env.JUNIOR_SANDBOX_PROVIDER, "docker");
     assert.equal(env.JUNIOR_QUEUE_PROVIDER, undefined);
   });
 
@@ -175,6 +176,7 @@ describe("applyJuniorDevelopmentDefaults", () => {
       NODE_ENV: "development",
       CRON_SECRET: "cron-secret",
       JUNIOR_BASE_URL: "https://junior.example.com",
+      JUNIOR_SANDBOX_PROVIDER: "vercel",
       JUNIOR_SECRET: "explicit-secret",
       JUNIOR_STATE_ADAPTER: "redis",
     };
@@ -184,6 +186,7 @@ describe("applyJuniorDevelopmentDefaults", () => {
     });
 
     assert.equal(env.JUNIOR_SECRET, "explicit-secret");
+    assert.equal(env.JUNIOR_SANDBOX_PROVIDER, "vercel");
     assert.equal(env.JUNIOR_STATE_ADAPTER, "redis");
     assert.equal(env.JUNIOR_SCHEDULER_SECRET, undefined);
     assert.equal(env.JUNIOR_BASE_URL, "https://junior.example.com");
@@ -200,6 +203,7 @@ describe("applyJuniorDevelopmentDefaults", () => {
     });
 
     assert.equal(env.JUNIOR_SECRET, undefined);
+    assert.equal(env.JUNIOR_SANDBOX_PROVIDER, undefined);
     assert.equal(env.JUNIOR_QUEUE_PROVIDER, undefined);
     assert.equal(env.JUNIOR_STATE_ADAPTER, undefined);
     assert.equal(env.JUNIOR_SCHEDULER_SECRET, undefined);

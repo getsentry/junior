@@ -63,11 +63,13 @@ The fixtures are read-only dashboard data; mock mode does not query or merge rea
 
 ## Run sandboxes in local Docker
 
-By default, Junior runs agent sandboxes in Vercel Sandbox. To run them in a local Docker daemon instead, set the provider in `.env`:
+Local commands (`pnpm dev`, `pnpm cli` and the local ACP server) run agent sandboxes in a local Docker daemon by default. `pnpm dev` prints the provider when it starts. To use Vercel Sandbox instead, set the provider in `.env`:
 
 ```bash
-JUNIOR_SANDBOX_PROVIDER=docker
+JUNIOR_SANDBOX_PROVIDER=vercel
 ```
+
+Vercel Sandbox needs Vercel credentials, for example from `pnpm dev:env`. Deployments always default to Vercel Sandbox. Stored sandbox names and snapshot ids belong to one provider. If you change the provider, use a fresh local database and Redis.
 
 The Docker provider needs a Docker daemon on a unix socket. It uses `/var/run/docker.sock`, or the unix socket in `DOCKER_HOST`. On macOS, the daemon runs in a VM, so each sandbox sends its web traffic through an egress relay container. Each sandbox is a privileged container, so do not run untrusted workloads with it.
 

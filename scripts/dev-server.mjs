@@ -161,6 +161,9 @@ applyJuniorDevelopmentDefaults(process.env, {
   // The Redis service in `compose.yaml`.
   queueRedisUrl: "redis://localhost:6382",
 });
+console.log(
+  `Sandbox provider: ${process.env.JUNIOR_SANDBOX_PROVIDER} (JUNIOR_SANDBOX_PROVIDER)`,
+);
 // With BullMQ, one separate worker process pulls the queue jobs.
 const runQueueWorker = process.env.JUNIOR_QUEUE_PROVIDER?.trim() === "bullmq";
 if (

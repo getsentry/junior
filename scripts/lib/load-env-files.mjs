@@ -34,6 +34,11 @@ export function applyJuniorDevelopmentDefaults(env, options = {}) {
   if (!hasValue(env.JUNIOR_BASE_URL) && hasValue(options.baseUrl)) {
     env.JUNIOR_BASE_URL = options.baseUrl.trim();
   }
+  // Local commands share the local database, and stored sandbox state belongs
+  // to one provider, so every local command uses the same default.
+  if (!hasValue(env.JUNIOR_SANDBOX_PROVIDER)) {
+    env.JUNIOR_SANDBOX_PROVIDER = "docker";
+  }
   // Only the dev server starts queue workers, so only it passes this option.
   // Other local commands keep the Vercel queue.
   if (hasValue(options.queueRedisUrl)) {

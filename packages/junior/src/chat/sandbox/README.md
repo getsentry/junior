@@ -9,7 +9,9 @@ traffic through verified host egress.
 - `provider.ts` owns the `SandboxProvider` contract and `getSandboxProvider()`.
   Sandbox code calls `getSandboxProvider()`, not a provider module.
   `JUNIOR_SANDBOX_PROVIDER` selects the provider for the whole deployment. The
-  default is `vercel`. `docker` selects the local Docker provider. Stored
+  default is `vercel`. `docker` selects the local Docker provider. The local
+  repo commands (`pnpm dev`, `pnpm cli`, local ACP) set `docker` when the
+  variable is empty, in `scripts/lib/load-env-files.mjs`. Stored
   sandbox names and snapshot ids belong to one provider, so do not switch the
   provider on a database or Redis that holds the other provider's state.
 - `vercel/` implements `SandboxProvider` for Vercel Sandbox. `vercel/provider.ts`
@@ -157,8 +159,9 @@ Sandbox egress has two parts:
 The Docker provider gives the dev stack a rough Linux sandbox on a local Docker
 daemon. It is for local development and for Junior QA inside a Vercel Sandbox.
 It implements every `SandboxProvider` operation. It is not a full copy of
-Vercel Sandbox, and some workloads do not behave the same. Set
-`JUNIOR_SANDBOX_PROVIDER=docker` to use it. The contributor guide
+Vercel Sandbox, and some workloads do not behave the same. The local repo
+commands use it by default. Elsewhere, set `JUNIOR_SANDBOX_PROVIDER=docker` to
+use it. The contributor guide
 `packages/docs/src/content/docs/contribute/development.md` explains the setup.
 
 ### How It Works
