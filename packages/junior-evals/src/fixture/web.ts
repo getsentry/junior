@@ -7,7 +7,7 @@
  * `mockWebSearchResults()`.
  *
  * The pages that the `webFetch` tool reads go to Roach, which
- * replays them. See `src/recording-rules.ts`. A test can answer some origins
+ * replays them. See `src/recording-rules.ts`. A test can answer some pages
  * itself with `mockWebPages()`.
  */
 import { randomUUID } from "node:crypto";
@@ -19,9 +19,9 @@ import { mswServer } from "@junior-tests/msw/server";
 let mockedPages: Record<string, string> = {};
 
 /**
- * Answer `webFetch` reads of each origin, such as `https://www.sqlite.org`,
- * with its HTML page in this test. Every path of the origin gets the page.
- * Other origins still go to Roach.
+ * Answer `webFetch` reads of each page URL with its HTML in this test. Other
+ * paths of the same origins get 404, as on a real site. Other origins still go
+ * to Roach.
  */
 export function mockWebPages(pages: Record<string, string>): void {
   mockedPages = pages;
@@ -36,11 +36,20 @@ export function installWebReplay(): void {
     http.get("*", ({ request }) => {
       // Only `webFetch` sends this user agent.
       if (request.headers.get("user-agent") !== USER_AGENT) return undefined;
-      const page = mockedPages[new URL(request.url).origin];
+      const url = new URL(request.url);
+      url.hash = "";
+      const page = mockedPages[url.href];
       if (page !== undefined) {
         return new Response(page, {
           headers: { "content-type": "text/html; charset=utf-8" },
         });
+      }
+      if (
+        Object.keys(mockedPages).some(
+          (pageUrl) => new URL(pageUrl).origin === url.origin,
+        )
+      ) {
+        return new Response("Not Found", { status: 404 });
       }
       // `webFetch` uses `node:https`, which does not use the proxy. `fetch`
       // uses the proxy dispatcher of the test. `webFetch` follows redirects

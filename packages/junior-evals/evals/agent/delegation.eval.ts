@@ -28,22 +28,19 @@ function docsPage(title: string, facts: string): string {
   return `<html><head><title>${title}</title></head><body><h1>${title}</h1><p>${facts}</p></body></html>`;
 }
 
-const SQLITE_PAGE = docsPage(
-  SQLITE_DOCS.title,
-  "Rewrite cost: ADD COLUMN changes only the schema, at any table size. A NOT NULL column needs a constant default. Locking: a short database write lock. Replication: none built in.",
-);
-
 const DATABASE_DOCS_PAGES = {
-  "https://www.postgresql.org": docsPage(
+  [POSTGRES_DOCS.url]: docsPage(
     POSTGRES_DOCS.title,
     "Rewrite cost: since version 11, ADD COLUMN with NOT NULL and a constant default changes only the catalog, at any table size. A volatile default rewrites the table. Locking: a short ACCESS EXCLUSIVE lock that waits behind long transactions. Replication: physical replicas replay the catalog change. Logical replication does not copy DDL.",
   ),
-  "https://dev.mysql.com": docsPage(
+  [MYSQL_DOCS.url]: docsPage(
     MYSQL_DOCS.title,
     "Rewrite cost: ADD COLUMN, also with NOT NULL and a default, uses ALGORITHM=INSTANT by default and changes only metadata, at any table size. INSTANT does not apply to ROW_FORMAT=COMPRESSED tables or tables with a FULLTEXT index. Then MySQL rebuilds the table. Locking: a short metadata lock. Replication: replicas run the same statement, so a rebuild makes them lag.",
   ),
-  "https://sqlite.org": SQLITE_PAGE,
-  "https://www.sqlite.org": SQLITE_PAGE,
+  [SQLITE_DOCS.url]: docsPage(
+    SQLITE_DOCS.title,
+    "Rewrite cost: ADD COLUMN changes only the schema, at any table size. A NOT NULL column needs a constant default. Locking: a short database write lock. Replication: none built in.",
+  ),
 };
 
 // The user never names spawnAgent here. These cases measure whether Junior
