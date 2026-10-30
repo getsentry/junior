@@ -76,4 +76,34 @@ describe("Schedule Management", () => {
       expect(update.input).not.toHaveProperty("nextRunAt");
     }
   });
+
+  test("when a requester who did not create a reminder adds themselves, name them with their mention", async ({
+    run,
+  }) => {
+    const channel = slackChannel();
+    await insertScheduledAutomation({
+      createdBy: alice,
+      credentialMode: "system",
+      destination: channel,
+      task: "Post a planning reminder in this channel.",
+    });
+
+    const conversation = await run(
+      slackMention(
+        "change the scheduled planning reminder now so it also reminds me to bring the agenda.",
+        { channel },
+      ),
+    );
+
+    const updates = completedToolCalls(
+      "slackScheduleUpdateAutomation",
+      conversation,
+    );
+    expect(updates).toHaveLength(1);
+    // Each run reads "me" and "the Automation creator" as Alice.
+    const { instruction } = updates[0]!.input as { instruction?: string };
+    expect(instruction).toContain("<@U0TEST>");
+    expect(instruction).not.toMatch(/\b(?:me|my)\b/i);
+    expect(instruction).not.toMatch(/\bAutomation creator\b/i);
+  });
 });
