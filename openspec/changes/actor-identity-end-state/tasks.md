@@ -32,7 +32,8 @@ Each step ships on its own. Each step leaves `main` correct.
 - [ ] Each ingress resolves the Identity one time: Slack, web, fork, event,
       scheduled automation, event automation, plugin dispatch, local CLI, and
       Agent invocation.
-- [ ] Every ingress sets `authorIdentityId` on each new Message.
+- [ ] Every ingress sets `authorIdentityId` on each new user Message.
+      Assistant output keeps no author.
 - [ ] Add `ownerIdentityId` to `Conversation`. Until step 4, it reads
       `actor_identity_id`. `conversationFromRow` reads it from the row, also
       for a system Identity.
@@ -71,7 +72,8 @@ This is the riskiest step. It changes access, the feed, People, and spend.
   - rows with a human Identity and a system Source (`scheduler`, `event`,
     `plugin`, `local`);
   - root rows with no Identity;
-  - child rows with an Identity that differs from their root;
+  - child rows with an Identity that differs from their root (open
+    question 4);
   - `junior/<email>` rows that are still referenced.
 - [ ] Backfill the Owner:
   - Slack, web, and fork roots: copy `actor_identity_id`.
@@ -88,9 +90,10 @@ This is the riskiest step. It changes access, the feed, People, and spend.
 
 ## 5. Require Message Authors And Retire Stored Actors
 
-- [ ] Add the `NOT VALID` check that requires `actor_identity_id` on new
-      `message` and `message_updated` rows. Resolve open questions 2 and 3
-      first.
+- [ ] Add the `NOT VALID` check that requires `actor_identity_id` on new user
+      Message rows: `type` is `message` or `message_updated`, and
+      `payload->>'role'` is `user`. The proposal has the exact SQL. Resolve
+      open question 2 (Slack bot authors) first.
 - [ ] Remove author inference from `resolveEventActorIdentityId`. Keep it only
       for legacy reads.
 - [ ] Retire `StoredSlackActor` in `Conversation` and in Redis work state

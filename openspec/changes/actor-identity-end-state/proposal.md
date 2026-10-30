@@ -2,10 +2,10 @@
 
 ## Summary
 
-Every Conversation has one Owner. Every new Message has one author Identity.
-Junior resolves each Identity one time at ingress and stores its id. Later
-code reads the stored id. It does not guess the Identity again from platform
-strings, the Source, or id patterns.
+Every Conversation has one Owner. Every new user Message has one author
+Identity. Junior resolves each Identity one time at ingress and stores its
+id. Later code reads the stored id. It does not guess the Identity again from
+platform strings, the Source, or id patterns.
 
 This plan records the end state for #2439. It also gives the order of the
 steps that get there.
@@ -113,12 +113,15 @@ dashboard shows, private access, spend, and the personal feed.
 
 ### No Unknown Actors
 
-- Every new Message row has an author Identity in
-  `junior_conversation_events.actor_identity_id`.
+- Every new user Message row has an author Identity in
+  `junior_conversation_events.actor_identity_id`. A user Message is an inbound
+  Message, with role `user`.
 - A user Message from a human uses the human's Identity.
-- A user Message from a system Actor or the local CLI uses the system Identity.
-- An assistant or system Message uses the system Identity. See the open
-  questions.
+- A user Message from a system Actor uses the system Identity. Examples are
+  event, scheduled automation, and plugin dispatch prompts, and local CLI
+  input.
+- Assistant output is an event. It has no author Identity. This rule does not
+  cover Messages with role `assistant` or `system`.
 - Junior resolves the author at ingress. Code that cannot name an author fails.
   It does not store an unknown author.
 - Missing-author fallbacks exist only to read legacy rows. They log when they
@@ -146,8 +149,25 @@ change.
 ### `junior_conversation_events`
 
 - `actor_identity_id` stays. It is the author Identity.
-- A `NOT VALID` check constraint requires it for new `message` and
-  `message_updated` rows.
+- A `NOT VALID` check constraint requires it for new user Message rows.
+- Role is not a column. `type` is a column, and role is the top-level
+  `payload->>'role'` field. `message` and `message_updated` payloads are not
+  encoded (`isEncodedHistoryType` in `chat/conversations/history-payload.ts`),
+  and `api/conversations/first-message.ts` already filters on
+  `payload->>'role' = 'user'`. The constraint is:
+
+  ```sql
+  alter table junior_conversation_events
+    add constraint junior_conversation_events_user_message_author_check
+    check (
+      type not in ('message', 'message_updated')
+      or payload->>'role' is distinct from 'user'
+      or actor_identity_id is not null
+    ) not valid;
+  ```
+
+- The constraint does not cover the `user_message` agent history items. They
+  are model input, not Messages, and their payload is encoded.
 
 ### Participants
 
@@ -196,10 +216,7 @@ of the event column keep `actor_identity_id`.
 - A human who replies to an automation Conversation gets access as a
   participant, not as Owner. The Conversation stays in their feed through the
   participant row. It does not count as theirs in People or spend.
-- Child spend rolls up to the root Owner. Today `peopleTreeMetricsJoin` gives a
-  child's metrics to the child's own Actor when that Actor differs from the
-  root Actor. In the end state a child has no Owner, so the root Owner gets
-  them.
+- Child spend: see open question 4. It is not decided.
 - A web user's Messages and Conversations use their `google` Identity. The
   People page groups them with the same user as before, because both
   Identities link to the same `junior_users` row.
@@ -221,19 +238,28 @@ of the event column keep `actor_identity_id`.
    the next sign-in. Proposed answer: in production, fail closed and ask the
    user to sign in again. In the local bypass, map the web Actor to the system
    Identity, as for the local CLI. Confirm.
-2. **Assistant and system Messages.** The decision says every new Message row
-   has an author Identity. Today `resolveEventActorIdentityId` stores no Identity
-   for `assistant` and `system` roles. Proposed answer: use the system
-   Identity. The alternative is to scope the constraint to `user` Messages.
-   Confirm.
-3. **Slack bot authors.** `agent-invocations/root-conversation.ts` already
-   treats a Slack bot author as a `SystemActor` with the bot id as its name.
-   Proposed answer: bot Messages use the system Identity and keep the bot id as
-   provenance. Confirm.
-4. **Legacy `junior/<email>` rows with no `google` row.** A user who used the
+2. **Slack bot authors.** A Slack bot Message comes in with role `user`, so
+   the author rule covers it. It still needs an answer.
+   `agent-invocations/root-conversation.ts` already treats a Slack bot author
+   as a `SystemActor` with the bot id as its name. Today
+   `resolveEventActorIdentityId` stores no Identity when `meta.author.isBot` is
+   true. Proposed answer: bot Messages use the system Identity and keep the bot
+   id as provenance. Confirm.
+3. **Legacy `junior/<email>` rows with no `google` row.** A user who used the
    dashboard but never signed in after `recordGoogleSignIn` shipped has only the
    synthetic row. Proposed answer: the backfill keeps these rows for legacy
    reads and counts them in the dry run. New writes never use them.
+4. **Child spend roll-up.** Today `peopleTreeMetricsJoin`
+   (`api/people/shared.ts`) gives a child's metrics to the child's own Actor
+   when that Actor differs from the root Actor. A child has no Owner in the end
+   state. Proposed answer: the root Owner gets the child's spend. Confirm.
+
+## Decided
+
+- **Assistant and system Messages** (David Cramer): assistant output is an
+  event, not an authored Message. The author rule and its check constraint
+  cover only user Messages. Assistant and system Messages keep a `null`
+  author.
 
 ## Docs To Update Later
 

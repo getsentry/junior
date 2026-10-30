@@ -76,16 +76,29 @@ Message. Junior SHALL NOT add the Identity id inside `Actor`.
 
 ### Requirement: No Unknown Message Authors
 
-Every new Message row SHALL have an author Identity. Junior SHALL resolve it at
-ingress and SHALL NOT infer it later.
+Every new user Message row SHALL have an author Identity. A user Message has
+role `user`. Junior SHALL resolve the author at ingress and SHALL NOT infer it
+later. Assistant output is an event and SHALL NOT need an author Identity.
 
 #### Scenario: Ingress without an author
 
-- **WHEN** code tries to write a new Message without an author Identity
+- **WHEN** code tries to write a new user Message without an author Identity
 - **THEN** the write fails.
+
+#### Scenario: System prompt as a user Message
+
+- **WHEN** an event, a scheduled automation, a plugin dispatch, or the local
+  CLI writes a user Message
+- **THEN** the author is the system Identity.
+
+#### Scenario: Assistant output
+
+- **WHEN** Junior writes an assistant Message
+- **THEN** the row has no author Identity
+- **AND** the write succeeds.
 
 #### Scenario: Legacy Message without an author
 
-- **WHEN** Junior reads a legacy Message row with no author Identity
+- **WHEN** Junior reads a legacy user Message row with no author Identity
 - **THEN** Junior uses the legacy fallback
 - **AND** logs that the fallback ran.
