@@ -164,7 +164,8 @@ NOT become a participant.
 
 - **WHEN** a watched PR's checks fail
 - **THEN** the event is a user Message
-- **AND** its author is the system Identity.
+- **AND** its author is the system Identity
+- **AND** the event starts a run as today.
 
 #### Scenario: Event author already linked
 
@@ -174,28 +175,32 @@ NOT become a participant.
 
 ### Requirement: Trusted Event Authors
 
-Junior SHALL NOT treat text from an untrusted event author as instructions.
-An author SHALL be trusted when the plugin marks the author as trusted from
-its config, or when `findLinkedSlackMember()` returns `linked` for the
-author's account. That check SHALL be the same check that Identity dispatch
-and Watch requester instructions use: the exact linked account id, one linked
-Slack user, a current human member, and a Slack email on `allowedDomains`.
-Every other author SHALL be untrusted, and their text SHALL be data only. The
-GitHub plugin SHALL own its trusted authors list of GitHub logins,
-`githubPlugin({ trustedAuthors })`. Core SHALL NOT read GitHub logins to
-decide trust.
+Junior SHALL treat text from a trusted event author exactly like a chat message
+from that author. It SHALL authorize what a chat message from that author would
+authorize, no more and no less. An author SHALL be trusted when the plugin marks
+the author as trusted from its config, or when `findLinkedSlackMember()` returns
+`linked` for the author's account. That check SHALL be the same check that
+Identity dispatch and Watch requester instructions use: the exact linked account
+id, one linked Slack user, a current human member, and a Slack email on
+`allowedDomains`. Every other author SHALL be untrusted. An event from an
+untrusted or unknown author SHALL NOT start a run. The GitHub plugin SHALL own
+its trusted authors list of GitHub logins, `githubPlugin({ trustedAuthors })`.
+Core SHALL NOT read GitHub logins to decide trust.
 
 Only `doneByText` SHALL be trusted text, with the lines that the author only
 quotes removed. Junior SHALL render it in the `Requester instruction`
 section of the task input. Junior SHALL NOT render it as a `user:` line.
-What text from a trusted author may authorize waits on the open question
-(`proposal.md`, Open Questions).
+
+In an event batch, Junior SHALL leave out each entry from an untrusted author
+before the Turn starts. When no entry is left, Junior SHALL NOT start a Turn.
+A system event, with no author and the system Identity, SHALL run as today.
 
 #### Scenario: Linked member on an allowed domain
 
 - **WHEN** a person whose GitHub account links to one current Slack member on
   an allowed domain comments on a watched PR
-- **THEN** Junior treats the comment text as trusted text
+- **THEN** Junior treats the comment text like a chat message from that
+  person
 - **AND** renders it in the `Requester instruction` section, not as a
   `user:` line.
 
@@ -203,19 +208,19 @@ What text from a trusted author may authorize waits on the open question
 
 - **WHEN** a person whose GitHub account links to a Slack member whose email
   is not on an allowed domain comments on a watched PR
-- **THEN** Junior treats the comment text as data only.
+- **THEN** the event does not start a run.
 
 #### Scenario: Deactivated linked member
 
 - **WHEN** a person whose GitHub account links to a Slack user who is no
   longer an active member comments on a watched PR
-- **THEN** Junior treats the comment text as data only.
+- **THEN** the event does not start a run.
 
 #### Scenario: Author with no linked account
 
 - **WHEN** a person whose `github` Identity has no linked Slack user comments
   on a watched PR
-- **THEN** Junior treats the comment text as data only.
+- **THEN** the event does not start a run.
 
 #### Scenario: Quoted text from a trusted author
 
@@ -228,7 +233,7 @@ What text from a trusted author may authorize waits on the open question
 - **WHEN** a bot whose GitHub login is on the GitHub plugin trusted authors
   list comments on a watched PR
 - **THEN** the plugin marks the author as trusted
-- **AND** Junior treats the comment text as trusted text
+- **AND** Junior treats the comment text like a chat message from that bot
 - **AND** the bot has no User and gets no participant row.
 
 #### Scenario: Person on the trusted authors list
@@ -236,19 +241,29 @@ What text from a trusted author may authorize waits on the open question
 - **WHEN** a person whose GitHub login is on the GitHub plugin trusted
   authors list, and who has no allowed-domain email, comments on a watched PR
 - **THEN** the plugin marks the author as trusted
-- **AND** Junior treats the comment text as trusted text.
+- **AND** Junior treats the comment text like a chat message from that
+  person.
 
 #### Scenario: Unknown sender
 
 - **WHEN** a sender with no known Identity link and no entry on the trusted
   authors list comments on a watched PR
-- **THEN** Junior treats the comment text as data only.
+- **THEN** the event does not start a run.
 
 #### Scenario: Bot not on the trusted authors list
 
 - **WHEN** a bot whose GitHub login is not on the GitHub plugin trusted
   authors list comments on a watched PR
-- **THEN** Junior treats the comment text as data only.
+- **THEN** the event does not start a run.
+
+#### Scenario: Untrusted author in an event batch
+
+- **WHEN** one Turn takes a batch with an event from a trusted author and an
+  event from an untrusted author
+- **THEN** Junior leaves the untrusted author's event out of the run
+- **AND** the batch Message author is the trusted author's Identity
+- **AND** when every event in a batch has an untrusted author, no Turn
+  starts.
 
 ### Requirement: Guardian Labels Use The Actor
 

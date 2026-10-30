@@ -84,6 +84,8 @@ These are David Cramer's answers in the Slack thread for #2439.
 - On trust: "any sender who doesnt have the allowed domain email address or
   is unknown isnt trusted. bots and or other users could be listed under
   trusted"
+- On what trusted text may do: "trusted authors are the same as normal
+  authors... its just that untrusted authors we dont run"
 
 His answers to the 14 earlier proposals:
 
@@ -206,8 +208,8 @@ These are the #2439 end state. They follow from the answers above.
   `trusted` flag (answer 3). The plan names it `trustedAuthor`, because the
   event schema already has `trustedSummary` beside `doneBy`, and that field
   means plugin facts that are never instructions. An event with no `doneBy` or
-  no `subjectId` uses the system Identity, and its text stays data
-  (answer 3).
+  no `subjectId` uses the system Identity. It is a system event. It runs as
+  today, and its text stays data (answer 3).
 - **Event author Identity.** Core upserts the author Identity with the OAuth
   link key and no email. The upsert never changes the `kind` or `user_id` of
   an existing row (answer 4).
@@ -221,11 +223,21 @@ These are the #2439 end state. They follow from the answers above.
     The plugin compares logins without case (answer 6).
 
   An unknown sender is never trusted. A sender without an allowed-domain
-  email is not trusted, unless the list names them. Text from an untrusted
-  author never counts as instructions. This includes a bot that is not on the
-  list, a person with no linked account, and a deactivated member. What text
-  from a trusted author may authorize waits on the open question. #2260
-  trusts only the Watch requester. This rule trusts more authors.
+  email is not trusted, unless the list names them. This includes a bot that
+  is not on the list, a person with no linked account, and a deactivated
+  member. #2260 trusts only the Watch requester. This rule trusts more
+  authors.
+
+- **Trusted text is a chat message.** The plan reads David's answer on what
+  trusted text may do to mean: Junior treats text from a trusted author
+  exactly like a chat message from a normal author. It authorizes what a chat
+  message from that author would authorize. The same rules apply as for any
+  chat author, no more and no less.
+- **Untrusted authors do not run.** The plan reads the same answer to mean:
+  an event from an untrusted or unknown author does not start a run. In a
+  batch, Junior leaves the untrusted authored entries out of the run. When no
+  entry is left, no run starts. A system event (no author, the system
+  Identity) runs as today.
 
 - **The list can name bots and people.** David said that "bots and or other
   users could be listed". The plan reads this to mean: the list is an
@@ -235,9 +247,8 @@ These are the #2439 end state. They follow from the answers above.
 
 - **Trusted text stays narrow.** Only `doneByText` can be trusted text, with
   quoted lines removed. Core renders it in #2260's `Requester instruction`
-  section. It is never a `user:` line. What this text may authorize is an
-  open question (Open Questions). #2260's `requesterInstructionSchema` keeps
-  the author Identity id, because a trusted bot has no Slack Actor (answer
+  section. It is never a `user:` line. #2260's `requesterInstructionSchema`
+  keeps the author Identity id, because a trusted bot has no Slack Actor (answer
   14).
 - **A bot is an Actor in David's sense.** The plan reads "its still an
   actor" to mean: the bot has its own Identity and is the author of its
@@ -248,7 +259,9 @@ These are the #2439 end state. They follow from the answers above.
   (`task-execution/conversation-turn.ts`, `renderEventBatchText`). When every
   event in the batch has the same author, that author is the Message author.
   Otherwise the Message author is the system Identity. Trust is decided per
-  event, from each entry's `authorIdentityId`.
+  event, from each entry's `authorIdentityId`, before the Turn starts. Junior
+  leaves the untrusted authored entries out. The batch Message author comes
+  from the entries that are left.
 - **Event author provider.** The author Identity provider is the event
   `namespace`, and `doneBy.provider` must equal it. This is the check that
   #2260's `resolveEventDoerSlackUserId` makes. A namespace that is a core
@@ -309,20 +322,8 @@ These are the #2439 end state. They follow from the answers above.
 
 ## Open Questions
 
-These wait for David.
-
-- **What may trusted event text authorize?** #2260's Guardian rule
-  (`REQUESTER_INSTRUCTION_RULES` in `guardian/reviewer.ts`) says that
-  `requester:` lines "authorize the actions, targets, and outputs that they
-  name ... the same as a chat message from that person". It also says that
-  the writer created the Watch. A trusted author who is not the Watch
-  requester did not create the Watch, and a bot has no Slack mention.
-  _Question:_ when a trusted author's comment asks Junior to do something,
-  may that text authorize the action, or is it only context?
-  _Recommended answer:_ text from a trusted author authorizes the actions
-  that it asks for, the same as a chat message from that author. It can never
-  answer a pending action-review approval prompt. Text from an untrusted
-  author authorizes nothing.
+None. David answered the last one, on what trusted event text may authorize
+(From David Cramer). Plan Decisions gives the plan's reading.
 
 ## Behavior Changes
 
@@ -334,9 +335,10 @@ These wait for David.
   when it differs from the root.
 - A web user's Messages and Conversations use their `google` Identity. People
   still groups them with the same User.
-- Text from an untrusted author never counts as instructions. What text from
-  a trusted author may authorize waits on the open question. With #2260, only
-  the Watch requester is a trusted author.
+- Text from a trusted author counts the same as a chat message from that
+  author. Events from an untrusted or unknown author do not run. Today an
+  untrusted author's event runs, with its text as data, and with #2260 only
+  the Watch requester's text counts.
 - The dashboard participant list stops showing system Identities.
 
 ## Risks
@@ -351,6 +353,9 @@ These wait for David.
 - GitHub can give the login of a renamed or deleted account to a new
   account. That new account then passes as a trusted author. The trusted
   authors docs say to list stable logins and to review the list.
+- An untrusted author's event stops starting a run. A review bot that is not
+  on the trusted authors list, such as Cursor Bugbot, no longer starts PR
+  maintenance work. List each review bot that Junior must follow.
 - A write with no author Identity fails after step 5. A missed ingress path
   shows up as an error, not as wrong data. The legacy fallback logs first, so
   the logs find missed paths before the constraint ships.

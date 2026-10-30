@@ -164,17 +164,17 @@ changes the Owner or the Turn Actor.
     (`chat/events/people.ts`).
 - End state: an event whose `doneBy` has a `subjectId` uses the Identity of
   that person or bot. An event with no `doneBy`, or with no `subjectId`, uses
-  the system Identity, and its text stays data. So no `hasActor` flag is
-  needed. Provider parsing stays in the plugin. `proposal.md`, Plan
-  Decisions, gives the contract.
+  the system Identity. It is a system event: it runs as today, and its text
+  stays data. So no `hasActor` flag is needed. Provider parsing stays in the
+  plugin. `proposal.md`, Plan Decisions, gives the contract.
 - Event text is untrusted by default. Plugins put it in `untrustedText`.
   `task-input.ts` shows it as "External text". Guardian denies actions that
   follow it (`untrusted_instruction` in `guardian/policy.ts`).
-- End state for trust: text from an untrusted author never counts as
-  instructions. What text from a trusted author may authorize waits on the
-  open question (`proposal.md`, Open Questions). An author is trusted when
-  the plugin says so, or when `findLinkedSlackMember()` returns `linked` for
-  the author's account. #2260 adds it in
+- End state for trust: Junior treats text from a trusted author exactly like
+  a chat message from that author. An event from an untrusted or unknown
+  author does not start a run (`proposal.md`, Plan Decisions). An author is
+  trusted when the plugin says so, or when `findLinkedSlackMember()` returns
+  `linked` for the author's account. #2260 adds it in
   `chat/identities/linked-slack-member.ts`. #2217 runs the same check inline
   in `agent-dispatch/context.ts`. It requires all of these:
   - the exact provider account id that the OAuth link stored, never a handle
@@ -188,13 +188,16 @@ changes the Owner or the Turn Actor.
 - Only `doneByText` can be trusted text. The plugin removes the lines
   that the author only quotes (`unquotedCommentText` in
   `junior-github/src/webhooks/events.ts`, #2260). Core renders the text in
-  #2260's `Requester instruction` section. It is never a `user:` line. What
-  it may authorize is an open question (`proposal.md`, Open Questions).
+  #2260's `Requester instruction` section. It is never a `user:` line. It
+  authorizes what a chat message from that author would authorize.
 - A batch of events is one Message (`task-execution/conversation-turn.ts`:
   `renderEventBatchText`, and `userMessageId` from the first entry). When
   every event in the batch has the same author Identity, that Identity is
   the Message author. Otherwise the Message author is the system Identity.
-  Trust is decided per event, from each entry's `authorIdentityId`.
+  Trust is decided per event, from each entry's `authorIdentityId`, before
+  the Turn starts. Junior leaves the untrusted authored entries out of the
+  batch. The batch Message author comes from the entries that are left. When
+  no entry is left, no Turn starts.
 - The author Identity provider is the event `namespace`. `doneBy.provider`
   must equal it, as #2260's `resolveEventDoerSlackUserId` requires. When the
   namespace is a core provider (`slack`, `google`, `junior`, `mock`), or the

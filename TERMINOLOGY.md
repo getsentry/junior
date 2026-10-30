@@ -56,9 +56,11 @@ Canonical words used across Junior's code and documentation.
   Slack, web, and fork Conversations. It is the system Identity for
   Automation runs, plugin dispatch, and the local CLI. A child Conversation
   uses the Owner of its root. An Automation has a creator, not an Owner.
-- **Trusted author**: an event author whose own text may count as an
-  instruction. The author is a linked member on an allowed domain, or a login
-  on a plugin trusted authors list, such as `githubPlugin({ trustedAuthors })`.
+- **Trusted author**: an event author whose own text Junior treats like a
+  chat message from that author. The author is a linked member on an allowed
+  domain, or a login on a plugin trusted authors list, such as
+  `githubPlugin({ trustedAuthors })`. An event from an author who is not
+  trusted does not start a run.
   This is not the "trusted" summary or details of an Event. Those are plugin
   facts, and they never count as instructions.
 - **Automation**: a saved instruction that Junior runs later. It has a

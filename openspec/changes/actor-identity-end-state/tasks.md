@@ -123,13 +123,11 @@ a web Turn stores its author Identity.
 - [ ] Render trusted text in #2260's `Requester instruction` section, never as
       a `user:` line. #2260's instruction record keeps the author Identity
       id, because a trusted bot has no Slack Actor.
-- [ ] What trusted text may authorize waits for David (`proposal.md`, Open
-      Questions). If he takes the recommended answer:
+- [ ] Trusted text is a chat message (`proposal.md`, Plan Decisions):
   - Rewrite `REQUESTER_INSTRUCTION_RULES` (`guardian/reviewer.ts`, #2260).
-    It says that a trusted author's lines authorize the actions they ask
-    for, the same as a chat message from that author. It drops the claim
-    that the writer created the Watch. It says that the lines never answer a
-    pending action-review approval prompt.
+    It says that a trusted author's lines authorize what a chat message from
+    that author would authorize, with the same rules as any chat author. It
+    drops the claim that the writer created the Watch.
   - Let a Watch with no requester receive trusted author text. Today
     `events/ingest.ts` resolves the doer only when a subscription has a
     requester.
@@ -138,6 +136,11 @@ a web Turn stores its author Identity.
     label instead.
   - Give a bot author its own Guardian label, from its `bot` Identity and
     the Message provenance.
+- [ ] Drop untrusted authored events before the Turn starts. An event whose
+      author is untrusted or unknown starts no run. In a batch, leave the
+      untrusted authored entries out, and build the batch Message from the
+      rest. When no entry is left, start no Turn. A system event runs as
+      today.
 - [ ] Document `trustedAuthors` in `junior-github/SETUP.md`. It can list
       bots and people. Warn that GitHub can give a renamed or deleted
       account's login to a new account. Say to list stable logins and to
@@ -166,16 +169,18 @@ cutover.
    and reference as it is.
 
 Risk: medium. Wrong merges move Conversations between People. The trust rule
-changes which event text Junior follows. Only logins on the trusted authors
-list and linked members on an allowed domain gain this.
+changes which event text Junior follows, and which events start a run. Only
+logins on the trusted authors list and linked members on an allowed domain
+start a run with authored text. An untrusted author's event no longer runs,
+so list each review bot that Junior must follow.
 
 Verify: `component/identity-read.test.ts`,
 `integration/api/conversations/detail.test.ts` (participants),
 `integration/local-agent-runner.test.ts`, and the review and comment scenario in
 `packages/junior-github/tests/webhook-outcomes.test.ts`: a bot on the trusted
-authors list is trusted, a bot that is not on the list is data only, a
-deactivated linked member is data only, and the commenter gets no participant
-row.
+authors list is trusted, a bot that is not on the list starts no run, a
+deactivated linked member starts no run, and the commenter gets no
+participant row.
 
 ## 4a. Write The Owner
 
