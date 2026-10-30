@@ -42,13 +42,12 @@ Set on the harness host (never in skill files):
 - `GITHUB_APP_CLIENT_ID`
 - `GITHUB_APP_CLIENT_SECRET`
 - `GITHUB_APP_PRIVATE_KEY`
-- `GITHUB_INSTALLATION_ID`
 - `GITHUB_APP_BOT_NAME` (Git author and committer display name)
 - `GITHUB_APP_BOT_EMAIL`
 
-Current limitation: one Junior deployment uses one GitHub App installation ID.
-That works for repositories covered by the same installation, but not for repositories that live
-under different app installations across orgs/accounts.
+One Junior deployment works with every installation of the App. Junior finds
+the installation for each target repository or organization. Reads that name no
+repository use the installation on the account that owns the App.
 
 ### Vercel env setup (multiline-safe)
 
@@ -61,7 +60,6 @@ For Vercel, prefer CLI file input so newlines are preserved exactly:
 vercel env add GITHUB_APP_ID production
 vercel env add GITHUB_APP_CLIENT_ID production
 vercel env add GITHUB_APP_CLIENT_SECRET production
-vercel env add GITHUB_INSTALLATION_ID production
 vercel env add GITHUB_APP_BOT_NAME production
 vercel env add GITHUB_APP_BOT_EMAIL production
 vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
@@ -246,7 +244,6 @@ jr-rpc config set github.repo getsentry/junior
    - `GITHUB_APP_CLIENT_ID`
    - `GITHUB_APP_CLIENT_SECRET`
    - `GITHUB_APP_PRIVATE_KEY`
-   - `GITHUB_INSTALLATION_ID`
    - `GITHUB_APP_BOT_NAME`
    - `GITHUB_APP_BOT_EMAIL`
 2. Confirm the GitHub App is installed on your test repo with the permissions above.

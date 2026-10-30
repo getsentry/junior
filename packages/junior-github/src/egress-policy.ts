@@ -17,12 +17,16 @@ import {
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   HTTP_READ_METHODS,
   USER_WRITE_REQUIREMENTS,
-  githubRepositoryFromUrl,
   isRecord,
   type GitHubGrant,
   type GitHubGrantName,
   type GitHubGrantReason,
 } from "./credential-support.js";
+import {
+  githubInstallationLeaseScope,
+  githubRepositoryFromUrl,
+  type GitHubInstallationTarget,
+} from "./installation-targets.js";
 
 function githubSmartHttpAccess(
   upstreamUrl: URL,
@@ -588,15 +592,63 @@ function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
   name: GitHubGrantName,
+  target?: GitHubInstallationTarget,
 ): GitHubGrant {
   return {
     name,
     access,
     reason,
+    ...(target
+      ? { leaseScope: githubInstallationLeaseScope(target) }
+      : undefined),
     ...(name === "user-write"
       ? { requirements: USER_WRITE_REQUIREMENTS }
       : undefined),
   };
+}
+
+const GITHUB_NAME_PATTERN = /^[\w.-]+$/;
+
+/** Read the repository from GraphQL `owner` and `repo` or `name` variables, as `gh` sends them. */
+function graphqlVariablesRepository(
+  bodyText: string | undefined,
+): GitHubInstallationTarget | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText ?? "");
+  } catch {
+    return undefined;
+  }
+  const variables = isRecord(parsed) ? parsed.variables : undefined;
+  if (!isRecord(variables)) return undefined;
+  const owner = variables.owner;
+  const name = variables.repo ?? variables.name;
+  return typeof owner === "string" &&
+    typeof name === "string" &&
+    GITHUB_NAME_PATTERN.test(owner) &&
+    GITHUB_NAME_PATTERN.test(name)
+    ? { owner, name }
+    : undefined;
+}
+
+/**
+ * Find the repository or organization whose App installation a request
+ * needs. Return undefined when the request names neither.
+ */
+function installationTarget(
+  upstreamUrl: URL,
+  bodyText: string | undefined,
+): GitHubInstallationTarget | undefined {
+  const repository =
+    githubRepositoryFromUrl(upstreamUrl) ??
+    (isGitHubGraphqlUrl(upstreamUrl)
+      ? graphqlVariablesRepository(bodyText)
+      : undefined);
+  if (repository) return repository;
+  const org = isGitHubApiUrl(upstreamUrl)
+    ? /^\/orgs\/([\w.-]+)(?:\/|$)/i.exec(upstreamUrl.pathname)?.[1]
+    : undefined;
+  return org ? { org } : undefined;
 }
 
 function requireRepositoryTarget(upstreamUrl: URL): void {
@@ -626,6 +678,7 @@ export async function githubGrantForEgress(
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
     return grantForAccess("write", "github.asset-upload", "user-write");
   }
+  const target = installationTarget(upstreamUrl, ctx.request.bodyText);
 
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
@@ -635,12 +688,14 @@ export async function githubGrantForEgress(
         "write",
         "github.installation-write",
         "installation-write",
+        target,
       );
     }
     return grantForAccess(
       smartHttpAccess,
       "github.git-read",
       "installation-read",
+      target,
     );
   }
 
@@ -660,6 +715,7 @@ export async function githubGrantForEgress(
         ? "github.user-write"
         : "github.installation-write",
       writeGrantName,
+      writeGrantName === "installation-write" ? target : undefined,
     );
   }
 
@@ -670,10 +726,12 @@ export async function githubGrantForEgress(
     ctx.request.bodyText,
   );
   if (hostMutationRepository) {
+    const [owner = "", name = ""] = hostMutationRepository.split("/");
     return grantForAccess(
       "write",
       "github.installation-write",
       "installation-write",
+      { owner, name },
     );
   }
 
@@ -692,6 +750,7 @@ export async function githubGrantForEgress(
       graphqlAccess,
       "github.graphql-read",
       "installation-read",
+      target,
     );
   }
 
@@ -701,5 +760,5 @@ export async function githubGrantForEgress(
       "This GitHub write request is not supported. Use the matching GitHub tool or a supported REST endpoint.",
     );
   }
-  return grantForAccess(access, "github.api-read", "installation-read");
+  return grantForAccess(access, "github.api-read", "installation-read", target);
 }

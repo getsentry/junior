@@ -67,8 +67,8 @@ narrow write tokens.
    connected it.
 
 3. Install the App on the organization or repositories Junior should reach.
-4. Copy the App ID, OAuth client ID and secret, installation ID, bot name, and
-   bot noreply email into your deployment environment.
+4. Copy the App ID, OAuth client ID and secret, bot name, and bot noreply
+   email into your deployment environment.
 
 If Junior should receive events or report PR/issue outcomes, also:
 
@@ -84,8 +84,13 @@ denies unsupported writes through the egress allowlist.
 
 Install the App only on repositories where Junior may push. Protect important
 branches in GitHub. Across many repositories, users should include `owner/repo`
-when the target is not obvious, and those repositories must share the same
-installation ID.
+when the target is not obvious.
+
+One deployment works with every installation of the App. Junior finds the
+installation for each target repository or organization. A webhook delivery
+uses the installation that sent it. Reads that name no repository, such as
+search or GraphQL without `owner` and `repo` variables, use the installation on
+the account that owns the App. Install the App on its owner account too.
 
 ## Config
 
@@ -226,18 +231,6 @@ Names the deployment variable containing the GitHub App private key.
 
 - **Define:** `githubPlugin({ privateKeyEnv: "GITHUB_APP_PRIVATE_KEY" })` in `plugins.ts`
 - **Default:** `GITHUB_APP_PRIVATE_KEY`
-- **Required:** Yes
-- **Environment variable:** The variable named by this option
-
-</details>
-
-<details class="plugin-config">
-<summary><code>installationIdEnv</code></summary>
-
-Names the deployment variable containing the GitHub App installation ID.
-
-- **Define:** `githubPlugin({ installationIdEnv: "GITHUB_INSTALLATION_ID" })` in `plugins.ts`
-- **Default:** `GITHUB_INSTALLATION_ID`
 - **Required:** Yes
 - **Environment variable:** The variable named by this option
 
@@ -552,8 +545,10 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   permission on the installation, and retry.
 - Webhook delivery returns `401`: the App webhook secret does not match
   `GITHUB_WEBHOOK_SECRET`, or `X-Hub-Signature-256` is missing.
-- Webhook delivery returns `202 Ignored`: wrong installation, or an unsupported
-  event mapping. Confirm `GITHUB_INSTALLATION_ID` and the event type.
+- Webhook delivery returns `202 Ignored`: the payload has no App installation,
+  or the event mapping is unsupported. Confirm the event type.
+- `The GitHub App is not installed on owner/repo`: install the App on that
+  repository or its organization, and retry.
 - Delivery succeeds but nothing appears in Slack: create a watch
   or event automation first. A webhook alone does not create either one.
 - Missing repository context: include `owner/repo`, or set a thread default

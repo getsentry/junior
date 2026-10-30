@@ -260,7 +260,6 @@ describe("event delivery", () => {
   });
 
   it("accepts plugin-owned GitHub webhooks through the core delivery bridge", async () => {
-    const previousInstallationId = process.env.GITHUB_INSTALLATION_ID;
     const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
     const previousSlackBotToken = process.env.SLACK_BOT_TOKEN;
     const previousPlugins = getPlugins();
@@ -274,7 +273,6 @@ describe("event delivery", () => {
     let eventAutomationId: string | undefined;
 
     try {
-      process.env.GITHUB_INSTALLATION_ID = "456";
       process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
       process.env.SLACK_BOT_TOKEN = "xoxb-event-test";
       const state = createMemoryState();
@@ -426,11 +424,6 @@ describe("event delivery", () => {
         delete process.env.GITHUB_WEBHOOK_SECRET;
       } else {
         process.env.GITHUB_WEBHOOK_SECRET = previousSecret;
-      }
-      if (previousInstallationId === undefined) {
-        delete process.env.GITHUB_INSTALLATION_ID;
-      } else {
-        process.env.GITHUB_INSTALLATION_ID = previousInstallationId;
       }
       if (previousSlackBotToken === undefined) {
         delete process.env.SLACK_BOT_TOKEN;

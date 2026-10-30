@@ -108,6 +108,9 @@ const feedbackTargetSchema = z.object({
 });
 type FeedbackTarget = z.output<typeof feedbackTargetSchema>;
 
+/** A webhook lookup target with the installation that sent the delivery. */
+type InstallationScoped<T> = T & { installationId: number };
+
 /** Return comment-level pull request feedback that the webhook can mark. */
 function pullRequestFeedbackTarget(
   events: EventInput[],
@@ -149,27 +152,28 @@ export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
   appIdEnv: string;
   botEmail(): string | undefined;
-  classifyPullRequestCommits?(input: {
-    number: number;
-    repositoryFullName: string;
-  }): Promise<GitHubPullRequestCommitComposition | undefined>;
+  classifyPullRequestCommits?(
+    input: InstallationScoped<GitHubPullRequestTarget>,
+  ): Promise<GitHubPullRequestCommitComposition | undefined>;
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
-  installationId(): string | undefined;
-  installationIdEnv: string;
   /**
    * Read a pull request's commits for the `authors` field and the people
    * involved.
    */
   loadPullRequestCommitPages?(
-    target: GitHubPullRequestTarget,
+    target: InstallationScoped<GitHubPullRequestTarget>,
   ): Promise<GitHubCommitPageLoader>;
   /** Load a repository role for `openerRole`. */
-  loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
+  loadRepositoryRole?(
+    target: InstallationScoped<GitHubRoleTarget>,
+  ): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  log?: Pick<PluginLogger, "error">;
-  markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
+  log?: Pick<PluginLogger, "error" | "info">;
+  markFeedbackReviewing(
+    input: InstallationScoped<FeedbackTarget>,
+  ): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
   webhookSecret(): string | undefined;
@@ -190,13 +194,15 @@ export function createGitHubWebhookRoute(args: {
       }
 
       const body = parseJson(rawBody);
-      const installationId = parseInstallationId(args.installationId());
+      // The signature proves the delivery is for this App, from any of its
+      // installations. Every token for this delivery uses that installation.
+      const installationId = webhookInstallationId(body);
       if (!installationId) {
-        return new Response("GitHub webhook installation is not configured", {
-          status: 503,
+        args.log?.info("github.webhook.delivery.skipped", {
+          "app.github.delivery_id": deliveryId,
+          "app.github.event_name": eventName,
+          "app.github.skip_reason": "missing_installation",
         });
-      }
-      if (webhookInstallationId(body) !== installationId) {
         return new Response("Ignored", { status: 202 });
       }
       const botEmail = args.botEmail();
@@ -259,6 +265,7 @@ export function createGitHubWebhookRoute(args: {
           let commitComposition: GitHubPullRequestCommitComposition | undefined;
           try {
             commitComposition = await args.classifyPullRequestCommits({
+              installationId,
               number: pullRequestOutcome.number,
               repositoryFullName: pullRequestOutcome.repositoryFullName,
             });
@@ -334,7 +341,7 @@ export function createGitHubWebhookRoute(args: {
           ? await loadCheckSuiteFacts({
               appIdEnv: args.appIdEnv,
               body,
-              installationIdEnv: args.installationIdEnv,
+              installationId,
               loadPullRequestFacts:
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
@@ -342,9 +349,14 @@ export function createGitHubWebhookRoute(args: {
             })
           : undefined;
       const hasMatch = args.events.hasMatch;
-      const commitPages = args.loadPullRequestCommitPages
-        ? shareCommitPages(args.loadPullRequestCommitPages)
+      const loadCommitPages = args.loadPullRequestCommitPages;
+      const commitPages = loadCommitPages
+        ? shareCommitPages(
+            async (target) =>
+              await loadCommitPages({ ...target, installationId }),
+          )
         : undefined;
+      const loadRepositoryRole = args.loadRepositoryRole;
       const events = await withGitHubPullRequestPeople({
         body,
         deliveryId,
@@ -370,7 +382,10 @@ export function createGitHubWebhookRoute(args: {
               }
             : undefined),
           loadGitHubLogin: args.loadGitHubLogin,
-          loadRole: args.loadRepositoryRole,
+          loadRole: loadRepositoryRole
+            ? async (target) =>
+                await loadRepositoryRole({ ...target, installationId })
+            : undefined,
           log: args.log,
           neededMatchKeys: args.events.neededMatchKeys,
         }),
@@ -395,7 +410,10 @@ export function createGitHubWebhookRoute(args: {
           : false;
       if (feedbackTarget && feedbackHasMatch) {
         try {
-          await args.markFeedbackReviewing(feedbackTarget);
+          await args.markFeedbackReviewing({
+            ...feedbackTarget,
+            installationId,
+          });
         } catch (error) {
           args.log?.error("GitHub pull request feedback reaction failed", {
             commentId: feedbackTarget.commentId,

@@ -6,6 +6,7 @@
  */
 import { createPrivateKey, createSign } from "node:crypto";
 import type {
+  PluginCache,
   PluginCredentialResult,
   PluginGrant,
   PluginProviderAccount,
@@ -13,6 +14,7 @@ import type {
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
+import { installationLookupForLeaseScope } from "./installation-targets.js";
 import {
   type GitHubAppPermissions,
   readGrantPermissions,
@@ -78,43 +80,20 @@ interface UserCredentialOptions {
   userScope?: string;
 }
 
-interface InstallationCredentialBaseOptions {
+/** Environment variable names for the GitHub App credentials. */
+export interface GitHubAppEnv {
   appIdEnv: string;
-  installationIdEnv: string;
   privateKeyEnv: string;
-}
-
-type InstallationCredentialOptions = InstallationCredentialBaseOptions &
-  (
-    | {
-        // Omit both to use the full installed App permissions and repos.
-        loadPermissions?: never;
-        permissions?: GitHubAppPermissions;
-        repositories?: string[];
-      }
-    | {
-        loadPermissions: LoadInstallationReadPermissions;
-        permissions?: never;
-        repositories?: never;
-      }
-  );
-
-type LoadInstallationReadPermissions = (input: {
-  appJwt: string;
-  installationId: number;
-}) => Promise<Record<string, "read">>;
-
-interface GitHubRepository {
-  name: string;
-  owner: string;
 }
 
 export const GITHUB_APP_ID_ENV = "GITHUB_APP_ID";
 export const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
-export const GITHUB_INSTALLATION_ID_ENV = "GITHUB_INSTALLATION_ID";
 export const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
 export const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
 const MAX_LEASE_MS = 60 * 60 * 1000;
+// Installs change rarely. A reinstalled App can keep a stale id this long.
+const INSTALLATION_ID_TTL_MS = 10 * 60 * 1000;
+const GITHUB_API = "https://api.github.com";
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const USER_REFRESH_TIMEOUT_MS = 20_000;
 export const GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES = 64 * 1024;
@@ -209,10 +188,6 @@ function hasRequiredOAuthScope(
     return false;
   }
   return required.every((scope) => stored.has(scope));
-}
-
-function isGitHubApiUrl(upstreamUrl: URL): boolean {
-  return upstreamUrl.hostname.toLowerCase() === "api.github.com";
 }
 
 function base64Url(input: string): string {
@@ -539,36 +514,6 @@ function readInstallationPermissions(
   return readGrantPermissions(installation.permissions);
 }
 
-function decodeGitHubPathSegment(value: string): string | undefined {
-  try {
-    const decoded = decodeURIComponent(value).trim();
-    return decoded && !decoded.includes("/") ? decoded : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Parse a GitHub repository from an API or Git URL. */
-export function githubRepositoryFromUrl(
-  upstreamUrl: URL,
-): GitHubRepository | undefined {
-  const segments = upstreamUrl.pathname.split("/").filter(Boolean);
-  if (isGitHubApiUrl(upstreamUrl) && segments[0]?.toLowerCase() === "repos") {
-    const owner = segments[1]
-      ? decodeGitHubPathSegment(segments[1])
-      : undefined;
-    const name = segments[2] ? decodeGitHubPathSegment(segments[2]) : undefined;
-    return owner && name ? { owner, name } : undefined;
-  }
-  if (upstreamUrl.hostname.toLowerCase() !== "github.com") {
-    return undefined;
-  }
-  const owner = segments[0] ? decodeGitHubPathSegment(segments[0]) : undefined;
-  const rawName = segments[1]?.replace(/\.git$/i, "");
-  const name = rawName ? decodeGitHubPathSegment(rawName) : undefined;
-  return owner && name ? { owner, name } : undefined;
-}
-
 /** Resolve the GitHub account associated with stored user tokens. */
 export async function resolveUserAccount(
   tokens: PluginStoredTokens,
@@ -823,63 +768,152 @@ async function issueUserCredential(
   return credentialNeeded("Your GitHub authorization has expired.", scope);
 }
 
-/** Issue a bounded raw token for plugin-owned GitHub API calls. */
-export async function issueInstallationToken(
-  options: InstallationCredentialOptions,
+async function mintInstallationToken(
+  appJwt: string,
+  installationId: number,
+  body: { permissions?: GitHubAppPermissions; repositories?: string[] },
 ): Promise<{ expiresAtMs: number; token: string }> {
-  const appId = requireEnv(options.appIdEnv);
-  const installationIdRaw = requireEnv(options.installationIdEnv);
-  const installationId = Number(installationIdRaw);
-  if (!Number.isSafeInteger(installationId) || installationId <= 0) {
-    throw new GitHubPluginSetupError(`Invalid ${options.installationIdEnv}`);
-  }
-
-  const appJwt = createAppJwt(appId, options.privateKeyEnv);
-  const permissions =
-    "permissions" in options
-      ? options.permissions
-      : typeof options.loadPermissions === "function"
-        ? await options.loadPermissions({ appJwt, installationId })
-        : undefined;
-  const repositories =
-    "repositories" in options ? options.repositories : undefined;
-  const body = {
-    ...(permissions ? { permissions } : undefined),
-    ...(repositories ? { repositories } : undefined),
-  };
-  const accessTokenResponse = await githubRequest(
-    "https://api.github.com",
-    `/app/installations/${installationId}/access_tokens`,
-    {
-      method: "POST",
-      token: appJwt,
-      body,
-    },
+  const parsedToken = parseInstallationTokenResponse(
+    await githubRequest(
+      GITHUB_API,
+      `/app/installations/${installationId}/access_tokens`,
+      { method: "POST", token: appJwt, body },
+    ),
   );
-  const parsedToken = parseInstallationTokenResponse(accessTokenResponse);
   return {
     expiresAtMs: Math.min(parsedToken.expiresAtMs, Date.now() + MAX_LEASE_MS),
     token: parsedToken.token,
   };
 }
 
-/** Issue a bounded GitHub App installation credential. */
-async function issueInstallationCredential(
-  options: InstallationCredentialOptions,
-): Promise<PluginCredentialResult> {
-  const token = await issueInstallationToken(options);
-  return createCredentialLease({
-    token: token.token,
-    expiresAtMs: token.expiresAtMs,
-  });
+/**
+ * Issue a bounded raw token for one App installation. Omit `permissions` and
+ * `repositories` to use the full installed App permissions and repos.
+ */
+export async function issueInstallationToken(
+  options: GitHubAppEnv & {
+    installationId: number;
+    permissions?: GitHubAppPermissions;
+    repositories?: string[];
+  },
+): Promise<{ expiresAtMs: number; token: string }> {
+  return await mintInstallationToken(
+    createAppJwt(requireEnv(options.appIdEnv), options.privateKeyEnv),
+    options.installationId,
+    { permissions: options.permissions, repositories: options.repositories },
+  );
 }
 
-interface GitHubCredentialOptions
-  extends InstallationCredentialBaseOptions, UserCredentialOptions {
-  /** Declared read permissions, or a loader for the installed ones. */
-  readPermissions:
-    | { permissions: GitHubAppPermissions }
-    | { loadPermissions: LoadInstallationReadPermissions };
+/** Read one App installation id, or undefined when the App is not installed. */
+async function findInstallationId(
+  cache: PluginCache,
+  appJwt: string,
+  path: string,
+): Promise<number | undefined> {
+  const id = await cache.getOrLoad<number | null>(
+    `installation-id:${path}`,
+    async () => {
+      let installation: unknown;
+      try {
+        installation = await githubRequest(GITHUB_API, path, { token: appJwt });
+      } catch (error) {
+        if (error instanceof GitHubRequestError && error.status === 404) {
+          // Do not cache: the App can be installed at any time.
+          return { value: null };
+        }
+        throw error;
+      }
+      const value = isRecord(installation) ? installation.id : undefined;
+      if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+        throw new Error("GitHub installation response missing id");
+      }
+      return { value, ttlMs: INSTALLATION_ID_TTL_MS };
+    },
+  );
+  return id ?? undefined;
+}
+
+/** Read the installation on the account that owns the App. */
+async function appOwnerInstallationId(
+  cache: PluginCache,
+  appJwt: string,
+): Promise<number> {
+  const owner = await cache.getOrLoad("app-owner", async () => {
+    const app = await githubRequest(GITHUB_API, "/app", { token: appJwt });
+    const value = isRecord(app) && isRecord(app.owner) ? app.owner : undefined;
+    if (typeof value?.login !== "string" || !value.login) {
+      throw new Error("GitHub App response missing owner");
+    }
+    return {
+      value: {
+        login: value.login,
+        organization: value.type === "Organization",
+      },
+      ttlMs: INSTALLATION_ID_TTL_MS,
+    };
+  });
+  const id = await findInstallationId(
+    cache,
+    appJwt,
+    `/${owner.organization ? "orgs" : "users"}/${encodeURIComponent(owner.login)}/installation`,
+  );
+  if (!id) {
+    throw new GitHubPluginSetupError(
+      `The GitHub App is not installed on ${owner.login}.`,
+    );
+  }
+  return id;
+}
+
+/**
+ * Resolve the App installation for an installation grant from its lease
+ * scope. Writes need the target's own installation. Reads without one, or
+ * without a target, use the App owner's installation, which can still read
+ * public repositories.
+ */
+async function resolveInstallationId(
+  ctx: IssueCredentialHookContext,
+  appJwt: string,
+): Promise<number> {
+  const lookup = installationLookupForLeaseScope(ctx.grant.leaseScope);
+  if (lookup) {
+    const id = await findInstallationId(ctx.cache, appJwt, lookup.path);
+    if (id) return id;
+    if (ctx.grant.access === "write") {
+      throw new GitHubPluginSetupError(
+        `The GitHub App is not installed on ${lookup.label}.`,
+      );
+    }
+  }
+  return await appOwnerInstallationId(ctx.cache, appJwt);
+}
+
+/** Read an installation's permissions as read grants, cached per lease period. */
+async function installedReadPermissions(
+  cache: PluginCache,
+  appJwt: string,
+  installationId: number,
+): Promise<Record<string, "read">> {
+  return await cache.getOrLoad(
+    `installation-permissions:${installationId}`,
+    async () => ({
+      value: readInstallationPermissions(
+        await githubRequest(
+          GITHUB_API,
+          `/app/installations/${installationId}`,
+          {
+            token: appJwt,
+          },
+        ),
+      ),
+      ttlMs: MAX_LEASE_MS,
+    }),
+  );
+}
+
+interface GitHubCredentialOptions extends GitHubAppEnv, UserCredentialOptions {
+  /** Declared read permissions. Omit to read the installed ones. */
+  readPermissions?: Record<string, "read">;
 }
 
 /**
@@ -891,22 +925,26 @@ export async function issueGitHubCredential(
   ctx: IssueCredentialHookContext,
   options: GitHubCredentialOptions,
 ): Promise<PluginCredentialResult> {
-  const installation = {
-    appIdEnv: options.appIdEnv,
-    installationIdEnv: options.installationIdEnv,
-    privateKeyEnv: options.privateKeyEnv,
-  };
   try {
-    if (ctx.grant.name === "installation-read") {
-      return await issueInstallationCredential({
-        ...installation,
-        ...options.readPermissions,
-      });
-    }
-    if (ctx.grant.name === "installation-write") {
-      // Use the full installed App permissions. Repo allowlisting stays in
-      // egress policy, not in per-request token minting.
-      return await issueInstallationCredential(installation);
+    if (
+      ctx.grant.name === "installation-read" ||
+      ctx.grant.name === "installation-write"
+    ) {
+      const appJwt = createAppJwt(
+        requireEnv(options.appIdEnv),
+        options.privateKeyEnv,
+      );
+      const installationId = await resolveInstallationId(ctx, appJwt);
+      // Write tokens use the full installed App permissions and repos. Repo
+      // allowlisting stays in egress policy, not in per-request token minting.
+      const permissions =
+        ctx.grant.name === "installation-read"
+          ? (options.readPermissions ??
+            (await installedReadPermissions(ctx.cache, appJwt, installationId)))
+          : undefined;
+      return createCredentialLease(
+        await mintInstallationToken(appJwt, installationId, { permissions }),
+      );
     }
     if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
       return await issueUserCredential(ctx, options);
@@ -920,37 +958,4 @@ export async function issueGitHubCredential(
   throw new Error(
     `GitHub plugin cannot issue unknown grant "${ctx.grant.name}".`,
   );
-}
-
-/** Cache the installation's read permissions for one lease period. */
-export function createPermissionCache(): LoadInstallationReadPermissions {
-  let cached:
-    | {
-        expiresAtMs: number;
-        permissions: Record<string, "read">;
-      }
-    | undefined;
-  let pending: Promise<Record<string, "read">> | undefined;
-  return async ({ appJwt, installationId }) => {
-    if (cached && cached.expiresAtMs > Date.now()) {
-      return cached.permissions;
-    }
-    pending ??= githubRequest(
-      "https://api.github.com",
-      `/app/installations/${installationId}`,
-      { token: appJwt },
-    )
-      .then((installation) => {
-        const permissions = readInstallationPermissions(installation);
-        cached = {
-          expiresAtMs: Date.now() + MAX_LEASE_MS,
-          permissions,
-        };
-        return permissions;
-      })
-      .finally(() => {
-        pending = undefined;
-      });
-    return await pending;
-  };
 }
