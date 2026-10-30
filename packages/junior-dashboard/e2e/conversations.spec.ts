@@ -246,14 +246,14 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   });
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("Third queued message.")).toBeHidden();
+  await expect(pending.getByText("Fifth queued message.")).toBeHidden();
 
   await expand.click();
   await expect(
     pending.getByRole("button", { name: "Show fewer queued messages" }),
   ).toHaveAttribute("aria-expanded", "true");
-  await expect(pending.getByText("Third queued message.")).toBeVisible();
   await expect(pending.getByText("Fifth queued message.")).toBeVisible();
+  await expect(pending.getByText("Seventh queued message.")).toBeVisible();
 
   await pending
     .getByRole("button", { name: "Show fewer queued messages" })
@@ -261,7 +261,7 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   await expect(
     pending.getByRole("button", { name: "3 more queued messages" }),
   ).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("Third queued message.")).toBeHidden();
+  await expect(pending.getByText("Fifth queued message.")).toBeHidden();
 });
 
 test("scrolls long conversation and transcript panes independently", async ({

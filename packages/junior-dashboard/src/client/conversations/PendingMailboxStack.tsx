@@ -34,8 +34,9 @@ import {
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
 
-const MAX_EXPANDED_PENDING_ROWS = 3;
-const COLLAPSED_PENDING_ROW_COUNT = 2;
+// Rows are one line each, so the stack can show five before it collapses.
+const MAX_EXPANDED_PENDING_ROWS = 5;
+const COLLAPSED_PENDING_ROW_COUNT = 4;
 
 function pendingDeliveryMeta(
   message: Pick<ConversationMailboxMessage, "clientStatus" | "delivery">,
@@ -447,7 +448,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
       className="mx-2 overflow-hidden rounded-t-lg bg-amber-300/[0.055] md:mx-3"
     >
       {showCollapsed ? (
-        // Desktop keeps a two-row preview; mobile collapses to the control only.
+        // Desktop keeps a short preview; mobile collapses to the control only.
         <div className="hidden md:block">{previewRows.map(renderRow)}</div>
       ) : (
         visibleRows.map(renderRow)
