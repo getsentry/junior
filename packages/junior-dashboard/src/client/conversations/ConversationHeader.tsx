@@ -10,6 +10,7 @@ import {
 import { Ellipsis, Menu } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
+import { Button } from "../components/ui/button";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
@@ -149,17 +150,17 @@ export function ConversationHeader(props: {
             view={props.view}
           />
           {openMobileNavigation ? (
-            <button
-              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none"
+            <Button
+              className="mt-0.5"
               onClick={() => {
                 setMobileMenuOpen(false);
                 openMobileNavigation();
               }}
-              type="button"
+              size="menu"
             >
               <Menu aria-hidden="true" size={16} strokeWidth={2} />
               App menu
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}

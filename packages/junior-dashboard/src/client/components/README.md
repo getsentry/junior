@@ -68,6 +68,8 @@ Rules for adopted components:
 - Build a form field from `ui/field`. Give `FieldError` the id
   `<control id>-error` and `FieldDescription` the id `<control id>-help`. The
   control sets `aria-invalid` and `aria-describedby`.
+- Use `Button size="menu"` for a full-width icon and label row in a mobile
+  overflow menu. A pressed row adds `bg-dashboard-fill-strong`.
 - For a link that looks like a button, put `buttonVariants()` on the router
   `Link`. A form page has one `Button variant="primary"` for its main save
   action.
