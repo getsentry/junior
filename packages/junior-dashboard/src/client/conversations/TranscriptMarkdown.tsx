@@ -44,7 +44,12 @@ export function TranscriptMarkdown(props: {
       <div className={cn("grid min-w-0", props.compact ? "gap-3" : "gap-2")}>
         <Markdown
           components={COMPONENTS}
-          remarkPlugins={[remarkGfm, remarkBreaks, remarkSectionLabels]}
+          remarkPlugins={[
+            remarkGfm,
+            remarkBreaks,
+            remarkBareUrlStops,
+            remarkSectionLabels,
+          ]}
           urlTransform={safeTranscriptHref}
         >
           {normalizeSlackBullets(props.text)}
@@ -62,9 +67,42 @@ function normalizeSlackBullets(text: string): string {
 type MarkdownNode = {
   children?: MarkdownNode[];
   depth?: number;
+  position?: { start: { offset?: number } };
   type: string;
+  url?: string;
   value?: string;
 };
+
+/**
+ * End a bare URL at `*`, as Slack output does (`readBareUrl` in
+ * `packages/junior/src/chat/slack/mrkdwn.ts`). GFM keeps `*` in the URL, so
+ * `https://example.com**bold**` would link to `https://example.com**bold`.
+ */
+function remarkBareUrlStops() {
+  return (tree: MarkdownNode, file: { value: unknown }) => {
+    splitBareUrls(tree, String(file.value));
+  };
+}
+
+function splitBareUrls(parent: MarkdownNode, source: string): void {
+  parent.children = parent.children?.flatMap((node) => {
+    splitBareUrls(node, source);
+    const text = node.children?.[0];
+    const stop = node.url?.indexOf("*") ?? -1;
+    const bare =
+      node.type === "link" &&
+      node.children?.length === 1 &&
+      text?.value === node.url &&
+      source[node.position?.start.offset ?? -1] !== "<";
+    if (!bare || stop <= 0) return [node];
+
+    const url = node.url!.slice(0, stop);
+    return [
+      { ...node, children: [{ type: "text", value: url }], url },
+      { type: "text", value: node.url!.slice(stop) },
+    ];
+  });
+}
 
 /**
  * Agents often start a top-level paragraph with a bold-only line, such as
