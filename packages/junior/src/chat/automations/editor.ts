@@ -10,13 +10,19 @@ import { AutomationEditError } from "./edit-rules";
 import { readViewerAutomationEdit } from "./edit";
 import type { User } from "@sentry/junior-plugin-api";
 
-/** Return only Event types that can start a durable Automation. */
+/**
+ * Return only Event types that can start a durable Automation. Each entry
+ * carries the events of its namespace that can run for any resource.
+ */
 export function readAutomationEventCatalog() {
   return Object.entries(automationEventCatalog(getEventCatalog())).flatMap(
     ([namespace, registration]) =>
       registration.resourceTypes.map((resource) => ({
         namespace,
         ...resource,
+        ...(registration.anyResourceEvents
+          ? { anyResourceEvents: registration.anyResourceEvents }
+          : undefined),
       })),
   );
 }

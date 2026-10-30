@@ -17,6 +17,16 @@ const searchedResourceTypeSchema = z
     // Use the plugin contract schema, so new filter field keys such as
     // `events` reach the agent instead of failing this output.
     matchFields: z.record(z.string(), eventMatchFieldSchema).optional(),
+    anyResourceEvents: z
+      .array(
+        z
+          .object({
+            event: z.string(),
+            requiredFilter: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -36,6 +46,18 @@ function normalizeSearchText(value: string): string {
     .trim();
 }
 
+// The events of one resource type that can run with no identifier.
+function anyResourceEventsOf(
+  anyResourceEvents: EventCatalog[string]["anyResourceEvents"],
+  supportedEvents: readonly string[],
+) {
+  const events = [...supportedEvents].sort().flatMap((event) => {
+    const scope = anyResourceEvents?.[event];
+    return scope ? [{ event, ...scope }] : [];
+  });
+  return events.length > 0 ? { anyResourceEvents: events } : undefined;
+}
+
 function searchableResourceTypes(catalog: EventCatalog) {
   return Object.entries(catalog)
     .flatMap(([namespace, registration]) =>
@@ -52,6 +74,10 @@ function searchableResourceTypes(catalog: EventCatalog) {
         ...(resourceType.matchFields
           ? { matchFields: resourceType.matchFields }
           : undefined),
+        ...anyResourceEventsOf(
+          registration.anyResourceEvents,
+          resourceType.supportedEvents,
+        ),
       })),
     )
     .sort(
@@ -71,7 +97,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
       readOnlyHint: true,
     },
     description:
-      "Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. Use watchEvents for temporary updates in the current conversation; use createEventAutomation for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.",
+      "Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. An event in anyResourceEvents can start an event automation for every resource of its namespace: leave out identifier and resourceType, and narrow it with match filters from that namespace. Set its requiredFilter, if it has one. Use watchEvents for temporary updates in the current conversation; use createEventAutomation for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.",
     inputSchema: z
       .object({
         query: z

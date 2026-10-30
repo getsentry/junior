@@ -16,6 +16,7 @@ import {
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import { GITHUB_ANY_RESOURCE_EVENTS } from "./events/any-resource.js";
 import {
   loadPullRequestCommitPages,
   loadRepositoryRole,
@@ -203,6 +204,7 @@ export function githubPlugin(
           ),
         },
       ],
+      anyResourceEvents: GITHUB_ANY_RESOURCE_EVENTS,
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },

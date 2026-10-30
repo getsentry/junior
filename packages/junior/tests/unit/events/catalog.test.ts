@@ -9,7 +9,7 @@ import {
 import {
   describeEventAutomationTrigger,
   registeredEventAutomationTriggerSchema,
-  requireSupportedEventAutomationTrigger,
+  requireEventAutomationTrigger,
 } from "@/chat/event-automations/tool-support";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
@@ -32,6 +32,9 @@ const catalog: EventCatalog = {
       {
         type: "repository",
         supportedEvents: ["pull_request.comment.created"],
+        guidance: {
+          "pull_request.comment.created": "Address actionable feedback.",
+        },
       },
     ],
   },
@@ -39,23 +42,26 @@ const catalog: EventCatalog = {
 };
 
 describe("event catalog", () => {
-  it("scopes app guidance to the registered resource type", () => {
+  it("gives one guidance per event and rejects resource types that disagree", () => {
     expect(
-      eventGuidance(
-        catalog,
-        "github",
-        "pull_request",
-        "pull_request.comment.created",
-      ),
+      eventGuidance(catalog, "github", "pull_request.comment.created"),
     ).toBe("Address actionable feedback.");
-    expect(
-      eventGuidance(
-        catalog,
-        "github",
-        "repository",
-        "pull_request.comment.created",
-      ),
-    ).toBeUndefined();
+    const disagreeing: EventCatalog = {
+      github: {
+        resourceTypes: [
+          ...catalog.github!.resourceTypes.slice(0, 1),
+          {
+            type: "repository",
+            supportedEvents: ["pull_request.comment.created"],
+          },
+        ],
+      },
+    };
+    expect(() =>
+      eventGuidance(disagreeing, "github", "pull_request.comment.created"),
+    ).toThrow(
+      'Resource types "pull_request", "repository" give different guidance for "pull_request.comment.created".',
+    );
   });
 
   it("rejects an identifier that does not fit its resource type", () => {
@@ -122,9 +128,11 @@ describe("event catalog", () => {
     );
 
     expect(() =>
-      requireSupportedEventAutomationTrigger(catalog, {
+      requireEventAutomationTrigger(catalog, {
         namespace: CORE_EVENT_NAMESPACE,
+        identifier: "11111111-1111-4111-8111-111111111111",
         resourceType: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+        label: "Workspace sentry snapshot",
         events: [WORKSPACE_SNAPSHOT_READY_EVENT],
       }),
     ).toThrow(ToolInputError);

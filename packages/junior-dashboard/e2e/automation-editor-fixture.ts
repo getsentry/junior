@@ -100,6 +100,10 @@ export async function mockAutomationEditor(
               events: ["issue.closed"],
             },
           },
+          anyResourceEvents: {
+            "issue.closed": { requiredFilter: "state" },
+            "issue.opened": {},
+          },
         },
       ],
     }),

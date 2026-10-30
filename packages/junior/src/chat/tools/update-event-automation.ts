@@ -139,7 +139,13 @@ export function createUpdateEventAutomationTool(
           {
             title: input.title,
             instruction: input.instruction ?? undefined,
-            trigger: input.trigger ?? undefined,
+            trigger: input.trigger
+              ? {
+                  ...input.trigger,
+                  identifier: input.trigger.identifier ?? undefined,
+                  resourceType: input.trigger.resourceType ?? undefined,
+                }
+              : undefined,
             outcomes: input.outcomes ?? undefined,
             credentialMode: input.credentialMode ?? undefined,
           },

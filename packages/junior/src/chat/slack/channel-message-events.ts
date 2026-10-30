@@ -134,6 +134,9 @@ export function slackChannelMessageEvent(input: {
 /**
  * Decide whether a channel-message Event may run one automation.
  *
+ * A message runs only automations that post in its own channel, so private
+ * channel text cannot reach another channel. The trigger identifier already
+ * names that channel, and this check keeps the rule when it does not.
  * A bot post runs only automations whose match names its author in `userId`.
  * Bots can post often and would use up the run limit of every other
  * automation in the channel.
@@ -143,6 +146,7 @@ export function slackChannelMessageRunsAutomation(
   automation: EventAutomation,
 ): boolean {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return true;
+  if (event.data?.channelId !== automation.destination.channelId) return false;
   if (event.data?.postedByBot !== true) return true;
   return automation.trigger.match?.userId !== undefined;
 }

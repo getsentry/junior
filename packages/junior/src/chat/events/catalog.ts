@@ -3,6 +3,7 @@ import {
   eventTriggerProblems,
   normalizeEventIdentifier,
   eventMatchSchema,
+  sourceEventGuidance,
   type EventTriggerDescription,
   type EventTriggerProblem,
   type EventTriggerSelection,
@@ -32,7 +33,7 @@ export type EventResourceTypeLimits = {
 
 type EventRegistration = Pick<
   PluginEvents,
-  "resourceTypes" | "normalizeIdentifier"
+  "anyResourceEvents" | "resourceTypes" | "normalizeIdentifier"
 > & {
   /** Name people see for the source, such as GitHub. Defaults to the namespace. */
   displayName?: string;
@@ -126,16 +127,20 @@ export function registeredResourceTypeSchema(catalog: EventCatalog) {
   );
 }
 
-/** Return app guidance for one registered resource type and event type. */
+/**
+ * Return app guidance for one event of a namespace. Every resource type that
+ * has the event gives the same guidance, so a trigger with no resource type
+ * gets it too. This throws when two resource types disagree.
+ */
 export function eventGuidance(
   catalog: EventCatalog,
   namespace: string,
-  resourceType: string,
   eventType: string,
 ): string | undefined {
-  return catalog[namespace]?.resourceTypes.find(
-    (candidate) => candidate.type === resourceType,
-  )?.guidance?.[eventType];
+  return sourceEventGuidance(
+    catalog[namespace]?.resourceTypes ?? [],
+    eventType,
+  );
 }
 
 /** Build the match object the tools accept for one resource type. */
@@ -163,7 +168,7 @@ export function registeredEventTriggerProblems(
   options?: { inputKeys?: boolean },
 ): EventTriggerProblem[] {
   return eventTriggerProblems(
-    catalog[selection.namespace]?.resourceTypes ?? [],
+    catalog[selection.namespace] ?? { resourceTypes: [] },
     selection,
     options,
   );
@@ -178,7 +183,7 @@ export function describeRegisteredEventTrigger(
   selection: RegisteredEventSelection,
 ): EventTriggerDescription {
   return describeEventTrigger(
-    catalog[selection.namespace]?.resourceTypes ?? [],
+    catalog[selection.namespace] ?? { resourceTypes: [] },
     selection,
   );
 }
@@ -209,7 +214,9 @@ export function requireValidEventTrigger(
   if (problems.length > 0) {
     const source =
       catalog[selection.namespace]?.displayName ?? selection.namespace;
-    const resource = `${source} ${selection.resourceType.replaceAll("_", " ")}`;
+    const resource = selection.resourceType
+      ? `${source} ${selection.resourceType.replaceAll("_", " ")}`
+      : source;
     throw new ToolInputError(
       [
         target === "watch"

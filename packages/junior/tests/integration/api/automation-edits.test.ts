@@ -956,6 +956,43 @@ describe("Automation edit API", () => {
         },
       });
       expect(await unavailableIds()).toEqual([id]);
+
+      // With no identifier, pull request events need a repo filter.
+      const anyResource = {
+        namespace: "github",
+        label: "New pull requests",
+        events: ["pull_request.opened"],
+      };
+      const unscoped = await patch({
+        kind: "event",
+        revision: (await read()).revision,
+        trigger: anyResource,
+      });
+      expect(unscoped.status).toBe(400);
+      expect(await unscoped.json()).toMatchObject({
+        fields: {
+          trigger: [
+            'This GitHub trigger cannot be saved. This trigger needs a "repo" filter (match.repo), because "pull_request.opened" cannot run for every resource.',
+          ],
+        },
+      });
+      const scoped = await patch({
+        kind: "event",
+        revision: (await read()).revision,
+        trigger: { ...anyResource, match: { repo: "getsentry/junior" } },
+      });
+      expect(scoped.status).toBe(200);
+      expect(await unavailableIds()).toEqual([]);
+      expect(
+        await (await app.request(`/api/automations/${id}`)).json(),
+      ).toMatchObject({
+        resource: "New pull requests",
+        trigger: {
+          events: ["pull request opened"],
+          filters: ["repo is getsentry/junior"],
+          problems: [],
+        },
+      });
     } finally {
       await fixture.close();
     }

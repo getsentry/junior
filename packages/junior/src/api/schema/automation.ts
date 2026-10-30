@@ -10,6 +10,7 @@ import {
   eventAutomationEditSchema,
 } from "@/chat/automations/edit-schema";
 import {
+  anyResourceEventSchema,
   pluginEventTypeSchema,
   taskOutcomeSchema,
   type EventTriggerDescription,
@@ -406,9 +407,16 @@ export const automationEditErrorSchema = z
 export type AutomationEdit = z.output<typeof automationEditSchema>;
 export type AutomationUpdate = z.output<typeof automationUpdateSchema>;
 
-/** Catalog metadata only; callbacks and provider connections stay on the server. */
+/**
+ * Catalog metadata only; callbacks and provider connections stay on the
+ * server. `anyResourceEvents` belongs to the namespace, so each resource type
+ * of the namespace has the same copy.
+ */
 export const automationEventCatalogSchema = z.array(
-  pluginEventTypeSchema.safeExtend({ namespace: z.string() }),
+  pluginEventTypeSchema.safeExtend({
+    namespace: z.string(),
+    anyResourceEvents: z.record(z.string(), anyResourceEventSchema).optional(),
+  }),
 );
 export const automationScheduleIntentSchema = scheduleIntentSchema;
 export const automationSchedulePreviewSchema = scheduledAutomationSchema

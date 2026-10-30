@@ -17,15 +17,12 @@ import {
   eventAutomationToolResultSchema,
   registeredEventAutomationTriggerSchema,
   requireEventAutomationSlackContext,
-  requireSupportedEventAutomationTrigger,
+  requireEventAutomationTrigger,
 } from "@/chat/event-automations/tool-support";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { completeText } from "@/chat/pi/client";
 import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
-import {
-  requireEventIdentifier,
-  type EventCatalog,
-} from "@/chat/events/catalog";
+import type { EventCatalog } from "@/chat/events/catalog";
 import {
   resolveTaskTitle,
   SHORT_TITLE_MAX_LENGTH,
@@ -76,7 +73,7 @@ export function createEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. When the resource and events are known, create it without redundant confirmation. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
+      "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. When the resource and events are known, create it without redundant confirmation. To run for every resource of a namespace, such as any Sentry metric alert, leave out identifier and resourceType and use match filters; searchEventTypes lists the events that allow it in anyResourceEvents and the filter each one needs. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema,
@@ -132,11 +129,7 @@ export function createEventAutomationTool(
       const { actor, destination, source } =
         requireEventAutomationSlackContext(context);
       requireRequesterMention(input.instruction, actor);
-      const match = requireSupportedEventAutomationTrigger(
-        catalog,
-        input.trigger,
-      );
-      const identifier = requireEventIdentifier(catalog, input.trigger);
+      const trigger = requireEventAutomationTrigger(catalog, input.trigger);
       const id = buildEventAutomationId({
         channelId: destination.channelId,
         teamId: destination.teamId,
@@ -200,14 +193,7 @@ export function createEventAutomationTool(
         ),
         task: { text: input.instruction },
         ...(title ? { title } : undefined),
-        trigger: {
-          namespace: input.trigger.namespace,
-          identifier,
-          resourceType: input.trigger.resourceType,
-          label: input.trigger.label,
-          events: [...new Set(input.trigger.events)],
-          ...(match ? { match } : undefined),
-        },
+        trigger,
       });
       return eventAutomationToolResult(
         context.conversationId,

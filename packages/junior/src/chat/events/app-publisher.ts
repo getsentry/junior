@@ -11,6 +11,7 @@ import {
   collectEventMatchKeys,
   findMatchingWatches,
 } from "@/chat/events/store";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createEventTeamIdResolver } from "@/chat/events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -48,7 +49,12 @@ export function createEventAppPublisher(args: {
           state: work.state,
         }),
         eventAutomationTeamId
-          ? findMatchingEventAutomations(getDb(), event, eventAutomationTeamId)
+          ? findMatchingEventAutomations(
+              getDb(),
+              event,
+              eventAutomationTeamId,
+              getEventCatalog(),
+            )
           : Promise.resolve([]),
       ]);
       return subscriptions.length > 0 || tasks.length > 0;

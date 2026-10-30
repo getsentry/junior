@@ -164,6 +164,9 @@ describe("event tools", () => {
         resourceTypes: GITHUB_EVENTS.github.resourceTypes.map(
           (resourceType) => ({ ...resourceType, matchFields: { authors } }),
         ),
+        anyResourceEvents: {
+          "pull_request.checks.failed": { requiredFilter: "authors" },
+        },
       },
     });
 
@@ -184,6 +187,10 @@ describe("event tools", () => {
           suggestedEvents: ["pull_request.checks.failed"],
           // The agent needs `events` to pick events that the filter matches.
           matchFields: { authors },
+          // The agent can leave out the identifier for these events.
+          anyResourceEvents: [
+            { event: "pull_request.checks.failed", requiredFilter: "authors" },
+          ],
         },
       ],
     });

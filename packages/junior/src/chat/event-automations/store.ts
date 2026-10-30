@@ -1,9 +1,14 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { recordAutomationVersion } from "@/chat/automations/versions";
 import { eventMatches, type Event, type User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
+import {
+  automationEventCatalog,
+  registeredEventTriggerProblems,
+  type EventCatalog,
+} from "@/chat/events/catalog";
 import { clearEventAutomationRuns } from "./run-limit";
 import {
   eventAutomationSchema,
@@ -41,7 +46,7 @@ function eventAutomationColumns(task: EventAutomation | StoredEventAutomation) {
     channelId: record.destination.channelId,
     creatorIdentityId,
     creatorSlackUserId: record.createdBy.slackUserId,
-    identifier: record.trigger.identifier,
+    identifier: record.trigger.identifier ?? null,
     instruction: record.task.text,
     namespace: record.trigger.namespace,
     record,
@@ -243,8 +248,23 @@ export async function listDeletedEventAutomationsCreatedBy(
 }
 
 /**
- * Collect match keys from live event automations for these identifiers and event types.
- * Does not evaluate match values — only reports keys that filters use.
+ * Select live rows whose identifier is one of these, and rows with no
+ * identifier. A row with no identifier runs for every resource of its
+ * namespace, so it gets every copy of an Event.
+ */
+function eventIdentifierWhere(identifiers: readonly string[]) {
+  return or(
+    isNull(juniorAutomations.identifier),
+    ...(identifiers.length > 0
+      ? [inArray(juniorAutomations.identifier, [...identifiers])]
+      : []),
+  );
+}
+
+/**
+ * Collect match keys from live event automations for these identifiers and
+ * event types, and from automations with no identifier. Does not evaluate
+ * match values — only reports keys that filters use.
  */
 export async function collectEventAutomationMatchKeys(
   db: JuniorDatabase,
@@ -261,7 +281,7 @@ export async function collectEventAutomationMatchKeys(
   const identifiers = [
     ...new Set(input.identifiers.map((value) => value.trim()).filter(Boolean)),
   ];
-  if (eventTypes.size === 0 || identifiers.length === 0) return [];
+  if (eventTypes.size === 0) return [];
   const rows = await db
     .select()
     .from(juniorAutomations)
@@ -270,7 +290,7 @@ export async function collectEventAutomationMatchKeys(
         eq(juniorAutomations.kind, "event"),
         eq(juniorAutomations.teamId, input.teamId),
         eq(juniorAutomations.namespace, input.namespace),
-        inArray(juniorAutomations.identifier, identifiers),
+        eventIdentifierWhere(identifiers),
         eq(juniorAutomations.status, "active"),
       ),
     )
@@ -288,11 +308,19 @@ export async function collectEventAutomationMatchKeys(
   return [...keys].sort();
 }
 
-/** Find every live task matching one normalized event. */
+/**
+ * Find every live task matching one normalized event: tasks for its exact
+ * identifier, and tasks with no identifier whose filters match.
+ *
+ * A task with no identifier runs only while its trigger has no problems with
+ * the enabled `catalog`. A plugin can later require a filter or stop letting
+ * an event run for every resource, and the task must not stay broad.
+ */
 export async function findMatchingEventAutomations(
   db: JuniorDatabase,
   event: Event,
   teamId: string,
+  catalog: EventCatalog,
 ): Promise<StoredEventAutomation[]> {
   const rows = await db
     .select()
@@ -302,17 +330,20 @@ export async function findMatchingEventAutomations(
         eq(juniorAutomations.kind, "event"),
         eq(juniorAutomations.teamId, teamId),
         eq(juniorAutomations.namespace, event.namespace),
-        eq(juniorAutomations.identifier, event.identifier),
+        eventIdentifierWhere([event.identifier]),
         eq(juniorAutomations.status, "active"),
       ),
     )
     .orderBy(asc(juniorAutomations.createdAtMs), asc(juniorAutomations.id));
+  const plugins = automationEventCatalog(catalog);
   return rows
     .map(parseEventAutomationRow)
     .filter(
       (task) =>
         task.trigger.events.includes(event.eventType) &&
-        eventMatches(task.trigger.match, event.data),
+        eventMatches(task.trigger.match, event.data) &&
+        (task.trigger.identifier !== undefined ||
+          registeredEventTriggerProblems(plugins, task.trigger).length === 0),
     );
 }
 

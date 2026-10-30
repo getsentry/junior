@@ -336,8 +336,10 @@ function VersionSettings(props: {
           )
         ) : (
           <>
-            {version.definition.trigger.label} ·{" "}
-            {version.definition.trigger.identifier}
+            {version.definition.trigger.label}
+            {version.definition.trigger.identifier
+              ? ` · ${version.definition.trigger.identifier}`
+              : null}
             <br />
             {version.trigger.events.join(", ")}
             <TriggerFilters filters={version.trigger.filters} />

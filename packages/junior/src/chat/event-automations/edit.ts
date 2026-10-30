@@ -5,13 +5,10 @@ import {
   AutomationEditError,
   editAutomationFields,
 } from "@/chat/automations/edit-rules";
-import {
-  requireEventIdentifier,
-  type EventCatalog,
-} from "@/chat/events/catalog";
+import type { EventCatalog } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
-import { requireSupportedEventAutomationTrigger } from "./tool-support";
+import { requireEventAutomationTrigger } from "./tool-support";
 import type { EventAutomation } from "./types";
 import type { z } from "zod";
 
@@ -45,16 +42,7 @@ export async function editEventAutomation(
       current.trigger.resourceType !== input.trigger.resourceType
     ) {
       try {
-        const match = requireSupportedEventAutomationTrigger(
-          catalog,
-          input.trigger,
-        );
-        trigger = {
-          ...input.trigger,
-          identifier: requireEventIdentifier(catalog, input.trigger),
-          events: [...new Set(input.trigger.events)],
-          match,
-        };
+        trigger = requireEventAutomationTrigger(catalog, input.trigger);
       } catch (error) {
         if (error instanceof ToolInputError)
           throw new AutomationEditError(error.message, "trigger");
