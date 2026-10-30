@@ -102,8 +102,10 @@ export async function bindMcpConsent(args: {
   });
   const key = consentKey(args.requestId);
   if (await args.state.setIfNotExists(key, consent, ttlMs)) return csrfToken;
-  const owner = mcpConsentSchema.parse(await args.state.get(key));
-  if (owner.userId !== args.userId) return undefined;
+  const stored = await args.state.get(key);
+  // A racing claim deleted the binding, so the request has ended.
+  if (stored === null || stored === undefined) return undefined;
+  if (mcpConsentSchema.parse(stored).userId !== args.userId) return undefined;
   // The owner opened the page again. Only the newest form token works.
   await args.state.set(key, consent, ttlMs);
   return csrfToken;
