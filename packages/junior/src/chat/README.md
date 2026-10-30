@@ -173,7 +173,6 @@ same way.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
-  Slash-command handlers receive validated workspace, channel, and user ids.
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
 - Empty assistant output after a history replacement is retried once from the
