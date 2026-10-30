@@ -32,7 +32,12 @@ import {
   CONVERSATION_EVENT_PARAM,
   parseConversationEventSeq,
 } from "./conversationRoutes";
-import { ConversationComposer } from "./ConversationComposer";
+import {
+  ConversationComposer,
+  type ConversationComposerHandle,
+} from "./ConversationComposer";
+import { readStoredComposerImages } from "./ComposerImages";
+import { useDashboardCoreData } from "../api";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationEventDetails } from "./ConversationEventDetails";
@@ -558,6 +563,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
+  const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
+    useState<string>();
+  const [editError, setEditError] = useState<string>();
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -608,6 +616,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancelPendingMessagesRef.current.reset();
     }
     if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
+    setEditError(undefined);
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
@@ -631,6 +640,48 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     cancelPendingMessages.variables?.inboundMessageIds.some((id) =>
       cancellableMessageIds.includes(id),
     ),
+  );
+
+  // Edit uses its own cancel mutation so remove errors stay on remove.
+  const editCancel = useCancelConversationPendingMessages(props.conversationId);
+  const editCancelRef = useRef(editCancel);
+  editCancelRef.current = editCancel;
+  const composerRef = useRef<ConversationComposerHandle>(null);
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
+  const onEditMessage = useCallback(
+    async (message: ConversationMailboxMessage) => {
+      const receivedBefore = props.pendingGeneratedAtRef.current;
+      if (!receivedBefore || editCancelRef.current.isPending) return;
+      const inboundMessageId = message.inboundMessageId;
+      setEditTargetInboundMessageId(inboundMessageId);
+      setEditError(undefined);
+      try {
+        // Read images first. A failed read must leave the message queued.
+        const images = await readStoredComposerImages(
+          props.conversationId,
+          message.attachments,
+        );
+        const result = await editCancelRef.current.mutateAsync({
+          inboundMessageIds: [inboundMessageId],
+          receivedBefore,
+        });
+        // Junior can read the message before the cancel lands. Then it is
+        // already in the Conversation and there is nothing to edit.
+        if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
+          setEditError("Junior already read that message.");
+          return;
+        }
+        composerRef.current?.restoreMessage({
+          images,
+          text: message.text ?? "",
+        });
+      } catch {
+        setEditError("Could not edit the queued message. Try again.");
+      } finally {
+        setEditTargetInboundMessageId(undefined);
+      }
+    },
+    [props.conversationId, props.pendingGeneratedAtRef],
   );
 
   const onStop = useCallback(async () => {
@@ -662,17 +713,25 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             cancelPending={cancelPendingMessages.isPending}
             cancelTargetInboundMessageId={cancelTargetInboundMessageId}
             committedMessageIds={props.committedMessageIds}
+            conversationId={props.conversationId}
+            editTargetInboundMessageId={editTargetInboundMessageId}
             messages={props.pendingMessages}
             onCancelMessage={onCancelMessage}
+            onEditMessage={onEditMessage}
             onLayoutChange={onMailboxLayoutChange}
             onRetry={onRetry}
+            viewerEmail={viewerEmail}
           />
         </>
       }
     >
       <ConversationComposer
         draftId={props.conversationId}
-        error={stopTurn.error ? "Could not stop Junior. Try again." : undefined}
+        error={
+          editError ??
+          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+        }
+        ref={composerRef}
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}

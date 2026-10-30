@@ -6,7 +6,11 @@ import { FileText } from "lucide-react";
 import { ImageAttachment } from "../components/ImageAttachment";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
-function attachmentUrl(conversationId: string, attachmentId: string): string {
+/** Build the private read route for one stored conversation attachment. */
+export function conversationAttachmentUrl(
+  conversationId: string,
+  attachmentId: string,
+): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
@@ -41,7 +45,10 @@ function TranscriptAttachment(props: {
   conversationId: string;
 }) {
   const search = useTranscriptSearch();
-  const href = attachmentUrl(props.conversationId, props.attachment.id);
+  const href = conversationAttachmentUrl(
+    props.conversationId,
+    props.attachment.id,
+  );
   const size = formatAttachmentBytes(props.attachment.bytes);
   const inline = INPUT_IMAGE_TYPES.some(
     (type) => type === props.attachment.contentType,

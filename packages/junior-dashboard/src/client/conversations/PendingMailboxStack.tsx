@@ -6,9 +6,12 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { INPUT_IMAGE_TYPES } from "@sentry/junior/api/schema";
 import {
   AlertCircle,
   Clock3,
+  FileText,
+  Pencil,
   SkipForward,
   X,
   type LucideIcon,
@@ -19,9 +22,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { ActorAvatar } from "../components/ActorAvatar";
+import { ImageAttachment } from "../components/ImageAttachment";
+import { ParticipantAvatar } from "../components/ParticipantAvatarStack";
 import { Spinner } from "../components/ui/spinner";
-import { actorLabel } from "../format";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
+import { conversationAttachmentUrl } from "./TranscriptAttachment";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -64,12 +70,47 @@ function PendingMetaIcon(props: { children: ReactElement; label: string }) {
   );
 }
 
+function PendingActionButton(props: {
+  disabled: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick(): void;
+  pending: boolean;
+  tooltip: string;
+}) {
+  const Icon = props.icon;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-label={props.label}
+            className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+            disabled={props.disabled}
+            onClick={props.onClick}
+            type="button"
+          >
+            {props.pending ? (
+              <Spinner aria-hidden="true" className="size-3.25" />
+            ) : (
+              <Icon aria-hidden="true" size={14} strokeWidth={2.2} />
+            )}
+          </button>
+        }
+      />
+      <TooltipContent>{props.tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function PendingMetaIcons(props: {
-  cancelDisabled: boolean;
+  actionsDisabled: boolean;
   cancelError: boolean;
   cancelPending: boolean;
+  editPending: boolean;
   message: ConversationMailboxMessage;
   onCancel?: () => void;
+  onEdit?: () => void;
   showSlack: boolean;
 }) {
   const delivery = pendingDeliveryMeta(props.message);
@@ -96,55 +137,110 @@ function PendingMetaIcons(props: {
           strokeWidth={2.2}
         />
       </PendingMetaIcon>
+      {props.onEdit ? (
+        <PendingActionButton
+          disabled={props.actionsDisabled}
+          icon={Pencil}
+          label="Edit queued message"
+          onClick={props.onEdit}
+          pending={props.editPending}
+          tooltip="Edit queued message"
+        />
+      ) : null}
       {props.onCancel ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                aria-label={
-                  props.cancelError
-                    ? "Could not remove. Try again."
-                    : "Remove queued message"
-                }
-                className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
-                disabled={props.cancelDisabled}
-                onClick={props.onCancel}
-                type="button"
-              >
-                {props.cancelPending ? (
-                  <Spinner aria-hidden="true" className="size-3.25" />
-                ) : (
-                  <X aria-hidden="true" size={14} strokeWidth={2.2} />
-                )}
-              </button>
-            }
-          />
-          <TooltipContent>Remove queued message</TooltipContent>
-        </Tooltip>
+        <PendingActionButton
+          disabled={props.actionsDisabled}
+          icon={X}
+          label={
+            props.cancelError
+              ? "Could not remove. Try again."
+              : "Remove queued message"
+          }
+          onClick={props.onCancel}
+          pending={props.cancelPending}
+          tooltip="Remove queued message"
+        />
       ) : null}
     </TranscriptHeadingMeta>
   );
 }
 
+function PendingAuthorAvatar(props: { message: ConversationMailboxMessage }) {
+  // Pending rows can come from web or Slack. Redacted rows hide the author.
+  if (!props.message.actorIdentity) {
+    return <ActorAvatar name="?" size="list" />;
+  }
+  return (
+    <ParticipantAvatar participant={props.message.actorIdentity} size="list" />
+  );
+}
+
+/** Show small previews so the reader can tell which images a queued message has. */
+function PendingAttachmentThumbnails(props: {
+  conversationId?: string;
+  message: ConversationMailboxMessage;
+}) {
+  const thumbnailClassName = "size-6 rounded object-cover";
+  const triggerClassName =
+    "block size-6 flex-none overflow-hidden rounded border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+  const localImages = props.message.images ?? [];
+  const attachments = props.message.attachments ?? [];
+  if (localImages.length === 0 && attachments.length === 0) return null;
+
+  return (
+    <span className="flex flex-none items-center gap-1">
+      {localImages.map((image, index) => (
+        <ImageAttachment
+          filename={image.filename}
+          imageClassName={thumbnailClassName}
+          key={`local:${index}`}
+          src={`data:${image.contentType};base64,${image.data}`}
+          triggerClassName={triggerClassName}
+        />
+      ))}
+      {attachments.map((attachment) => {
+        const isImage = INPUT_IMAGE_TYPES.some(
+          (type) => type === attachment.contentType,
+        );
+        if (isImage && props.conversationId) {
+          return (
+            <ImageAttachment
+              filename={attachment.filename}
+              imageClassName={thumbnailClassName}
+              key={attachment.id}
+              loading="lazy"
+              src={conversationAttachmentUrl(
+                props.conversationId,
+                attachment.id,
+              )}
+              triggerClassName={triggerClassName}
+            />
+          );
+        }
+        return (
+          <PendingMetaIcon key={attachment.id} label={attachment.filename}>
+            <FileText aria-hidden="true" size={14} />
+          </PendingMetaIcon>
+        );
+      })}
+    </span>
+  );
+}
+
 function PendingRow(props: {
-  cancelDisabled: boolean;
+  actionsDisabled: boolean;
   cancelError: boolean;
   cancelPending: boolean;
+  canEdit: boolean;
+  conversationId?: string;
+  editPending: boolean;
   message: ConversationMailboxMessage;
   onCancel?(message: ConversationMailboxMessage): void;
+  onEdit?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
 }) {
-  const filenames = [
-    ...(props.message.images ?? []),
-    ...(props.message.attachments ?? []),
-  ]
-    .map((attachment) => attachment.filename)
-    .join(", ");
-  const text = [props.message.text, filenames].filter(Boolean).join(" · ");
+  const text = props.message.text ?? "";
   const redacted = Boolean(props.message.redacted);
-  // Pending rows can come from web or Slack. Avoid rebuilding a full
-  // transcript projection just to label the stack above the composer.
-  const roleLabel = actorLabel(props.message.actorIdentity) ?? "User";
   const showSlack = props.message.source === "slack";
   const canRetry =
     props.message.clientStatus === "failed" &&
@@ -152,36 +248,53 @@ function PendingRow(props: {
     Boolean(props.onRetry);
 
   return (
-    <article className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-2 text-dashboard-text md:px-3.5">
+    <article className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-1.5 text-dashboard-text md:px-3.5">
       <TranscriptHeadingRow
+        className="items-center"
         left={
-          <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-dashboard-text">
-            {roleLabel}
-          </span>
+          <>
+            <PendingAuthorAvatar message={props.message} />
+            {redacted ? null : (
+              <PendingAttachmentThumbnails
+                conversationId={props.conversationId}
+                message={props.message}
+              />
+            )}
+            {redacted ? (
+              <p className="m-0 font-sans text-sm leading-snug text-dashboard-text-muted">
+                [redacted]
+              </p>
+            ) : text ? (
+              // One line keeps the queue short. The title shows the full text.
+              <p
+                className="m-0 min-w-0 truncate font-sans text-sm leading-snug text-dashboard-text-subtle"
+                title={text}
+              >
+                {text}
+              </p>
+            ) : null}
+          </>
         }
-        leftClassName="text-sm leading-snug text-dashboard-text"
+        leftClassName="flex-1 text-sm leading-snug text-dashboard-text"
         right={
           <PendingMetaIcons
-            cancelDisabled={props.cancelDisabled}
+            actionsDisabled={props.actionsDisabled}
             cancelError={props.cancelError}
             cancelPending={props.cancelPending}
+            editPending={props.editPending}
             message={props.message}
             onCancel={
               props.onCancel ? () => props.onCancel?.(props.message) : undefined
+            }
+            onEdit={
+              props.canEdit && props.onEdit
+                ? () => props.onEdit?.(props.message)
+                : undefined
             }
             showSlack={showSlack}
           />
         }
       />
-      {redacted ? (
-        <p className="m-0 font-sans text-sm leading-snug text-dashboard-text-muted">
-          [redacted]
-        </p>
-      ) : (
-        <p className="m-0 line-clamp-3 font-sans text-sm leading-snug text-dashboard-text-subtle">
-          {text}
-        </p>
-      )}
       {canRetry ? (
         <div className="flex min-w-0 items-center gap-2">
           <p className="m-0 font-sans text-xs text-red-300/80">
@@ -242,6 +355,12 @@ function ExpandQueuedMessagesButton(props: {
   );
 }
 
+function sameEmail(left: string | undefined, right: string | undefined) {
+  return Boolean(
+    left && right && left.trim().toLowerCase() === right.trim().toLowerCase(),
+  );
+}
+
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   cancelError?: boolean;
@@ -249,11 +368,19 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   cancelTargetInboundMessageId?: string;
   /** Message ids already present in committed history. */
   committedMessageIds?: readonly string[];
+  /** Conversation that owns stored attachment previews. */
+  conversationId?: string;
+  /** Inbound id of the row that an edit is taking out of the queue. */
+  editTargetInboundMessageId?: string;
   messages: readonly ConversationMailboxMessage[];
   onCancelMessage?: (message: ConversationMailboxMessage) => void;
+  /** Take the viewer's own queued web message back into the composer. */
+  onEditMessage?: (message: ConversationMailboxMessage) => void;
   /** Fires after expand/collapse changes the stack height above the composer. */
   onLayoutChange?: () => void;
   onRetry?(message: ConversationMailboxMessage): void;
+  /** Email of the signed-in reader. Only their own web rows can be edited. */
+  viewerEmail?: string;
 }): ReactNode {
   const [expanded, setExpanded] = useState(false);
   const onLayoutChangeRef = useRef(props.onLayoutChange);
@@ -283,6 +410,36 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   const visibleRows = showCollapsed ? previewRows : rows;
   const hiddenCount = Math.max(0, rows.length - COLLAPSED_PENDING_ROW_COUNT);
   const toggleExpanded = () => setExpanded((value) => !value);
+  const actionsDisabled =
+    Boolean(props.cancelPending) || Boolean(props.editTargetInboundMessageId);
+  const renderRow = (message: ConversationMailboxMessage) => {
+    const isTarget =
+      props.cancelTargetInboundMessageId === message.inboundMessageId;
+    // Only accepted server rows can leave the queue. Local rows are still sending.
+    const accepted = message.clientStatus === undefined;
+    return (
+      <PendingRow
+        actionsDisabled={actionsDisabled}
+        cancelError={Boolean(props.cancelError && isTarget)}
+        cancelPending={Boolean(props.cancelPending && isTarget)}
+        canEdit={
+          accepted &&
+          message.source === "web" &&
+          !message.redacted &&
+          sameEmail(message.actorIdentity?.email, props.viewerEmail)
+        }
+        conversationId={props.conversationId}
+        editPending={
+          props.editTargetInboundMessageId === message.inboundMessageId
+        }
+        key={message.messageId}
+        message={message}
+        onCancel={accepted ? props.onCancelMessage : undefined}
+        onEdit={props.onEditMessage}
+        onRetry={props.onRetry}
+      />
+    );
+  };
 
   return (
     <div
@@ -291,51 +448,9 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
     >
       {showCollapsed ? (
         // Desktop keeps a two-row preview; mobile collapses to the control only.
-        <div className="hidden md:block">
-          {previewRows.map((message) => (
-            <PendingRow
-              cancelDisabled={Boolean(props.cancelPending)}
-              cancelError={Boolean(
-                props.cancelError &&
-                props.cancelTargetInboundMessageId === message.inboundMessageId,
-              )}
-              cancelPending={Boolean(
-                props.cancelPending &&
-                props.cancelTargetInboundMessageId === message.inboundMessageId,
-              )}
-              key={message.messageId}
-              message={message}
-              onCancel={
-                message.clientStatus === undefined
-                  ? props.onCancelMessage
-                  : undefined
-              }
-              onRetry={props.onRetry}
-            />
-          ))}
-        </div>
+        <div className="hidden md:block">{previewRows.map(renderRow)}</div>
       ) : (
-        visibleRows.map((message) => (
-          <PendingRow
-            cancelDisabled={Boolean(props.cancelPending)}
-            cancelError={Boolean(
-              props.cancelError &&
-              props.cancelTargetInboundMessageId === message.inboundMessageId,
-            )}
-            cancelPending={Boolean(
-              props.cancelPending &&
-              props.cancelTargetInboundMessageId === message.inboundMessageId,
-            )}
-            key={message.messageId}
-            message={message}
-            onCancel={
-              message.clientStatus === undefined
-                ? props.onCancelMessage
-                : undefined
-            }
-            onRetry={props.onRetry}
-          />
-        ))
+        visibleRows.map(renderRow)
       )}
       {canCollapse ? (
         <ExpandQueuedMessagesButton

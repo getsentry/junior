@@ -1944,6 +1944,14 @@ export function readMockConversationPendingMessages(
             role: "user" as const,
             source: "web" as const,
             text: "Keep the reply in Junior. I will paste the dashboard link next.",
+            attachments: [
+              {
+                id: "qa-chart-png",
+                filename: "queued-chart.png",
+                contentType: "image/png",
+                bytes: 18211,
+              },
+            ],
           },
           {
             actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),

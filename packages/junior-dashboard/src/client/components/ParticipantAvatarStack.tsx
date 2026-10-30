@@ -51,7 +51,8 @@ function ParticipantTooltipContent(props: { participant: ActorIdentity }) {
   );
 }
 
-function ParticipantAvatar(props: {
+/** Show one actor avatar with their name and email on hover or focus. */
+export function ParticipantAvatar(props: {
   participant: ActorIdentity;
   size: ParticipantAvatarStackProps["size"];
 }) {

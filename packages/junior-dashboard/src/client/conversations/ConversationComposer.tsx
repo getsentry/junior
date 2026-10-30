@@ -1,14 +1,21 @@
-import { INPUT_IMAGE_TYPES, type InputImage } from "@sentry/junior/api/schema";
+import {
+  INPUT_IMAGE_TYPES,
+  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_IMAGES,
+  type InputImage,
+} from "@sentry/junior/api/schema";
 import { ComposerImages, readComposerImages } from "./ComposerImages";
 import {
   memo,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import { ImagePlus, Send, Square } from "lucide-react";
 
@@ -56,6 +63,16 @@ export function conversationAttemptForSubmit(
   };
 }
 
+/** Imperative composer actions for the reply footer. */
+export type ConversationComposerHandle = {
+  /** Put queued text ahead of the draft and add its images when they fit. */
+  restoreMessage(message: { images?: InputImage[]; text: string }): void;
+};
+
+function imageBytes(images: readonly InputImage[]): number {
+  return images.reduce((sum, image) => sum + (image.data.length * 3) / 4, 0);
+}
+
 type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
@@ -73,6 +90,8 @@ type ConversationComposerProps = {
    * the pending queue instead.
    */
   restoreDraftOnError?: boolean;
+  /** Lets the parent put a message taken out of the queue back in the draft. */
+  ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
   onFocus?: () => void;
   onSubmit(
@@ -306,6 +325,16 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   // Put queued text back ahead of anything the reader already typed.
+  const prependDraftText = (text: string) => {
+    const current = draftRef.current.text;
+    const next: ConversationDraft = {
+      ...draftRef.current,
+      text: current.trim() ? `${text}\n${current}` : text,
+    };
+    replaceMessage(next);
+    storeDraft(storageKey, next);
+  };
+
   const stopTurn = async () => {
     if (!props.onStop || stoppingRef.current) return;
     stoppingRef.current = true;
@@ -319,15 +348,30 @@ export const ConversationComposer = memo(function ConversationComposer(
       stoppingRef.current = false;
     }
     if (!restored) return;
-    const current = draftRef.current.text;
-    const next: ConversationDraft = {
-      ...draftRef.current,
-      text: current.trim() ? `${restored}\n${current}` : restored,
-    };
-    replaceMessage(next);
-    storeDraft(storageKey, next);
+    prependDraftText(restored);
     textareaRef.current?.focus({ preventScroll: true });
   };
+
+  useImperativeHandle(props.ref, () => ({
+    restoreMessage: (message) => {
+      prependDraftText(message.text);
+      const restoredImages = message.images ?? [];
+      if (restoredImages.length) {
+        const merged = [...restoredImages, ...imagesRef.current];
+        if (
+          merged.length > MAX_INPUT_IMAGES ||
+          imageBytes(merged) > MAX_INPUT_IMAGE_BYTES
+        ) {
+          setImageError(
+            "The edited message images did not fit. Add them again.",
+          );
+        } else {
+          replaceImages(merged);
+        }
+      }
+      textareaRef.current?.focus({ preventScroll: true });
+    },
+  }));
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (

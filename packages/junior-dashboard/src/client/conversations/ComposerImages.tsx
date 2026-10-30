@@ -4,7 +4,9 @@ import {
   MAX_INPUT_IMAGE_BYTES,
   MAX_INPUT_IMAGES,
   type InputImage,
+  type MessageAttachment,
 } from "@sentry/junior/api/schema";
+import { conversationAttachmentUrl } from "./TranscriptAttachment";
 
 /** Read a bounded image selection for the message request and local previews. */
 export async function readComposerImages(
@@ -49,6 +51,28 @@ export async function readComposerImages(
     ),
   );
   return [...current, ...images];
+}
+
+/** Read stored image attachments back into composer images for an edit. */
+export async function readStoredComposerImages(
+  conversationId: string,
+  attachments: readonly MessageAttachment[] | undefined,
+): Promise<InputImage[]> {
+  const images = (attachments ?? []).filter((attachment) =>
+    INPUT_IMAGE_TYPES.some((type) => type === attachment.contentType),
+  );
+  const files = await Promise.all(
+    images.map(async (attachment) => {
+      const response = await fetch(
+        conversationAttachmentUrl(conversationId, attachment.id),
+      );
+      if (!response.ok) throw new Error("Could not read the queued image.");
+      return new File([await response.blob()], attachment.filename, {
+        type: attachment.contentType,
+      });
+    }),
+  );
+  return await readComposerImages(files, []);
 }
 
 /** Show removable images before sending; bytes stay in memory until submit. */
